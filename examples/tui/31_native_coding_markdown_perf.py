@@ -6,8 +6,7 @@ import gc
 import sys
 import tracemalloc
 from collections import Counter
-from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import StringIO
 from time import perf_counter
 from typing import Any, TextIO
@@ -37,10 +36,7 @@ class RenderStats:
     max_ms: float = 0.0
     last_line_count: int = 0
     max_line_count: int = 0
-    last_line_chars: int = 0
-    max_line_chars: int = 0
     previous_render_result_lines: int = 0
-    previous_render_result_chars: int = 0
     last_active_records: int = 0
     max_active_records: int = 0
 
@@ -50,10 +46,7 @@ class RenderStats:
         self.max_ms = 0.0
         self.last_line_count = 0
         self.max_line_count = 0
-        self.last_line_chars = 0
-        self.max_line_chars = 0
         self.previous_render_result_lines = 0
-        self.previous_render_result_chars = 0
         self.last_active_records = 0
         self.max_active_records = 0
 
@@ -62,9 +55,7 @@ class RenderStats:
         *,
         elapsed_ms: float,
         line_count: int,
-        line_chars: int,
         previous_line_count: int,
-        previous_line_chars: int,
         active_records: int,
     ) -> None:
         self.calls += 1
@@ -72,10 +63,7 @@ class RenderStats:
         self.max_ms = max(self.max_ms, elapsed_ms)
         self.last_line_count = line_count
         self.max_line_count = max(self.max_line_count, line_count)
-        self.last_line_chars = line_chars
-        self.max_line_chars = max(self.max_line_chars, line_chars)
         self.previous_render_result_lines = previous_line_count
-        self.previous_render_result_chars = previous_line_chars
         self.last_active_records = active_records
         self.max_active_records = max(self.max_active_records, active_records)
 
@@ -94,10 +82,7 @@ class PerfReport:
     render_max_ms: float
     last_line_count: int
     max_line_count: int
-    last_line_chars: int
-    max_line_chars: int
     previous_render_result_lines: int
-    previous_render_result_chars: int
     state_records_before_stats: int
     active_records: int
     max_active_records: int
@@ -123,31 +108,52 @@ class PerfReport:
     gc_count_2: int
 
 
+@dataclass(slots=True)
+class ScriptRoundSummary:
+    """Aggregate diagnostics without retaining every playback frame."""
+
+    frame_count: int = 0
+    operation_count: int = 0
+    serialized_bytes: int = 0
+    clear_scrollback_frames: int = 0
+    operation_classes: Counter[str] = field(default_factory=Counter)
+    last_step: PlaybackStep | None = None
+
+    def record(self, step: PlaybackStep) -> None:
+        self.frame_count += 1
+        self.operation_count += len(step.diagnostics.operations)
+        operation_class = str(step.diagnostics.operation_class or "unknown")
+        self.operation_classes[operation_class] += 1
+        if step.frame is not None:
+            self.serialized_bytes += len(step.frame.serialized_output)
+            if step.frame.clear_scrollback_emitted:
+                self.clear_scrollback_frames += 1
+        self.last_step = step
+
+
 class PerfNativeCodingTuiApp(ScreenCodingTuiApp):
-    __slots__ = ("_last_render_line_chars", "_last_render_line_count", "perf_reports", "render_stats")
+    __slots__ = ("_last_render_line_count", "perf_reports", "render_stats")
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.perf_reports: list[PerfReport] = []
         self.render_stats = RenderStats()
         self._last_render_line_count = 0
-        self._last_render_line_chars = 0
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         started = perf_counter()
         result = super().render(constraints)
+        # Stop the timer before collecting even the O(1) harness counters below.
+        elapsed_ms = (perf_counter() - started) * 1000
         line_count = len(result.lines)
-        line_chars = sum(len(line.text) for line in result.lines)
         self.render_stats.record(
-            elapsed_ms=(perf_counter() - started) * 1000,
+            elapsed_ms=elapsed_ms,
             line_count=line_count,
-            line_chars=line_chars,
             previous_line_count=self._last_render_line_count,
-            previous_line_chars=self._last_render_line_chars,
-            active_records=len(self.state.records) + (1 if self.state.assistant_draft_buffer is not None else 0),
+            active_records=len(self.state.records)
+            + (1 if self.state.assistant_draft_buffer is not None else 0),
         )
         self._last_render_line_count = line_count
-        self._last_render_line_chars = line_chars
         return result
 
 
@@ -207,10 +213,7 @@ def _append_perf_stats(app: PerfNativeCodingTuiApp, *, requested_lines: int, str
         render_max_ms=stats.max_ms,
         last_line_count=stats.last_line_count,
         max_line_count=stats.max_line_count,
-        last_line_chars=stats.last_line_chars,
-        max_line_chars=stats.max_line_chars,
         previous_render_result_lines=stats.previous_render_result_lines,
-        previous_render_result_chars=stats.previous_render_result_chars,
         state_records_before_stats=len(app.state.records),
         active_records=stats.last_active_records,
         max_active_records=stats.max_active_records,
@@ -250,10 +253,7 @@ def _append_perf_stats(app: PerfNativeCodingTuiApp, *, requested_lines: int, str
                 f"render_max_ms={report.render_max_ms:.2f}\n"
                 f"last_line_count={report.last_line_count}\n"
                 f"max_line_count={report.max_line_count}\n"
-                f"last_line_chars={report.last_line_chars}\n"
-                f"max_line_chars={report.max_line_chars}\n"
                 f"previous_render_result_lines={report.previous_render_result_lines}\n"
-                f"previous_render_result_chars={report.previous_render_result_chars}\n"
                 f"state_records_before_stats={report.state_records_before_stats}\n"
                 f"active_records={report.active_records}\n"
                 f"max_active_records={report.max_active_records}\n"
@@ -335,7 +335,7 @@ async def run_script(
     stdout.write(f"render_every_n_chunks={max(0, render_every_n_chunks)}\n\n")
 
     for round_index in range(1, rounds + 1):
-        steps = await _drive_script_round(
+        summary = await _drive_script_round(
             app=app,
             runtime=runtime,
             count=count,
@@ -343,7 +343,7 @@ async def run_script(
             render_interval_ms=render_interval_ms,
             render_every_n_chunks=render_every_n_chunks,
         )
-        stdout.write(_script_round_line(round_index, app=app, steps=steps))
+        stdout.write(_script_round_line(round_index, app=app, summary=summary))
 
     if show_final:
         final = app.render(RenderConstraints(width=width, max_height=height, visible_height=height))
@@ -365,11 +365,12 @@ async def _drive_script_round(
     stream_seconds: float,
     render_interval_ms: int,
     render_every_n_chunks: int = 0,
-) -> tuple[PlaybackStep, ...]:
-    steps: list[PlaybackStep] = []
-    app.render_stats.reset()
+) -> ScriptRoundSummary:
+    summary = ScriptRoundSummary()
     app.start_prompt(str(count), started_at=app.now())
-    steps.append(runtime.render_now())
+    summary.record(runtime.render_now())
+    # Setup/finalize frames belong to the terminal summary, not streaming timings.
+    app.render_stats.reset()
 
     started = perf_counter()
     app.begin_assistant()
@@ -385,7 +386,7 @@ async def _drive_script_round(
         else:
             should_render = render_interval <= 0 or now >= next_render_at or index == count
         if should_render:
-            steps.append(runtime.render_now())
+            summary.record(runtime.render_now())
             next_render_at = perf_counter() + render_interval
         if delay > 0:
             await asyncio.sleep(delay)
@@ -394,47 +395,54 @@ async def _drive_script_round(
     app.end_assistant()
     _append_perf_stats(app, requested_lines=count, stream_elapsed_seconds=stream_elapsed)
     app.complete_run(elapsed_seconds=stream_elapsed)
-    steps.append(runtime.render_now())
-    return tuple(steps)
+    summary.record(runtime.render_now())
+    return summary
 
 
-def _script_round_line(round_index: int, *, app: PerfNativeCodingTuiApp, steps: tuple[PlaybackStep, ...]) -> str:
+def _script_round_line(
+    round_index: int,
+    *,
+    app: PerfNativeCodingTuiApp,
+    summary: ScriptRoundSummary,
+) -> str:
     report = app.perf_reports[-1] if app.perf_reports else None
-    stats = app.render_stats
     active_stats = _active_state_stats(app)
     cache_stats = _transcript_cache_stats(app)
     memory_stats = _memory_stats()
     stream_elapsed = report.stream_elapsed_seconds if report is not None else 0.0
-    operations = sum(len(step.diagnostics.operations) for step in steps)
-    serialized_bytes = sum(len(step.frame.serialized_output) for step in steps if step.frame is not None)
-    clear_scrollback_frames = sum(1 for step in steps if step.frame is not None and step.frame.clear_scrollback_emitted)
-    operation_classes = _format_operation_classes(step.diagnostics.operation_class for step in steps)
-    last_step = steps[-1] if steps else None
-    previous_lines = last_step.diagnostics.previous_rendered_lines if last_step is not None else ()
-    new_lines = last_step.diagnostics.current_logical_lines if last_step is not None else ()
+    operation_classes = _format_operation_classes(summary.operation_classes)
+    last_step = summary.last_step
+    previous_lines = (
+        last_step.diagnostics.previous_rendered_lines if last_step is not None else ()
+    )
+    new_lines = (
+        last_step.diagnostics.current_logical_lines if last_step is not None else ()
+    )
+    # These full-frame diagnostics run once, after the streaming report is frozen.
     previous_line_chars = sum(len(line) for line in previous_lines)
     new_line_chars = sum(len(line) for line in new_lines)
     previous_render_loop_lines = len(previous_lines)
     new_lines_count = len(new_lines)
     viewport_top = last_step.diagnostics.viewport_top if last_step is not None else 0
-    changed_range = _format_range(last_step.diagnostics.changed_line_range if last_step is not None else None)
+    changed_range = _format_range(
+        last_step.diagnostics.changed_line_range if last_step is not None else None
+    )
     append_start = last_step.diagnostics.append_start if last_step is not None else None
     render_end = last_step.diagnostics.render_end if last_step is not None else None
     return (
         f"round={round_index} "
         f"requested_lines={report.requested_lines if report is not None else 0} "
         f"stream_elapsed={stream_elapsed:.3f}s "
-        f"render_calls={stats.calls} "
-        f"render_total_ms={stats.total_ms:.2f} "
-        f"render_avg_ms={stats.average_ms:.2f} "
-        f"render_max_ms={stats.max_ms:.2f} "
-        f"frames={len(steps)} "
-        f"operations={operations} "
-        f"serialized_bytes={serialized_bytes} "
-        f"clear_scrollback_frames={clear_scrollback_frames} "
+        f"render_calls={report.render_calls if report is not None else 0} "
+        f"render_total_ms={report.render_total_ms if report is not None else 0.0:.2f} "
+        f"render_avg_ms={report.render_avg_ms if report is not None else 0.0:.2f} "
+        f"render_max_ms={report.render_max_ms if report is not None else 0.0:.2f} "
+        f"frames={summary.frame_count} "
+        f"operations={summary.operation_count} "
+        f"serialized_bytes={summary.serialized_bytes} "
+        f"clear_scrollback_frames={summary.clear_scrollback_frames} "
         f"operation_classes={operation_classes} "
-        f"max_line_count={stats.max_line_count} "
-        f"max_line_chars={stats.max_line_chars} "
+        f"max_line_count={report.max_line_count if report is not None else 0} "
         f"previous_render_loop_lines={previous_render_loop_lines} "
         f"previous_render_loop_chars={previous_line_chars} "
         f"new_lines={new_lines_count} "
@@ -466,9 +474,10 @@ def _script_round_line(round_index: int, *, app: PerfNativeCodingTuiApp, steps: 
     )
 
 
-def _format_operation_classes(values: Iterable[str | None]) -> str:
-    counter: Counter[str] = Counter(str(value or "unknown") for value in values)
-    return ",".join(f"{name}:{count}" for name, count in sorted(counter.items())) or "none"
+def _format_operation_classes(counter: Counter[str]) -> str:
+    return (
+        ",".join(f"{name}:{count}" for name, count in sorted(counter.items())) or "none"
+    )
 
 
 def _active_state_stats(app: PerfNativeCodingTuiApp) -> dict[str, int]:
