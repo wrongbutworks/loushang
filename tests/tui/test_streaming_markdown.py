@@ -4,6 +4,11 @@ from collections.abc import Iterable
 
 import pytest
 
+from loushang.tui import (
+    RenderConstraints,
+    set_ambiguous_width,
+    strip_control_sequences,
+)
 from loushang.tui.markdown import renderer as markdown_renderer
 
 
@@ -213,3 +218,44 @@ def test_markdown_render_cache_resets_streaming_state_for_new_key() -> None:
 
     assert cache._streaming_parse_state is not first_state
     assert blocks == markdown_renderer._parse_markdown_blocks("Alpha\n\nTail grows")
+
+
+def test_streaming_render_cache_context_follows_ambiguous_width_policy() -> None:
+    source = (
+        "| Stream | Value |\n"
+        "| --- | --- |\n"
+        "| row | Ω |\n\n"
+        "First\n\nSecond\n\nThird"
+    )
+    cache = markdown_renderer.MarkdownRenderCache()
+    renderer = markdown_renderer.MarkdownRenderer(
+        source,
+        render_cache=cache,
+        streaming_key=object(),
+    )
+    constraints = RenderConstraints(width=40, max_height=100)
+    try:
+        set_ambiguous_width(1)
+        narrow = renderer.render_streaming_segments(constraints)
+        assert narrow is not None
+        narrow_lines = [
+            strip_control_sequences(line)
+            for segment in narrow.segments
+            for line in segment.lines
+        ]
+        assert any("┌" in line for line in narrow_lines)
+        narrow_context = cache._streaming_render_context
+
+        set_ambiguous_width(2)
+        wide = renderer.render_streaming_segments(constraints)
+        assert wide is not None
+        wide_lines = [
+            strip_control_sequences(line)
+            for segment in wide.segments
+            for line in segment.lines
+        ]
+
+        assert cache._streaming_render_context != narrow_context
+        assert not any(set(line) & set("┌─┬┐├┼┤│└┴┘") for line in wide_lines)
+    finally:
+        set_ambiguous_width(1)

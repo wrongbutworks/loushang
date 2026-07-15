@@ -35,6 +35,67 @@ def test_visible_width_handles_wide_combining_and_emoji_clusters() -> None:
     assert visible_width("🇺🇸") == 2
 
 
+def test_visible_width_uses_pinned_terminal_width_rules_for_complex_sequences() -> None:
+    expected_widths = {
+        "1️⃣": 2,
+        "☕︎": 2,
+        "A︎": 1,
+        "가": 2,
+        "한": 2,
+        "\U000e0100": 0,
+        "木\U000e0100": 2,
+        "กั": 1,
+        "ກັ": 1,
+        "🜀": 1,
+        "A️": 1,
+        "a\u200d👨": 3,
+        "\u200d👨": 2,
+        "ক্🙂": 3,
+        "Aᅡ्🙂": 3,
+        "中ᅡ्🙂": 4,
+        "\u200b🇺🇺": 4,
+        "🇺\n🇺": 4,
+        "👨\u200b\u200b\u200b🏽": 4,
+        "❤\u200b\u200b\u200b️": 1,
+        "A\u200b\u200b\u200bा": 1,
+        "🇸e🇺⃣্🏽າ": 6,
+    }
+
+    assert {sample: visible_width(sample) for sample in expected_widths} == expected_widths
+
+
+def test_complex_sequence_width_matches_layout_operations() -> None:
+    for sample, width in (
+        ("1️⃣", 2),
+        ("☕︎", 2),
+        ("A︎", 1),
+        ("가", 2),
+        ("กั", 1),
+        ("a\u200d👨", 3),
+        ("\u200d👨", 2),
+        ("ক্🙂", 3),
+        ("Aᅡ्🙂", 3),
+        ("中ᅡ्🙂", 4),
+        ("\u200b🇺🇺", 4),
+        ("👨\u200b\u200b\u200b🏽", 4),
+        ("🇸e🇺⃣্🏽າ", 6),
+    ):
+        assert wrap_cells(sample, width=width) == [sample]
+        assert slice_by_column(sample, start=0, length=width).text == sample
+        assert truncate_to_width(sample, max_width=width, ellipsis="") == sample
+
+    assert wrap_cells("🇺\n🇺", width=4) == ["🇺", "🇺"]
+    assert slice_by_column("🇺\n🇺", start=0, length=4).text == "🇺\n🇺"
+
+    styled_keycap = "\x1b[31m1️⃣\x1b[0m"
+    assert visible_width(styled_keycap) == 2
+    assert [strip_control_sequences(line) for line in wrap_ansi(styled_keycap, width=2)] == [
+        "1️⃣"
+    ]
+    sliced = slice_by_column(styled_keycap, start=0, length=2)
+    assert strip_control_sequences(sliced.text) == "1️⃣"
+
+
 def test_visible_width_can_treat_east_asian_ambiguous_symbols_as_wide() -> None:
     try:
         assert visible_width("┌─┐") == 3
@@ -140,12 +201,44 @@ def test_plain_ascii_width_and_truncation_use_fast_path(monkeypatch) -> None:
     def fail_unicode_path(*_args: object, **_kwargs: object) -> str:
         raise AssertionError("plain ASCII should not use Unicode cluster scanning")
 
-    monkeypatch.setattr(cell_width, "_grapheme_clusters", fail_unicode_path)
+    monkeypatch.setattr(cell_width, "_display_grapheme_clusters", fail_unicode_path)
     monkeypatch.setattr(cell_width, "_next_cluster", fail_unicode_path)
+    monkeypatch.setattr(cell_width, "_terminal_width", fail_unicode_path)
 
     assert visible_width("plain ASCII 123") == 15
     assert truncate_to_width("ab", max_width=4, pad=True) == "ab  "
     assert truncate_to_width("abcdef", max_width=4) == "a\x1b[0m...\x1b[0m"
+
+
+def test_independently_positive_unicode_uses_whole_string_fast_path(monkeypatch) -> None:
+    def fail_cluster_path(*_args: object, **_kwargs: object) -> list[str]:
+        raise AssertionError("common Unicode text should not require cluster scanning")
+
+    cell_width._visible_width_cached.cache_clear()
+    monkeypatch.setattr(cell_width, "_display_grapheme_clusters", fail_cluster_path)
+
+    assert visible_width("fast 中文 🙂") == 12
+
+
+def test_stateful_or_nonpositive_codepoints_require_cluster_measurement() -> None:
+    assert cell_width._requires_cluster_measurement("a‍👨") is True
+    assert cell_width._requires_cluster_measurement("‍👨") is True
+    assert cell_width._requires_cluster_measurement("ক্🙂") is True
+    assert cell_width._requires_cluster_measurement("Aᅡ्🙂") is True
+    assert cell_width._requires_cluster_measurement("中ᅡ्🙂") is True
+    assert cell_width._requires_cluster_measurement("\u200b🇺🇺") is True
+    assert cell_width._requires_cluster_measurement("🇺\n🇺") is True
+    assert cell_width._requires_cluster_measurement("👨\u200b\u200b\u200b🏽") is True
+    assert cell_width._requires_cluster_measurement("❤\u200b\u200b\u200b️") is True
+    assert cell_width._requires_cluster_measurement("A\u200b\u200b\u200bा") is True
+    assert cell_width._requires_cluster_measurement("🇸e🇺⃣্🏽າ") is True
+    assert cell_width._requires_cluster_measurement("1️⃣") is True
+    assert cell_width._requires_cluster_measurement("👨‍💻") is True
+    assert cell_width._requires_cluster_measurement("é") is True
+    assert cell_width._requires_cluster_measurement("🇺🇸") is True
+    assert cell_width._requires_cluster_measurement("👍🏽") is True
+
+    assert cell_width._requires_cluster_measurement("fast 中文 🙂") is False
 
 
 def test_strip_control_sequences_skips_scan_without_escape(monkeypatch) -> None:
@@ -158,19 +251,19 @@ def test_strip_control_sequences_skips_scan_without_escape(monkeypatch) -> None:
 
 
 def test_repeated_wide_character_width_uses_cache(monkeypatch) -> None:
-    cache_clear = getattr(cell_width._char_width, "cache_clear", None)
+    cache_clear = getattr(cell_width._cluster_width, "cache_clear", None)
     if callable(cache_clear):
         cache_clear()
 
     calls = 0
-    original = cell_width.unicodedata.east_asian_width
+    original = cell_width._terminal_width
 
-    def count_east_asian_width(char: str) -> str:
+    def count_terminal_width(*args: object, **kwargs: object) -> int:
         nonlocal calls
         calls += 1
-        return original(char)
+        return original(*args, **kwargs)
 
-    monkeypatch.setattr(cell_width.unicodedata, "east_asian_width", count_east_asian_width)
+    monkeypatch.setattr(cell_width, "_terminal_width", count_terminal_width)
 
     assert wrap_cells("龘龘龘", width=10) == ["龘龘龘"]
     assert wrap_cells("龘龘龘", width=10) == ["龘龘龘"]

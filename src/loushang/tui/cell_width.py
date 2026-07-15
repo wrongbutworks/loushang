@@ -7,12 +7,15 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Literal
 
+from wcwidth import iter_graphemes as _iter_graphemes
+from wcwidth import wcwidth as _codepoint_width
+from wcwidth import width as _terminal_width
+
 TAB_WIDTH = 3
 AMBIGUOUS_WIDTH_ENV = "LOUSHANG_TUI_AMBIGUOUS_WIDTH"
 _THAI_LAO_AM_TRANSLATION = str.maketrans({"\u0e33": "\u0e4d\u0e32", "\u0eb3": "\u0ecd\u0eb2"})
 _VISIBLE_WIDTH_CACHE_SIZE = 16_384
 _CLUSTER_WIDTH_CACHE_SIZE = 16_384
-_CHAR_WIDTH_CACHE_SIZE = 4_096
 AmbiguousWidth = Literal[1, 2]
 _AMBIGUOUS_WIDTH: AmbiguousWidth = 1
 
@@ -58,7 +61,6 @@ def set_ambiguous_width(width: AmbiguousWidth) -> None:
     _AMBIGUOUS_WIDTH = width
     _visible_width_cached.cache_clear()
     _cluster_width.cache_clear()
-    _char_width.cache_clear()
 
 
 def configure_cell_width_from_environment(env: Mapping[str, str] | None = None) -> None:
@@ -96,7 +98,23 @@ def normalize_terminal_output(text: str) -> str:
 
 
 def grapheme_clusters(text: str) -> tuple[str, ...]:
-    return tuple(_grapheme_clusters(text))
+    """Return the stable editor units used by input and cursor operations.
+
+    Display layout uses wcwidth's UAX #29 segmentation independently so this
+    width correction does not also change existing editor navigation semantics.
+    """
+
+    return tuple(_editor_grapheme_clusters(text))
+
+
+def max_display_cluster_width(text: str) -> int:
+    """Return the widest indivisible display cluster in styled text."""
+
+    visible = strip_control_sequences(text)
+    return max(
+        (_cluster_width(cluster) for cluster in _display_grapheme_clusters(visible)),
+        default=0,
+    )
 
 
 def wrap_cells(text: str, *, width: int) -> list[str]:
@@ -107,7 +125,7 @@ def wrap_cells(text: str, *, width: int) -> list[str]:
     for logical_line in strip_control_sequences(text).split("\n"):
         current = ""
         current_width = 0
-        for cluster in _grapheme_clusters(logical_line):
+        for cluster in _display_grapheme_clusters(logical_line):
             cluster_width = _cluster_width(cluster)
             if current and current_width + cluster_width > width:
                 wrapped.append(current)
@@ -285,7 +303,27 @@ def _visible_width_cached(text: str) -> int:
     plain_ascii_width = _plain_ascii_width(text)
     if plain_ascii_width is not None:
         return plain_ascii_width
-    return sum(_cluster_width(cluster) for cluster in _grapheme_clusters(strip_control_sequences(text)))
+    visible = strip_control_sequences(text)
+    if not _requires_cluster_measurement(visible):
+        return _measure_terminal_cells(visible)
+    return sum(_cluster_width(cluster) for cluster in _display_grapheme_clusters(visible))
+
+
+def _requires_cluster_measurement(text: str) -> bool:
+    # wcwidth's whole-string scanner carries state across zero-width/control
+    # characters and has special state for regional indicators and emoji skin
+    # tones.  UAX #29 may put those codepoints in separate clusters, so measuring
+    # the whole line can then disagree with wrapping and slicing.  Only use the
+    # whole-string fast path when every codepoint is independently positive and
+    # none belongs to a stateful positive-width class.
+    for char in text:
+        if (
+            _codepoint_width(char) <= 0
+            or _is_regional_indicator(char)
+            or _is_emoji_modifier(char)
+        ):
+            return True
+    return False
 
 
 def _plain_ascii_width(text: str) -> int | None:
@@ -505,17 +543,31 @@ def _break_long_ansi_token(token: str, *, width: int, tracker: _StyleTracker) ->
     return lines
 
 
-def _grapheme_clusters(text: str) -> list[str]:
+def _display_grapheme_clusters(text: str) -> list[str]:
+    return list(_iter_graphemes(text))
+
+
+def _editor_grapheme_clusters(text: str) -> list[str]:
     clusters: list[str] = []
     index = 0
     while index < len(text):
-        cluster = _next_cluster(text, index)
+        cluster = _next_editor_cluster(text, index)
         clusters.append(cluster)
         index += len(cluster)
     return clusters
 
 
 def _next_cluster(text: str, index: int) -> str:
+    char = text[index]
+    next_index = index + 1
+    if " " <= char <= "~" and (
+        next_index >= len(text) or text[next_index].isascii()
+    ):
+        return char
+    return next(_iter_graphemes(text, start=index), "")
+
+
+def _next_editor_cluster(text: str, index: int) -> str:
     cluster = text[index]
     index += 1
 
@@ -551,41 +603,38 @@ def _is_cluster_suffix(char: str) -> bool:
 
 @lru_cache(maxsize=_CLUSTER_WIDTH_CACHE_SIZE)
 def _cluster_width(cluster: str) -> int:
-    if not cluster:
-        return 0
-    if all(_char_width(char) == 0 for char in cluster):
-        return 0
-    if "\ufe0f" in cluster:
-        return 2
-    if "\u200d" in cluster:
-        return 2
-    if any(_is_emoji_width(char) or _is_regional_indicator(char) for char in cluster):
-        return 2
-    if any(_char_width(char) == 2 for char in cluster):
-        return 2
-    return sum(_char_width(char) for char in cluster)
+    return _measure_terminal_cells(cluster)
 
 
-@lru_cache(maxsize=_CHAR_WIDTH_CACHE_SIZE)
-def _char_width(char: str) -> int:
-    if char == "\t":
-        return TAB_WIDTH
-    if unicodedata.combining(char) != 0:
-        return 0
-    if char in {"\u0e4d", "\u0ecd"}:
-        return 0
-    if char == "\u200d" or "\ufe00" <= char <= "\ufe0f":
-        return 0
-    if "\U0001f3fb" <= char <= "\U0001f3ff":
-        return 0
-    if unicodedata.category(char) in {"Cc", "Cf"}:
-        return 0
-    east_asian_width = unicodedata.east_asian_width(char)
-    if east_asian_width in {"F", "W"}:
-        return 2
-    if east_asian_width == "A":
-        return _AMBIGUOUS_WIDTH
-    return 1
+def _measure_terminal_cells(text: str) -> int:
+    # Loushang expands tabs as three literal cells throughout its layout code.
+    # Keep that existing contract while delegating Unicode width to one pinned
+    # terminal model.  Control sequences are stripped before whole-line calls;
+    # ignore mode also makes isolated control characters deterministically zero.
+    expanded = text.replace("\t", " " * TAB_WIDTH)
+    measured = _terminal_width(
+        expanded,
+        control_codes="ignore",
+        ambiguous_width=_AMBIGUOUS_WIDTH,
+        term_program=False,
+    )
+    if "\ufe0e" not in expanded:
+        return measured
+
+    # VS15 requests text presentation, but many deployed terminals (and the
+    # previous Loushang/CC width models) keep an East Asian Wide base at two
+    # cells.  Preserve that conservative cursor contract without widening a
+    # narrow base such as ``A\ufe0e``.
+    without_vs15 = expanded.replace("\ufe0e", "")
+    return max(
+        measured,
+        _terminal_width(
+            without_vs15,
+            control_codes="ignore",
+            ambiguous_width=_AMBIGUOUS_WIDTH,
+            term_program=False,
+        ),
+    )
 
 
 configure_cell_width_from_environment()
@@ -595,9 +644,8 @@ def _is_regional_indicator(char: str) -> bool:
     return "\U0001f1e6" <= char <= "\U0001f1ff"
 
 
-def _is_emoji_width(char: str) -> bool:
-    codepoint = ord(char)
-    return 0x1F000 <= codepoint <= 0x1FBFF
+def _is_emoji_modifier(char: str) -> bool:
+    return "\U0001f3fb" <= char <= "\U0001f3ff"
 
 
 class _StyleTracker:

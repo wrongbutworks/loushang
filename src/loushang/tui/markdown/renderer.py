@@ -12,7 +12,9 @@ from markdown_it import MarkdownIt
 from markdown_it.token import Token
 
 from loushang.tui.cell_width import (
+    ambiguous_width,
     autowrap_safe_width,
+    max_display_cluster_width,
     normalize_box_drawing_diagram,
     truncate_to_width,
     visible_width,
@@ -366,7 +368,7 @@ class MarkdownRenderer:
                 )
             )
         elif self.theme is None and self.code_highlighter is None and self.default_style is None:
-            raw_lines = list(_render_markdown_lines(self.markdown, width))
+            raw_lines = list(_render_markdown_lines(self.markdown, width, ambiguous_width()))
         else:
             cache_key = _renderer_cache_key(
                 markdown=self.markdown,
@@ -430,6 +432,7 @@ class MarkdownRenderer:
 
         context = (
             target_width,
+            ambiguous_width(),
             _theme_cache_signature(self.theme),
             _capabilities_cache_signature(self.capabilities),
             id(self.code_highlighter) if self.code_highlighter is not None else None,
@@ -553,6 +556,7 @@ def _renderer_cache_key(
     return (
         markdown,
         width,
+        ambiguous_width(),
         _theme_cache_signature(theme),
         _capabilities_cache_signature(capabilities),
         id(code_highlighter) if code_highlighter is not None else None,
@@ -590,7 +594,11 @@ def _capabilities_cache_signature(capabilities: TerminalCapabilities | None) -> 
 
 
 @lru_cache(maxsize=_MARKDOWN_LINE_CACHE_SIZE)
-def _render_markdown_lines(markdown: str, width: int) -> tuple[str, ...]:
+def _render_markdown_lines(
+    markdown: str,
+    width: int,
+    _ambiguous_width: int,
+) -> tuple[str, ...]:
     return _render_markdown_blocks(_parse_markdown_blocks(markdown), width=width)
 
 
@@ -975,6 +983,7 @@ def _render_markdown_blocks(
     if stable_block_count:
         block_cache_context = (
             width,
+            ambiguous_width(),
             _theme_cache_signature(theme),
             _capabilities_cache_signature(capabilities),
             id(code_highlighter) if code_highlighter is not None else None,
@@ -1836,13 +1845,15 @@ def _render_table(
     padded_rows = [row + [""] * (column_count - len(row)) for row in rows]
     column_widths = _table_column_widths(padded_rows, width)
     if column_widths is not None:
-        return _render_box_table(
+        boxed = _render_box_table(
             padded_rows,
             column_widths,
             table_alignments=table_alignments,
             theme=theme,
             capabilities=capabilities,
         )
+        if _box_table_lines_are_safe(boxed, width=width):
+            return boxed
 
     raw_lines: list[str] = []
     for line in lines:
@@ -1852,6 +1863,8 @@ def _render_table(
 
 def _table_column_widths(rows: list[list[str]], width: int) -> list[int] | None:
     column_count = max(len(row) for row in rows)
+    if not _box_table_glyphs_are_single_cell():
+        return None
     border_overhead = 3 * column_count + 1
     available_for_cells = width - border_overhead
     if available_for_cells < column_count:
@@ -1861,17 +1874,29 @@ def _table_column_widths(rows: list[list[str]], width: int) -> list[int] | None:
         max(visible_width(row[column]) for row in rows)
         for column in range(column_count)
     ]
+    hard_min_widths = [
+        max(1, max(max_display_cluster_width(row[column]) for row in rows))
+        for column in range(column_count)
+    ]
     min_widths = [
-        max(1, max(_longest_word_width(row[column], max_width=30) for row in rows))
+        max(
+            hard_min_widths[column],
+            max(_longest_word_width(row[column], max_width=30) for row in rows),
+        )
         for column in range(column_count)
     ]
     min_total = sum(min_widths)
     if min_total > available_for_cells:
         widths = list(min_widths)
         while sum(widths) > available_for_cells:
-            widest_index = max(range(column_count), key=lambda index: widths[index])
-            if widths[widest_index] <= 1:
-                break
+            shrinkable = [
+                index
+                for index in range(column_count)
+                if widths[index] > hard_min_widths[index]
+            ]
+            if not shrinkable:
+                return None
+            widest_index = max(shrinkable, key=lambda index: widths[index])
             widths[widest_index] -= 1
         if sum(widths) > available_for_cells:
             return None
@@ -1904,6 +1929,15 @@ def _table_column_widths(rows: list[list[str]], width: int) -> list[int] | None:
             if not grew:
                 break
     return widths
+
+
+def _box_table_glyphs_are_single_cell() -> bool:
+    return all(visible_width(glyph) == 1 for glyph in "┌─┬┐├┼┤│└┴┘")
+
+
+def _box_table_lines_are_safe(lines: list[str], *, width: int) -> bool:
+    line_widths = {visible_width(line) for line in lines}
+    return len(line_widths) == 1 and next(iter(line_widths), width + 1) <= width
 
 
 def _render_table_rows(

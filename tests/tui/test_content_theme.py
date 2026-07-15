@@ -32,6 +32,7 @@ from loushang.tui import (
     hyperlink,
     is_terminal_image_line,
     render_terminal_image,
+    set_ambiguous_width,
     strip_control_sequences,
     theme_capabilities_from_runtime,
     visible_width,
@@ -925,6 +926,138 @@ def test_markdown_renderer_applies_pi_table_alignment_markers() -> None:
         "│ A    │   B    │     C │",
         "└──────┴────────┴───────┘",
     )
+
+
+def test_markdown_renderer_aligns_complex_unicode_cells_with_terminal_width() -> None:
+    renderer = MarkdownRenderer(
+        "| Key | Value |\n"
+        "| --- | --- |\n"
+        "| 1️⃣ | 中 |\n"
+        "| ☕︎ | A |\n"
+    )
+
+    lines = rendered_text(renderer, width=30, height=20)
+
+    assert lines == (
+        "┌─────┬───────┐",
+        "│ Key │ Value │",
+        "├─────┼───────┤",
+        "│ 1️⃣  │ 中    │",
+        "├─────┼───────┤",
+        "│ ☕︎  │ A     │",
+        "└─────┴───────┘",
+    )
+    assert {visible_width(line) for line in lines} == {15}
+
+
+def test_markdown_renderer_falls_back_when_wide_cells_cannot_fit_box_columns() -> None:
+    markdown = (
+        "| K | V |\n"
+        "| --- | --- |\n"
+        "| 中 | A |\n"
+        "| 文 | B |\n"
+    )
+
+    narrow = tuple(
+        strip_control_sequences(line)
+        for line in rendered_text(MarkdownRenderer(markdown), width=10)
+    )
+    roomy = rendered_text(MarkdownRenderer(markdown), width=11)
+    combining = rendered_text(
+        MarkdownRenderer("| K | V |\n| --- | --- |\n| é | A |\n"),
+        width=10,
+    )
+
+    assert not any(set(line) & set("┌─┬┐├┼┤│└┴┘") for line in narrow)
+    assert all(visible_width(line) <= 9 for line in narrow)
+    joined = "\n".join(narrow)
+    assert all(joined.count(value) == 1 for value in ("中", "文", "A", "B"))
+    assert {visible_width(line) for line in roomy} == {10}
+    assert roomy[3] == "│ 中 │ A │"
+    assert {visible_width(line) for line in combining} == {9}
+    assert combining[3] == "│ é │ A │"
+
+
+def test_markdown_renderer_falls_back_when_box_glyphs_are_ambiguous_wide() -> None:
+    markdown = "| Ambiguous policy | Value |\n| --- | --- |\n| row | Ω |\n"
+    try:
+        set_ambiguous_width(1)
+        renderer = MarkdownRenderer(markdown)
+        narrow_policy_lines = rendered_text(renderer, width=40)
+        assert any(set(line) & set("┌─┬┐├┼┤│└┴┘") for line in narrow_policy_lines)
+
+        set_ambiguous_width(2)
+
+        lines = rendered_text(renderer, width=40)
+
+        assert not any(
+            set(strip_control_sequences(line)) & set("┌─┬┐├┼┤│└┴┘")
+            for line in lines
+        )
+        assert all(visible_width(line) <= 39 for line in lines)
+        assert "Ω" in "\n".join(lines)
+    finally:
+        set_ambiguous_width(1)
+
+
+def test_markdown_renderer_cached_paths_follow_ambiguous_width_policy() -> None:
+    markdown = "| Cached | Value |\n| --- | --- |\n| row | Ω |\n"
+    shared_cache = markdown_renderer_module.MarkdownRenderCache()
+    renderers = (
+        MarkdownRenderer(
+            markdown + "\nThemed tail",
+            theme=ThemeResolver(defaults={"markdown.table.header": {"bold": True}}),
+        ),
+        MarkdownRenderer(
+            markdown + "\nShared tail",
+            render_cache=shared_cache,
+        ),
+    )
+    try:
+        set_ambiguous_width(1)
+        prewarmed = [rendered_text(renderer, width=40) for renderer in renderers]
+        assert all(
+            any("┌" in strip_control_sequences(line) for line in lines)
+            for lines in prewarmed
+        )
+
+        set_ambiguous_width(2)
+        rerendered = [rendered_text(renderer, width=40) for renderer in renderers]
+
+        assert all(
+            not any(
+                set(strip_control_sequences(line)) & set("┌─┬┐├┼┤│└┴┘")
+                for line in lines
+            )
+            for lines in rerendered
+        )
+    finally:
+        set_ambiguous_width(1)
+
+
+def test_markdown_renderer_rejects_unsafe_box_render_result(monkeypatch) -> None:
+    unsafe_results = (
+        ["┌─┐", "│ too wide │"],
+        ["x" * 40, "y" * 40],
+    )
+    for index, unsafe in enumerate(unsafe_results):
+        monkeypatch.setattr(
+            markdown_renderer_module,
+            "_render_box_table",
+            lambda *_args, unsafe=unsafe, **_kwargs: unsafe,
+        )
+        marker = f"Guard{index}"
+        renderer = MarkdownRenderer(
+            f"| {marker} | Value |\n| --- | --- |\n| row | safe |\n"
+        )
+
+        lines = tuple(
+            strip_control_sequences(line)
+            for line in rendered_text(renderer, width=40)
+        )
+
+        assert not any(set(line) & set("┌─┬┐├┼┤│└┴┘") for line in lines)
+        assert marker in "\n".join(lines)
 
 
 def test_markdown_renderer_table_stress_cases_preserve_width_and_row_dividers() -> None:
