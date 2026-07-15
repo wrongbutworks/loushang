@@ -69,6 +69,48 @@ def test_coding_interactive_approval_fallback_accepts_harness_resolver() -> None
     assert decision == ApprovalDecision.allow()
 
 
+def test_coding_interactive_approval_presents_mutable_nested_payload() -> None:
+    from loushang.coding.policy import InteractiveApprovalResolver
+    from loushang.harness.approval import (
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    presented = asyncio.Event()
+    payloads: list[dict[str, object]] = []
+    resolver = InteractiveApprovalResolver(
+        fallback=HeadlessApprovalResolver(mode="deny")
+    )
+
+    def presenter(payload: dict[str, object]) -> None:
+        payloads.append(payload)
+        presented.set()
+
+    resolver.set_request_presenter(presenter)
+
+    async def run() -> None:
+        pending = asyncio.create_task(
+            resolver.resolve(
+                ApprovalRequest(
+                    tool_name="edit",
+                    arguments={"edits": [{"oldText": "before", "newText": "after"}]},
+                )
+            )
+        )
+        await presented.wait()
+        action_id = payloads[0]["action_id"]
+        assert isinstance(action_id, str)
+        assert await resolver.handle_result(action_id, approved=True)
+        await pending
+
+    asyncio.run(run())
+
+    arguments = payloads[0]["arguments"]
+    assert arguments == {"edits": [{"oldText": "before", "newText": "after"}]}
+    assert isinstance(arguments, dict)
+    assert isinstance(arguments["edits"], list)
+
+
 def test_coding_resolve_approval_uses_harness_result_validation() -> None:
     import pytest
 
@@ -85,3 +127,27 @@ def test_coding_resolve_approval_uses_harness_result_validation() -> None:
                 InvalidResolver(), ApprovalRequest(tool_name="write", arguments={})
             )
         )
+
+
+def test_coding_interactive_approval_rejects_rebind_without_retaining_callback() -> (
+    None
+):
+    import pytest
+
+    from loushang.coding.policy import (
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+
+    resolver = InteractiveApprovalResolver(
+        fallback=HeadlessApprovalResolver(mode="deny")
+    )
+    resolver.dispose()
+
+    def presenter(payload: dict[str, object]) -> None:
+        del payload
+
+    with pytest.raises(RuntimeError, match="disposed"):
+        resolver.set_request_presenter(presenter)
+
+    assert resolver._request_presenter is None

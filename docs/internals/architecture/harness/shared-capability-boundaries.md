@@ -117,8 +117,10 @@ Product adapters own:
 - explanations shown to users;
 - default approval rules.
 
-The first harness migration should keep interactive resolvers outside harness
-unless a neutral broker can be expressed without importing UI callbacks.
+The neutral `ApprovalBroker` now owns correlation, pending futures, timeout,
+cancellation, fallback, and disposal without importing UI callbacks. Product
+interactive resolvers remain payload/presentation facades over that broker and
+continue to own all displayed wording and persisted grants.
 
 ## Presentation And Renderers
 

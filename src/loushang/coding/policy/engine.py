@@ -1,14 +1,24 @@
 from __future__ import annotations
 
-import shlex
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from os.path import basename
-from pathlib import Path
 from typing import Any
 
-from loushang.harness.policy import PolicyDecision
-from loushang.harness.workspace.exec import ExecRequest
+from loushang.harness.policy import (
+    CommandSubstringMatcher,
+    ExactToolNameMatcher,
+    IncompleteCommandMatcher,
+    PathSubstringMatcher,
+    PolicyDecision,
+    PolicyRule,
+    PolicySubject,
+    RulePolicyEvaluator,
+    build_tool_policy_subject,
+    executable_search_path_from_env,
+    normalize_command_subject,
+)
+from loushang.harness.workspace.exec import ExecRequest, materialize_exec_request
 
 _DEFAULT_BLOCKED_SUBSTRINGS: tuple[str, ...] = (
     "rm -rf",
@@ -21,70 +31,12 @@ _DEFAULT_ASK_SUBSTRINGS: tuple[str, ...] = (
     "wget | sh",
     "wget|sh",
 )
-_SHELL_ENTRY_BASENAMES: tuple[str, ...] = (
-    "sh",
-    "bash",
-    "dash",
-    "zsh",
-    "ksh",
-)
-_LEADING_WRAPPER_BASENAMES: tuple[str, ...] = (
-    "env",
-    "sudo",
-)
-_ENV_NO_VALUE_OPTIONS: tuple[str, ...] = (
-    "-i",
-    "--ignore-environment",
-    "-0",
-    "--null",
-    "-v",
-    "--debug",
-)
-_ENV_VALUE_OPTIONS: tuple[str, ...] = (
-    "-u",
-    "--unset",
-    "-C",
-    "--chdir",
-    "-S",
-    "--split-string",
-    "-a",
-    "--argv0",
-    "-f",
-    "--file",
-    "--block-signal",
-    "--default-signal",
-    "--ignore-signal",
-)
-_SUDO_VALUE_OPTIONS: tuple[str, ...] = (
-    "-a",
-    "--auth-type",
-    "-c",
-    "--login-class",
-    "-u",
-    "--user",
-    "-g",
-    "--group",
-    "-h",
-    "--host",
-    "-p",
-    "--prompt",
-    "-r",
-    "--role",
-    "-t",
-    "--type",
-    "-C",
-    "--close-from",
-    "-D",
-    "--chdir",
-    "-R",
-    "--chroot",
-    "-T",
-    "--command-timeout",
-)
 
 
 def _normalize_substrings(
-    values: tuple[str, ...] | list[str], field_name: str, defaults: tuple[str, ...]
+    values: tuple[str, ...] | list[str],
+    field_name: str,
+    defaults: tuple[str, ...],
 ) -> tuple[str, ...]:
     if isinstance(values, str):
         raise TypeError(f"{field_name} must be a sequence of strings, not a string")
@@ -98,178 +50,101 @@ def _normalize_substrings(
     return tuple(normalized)
 
 
-def _normalize_strings(values: tuple[str, ...] | list[str], field_name: str) -> tuple[str, ...]:
+def _normalize_strings(
+    values: tuple[str, ...] | list[str],
+    field_name: str,
+) -> tuple[str, ...]:
     return _normalize_substrings(values, field_name, ())
-
-
-def _shell_payload(command: tuple[str, ...]) -> str | None:
-    if len(command) < 3:
-        return None
-
-    executable = basename(command[0])
-    if executable not in _SHELL_ENTRY_BASENAMES:
-        return None
-
-    shell_flag = command[1]
-    if "c" not in shell_flag:
-        return None
-
-    return command[2]
-
-
-def _is_env_assignment(token: str) -> bool:
-    if "=" not in token:
-        return False
-
-    name, _, _ = token.partition("=")
-    if not name:
-        return False
-    if not (name[0].isalpha() or name[0] == "_"):
-        return False
-    return all(ch.isalnum() or ch == "_" for ch in name[1:])
-
-
-def _split_env_string(value: str, remainder: tuple[str, ...]) -> tuple[str, ...]:
-    try:
-        split_tokens = tuple(shlex.split(value))
-    except ValueError:
-        return ("sh", "-lc", value, *remainder)
-    return (*split_tokens, *remainder)
-
-
-def _unwrap_env_command(command: tuple[str, ...]) -> tuple[str, ...]:
-    while command:
-        head = command[0]
-        if head == "--":
-            return command[1:]
-        if head in _ENV_NO_VALUE_OPTIONS:
-            command = command[1:]
-            continue
-        if head in ("-S", "--split-string"):
-            if len(command) < 2:
-                return ()
-            return _split_env_string(command[1], command[2:])
-        if head.startswith("--split-string="):
-            return _split_env_string(head.partition("=")[2], command[1:])
-        if head in _ENV_VALUE_OPTIONS:
-            if len(command) < 2:
-                return ()
-            command = command[2:]
-            continue
-        if any(head.startswith(f"{option}=") for option in _ENV_VALUE_OPTIONS if option.startswith("--")):
-            command = command[1:]
-            continue
-        if head.startswith("-"):
-            command = command[1:]
-            continue
-        if _is_env_assignment(head):
-            command = command[1:]
-            continue
-        break
-    return command
-
-
-def _unwrap_leading_wrappers(command: tuple[str, ...]) -> tuple[str, ...]:
-    while command and basename(command[0]) in _LEADING_WRAPPER_BASENAMES:
-        wrapper = basename(command[0])
-        command = command[1:]
-
-        if wrapper == "env":
-            command = _unwrap_env_command(command)
-        elif wrapper == "sudo":
-            while command:
-                head = command[0]
-                if not head.startswith("-"):
-                    break
-                if head in _SUDO_VALUE_OPTIONS:
-                    if len(command) < 2:
-                        return ()
-                    command = command[2:]
-                    continue
-                if any(head.startswith(f"{option}=") for option in _SUDO_VALUE_OPTIONS if option.startswith("--")):
-                    command = command[1:]
-                    continue
-                command = command[1:]
-    return command
-
-
-def _direct_command_tokens(command: tuple[str, ...]) -> tuple[str, ...]:
-    command = _unwrap_leading_wrappers(command)
-    if not command:
-        return ()
-    return (basename(command[0]), *command[1:])
-
-
-def _matches_substring(command: tuple[str, ...], substring: str) -> bool:
-    command = _unwrap_leading_wrappers(command)
-    payload = _shell_payload(command)
-    if payload is not None:
-        return substring in payload
-
-    tokens = _direct_command_tokens(command)
-    rule_tokens = tuple(part for part in substring.split() if part)
-    if not rule_tokens:
-        return False
-
-    if len(rule_tokens) == 1:
-        return rule_tokens[0] in tokens
-
-    window_size = len(rule_tokens)
-    for index in range(len(tokens) - window_size + 1):
-        if tokens[index : index + window_size] == rule_tokens:
-            return True
-    return False
 
 
 @dataclass(frozen=True)
 class PolicyEngine:
-    blocked_substrings: tuple[str, ...] = field(default_factory=lambda: _DEFAULT_BLOCKED_SUBSTRINGS)
-    ask_substrings: tuple[str, ...] = field(default_factory=lambda: _DEFAULT_ASK_SUBSTRINGS)
+    blocked_substrings: tuple[str, ...] = field(
+        default_factory=lambda: _DEFAULT_BLOCKED_SUBSTRINGS
+    )
+    ask_substrings: tuple[str, ...] = field(
+        default_factory=lambda: _DEFAULT_ASK_SUBSTRINGS
+    )
     blocked_tools: tuple[str, ...] = field(default_factory=tuple)
     ask_tools: tuple[str, ...] = field(default_factory=tuple)
     blocked_path_substrings: tuple[str, ...] = field(default_factory=tuple)
     ask_path_substrings: tuple[str, ...] = field(default_factory=tuple)
+    _evaluator: RulePolicyEvaluator = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(
             self,
             "blocked_substrings",
-            _normalize_substrings(self.blocked_substrings, "blocked_substrings", _DEFAULT_BLOCKED_SUBSTRINGS),
+            _normalize_substrings(
+                self.blocked_substrings,
+                "blocked_substrings",
+                _DEFAULT_BLOCKED_SUBSTRINGS,
+            ),
         )
         object.__setattr__(
             self,
             "ask_substrings",
-            _normalize_substrings(self.ask_substrings, "ask_substrings", _DEFAULT_ASK_SUBSTRINGS),
+            _normalize_substrings(
+                self.ask_substrings,
+                "ask_substrings",
+                _DEFAULT_ASK_SUBSTRINGS,
+            ),
         )
-        object.__setattr__(self, "blocked_tools", _normalize_strings(self.blocked_tools, "blocked_tools"))
-        object.__setattr__(self, "ask_tools", _normalize_strings(self.ask_tools, "ask_tools"))
+        object.__setattr__(
+            self,
+            "blocked_tools",
+            _normalize_strings(self.blocked_tools, "blocked_tools"),
+        )
+        object.__setattr__(
+            self,
+            "ask_tools",
+            _normalize_strings(self.ask_tools, "ask_tools"),
+        )
         object.__setattr__(
             self,
             "blocked_path_substrings",
-            _normalize_strings(self.blocked_path_substrings, "blocked_path_substrings"),
+            _normalize_strings(
+                self.blocked_path_substrings,
+                "blocked_path_substrings",
+            ),
         )
         object.__setattr__(
             self,
             "ask_path_substrings",
-            _normalize_strings(self.ask_path_substrings, "ask_path_substrings"),
+            _normalize_strings(
+                self.ask_path_substrings,
+                "ask_path_substrings",
+            ),
         )
+        object.__setattr__(self, "_evaluator", RulePolicyEvaluator(self._rules()))
 
-    def evaluate_action(self, *, tool_name: str, exec_request: ExecRequest) -> PolicyDecision:
-        for substring in self.blocked_substrings:
-            if _matches_substring(exec_request.command, substring):
-                return PolicyDecision.deny(
-                    f"Blocked destructive command substring: {substring}",
-                    code="command_blocked",
-                )
+    def evaluate(self, subject: PolicySubject, /) -> PolicyDecision:
+        return self._evaluator.evaluate(subject) or PolicyDecision.allow()
 
-        for substring in self.ask_substrings:
-            if _matches_substring(exec_request.command, substring):
-                return PolicyDecision.ask(
-                    f"Approval recommended for command substring: {substring}",
-                    code="command_requires_approval",
-                )
-
-        return PolicyDecision.allow()
+    def evaluate_action(
+        self,
+        *,
+        tool_name: str,
+        exec_request: ExecRequest,
+    ) -> PolicyDecision:
+        del tool_name
+        exec_request = materialize_exec_request(exec_request)
+        execution_environment = exec_request.effective_environment
+        assert execution_environment is not None
+        executable_search_path = executable_search_path_from_env(
+            execution_environment,
+            default=os.defpath,
+        )
+        return self.evaluate(
+            normalize_command_subject(
+                exec_request.command,
+                cwd=exec_request.cwd,
+                stdin=exec_request.stdin,
+                executable_search_path=executable_search_path,
+                environment_overrides=execution_environment,
+                environment_is_complete=True,
+            )
+        )
 
     def evaluate_tool_call(
         self,
@@ -278,48 +153,146 @@ class PolicyEngine:
         arguments: Mapping[str, Any],
         cwd: str | None = None,
     ) -> PolicyDecision:
-        if tool_name in self.blocked_tools:
-            return PolicyDecision.deny(f"Tool {tool_name} is blocked by policy", code="tool_blocked")
-        if tool_name in self.ask_tools:
-            return PolicyDecision.ask(f"Tool {tool_name} requires approval", code="tool_requires_approval")
-
+        command = None
         if tool_name == "bash":
-            command = arguments.get("command")
-            if isinstance(command, str):
+            raw_command = arguments.get("command")
+            normalized_command = None
+            if isinstance(raw_command, str):
+                normalized_command = ("/bin/sh", "-lc", raw_command)
+            elif (
+                isinstance(raw_command, (list, tuple))
+                and raw_command
+                and all(isinstance(part, str) for part in raw_command)
+            ):
+                normalized_command = tuple(raw_command)
+            if normalized_command is not None:
                 request_cwd = arguments.get("cwd")
-                exec_request = ExecRequest(
-                    command=("/bin/sh", "-lc", command),
-                    cwd=request_cwd if isinstance(request_cwd, str) else (cwd or ""),
+                policy_request = materialize_exec_request(
+                    ExecRequest(
+                        command=normalized_command,
+                        cwd=(request_cwd if isinstance(request_cwd, str) else cwd),
+                        env=_policy_environment_pairs(arguments.get("env", ())),
+                        stdin=(
+                            arguments.get("stdin")
+                            if isinstance(arguments.get("stdin"), str)
+                            else None
+                        ),
+                    )
                 )
-                return self.evaluate_action(tool_name=tool_name, exec_request=exec_request)
+                execution_environment = policy_request.effective_environment
+                assert execution_environment is not None
+                executable_search_path = executable_search_path_from_env(
+                    execution_environment,
+                    default=os.defpath,
+                )
+                command = normalize_command_subject(
+                    policy_request.command,
+                    cwd=policy_request.cwd,
+                    stdin=policy_request.stdin,
+                    executable_search_path=executable_search_path,
+                    environment_overrides=execution_environment,
+                    environment_is_complete=True,
+                )
+        return self.evaluate(
+            build_tool_policy_subject(
+                tool_name=tool_name,
+                arguments=arguments,
+                cwd=cwd,
+                command=command,
+            )
+        )
 
-        path_candidates = _path_candidates(arguments, cwd=cwd)
-        for substring in self.blocked_path_substrings:
-            if any(substring in candidate for candidate in path_candidates):
-                return PolicyDecision.deny(
+    def _rules(self) -> tuple[PolicyRule, ...]:
+        rules: list[PolicyRule] = []
+        rules.extend(
+            PolicyRule(
+                id=f"coding.tool.block.{index}",
+                matcher=ExactToolNameMatcher(tool_name),
+                decision=PolicyDecision.deny(
+                    f"Tool {tool_name} is blocked by policy",
+                    code="tool_blocked",
+                ),
+            )
+            for index, tool_name in enumerate(self.blocked_tools)
+        )
+        rules.extend(
+            PolicyRule(
+                id=f"coding.tool.ask.{index}",
+                matcher=ExactToolNameMatcher(tool_name),
+                decision=PolicyDecision.ask(
+                    f"Tool {tool_name} requires approval",
+                    code="tool_requires_approval",
+                ),
+            )
+            for index, tool_name in enumerate(self.ask_tools)
+        )
+        rules.extend(
+            PolicyRule(
+                id=f"coding.command.block.{index}",
+                matcher=CommandSubstringMatcher(substring),
+                decision=PolicyDecision.deny(
+                    f"Blocked destructive command substring: {substring}",
+                    code="command_blocked",
+                ),
+            )
+            for index, substring in enumerate(self.blocked_substrings)
+        )
+        rules.extend(
+            PolicyRule(
+                id=f"coding.command.ask.{index}",
+                matcher=CommandSubstringMatcher(substring),
+                decision=PolicyDecision.ask(
+                    f"Approval recommended for command substring: {substring}",
+                    code="command_requires_approval",
+                ),
+            )
+            for index, substring in enumerate(self.ask_substrings)
+        )
+        rules.extend(
+            PolicyRule(
+                id=f"coding.path.block.{index}",
+                matcher=PathSubstringMatcher(substring),
+                decision=PolicyDecision.deny(
                     f"Path is blocked by policy substring: {substring}",
                     code="path_blocked",
-                )
-        for substring in self.ask_path_substrings:
-            if any(substring in candidate for candidate in path_candidates):
-                return PolicyDecision.ask(
+                ),
+            )
+            for index, substring in enumerate(self.blocked_path_substrings)
+        )
+        rules.extend(
+            PolicyRule(
+                id=f"coding.path.ask.{index}",
+                matcher=PathSubstringMatcher(substring),
+                decision=PolicyDecision.ask(
                     f"Approval recommended for path substring: {substring}",
                     code="path_requires_approval",
-                )
+                ),
+            )
+            for index, substring in enumerate(self.ask_path_substrings)
+        )
+        rules.append(
+            PolicyRule(
+                id="coding.command.incomplete",
+                matcher=IncompleteCommandMatcher(),
+                decision=PolicyDecision.ask(
+                    "Command wrapper syntax requires approval",
+                    code="command_normalization_incomplete",
+                ),
+            )
+        )
+        return tuple(rules)
 
-        return PolicyDecision.allow()
 
-
-def _path_candidates(arguments: Mapping[str, Any], *, cwd: str | None) -> tuple[str, ...]:
-    raw_path = arguments.get("path", arguments.get("file_path"))
-    if not isinstance(raw_path, str) or not raw_path:
+def _policy_environment_pairs(value: object) -> tuple[tuple[str, str], ...]:
+    values = tuple(value.items()) if isinstance(value, Mapping) else value
+    if isinstance(values, str) or not isinstance(values, (list, tuple)):
         return ()
-    candidates = [raw_path]
-    try:
-        path = Path(raw_path).expanduser()
-        if not path.is_absolute() and cwd:
-            path = Path(cwd) / path
-        candidates.append(str(path.resolve()))
-    except (OSError, RuntimeError, ValueError):
-        pass
-    return tuple(dict.fromkeys(candidates))
+    pairs: list[tuple[str, str]] = []
+    for item in values:
+        if isinstance(item, str) or not isinstance(item, (list, tuple)):
+            return ()
+        pair = tuple(item)
+        if len(pair) != 2 or not all(isinstance(part, str) for part in pair):
+            return ()
+        pairs.append((pair[0], pair[1]))
+    return tuple(pairs)

@@ -618,8 +618,7 @@ def test_product_configuration_runtime_boundary_is_documented_and_adopted() -> N
     import loushang.harness as harness
 
     design_path = Path(
-        "docs/internals/architecture/harness/"
-        "product-configuration-runtime-boundary.md"
+        "docs/internals/architecture/harness/product-configuration-runtime-boundary.md"
     )
     assert design_path.exists()
     design_text = " ".join(design_path.read_text(encoding="utf-8").split())
@@ -675,13 +674,16 @@ def test_product_configuration_runtime_boundary_is_documented_and_adopted() -> N
         )
     assert missing == []
 
-    assert _find_forbidden_imports(
-        ImportBoundary(
-            name="harness config",
-            root=Path("src/loushang/harness/config"),
-            forbidden_prefixes=("loushang.ai", "loushang.coding"),
+    assert (
+        _find_forbidden_imports(
+            ImportBoundary(
+                name="harness config",
+                root=Path("src/loushang/harness/config"),
+                forbidden_prefixes=("loushang.ai", "loushang.coding"),
+            )
         )
-    ) == []
+        == []
+    )
 
     value_imports = _absolute_imports(Path("src/loushang/harness/config/values.py"))
     assert not any(
@@ -845,6 +847,203 @@ def test_harness_extension_runtime_core_boundary_is_documented() -> None:
     ).read_text(encoding="utf-8")
     assert "extension runtime core implementation" in inventory_text
     assert "Wave 2: Extension Runtime Core" in inventory_text
+
+
+def test_harness_control_plane_runtime_boundary_is_documented() -> None:
+    design_path = Path(
+        "docs/internals/architecture/harness/control-plane-runtime-boundary.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Control Plane Runtime Boundary",
+        "`loushang.harness.extensions.routing`",
+        "`PolicyEvaluatorChain`",
+        "`ApprovalBroker`",
+        "Products and OEM adapters continue to own:",
+        "Harness must not import Coding, Design, Research, PPT, Cowork, Method, Work, Channel, TUI, AI",
+        "No compatibility module may retain a parallel routing, pending-request, command normalization, or rule-evaluation implementation",
+        "top-level `loushang.harness.__all__` remains unchanged",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
+
+    design_link = "[Control Plane Runtime Boundary](control-plane-runtime-boundary.md)"
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert design_link in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert design_link in inventory_text
+    assert "Wave 2 Follow-On: Control Plane Runtime" in inventory_text
+
+
+def test_harness_control_plane_symbols_are_not_top_level_exports() -> None:
+    import loushang.harness as harness
+
+    control_plane_symbols = {
+        "ApprovalBroker",
+        "ApprovalPresenter",
+        "ApprovalRequestCollisionError",
+        "CommandPolicySubject",
+        "CommandSubstringMatcher",
+        "CommandTokenSequenceMatcher",
+        "CustomPolicySubject",
+        "ExactToolNameMatcher",
+        "ExtensionContextFactory",
+        "ExtensionRouteError",
+        "ExtensionRoutePlan",
+        "ExtensionRouter",
+        "ExtensionRuntimeErrorHandler",
+        "IncompleteCommandMatcher",
+        "PathPolicySubject",
+        "PathSubstringMatcher",
+        "PolicyChainStrategy",
+        "PolicyDisposition",
+        "PolicyEvaluationError",
+        "PolicyEvaluator",
+        "PolicyEvaluatorChain",
+        "PolicyMatcher",
+        "PolicyRule",
+        "RegisteredExtensionHandler",
+        "ResolvedControlContributions",
+        "ResolvedExtensionRoute",
+        "RouteErrorPolicy",
+        "RouteReducer",
+        "RouteStep",
+        "RulePolicyEvaluator",
+        "ShellPayloadSubstringMatcher",
+        "ToolPolicySubject",
+        "build_path_policy_subjects",
+        "build_tool_policy_subject",
+        "ensure_approval_action_id",
+        "evaluate_policy",
+        "normalize_command_subject",
+        "resolve_control_contributions",
+    }
+
+    assert control_plane_symbols.isdisjoint(set(harness.__all__))
+
+
+def test_coding_control_plane_adapters_use_harness_mechanisms() -> None:
+    approval_path = Path("src/loushang/coding/policy/approval.py")
+    approval_imports = set(_absolute_imports(approval_path))
+    assert "loushang.harness.approval.ApprovalBroker" in approval_imports
+
+    approval_tree = ast.parse(
+        approval_path.read_text(encoding="utf-8"),
+        filename=approval_path.as_posix(),
+    )
+    approval_names = {
+        node.id for node in ast.walk(approval_tree) if isinstance(node, ast.Name)
+    }
+    approval_attributes = {
+        node.attr for node in ast.walk(approval_tree) if isinstance(node, ast.Attribute)
+    }
+    approval_calls = {
+        node.func.id
+        for node in ast.walk(approval_tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert "ApprovalBroker" in approval_calls
+    assert not any(
+        _matches_any(imported, ("asyncio",)) for imported in approval_imports
+    )
+    assert {"Future", "create_future", "_pending"}.isdisjoint(
+        approval_names | approval_attributes
+    )
+
+    policy_path = Path("src/loushang/coding/policy/engine.py")
+    policy_imports = set(_absolute_imports(policy_path))
+    assert {
+        "loushang.harness.policy.RulePolicyEvaluator",
+        "loushang.harness.policy.normalize_command_subject",
+    }.issubset(policy_imports)
+
+    policy_tree = ast.parse(
+        policy_path.read_text(encoding="utf-8"),
+        filename=policy_path.as_posix(),
+    )
+    policy_function_names = {
+        node.name
+        for node in ast.walk(policy_tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+    assert {
+        "_direct_command_tokens",
+        "_split_env_string",
+        "_unwrap_env_command",
+        "_unwrap_leading_wrappers",
+    }.isdisjoint(policy_function_names)
+    assert not any(_matches_any(imported, ("shlex",)) for imported in policy_imports)
+
+    extension_paths = (
+        Path("src/loushang/coding/extensions/hooks.py"),
+        Path("src/loushang/coding/extensions/runner.py"),
+    )
+    extension_imports = {
+        imported for path in extension_paths for imported in _absolute_imports(path)
+    }
+    assert {
+        "loushang.harness.extensions.routing.ExtensionRoutePlan",
+        "loushang.harness.extensions.routing.ExtensionRouter",
+    }.issubset(extension_imports)
+
+    route_calls: set[str] = set()
+    route_function_names: set[str] = set()
+    for path in extension_paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=path.as_posix())
+        route_calls.update(
+            node.func.attr
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        )
+        route_function_names.update(
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        )
+    assert {"from_extensions", "intercept", "observe", "reduce"}.issubset(route_calls)
+    assert {
+        "_order_routes",
+        "_route_order_key",
+        "_strongly_connected_components",
+        "_topological_sort",
+    }.isdisjoint(route_function_names)
+
+
+def test_harness_control_plane_modules_do_not_import_product_layers() -> None:
+    control_plane_paths = (
+        Path("src/loushang/harness/approval.py"),
+        Path("src/loushang/harness/policy.py"),
+        Path("src/loushang/harness/extensions/control.py"),
+        Path("src/loushang/harness/extensions/routing.py"),
+    )
+    assert [path.as_posix() for path in control_plane_paths if not path.exists()] == []
+
+    forbidden_prefixes = (
+        "loushang.ai",
+        "loushang.channel",
+        "loushang.coding",
+        "loushang.cowork",
+        "loushang.design",
+        "loushang.method",
+        "loushang.ppt",
+        "loushang.research",
+        "loushang.tui",
+        "loushang.work",
+    )
+    offenders = [
+        f"{path.as_posix()} imports {imported}"
+        for path in control_plane_paths
+        for imported in _absolute_imports(path)
+        if _matches_any(imported, forbidden_prefixes)
+    ]
+    assert offenders == []
 
 
 def test_coding_extension_compatibility_paths_share_harness_owners() -> None:
@@ -1594,8 +1793,7 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
     ).read_text(encoding="utf-8")
     assert "Wave 5: Product Capability Composition" in inventory_text
     assert (
-        "product capability composition core implementation complete"
-        in inventory_text
+        "product capability composition core implementation complete" in inventory_text
     )
 
     expected_imports = {

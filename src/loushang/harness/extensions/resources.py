@@ -5,6 +5,11 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import cast
 
+from loushang.harness.extensions.routing import (
+    ExtensionRouteError,
+    ExtensionRoutePlan,
+    ResolvedExtensionRoute,
+)
 from loushang.harness.extensions.types import (
     ExtensionResourceContribution,
     LoadedExtension,
@@ -26,17 +31,20 @@ class ExtensionResourceRuntime:
         extensions: Sequence[LoadedExtension],
         *,
         diagnostics: list[ResourceDiagnostic],
+        route_plan: ExtensionRoutePlan | None = None,
     ) -> None:
         self._extensions = tuple(extensions)
         self._diagnostics = diagnostics
+        self._route_plan = route_plan or ExtensionRoutePlan.from_extensions(
+            self._extensions, diagnostics=diagnostics
+        )
 
     def discover(self, bundle: ResourceBundle, *, context: object) -> ResourceBundle:
         merged = bundle
         diagnostics: list[ResourceDiagnostic] = []
-        for extension in self._extensions:
-            merged = self._apply_handlers(
-                extension=extension,
-                handlers=extension.hooks.get("resources_discover", ()),
+        for route in self._route_plan.routes_for("resources_discover"):
+            merged = self._apply_route(
+                route=route,
                 bundle=merged,
                 context=context,
                 diagnostics=diagnostics,
@@ -51,90 +59,87 @@ class ExtensionResourceRuntime:
     ) -> ResourceBundle:
         merged = bundle
         diagnostics: list[ResourceDiagnostic] = []
-        for extension in self._extensions:
-            merged = await self._apply_handlers_async(
-                extension=extension,
-                handlers=extension.hooks.get("resources_discover", ()),
+        for route in self._route_plan.routes_for("resources_discover"):
+            merged = await self._apply_route_async(
+                route=route,
                 bundle=merged,
                 context=context,
                 diagnostics=diagnostics,
             )
         return self._finish(merged, diagnostics)
 
-    def _apply_handlers(
+    def _apply_route(
         self,
         *,
-        extension: LoadedExtension,
-        handlers: Sequence[object],
+        route: ResolvedExtensionRoute,
         bundle: ResourceBundle,
         context: object,
         diagnostics: list[ResourceDiagnostic],
     ) -> ResourceBundle:
-        merged = bundle
-        for handler in handlers:
+        try:
             contribution = _invoke_resource_handler(
-                handler,
-                bundle=merged,
+                route.registration.handler,
+                bundle=bundle,
                 context=context,
-                extension=extension,
-                diagnostics=diagnostics,
             )
-            if inspect.isawaitable(contribution):
-                if inspect.iscoroutine(contribution):
-                    contribution.close()
-                diagnostics.append(
-                    ResourceDiagnostic(
-                        code="unsupported_async_extension_hook",
-                        message="Async extension hooks are not supported in P0/v1.",
-                        source_path=extension.source_path,
-                    )
+        except Exception as exc:
+            _record_resource_error(route, exc, diagnostics=diagnostics)
+            if route.registration.on_error == "fail_chain":
+                self._diagnostics.extend(diagnostics)
+                raise ExtensionRouteError(route, exc) from exc
+            return bundle
+        if inspect.isawaitable(contribution):
+            if inspect.iscoroutine(contribution):
+                contribution.close()
+            error = RuntimeError(
+                "Async extension hooks are not supported in synchronous discovery."
+            )
+            diagnostics.append(
+                ResourceDiagnostic(
+                    code="unsupported_async_extension_hook",
+                    message="Async extension hooks are not supported in P0/v1.",
+                    source_path=route.extension.source_path,
                 )
-                continue
-            merged = _merge_contribution(
-                merged,
-                contribution,
-                extension=extension,
-                diagnostics=diagnostics,
             )
-        return merged
+            if route.registration.on_error == "fail_chain":
+                self._diagnostics.extend(diagnostics)
+                raise ExtensionRouteError(route, error) from error
+            return bundle
+        return _merge_contribution(
+            bundle,
+            contribution,
+            extension=route.extension,
+            diagnostics=diagnostics,
+        )
 
-    async def _apply_handlers_async(
+    async def _apply_route_async(
         self,
         *,
-        extension: LoadedExtension,
-        handlers: Sequence[object],
+        route: ResolvedExtensionRoute,
         bundle: ResourceBundle,
         context: object,
         diagnostics: list[ResourceDiagnostic],
     ) -> ResourceBundle:
-        merged = bundle
-        for handler in handlers:
+        try:
             contribution = _invoke_resource_handler(
-                handler,
-                bundle=merged,
+                route.registration.handler,
+                bundle=bundle,
                 context=context,
-                extension=extension,
-                diagnostics=diagnostics,
             )
             if inspect.isawaitable(contribution):
-                try:
-                    contribution = await contribution
-                except Exception as exc:
-                    diagnostics.append(
-                        ResourceDiagnostic(
-                            code="extension_resources_discover_failed",
-                            message=f"Extension resource discovery failed: {exc}",
-                            source_path=extension.source_path,
-                        )
-                    )
-                    continue
-            merged = _merge_contribution(
-                merged,
-                contribution,
-                extension=extension,
-                diagnostics=diagnostics,
-            )
-        return merged
+                contribution = await contribution
+        except Exception as exc:
+            _record_resource_error(route, exc, diagnostics=diagnostics)
+            if route.registration.on_error == "fail_chain":
+                self._diagnostics.extend(diagnostics)
+                raise ExtensionRouteError(route, exc) from exc
+            return bundle
+        return _merge_contribution(
+            bundle,
+            contribution,
+            extension=route.extension,
+            diagnostics=diagnostics,
+        )
 
     def _finish(
         self,
@@ -152,21 +157,29 @@ def _invoke_resource_handler(
     *,
     bundle: ResourceBundle,
     context: object,
-    extension: LoadedExtension,
-    diagnostics: list[ResourceDiagnostic],
 ) -> object:
-    try:
-        callback = cast(Callable[[ResourceBundle, object], object], handler)
-        return callback(bundle, context)
-    except Exception as exc:
-        diagnostics.append(
-            ResourceDiagnostic(
-                code="extension_resources_discover_failed",
-                message=f"Extension resource discovery failed: {exc}",
-                source_path=extension.source_path,
-            )
+    callback = cast(Callable[[ResourceBundle, object], object], handler)
+    return callback(bundle, context)
+
+
+def _record_resource_error(
+    route: ResolvedExtensionRoute,
+    error: Exception,
+    *,
+    diagnostics: list[ResourceDiagnostic],
+) -> None:
+    diagnostics.append(
+        ResourceDiagnostic(
+            code="extension_resources_discover_failed",
+            message=f"Extension resource discovery failed: {error}",
+            source_path=route.extension.source_path,
+            metadata={
+                "extension_name": route.extension.name,
+                "hook": "resources_discover",
+                "route_id": route.route_id,
+            },
         )
-        return None
+    )
 
 
 def _merge_contribution(

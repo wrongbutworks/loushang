@@ -47,6 +47,10 @@ planning, work event persistence, or AI provider behavior.
   shared manifest, loading, registration, conflict resolution, observer/input
   dispatch, resource contribution, and tool-wrapper ownership while preserving
   product policy, session/model behavior, and UI integration.
+- [Control Plane Runtime Boundary](control-plane-runtime-boundary.md) defines
+  deterministic extension routing, neutral policy subjects and evaluator
+  composition, pending approval lifecycle, and the Product adapters that retain
+  risk defaults, result semantics, and presentation.
 - [Context Budget And Accounting Boundary](context-budget-accounting-boundary.md)
   defines deterministic compaction-budget and usage-estimate record ownership
   while keeping message estimation and compaction policy in product adapters.

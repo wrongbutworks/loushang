@@ -5,6 +5,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from loushang.agent.types import (
     AfterToolCallResult,
@@ -31,6 +32,7 @@ from loushang.coding.extensions.types import (
     SessionRefreshEvent,
 )
 from loushang.harness.extensions.dispatch import ExtensionDispatcher
+from loushang.harness.extensions.manifest import ExtensionManifest
 from loushang.harness.extensions.registry import (
     resolve_extension_registry,
 )
@@ -38,6 +40,13 @@ from loushang.harness.extensions.registry import (
     source_info_from_extension as _source_info_from_extension,
 )
 from loushang.harness.extensions.resources import ExtensionResourceRuntime
+from loushang.harness.extensions.routing import (
+    ExtensionRoutePlan,
+    ExtensionRouter,
+    ResolvedExtensionRoute,
+    RouteStep,
+)
+from loushang.harness.extensions.types import extension_is_active
 from loushang.harness.extensions.wrapper import wrap_registered_tool_definition
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.source import SourceInfo
@@ -107,10 +116,21 @@ class _ContextEvent:
     messages: list[AgentMessage]
 
 
+@dataclass(frozen=True)
+class _BeforeAgentStartState:
+    system_prompt: str
+    extra_messages: tuple[object, ...] = ()
+    diagnostics: tuple[ResourceDiagnostic, ...] = ()
+    system_prompt_changed: bool = False
+
+
 class ExtensionRunner:
-    def __init__(self, extensions: list[LoadedExtension | ExtensionDescriptor] | None = None) -> None:
+    def __init__(
+        self, extensions: list[LoadedExtension | ExtensionDescriptor] | None = None
+    ) -> None:
         self._diagnostics: list[ResourceDiagnostic] = []
         self._extensions: list[LoadedExtension] = []
+        self._active_extensions: list[LoadedExtension] = []
         self._tool_definitions: list[ToolDefinition] = []
         self._tool_source_info_by_name: dict[str, SourceInfo[Path]] = {}
         self._command_diagnostics: list[ResourceDiagnostic] = []
@@ -133,9 +153,36 @@ class ExtensionRunner:
             else:
                 loaded_extension = extension
             self._extensions.append(loaded_extension)
-            self._bind_extension_api(loaded_extension)
+            if extension_is_active(loaded_extension):
+                self._active_extensions.append(loaded_extension)
+                self._bind_extension_api(loaded_extension)
             self._diagnostics.extend(loaded_extension.diagnostics)
 
+        self._route_plan = ExtensionRoutePlan.from_extensions(
+            self._extensions,
+            diagnostics=self._diagnostics,
+        )
+
+        def runtime_error_handler(extension, event, error) -> None:
+            self._emit_runtime_error(
+                extension=extension,
+                event=event,
+                error=error,
+            )
+
+        self._router = ExtensionRouter(
+            self._route_plan,
+            diagnostics=self._diagnostics,
+            runtime_error_handler=runtime_error_handler,
+            include_route_id_in_error_metadata=False,
+        )
+        self._plain_diagnostic_router = ExtensionRouter(
+            self._route_plan,
+            diagnostics=self._diagnostics,
+            runtime_error_handler=runtime_error_handler,
+            include_route_id_in_error_metadata=False,
+            include_provenance_in_error_metadata=False,
+        )
         self._apply_registry_snapshot()
 
     def get_diagnostics(self) -> list[ResourceDiagnostic]:
@@ -157,12 +204,14 @@ class ExtensionRunner:
         return self._registered_commands_by_invocation_name.get(invocation_name)
 
     def _extension_by_name(self, name: str) -> LoadedExtension:
-        for extension in self._extensions:
+        for extension in self._active_extensions:
             if extension.name == name:
                 return extension
         return LoadedExtension(name=name, source_path=Path("<unknown>"))
 
-    async def get_command_argument_completions(self, invocation_name: str, prefix: str) -> list[object] | None:
+    async def get_command_argument_completions(
+        self, invocation_name: str, prefix: str
+    ) -> list[object] | None:
         command = self.get_command(invocation_name)
         if command is None or command.get_argument_completions is None:
             return None
@@ -209,7 +258,9 @@ class ExtensionRunner:
     def get_flag_values(self) -> dict[str, bool | str]:
         return dict(self._runtime_state.flag_values)
 
-    def create_command_context(self, *, fallback_cwd: str = "") -> ExtensionCommandContext:
+    def create_command_context(
+        self, *, fallback_cwd: str = ""
+    ) -> ExtensionCommandContext:
         return self._context_from_runtime(fallback_cwd=fallback_cwd)
 
     def has_handlers(self, hook_name: str) -> bool:
@@ -251,7 +302,7 @@ class ExtensionRunner:
         return self._tool_source_info_by_name.get(name)
 
     def get_message_renderer(self, custom_type: str):
-        for extension in self._extensions:
+        for extension in self._active_extensions:
             renderer = extension.message_renderers.get(custom_type)
             if renderer is not None:
                 return renderer
@@ -262,7 +313,7 @@ class ExtensionRunner:
 
     def list_message_renderers(self) -> list[dict[str, object]]:
         renderers: list[dict[str, object]] = []
-        for extension in self._extensions:
+        for extension in self._active_extensions:
             source_info = _source_info_from_extension(extension)
             for custom_type in extension.message_renderers:
                 renderers.append(
@@ -290,7 +341,9 @@ class ExtensionRunner:
                 {
                     "code": diagnostic.code,
                     "message": diagnostic.message,
-                    "sourcePath": diagnostic.source_path.as_posix() if diagnostic.source_path is not None else None,
+                    "sourcePath": diagnostic.source_path.as_posix()
+                    if diagnostic.source_path is not None
+                    else None,
                     "resourceId": diagnostic.resource_id,
                     "resourceType": diagnostic.resource_type,
                     "sourceKind": diagnostic.source_kind,
@@ -309,14 +362,18 @@ class ExtensionRunner:
     def listExtensions(self) -> list[dict[str, object]]:
         return self.list_extensions()
 
-    def discover_resources(self, bundle: ResourceBundle, *, reason: str = "refresh") -> ResourceBundle:
+    def discover_resources(
+        self, bundle: ResourceBundle, *, reason: str = "refresh"
+    ) -> ResourceBundle:
         del reason
         return self._resource_runtime().discover(
             bundle,
             context=_RunnerContext(cwd=str(bundle.cwd)),
         )
 
-    async def discover_resources_async(self, bundle: ResourceBundle, *, reason: str = "refresh") -> ResourceBundle:
+    async def discover_resources_async(
+        self, bundle: ResourceBundle, *, reason: str = "refresh"
+    ) -> ResourceBundle:
         del reason
         return await self._resource_runtime().discover_async(
             bundle,
@@ -332,7 +389,7 @@ class ExtensionRunner:
         self._bind_extension_apis()
 
     def _bind_extension_apis(self) -> None:
-        for extension in self._extensions:
+        for extension in self._active_extensions:
             self._bind_extension_api(extension)
 
     def _bind_extension_api(self, extension: LoadedExtension) -> None:
@@ -361,70 +418,99 @@ class ExtensionRunner:
         system_prompt_options: object | None = None,
         cwd: str = "",
     ) -> BeforeAgentStartResult | None:
-        context = self._context_from_runtime(fallback_cwd=cwd)
-        current_system_prompt = system_prompt or ""
-        extra_messages: list[object] = []
-        diagnostics: list[ResourceDiagnostic] = []
-        system_prompt_changed = False
+        prompt_state = [system_prompt or ""]
+        context = _BeforeAgentStartContext(
+            base=self._context_from_runtime(fallback_cwd=cwd),
+            get_system_prompt=lambda: prompt_state[0],
+        )
 
-        context = _BeforeAgentStartContext(base=context, get_system_prompt=lambda: current_system_prompt)
+        def event_factory(
+            state: _BeforeAgentStartState,
+            route: ResolvedExtensionRoute,
+        ) -> _ExtensionEvent:
+            del route
+            prompt_state[0] = state.system_prompt
+            return _ExtensionEvent(
+                type="before_agent_start",
+                prompt=prompt,
+                images=images,
+                system_prompt=state.system_prompt,
+                systemPrompt=state.system_prompt,
+                system_prompt_options=system_prompt_options,
+                systemPromptOptions=system_prompt_options,
+            )
 
-        for extension in self._extensions:
-            for handler in extension.hooks.get("before_agent_start", []):
-                event = _ExtensionEvent(
-                    type="before_agent_start",
-                    prompt=prompt,
-                    images=images,
-                    system_prompt=current_system_prompt,
-                    systemPrompt=current_system_prompt,
-                    system_prompt_options=system_prompt_options,
-                    systemPromptOptions=system_prompt_options,
+        def reducer(
+            state: _BeforeAgentStartState,
+            result: object,
+            route: ResolvedExtensionRoute,
+        ) -> RouteStep[_BeforeAgentStartState]:
+            del route
+            coerced = _coerce_before_agent_start_result(result)
+            if coerced is None:
+                return RouteStep(state)
+            next_system_prompt = coerced.system_prompt
+            if next_system_prompt is None and coerced.system_prompt_append:
+                next_system_prompt = (
+                    f"{state.system_prompt}\n\n{coerced.system_prompt_append}"
                 )
-                try:
-                    result = handler(event, context)
-                    if inspect.isawaitable(result):
-                        result = await result
-                except Exception as exc:
-                    self._diagnostics.append(
-                        ResourceDiagnostic(
-                            code="extension_before_agent_start_failed",
-                            message=f"Extension hook 'before_agent_start' failed: {exc}",
-                            source_path=extension.source_path,
-                        )
-                    )
-                    self._emit_runtime_error(extension=extension, event="before_agent_start", error=exc)
-                    continue
-                coerced = _coerce_before_agent_start_result(result)
-                if coerced is None:
-                    continue
-                if coerced.diagnostics:
-                    diagnostics.extend(coerced.diagnostics)
-                if coerced.extra_messages:
-                    extra_messages.extend(coerced.extra_messages)
-                next_system_prompt = coerced.system_prompt
-                if next_system_prompt is None and coerced.system_prompt_append:
-                    next_system_prompt = f"{current_system_prompt}\n\n{coerced.system_prompt_append}"
-                if next_system_prompt is not None:
-                    current_system_prompt = next_system_prompt
-                    system_prompt_changed = True
+            return RouteStep(
+                _BeforeAgentStartState(
+                    system_prompt=(
+                        next_system_prompt
+                        if next_system_prompt is not None
+                        else state.system_prompt
+                    ),
+                    extra_messages=(
+                        *state.extra_messages,
+                        *coerced.extra_messages,
+                    ),
+                    diagnostics=(*state.diagnostics, *coerced.diagnostics),
+                    system_prompt_changed=(
+                        state.system_prompt_changed or next_system_prompt is not None
+                    ),
+                )
+            )
 
+        outcome = await self._plain_diagnostic_router.reduce(
+            "before_agent_start",
+            _BeforeAgentStartState(system_prompt=system_prompt or ""),
+            event_factory=event_factory,
+            reducer=reducer,
+            context_factory=lambda extension: context,
+        )
+        state = outcome.state
+        prompt_state[0] = state.system_prompt
+        diagnostics = list(state.diagnostics)
         if diagnostics:
             self._diagnostics.extend(diagnostics)
-        if not extra_messages and not system_prompt_changed and not diagnostics:
+        if (
+            not state.extra_messages
+            and not state.system_prompt_changed
+            and not diagnostics
+        ):
             return None
         return BeforeAgentStartResult(
-            system_prompt=current_system_prompt if system_prompt_changed else None,
-            extra_messages=extra_messages,
+            system_prompt=(
+                state.system_prompt if state.system_prompt_changed else None
+            ),
+            extra_messages=list(state.extra_messages),
             diagnostics=diagnostics,
         )
 
     async def emit_session_shutdown(self, session: object) -> None:
         await self._emit_session_hook("session_shutdown", session)
 
-    async def before_session_switch(self, event: object) -> SessionActionDecision | None:
-        return await self._emit_decision_hook("session_before_switch", event, fallback_cwd=getattr(event, "cwd", ""))
+    async def before_session_switch(
+        self, event: object
+    ) -> SessionActionDecision | None:
+        return await self._emit_decision_hook(
+            "session_before_switch", event, fallback_cwd=getattr(event, "cwd", "")
+        )
 
-    async def before_session_fork(self, event: object) -> SessionBeforeForkResult | None:
+    async def before_session_fork(
+        self, event: object
+    ) -> SessionBeforeForkResult | None:
         result = await self._emit_decision_hook(
             "session_before_fork",
             event,
@@ -440,7 +526,9 @@ class ExtensionRunner:
             diagnostics=result.diagnostics,
         )
 
-    async def before_session_compact(self, event: object) -> SessionBeforeCompactResult | None:
+    async def before_session_compact(
+        self, event: object
+    ) -> SessionBeforeCompactResult | None:
         result = await self._emit_decision_hook(
             "session_before_compact",
             event,
@@ -456,7 +544,9 @@ class ExtensionRunner:
             diagnostics=result.diagnostics,
         )
 
-    async def before_session_tree(self, event: object) -> SessionBeforeTreeResult | None:
+    async def before_session_tree(
+        self, event: object
+    ) -> SessionBeforeTreeResult | None:
         result = await self._emit_decision_hook(
             "session_before_tree",
             event,
@@ -483,60 +573,71 @@ class ExtensionRunner:
 
         current_messages = deepcopy(messages)
         context = self._context_from_runtime(fallback_cwd=cwd)
-        for extension in self._extensions:
-            for handler in extension.hooks.get("context", []):
-                event = _ContextEvent(messages=current_messages)
-                try:
-                    result = handler(event, context)
-                    if inspect.isawaitable(result):
-                        result = await result
-                except Exception as exc:
-                    self._diagnostics.append(
-                        ResourceDiagnostic(
-                            code="extension_context_failed",
-                            message=f"Extension hook 'context' failed: {exc}",
-                            source_path=extension.source_path,
-                        )
-                    )
-                    self._emit_runtime_error(extension=extension, event="context", error=exc)
-                    continue
-                if result is None:
-                    continue
-                if not isinstance(result, ContextResult):
-                    self._diagnostics.append(
-                        ResourceDiagnostic(
-                            code="invalid_extension_context_result",
-                            message="context hooks must return ContextResult or None.",
-                            source_path=extension.source_path,
-                        )
-                    )
-                    continue
-                if result.diagnostics:
-                    self._diagnostics.extend(result.diagnostics)
-                if result.messages is not None:
-                    current_messages = result.messages
-        return current_messages
 
-    async def before_tool_call(self, event, signal: object | None = None) -> BeforeToolCallResult | None:
-        return await self._tool_hook_dispatcher(_context_from_agent_event(event).cwd).before_tool_call(event, signal)
+        def reducer(
+            state: list[AgentMessage],
+            result: object,
+            route: ResolvedExtensionRoute,
+        ) -> RouteStep[list[AgentMessage]]:
+            if not isinstance(result, ContextResult):
+                self._diagnostics.append(
+                    ResourceDiagnostic(
+                        code="invalid_extension_context_result",
+                        message="context hooks must return ContextResult or None.",
+                        source_path=route.extension.source_path,
+                    )
+                )
+                return RouteStep(state)
+            if result.diagnostics:
+                self._diagnostics.extend(result.diagnostics)
+            return RouteStep(
+                cast(list[AgentMessage], result.messages)
+                if result.messages is not None
+                else state
+            )
 
-    async def after_tool_call(self, event, signal: object | None = None) -> AfterToolCallResult | None:
-        return await self._tool_hook_dispatcher(_context_from_agent_event(event).cwd).after_tool_call(event, signal)
+        outcome = await self._plain_diagnostic_router.reduce(
+            "context",
+            current_messages,
+            event_factory=lambda state, route: _ContextEvent(messages=state),
+            reducer=reducer,
+            context_factory=lambda extension: context,
+        )
+        return outcome.state
+
+    async def before_tool_call(
+        self, event, signal: object | None = None
+    ) -> BeforeToolCallResult | None:
+        return await self._tool_hook_dispatcher(
+            _context_from_agent_event(event).cwd
+        ).before_tool_call(event, signal)
+
+    async def after_tool_call(
+        self, event, signal: object | None = None
+    ) -> AfterToolCallResult | None:
+        return await self._tool_hook_dispatcher(
+            _context_from_agent_event(event).cwd
+        ).after_tool_call(event, signal)
 
     def _tool_hook_dispatcher(self, fallback_cwd: str) -> HookDispatcher:
         return HookDispatcher(
             self._extensions,
-            context_factory=lambda _extension: self._context_from_runtime(fallback_cwd=fallback_cwd),
-            diagnostics=self._diagnostics,
-            runtime_error_handler=lambda extension, event, error: self._emit_runtime_error(
-                extension=extension,
-                event=event,
-                error=error,
+            context_factory=lambda _extension: self._context_from_runtime(
+                fallback_cwd=fallback_cwd
             ),
+            diagnostics=self._diagnostics,
+            runtime_error_handler=lambda extension, event, error: (
+                self._emit_runtime_error(
+                    extension=extension,
+                    event=event,
+                    error=error,
+                )
+            ),
+            route_plan=self._route_plan,
         )
 
     def _apply_registry_snapshot(self) -> None:
-        registry = resolve_extension_registry(self._extensions)
+        registry = resolve_extension_registry(self._active_extensions)
         self._diagnostics.extend(registry.diagnostics)
         self._flag_diagnostics.extend(registry.flag_diagnostics)
         self._shortcut_diagnostics.extend(registry.shortcut_diagnostics)
@@ -548,13 +649,19 @@ class ExtensionRunner:
             self._runtime_state.flag_values.setdefault(name, value)
         for registration in registry.tools:
             source_info = registration.source_info
+
+            def context_factory(
+                source_info: SourceInfo[Path] = source_info,
+            ) -> ExtensionContext:
+                return self._context_from_runtime(
+                    fallback_cwd=str(source_info.path.parent)
+                )
+
             self._tool_source_info_by_name[registration.definition.name] = source_info
             self._tool_definitions.append(
                 wrap_registered_tool_definition(
                     registration.definition,
-                    lambda source_info=source_info: self._context_from_runtime(
-                        fallback_cwd=str(source_info.path.parent)
-                    ),
+                    context_factory,
                 )
             )
 
@@ -566,40 +673,33 @@ class ExtensionRunner:
                 extension=extension,
             ),
             diagnostics=self._diagnostics,
-            runtime_error_handler=lambda extension, event, error: self._emit_runtime_error(
-                extension=extension,
-                event=event,
-                error=error,
+            runtime_error_handler=lambda extension, event, error: (
+                self._emit_runtime_error(
+                    extension=extension,
+                    event=event,
+                    error=error,
+                )
             ),
+            route_plan=self._route_plan,
         )
 
     def _resource_runtime(self) -> ExtensionResourceRuntime:
         return ExtensionResourceRuntime(
             self._extensions,
             diagnostics=self._diagnostics,
+            route_plan=self._route_plan,
         )
 
     async def _emit_session_hook(self, hook_name: str, session: object) -> None:
-        for extension in self._extensions:
-            context = self._context_from_runtime(
-                fallback_cwd=_context_from_session(session).cwd,
+        fallback_cwd = _context_from_session(session).cwd
+        await self._router.observe(
+            hook_name,
+            session,
+            context_factory=lambda extension: self._context_from_runtime(
+                fallback_cwd=fallback_cwd,
                 extension=extension,
-            )
-            for handler in extension.hooks.get(hook_name, []):
-                try:
-                    result = handler(session, context)
-                    if inspect.isawaitable(result):
-                        await result
-                except Exception as exc:
-                    self._diagnostics.append(
-                        _extension_hook_failure_diagnostic(
-                            extension=extension,
-                            hook_name=hook_name,
-                            exc=exc,
-                        )
-                    )
-                    self._emit_runtime_error(extension=extension, event=hook_name, error=exc)
-                    continue
+            ),
+        )
 
     async def _emit_decision_hook(
         self,
@@ -610,39 +710,36 @@ class ExtensionRunner:
         result_type: type[SessionActionDecision] = SessionActionDecision,
     ) -> SessionActionDecision | None:
         context = self._context_from_runtime(fallback_cwd=fallback_cwd)
-        latest_result: SessionActionDecision | None = None
-        for extension in self._extensions:
-            for handler in extension.hooks.get(hook_name, []):
-                try:
-                    result = handler(event, context)
-                    if inspect.isawaitable(result):
-                        result = await result
-                except Exception as exc:
-                    self._diagnostics.append(
-                        _extension_hook_failure_diagnostic(
-                            extension=extension,
-                            hook_name=hook_name,
-                            exc=exc,
-                        )
+
+        def reducer(
+            state: SessionActionDecision | None,
+            result: object,
+            route: ResolvedExtensionRoute,
+        ) -> RouteStep[SessionActionDecision | None]:
+            if not isinstance(result, result_type):
+                expected_name = result_type.__name__
+                self._diagnostics.append(
+                    ResourceDiagnostic(
+                        code=f"invalid_extension_{hook_name}_decision",
+                        message=(
+                            f"{hook_name} hooks must return {expected_name} or None."
+                        ),
+                        source_path=route.extension.source_path,
                     )
-                    self._emit_runtime_error(extension=extension, event=hook_name, error=exc)
-                    continue
-                if result is None:
-                    continue
-                if not isinstance(result, result_type):
-                    expected_name = result_type.__name__
-                    self._diagnostics.append(
-                        ResourceDiagnostic(
-                            code=f"invalid_extension_{hook_name}_decision",
-                            message=f"{hook_name} hooks must return {expected_name} or None.",
-                            source_path=extension.source_path,
-                        )
-                    )
-                    continue
-                if result.diagnostics:
-                    self._diagnostics.extend(result.diagnostics)
-                latest_result = result
-        return latest_result
+                )
+                return RouteStep(state)
+            if result.diagnostics:
+                self._diagnostics.extend(result.diagnostics)
+            return RouteStep(result)
+
+        outcome = await self._router.reduce(
+            hook_name,
+            None,
+            event_factory=lambda state, route: event,
+            reducer=reducer,
+            context_factory=lambda extension: context,
+        )
+        return outcome.state
 
     def _context_from_runtime(
         self,
@@ -651,19 +748,31 @@ class ExtensionRunner:
         extension: LoadedExtension | None = None,
     ) -> ExtensionContext:
         if not self._runtime_state.is_bound:
-            return _RunnerContext(
-                cwd=fallback_cwd,
+            return cast(
+                ExtensionContext,
+                _RunnerContext(
+                    cwd=fallback_cwd,
+                    get_flag_value=self._runtime_state.flag_values.get,
+                    unsupported_theme_message=_UNSUPPORTED_THEME_MESSAGE,
+                ),
+            )
+        return cast(
+            ExtensionContext,
+            _BoundExtensionContext(
+                self._runtime_state.capture(),
+                (
+                    _source_info_from_extension(extension)
+                    if extension is not None
+                    else None
+                ),
                 get_flag_value=self._runtime_state.flag_values.get,
                 unsupported_theme_message=_UNSUPPORTED_THEME_MESSAGE,
-            )
-        return _BoundExtensionContext(
-            self._runtime_state.capture(),
-            _source_info_from_extension(extension) if extension is not None else None,
-            get_flag_value=self._runtime_state.flag_values.get,
-            unsupported_theme_message=_UNSUPPORTED_THEME_MESSAGE,
+            ),
         )
 
-    def _emit_runtime_error(self, *, extension: LoadedExtension, event: str, error: Exception) -> None:
+    def _emit_runtime_error(
+        self, *, extension: LoadedExtension, event: str, error: Exception
+    ) -> None:
         bindings = self._runtime_state.bindings
         callback = getattr(bindings, "on_error", None) if bindings is not None else None
         if not callable(callback):
@@ -675,6 +784,7 @@ class ExtensionRunner:
                 "error": str(error),
             }
         )
+
 
 def _context_from_session(session: object) -> _RunnerContext:
     session_manager = getattr(session, "session_manager", None)
@@ -746,12 +856,18 @@ def _coerce_before_agent_start_result(result: object) -> BeforeAgentStartResult 
         return result
     if isinstance(result, dict):
         system_prompt = result.get("systemPrompt", result.get("system_prompt"))
-        system_prompt_append = result.get("systemPromptAppend", result.get("system_prompt_append", ""))
-        extra_messages = result.get("messages", result.get("extraMessages", result.get("extra_messages", [])))
+        system_prompt_append = result.get(
+            "systemPromptAppend", result.get("system_prompt_append", "")
+        )
+        extra_messages = result.get(
+            "messages", result.get("extraMessages", result.get("extra_messages", []))
+        )
         diagnostics = result.get("diagnostics", [])
         return BeforeAgentStartResult(
             system_prompt=system_prompt if isinstance(system_prompt, str) else None,
-            system_prompt_append=system_prompt_append if isinstance(system_prompt_append, str) else "",
+            system_prompt_append=system_prompt_append
+            if isinstance(system_prompt_append, str)
+            else "",
             extra_messages=extra_messages if isinstance(extra_messages, list) else [],
             diagnostics=diagnostics if isinstance(diagnostics, list) else [],
         )
@@ -763,7 +879,7 @@ def _extension_visibility_snapshot(
     *,
     diagnostics: list[ResourceDiagnostic],
 ) -> dict[str, object]:
-    manifest = extension.manifest
+    manifest = cast(ExtensionManifest | None, extension.manifest)
     policy = extension.policy
     source_info = _source_info_from_extension(extension)
     extension_id = manifest.id if manifest is not None else extension.name
@@ -859,7 +975,9 @@ def _append_extension_diagnostic(
     key = (
         diagnostic.code,
         diagnostic.message,
-        diagnostic.source_path.as_posix() if diagnostic.source_path is not None else None,
+        diagnostic.source_path.as_posix()
+        if diagnostic.source_path is not None
+        else None,
     )
     if key not in seen:
         seen.add(key)
@@ -871,7 +989,9 @@ def _serialize_diagnostic(diagnostic: ResourceDiagnostic) -> dict[str, object]:
     return {
         "code": diagnostic.code,
         "message": diagnostic.message,
-        "sourcePath": diagnostic.source_path.as_posix() if diagnostic.source_path is not None else None,
+        "sourcePath": diagnostic.source_path.as_posix()
+        if diagnostic.source_path is not None
+        else None,
         "resourceId": diagnostic.resource_id,
         "resourceType": diagnostic.resource_type,
         "sourceKind": diagnostic.source_kind,
@@ -901,39 +1021,16 @@ def _path_text(value: object) -> str:
     return value.as_posix() if isinstance(value, Path) else str(value or "")
 
 
-def _extension_hook_failure_diagnostic(
-    *,
-    extension: LoadedExtension,
-    hook_name: str,
-    exc: BaseException,
-    code: str | None = None,
-) -> ResourceDiagnostic:
-    source_info = _source_info_from_extension(extension)
-    return ResourceDiagnostic(
-        code=code or f"extension_{hook_name}_failed",
-        message=f"Extension hook '{hook_name}' failed: {exc}",
-        source_path=extension.source_path,
-        metadata={
-            "extension_name": extension.name,
-            "hook": hook_name,
-            "source": source_info.source,
-            "scope": source_info.scope,
-            "origin": source_info.origin,
-            "base_dir": (
-                source_info.base_dir.as_posix()
-                if source_info.base_dir is not None
-                else extension.source_path.parent.as_posix()
-            ),
-        },
-    )
-
-
 def _serialize_source_info(source_info: SourceInfo[Path]) -> dict[str, object]:
     return {
         "path": source_info.path.as_posix(),
         "source": source_info.source,
         "scope": source_info.scope,
         "origin": source_info.origin,
-        "baseDir": source_info.base_dir.as_posix() if source_info.base_dir is not None else None,
-        "base_dir": source_info.base_dir.as_posix() if source_info.base_dir is not None else None,
+        "baseDir": source_info.base_dir.as_posix()
+        if source_info.base_dir is not None
+        else None,
+        "base_dir": source_info.base_dir.as_posix()
+        if source_info.base_dir is not None
+        else None,
     }

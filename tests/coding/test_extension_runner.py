@@ -20,7 +20,9 @@ def _usage() -> Usage:
     )
 
 
-def _assistant_tool_call_message(tool_name: str = "calc", arguments: dict[str, object] | None = None) -> AssistantMessage:
+def _assistant_tool_call_message(
+    tool_name: str = "calc", arguments: dict[str, object] | None = None
+) -> AssistantMessage:
     return AssistantMessage(
         role="assistant",
         content=[
@@ -69,6 +71,8 @@ def _tool(name: str):
         parameters={},
         execute=_execute_tool,
     )
+
+
 def _user_message(text: str) -> UserMessage:
     return UserMessage(
         role="user",
@@ -77,7 +81,9 @@ def _user_message(text: str) -> UserMessage:
     )
 
 
-def test_extension_runner_merges_resource_contributions_from_loaded_extensions() -> None:
+def test_extension_runner_merges_resource_contributions_from_loaded_extensions() -> (
+    None
+):
     from loushang.coding.extensions import (
         ExtensionResourceContribution,
         ExtensionRunner,
@@ -126,7 +132,9 @@ def test_extension_runner_wraps_extension_tools_with_context() -> None:
         seen["tool_call_id"] = tool_call_id
         seen["params"] = params
         seen["cwd"] = ctx.cwd
-        return AgentToolResult(content=[TextPart(type="text", text="ok")], details={"ok": True})
+        return AgentToolResult(
+            content=[TextPart(type="text", text="ok")], details={"ok": True}
+        )
 
     runner = ExtensionRunner(
         [
@@ -146,7 +154,9 @@ def test_extension_runner_wraps_extension_tools_with_context() -> None:
         ]
     )
 
-    result = asyncio.run(runner.list_tool_definitions()[0].execute("tc1", {"x": 1}, None, None))
+    result = asyncio.run(
+        runner.list_tool_definitions()[0].execute("tc1", {"x": 1}, None, None)
+    )
 
     assert result.details == {"ok": True}
     assert seen == {"tool_call_id": "tc1", "params": {"x": 1}, "cwd": "/tmp/extensions"}
@@ -164,7 +174,9 @@ def test_extension_runner_keeps_legacy_four_argument_extension_tools() -> None:
         del signal, on_update
         seen["tool_call_id"] = tool_call_id
         seen["params"] = params
-        return AgentToolResult(content=[TextPart(type="text", text="ok")], details={"ok": True})
+        return AgentToolResult(
+            content=[TextPart(type="text", text="ok")], details={"ok": True}
+        )
 
     runner = ExtensionRunner(
         [
@@ -184,7 +196,9 @@ def test_extension_runner_keeps_legacy_four_argument_extension_tools() -> None:
         ]
     )
 
-    result = asyncio.run(runner.list_tool_definitions()[0].execute("tc1", {"x": 1}, None, None))
+    result = asyncio.run(
+        runner.list_tool_definitions()[0].execute("tc1", {"x": 1}, None, None)
+    )
 
     assert result.details == {"ok": True}
     assert seen == {"tool_call_id": "tc1", "params": {"x": 1}}
@@ -202,12 +216,20 @@ def test_extension_runner_resolves_duplicate_command_names() -> None:
     object.__setattr__(
         first,
         "commands",
-        {"deploy": RegisteredCommand(name="deploy", description="first", handler=_handler)},
+        {
+            "deploy": RegisteredCommand(
+                name="deploy", description="first", handler=_handler
+            )
+        },
     )
     object.__setattr__(
         second,
         "commands",
-        {"deploy": RegisteredCommand(name="deploy", description="second", handler=_handler)},
+        {
+            "deploy": RegisteredCommand(
+                name="deploy", description="second", handler=_handler
+            )
+        },
     )
 
     runner = ExtensionRunner([first, second])
@@ -236,7 +258,11 @@ def test_extension_runner_preserves_package_command_source_info() -> None:
     object.__setattr__(
         extension,
         "commands",
-        {"deploy": RegisteredCommand(name="deploy", description="package", handler=_handler)},
+        {
+            "deploy": RegisteredCommand(
+                name="deploy", description="package", handler=_handler
+            )
+        },
     )
 
     runner = ExtensionRunner([extension])
@@ -261,17 +287,29 @@ def test_extension_runner_avoids_command_alias_collision_with_literal_name() -> 
     object.__setattr__(
         first,
         "commands",
-        {"deploy": RegisteredCommand(name="deploy", description="first", handler=_handler)},
+        {
+            "deploy": RegisteredCommand(
+                name="deploy", description="first", handler=_handler
+            )
+        },
     )
     object.__setattr__(
         second,
         "commands",
-        {"deploy": RegisteredCommand(name="deploy", description="second", handler=_handler)},
+        {
+            "deploy": RegisteredCommand(
+                name="deploy", description="second", handler=_handler
+            )
+        },
     )
     object.__setattr__(
         third,
         "commands",
-        {"deploy:1": RegisteredCommand(name="deploy:1", description="literal", handler=_handler)},
+        {
+            "deploy:1": RegisteredCommand(
+                name="deploy:1", description="literal", handler=_handler
+            )
+        },
     )
 
     runner = ExtensionRunner([first, second, third])
@@ -292,12 +330,20 @@ def test_extension_runner_shortcut_collisions_are_first_wins() -> None:
     object.__setattr__(
         first,
         "shortcuts",
-        {"ctrl+p": RegisteredShortcut(shortcut="ctrl+p", handler=lambda ctx: None, description="first")},
+        {
+            "ctrl+p": RegisteredShortcut(
+                shortcut="ctrl+p", handler=lambda ctx: None, description="first"
+            )
+        },
     )
     object.__setattr__(
         second,
         "shortcuts",
-        {"ctrl+p": RegisteredShortcut(shortcut="ctrl+p", handler=lambda ctx: None, description="second")},
+        {
+            "ctrl+p": RegisteredShortcut(
+                shortcut="ctrl+p", handler=lambda ctx: None, description="second"
+            )
+        },
     )
 
     runner = ExtensionRunner([first, second])
@@ -311,7 +357,9 @@ def test_extension_runner_shortcut_collisions_are_first_wins() -> None:
     assert shortcuts[0].extension_name == "one"
     assert shortcuts[0].source_info.path == Path("/tmp/one.py")
     assert len(diagnostics) == 1
-    assert any(diagnostic.source_path == second.source_path for diagnostic in diagnostics)
+    assert any(
+        diagnostic.source_path == second.source_path for diagnostic in diagnostics
+    )
 
 
 def test_extension_runner_flag_collisions_are_first_wins() -> None:
@@ -323,12 +371,20 @@ def test_extension_runner_flag_collisions_are_first_wins() -> None:
     object.__setattr__(
         first,
         "flags",
-        {"plan": RegisteredFlag(name="plan", type="boolean", description="first", default=False)},
+        {
+            "plan": RegisteredFlag(
+                name="plan", type="boolean", description="first", default=False
+            )
+        },
     )
     object.__setattr__(
         second,
         "flags",
-        {"plan": RegisteredFlag(name="plan", type="boolean", description="second", default=True)},
+        {
+            "plan": RegisteredFlag(
+                name="plan", type="boolean", description="second", default=True
+            )
+        },
     )
 
     runner = ExtensionRunner([first, second])
@@ -343,7 +399,9 @@ def test_extension_runner_flag_collisions_are_first_wins() -> None:
     assert flags[0].extension_name == "one"
     assert flags[0].source_info.path == Path("/tmp/one.py")
     assert len(diagnostics) == 1
-    assert any(diagnostic.source_path == second.source_path for diagnostic in diagnostics)
+    assert any(
+        diagnostic.source_path == second.source_path for diagnostic in diagnostics
+    )
 
 
 def test_extension_runner_populates_flag_defaults() -> None:
@@ -359,22 +417,36 @@ def test_extension_runner_populates_flag_defaults() -> None:
         first,
         "flags",
         {
-            "plan": RegisteredFlag(name="plan", type="boolean", description="first", default=False),
-            "request-id": RegisteredFlag(name="request-id", type="string", description="first", default="abc"),
+            "plan": RegisteredFlag(
+                name="plan", type="boolean", description="first", default=False
+            ),
+            "request-id": RegisteredFlag(
+                name="request-id", type="string", description="first", default="abc"
+            ),
         },
     )
     object.__setattr__(
         second,
         "flags",
-        {"verbose": RegisteredFlag(name="verbose", type="boolean", description="second", default=True)},
+        {
+            "verbose": RegisteredFlag(
+                name="verbose", type="boolean", description="second", default=True
+            )
+        },
     )
 
     runner = ExtensionRunner([first, second])
 
-    assert runner.get_flag_values() == {"plan": False, "request-id": "abc", "verbose": True}
+    assert runner.get_flag_values() == {
+        "plan": False,
+        "request-id": "abc",
+        "verbose": True,
+    }
 
 
-def test_extension_runner_does_not_overwrite_explicit_flag_values_with_defaults() -> None:
+def test_extension_runner_does_not_overwrite_explicit_flag_values_with_defaults() -> (
+    None
+):
     from loushang.coding.extensions import (
         ExtensionRunner,
         LoadedExtension,
@@ -385,7 +457,11 @@ def test_extension_runner_does_not_overwrite_explicit_flag_values_with_defaults(
     object.__setattr__(
         ext,
         "flags",
-        {"plan": RegisteredFlag(name="plan", type="boolean", description="plan mode", default=False)},
+        {
+            "plan": RegisteredFlag(
+                name="plan", type="boolean", description="plan mode", default=False
+            )
+        },
     )
 
     runner = ExtensionRunner([ext])
@@ -438,8 +514,12 @@ def test_extension_runner_emits_lifecycle_hooks_and_rejects_duplicate_tools() ->
 
     assert state["first"] == ["start", "refresh", "shutdown"]
     assert state["second"] == ["start"]
-    assert [definition.name for definition in runner.list_tool_definitions()] == ["ext_tool"]
-    assert [diagnostic.code for diagnostic in runner.get_diagnostics()] == ["duplicate_extension_tool"]
+    assert [definition.name for definition in runner.list_tool_definitions()] == [
+        "ext_tool"
+    ]
+    assert [diagnostic.code for diagnostic in runner.get_diagnostics()] == [
+        "duplicate_extension_tool"
+    ]
 
 
 def test_extension_runner_records_hook_failures_as_diagnostics() -> None:
@@ -462,7 +542,9 @@ def test_extension_runner_records_hook_failures_as_diagnostics() -> None:
     merged = runner.discover_resources(ResourceBundle(cwd=Path("/tmp/project")))
 
     assert merged.prompt_fragments == []
-    assert [diagnostic.code for diagnostic in merged.diagnostics] == ["extension_resources_discover_failed"]
+    assert [diagnostic.code for diagnostic in merged.diagnostics] == [
+        "extension_resources_discover_failed"
+    ]
 
 
 def test_extension_runner_closes_async_session_hook_coroutines() -> None:
@@ -530,12 +612,20 @@ def test_extension_runner_records_session_refresh_hook_failures() -> None:
             record_diagnostic=lambda diagnostic: None,
         )
     )
-    asyncio.run(runner.emit_session_refresh(SessionRefreshEvent(reason="model_selection_changed")))
+    asyncio.run(
+        runner.emit_session_refresh(
+            SessionRefreshEvent(reason="model_selection_changed")
+        )
+    )
 
-    assert any(d.code == "extension_session_refresh_failed" for d in runner.get_diagnostics())
+    assert any(
+        d.code == "extension_session_refresh_failed" for d in runner.get_diagnostics()
+    )
 
 
-def test_extension_runner_records_session_action_callback_failures_via_refresh_hook_diagnostics() -> None:
+def test_extension_runner_records_session_action_callback_failures_via_refresh_hook_diagnostics() -> (
+    None
+):
     from loushang.coding.extensions import (
         ExtensionRunner,
         ExtensionRuntimeBindings,
@@ -573,9 +663,15 @@ def test_extension_runner_records_session_action_callback_failures_via_refresh_h
             record_diagnostic=lambda diagnostic: None,
         )
     )
-    asyncio.run(runner.emit_session_refresh(SessionRefreshEvent(reason="model_selection_changed")))
+    asyncio.run(
+        runner.emit_session_refresh(
+            SessionRefreshEvent(reason="model_selection_changed")
+        )
+    )
 
-    assert any(d.code == "extension_session_refresh_failed" for d in runner.get_diagnostics())
+    assert any(
+        d.code == "extension_session_refresh_failed" for d in runner.get_diagnostics()
+    )
 
 
 def test_extension_runner_pipelines_tool_call_decisions() -> None:
@@ -704,7 +800,9 @@ def test_extension_runner_pipelines_tool_result_decisions() -> None:
     assert seen == ["original", "first rewrite"]
 
 
-def test_extension_runner_pipelines_context_results_without_mutating_input_messages() -> None:
+def test_extension_runner_pipelines_context_results_without_mutating_input_messages() -> (
+    None
+):
     import asyncio
 
     from loushang.coding.extensions import (
@@ -722,7 +820,9 @@ def test_extension_runner_pipelines_context_results_without_mutating_input_messa
 
     async def _append(event, ctx):
         seen.append(event.messages[0].content[0].text)
-        return ContextResult(messages=event.messages + [_user_message("appended later")])
+        return ContextResult(
+            messages=event.messages + [_user_message("appended later")]
+        )
 
     original_messages = [_user_message("original")]
     runner = ExtensionRunner(
@@ -773,12 +873,18 @@ def test_extension_runner_emit_input_chains_transform_results() -> None:
 
     runner = ExtensionRunner(
         [
-            LoadedExtension(name="one", source_path=Path("/tmp/one.py"), hooks={"input": [_first]}),
-            LoadedExtension(name="two", source_path=Path("/tmp/two.py"), hooks={"input": [_second]}),
+            LoadedExtension(
+                name="one", source_path=Path("/tmp/one.py"), hooks={"input": [_first]}
+            ),
+            LoadedExtension(
+                name="two", source_path=Path("/tmp/two.py"), hooks={"input": [_second]}
+            ),
         ]
     )
 
-    result = asyncio.run(runner.emit_input("start", None, source="rpc", cwd="/tmp/project"))
+    result = asyncio.run(
+        runner.emit_input("start", None, source="rpc", cwd="/tmp/project")
+    )
 
     assert result.action == "transform"
     assert result.text == "start one two"
@@ -808,12 +914,18 @@ def test_extension_runner_emit_input_stops_on_handled_result() -> None:
 
     runner = ExtensionRunner(
         [
-            LoadedExtension(name="one", source_path=Path("/tmp/one.py"), hooks={"input": [_first]}),
-            LoadedExtension(name="two", source_path=Path("/tmp/two.py"), hooks={"input": [_second]}),
+            LoadedExtension(
+                name="one", source_path=Path("/tmp/one.py"), hooks={"input": [_first]}
+            ),
+            LoadedExtension(
+                name="two", source_path=Path("/tmp/two.py"), hooks={"input": [_second]}
+            ),
         ]
     )
 
-    result = asyncio.run(runner.emit_input("start", None, source="interactive", cwd="/tmp/project"))
+    result = asyncio.run(
+        runner.emit_input("start", None, source="interactive", cwd="/tmp/project")
+    )
 
     assert result.action == "handled"
     assert seen == ["start"]
@@ -851,12 +963,16 @@ def test_extension_runner_returns_command_argument_completions() -> None:
         ]
     )
 
-    completions = asyncio.run(runner.get_command_argument_completions("deploy", "staging"))
+    completions = asyncio.run(
+        runner.get_command_argument_completions("deploy", "staging")
+    )
 
     assert completions == [{"value": "staging-prod"}]
 
 
-def test_extension_runner_records_diagnostic_for_invalid_command_argument_completions() -> None:
+def test_extension_runner_records_diagnostic_for_invalid_command_argument_completions() -> (
+    None
+):
     import asyncio
 
     from loushang.coding.extensions import (
@@ -978,6 +1094,76 @@ def test_extension_runner_get_message_renderer_uses_first_registration() -> None
     assert runner.get_message_renderer("missing") is None
 
 
+def test_extension_runner_does_not_expose_or_bind_inactive_surfaces() -> None:
+    from loushang.coding.extensions import (
+        ExtensionPolicyDecision,
+        ExtensionRunner,
+        LoadedExtension,
+        RegisteredCommand,
+        RegisteredFlag,
+        RegisteredShortcut,
+    )
+
+    class RuntimeAPI:
+        def __init__(self) -> None:
+            self.bind_calls = 0
+
+        def bind_runtime_state(self, state: object) -> None:
+            del state
+            self.bind_calls += 1
+
+    async def _command(arguments: str, context: object) -> None:
+        del arguments, context
+
+    def renderer(message: object, options: object, theme: object) -> object:
+        return message, options, theme
+
+    api = RuntimeAPI()
+    inactive = LoadedExtension(
+        name="inactive",
+        source_path=Path("/tmp/inactive.py"),
+        tool_definitions=[_tool("hidden_tool")],
+        commands={
+            "hidden": RegisteredCommand(name="hidden", handler=_command),
+        },
+        flags={
+            "hidden": RegisteredFlag(
+                name="hidden",
+                type="boolean",
+                default=True,
+            ),
+        },
+        shortcuts={
+            "ctrl+h": RegisteredShortcut(
+                shortcut="ctrl+h",
+                handler=lambda context: context,
+            ),
+        },
+        message_renderers={"hidden.card": renderer},
+        api=api,
+        policy=ExtensionPolicyDecision(enabled=False),
+    )
+
+    runner = ExtensionRunner([inactive])
+    runner.bind_runtime(
+        _runtime_bindings(
+            cwd="/tmp/project",
+            active_tool_names=[],
+            model_selection=None,
+        )
+    )
+
+    assert runner.list_tool_definitions() == []
+    assert runner.get_registered_commands() == []
+    assert runner.get_flags() == []
+    assert runner.get_shortcuts() == []
+    assert runner.get_flag_values() == {}
+    assert runner.get_message_renderer("hidden.card") is None
+    assert runner.list_message_renderers() == []
+    assert runner.list_extensions()[0]["enabled"] is False
+    assert api.bind_calls == 0
+
+
 def test_extension_runner_exposes_headless_renderer_and_diagnostic_snapshots() -> None:
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.loader import ResourceDiagnostic
@@ -991,7 +1177,11 @@ def test_extension_runner_exposes_headless_renderer_and_diagnostic_snapshots() -
                 name="cards",
                 source_path=Path("/tmp/extensions/cards.py"),
                 message_renderers={"demo.card": _renderer},
-                diagnostics=[ResourceDiagnostic(code="demo_warning", message="demo", resource_id="demo.card")],
+                diagnostics=[
+                    ResourceDiagnostic(
+                        code="demo_warning", message="demo", resource_id="demo.card"
+                    )
+                ],
             )
         ]
     )
@@ -1006,7 +1196,9 @@ def test_extension_runner_exposes_headless_renderer_and_diagnostic_snapshots() -
     assert snapshot["diagnostics"][0]["resourceId"] == "demo.card"
 
 
-def test_extension_runner_resources_discover_accepts_pi_style_path_result(tmp_path) -> None:
+def test_extension_runner_resources_discover_accepts_pi_style_path_result(
+    tmp_path,
+) -> None:
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.loader import ResourceBundle
 
@@ -1040,9 +1232,15 @@ def test_extension_runner_resources_discover_accepts_pi_style_path_result(tmp_pa
 
     bundle = runner.discover_resources(ResourceBundle(cwd=tmp_path))
 
-    assert [(prompt.name, prompt.text) for prompt in bundle.prompts] == [("plan", "Plan prompt")]
-    assert [(skill.name, skill.content) for skill in bundle.skills] == [("debug", "Debug skill")]
-    assert [(theme.name, theme.source_path) for theme in bundle.themes] == [("clean", theme_file)]
+    assert [(prompt.name, prompt.text) for prompt in bundle.prompts] == [
+        ("plan", "Plan prompt")
+    ]
+    assert [(skill.name, skill.content) for skill in bundle.skills] == [
+        ("debug", "Debug skill")
+    ]
+    assert [(theme.name, theme.source_path) for theme in bundle.themes] == [
+        ("clean", theme_file)
+    ]
 
 
 def test_extension_runner_resources_discover_awaits_async_path_result(tmp_path) -> None:
@@ -1073,11 +1271,15 @@ def test_extension_runner_resources_discover_awaits_async_path_result(tmp_path) 
     bundle = asyncio.run(runner.discover_resources_async(ResourceBundle(cwd=tmp_path)))
 
     assert calls == [str(tmp_path)]
-    assert [(prompt.name, prompt.text) for prompt in bundle.prompts] == [("plan", "Async plan prompt")]
+    assert [(prompt.name, prompt.text) for prompt in bundle.prompts] == [
+        ("plan", "Async plan prompt")
+    ]
     assert runner.get_diagnostics() == []
 
 
-def test_extension_runner_resources_discover_path_result_reports_missing_paths(tmp_path) -> None:
+def test_extension_runner_resources_discover_path_result_reports_missing_paths(
+    tmp_path,
+) -> None:
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.loader import ResourceBundle
 
@@ -1152,8 +1354,12 @@ def test_extension_api_runtime_action_methods_delegate_from_command_closure() ->
     asyncio.run(command.handler("", context))
 
     assert tracker["append_entry_calls"] == [("demo_state", {"ok": True})]
-    assert tracker["send_message_calls"] == [({"customType": "notice", "content": "hello"}, None)]
-    assert tracker["send_user_message_calls"] == [("follow up", {"deliverAs": "followUp"})]
+    assert tracker["send_message_calls"] == [
+        ({"customType": "notice", "content": "hello"}, None)
+    ]
+    assert tracker["send_user_message_calls"] == [
+        ("follow up", {"deliverAs": "followUp"})
+    ]
     assert tracker["set_active_tools_calls"] == [["read", "grep"]]
     assert tracker["set_model_calls"] == [{"provider": "demo", "model_id": "next"}]
     assert tracker["thinking_before"] == "medium"
@@ -1251,7 +1457,9 @@ def _runtime_bindings(
     async def _reload() -> None:
         runtime_tracker["reload_calls"] += 1
 
-    async def _navigate_tree(target_id: str, options: object | None = None) -> dict[str, object]:
+    async def _navigate_tree(
+        target_id: str, options: object | None = None
+    ) -> dict[str, object]:
         runtime_tracker["navigate_tree_calls"].append((target_id, options))
         return {"cancelled": False}
 
@@ -1264,14 +1472,18 @@ def _runtime_bindings(
         runtime_tracker["new_session_calls"].append(options)
         return {"cancelled": False}
 
-    async def _switch_session(session_path: str, options: object | None = None) -> dict[str, object]:
+    async def _switch_session(
+        session_path: str, options: object | None = None
+    ) -> dict[str, object]:
         runtime_tracker["switch_session_calls"].append((session_path, options))
         return {"cancelled": False}
 
     async def _send_message(message: object, options: object | None = None) -> None:
         runtime_tracker["send_message_calls"].append((message, options))
 
-    async def _send_user_message(content: object, options: object | None = None) -> None:
+    async def _send_user_message(
+        content: object, options: object | None = None
+    ) -> None:
         runtime_tracker["send_user_message_calls"].append((content, options))
 
     async def _compact(custom_instructions: str | None = None) -> None:
@@ -1293,23 +1505,36 @@ def _runtime_bindings(
         get_model_selection=lambda: model_selection,
         set_active_tools=_set_active_tools,
         set_model=_set_model,
-        append_entry=lambda custom_type, data=None: runtime_tracker["append_entry_calls"].append((custom_type, data)),
+        append_entry=lambda custom_type, data=None: runtime_tracker[
+            "append_entry_calls"
+        ].append((custom_type, data)),
         send_message=_send_message,
         send_user_message=_send_user_message,
-        set_session_name=lambda name: runtime_tracker["set_session_name_calls"].append(name),
+        set_session_name=lambda name: runtime_tracker["set_session_name_calls"].append(
+            name
+        ),
         get_session_name=lambda: "Demo Session",
-        set_label=lambda entry_id, label: runtime_tracker["set_label_calls"].append((entry_id, label)),
+        set_label=lambda entry_id, label: runtime_tracker["set_label_calls"].append(
+            (entry_id, label)
+        ),
         list_commands=list_commands,
         request_resource_refresh=lambda: runtime_tracker.__setitem__(
-            "resource_refresh_requests", runtime_tracker["resource_refresh_requests"] + 1
+            "resource_refresh_requests",
+            runtime_tracker["resource_refresh_requests"] + 1,
         ),
-        shutdown=lambda: runtime_tracker.__setitem__("shutdown_calls", runtime_tracker["shutdown_calls"] + 1),
-        abort=lambda: runtime_tracker.__setitem__("abort_calls", runtime_tracker["abort_calls"] + 1),
+        shutdown=lambda: runtime_tracker.__setitem__(
+            "shutdown_calls", runtime_tracker["shutdown_calls"] + 1
+        ),
+        abort=lambda: runtime_tracker.__setitem__(
+            "abort_calls", runtime_tracker["abort_calls"] + 1
+        ),
         is_idle=is_idle,
         has_pending_messages=has_pending_messages,
         get_context_usage=get_context_usage,
         get_thinking_level=get_thinking_level,
-        set_thinking_level=lambda level: runtime_tracker["set_thinking_level_calls"].append(level),
+        set_thinking_level=lambda level: runtime_tracker[
+            "set_thinking_level_calls"
+        ].append(level),
         compact=_compact,
         get_system_prompt=get_system_prompt,
         wait_for_idle=wait_for_idle or _wait_for_idle,
@@ -1319,7 +1544,9 @@ def _runtime_bindings(
         new_session=new_session or _new_session,
         switch_session=switch_session or _switch_session,
         exec_command=exec_command,
-        record_diagnostic=lambda diagnostic: runtime_tracker["recorded_diagnostics"].append(diagnostic),
+        record_diagnostic=lambda diagnostic: runtime_tracker[
+            "recorded_diagnostics"
+        ].append(diagnostic),
         ui_context=ui_context,
         on_error=on_error,
     )
@@ -1363,10 +1590,24 @@ def test_extension_runner_reports_hook_failures_to_runtime_error_sink() -> None:
             )
         ]
     )
-    runner.bind_runtime(_runtime_bindings(cwd="/tmp/project", active_tool_names=[], model_selection=None, on_error=errors.append))
+    runner.bind_runtime(
+        _runtime_bindings(
+            cwd="/tmp/project",
+            active_tool_names=[],
+            model_selection=None,
+            on_error=errors.append,
+        )
+    )
 
-    asyncio.run(runner.emit_session_refresh(SessionRefreshEvent(reason="model_selection_changed")))
-    assert asyncio.run(runner.before_session_switch(SimpleNamespace(cwd="/tmp/project"))) is None
+    asyncio.run(
+        runner.emit_session_refresh(
+            SessionRefreshEvent(reason="model_selection_changed")
+        )
+    )
+    assert (
+        asyncio.run(runner.before_session_switch(SimpleNamespace(cwd="/tmp/project")))
+        is None
+    )
     asyncio.run(runner.emit_context([_user_message("original")], cwd="/tmp/project"))
     asyncio.run(
         runner.before_tool_call(
@@ -1385,7 +1626,9 @@ def test_extension_runner_reports_hook_failures_to_runtime_error_sink() -> None:
                 assistant_message=_assistant_tool_call_message(),
                 tool_call=_assistant_tool_call_message().content[0],
                 args={"x": 1},
-                result=AgentToolResult(content=[TextPart(type="text", text="original")], details={}),
+                result=AgentToolResult(
+                    content=[TextPart(type="text", text="original")], details={}
+                ),
                 is_error=False,
                 context=_agent_context(),
             ),
@@ -1394,11 +1637,31 @@ def test_extension_runner_reports_hook_failures_to_runtime_error_sink() -> None:
     )
 
     assert errors == [
-        {"extensionPath": "/tmp/broken.py", "event": "session_refresh", "error": "session_refresh boom"},
-        {"extensionPath": "/tmp/broken.py", "event": "session_before_switch", "error": "session_before_switch boom"},
-        {"extensionPath": "/tmp/broken.py", "event": "context", "error": "context boom"},
-        {"extensionPath": "/tmp/broken.py", "event": "tool_call", "error": "tool_call boom"},
-        {"extensionPath": "/tmp/broken.py", "event": "tool_result", "error": "tool_result boom"},
+        {
+            "extensionPath": "/tmp/broken.py",
+            "event": "session_refresh",
+            "error": "session_refresh boom",
+        },
+        {
+            "extensionPath": "/tmp/broken.py",
+            "event": "session_before_switch",
+            "error": "session_before_switch boom",
+        },
+        {
+            "extensionPath": "/tmp/broken.py",
+            "event": "context",
+            "error": "context boom",
+        },
+        {
+            "extensionPath": "/tmp/broken.py",
+            "event": "tool_call",
+            "error": "tool_call boom",
+        },
+        {
+            "extensionPath": "/tmp/broken.py",
+            "event": "tool_result",
+            "error": "tool_result boom",
+        },
     ]
 
 
@@ -1415,11 +1678,27 @@ def test_extension_runner_emits_agent_lifecycle_events() -> None:
 
     def _turn_start(event, ctx):
         del ctx
-        seen.append((event.type, event.turn_index, event.turnIndex, isinstance(event.timestamp, int)))
+        seen.append(
+            (
+                event.type,
+                event.turn_index,
+                event.turnIndex,
+                isinstance(event.timestamp, int),
+            )
+        )
 
     def _tool_start(event, ctx):
         del ctx
-        seen.append((event.type, event.tool_call_id, event.toolCallId, event.tool_name, event.toolName, event.args))
+        seen.append(
+            (
+                event.type,
+                event.tool_call_id,
+                event.toolCallId,
+                event.tool_name,
+                event.toolName,
+                event.args,
+            )
+        )
 
     runner = ExtensionRunner(
         [
@@ -1436,7 +1715,9 @@ def test_extension_runner_emits_agent_lifecycle_events() -> None:
     )
 
     asyncio.run(runner.emit_event({"type": "agent_start"}))
-    asyncio.run(runner.emit_event({"type": "turn_start", "turn_index": 2, "timestamp": 123}))
+    asyncio.run(
+        runner.emit_event({"type": "turn_start", "turn_index": 2, "timestamp": 123})
+    )
     asyncio.run(
         runner.emit_event(
             {
@@ -1455,7 +1736,9 @@ def test_extension_runner_emits_agent_lifecycle_events() -> None:
     ]
 
 
-def test_extension_runner_emits_runtime_error_for_agent_lifecycle_hook_failure() -> None:
+def test_extension_runner_emits_runtime_error_for_agent_lifecycle_hook_failure() -> (
+    None
+):
     import asyncio
 
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
@@ -1474,15 +1757,32 @@ def test_extension_runner_emits_runtime_error_for_agent_lifecycle_hook_failure()
             )
         ]
     )
-    runner.bind_runtime(_runtime_bindings(cwd="/tmp/project", active_tool_names=[], model_selection=None, on_error=errors.append))
+    runner.bind_runtime(
+        _runtime_bindings(
+            cwd="/tmp/project",
+            active_tool_names=[],
+            model_selection=None,
+            on_error=errors.append,
+        )
+    )
 
     asyncio.run(runner.emit_event({"type": "agent_start"}))
 
-    assert [diagnostic.code for diagnostic in runner.get_diagnostics()] == ["extension_agent_start_failed"]
-    assert errors == [{"extensionPath": "/tmp/broken.py", "event": "agent_start", "error": "agent start boom"}]
+    assert [diagnostic.code for diagnostic in runner.get_diagnostics()] == [
+        "extension_agent_start_failed"
+    ]
+    assert errors == [
+        {
+            "extensionPath": "/tmp/broken.py",
+            "event": "agent_start",
+            "error": "agent start boom",
+        }
+    ]
 
 
-def test_extension_runner_before_agent_start_returns_messages_and_system_prompt() -> None:
+def test_extension_runner_before_agent_start_returns_messages_and_system_prompt() -> (
+    None
+):
     import asyncio
 
     from loushang.coding.extensions import (
@@ -1492,9 +1792,18 @@ def test_extension_runner_before_agent_start_returns_messages_and_system_prompt(
     )
 
     seen: list[tuple[object, ...]] = []
+    retained_contexts: list[object] = []
 
     def _first(event, ctx):
-        seen.append((event.type, event.prompt, event.system_prompt, event.systemPrompt, ctx.getSystemPrompt()))
+        seen.append(
+            (
+                event.type,
+                event.prompt,
+                event.system_prompt,
+                event.systemPrompt,
+                ctx.getSystemPrompt(),
+            )
+        )
         return BeforeAgentStartResult(
             system_prompt="First override",
             extra_messages=[
@@ -1509,12 +1818,21 @@ def test_extension_runner_before_agent_start_returns_messages_and_system_prompt(
 
     def _second(event, ctx):
         seen.append((event.type, event.system_prompt, ctx.getSystemPrompt()))
+        retained_contexts.append(ctx)
         return {"systemPrompt": "Second override"}
 
     runner = ExtensionRunner(
         [
-            LoadedExtension(name="first", source_path=Path("/tmp/first.py"), hooks={"before_agent_start": [_first]}),
-            LoadedExtension(name="second", source_path=Path("/tmp/second.py"), hooks={"before_agent_start": [_second]}),
+            LoadedExtension(
+                name="first",
+                source_path=Path("/tmp/first.py"),
+                hooks={"before_agent_start": [_first]},
+            ),
+            LoadedExtension(
+                name="second",
+                source_path=Path("/tmp/second.py"),
+                hooks={"before_agent_start": [_second]},
+            ),
         ]
     )
 
@@ -1542,6 +1860,7 @@ def test_extension_runner_before_agent_start_returns_messages_and_system_prompt(
         ("before_agent_start", "hello", "Base prompt", "Base prompt", "Base prompt"),
         ("before_agent_start", "First override", "First override"),
     ]
+    assert retained_contexts[0].getSystemPrompt() == "Second override"
 
 
 def test_extension_runner_user_bash_returns_first_handler_result() -> None:
@@ -1561,14 +1880,27 @@ def test_extension_runner_user_bash_returns_first_handler_result() -> None:
 
     runner = ExtensionRunner(
         [
-            LoadedExtension(name="first", source_path=Path("/tmp/first.py"), hooks={"user_bash": [_first]}),
-            LoadedExtension(name="second", source_path=Path("/tmp/second.py"), hooks={"user_bash": [_second]}),
+            LoadedExtension(
+                name="first",
+                source_path=Path("/tmp/first.py"),
+                hooks={"user_bash": [_first]},
+            ),
+            LoadedExtension(
+                name="second",
+                source_path=Path("/tmp/second.py"),
+                hooks={"user_bash": [_second]},
+            ),
         ]
     )
 
     result = asyncio.run(
         runner.emit_user_bash(
-            {"type": "user_bash", "command": "pwd", "exclude_from_context": True, "cwd": "/tmp/project"},
+            {
+                "type": "user_bash",
+                "command": "pwd",
+                "exclude_from_context": True,
+                "cwd": "/tmp/project",
+            },
             cwd="/tmp/project",
         )
     )
@@ -1597,18 +1929,38 @@ def test_extension_runner_user_bash_reports_runtime_errors() -> None:
             )
         ]
     )
-    runner.bind_runtime(_runtime_bindings(cwd="/tmp/project", active_tool_names=[], model_selection=None, on_error=errors.append))
+    runner.bind_runtime(
+        _runtime_bindings(
+            cwd="/tmp/project",
+            active_tool_names=[],
+            model_selection=None,
+            on_error=errors.append,
+        )
+    )
 
     result = asyncio.run(
         runner.emit_user_bash(
-            {"type": "user_bash", "command": "pwd", "exclude_from_context": False, "cwd": "/tmp/project"},
+            {
+                "type": "user_bash",
+                "command": "pwd",
+                "exclude_from_context": False,
+                "cwd": "/tmp/project",
+            },
             cwd="/tmp/project",
         )
     )
 
     assert result is None
-    assert [diagnostic.code for diagnostic in runner.get_diagnostics()] == ["extension_user_bash_failed"]
-    assert errors == [{"extensionPath": "/tmp/broken.py", "event": "user_bash", "error": "bash hook boom"}]
+    assert [diagnostic.code for diagnostic in runner.get_diagnostics()] == [
+        "extension_user_bash_failed"
+    ]
+    assert errors == [
+        {
+            "extensionPath": "/tmp/broken.py",
+            "event": "user_bash",
+            "error": "bash hook boom",
+        }
+    ]
 
 
 def test_extension_runner_refresh_runtime_updates_context_visible_state() -> None:
@@ -1618,7 +1970,9 @@ def test_extension_runner_refresh_runtime_updates_context_visible_state() -> Non
 
     def _refresh(event, ctx):
         del event
-        seen.append((ctx.cwd, tuple(ctx.get_active_tool_names()), ctx.get_model_selection()))
+        seen.append(
+            (ctx.cwd, tuple(ctx.get_active_tool_names()), ctx.get_model_selection())
+        )
 
     runner = ExtensionRunner(
         [
@@ -1647,7 +2001,11 @@ def test_extension_runner_refresh_runtime_updates_context_visible_state() -> Non
     asyncio.run(runner.emit_session_refresh(object()))
 
     assert seen == [
-        ("/tmp/project", ("read", "grep"), {"provider": "demo", "model_id": "demo-model"})
+        (
+            "/tmp/project",
+            ("read", "grep"),
+            {"provider": "demo", "model_id": "demo-model"},
+        )
     ]
 
 
@@ -1673,7 +2031,10 @@ def test_extension_runner_bind_runtime_and_emit_session_refresh() -> None:
             LoadedExtension(
                 name="demo",
                 source_path=Path("/tmp/extensions/demo.py"),
-                hooks={"session_start": [_session_start], "session_refresh": [_session_refresh]},
+                hooks={
+                    "session_start": [_session_start],
+                    "session_refresh": [_session_refresh],
+                },
             )
         ]
     )
@@ -1693,7 +2054,9 @@ def test_extension_runner_bind_runtime_and_emit_session_refresh() -> None:
             model_selection={"provider": "demo", "model_id": "second"},
         )
     )
-    asyncio.run(runner.emit_session_refresh(SessionRefreshEvent(reason="tools_changed")))
+    asyncio.run(
+        runner.emit_session_refresh(SessionRefreshEvent(reason="tools_changed"))
+    )
 
     assert events == [("start", "/tmp/project"), ("refresh", "/tmp/project-two")]
 
@@ -1741,7 +2104,10 @@ def test_extension_runner_context_queries_are_live_after_refresh() -> None:
     original_get_active_tool_names, original_get_model_selection = held_accessors[0]
 
     assert tuple(original_context.get_active_tool_names()) == ("read", "grep")
-    assert original_context.get_model_selection() == {"provider": "demo", "model_id": "second"}
+    assert original_context.get_model_selection() == {
+        "provider": "demo",
+        "model_id": "second",
+    }
     assert tuple(original_get_active_tool_names()) == ("read", "grep")
     assert original_get_model_selection() == {"provider": "demo", "model_id": "second"}
 
@@ -1753,7 +2119,9 @@ def test_extension_runner_context_queries_are_live_after_refresh() -> None:
     ]
 
 
-def test_extension_runner_context_mutators_delegate_through_live_runtime_bindings() -> None:
+def test_extension_runner_context_mutators_delegate_through_live_runtime_bindings() -> (
+    None
+):
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.loader import ResourceDiagnostic
 
@@ -1793,7 +2161,9 @@ def test_extension_runner_context_mutators_delegate_through_live_runtime_binding
     assert tracker["shutdown_calls"] == 1
 
 
-def test_extension_runner_context_pi_style_session_and_registry_actions_delegate() -> None:
+def test_extension_runner_context_pi_style_session_and_registry_actions_delegate() -> (
+    None
+):
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
 
     tracker: dict[str, object] = {}
@@ -1803,7 +2173,9 @@ def test_extension_runner_context_pi_style_session_and_registry_actions_delegate
         del event
         await ctx.setActiveTools(["read", "grep"])
         ctx.appendEntry("demo_state", {"enabled": True})
-        await ctx.sendMessage({"customType": "demo_message", "content": "hello"}, {"triggerTurn": False})
+        await ctx.sendMessage(
+            {"customType": "demo_message", "content": "hello"}, {"triggerTurn": False}
+        )
         await ctx.sendUserMessage("run this", {"deliverAs": "followUp"})
         ctx.setSessionName("Demo")
         ctx.setLabel("entry-1", "Bookmark")
@@ -1840,7 +2212,9 @@ def test_extension_runner_context_pi_style_session_and_registry_actions_delegate
     assert tracker["send_message_calls"] == [
         ({"customType": "demo_message", "content": "hello"}, {"triggerTurn": False})
     ]
-    assert tracker["send_user_message_calls"] == [("run this", {"deliverAs": "followUp"})]
+    assert tracker["send_user_message_calls"] == [
+        ("run this", {"deliverAs": "followUp"})
+    ]
     assert tracker["set_session_name_calls"] == ["Demo"]
     assert tracker["set_label_calls"] == [("entry-1", "Bookmark")]
     assert seen == [
@@ -1853,7 +2227,9 @@ def test_extension_runner_context_pi_style_session_and_registry_actions_delegate
     ]
 
 
-def test_extension_runner_context_runtime_state_methods_delegate_through_bindings() -> None:
+def test_extension_runner_context_runtime_state_methods_delegate_through_bindings() -> (
+    None
+):
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
 
     seen: list[tuple[object, ...]] = []
@@ -1959,16 +2335,29 @@ def test_extension_runner_context_exposes_pi_style_runtime_properties() -> None:
     )
     asyncio.run(runner.emit_session_start(object()))
 
-    assert seen == [(session_manager, session_manager, model_registry, model_registry, model_selection, signal)]
+    assert seen == [
+        (
+            session_manager,
+            session_manager,
+            model_registry,
+            model_registry,
+            model_selection,
+            signal,
+        )
+    ]
 
 
-def test_extension_runner_command_context_wait_for_idle_and_reload_delegate_through_bindings() -> None:
+def test_extension_runner_command_context_wait_for_idle_and_reload_delegate_through_bindings() -> (
+    None
+):
     import asyncio
 
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
 
     tracker: dict[str, object] = {}
-    runner = ExtensionRunner([LoadedExtension(name="demo", source_path=Path("/tmp/extensions/demo.py"))])
+    runner = ExtensionRunner(
+        [LoadedExtension(name="demo", source_path=Path("/tmp/extensions/demo.py"))]
+    )
     runner.bind_runtime(
         _runtime_bindings(
             cwd="/tmp/project",
@@ -1990,13 +2379,17 @@ def test_extension_runner_command_context_wait_for_idle_and_reload_delegate_thro
     assert tracker["reload_calls"] == 1
 
 
-def test_extension_runner_command_context_navigate_tree_delegates_through_bindings() -> None:
+def test_extension_runner_command_context_navigate_tree_delegates_through_bindings() -> (
+    None
+):
     import asyncio
 
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
 
     tracker: dict[str, object] = {}
-    runner = ExtensionRunner([LoadedExtension(name="demo", source_path=Path("/tmp/extensions/demo.py"))])
+    runner = ExtensionRunner(
+        [LoadedExtension(name="demo", source_path=Path("/tmp/extensions/demo.py"))]
+    )
     runner.bind_runtime(
         _runtime_bindings(
             cwd="/tmp/project",
@@ -2008,10 +2401,12 @@ def test_extension_runner_command_context_navigate_tree_delegates_through_bindin
 
     async def scenario() -> None:
         context = runner.create_command_context(fallback_cwd="/tmp/project")
-        assert await context.navigateTree("entry-1", {"summarize": True, "customInstructions": "brief"}) == {
+        assert await context.navigateTree(
+            "entry-1", {"summarize": True, "customInstructions": "brief"}
+        ) == {"cancelled": False}
+        assert await context.navigate_tree("entry-2", {"label": "keep"}) == {
             "cancelled": False
         }
-        assert await context.navigate_tree("entry-2", {"label": "keep"}) == {"cancelled": False}
 
     asyncio.run(scenario())
 
@@ -2027,7 +2422,9 @@ def test_extension_runner_command_context_fork_delegates_through_bindings() -> N
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
 
     tracker: dict[str, object] = {}
-    runner = ExtensionRunner([LoadedExtension(name="demo", source_path=Path("/tmp/extensions/demo.py"))])
+    runner = ExtensionRunner(
+        [LoadedExtension(name="demo", source_path=Path("/tmp/extensions/demo.py"))]
+    )
     runner.bind_runtime(
         _runtime_bindings(
             cwd="/tmp/project",
@@ -2046,13 +2443,17 @@ def test_extension_runner_command_context_fork_delegates_through_bindings() -> N
     assert tracker["fork_calls"] == ["entry-1"]
 
 
-def test_extension_runner_command_context_new_and_switch_session_delegate_through_bindings() -> None:
+def test_extension_runner_command_context_new_and_switch_session_delegate_through_bindings() -> (
+    None
+):
     import asyncio
 
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
 
     tracker: dict[str, object] = {}
-    runner = ExtensionRunner([LoadedExtension(name="demo", source_path=Path("/tmp/extensions/demo.py"))])
+    runner = ExtensionRunner(
+        [LoadedExtension(name="demo", source_path=Path("/tmp/extensions/demo.py"))]
+    )
     runner.bind_runtime(
         _runtime_bindings(
             cwd="/tmp/project",
@@ -2064,21 +2465,32 @@ def test_extension_runner_command_context_new_and_switch_session_delegate_throug
 
     async def scenario() -> None:
         context = runner.create_command_context(fallback_cwd="/tmp/project")
-        assert await context.newSession({"parentSession": "parent-1"}) == {"cancelled": False}
-        assert await context.new_session({"parent_session": "parent-2"}) == {"cancelled": False}
+        assert await context.newSession({"parentSession": "parent-1"}) == {
+            "cancelled": False
+        }
+        assert await context.new_session({"parent_session": "parent-2"}) == {
+            "cancelled": False
+        }
         assert await context.switchSession("/tmp/session.jsonl") == {"cancelled": False}
-        assert await context.switch_session("/tmp/other.jsonl", {"withSession": "ignored"}) == {"cancelled": False}
+        assert await context.switch_session(
+            "/tmp/other.jsonl", {"withSession": "ignored"}
+        ) == {"cancelled": False}
 
     asyncio.run(scenario())
 
-    assert tracker["new_session_calls"] == [{"parentSession": "parent-1"}, {"parent_session": "parent-2"}]
+    assert tracker["new_session_calls"] == [
+        {"parentSession": "parent-1"},
+        {"parent_session": "parent-2"},
+    ]
     assert tracker["switch_session_calls"] == [
         ("/tmp/session.jsonl", None),
         ("/tmp/other.jsonl", {"withSession": "ignored"}),
     ]
 
 
-def test_extension_runner_command_context_exec_command_delegates_through_bindings() -> None:
+def test_extension_runner_command_context_exec_command_delegates_through_bindings() -> (
+    None
+):
     import asyncio
 
     from loushang.coding.exec import ExecOutputChunk, ExecResult
@@ -2097,7 +2509,9 @@ def test_extension_runner_command_context_exec_command_delegates_through_binding
                 await update
         return ExecResult(exit_code=2, stderr="warn\n")
 
-    runner = ExtensionRunner([LoadedExtension(name="demo", source_path=Path("/tmp/extensions/demo.py"))])
+    runner = ExtensionRunner(
+        [LoadedExtension(name="demo", source_path=Path("/tmp/extensions/demo.py"))]
+    )
     runner.bind_runtime(
         _runtime_bindings(
             cwd="/tmp/project",
@@ -2151,7 +2565,9 @@ def test_extension_runner_command_context_exec_command_delegates_through_binding
 def test_extension_runner_invalidates_captured_runtime_contexts() -> None:
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
 
-    runner = ExtensionRunner([LoadedExtension(name="demo", source_path=Path("/tmp/extensions/demo.py"))])
+    runner = ExtensionRunner(
+        [LoadedExtension(name="demo", source_path=Path("/tmp/extensions/demo.py"))]
+    )
     runner.bind_runtime(
         _runtime_bindings(
             cwd="/tmp/project",
@@ -2276,18 +2692,26 @@ def test_extension_runner_emits_tree_and_compact_decision_hooks() -> None:
                     "session_before_compact": [_after_compact],
                     "session_before_fork": [_after_fork],
                 },
-            )
+            ),
         ]
     )
 
     tree_decision = asyncio.run(
-        runner.before_session_tree(SessionBeforeTreeEvent(target_id="entry-1", old_leaf_id="entry-2", cwd="/tmp/project"))
+        runner.before_session_tree(
+            SessionBeforeTreeEvent(
+                target_id="entry-1", old_leaf_id="entry-2", cwd="/tmp/project"
+            )
+        )
     )
     compact_decision = asyncio.run(
-        runner.before_session_compact(SessionBeforeCompactEvent(reason="manual", cwd="/tmp/project"))
+        runner.before_session_compact(
+            SessionBeforeCompactEvent(reason="manual", cwd="/tmp/project")
+        )
     )
     fork_decision = asyncio.run(
-        runner.before_session_fork(SessionBeforeForkEvent(entry_id="entry-3", cwd="/tmp/project"))
+        runner.before_session_fork(
+            SessionBeforeForkEvent(entry_id="entry-3", cwd="/tmp/project")
+        )
     )
 
     assert tree_decision == SessionBeforeTreeResult(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from loushang.harness.contributions import (
     ContributionDescriptor,
     ContributionRegistry,
@@ -74,15 +76,43 @@ def surfaces_from_loaded_extension(
         )
         for tool in getattr(extension, "tool_definitions", ())
     )
+    registrations = tuple(getattr(extension, "handler_registrations", ()))
+    if registrations:
+        surfaces.extend(
+            ExtensionSurfaceDescriptor(
+                type="hook",
+                name=registration.event_name,
+                extension_id=extension_id,
+                source_path=source_path,
+                priority=registration.priority,
+                after=registration.after,
+                before=registration.before,
+                on_error=registration.on_error,
+                metadata={
+                    "source": "runtime",
+                    "route_id": registration.local_route_id,
+                },
+            )
+            for registration in registrations
+        )
+    else:
+        surfaces.extend(
+            ExtensionSurfaceDescriptor(
+                type="hook",
+                name=event_name,
+                extension_id=extension_id,
+                source_path=source_path,
+                metadata={"source": "runtime"},
+            )
+            for event_name in getattr(extension, "hooks", {})
+        )
     surfaces.extend(
-        ExtensionSurfaceDescriptor(
-            type="hook",
-            name=event_name,
+        replace(
+            contribution.descriptor,
             extension_id=extension_id,
             source_path=source_path,
-            metadata={"source": "runtime"},
         )
-        for event_name in getattr(extension, "hooks", {})
+        for contribution in getattr(extension, "control_contributions", ())
     )
     return tuple(surfaces)
 

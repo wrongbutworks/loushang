@@ -73,6 +73,21 @@ The request capture fields remain caller-supplied neutral configuration. Their
 current defaults are preserved for compatibility; harness does not decide which
 commands a product may run.
 
+`materialize_exec_request()` freezes inherited cwd and the complete merged
+environment before a request crosses an asynchronous policy or execution
+boundary. `ExecRequest.env` remains the caller-visible override set;
+`effective_environment` is the execution-only snapshot and must not be copied
+into approval, audit, or transcript projections. `ExecService` passes the
+materialized request to custom `ExecBackend` implementations, which must honor
+its `cwd` and `effective_environment` without rereading host process state. A
+caller that performs policy evaluation separately must materialize once and use
+the same request for evaluation and execution.
+
+Materialization deliberately preserves the requested command and native
+`argv[0]`/shebang/wrapper behavior. It does not freeze executable lookup,
+executable bytes, or arbitrary files read by a child process. It is a cwd and
+environment binding contract, not a sandbox or immutable filesystem guarantee.
+
 ## Compatibility
 
 Harness-owned classes keep their harness `__module__` and are not exported from

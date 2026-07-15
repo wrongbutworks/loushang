@@ -30,7 +30,9 @@ def test_contribution_descriptor_preserves_values() -> None:
     from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
     source_path = Path("/tmp/extensions/review/extension.py")
-    diagnostic = ResourceDiagnostic(code="inactive_surface", message="Surface is inactive.")
+    diagnostic = ResourceDiagnostic(
+        code="inactive_surface", message="Surface is inactive."
+    )
     descriptor = ContributionDescriptor(
         type="command",
         name="review",
@@ -49,6 +51,32 @@ def test_contribution_descriptor_preserves_values() -> None:
     assert descriptor.metadata == {"source": "manifest"}
     with pytest.raises(FrozenInstanceError):
         descriptor.name = "changed"  # type: ignore[misc]
+
+
+def test_contribution_descriptor_preserves_legacy_positional_field_order() -> None:
+    from loushang.harness.contributions import ExtensionSurfaceDescriptor
+    from loushang.harness.resources.diagnostics import ResourceDiagnostic
+
+    source_path = Path("/tmp/legacy.py")
+    diagnostic = ResourceDiagnostic(code="legacy", message="legacy")
+    descriptor = ExtensionSurfaceDescriptor(
+        "tool",
+        "lookup",
+        "legacy.extension",
+        source_path,
+        False,
+        7,
+        ("filesystem",),
+        (diagnostic,),
+        {"source": "legacy"},
+    )
+
+    assert descriptor.permission_requirements == ("filesystem",)
+    assert descriptor.diagnostics == (diagnostic,)
+    assert descriptor.metadata == {"source": "legacy"}
+    assert descriptor.after == ()
+    assert descriptor.before == ()
+    assert descriptor.on_error == "skip"
 
 
 def test_contribution_registry_preserves_order_and_indexes() -> None:
@@ -77,7 +105,10 @@ def test_contribution_registry_preserves_order_and_indexes() -> None:
     )
 
     registry = ContributionRegistry.from_extensions(
-        [SimpleNamespace(contributions=[tool, command]), SimpleNamespace(surfaces=[other])]
+        [
+            SimpleNamespace(contributions=[tool, command]),
+            SimpleNamespace(surfaces=[other]),
+        ]
     )
 
     assert registry.all() == [tool, command, other]
