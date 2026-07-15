@@ -88,6 +88,28 @@ def test_table_renders_header_rows_fixed_flexible_widths_and_alignment() -> None
     )
 
 
+def test_table_aligns_complex_unicode_cells_with_terminal_width() -> None:
+    table = Table(
+        [
+            TableColumn("key", "Key", width=4),
+            TableColumn("value", "Value", width=5, align="right"),
+        ],
+        [
+            TableRow("keycap", {"key": "1️⃣", "value": "中"}),
+            TableRow("text-presentation", {"key": "☕︎", "value": "A"}),
+        ],
+    )
+
+    lines = plain_lines(table, width=14, height=4)
+
+    assert lines == (
+        "  Key   Value",
+        "  1️⃣       中",
+        "  ☕︎        A",
+    )
+    assert {visible_width(line) for line in lines} == {13}
+
+
 def test_table_truncates_narrow_width_and_short_height() -> None:
     table = Table(
         [

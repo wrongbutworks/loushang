@@ -14,6 +14,7 @@ notice bundle for packaged binaries or container images.
 | `openai` | 2.30.0 | Apache-2.0 | Package metadata |
 | `pillow` | 12.2.0 | MIT-CMU | Package metadata; ships `LICENSE` with bundled component notices |
 | `pygments` | 2.20.0 | BSD-2-Clause | Package metadata; ships `LICENSE` and `AUTHORS` |
+| `wcwidth` | 0.8.2 | MIT | Package metadata; ships `LICENSE` |
 
 ## Distribution Guidance
 
