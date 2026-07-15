@@ -131,7 +131,7 @@ class ScriptRoundSummary:
         self.last_step = step
 
 
-class PerfNativeCodingTuiApp(ScreenCodingTuiApp):
+class PerfScreenCodingTuiApp(ScreenCodingTuiApp):
     __slots__ = ("_last_render_line_count", "perf_reports", "render_stats")
 
     def __init__(self, **kwargs: Any) -> None:
@@ -157,15 +157,21 @@ class PerfNativeCodingTuiApp(ScreenCodingTuiApp):
         return result
 
 
-async def _fake_markdown_handler(app: PerfNativeCodingTuiApp, text: str, *, stream_seconds: float) -> int | None:
+async def _fake_markdown_handler(
+    app: PerfScreenCodingTuiApp, text: str, *, stream_seconds: float
+) -> int | None:
     count = _parse_count(text)
     app.render_stats.reset()
     started = perf_counter()
     app.begin_assistant()
     if count is None:
-        app.append_assistant_chunk("Enter a positive integer, for example `1`, `10`, or `100`.\n")
+        app.append_assistant_chunk(
+            "Enter a positive integer, for example `1`, `10`, or `100`.\n"
+        )
         app.end_assistant()
-        _append_perf_stats(app, requested_lines=0, stream_elapsed_seconds=perf_counter() - started)
+        _append_perf_stats(
+            app, requested_lines=0, stream_elapsed_seconds=perf_counter() - started
+        )
         return None
 
     delay = stream_seconds / max(1, count)
@@ -173,7 +179,9 @@ async def _fake_markdown_handler(app: PerfNativeCodingTuiApp, text: str, *, stre
         app.append_assistant_chunk(_markdown_line(index))
         await asyncio.sleep(delay)
     app.end_assistant()
-    _append_perf_stats(app, requested_lines=count, stream_elapsed_seconds=perf_counter() - started)
+    _append_perf_stats(
+        app, requested_lines=count, stream_elapsed_seconds=perf_counter() - started
+    )
     return None
 
 
@@ -191,14 +199,18 @@ def _markdown_line(index: int) -> str:
     block_prefix = ""
     if (index - 1) % MARKDOWN_LINES_PER_BLOCK == 0:
         block_number = (index - 1) // MARKDOWN_LINES_PER_BLOCK + 1
-        block_prefix = ("" if index == 1 else "\n") + f"### Markdown block {block_number}\n\n"
+        block_prefix = (
+            "" if index == 1 else "\n"
+        ) + f"### Markdown block {block_number}\n\n"
     return (
         block_prefix + f"- **Line {index}**: markdown `code-{index}` with 中文宽字符 "
         f"and [link {index}](https://example.com/{index}).\n"
     )
 
 
-def _append_perf_stats(app: PerfNativeCodingTuiApp, *, requested_lines: int, stream_elapsed_seconds: float) -> None:
+def _append_perf_stats(
+    app: PerfScreenCodingTuiApp, *, requested_lines: int, stream_elapsed_seconds: float
+) -> None:
     stats = app.render_stats
     active_stats = _active_state_stats(app)
     cache_stats = _transcript_cache_stats(app)
@@ -280,8 +292,10 @@ def _append_perf_stats(app: PerfNativeCodingTuiApp, *, requested_lines: int, str
     )
 
 
-async def run_interactive(*, stdin: TextIO, stdout: TextIO, stream_seconds: float) -> int:
-    app = PerfNativeCodingTuiApp(
+async def run_interactive(
+    *, stdin: TextIO, stdout: TextIO, stream_seconds: float
+) -> int:
+    app = PerfScreenCodingTuiApp(
         model_label="fake-model",
         cwd="/repo",
         branch="markdown-perf",
@@ -292,7 +306,9 @@ async def run_interactive(*, stdin: TextIO, stdout: TextIO, stream_seconds: floa
         app=app,
         stdin=stdin,
         stdout=stdout,
-        handle_prompt=lambda prompt: _fake_markdown_handler(app, prompt, stream_seconds=stream_seconds),
+        handle_prompt=lambda prompt: _fake_markdown_handler(
+            app, prompt, stream_seconds=stream_seconds
+        ),
         on_abort=lambda: None,
         should_exit=lambda text: text.strip() in {"/quit", "/exit", "q"},
     )
@@ -313,7 +329,7 @@ async def run_script(
 ) -> int:
     if trace_memory and not tracemalloc.is_tracing():
         tracemalloc.start()
-    app = PerfNativeCodingTuiApp(
+    app = PerfScreenCodingTuiApp(
         model_label="fake-model",
         cwd="/repo",
         branch="markdown-perf",
@@ -346,7 +362,9 @@ async def run_script(
         stdout.write(_script_round_line(round_index, app=app, summary=summary))
 
     if show_final:
-        final = app.render(RenderConstraints(width=width, max_height=height, visible_height=height))
+        final = app.render(
+            RenderConstraints(width=width, max_height=height, visible_height=height)
+        )
         rendered = "\n".join(strip_control_sequences(line.text) for line in final.lines)
         stdout.write("\n")
         stdout.write(f"rendered_line_count={len(final.lines)}\n")
@@ -359,7 +377,7 @@ async def run_script(
 
 async def _drive_script_round(
     *,
-    app: PerfNativeCodingTuiApp,
+    app: PerfScreenCodingTuiApp,
     runtime: TuiRuntime,
     count: int,
     stream_seconds: float,
@@ -384,7 +402,9 @@ async def _drive_script_round(
         if render_every_n_chunks:
             should_render = index % render_every_n_chunks == 0 or index == count
         else:
-            should_render = render_interval <= 0 or now >= next_render_at or index == count
+            should_render = (
+                render_interval <= 0 or now >= next_render_at or index == count
+            )
         if should_render:
             summary.record(runtime.render_now())
             next_render_at = perf_counter() + render_interval
@@ -393,7 +413,9 @@ async def _drive_script_round(
 
     stream_elapsed = perf_counter() - started
     app.end_assistant()
-    _append_perf_stats(app, requested_lines=count, stream_elapsed_seconds=stream_elapsed)
+    _append_perf_stats(
+        app, requested_lines=count, stream_elapsed_seconds=stream_elapsed
+    )
     app.complete_run(elapsed_seconds=stream_elapsed)
     summary.record(runtime.render_now())
     return summary
@@ -402,7 +424,7 @@ async def _drive_script_round(
 def _script_round_line(
     round_index: int,
     *,
-    app: PerfNativeCodingTuiApp,
+    app: PerfScreenCodingTuiApp,
     summary: ScriptRoundSummary,
 ) -> str:
     report = app.perf_reports[-1] if app.perf_reports else None
@@ -480,9 +502,13 @@ def _format_operation_classes(counter: Counter[str]) -> str:
     )
 
 
-def _active_state_stats(app: PerfNativeCodingTuiApp) -> dict[str, int]:
+def _active_state_stats(app: PerfScreenCodingTuiApp) -> dict[str, int]:
     state_record_chars = sum(_record_text_chars(record) for record in app.state.records)
-    assistant_draft_chars = len(app.state.assistant_draft.text) if app.state.assistant_draft is not None else 0
+    assistant_draft_chars = (
+        len(app.state.assistant_draft.text)
+        if app.state.assistant_draft is not None
+        else 0
+    )
     return {
         "state_record_chars": state_record_chars,
         "assistant_draft_chars": assistant_draft_chars,
@@ -499,7 +525,7 @@ def _record_text_chars(record: object) -> int:
     return total
 
 
-def _transcript_cache_stats(app: PerfNativeCodingTuiApp) -> dict[str, int]:
+def _transcript_cache_stats(app: PerfScreenCodingTuiApp) -> dict[str, int]:
     stable_cache = getattr(app._transcript_region, "_stable_line_cache", {})
     stable_lines = 0
     stable_chars = 0
@@ -507,9 +533,17 @@ def _transcript_cache_stats(app: PerfNativeCodingTuiApp) -> dict[str, int]:
         stable_lines += len(lines)
         stable_chars += sum(len(line) for line in lines)
 
-    transient_lines_value = getattr(app._transcript_region, "_transient_line_cache_lines", None)
-    transient_lines = len(transient_lines_value) if transient_lines_value is not None else 0
-    transient_chars = sum(len(line) for line in transient_lines_value) if transient_lines_value is not None else 0
+    transient_lines_value = getattr(
+        app._transcript_region, "_transient_line_cache_lines", None
+    )
+    transient_lines = (
+        len(transient_lines_value) if transient_lines_value is not None else 0
+    )
+    transient_chars = (
+        sum(len(line) for line in transient_lines_value)
+        if transient_lines_value is not None
+        else 0
+    )
     markdown_cache = getattr(app._transcript_region, "_markdown_render_cache", None)
     return {
         "stable_cache_entries": len(stable_cache),
@@ -559,11 +593,31 @@ def _format_range(value: tuple[int, int] | None) -> str:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Manual fake-model Markdown streaming performance harness.")
-    parser.add_argument("--script-count", type=int, help="run one non-interactive fake prompt with this line count")
-    parser.add_argument("--script-rounds", type=int, default=1, help="number of scripted fake prompts to run")
-    parser.add_argument("--show-final", action="store_true", help="print the final rendered snapshot after script stats")
-    parser.add_argument("--stream-seconds", type=float, default=DEFAULT_STREAM_SECONDS, help="target fake stream duration")
+    parser = argparse.ArgumentParser(
+        description="Manual fake-model Markdown streaming performance harness."
+    )
+    parser.add_argument(
+        "--script-count",
+        type=int,
+        help="run one non-interactive fake prompt with this line count",
+    )
+    parser.add_argument(
+        "--script-rounds",
+        type=int,
+        default=1,
+        help="number of scripted fake prompts to run",
+    )
+    parser.add_argument(
+        "--show-final",
+        action="store_true",
+        help="print the final rendered snapshot after script stats",
+    )
+    parser.add_argument(
+        "--stream-seconds",
+        type=float,
+        default=DEFAULT_STREAM_SECONDS,
+        help="target fake stream duration",
+    )
     parser.add_argument(
         "--script-render-interval-ms",
         type=int,
@@ -576,7 +630,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=0,
         help="use a fixed chunk cadence instead of wall-clock render coalescing",
     )
-    parser.add_argument("--trace-memory", action="store_true", help="enable tracemalloc current/peak memory stats")
+    parser.add_argument(
+        "--trace-memory",
+        action="store_true",
+        help="enable tracemalloc current/peak memory stats",
+    )
     parser.add_argument("--width", type=int, default=100, help="script snapshot width")
     parser.add_argument("--height", type=int, default=32, help="script snapshot height")
     return parser.parse_args(argv)
@@ -600,7 +658,11 @@ def main(argv: list[str] | None = None) -> int:
                 render_every_n_chunks=args.script_render_every_n_chunks,
             )
         )
-    return asyncio.run(run_interactive(stdin=sys.stdin, stdout=sys.stdout, stream_seconds=stream_seconds))
+    return asyncio.run(
+        run_interactive(
+            stdin=sys.stdin, stdout=sys.stdout, stream_seconds=stream_seconds
+        )
+    )
 
 
 if __name__ == "__main__":

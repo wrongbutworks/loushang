@@ -19,7 +19,9 @@ _PERF31_PATH = Path(__file__).with_name("31_native_coding_markdown_perf.py")
 
 
 def _load_perf31() -> Any:
-    spec = importlib.util.spec_from_file_location("_native_coding_markdown_perf31", _PERF31_PATH)
+    spec = importlib.util.spec_from_file_location(
+        "_native_coding_markdown_perf31", _PERF31_PATH
+    )
     if spec is None or spec.loader is None:
         raise RuntimeError(f"cannot load {_PERF31_PATH}")
     module = importlib.util.module_from_spec(spec)
@@ -46,7 +48,7 @@ async def run_script(
 ) -> int:
     if trace_memory and not _perf31.tracemalloc.is_tracing():
         _perf31.tracemalloc.start()
-    app = _perf31.PerfNativeCodingTuiApp(
+    app = _perf31.PerfScreenCodingTuiApp(
         model_label="fake-model",
         cwd="/repo",
         branch="markdown-perf-trim",
@@ -74,14 +76,18 @@ async def run_script(
             stream_seconds=stream_seconds,
             render_interval_ms=render_interval_ms,
         )
-        stdout.write(
-            _perf31._script_round_line(round_index, app=app, summary=summary)
-        )
+        stdout.write(_perf31._script_round_line(round_index, app=app, summary=summary))
         trim_step, trim_changed = _trim_and_render(app=app, runtime=runtime)
-        stdout.write(_trim_round_line(round_index, app=app, trim_step=trim_step, trim_changed=trim_changed))
+        stdout.write(
+            _trim_round_line(
+                round_index, app=app, trim_step=trim_step, trim_changed=trim_changed
+            )
+        )
 
     if show_final:
-        final = app.render(RenderConstraints(width=width, max_height=height, visible_height=height))
+        final = app.render(
+            RenderConstraints(width=width, max_height=height, visible_height=height)
+        )
         stdout.write("\n")
         stdout.write(f"rendered_line_count={len(final.lines)}\n")
         for line in final.lines:
@@ -101,7 +107,9 @@ def _trim_and_render(*, app: Any, runtime: TuiRuntime) -> tuple[Any, bool]:
     return step, trim_changed
 
 
-def _trim_round_line(round_index: int, *, app: Any, trim_step: Any, trim_changed: bool) -> str:
+def _trim_round_line(
+    round_index: int, *, app: Any, trim_step: Any, trim_changed: bool
+) -> str:
     diagnostics = trim_step.diagnostics
     current_lines = diagnostics.current_logical_lines
     previous_lines = diagnostics.previous_rendered_lines
@@ -132,15 +140,29 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Scripted fake-model Markdown performance harness with per-round active transcript trimming."
     )
-    parser.add_argument("--script-count", type=int, required=True, help="run fake prompts with this line count")
-    parser.add_argument("--script-rounds", type=int, default=1, help="number of scripted fake prompts to run")
+    parser.add_argument(
+        "--script-count",
+        type=int,
+        required=True,
+        help="run fake prompts with this line count",
+    )
+    parser.add_argument(
+        "--script-rounds",
+        type=int,
+        default=1,
+        help="number of scripted fake prompts to run",
+    )
     parser.add_argument(
         "--active-line-budget",
         type=int,
         default=320,
         help="active transcript line budget applied after every round",
     )
-    parser.add_argument("--show-final", action="store_true", help="print the final rendered snapshot after script stats")
+    parser.add_argument(
+        "--show-final",
+        action="store_true",
+        help="print the final rendered snapshot after script stats",
+    )
     parser.add_argument(
         "--stream-seconds",
         type=float,
@@ -153,7 +175,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=80,
         help="script render coalescing interval; use 0 to render every chunk",
     )
-    parser.add_argument("--trace-memory", action="store_true", help="enable tracemalloc current/peak memory stats")
+    parser.add_argument(
+        "--trace-memory",
+        action="store_true",
+        help="enable tracemalloc current/peak memory stats",
+    )
     parser.add_argument("--width", type=int, default=100, help="script snapshot width")
     parser.add_argument("--height", type=int, default=32, help="script snapshot height")
     return parser.parse_args(argv)

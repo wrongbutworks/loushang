@@ -39,7 +39,7 @@ def test_markdown_perf_render_stats_do_not_iterate_render_lines(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     namespace = runpy.run_path(str(_EXAMPLE))
-    app_class = namespace["PerfNativeCodingTuiApp"]
+    app_class = namespace["PerfScreenCodingTuiApp"]
     lines = _LengthOnlyLines(7)
     expected = RenderResult(lines=lines)
     monkeypatch.setattr(
