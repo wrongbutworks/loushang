@@ -2,25 +2,32 @@
 
 ## Role
 
-- coding 资源发现、聚合与归一化组件
+- Coding 对 `loushang.harness.resources` 平台资源运行时的产品适配层
 
 ## Owns
 
-- `DefaultResourceLoader`
+- `DefaultResourceLoader` compatibility/configuration facade
 - `PackageResourceSummary`
 - `ResourceBundle`
-- 资源发现入口
-- skills / prompts / extensions / themes / `AGENTS.md` 的聚合边界
+- `loushang.coding.resources` 内置内容注册
+- standard/compatibility convention 的选择与默认激活
+- Coding 附加 roots、settings filters、trust/approval policy 的注入
+- Harness resource snapshot 到 Coding prompt/session 的投影
+
+标准根、目录布局、`AGENTS.md` discovery、descriptor、扫描、provenance、
+merge、diagnostics 与 package materialization 由 `loushang.harness.resources`
+拥有。
 
 ## Depends On
 
 - filesystem
 - `control`
+- `loushang.harness.resources`
 
 ## Commands
 
-- `discover_resources(...)`
-- `reload_resources(...)`
+- 配置并调用 Harness `discover_resources(...)`
+- 配置并调用 Harness `reload_resources(...)`
 
 ## Queries
 
@@ -40,8 +47,8 @@
 
 ## Key Data
 
-- `ResourceBundle`
-- `PackageResourceSummary`
+- Harness-owned `ResourceBundle`
+- Harness-owned `PackageResourceSummary`
 - 资源 descriptor provenance：
   - `source`: 原始来源类型，当前主要为 `filesystem`
   - `source_kind`: `built_in` / `project_local` / `external_package`
@@ -53,16 +60,20 @@
 - prompt 最终组装
 - session 生命周期
 - skill / extension 执行逻辑
+- 标准资源根与目录解析
+- 通用 filesystem/package discovery 与 merge engine
 
 ## Reference Implementation Alignment
 
-- 语义上直接对齐 `reference CLI` 的 `DefaultResourceLoader` 作为资源聚合中心的定位
-- `loushang` 可以在内部继续显式拆出 skill/extension/prompt asset 的子边界，但不改变 `loader` 作为资源 hub 的主语义
-- 保留显式 `loader` 边界，避免把资源发现逻辑散落进 bootstrap 或 session
-- loader 是 package provenance 的源头；session / RPC / CLI 只做投影，不重新推断 package 来源
+- 语义上保留 `DefaultResourceLoader` 聚合查询面，但通用实现 owner 是
+  Harness；Coding facade 不保留第二套扫描与合并逻辑
+- 保留显式 Coding loader adapter，避免产品配置散落进 bootstrap 或 session
+- Harness loader 是 package provenance 的源头；Coding session / RPC / CLI
+  只做产品投影，不重新推断 package 来源
 - theme discovery 对齐 参考实现的资源诊断语义：themes 目录下非 `.json` 文件会跳过并记录
   `unsupported_theme_entry` warning，而不是作为 theme descriptor 暴露
-- loader 查询面对齐 `reference CLI` 的资源读取面：`AGENTS.md` 投影、append system prompt fragments、
-  以及基于当前 resource bundle 的 assembled system prompt 都从 `DefaultResourceLoader` 暴露，供 runtime/RPC 复用
+- loader 查询面对齐 `reference CLI` 的资源读取面：Harness 负责
+  `AGENTS.md` resource discovery，Coding facade 负责 append system prompt
+  fragments 和 assembled system prompt 投影，供 runtime/RPC 复用
 - package roots 不再静默失败：missing / invalid / empty package root 会产生稳定 resource diagnostic
 - package summary 查询面提供 prompt / skill / extension / theme / diagnostic 计数，后续 CLI/RPC/TUI 只做展示投影

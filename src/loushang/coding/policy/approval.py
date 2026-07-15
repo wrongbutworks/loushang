@@ -1,146 +1,135 @@
 from __future__ import annotations
 
-import asyncio
 import inspect
-from collections.abc import Awaitable, Mapping
-from dataclasses import dataclass, field, replace
-from typing import Any, Callable, Literal, Protocol, TypeVar
-from uuid import uuid4
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 
-from loushang.coding.policy.types import PolicyDecision
+from loushang.harness.approval import (
+    ApprovalBroker,
+    ApprovalDecision,
+    ApprovalPresenter,
+    ApprovalRequest,
+    ApprovalResolver,
+    DenyApprovalResolver,
+    HeadlessApprovalResolver,
+    MaybeAwaitable,
+    approval_request_to_dict,
+    resolve_approval,
+)
+from loushang.harness.tools.workspace.policy import PolicyEnforcementError
 
-T = TypeVar("T")
-MaybeAwaitable = T | Awaitable[T]
-
-
-@dataclass(frozen=True)
-class ApprovalRequest:
-    tool_name: str
-    arguments: Mapping[str, Any]
-    cwd: str | None = None
-    reason: str | None = None
-    policy_code: str | None = None
-    policy_decision: PolicyDecision | None = None
-    action_id: str | None = None
-
-
-@dataclass(frozen=True)
-class ApprovalDecision:
-    disposition: Literal["allow", "deny"]
-    reason: str | None = None
-
-    @classmethod
-    def allow(cls) -> "ApprovalDecision":
-        return cls(disposition="allow")
-
-    @classmethod
-    def deny(cls, reason: str | None = None) -> "ApprovalDecision":
-        return cls(disposition="deny", reason=reason)
-
-
-class ApprovalResolver(Protocol):
-    def resolve(self, request: ApprovalRequest) -> MaybeAwaitable[ApprovalDecision]: ...
-
-
-class PolicyEnforcementError(PermissionError):
-    def __init__(self, message: str, *, tool_result_details: Mapping[str, Any]) -> None:
-        super().__init__(message)
-        self.tool_result_details = dict(tool_result_details)
-
-
-@dataclass(frozen=True)
-class DenyApprovalResolver:
-    def resolve(self, request: ApprovalRequest) -> ApprovalDecision:
-        return ApprovalDecision.deny(request.reason or f"Tool {request.tool_name} requires approval")
+__all__ = [
+    "ApprovalDecision",
+    "ApprovalRequest",
+    "ApprovalResolver",
+    "DenyApprovalResolver",
+    "HeadlessApprovalResolver",
+    "InteractiveApprovalResolver",
+    "MaybeAwaitable",
+    "PolicyEnforcementError",
+    "resolve_approval",
+]
 
 
 @dataclass
 class InteractiveApprovalResolver:
     fallback: ApprovalResolver
-    _pending_approvals: dict[str, asyncio.Future[ApprovalDecision]] = field(default_factory=dict, init=False, repr=False)
-    _request_presenter: Callable[[dict[str, object]], Awaitable[None] | None] | None = field(default=None, init=False, repr=False)
-    _request_counter: int = field(default=0, init=False, repr=False)
+    timeout_seconds: float | None = None
+    _broker: ApprovalBroker = field(init=False, repr=False)
+    _request_presenter: Callable[[dict[str, object]], Awaitable[None] | None] | None = (
+        field(default=None, init=False, repr=False)
+    )
+    _request_dismisser: Callable[[str], Awaitable[None] | None] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+    _session_open: bool = field(default=True, init=False, repr=False)
+    _session_close_reason: str = field(
+        default="Session closed before approval was resolved",
+        init=False,
+        repr=False,
+    )
 
-    def set_request_presenter(self, presenter: Callable[[dict[str, object]], Awaitable[None] | None] | None) -> None:
+    def __post_init__(self) -> None:
+        self._broker = ApprovalBroker(
+            fallback=self.fallback,
+            timeout_seconds=self.timeout_seconds,
+        )
+
+    def set_request_presenter(
+        self,
+        presenter: Callable[[dict[str, object]], Awaitable[None] | None] | None,
+        *,
+        dismisser: Callable[[str], Awaitable[None] | None] | None = None,
+    ) -> None:
+        if presenter is None and dismisser is not None:
+            raise ValueError("dismisser requires a request presenter")
+        self._broker.set_presenter(
+            _CodingApprovalPresenter(presenter, dismisser)
+            if presenter is not None
+            else None
+        )
         self._request_presenter = presenter
+        self._request_dismisser = dismisser
 
     async def resolve(self, request: ApprovalRequest) -> ApprovalDecision:
-        loop = asyncio.get_running_loop()
-        future = loop.create_future()
-        request_with_id = replace(
-            request,
-            action_id=request.action_id or self._next_action_id(),
+        if not self._session_open:
+            return ApprovalDecision.deny(self._session_close_reason)
+        return await self._broker.resolve(request)
+
+    def open_session(self) -> None:
+        self._session_open = True
+
+    async def handle_result(
+        self, action_id: str, *, approved: bool, reason: str | None = None
+    ) -> bool:
+        return self._broker.resolve_request(
+            action_id,
+            ApprovalDecision.allow() if approved else ApprovalDecision.deny(reason),
         )
-        self._pending_approvals[request_with_id.action_id] = future
-        presented = await self._present_request(request_with_id)
-        if not presented:
-            self._pending_approvals.pop(request_with_id.action_id, None)
-            return await _resolve(self.fallback, request_with_id)
-        try:
-            return await future
-        finally:
-            self._pending_approvals.pop(request_with_id.action_id, None)
 
-    async def handle_result(self, action_id: str, *, approved: bool, reason: str | None = None) -> bool:
-        future = self._pending_approvals.get(action_id)
-        if future is None:
-            return False
-        if future.done():
-            return False
-        future.set_result(ApprovalDecision.allow() if approved else ApprovalDecision.deny(reason))
-        return True
+    def close_session(
+        self,
+        reason: str = "Session closed before approval was resolved",
+    ) -> int:
+        self._session_open = False
+        self._session_close_reason = reason
+        return self._broker.cancel_all(ApprovalDecision.deny(reason))
 
-    async def _present_request(self, request: ApprovalRequest) -> bool:
-        presenter = self._request_presenter
-        if presenter is None:
-            return False
-        payload = {
-            "action_id": request.action_id,
-            "tool_name": request.tool_name,
-            "action": request.reason or f"Approve {request.tool_name} tool call",
-            "risk": request.reason or "Tool call requires approval",
-            "cwd": request.cwd,
-            "arguments": request.arguments,
-            "policy_code": request.policy_code,
-        }
-        result = presenter(payload)
-        if inspect.isawaitable(result):
-            await result
-        return True
-
-    def _next_action_id(self) -> str:
-        self._request_counter += 1
-        return f"approval-{self._request_counter:04d}-{uuid4().hex}"
+    def dispose(
+        self, reason: str = "Session closed before approval was resolved"
+    ) -> int:
+        decision = ApprovalDecision.deny(reason)
+        self._session_open = False
+        self._session_close_reason = reason
+        self._broker.set_presenter(None)
+        self._request_presenter = None
+        self._request_dismisser = None
+        return self._broker.dispose(decision)
 
 
 @dataclass(frozen=True)
-class HeadlessApprovalResolver:
-    mode: Literal["allow", "deny"] = "deny"
-    reason: str | None = None
+class _CodingApprovalPresenter(ApprovalPresenter):
+    callback: Callable[[dict[str, object]], Awaitable[None] | None]
+    dismiss_callback: Callable[[str], Awaitable[None] | None] | None = None
 
-    def __post_init__(self) -> None:
-        if self.mode not in {"allow", "deny"}:
-            raise ValueError(f"Unsupported headless approval mode: {self.mode}")
+    async def present(self, request: ApprovalRequest) -> None:
+        projection = approval_request_to_dict(request)
+        payload: dict[str, object] = {
+            "action_id": projection["action_id"],
+            "tool_name": projection["tool_name"],
+            "action": request.reason or f"Approve {request.tool_name} tool call",
+            "risk": request.reason or "Tool call requires approval",
+            "cwd": projection["cwd"],
+            "arguments": projection["arguments"],
+            "policy_code": projection["policy_code"],
+        }
+        result = self.callback(payload)
+        if inspect.isawaitable(result):
+            await result
 
-    def resolve(self, request: ApprovalRequest) -> ApprovalDecision:
-        if self.mode == "allow":
-            return ApprovalDecision.allow()
-        return ApprovalDecision.deny(self.reason or request.reason or f"Tool {request.tool_name} requires approval")
-
-
-async def resolve_approval(
-    resolver: ApprovalResolver | None,
-    request: ApprovalRequest,
-) -> ApprovalDecision:
-    resolved = resolver or DenyApprovalResolver()
-    result = resolved.resolve(request)
-    if inspect.isawaitable(result):
-        return await result
-    return result
-
-
-async def _resolve(resolver: ApprovalResolver, request: ApprovalRequest) -> ApprovalDecision:
-    result = resolver.resolve(request)
-    if inspect.isawaitable(result):
-        return await result
-    return result
+    def dismiss(self, request: ApprovalRequest) -> Awaitable[None] | None:
+        if self.dismiss_callback is None or request.action_id is None:
+            return None
+        return self.dismiss_callback(request.action_id)

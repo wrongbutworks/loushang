@@ -3,13 +3,14 @@ from __future__ import annotations
 import base64
 import html
 import json
+from dataclasses import asdict
 from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from loushang.coding.message.json_codec import serialize_json_value
 from loushang.coding.session.introspection import build_session_stats
 from loushang.coding.store.file_codec import _serialize_entry, _serialize_header
+from loushang.protocol import require_json_mapping
 
 from .tool_renderer import render_entry_tree, render_tool_sections, render_transcript
 
@@ -35,7 +36,10 @@ def export_session_to_html(session: AgentSession, output_path: str | None = None
             "header": _serialize_header(session.session_manager.get_header()),
             "entries": [_serialize_entry(entry) for entry in entries],
             "leafId": session.session_manager.get_leaf_id(),
-            "stats": serialize_json_value(stats),
+            "stats": require_json_mapping(
+                asdict(stats),
+                name="session_export.stats",
+            ),
             "tree": {
                 "entryCount": len(entries),
                 "leafId": session.session_manager.get_leaf_id(),

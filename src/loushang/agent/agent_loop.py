@@ -4,9 +4,14 @@ import asyncio
 import inspect
 import time
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass, replace
 from typing import Any
 
+from loushang.agent.tool_output import (
+    STRICT_JSON_TOOL_OUTPUT_PROJECTOR,
+    ToolOutputProjectionError,
+)
 from loushang.agent.types import (
     AfterToolCallContext,
     AgentContext,
@@ -32,6 +37,7 @@ from loushang.ai.types import (
     Usage,
 )
 from loushang.observability import get_log
+from loushang.protocol import JSONValue
 
 AgentEventSink = Callable[[AgentEvent], Awaitable[None] | None]
 AgentEventStream = EventStream[AgentEvent, list[AgentMessage]]
@@ -929,18 +935,25 @@ async def _execute_prepared_tool_call(
         update_events: list[asyncio.Task[None]] = []
 
         def on_update(partial_result: AgentToolResult[Any]) -> asyncio.Task[None]:
-            update_event = asyncio.create_task(
-                _emit(
-                    emit,
-                    {
-                        "type": "tool_execution_update",
-                        "tool_call_id": prepared.tool_call.id,
-                        "tool_name": prepared.tool_call.name,
-                        "args": prepared.tool_call.arguments,
-                        "partial_result": partial_result,
-                    },
+            try:
+                event_result = partial_result.for_event()
+            except Exception as error:
+                projection_error = _as_projection_error(error, target="event")
+                _report_projection_problem(
+                    "tool_output_update_projection_failed",
+                    prepared.tool_call,
+                    projection_error,
+                    result=partial_result,
                 )
-            )
+                update_event = asyncio.create_task(_discard_tool_update())
+            else:
+                update_event = asyncio.create_task(
+                    _emit_projected_tool_update(
+                        emit,
+                        prepared.tool_call,
+                        event_result,
+                    )
+                )
             update_events.append(update_event)
             return update_event
 
@@ -985,6 +998,12 @@ async def _finalize_executed_tool_call(
     is_error = executed.is_error
 
     if config.after_tool_call is not None:
+        result, is_error, hook_details = _prepare_hook_projection(
+            prepared.tool_call,
+            result,
+            is_error,
+        )
+        projection_result = result
         try:
             after_result = await config.after_tool_call(
                 AfterToolCallContext(
@@ -994,23 +1013,50 @@ async def _finalize_executed_tool_call(
                     result=result,
                     is_error=is_error,
                     context=current_context,
+                    hook_details=hook_details,
                 ),
                 signal,
             )
             if after_result is not None:
-                result = AgentToolResult(
+                details_provided = after_result.details_provided
+                candidate = AgentToolResult(
                     content=after_result.content
                     if after_result.content is not None
                     else result.content,
                     details=after_result.details
-                    if after_result.details is not None
+                    if details_provided
                     else result.details,
                     terminate=after_result.terminate
                     if after_result.terminate is not None
                     else result.terminate,
+                    projector=(
+                        after_result.projector
+                        if after_result.projector is not None
+                        else (
+                            result.projector
+                            if not details_provided
+                            else STRICT_JSON_TOOL_OUTPUT_PROJECTOR
+                        )
+                    ),
                 )
+                projection_result = candidate
+                if details_provided or after_result.projector is not None:
+                    candidate.hook_details()
+                result = candidate
                 if after_result.is_error is not None:
                     is_error = after_result.is_error
+        except ToolOutputProjectionError as error:
+            _report_projection_problem(
+                "tool_output_projection_failed",
+                prepared.tool_call,
+                error,
+                result=projection_result,
+            )
+            result = _projection_error_tool_result(
+                error,
+                terminate=projection_result.terminate,
+            )
+            is_error = True
         except Exception as error:
             _report_tool_problem(
                 "tool_after_hook_failed",
@@ -1018,7 +1064,11 @@ async def _finalize_executed_tool_call(
                 message=str(error) or error.__class__.__name__,
                 exc=error,
             )
-            result = _create_error_tool_result(str(error), error)
+            result = _create_error_tool_result(
+                str(error),
+                error,
+                terminate=result.terminate,
+            )
             is_error = True
 
     return await _emit_tool_call_outcome(
@@ -1031,12 +1081,192 @@ async def _finalize_executed_tool_call(
 
 
 def _create_error_tool_result(
-    message: str, error: BaseException | None = None
+    message: str,
+    error: BaseException | None = None,
+    *,
+    terminate: object = False,
 ) -> AgentToolResult[Any]:
     return AgentToolResult(
         content=[TextPart(type="text", text=message)],
         details=_error_tool_result_details(error),
+        terminate=_safe_tool_result_terminate(terminate),
     )
+
+
+async def _emit_projected_tool_update(
+    emit: AgentEventSink,
+    tool_call: AgentToolCall,
+    partial_result: AgentToolResult[Any],
+) -> None:
+    await _emit(
+        emit,
+        {
+            "type": "tool_execution_update",
+            "tool_call_id": tool_call.id,
+            "tool_name": tool_call.name,
+            "args": tool_call.arguments,
+            "partial_result": partial_result,
+        },
+    )
+
+
+async def _discard_tool_update() -> None:
+    return None
+
+
+def _prepare_hook_projection(
+    tool_call: AgentToolCall,
+    result: AgentToolResult[Any],
+    is_error: bool,
+) -> tuple[AgentToolResult[Any], bool, JSONValue]:
+    try:
+        return result, is_error, result.hook_details()
+    except Exception as error:
+        projection_error = _as_projection_error(error, target="hook")
+        _report_projection_problem(
+            "tool_output_projection_failed",
+            tool_call,
+            projection_error,
+            result=result,
+        )
+        replacement = _projection_error_tool_result(
+            projection_error,
+            terminate=result.terminate,
+        )
+        return replacement, True, replacement.hook_details()
+
+
+def _ensure_final_tool_output_projections(
+    tool_call: AgentToolCall,
+    result: AgentToolResult[Any],
+    is_error: bool,
+) -> tuple[
+    AgentToolResult[Any],
+    AgentToolResult[Any],
+    AgentToolResult[JSONValue],
+    bool,
+]:
+    if type(is_error) is not bool:
+        projection_error = ToolOutputProjectionError(
+            "event",
+            "Tool output is_error must be a boolean",
+            path="tool_output.is_error",
+            value_type=type(is_error).__name__,
+        )
+        _report_projection_problem(
+            "tool_output_projection_failed",
+            tool_call,
+            projection_error,
+            result=result,
+        )
+        replacement = _projection_error_tool_result(
+            projection_error,
+            terminate=result.terminate,
+        )
+        return (
+            replacement,
+            replacement.for_event(),
+            replacement.for_presentation(),
+            True,
+        )
+    projections: dict[str, AgentToolResult[JSONValue]] = {}
+    for target, project in (
+        ("transcript", result.for_presentation),
+        ("event", result.for_event),
+    ):
+        try:
+            projections[target] = project()
+        except Exception as error:
+            projection_error = _as_projection_error(error, target=target)
+            _report_projection_problem(
+                "tool_output_projection_failed",
+                tool_call,
+                projection_error,
+                result=result,
+            )
+            replacement = _projection_error_tool_result(
+                projection_error,
+                terminate=result.terminate,
+            )
+            return (
+                replacement,
+                replacement.for_event(),
+                replacement.for_presentation(),
+                True,
+            )
+    return result, projections["event"], projections["transcript"], is_error
+
+
+def _as_projection_error(
+    error: Exception,
+    *,
+    target: str,
+) -> ToolOutputProjectionError:
+    if isinstance(error, ToolOutputProjectionError):
+        return ToolOutputProjectionError(
+            error.target,
+            str(error),
+            path=error.path,
+            value_type=error.value_type,
+        )
+    return ToolOutputProjectionError(
+        target,
+        f"Tool output {target} projection raised {type(error).__name__}",
+        path="tool_output.details",
+        value_type=type(error).__name__,
+    )
+
+
+def _report_projection_problem(
+    code: str,
+    tool_call: AgentToolCall,
+    error: ToolOutputProjectionError,
+    *,
+    result: AgentToolResult[Any],
+) -> None:
+    details: dict[str, object] = {
+        "projection_target": error.target,
+        "projection_path": error.path,
+        "value_type": error.value_type,
+    }
+    with suppress(Exception):
+        details["projection_preview"] = result.log_preview()
+    _report_tool_problem(
+        code,
+        tool_call,
+        message=str(error),
+        exc=error,
+        details=details,
+    )
+
+
+def _projection_error_tool_result(
+    error: ToolOutputProjectionError,
+    *,
+    terminate: object = False,
+) -> AgentToolResult[dict[str, JSONValue]]:
+    return AgentToolResult(
+        content=[
+            TextPart(
+                type="text",
+                text=(
+                    "Tool output could not be projected to "
+                    f"{error.target} JSON at {error.path}."
+                ),
+            )
+        ],
+        details={
+            "code": "tool_output_projection_failed",
+            "target": error.target,
+            "path": error.path,
+            "valueType": error.value_type,
+        },
+        terminate=_safe_tool_result_terminate(terminate),
+    )
+
+
+def _safe_tool_result_terminate(value: object) -> bool:
+    return value if type(value) is bool else False
 
 
 def _error_tool_result_details(error: BaseException | None) -> dict[str, Any]:
@@ -1056,27 +1286,35 @@ async def _emit_tool_call_outcome(
     *,
     duration_ms: int | None = None,
 ) -> _FinalizedToolCallOutcome:
+    result, event_result, presentation_result, is_error = (
+        _ensure_final_tool_output_projections(
+            tool_call,
+            result,
+            is_error,
+        )
+    )
     event: dict[str, Any] = {
         "type": "tool_execution_end",
         "tool_call_id": tool_call.id,
         "tool_name": tool_call.name,
-        "result": result,
+        "result": event_result,
         "is_error": is_error,
     }
     if duration_ms is not None:
         event["duration_ms"] = duration_ms
-    await _emit(
-        emit,
-        event,
-    )
     tool_result_message = ToolResultMessage(
         role="toolResult",
         tool_call_id=tool_call.id,
         tool_name=tool_call.name,
-        content=result.content,
-        details=result.details,
+        content=presentation_result.content,
+        details=presentation_result.details,
         is_error=is_error,
         timestamp=time.time() * 1000,
+        terminate=result.terminate,
+    )
+    await _emit(
+        emit,
+        event,
     )
     await _emit(emit, {"type": "message_start", "message": tool_result_message})
     await _emit(emit, {"type": "message_end", "message": tool_result_message})

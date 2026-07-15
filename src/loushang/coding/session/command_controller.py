@@ -2,18 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import cast
 
-from loushang.coding.commands.slash import split_slash_command
-from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.extensions import ExtensionRunner, ResolvedCommand
-from loushang.coding.extensions import SourceInfo as ExtensionSourceInfo
-from loushang.coding.frontmatter import strip_frontmatter
-from loushang.coding.loader import (
-    PromptFragmentDescriptor,
-    ResourceBundle,
-    ResourceDiagnostic,
-    SkillDescriptor,
-)
 from loushang.coding.prompt import (
     PromptPreflightResult,
     preflight_user_input,
@@ -30,8 +21,28 @@ from loushang.coding.session.types import (
     CommandSourceInfo,
     SessionCommandDescriptor,
 )
-from loushang.coding.source_info import source_info_from_resource_descriptor
+from loushang.coding.source_info import (
+    SourceDescriptor,
+    source_info_from_resource_descriptor,
+)
 from loushang.coding.store import SessionManager
+from loushang.harness.capabilities.commands import (
+    CommandDispatchOutcome,
+    CommandHandlerBinding,
+    ParsedSlashCommand,
+    dispatch_command_async,
+    normalize_command_name,
+    split_slash_command,
+)
+from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.frontmatter import strip_frontmatter
+from loushang.harness.resources.source import SourceInfo as ExtensionSourceInfo
+from loushang.harness.resources.types import (
+    PromptFragmentDescriptor,
+    ResourceBundle,
+    SkillDescriptor,
+)
 
 
 @dataclass
@@ -67,7 +78,9 @@ class CommandController:
                         name=prompt.name,
                         description=_command_description_from_prompt(prompt),
                         source="prompt",
-                        source_info=source_info_from_resource_descriptor(prompt),
+                        source_info=source_info_from_resource_descriptor(
+                            cast(SourceDescriptor, prompt)
+                        ),
                         argument_hint=prompt.argument_hint,
                     )
                 )
@@ -79,28 +92,68 @@ class CommandController:
                         name=f"skill:{skill.name}",
                         description=_command_description_from_skill(skill),
                         source="skill",
-                        source_info=source_info_from_resource_descriptor(skill),
+                        source_info=source_info_from_resource_descriptor(
+                            cast(SourceDescriptor, skill)
+                        ),
                     )
                 )
         return commands
 
     async def execute_command_async(self, invocation_name: str, args: str) -> CommandExecutionResult | None:
-        invocation_name = invocation_name[1:] if invocation_name.startswith("/") else invocation_name
+        invocation_name = normalize_command_name(invocation_name)
+        invocation = ParsedSlashCommand(
+            name=invocation_name,
+            args=args,
+            is_mcp=invocation_name.endswith(" (MCP)"),
+        )
+        outcome = await dispatch_command_async(
+            invocation,
+            (
+                CommandHandlerBinding("extension", self._dispatch_extension_command),
+                CommandHandlerBinding("builtin", self._dispatch_builtin_command),
+                CommandHandlerBinding("resource", self._dispatch_resource_command),
+            ),
+        )
+        return outcome.result if outcome.handled else None
+
+    async def _dispatch_extension_command(
+        self,
+        invocation: ParsedSlashCommand,
+    ) -> CommandDispatchOutcome[CommandExecutionResult]:
         extension_runner = self.get_extension_runner()
         if extension_runner is not None:
-            command = extension_runner.get_command(invocation_name)
+            command = extension_runner.get_command(invocation.name)
             if command is not None:
                 context = extension_runner.create_command_context(fallback_cwd=self.session_manager.get_cwd())
                 try:
-                    await command.handler(args, context)
+                    await command.handler(invocation.args, context)
                 except Exception as exc:
                     self.record_extension_command_error(command=command, exc=exc)
-                    return CommandExecutionResult(invocation_name=command.invocation_name, result=None)
-                return CommandExecutionResult(invocation_name=command.invocation_name, result=None)
-        builtin_result = await self.execute_builtin_command_async(invocation_name, args)
-        if builtin_result is not None:
-            return builtin_result
-        return self.execute_resource_command(invocation_name, args)
+                    return CommandDispatchOutcome.handled_result(
+                        CommandExecutionResult(invocation_name=command.invocation_name, result=None)
+                    )
+                return CommandDispatchOutcome.handled_result(
+                    CommandExecutionResult(invocation_name=command.invocation_name, result=None)
+                )
+        return CommandDispatchOutcome.unhandled()
+
+    async def _dispatch_builtin_command(
+        self,
+        invocation: ParsedSlashCommand,
+    ) -> CommandDispatchOutcome[CommandExecutionResult]:
+        result = await self.execute_builtin_command_async(invocation.name, invocation.args)
+        if result is None:
+            return CommandDispatchOutcome.unhandled()
+        return CommandDispatchOutcome.handled_result(result)
+
+    def _dispatch_resource_command(
+        self,
+        invocation: ParsedSlashCommand,
+    ) -> CommandDispatchOutcome[CommandExecutionResult]:
+        result = self.execute_resource_command(invocation.name, invocation.args)
+        if result is None:
+            return CommandDispatchOutcome.unhandled()
+        return CommandDispatchOutcome.handled_result(result)
 
     async def execute_builtin_command_async(self, invocation_name: str, args: str) -> CommandExecutionResult | None:
         if self.builtin_backend is None:
@@ -235,7 +288,7 @@ class CommandController:
         source_info = command.source_info
         diagnostics_service.capture_failure(
             code="extension_command_failed",
-            error=exc,
+            error=exc if isinstance(exc, Exception) else str(exc),
             phase="runtime",
             source="extensions",
             session_id=self.session_manager.get_header().id,

@@ -12,7 +12,7 @@ from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.diagnostics import serialize_diagnostic
+from loushang.coding.diagnostics.serialization import serialize_diagnostic
 
 DEFAULT_DIAGNOSTICS_LIMIT = 50
 

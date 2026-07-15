@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from io import StringIO
-from types import SimpleNamespace
+from os import terminal_size
 from typing import Literal
 
 from loushang.agent import AgentToolResult
@@ -280,7 +280,7 @@ def test_plain_renderer_prints_worked_divider_to_terminal_width(monkeypatch) -> 
     from loushang.coding.ui import plain_renderer as renderer_module
     from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
 
-    monkeypatch.setattr(renderer_module.shutil, "get_terminal_size", lambda fallback: SimpleNamespace(columns=24))
+    monkeypatch.setattr(renderer_module.shutil, "get_terminal_size", lambda fallback: terminal_size((24, 24)))
     stdout = StringIO()
     renderer = PlainCodingUiRenderer(stdout=stdout)
 

@@ -29,7 +29,7 @@ from loushang.coding.control.settings_store import (
     default_project_settings_path,
 )
 from loushang.coding.diag_export import export_diagnostics_bundle
-from loushang.coding.diagnostics import serialize_diagnostic
+from loushang.coding.diagnostics.serialization import serialize_diagnostic
 from loushang.coding.domain import CodingDomainApp, CodingDomainRequest, MethodPolicy
 from loushang.coding.extensions.types import ResolvedFlag
 from loushang.coding.mode import ModeConfig, run_mode, run_print_mode, run_rpc_mode
@@ -44,8 +44,6 @@ from loushang.coding.observability import (
 )
 from loushang.coding.package.projection import collect_package_entries
 from loushang.coding.platform.output_guard import stdout_guard
-from loushang.coding.plugin import PluginManager
-from loushang.coding.plugin.lifecycle import is_remote_plugin_source
 from loushang.coding.policy import (
     ApprovalResolver,
     HeadlessApprovalResolver,
@@ -60,19 +58,23 @@ from loushang.coding.source_info import (
 )
 from loushang.coding.store import SessionQuery
 from loushang.coding.tools import ToolRegistry, register_builtin_tools
-from loushang.coding.tools.path_utils import resolve_tool_path
-from loushang.coding.tools.read import (
-    PillowReadImageResizer,
-    detect_image_dimensions,
-    format_image_dimension_note,
-    image_exceeds_inline_limits,
-)
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.workflow import (
     load_workflow,
     resolve_workflow_files,
     run_prompt_steps_workflow,
+)
+from loushang.harness.resources.plugins import (
+    PluginManager,
+    is_remote_plugin_source,
+)
+from loushang.harness.tools.workspace.path_utils import resolve_tool_path
+from loushang.harness.tools.workspace.read import (
+    PillowReadImageResizer,
+    detect_image_dimensions,
+    format_image_dimension_note,
+    image_exceeds_inline_limits,
 )
 from loushang.method import MethodCompiler, MethodContext, MethodLoader
 from loushang.work import JsonlEventLogBackend, project_work_plan_runs
@@ -108,20 +110,28 @@ def build_builtin_tool_registry(
     registry = ToolRegistry()
     tool_settings = _tool_settings_from_settings_manager(settings_manager)
     resolved_approval_resolver = (
-        approval_resolver if approval_resolver is not None else _approval_resolver_from_tool_settings(tool_settings)
+        approval_resolver
+        if approval_resolver is not None
+        else _approval_resolver_from_tool_settings(tool_settings)
     )
-    get_external_tool_policy = getattr(settings_manager, "get_external_tool_policy", None)
+    get_external_tool_policy = getattr(
+        settings_manager, "get_external_tool_policy", None
+    )
     register_builtin_tools(
         registry,
         diagnostics_service=diagnostics_service,
-        external_tool_policy=get_external_tool_policy() if callable(get_external_tool_policy) else None,
+        external_tool_policy=get_external_tool_policy()
+        if callable(get_external_tool_policy)
+        else None,
         policy_engine=_policy_engine_from_tool_settings(tool_settings),
         approval_resolver=resolved_approval_resolver,
     )
     return registry
 
 
-def _tool_settings_from_settings_manager(settings_manager: object | None) -> object | None:
+def _tool_settings_from_settings_manager(
+    settings_manager: object | None,
+) -> object | None:
     get_tool_settings = getattr(settings_manager, "get_tool_settings", None)
     if callable(get_tool_settings):
         return get_tool_settings()
@@ -131,7 +141,9 @@ def _tool_settings_from_settings_manager(settings_manager: object | None) -> obj
     return None
 
 
-def _policy_engine_from_tool_settings(tool_settings: object | None) -> PolicyEngine | None:
+def _policy_engine_from_tool_settings(
+    tool_settings: object | None,
+) -> PolicyEngine | None:
     if tool_settings is None:
         return None
     kwargs = {
@@ -139,15 +151,21 @@ def _policy_engine_from_tool_settings(tool_settings: object | None) -> PolicyEng
         "ask_tools": _tool_setting_tuple(tool_settings, "ask_tools"),
         "blocked_substrings": _tool_setting_tuple(tool_settings, "blocked_substrings"),
         "ask_substrings": _tool_setting_tuple(tool_settings, "ask_substrings"),
-        "blocked_path_substrings": _tool_setting_tuple(tool_settings, "blocked_path_substrings"),
-        "ask_path_substrings": _tool_setting_tuple(tool_settings, "ask_path_substrings"),
+        "blocked_path_substrings": _tool_setting_tuple(
+            tool_settings, "blocked_path_substrings"
+        ),
+        "ask_path_substrings": _tool_setting_tuple(
+            tool_settings, "ask_path_substrings"
+        ),
     }
     if not any(kwargs.values()):
         return None
     return PolicyEngine(**kwargs)
 
 
-def _approval_resolver_from_tool_settings(tool_settings: object | None) -> HeadlessApprovalResolver | None:
+def _approval_resolver_from_tool_settings(
+    tool_settings: object | None,
+) -> HeadlessApprovalResolver | None:
     if tool_settings is None:
         return None
     approval_mode = getattr(tool_settings, "approval_mode", None)
@@ -173,6 +191,7 @@ def default_runtime_builder(
     session_dir: Path,
     services: BootstrapServices,
     tool_registry: ToolRegistry,
+    approval_resolver: InteractiveApprovalResolver | None = None,
 ):
     if args.no_tools:
         allowed_tool_names = []
@@ -194,6 +213,48 @@ def default_runtime_builder(
         allowed_tool_names=allowed_tool_names,
         active_tool_names=active_tool_names,
         persist=not args.no_session,
+        approval_resolver=approval_resolver,
+    )
+
+
+def _invoke_runtime_builder(
+    runtime_builder,
+    *,
+    args: CliArgs,
+    cwd: Path,
+    session_dir: Path,
+    services: BootstrapServices,
+    tool_registry: ToolRegistry,
+    approval_resolver: InteractiveApprovalResolver | None | object = _MISSING,
+):
+    kwargs = {
+        "args": args,
+        "cwd": cwd,
+        "session_dir": session_dir,
+        "services": services,
+        "tool_registry": tool_registry,
+    }
+    if approval_resolver is not _MISSING and _accepts_keyword_argument(
+        runtime_builder, "approval_resolver"
+    ):
+        kwargs["approval_resolver"] = approval_resolver
+    return runtime_builder(**kwargs)
+
+
+def _accepts_keyword_argument(callback: Any, name: str) -> bool:
+    try:
+        parameters = inspect.signature(callback).parameters
+    except (TypeError, ValueError):
+        return callback is default_runtime_builder
+    parameter = parameters.get(name)
+    if parameter is not None and parameter.kind in {
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.KEYWORD_ONLY,
+    }:
+        return True
+    return any(
+        candidate.kind is inspect.Parameter.VAR_KEYWORD
+        for candidate in parameters.values()
     )
 
 
@@ -271,18 +332,26 @@ async def run_cli(
     if method_error is not None:
         stderr.write(f"Error: {method_error}.\n")
         return 2
-    work_log_inspect_result = _run_work_log_inspect(bootstrap_args, project_root, stdout, stderr)
+    work_log_inspect_result = _run_work_log_inspect(
+        bootstrap_args, project_root, stdout, stderr
+    )
     if work_log_inspect_result is not None:
         return work_log_inspect_result
 
     with _stdout_guard_context(bootstrap_args, stdout, stderr):
         resolved_services = services or build_default_services(project_root)
-        _report_settings_errors_for_resource_commands(bootstrap_args, resolved_services, stderr)
-        resource_toggle_result = _run_resource_toggles(bootstrap_args, resolved_services, stdout, stderr)
+        _report_settings_errors_for_resource_commands(
+            bootstrap_args, resolved_services, stderr
+        )
+        resource_toggle_result = _run_resource_toggles(
+            bootstrap_args, resolved_services, stdout, stderr
+        )
         if resource_toggle_result is not None:
             return resource_toggle_result
         runtime_args = _runtime_args_for_bootstrap(bootstrap_args)
-        session_dir = _resolve_session_dir(runtime_args, project_root, resolved_services)
+        session_dir = _resolve_session_dir(
+            runtime_args, project_root, resolved_services
+        )
         diag_export_result = _run_diag_export(
             bootstrap_args,
             project_root,
@@ -304,16 +373,24 @@ async def run_cli(
             return fake_workflow_result
         settings_manager = getattr(resolved_services, "settings_manager", None)
         tool_settings = _tool_settings_from_settings_manager(settings_manager)
-        configured_approval_resolver = _approval_resolver_from_tool_settings(tool_settings)
-        use_tui_approval_presenter = configured_approval_resolver is None
+        configured_approval_resolver = _approval_resolver_from_tool_settings(
+            tool_settings
+        )
+        interactive_approval_resolver: InteractiveApprovalResolver | None = None
         if configured_approval_resolver is None:
-            configured_approval_resolver = HeadlessApprovalResolver(mode="deny")
-        approval_resolver = InteractiveApprovalResolver(fallback=configured_approval_resolver)
+            interactive_approval_resolver = InteractiveApprovalResolver(
+                fallback=HeadlessApprovalResolver(mode="deny")
+            )
+            approval_resolver: ApprovalResolver = interactive_approval_resolver
+        else:
+            approval_resolver = configured_approval_resolver
         if runtime_args.no_builtin_tools:
             tool_registry = ToolRegistry()
         else:
             tool_registry = build_builtin_tool_registry(
-                diagnostics_service=getattr(resolved_services, "diagnostics_service", None),
+                diagnostics_service=getattr(
+                    resolved_services, "diagnostics_service", None
+                ),
                 settings_manager=getattr(resolved_services, "settings_manager", None),
                 approval_resolver=approval_resolver,
             )
@@ -324,30 +401,35 @@ async def run_cli(
         cwd=project_root,
     ):
         with _stdout_guard_context(bootstrap_args, stdout, stderr):
-            runtime = runtime_builder(
+            runtime = _invoke_runtime_builder(
+                runtime_builder,
                 args=runtime_args,
                 cwd=project_root,
                 session_dir=session_dir,
                 services=resolved_services,
                 tool_registry=tool_registry,
+                approval_resolver=interactive_approval_resolver,
             )
         with _stdout_guard_context(runtime_args, stdout, stderr):
-            list_sessions_result = _run_list_sessions(runtime_args, runtime, stdout, stderr)
+            list_sessions_result = _run_list_sessions(
+                runtime_args, runtime, stdout, stderr
+            )
         if list_sessions_result is not None:
             return list_sessions_result
 
         try:
             with _stdout_guard_context(bootstrap_args, stdout, stderr):
                 session = await _resolve_session(runtime_args, runtime, project_root)
-        except (FileNotFoundError, NotADirectoryError, RuntimeError, ValueError) as error:
+        except (
+            FileNotFoundError,
+            NotADirectoryError,
+            RuntimeError,
+            ValueError,
+        ) as error:
             stderr.write(f"Error: {_format_cli_error(error)}\n")
             return 1
     if session is None:
         return 2
-    if use_tui_approval_presenter:
-        approval_setter = getattr(session, "set_approval_presenter", None)
-        if callable(approval_setter):
-            approval_setter(approval_resolver.set_request_presenter)
     extension_flags = _collect_extension_flags(session)
     args, parse_error_code = _parse_args_for_cli(
         raw_argv,
@@ -389,7 +471,9 @@ async def run_cli(
         if list_skills_result is not None:
             return list_skills_result
 
-        method_visibility_result = _run_method_visibility(args, project_root, stdout, stderr)
+        method_visibility_result = _run_method_visibility(
+            args, project_root, stdout, stderr
+        )
         if method_visibility_result is not None:
             return method_visibility_result
 
@@ -397,11 +481,15 @@ async def run_cli(
         if list_plugins_result is not None:
             return list_plugins_result
 
-        list_packages_result = _run_list_packages(args, session, resolved_services, project_root, stdout, stderr)
+        list_packages_result = _run_list_packages(
+            args, session, resolved_services, project_root, stdout, stderr
+        )
         if list_packages_result is not None:
             return list_packages_result
 
-        package_lifecycle_result = await _run_package_lifecycle(args, session, resolved_services, stdout, stderr)
+        package_lifecycle_result = await _run_package_lifecycle(
+            args, session, resolved_services, stdout, stderr
+        )
         if package_lifecycle_result is not None:
             return package_lifecycle_result
 
@@ -441,7 +529,9 @@ async def run_cli(
 
             if args.mode == "rpc":
                 if args.file_args:
-                    stderr.write("Error: @file arguments are not supported in RPC mode.\n")
+                    stderr.write(
+                        "Error: @file arguments are not supported in RPC mode.\n"
+                    )
                     return 2
                 if rpc_runner is not run_rpc_mode:
                     return await rpc_runner(
@@ -452,7 +542,9 @@ async def run_cli(
                         render_tool_events=args.render_tool_events,
                     )
                 return await mode_runner(
-                    config=ModeConfig(mode="rpc", render_tool_events=args.render_tool_events),
+                    config=ModeConfig(
+                        mode="rpc", render_tool_events=args.render_tool_events
+                    ),
                     runtime=runtime,
                     session=session,
                     user_input=None,
@@ -484,7 +576,9 @@ async def run_cli(
                 stderr.write(f"Error: {_format_cli_error(error)}\n")
                 return 1
             if print_input.user_input is None:
-                stderr.write("Error: prompt is required for prompt/text/print/json modes.\n")
+                stderr.write(
+                    "Error: prompt is required for prompt/text/print/json modes.\n"
+                )
                 return 2
 
             try:
@@ -492,7 +586,9 @@ async def run_cli(
                     CodingDomainRequest(
                         user_input=print_input.user_input,
                         cwd=project_root,
-                        method_policy=_method_policy_from_args(args, settings_manager=settings_manager),
+                        method_policy=_method_policy_from_args(
+                            args, settings_manager=settings_manager
+                        ),
                     )
                 )
             except ValueError as error:
@@ -503,10 +599,18 @@ async def run_cli(
                 for turn_index, prepared_turn in enumerate(prepared_turns):
                     is_first_turn = turn_index == 0
                     is_last_turn = turn_index == len(prepared_turns) - 1
-                    planned_constraint = _prepared_turn_policy_metadata(prepared_turn, "planned_constraint")
-                    audit_policy = _prepared_turn_policy_metadata(prepared_turn, "audit_policy")
-                    plan_facts = _prepared_turn_policy_metadata(prepared_turn, "plan_facts")
-                    step_facts = _prepared_turn_policy_metadata(prepared_turn, "step_facts")
+                    planned_constraint = _prepared_turn_policy_metadata(
+                        prepared_turn, "planned_constraint"
+                    )
+                    audit_policy = _prepared_turn_policy_metadata(
+                        prepared_turn, "audit_policy"
+                    )
+                    plan_facts = _prepared_turn_policy_metadata(
+                        prepared_turn, "plan_facts"
+                    )
+                    step_facts = _prepared_turn_policy_metadata(
+                        prepared_turn, "step_facts"
+                    )
                     exit_code = await prompt_runner(
                         runtime=runtime,
                         session=session,
@@ -514,7 +618,9 @@ async def run_cli(
                         stdout=stdout,
                         stderr=stderr,
                         images=print_input.images if is_first_turn else None,
-                        follow_up_messages=print_input.follow_up_messages if is_last_turn else (),
+                        follow_up_messages=print_input.follow_up_messages
+                        if is_last_turn
+                        else (),
                         verbose=args.verbose,
                         work_event_log=work_event_log,
                         method_id=prepared_turn.method_id,
@@ -541,10 +647,18 @@ async def run_cli(
                 for turn_index, prepared_turn in enumerate(prepared_turns):
                     is_first_turn = turn_index == 0
                     is_last_turn = turn_index == len(prepared_turns) - 1
-                    planned_constraint = _prepared_turn_policy_metadata(prepared_turn, "planned_constraint")
-                    audit_policy = _prepared_turn_policy_metadata(prepared_turn, "audit_policy")
-                    plan_facts = _prepared_turn_policy_metadata(prepared_turn, "plan_facts")
-                    step_facts = _prepared_turn_policy_metadata(prepared_turn, "step_facts")
+                    planned_constraint = _prepared_turn_policy_metadata(
+                        prepared_turn, "planned_constraint"
+                    )
+                    audit_policy = _prepared_turn_policy_metadata(
+                        prepared_turn, "audit_policy"
+                    )
+                    plan_facts = _prepared_turn_policy_metadata(
+                        prepared_turn, "plan_facts"
+                    )
+                    step_facts = _prepared_turn_policy_metadata(
+                        prepared_turn, "step_facts"
+                    )
                     exit_code = await print_runner(
                         runtime=runtime,
                         session=session,
@@ -552,7 +666,9 @@ async def run_cli(
                         stdout=stdout,
                         stderr=stderr,
                         images=print_input.images if is_first_turn else None,
-                        follow_up_messages=print_input.follow_up_messages if is_last_turn else (),
+                        follow_up_messages=print_input.follow_up_messages
+                        if is_last_turn
+                        else (),
                         output_mode=output_mode,
                         render_tool_events=args.render_tool_events,
                         work_event_log=work_event_log,
@@ -578,8 +694,12 @@ async def run_cli(
             for turn_index, prepared_turn in enumerate(prepared_turns):
                 is_first_turn = turn_index == 0
                 is_last_turn = turn_index == len(prepared_turns) - 1
-                planned_constraint = _prepared_turn_policy_metadata(prepared_turn, "planned_constraint")
-                audit_policy = _prepared_turn_policy_metadata(prepared_turn, "audit_policy")
+                planned_constraint = _prepared_turn_policy_metadata(
+                    prepared_turn, "planned_constraint"
+                )
+                audit_policy = _prepared_turn_policy_metadata(
+                    prepared_turn, "audit_policy"
+                )
                 plan_facts = _prepared_turn_policy_metadata(prepared_turn, "plan_facts")
                 step_facts = _prepared_turn_policy_metadata(prepared_turn, "step_facts")
                 exit_code = await mode_runner(
@@ -591,7 +711,9 @@ async def run_cli(
                     session=session,
                     user_input=prepared_turn.prepared_prompt,
                     images=print_input.images if is_first_turn else None,
-                    follow_up_messages=print_input.follow_up_messages if is_last_turn else (),
+                    follow_up_messages=print_input.follow_up_messages
+                    if is_last_turn
+                    else (),
                     stdin=stdin,
                     stdout=stdout,
                     stderr=stderr,
@@ -627,7 +749,9 @@ async def _dispose_runtime_or_session(runtime: Any, session: Any) -> None:
         await result
 
 
-def _prepared_turn_policy_metadata(prepared_turn: Any, key: str) -> Mapping[str, object] | None:
+def _prepared_turn_policy_metadata(
+    prepared_turn: Any, key: str
+) -> Mapping[str, object] | None:
     value = prepared_turn.metadata.get(key)
     if isinstance(value, Mapping) and value:
         return dict(value)
@@ -664,8 +788,12 @@ def _apply_offline_mode(args: CliArgs) -> None:
         os.environ["LOUSHANG_OFFLINE"] = "1"
 
 
-def _configure_resource_loader_from_args(resource_loader: object, args: CliArgs) -> None:
-    _configure_resource_loader(resource_loader, _resource_loader_options_from_args(args))
+def _configure_resource_loader_from_args(
+    resource_loader: object, args: CliArgs
+) -> None:
+    _configure_resource_loader(
+        resource_loader, _resource_loader_options_from_args(args)
+    )
 
 
 def _resource_loader_options_from_args(args: CliArgs) -> dict[str, object]:
@@ -687,15 +815,21 @@ def _resource_loader_options_from_args(args: CliArgs) -> dict[str, object]:
     return options
 
 
-def _configure_resource_loader(resource_loader: object, options: dict[str, object]) -> None:
+def _configure_resource_loader(
+    resource_loader: object, options: dict[str, object]
+) -> None:
     setter = getattr(resource_loader, "set_runtime_options", None)
     if not callable(setter):
         return
     setter(**options)
 
 
-def _cwd_bound_services_factory(services: BootstrapServices, resource_loader_options: dict[str, object]):
-    project_base_dir = getattr(getattr(services, "settings_manager", None), "project_base_dir", None)
+def _cwd_bound_services_factory(
+    services: BootstrapServices, resource_loader_options: dict[str, object]
+):
+    project_base_dir = getattr(
+        getattr(services, "settings_manager", None), "project_base_dir", None
+    )
     if project_base_dir is None:
         return None
 
@@ -709,11 +843,19 @@ def _cwd_bound_services_factory(services: BootstrapServices, resource_loader_opt
 
 
 def _help_belongs_on_stderr(args: CliArgs) -> bool:
-    return bool(args.prompt is not None or args.prompt_steps is not None or args.mode in {"print", "json", "rpc"})
+    return bool(
+        args.prompt is not None
+        or args.prompt_steps is not None
+        or args.mode in {"print", "json", "rpc"}
+    )
 
 
 def _stdout_guard_enabled(args: CliArgs) -> bool:
-    if args.prompt is not None or args.prompt_steps is not None or args.mode in {"print", "json", "rpc"}:
+    if (
+        args.prompt is not None
+        or args.prompt_steps is not None
+        or args.mode in {"print", "json", "rpc"}
+    ):
         return True
     return bool(
         (args.list_sessions and args.list_sessions_format == "json")
@@ -723,7 +865,9 @@ def _stdout_guard_enabled(args: CliArgs) -> bool:
         or (args.list_skills and args.list_skills_format == "json")
         or (args.list_methods and args.list_methods_format == "json")
         or (args.show_method is not None and args.show_method_format == "json")
-        or (args.show_method_plan is not None and args.show_method_plan_format == "json")
+        or (
+            args.show_method_plan is not None and args.show_method_plan_format == "json"
+        )
         or (args.list_plugins and args.list_plugins_format == "json")
         or (args.list_packages and args.list_packages_format == "json")
         or (args.export is not None and args.export_result_format == "json")
@@ -738,7 +882,11 @@ def _stdout_guard_enabled(args: CliArgs) -> bool:
 
 @contextmanager
 def _stdout_guard_context(args: CliArgs, stdout: TextIO, stderr: TextIO):
-    with (stdout_guard(stdout=stdout, stderr=stderr) if _stdout_guard_enabled(args) else nullcontext()):
+    with (
+        stdout_guard(stdout=stdout, stderr=stderr)
+        if _stdout_guard_enabled(args)
+        else nullcontext()
+    ):
         yield
 
 
@@ -854,7 +1002,9 @@ def _method_policy_from_args(
     )
 
 
-def _method_settings_from_settings_manager(settings_manager: object | None) -> object | None:
+def _method_settings_from_settings_manager(
+    settings_manager: object | None,
+) -> object | None:
     get_method_settings = getattr(settings_manager, "get_method_settings", None)
     if callable(get_method_settings):
         return get_method_settings()
@@ -864,26 +1014,44 @@ def _method_settings_from_settings_manager(settings_manager: object | None) -> o
     return None
 
 
-def _resolve_work_event_log(raw_path: str | None, project_root: Path) -> JsonlEventLogBackend | None:
+def _resolve_work_event_log(
+    raw_path: str | None, project_root: Path
+) -> JsonlEventLogBackend | None:
     if raw_path is None:
         return None
     return JsonlEventLogBackend(_resolve_work_log_path(raw_path, project_root))
 
 
-def _run_work_log_inspect(args: CliArgs, project_root: Path, stdout: TextIO, stderr: TextIO) -> int | None:
+def _run_work_log_inspect(
+    args: CliArgs, project_root: Path, stdout: TextIO, stderr: TextIO
+) -> int | None:
     if args.work_log_inspect is None:
         return None
     try:
-        event_log = JsonlEventLogBackend(_resolve_work_log_path(args.work_log_inspect, project_root))
+        event_log = JsonlEventLogBackend(
+            _resolve_work_log_path(args.work_log_inspect, project_root)
+        )
         entries = event_log.query(run_id=args.work_log_run)
     except Exception as error:
         stderr.write(f"Error: {_format_cli_error(error)}\n")
         return 1
     if args.work_log_inspect_format == "json":
         raw_entries = entries[-_WORK_LOG_INSPECT_LIMIT:]
-        stdout.write(json.dumps([_work_log_entry_summary(entry) for entry in raw_entries], ensure_ascii=False) + "\n")
+        stdout.write(
+            json.dumps(
+                [_work_log_entry_summary(entry) for entry in raw_entries],
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
     elif args.work_log_inspect_format == "plans-json":
-        stdout.write(json.dumps([asdict(plan) for plan in project_work_plan_runs(entries)], ensure_ascii=False) + "\n")
+        stdout.write(
+            json.dumps(
+                [asdict(plan) for plan in project_work_plan_runs(entries)],
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
     elif args.work_log_inspect_format == "plans":
         _write_work_log_plan_summary(entries, stdout)
     else:
@@ -996,7 +1164,9 @@ def _write_work_log_plan_summary(entries: list[Any], stdout: TextIO) -> None:
             )
 
 
-def _work_log_plan_step_index(metadata: Mapping[str, object], fallback_index: int) -> str:
+def _work_log_plan_step_index(
+    metadata: Mapping[str, object], fallback_index: int
+) -> str:
     step_index = metadata.get("step_index")
     if isinstance(step_index, int) and not isinstance(step_index, bool):
         return str(step_index + 1)
@@ -1222,7 +1392,9 @@ def _runtime_args_for_bootstrap(args: CliArgs) -> CliArgs:
     return args
 
 
-def _report_settings_errors_for_resource_commands(args: CliArgs, services: Any, stderr: TextIO) -> None:
+def _report_settings_errors_for_resource_commands(
+    args: CliArgs, services: Any, stderr: TextIO
+) -> None:
     if not (
         args.list_plugins
         or args.list_packages
@@ -1235,11 +1407,20 @@ def _report_settings_errors_for_resource_commands(args: CliArgs, services: Any, 
     ):
         return
     settings_manager = getattr(services, "settings_manager", None)
-    context = "package command" if args.list_packages or args.list_plugins or args.add_plugin_sources or args.remove_plugin_sources else "settings command"
+    context = (
+        "package command"
+        if args.list_packages
+        or args.list_plugins
+        or args.add_plugin_sources
+        or args.remove_plugin_sources
+        else "settings command"
+    )
     _report_settings_errors(settings_manager, context=context, stderr=stderr)
 
 
-def _report_settings_errors(settings_manager: Any, *, context: str, stderr: TextIO) -> None:
+def _report_settings_errors(
+    settings_manager: Any, *, context: str, stderr: TextIO
+) -> None:
     drain_errors = getattr(settings_manager, "drain_errors", None)
     if not callable(drain_errors):
         return
@@ -1290,14 +1471,20 @@ def _run_resource_toggles(
         for source in args.add_plugin_sources:
             decision = PackageSecurityPolicy().evaluate_package_source(source)
             if decision.disposition == "deny":
-                _record_package_policy_diagnostic(services, source=source, reason=decision.reason)
+                _record_package_policy_diagnostic(
+                    services, source=source, reason=decision.reason
+                )
                 stderr.write(f"Error: {decision.reason}\n")
                 return 1
             added = settings_manager.add_plugin_source(source, scope="project")
             if added is False:
                 stderr.write(f"Error: plugin source already exists: {source}\n")
                 return 1
-            label = "remote plugin source" if is_remote_plugin_source(source) else "plugin source"
+            label = (
+                "remote plugin source"
+                if is_remote_plugin_source(source)
+                else "plugin source"
+            )
             stdout.write(f"added {label}\t{source}\n")
         for name in args.disable_plugins:
             settings_manager.disable_plugin(name, scope="project")
@@ -1311,7 +1498,9 @@ def _run_resource_toggles(
     return 0
 
 
-def _record_package_policy_diagnostic(services: Any, *, source: str, reason: str | None) -> None:
+def _record_package_policy_diagnostic(
+    services: Any, *, source: str, reason: str | None
+) -> None:
     diagnostics = getattr(services, "diagnostics_service", None)
     capture_failure = getattr(diagnostics, "capture_failure", None)
     if not callable(capture_failure):
@@ -1335,7 +1524,9 @@ async def _resolve_session(args: CliArgs, runtime: Any, project_root: Path):
     elif args.continue_ or args.resume:
         latest_session_file = _resolve_latest_session_file(runtime)
         if latest_session_file is None:
-            raise RuntimeError("No existing session found. Use --session or --resume <session> to restore a specific session.")
+            raise RuntimeError(
+                "No existing session found. Use --session or --resume <session> to restore a specific session."
+            )
         session = await runtime.restore_session(latest_session_file)
     elif args.session:
         session = await runtime.restore_session(args.session)
@@ -1373,7 +1564,9 @@ def _resolve_model_selection(args: CliArgs) -> ModelSelection | None:
         provider, rest = args.model.split(":", 1)
         endpoint_id, model_id = rest.rsplit(":", 1)
         if provider and endpoint_id and model_id:
-            return ModelSelection(provider=provider, endpoint_id=endpoint_id, model_id=model_id)
+            return ModelSelection(
+                provider=provider, endpoint_id=endpoint_id, model_id=model_id
+            )
     if args.provider is not None and args.model is not None:
         return ModelSelection(provider=args.provider, model_id=args.model)
     if args.provider is None and args.model is not None and "/" in args.model:
@@ -1430,7 +1623,13 @@ def _run_list_sessions(
         return 1
     use_index = args.session_index or args.refresh_session_index
     if args.refresh_session_index:
-        refresher = getattr(runtime, "refresh_all_session_indexes" if args.all_sessions else "refresh_session_index", None)
+        refresher = getattr(
+            runtime,
+            "refresh_all_session_indexes"
+            if args.all_sessions
+            else "refresh_session_index",
+            None,
+        )
         if not callable(refresher):
             stderr.write("Error: session index refresh is not available.\n")
             return 1
@@ -1441,24 +1640,48 @@ def _run_list_sessions(
             return 1
 
     if args.all_sessions and query is not None:
-        lister = getattr(runtime, "find_all_indexed_session_summaries" if use_index else "find_all_session_summaries", None)
+        lister = getattr(
+            runtime,
+            "find_all_indexed_session_summaries"
+            if use_index
+            else "find_all_session_summaries",
+            None,
+        )
         if callable(lister):
+
             def call_lister():
                 return lister(query)
         else:
             call_lister = None
     elif query is not None:
-        lister = getattr(runtime, "find_indexed_session_summaries" if use_index else "find_session_summaries", None)
+        lister = getattr(
+            runtime,
+            "find_indexed_session_summaries" if use_index else "find_session_summaries",
+            None,
+        )
         if callable(lister):
+
             def call_lister():
                 return lister(query)
         else:
             call_lister = None
     else:
         if args.all_sessions:
-            lister = getattr(runtime, "list_all_indexed_session_summaries" if use_index else "list_all_session_summaries", None)
+            lister = getattr(
+                runtime,
+                "list_all_indexed_session_summaries"
+                if use_index
+                else "list_all_session_summaries",
+                None,
+            )
         else:
-            lister = getattr(runtime, "list_indexed_session_summaries" if use_index else "list_session_summaries", None)
+            lister = getattr(
+                runtime,
+                "list_indexed_session_summaries"
+                if use_index
+                else "list_session_summaries",
+                None,
+            )
         if not callable(lister) and not use_index:
             lister = getattr(runtime, "list_session_summaries", None)
         if not callable(lister) and not use_index:
@@ -1478,7 +1701,9 @@ def _run_list_sessions(
         return 1
 
     normalized_sessions = [_try_normalize_session_record(record) for record in records]
-    normalized_sessions = [record for record in normalized_sessions if record is not None]
+    normalized_sessions = [
+        record for record in normalized_sessions if record is not None
+    ]
 
     if args.list_sessions_format == "json":
         stdout.write(json.dumps(normalized_sessions, ensure_ascii=False) + "\n")
@@ -1590,7 +1815,9 @@ def _normalize_session_record(record: Any) -> dict[str, object]:
         normalized = {
             "session_id": _string_attr(record, "session_id"),
             "cwd": _string_attr(record, "cwd"),
-            "session_file": _safe_string(session_file) if session_file is not None else None,
+            "session_file": _safe_string(session_file)
+            if session_file is not None
+            else None,
             "parent_session": _nullable_string_attr(record, "parent_session"),
             "leaf_id": _nullable_string_attr(record, "leaf_id"),
             "metadata": {
@@ -1603,7 +1830,9 @@ def _normalize_session_record(record: Any) -> dict[str, object]:
         normalized = {
             "session_id": _string_attr(record, "session_id"),
             "cwd": _string_attr(record, "cwd"),
-            "session_file": _safe_string(session_file) if session_file is not None else None,
+            "session_file": _safe_string(session_file)
+            if session_file is not None
+            else None,
             "parent_session": _nullable_string_attr(record, "parent_session"),
             "leaf_id": _nullable_string_attr(record, "leaf_id"),
             "metadata": {
@@ -1635,7 +1864,9 @@ def _json_safe_value(value: Any) -> object:
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
-        return {_safe_string(key): _json_safe_value(item) for key, item in value.items()}
+        return {
+            _safe_string(key): _json_safe_value(item) for key, item in value.items()
+        }
     if isinstance(value, list | tuple):
         return [_json_safe_value(item) for item in value]
     if isinstance(value, str | int | float | bool) or value is None:
@@ -1738,8 +1969,12 @@ def _process_file_args(
                     continue
                 payload = resize_result.payload
                 mime_type = resize_result.mime_type
-                dimensions = resize_result.dimensions or detect_image_dimensions(mime_type, payload)
-                original_dimensions = resize_result.original_dimensions or original_dimensions
+                dimensions = resize_result.dimensions or detect_image_dimensions(
+                    mime_type, payload
+                )
+                original_dimensions = (
+                    resize_result.original_dimensions or original_dimensions
+                )
                 encoded = base64.b64encode(payload)
                 dimension_note = format_image_dimension_note(
                     original_dimensions=original_dimensions,
@@ -1773,9 +2008,16 @@ def _detect_supported_image_mime_type(path: Path, payload: bytes) -> str | None:
         return "image/jpeg"
     if suffix == ".png" and payload.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png"
-    if suffix == ".gif" and (payload.startswith(b"GIF87a") or payload.startswith(b"GIF89a")):
+    if suffix == ".gif" and (
+        payload.startswith(b"GIF87a") or payload.startswith(b"GIF89a")
+    ):
         return "image/gif"
-    if suffix == ".webp" and len(payload) >= 12 and payload.startswith(b"RIFF") and payload[8:12] == b"WEBP":
+    if (
+        suffix == ".webp"
+        and len(payload) >= 12
+        and payload.startswith(b"RIFF")
+        and payload[8:12] == b"WEBP"
+    ):
         return "image/webp"
     return None
 
@@ -1856,9 +2098,15 @@ def _run_list_models(
         stderr.write("Error: model listing returned an invalid response.\n")
         return 1
     sorted_models = _unique_sorted_models(models)
-    normalized_models = _normalize_model_entries(sorted_models, include_metadata=include_metadata)
+    normalized_models = _normalize_model_entries(
+        sorted_models, include_metadata=include_metadata
+    )
     if query:
-        normalized_models = [entry for entry in normalized_models if _model_entry_matches_query(entry, query)]
+        normalized_models = [
+            entry
+            for entry in normalized_models
+            if _model_entry_matches_query(entry, query)
+        ]
     if args.list_models_format == "json":
         stdout.write(json.dumps(normalized_models, ensure_ascii=False) + "\n")
         return 0
@@ -1891,7 +2139,9 @@ def _unique_sorted_models(models: list[Any]) -> list[Any]:
     return [by_key[key] for key in sorted(by_key)]
 
 
-def _normalize_model_entries(models: list[Any], *, include_metadata: bool = False) -> list[dict[str, object]]:
+def _normalize_model_entries(
+    models: list[Any], *, include_metadata: bool = False
+) -> list[dict[str, object]]:
     entries: list[dict[str, object]] = []
     for selection in models:
         provider = _model_provider(selection)
@@ -1908,8 +2158,12 @@ def _normalize_model_entries(models: list[Any], *, include_metadata: bool = Fals
                 {
                     "context_window": _optional_int_attr(selection, "context_window"),
                     "max_tokens": _optional_int_attr(selection, "max_tokens"),
-                    "supports_thinking": _bool_model_attr(selection, "supports_thinking", "reasoning"),
-                    "supports_images": _bool_model_attr(selection, "supports_image_input"),
+                    "supports_thinking": _bool_model_attr(
+                        selection, "supports_thinking", "reasoning"
+                    ),
+                    "supports_images": _bool_model_attr(
+                        selection, "supports_image_input"
+                    ),
                 }
             )
         entries.append(entry)
@@ -1965,7 +2219,9 @@ def _is_subsequence(needle: str, haystack: str) -> bool:
     return all(char in haystack_iter for char in needle)
 
 
-def _write_model_metadata_table(models: list[dict[str, object]], stdout: TextIO) -> None:
+def _write_model_metadata_table(
+    models: list[dict[str, object]], stdout: TextIO
+) -> None:
     rows = [
         (
             str(model["provider"]),
@@ -1979,7 +2235,9 @@ def _write_model_metadata_table(models: list[dict[str, object]], stdout: TextIO)
     ]
     headers = ("provider", "model", "context", "max-out", "thinking", "images")
     widths = [
-        max(len(headers[index]), *(len(row[index]) for row in rows)) if rows else len(headers[index])
+        max(len(headers[index]), *(len(row[index]) for row in rows))
+        if rows
+        else len(headers[index])
         for index in range(len(headers))
     ]
     stdout.write(_format_model_table_row(headers, widths) + "\n")
@@ -1988,7 +2246,9 @@ def _write_model_metadata_table(models: list[dict[str, object]], stdout: TextIO)
 
 
 def _format_model_table_row(row: tuple[str, ...], widths: list[int]) -> str:
-    return "  ".join(value.ljust(widths[index]) for index, value in enumerate(row)).rstrip()
+    return "  ".join(
+        value.ljust(widths[index]) for index, value in enumerate(row)
+    ).rstrip()
 
 
 def _format_context_window(value: object) -> str:
@@ -2106,12 +2366,18 @@ def _run_list_skills(
     if skills is None:
         stderr.write("Error: skill loader is not available.\n")
         return 1
-    normalized = [_normalize_skill_entry(skill) for skill in skills if _normalize_skill_entry(skill) is not None]
+    normalized = [
+        _normalize_skill_entry(skill)
+        for skill in skills
+        if _normalize_skill_entry(skill) is not None
+    ]
     if args.list_skills_format == "json":
         stdout.write(json.dumps(normalized, ensure_ascii=False) + "\n")
         return 0
     for skill in normalized:
-        stdout.write(f"{skill['name']}\t{skill['source_kind']}\t{skill['path']}\t{skill['enabled']}\n")
+        stdout.write(
+            f"{skill['name']}\t{skill['source_kind']}\t{skill['path']}\t{skill['enabled']}\n"
+        )
     return 0
 
 
@@ -2147,7 +2413,9 @@ def _normalize_skill_entry(skill: Any) -> dict[str, object] | None:
         "source_scope": _safe_getattr(skill, "source_scope", "") or "",
         "source": _safe_getattr(skill, "source", "") or "",
         "source_root": _safe_string(source_root) if source_root is not None else "",
-        "disable_model_invocation": bool(_safe_getattr(skill, "disable_model_invocation", False)),
+        "disable_model_invocation": bool(
+            _safe_getattr(skill, "disable_model_invocation", False)
+        ),
         "enabled": bool(_safe_getattr(skill, "enabled", True)),
         "diagnostics": [
             normalized
@@ -2177,7 +2445,11 @@ def _run_method_visibility(
     stdout: TextIO,
     stderr: TextIO,
 ) -> int | None:
-    if not args.list_methods and args.show_method is None and args.show_method_plan is None:
+    if (
+        not args.list_methods
+        and args.show_method is None
+        and args.show_method_plan is None
+    ):
         return None
 
     try:
@@ -2204,7 +2476,9 @@ def _run_method_visibility(
             stderr.write(f"Error: method not found: {args.show_method_plan}\n")
             return 1
         try:
-            plan = MethodCompiler().compile(method, context=MethodContext(domain="coding"))
+            plan = MethodCompiler().compile(
+                method, context=MethodContext(domain="coding")
+            )
         except Exception as error:
             stderr.write(f"Error: {_format_cli_error(error)}\n")
             return 1
@@ -2231,7 +2505,10 @@ def _run_method_visibility(
 
 def _find_method(methods: list[Any], id_or_name: str) -> Any | None:
     for method in methods:
-        if _safe_getattr(method, "id", None) == id_or_name or _safe_getattr(method, "name", None) == id_or_name:
+        if (
+            _safe_getattr(method, "id", None) == id_or_name
+            or _safe_getattr(method, "name", None) == id_or_name
+        ):
             return method
     return None
 
@@ -2246,7 +2523,9 @@ def _normalize_method_entry(method: Any) -> dict[str, object]:
         "meta_role": _safe_getattr(method, "meta_role", None),
         "phase": _safe_getattr(method, "phase", None),
         "path": _safe_getattr(method, "source_path", "") or "",
-        "applicability": _normalize_method_applicability(_safe_getattr(method, "applicability", None)),
+        "applicability": _normalize_method_applicability(
+            _safe_getattr(method, "applicability", None)
+        ),
     }
 
 
@@ -2255,12 +2534,16 @@ def _normalize_method_applicability(applicability: Any) -> dict[str, object]:
         "domains": _string_list(_safe_getattr(applicability, "domains", ())),
         "task_types": _string_list(_safe_getattr(applicability, "task_types", ())),
         "contexts": _string_list(_safe_getattr(applicability, "contexts", ())),
-        "artifact_types": _string_list(_safe_getattr(applicability, "artifact_types", ())),
+        "artifact_types": _string_list(
+            _safe_getattr(applicability, "artifact_types", ())
+        ),
         "modalities": _string_list(_safe_getattr(applicability, "modalities", ())),
         "toolchains": _string_list(_safe_getattr(applicability, "toolchains", ())),
         "lifecycle": _string_list(_safe_getattr(applicability, "lifecycle", ())),
         "capabilities": _string_list(_safe_getattr(applicability, "capabilities", ())),
-        "complexity": _optional_string(_safe_getattr(applicability, "complexity", None)),
+        "complexity": _optional_string(
+            _safe_getattr(applicability, "complexity", None)
+        ),
         "risk": _optional_string(_safe_getattr(applicability, "risk", None)),
         "tags": _normalize_method_tags(_safe_getattr(applicability, "tags", {})),
     }
@@ -2277,9 +2560,14 @@ def _normalize_method_plan(method: Any, plan: Any) -> dict[str, object]:
             "activity": _safe_getattr(plan, "activity", None),
             "task": _safe_getattr(plan, "task", None),
             "metadata": _json_safe(_safe_getattr(plan, "metadata", {})),
-            "applicability": _normalize_method_applicability(_safe_getattr(plan, "applicability", None)),
+            "applicability": _normalize_method_applicability(
+                _safe_getattr(plan, "applicability", None)
+            ),
         },
-        "steps": [_normalize_method_plan_step(step) for step in _safe_getattr(plan, "steps", ())],
+        "steps": [
+            _normalize_method_plan_step(step)
+            for step in _safe_getattr(plan, "steps", ())
+        ],
     }
 
 
@@ -2292,7 +2580,9 @@ def _normalize_method_plan_step(step: Any) -> dict[str, object]:
         "projection": _json_safe(_safe_getattr(step, "projection", {})),
         "constraint": _json_safe(_safe_getattr(step, "constraint", {})),
         "audit": _json_safe(_safe_getattr(step, "audit", {})),
-        "applicability": _normalize_method_applicability(_safe_getattr(step, "applicability", None)),
+        "applicability": _normalize_method_applicability(
+            _safe_getattr(step, "applicability", None)
+        ),
     }
 
 
@@ -2340,7 +2630,9 @@ def _format_method_detail(method: Mapping[str, object]) -> str:
         value = method.get(key)
         if value:
             lines.append(f"{key}: {value}")
-    applicability_lines = _format_method_applicability_lines(method.get("applicability"))
+    applicability_lines = _format_method_applicability_lines(
+        method.get("applicability")
+    )
     if applicability_lines:
         lines.append("applicability:")
         lines.extend(applicability_lines)
@@ -2376,7 +2668,9 @@ def _format_method_plan_detail(payload: Mapping[str, object]) -> str:
                 lines.append(f"     guidance: {guidance}")
             constraint = _method_plan_step_mapping(raw_step, "constraint")
             if constraint:
-                lines.append(f"     constraint: {json.dumps(constraint, ensure_ascii=False)}")
+                lines.append(
+                    f"     constraint: {json.dumps(constraint, ensure_ascii=False)}"
+                )
             audit = _method_plan_step_mapping(raw_step, "audit")
             if audit:
                 lines.append(f"     audit: {json.dumps(audit, ensure_ascii=False)}")
@@ -2397,7 +2691,9 @@ def _method_plan_step_guidance(step: Mapping[str, object]) -> str:
     return ""
 
 
-def _method_plan_step_mapping(step: Mapping[str, object], key: str) -> Mapping[str, object]:
+def _method_plan_step_mapping(
+    step: Mapping[str, object], key: str
+) -> Mapping[str, object]:
     value = step.get(key)
     if isinstance(value, Mapping):
         return value
@@ -2465,7 +2761,9 @@ def _run_list_plugins(
         stdout.write(json.dumps(normalized, ensure_ascii=False) + "\n")
         return 0
     for plugin in normalized:
-        stdout.write(f"{plugin['name']}\t{plugin['version']}\t{plugin['path']}\t{plugin['enabled']}\n")
+        stdout.write(
+            f"{plugin['name']}\t{plugin['version']}\t{plugin['path']}\t{plugin['enabled']}\n"
+        )
     return 0
 
 
@@ -2473,7 +2771,11 @@ def _normalize_plugin_entry(plugin: Any) -> dict[str, object]:
     manifest = _safe_getattr(plugin, "manifest", None)
     source = _safe_getattr(plugin, "source", None)
     source_kind = _safe_getattr(source, "kind", "local")
-    source_value = _safe_getattr(source, "url", None) if source_kind == "remote" else _safe_getattr(source, "path", "")
+    source_value = (
+        _safe_getattr(source, "url", None)
+        if source_kind == "remote"
+        else _safe_getattr(source, "path", "")
+    )
     return {
         "name": _safe_string(_safe_getattr(manifest, "name", "")),
         "version": _safe_string(_safe_getattr(manifest, "version", "")),
@@ -2513,7 +2815,9 @@ def _run_list_packages(
                     disabled_plugins=tuple(getattr(settings, "disabled_plugins", ())),
                     cwd=project_root,
                     settings_manager=settings_manager,
-                    catalog_path=Path(args.package_catalog).expanduser().resolve() if args.package_catalog else None,
+                    catalog_path=Path(args.package_catalog).expanduser().resolve()
+                    if args.package_catalog
+                    else None,
                     materializer=getattr(session, "_package_materializer", None),
                 )
     except Exception as error:
@@ -2550,7 +2854,9 @@ def _write_package_text_list(packages: list[dict[str, object]], stdout: TextIO) 
     ordered_scopes.extend(sorted(scope for scope in scopes if scope not in scope_order))
     first_group = True
     for scope in ordered_scopes:
-        scoped_packages = [package for package in packages if str(package.get("scope", "")) == scope]
+        scoped_packages = [
+            package for package in packages if str(package.get("scope", "")) == scope
+        ]
         if not scoped_packages:
             continue
         if not first_group:
@@ -2613,29 +2919,41 @@ def _format_package_resources(package: dict[str, object]) -> str:
     return " ".join(parts)
 
 
-async def _run_package_lifecycle(args: CliArgs, session: Any, services: Any, stdout: TextIO, stderr: TextIO) -> int | None:
+async def _run_package_lifecycle(
+    args: CliArgs, session: Any, services: Any, stdout: TextIO, stderr: TextIO
+) -> int | None:
     install_operations: list[tuple[str, str, str]] = [
-        ("install_package", "install_package", source) for source in args.install_packages
+        ("install_package", "install_package", source)
+        for source in args.install_packages
     ]
     operations: list[tuple[str, str, str]] = []
     operations.extend(
-        ("materialize_package", "materialize_package", source) for source in args.materialize_packages
+        ("materialize_package", "materialize_package", source)
+        for source in args.materialize_packages
     )
-    operations.extend(("update_package", "update_package", source) for source in args.update_packages)
-    operations.extend(("remove_package", "remove_package", source) for source in args.remove_packages)
-    operations.extend(("uninstall_package", "uninstall_package", source) for source in args.uninstall_packages)
+    operations.extend(
+        ("update_package", "update_package", source) for source in args.update_packages
+    )
+    operations.extend(
+        ("remove_package", "remove_package", source) for source in args.remove_packages
+    )
+    operations.extend(
+        ("uninstall_package", "uninstall_package", source)
+        for source in args.uninstall_packages
+    )
     bulk_operations: list[tuple[str, str]] = []
     if args.check_package_updates:
         bulk_operations.append(("check_package_updates", "check_package_updates"))
     if args.update_all_packages:
         bulk_operations.append(("update_packages", "update_packages"))
-    if not operations and not install_operations:
-        if not bulk_operations:
-            return None
+    if not operations and not install_operations and not bulk_operations:
+        return None
     for command, method_name, source in install_operations:
         decision = PackageSecurityPolicy().evaluate_package_source(source)
         if decision.disposition == "deny":
-            _record_package_policy_diagnostic(services, source=source, reason=decision.reason)
+            _record_package_policy_diagnostic(
+                services, source=source, reason=decision.reason
+            )
             stderr.write(f"Error: {decision.reason}\n")
             return 1
         method = getattr(session, method_name, None)
@@ -2652,7 +2970,10 @@ async def _run_package_lifecycle(args: CliArgs, session: Any, services: Any, std
         if failure := _package_lifecycle_failure(record):
             stderr.write(f"Error: {failure}\n")
             return 1
-        stdout.write(json.dumps({"command": command, "record": record}, ensure_ascii=False) + "\n")
+        stdout.write(
+            json.dumps({"command": command, "record": record}, ensure_ascii=False)
+            + "\n"
+        )
     for command, method_name in bulk_operations:
         method = getattr(session, method_name, None)
         if not callable(method):
@@ -2670,7 +2991,10 @@ async def _run_package_lifecycle(args: CliArgs, session: Any, services: Any, std
                 if failure := _package_lifecycle_failure(record):
                     stderr.write(f"Error: {failure}\n")
                     return 1
-        stdout.write(json.dumps({"command": command, "records": records}, ensure_ascii=False) + "\n")
+        stdout.write(
+            json.dumps({"command": command, "records": records}, ensure_ascii=False)
+            + "\n"
+        )
     for command, method_name, source in operations:
         method = getattr(session, method_name, None)
         if not callable(method):
@@ -2689,7 +3013,10 @@ async def _run_package_lifecycle(args: CliArgs, session: Any, services: Any, std
         if failure := _package_lifecycle_failure(record):
             stderr.write(f"Error: {failure}\n")
             return 1
-        stdout.write(json.dumps({"command": command, "record": record}, ensure_ascii=False) + "\n")
+        stdout.write(
+            json.dumps({"command": command, "record": record}, ensure_ascii=False)
+            + "\n"
+        )
     return 0
 
 
@@ -2699,7 +3026,11 @@ def _package_lifecycle_failure(record: object) -> str | None:
     if record.get("lifecycle") != "failed":
         return None
     message = record.get("errorMessage", record.get("error_message"))
-    return str(message) if isinstance(message, str) and message else "Package lifecycle failed."
+    return (
+        str(message)
+        if isinstance(message, str) and message
+        else "Package lifecycle failed."
+    )
 
 
 def _serialize_command_descriptor(command: object) -> dict[str, object] | None:
@@ -2754,20 +3085,26 @@ async def _collect_extension_flags_for_help(
     )
     resolved_services = services or build_default_services(project_root)
     try:
-        session_dir = _resolve_session_dir(bootstrap_args, project_root, resolved_services)
+        session_dir = _resolve_session_dir(
+            bootstrap_args, project_root, resolved_services
+        )
         if bootstrap_args.no_builtin_tools:
             tool_registry = ToolRegistry()
         else:
             tool_registry = build_builtin_tool_registry(
-                diagnostics_service=getattr(resolved_services, "diagnostics_service", None),
+                diagnostics_service=getattr(
+                    resolved_services, "diagnostics_service", None
+                ),
                 settings_manager=getattr(resolved_services, "settings_manager", None),
             )
-        runtime = runtime_builder(
+        runtime = _invoke_runtime_builder(
+            runtime_builder,
             args=bootstrap_args,
             cwd=project_root,
             session_dir=session_dir,
             services=resolved_services,
             tool_registry=tool_registry,
+            approval_resolver=None,
         )
         session = await _resolve_session(bootstrap_args, runtime, project_root)
         if session is None:
@@ -2792,8 +3129,7 @@ def _help_text(extension_flags: Mapping[str, ExtensionFlag] | None = None) -> st
                 line += f" (default={flag.default!r})"
             text += line
     return (
-        text
-        + "\n\n"
+        text + "\n\n"
         "Output formats:\n"
         "  --list-models-format text|json controls --list-models output.\n"
         "  --list-sessions-format tsv|json controls --list-sessions output; --all-sessions searches across session dirs.\n"

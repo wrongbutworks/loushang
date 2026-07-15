@@ -10,7 +10,7 @@
 
 归属组件：
 
-- `diagnostics`
+- `loushang.harness.diagnostics.types`
 
 角色：
 
@@ -29,7 +29,7 @@
 
 归属组件：
 
-- `diagnostics`
+- `loushang.harness.diagnostics.types`
 
 角色：
 
@@ -46,7 +46,7 @@
 
 归属组件：
 
-- `diagnostics`
+- `loushang.coding.diagnostics.serialization`
 
 角色：
 
@@ -63,7 +63,7 @@
 
 归属组件：
 
-- `diagnostics`
+- `loushang.harness.diagnostics.types`
 
 角色：
 
@@ -86,3 +86,4 @@
 - `DiagnosticRecord` 偏内部诊断对象
 - `ErrorReport` 偏对外投影对象
 - `serialize_diagnostic(...)` / `serialize_error_report(...)` 是 CLI/RPC 共享的稳定投影层
+- Harness owns the neutral records and engine; Coding owns serialized product payloads and presentation.

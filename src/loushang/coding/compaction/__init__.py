@@ -14,10 +14,6 @@ from loushang.coding.compaction.compaction import (
     prepare_compaction,
     should_compact,
 )
-from loushang.coding.compaction.policy import (
-    CompactionBudget,
-    calculate_compaction_budget,
-)
 from loushang.coding.compaction.service import CompactionCoordinator
 from loushang.coding.compaction.summary_quality import (
     SummaryEvaluationCase,
@@ -39,8 +35,12 @@ from loushang.coding.compaction.types import (
     CompactionPreparation,
     CompactionResult,
     CompactionStatus,
-    ContextUsageEstimate,
 )
+from loushang.harness.context.budget import (
+    CompactionBudget,
+    calculate_compaction_budget,
+)
+from loushang.harness.context.usage import ContextUsageEstimate
 
 __all__ = [
     "BranchPreparation",

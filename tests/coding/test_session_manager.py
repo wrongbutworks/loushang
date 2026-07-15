@@ -183,6 +183,26 @@ def test_append_message_rejects_projected_summary_messages(tmp_path) -> None:
         )
 
 
+def test_session_manager_rejects_non_json_custom_metadata(tmp_path) -> None:
+    from pathlib import Path
+
+    import pytest
+
+    from loushang.coding.store import SessionManager
+    from loushang.protocol import JsonValueError
+
+    manager = SessionManager.new(
+        session_dir=tmp_path,
+        cwd="/tmp/project",
+        persist=False,
+    )
+
+    with pytest.raises(JsonValueError) as exc_info:
+        manager.append_custom_entry("demo", {"path": Path("notes.txt")})
+
+    assert exc_info.value.path == "custom_entry.data.path"
+
+
 def test_branch_with_summary_creates_projected_branch_entry(tmp_path) -> None:
     from loushang.ai.types import TextPart, UserMessage
     from loushang.coding.message import BranchSummaryEntry
@@ -380,6 +400,46 @@ def test_list_summaries_and_find_sessions_query_across_session_files(tmp_path) -
         "Beta"
     ]
     assert len(SessionManager.find_sessions(tmp_path, SessionQuery(limit=1))) == 1
+
+
+def test_list_summaries_skips_one_projection_failure(tmp_path, monkeypatch) -> None:
+    from loushang.coding.store import SessionManager
+    from loushang.coding.store import session_manager as session_manager_module
+    from loushang.harness.conversation import FunctionalConversationProjector
+
+    SessionManager.new(
+        session_dir=tmp_path,
+        cwd="/tmp/good",
+        persist=True,
+        session_id="good",
+    )
+    SessionManager.new(
+        session_dir=tmp_path,
+        cwd="/tmp/bad",
+        persist=True,
+        session_id="bad",
+    )
+    original = session_manager_module._SESSION_SUMMARY_PROJECTOR
+
+    def project(header, records, leaf_id, source_path):
+        if header.id == "bad":
+            raise ValueError("bad product projection")
+        return original.project(
+            header=header,
+            records=records,
+            leaf_id=leaf_id,
+            source_path=source_path,
+        )
+
+    monkeypatch.setattr(
+        session_manager_module,
+        "_SESSION_SUMMARY_PROJECTOR",
+        FunctionalConversationProjector(project),
+    )
+
+    assert [summary.session_id for summary in SessionManager.list_summaries(tmp_path)] == [
+        "good"
+    ]
 
 
 def test_session_manager_rename_session_file_appends_session_info(tmp_path) -> None:

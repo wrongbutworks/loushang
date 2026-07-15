@@ -154,6 +154,90 @@ def test_build_session_context_uses_latest_compaction_summary_only(tmp_path) -> 
     assert "second answer" in _context_text(context.messages)
 
 
+def test_latest_compaction_skips_superseded_malformed_history() -> None:
+    from loushang.coding.store.session_manager import build_session_context
+
+    malformed_custom = CustomMessageEntry(
+        type="custom_message",
+        id="old-custom",
+        parent_id=None,
+        timestamp="not-an-iso-timestamp",
+        custom_type="legacy",
+        content="superseded",
+        display=True,
+    )
+    model_change = ModelChangeEntry(
+        type="model_change",
+        id="model",
+        parent_id="old-custom",
+        timestamp="2026-05-20T09:00:00.000Z",
+        provider="openai",
+        model_id="gpt-5.4",
+    )
+    old_message = SessionMessageEntry(
+        type="message",
+        id="old-message",
+        parent_id="model",
+        timestamp="2026-05-20T09:00:01.000Z",
+        message=UserMessage(role="user", content="old", timestamp=1.0),
+    )
+    malformed_checkpoint = CompactionEntry(
+        type="compaction",
+        id="old-checkpoint",
+        parent_id="old-message",
+        timestamp="also-not-an-iso-timestamp",
+        summary="superseded summary",
+        first_kept_entry_id="old-message",
+        tokens_before=10,
+    )
+    kept_message = SessionMessageEntry(
+        type="message",
+        id="kept-message",
+        parent_id="old-checkpoint",
+        timestamp="2026-05-20T09:00:02.000Z",
+        message=UserMessage(role="user", content="kept", timestamp=2.0),
+    )
+    latest_checkpoint = CompactionEntry(
+        type="compaction",
+        id="latest-checkpoint",
+        parent_id="kept-message",
+        timestamp="2026-05-20T09:00:03.000Z",
+        summary="current summary",
+        first_kept_entry_id="kept-message",
+        tokens_before=20,
+    )
+    tail_message = SessionMessageEntry(
+        type="message",
+        id="tail-message",
+        parent_id="latest-checkpoint",
+        timestamp="2026-05-20T09:00:04.000Z",
+        message=UserMessage(role="user", content="tail", timestamp=3.0),
+    )
+
+    context = build_session_context(
+        [
+            malformed_custom,
+            model_change,
+            old_message,
+            malformed_checkpoint,
+            kept_message,
+            latest_checkpoint,
+            tail_message,
+        ],
+        leaf_id="tail-message",
+    )
+
+    assert [message.role for message in context.messages] == [
+        "compactionSummary",
+        "user",
+        "user",
+    ]
+    assert context.messages[0].summary == "current summary"  # type: ignore[attr-defined]
+    assert context.messages[1].content == "kept"  # type: ignore[union-attr]
+    assert context.messages[2].content == "tail"  # type: ignore[union-attr]
+    assert context.model == {"provider": "openai", "model_id": "gpt-5.4"}
+
+
 def test_build_session_context_preserves_state_across_compaction() -> None:
     from loushang.coding.store.session_manager import build_session_context
 
@@ -225,3 +309,41 @@ def test_build_session_context_explicit_none_leaf_means_before_first_entry() -> 
     assert context.messages == []
     assert context.thinking_level == "off"
     assert context.model is None
+
+
+def test_build_session_context_unknown_leaf_preserves_empty_context_compatibility() -> None:
+    from loushang.coding.store.session_manager import build_session_context
+
+    entry = SessionMessageEntry(
+        type="message",
+        id="e1",
+        parent_id=None,
+        timestamp="2026-05-20T09:00:00.000Z",
+        message=UserMessage(
+            role="user",
+            content=[TextPart(type="text", text="root")],
+            timestamp=0.0,
+        ),
+    )
+
+    context = build_session_context([entry], leaf_id="missing")
+
+    assert context == type(context)()
+
+
+def test_build_session_context_recovers_blank_compaction_boundary(tmp_path) -> None:
+    from loushang.coding.store import SessionManager
+
+    manager = SessionManager.new(tmp_path, cwd=str(tmp_path), persist=False)
+    manager.append_message(UserMessage(role="user", content="old", timestamp=1.0))
+    manager.append_compaction("recovered summary", "", 10)
+    manager.append_message(UserMessage(role="user", content="after", timestamp=2.0))
+
+    context = manager.build_session_context()
+
+    assert [message.role for message in context.messages] == [
+        "compactionSummary",
+        "user",
+    ]
+    assert context.messages[0].summary == "recovered summary"  # type: ignore[attr-defined]
+    assert context.messages[1].content == "after"  # type: ignore[union-attr]

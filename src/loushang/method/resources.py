@@ -6,7 +6,10 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Protocol
 
-from loushang.resource.frontmatter import FrontmatterParseError, parse_frontmatter
+from loushang.harness.resources.frontmatter import (
+    FrontmatterParseError,
+    parse_frontmatter,
+)
 
 _EMPTY_METADATA: Mapping[str, object] = MappingProxyType({})
 

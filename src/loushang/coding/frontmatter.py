@@ -1,4 +1,4 @@
-from loushang.resource.frontmatter import (
+from loushang.harness.resources.frontmatter import (
     FrontmatterParseError,
     ParsedFrontmatter,
     parse_frontmatter,

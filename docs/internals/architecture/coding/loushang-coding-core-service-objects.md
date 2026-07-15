@@ -244,23 +244,24 @@
 
 角色：
 
-- 统一资源发现与加载服务
+- Harness 平台资源发现与加载服务的 Coding facade
 
 主要职责：
 
-- 加载 `AGENTS.md`
-- 加载 prompts / skills / extensions / themes 等资源
-- 聚合运行时资源
-- 作为资源发现与归一化的聚合中心
+- 注册 Coding 内置资源内容
+- 选择标准/兼容 conventions、附加 roots 与 settings filters
+- 注入 Coding trust、权限和默认激活策略
+- 将 Harness resource snapshot 聚合为 Coding 运行时投影
 
 对齐情况：
 
-- 直接对齐 `DefaultResourceLoader`
+- 查询语义对齐 `DefaultResourceLoader`；扫描、provenance、merge 与 package
+  materialization 的实现 owner 是 `loushang.harness.resources`
 
 备注：
 
-- `ExtensionLoader` / `SkillLoader` 等可保留为显式子边界
-- 但不应削弱 `DefaultResourceLoader` 作为资源 hub 的主语义
+- `ExtensionLoader` / `SkillLoader` 等可保留为产品投影子边界
+- `DefaultResourceLoader` 应成为小型 facade，不保留第二套通用资源引擎
 
 ### `ExtensionRunner`
 

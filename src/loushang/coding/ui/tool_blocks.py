@@ -5,19 +5,23 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from loushang.agent.types import AgentToolResult
-from loushang.coding.tools import (
+from loushang.harness.presentation import (
     ToolDefinitionResolver,
     ToolRenderRuntime,
-    render_tool_result_presentation,
 )
-from loushang.coding.tools.output_preview import (
+from loushang.harness.tools.workspace.output_preview import (
     collapse_tool_output_preview,
     drop_tool_timing_tail_line,
     prefers_tail_tool_output,
 )
+from loushang.harness.tools.workspace.presentation import (
+    render_tool_result_presentation,
+)
 from loushang.tui.render import diff_stat
 
-ToolTranscriptStatus = Literal["running", "ok", "error", "cancelled", "timed_out", "terminate"]
+ToolTranscriptStatus = Literal[
+    "running", "ok", "error", "cancelled", "timed_out", "terminate"
+]
 
 
 @dataclass(frozen=True)
@@ -51,9 +55,13 @@ class ToolTranscriptProjector:
     def remember_call(self, event: Mapping[str, Any]) -> ToolCallSnapshot:
         tool_name = _tool_name(event)
         rendered = self._render_event_text(event, expanded=False)
-        return ToolCallSnapshot(tool_name=tool_name, args=event.get("args"), rendered_call_text=rendered)
+        return ToolCallSnapshot(
+            tool_name=tool_name, args=event.get("args"), rendered_call_text=rendered
+        )
 
-    def project_result(self, event: Mapping[str, Any], snapshot: ToolCallSnapshot | None = None) -> ToolTranscriptBlock:
+    def project_result(
+        self, event: Mapping[str, Any], snapshot: ToolCallSnapshot | None = None
+    ) -> ToolTranscriptBlock:
         tool_call_id = _tool_call_id(event)
         tool_name = snapshot.tool_name if snapshot is not None else _tool_name(event)
         args = snapshot.args if snapshot is not None else event.get("args")
@@ -95,7 +103,9 @@ class ToolTranscriptProjector:
         }
         return self.project_result(event)
 
-    def _render_event_text(self, event: Mapping[str, Any], *, expanded: bool) -> str | None:
+    def _render_event_text(
+        self, event: Mapping[str, Any], *, expanded: bool
+    ) -> str | None:
         if self.tool_definition_resolver is None or self.render_runtime is None:
             return None
         try:
@@ -157,7 +167,9 @@ def _arg_detail(args: object | None) -> str | None:
 def _verb(tool_name: str, args: object | None) -> str:
     normalized = tool_name.lower()
     command = _command_from_args(args).lower()
-    if any(part in normalized for part in ("read", "grep", "glob", "list", "ls", "search")):
+    if any(
+        part in normalized for part in ("read", "grep", "glob", "list", "ls", "search")
+    ):
         return "Explored"
     if any(part in normalized for part in ("edit", "write", "patch")):
         return "Edited"
@@ -179,11 +191,16 @@ def _command_from_args(args: object | None) -> str:
 
 
 def _result_status(event: Mapping[str, Any]) -> ToolTranscriptStatus:
-    result = event.get("partial_result") if event.get("type") == "tool_execution_update" else event.get("result")
-    if isinstance(result, AgentToolResult) and isinstance(result.details, Mapping):
-        if result.details.get("timed_out") is True or result.details.get("timedOut") is True:
+    result = (
+        event.get("partial_result")
+        if event.get("type") == "tool_execution_update"
+        else event.get("result")
+    )
+    details = _transcript_result_details(result)
+    if details:
+        if details.get("timed_out") is True or details.get("timedOut") is True:
             return "timed_out"
-        if result.details.get("cancelled") is True or result.details.get("canceled") is True:
+        if details.get("cancelled") is True or details.get("canceled") is True:
             return "cancelled"
     if bool(event.get("is_error", False)):
         return "error"
@@ -192,7 +209,9 @@ def _result_status(event: Mapping[str, Any]) -> ToolTranscriptStatus:
     return "ok"
 
 
-def _detail(event: Mapping[str, Any], *, tool_name: str, status: ToolTranscriptStatus) -> str | None:
+def _detail(
+    event: Mapping[str, Any], *, tool_name: str, status: ToolTranscriptStatus
+) -> str | None:
     if status == "ok":
         return _ok_detail(event, tool_name=tool_name)
     if status == "error":
@@ -208,9 +227,13 @@ def _detail(event: Mapping[str, Any], *, tool_name: str, status: ToolTranscriptS
 
 
 def _ok_detail(event: Mapping[str, Any], *, tool_name: str) -> str | None:
-    result = event.get("partial_result") if event.get("type") == "tool_execution_update" else event.get("result")
-    details = getattr(result, "details", None)
-    if not isinstance(details, Mapping):
+    result = (
+        event.get("partial_result")
+        if event.get("type") == "tool_execution_update"
+        else event.get("result")
+    )
+    details = _transcript_result_details(result)
+    if not details:
         return None
     normalized = tool_name.lower()
     if any(part in normalized for part in ("edit", "patch")):
@@ -284,18 +307,47 @@ def _should_show_body(tool_name: str, status: ToolTranscriptStatus) -> bool:
     if status != "ok":
         return False
     normalized = tool_name.lower()
-    return any(part in normalized for part in ("bash", "shell", "exec", "run", "grep", "find", "ls", "test", "lint", "ruff", "pytest"))
+    return any(
+        part in normalized
+        for part in (
+            "bash",
+            "shell",
+            "exec",
+            "run",
+            "grep",
+            "find",
+            "ls",
+            "test",
+            "lint",
+            "ruff",
+            "pytest",
+        )
+    )
 
 
 def _fallback_result_text(event: Mapping[str, Any], *, max_lines: int) -> str:
-    result = event.get("partial_result") if event.get("type") == "tool_execution_update" else event.get("result")
+    result = (
+        event.get("partial_result")
+        if event.get("type") == "tool_execution_update"
+        else event.get("result")
+    )
     if not isinstance(result, AgentToolResult):
         return ""
     return render_tool_result_presentation(
         result.content,
-        result.details,
+        _transcript_result_details(result),
         max_collapsed_lines=max_lines,
     ).collapsed
+
+
+def _transcript_result_details(result: object) -> Mapping[str, Any]:
+    if not isinstance(result, AgentToolResult):
+        return {}
+    try:
+        details = result.transcript_details()
+    except Exception:
+        return {}
+    return details if isinstance(details, Mapping) else {}
 
 
 def _tool_error_summary(result: object) -> str | None:

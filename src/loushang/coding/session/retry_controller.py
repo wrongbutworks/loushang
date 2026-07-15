@@ -3,13 +3,19 @@ from __future__ import annotations
 import asyncio
 import re
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from loushang.agent import AbortController, AbortSignal, Agent
 from loushang.ai.types import AssistantMessage
 from loushang.ai.utils import is_context_overflow
 from loushang.coding.control import RetrySettings
 from loushang.coding.event import AgentSessionEvent
+from loushang.harness.host.retry import (
+    RetryAttempt,
+    RetryCoordinator,
+    RetryOutcome,
+    RetryPolicy,
+)
 
 _NON_RETRYABLE_ERROR_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
     re.compile(pattern, re.IGNORECASE)
@@ -67,6 +73,7 @@ EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
 ContinueRun = Callable[[], Awaitable[None]]
 RuntimeExceptionRecorder = Callable[..., None]
 RetrySleeper = Callable[[int, AbortSignal], Awaitable[None]]
+WaitForIdle = Callable[[], Awaitable[None]]
 
 
 @dataclass
@@ -77,42 +84,58 @@ class RetryController:
     continue_run: ContinueRun
     record_runtime_exception: RuntimeExceptionRecorder
     sleep_for_retry: RetrySleeper
-    _retry_attempt: int = 0
-    _retry_future: asyncio.Future[None] | object | None = None
-    _retry_abort_controller: AbortController | None = None
+    wait_for_idle: WaitForIdle | None = None
+    _coordinator: RetryCoordinator[AbortController] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._coordinator = RetryCoordinator(
+            create_cancel_handle=AbortController,
+            cancel=lambda controller: controller.abort(),
+            delay=lambda delay_ms, controller: self.sleep_for_retry(
+                delay_ms, controller.signal
+            ),
+            continue_run=self.continue_run,
+            on_started=self._on_started,
+            on_finished=self._on_finished,
+            wait_for_idle=self.wait_for_idle or self.agent.wait_for_idle,
+        )
 
     @property
     def attempt(self) -> int:
-        return self._retry_attempt
+        return self._coordinator.attempt
+
+    @attempt.setter
+    def attempt(self, value: int) -> None:
+        self._coordinator.attempt = value
 
     @property
     def retry_future(self) -> asyncio.Future[None] | object | None:
-        return self._retry_future
+        return self._coordinator.future
 
     @retry_future.setter
     def retry_future(self, value: asyncio.Future[None] | object | None) -> None:
-        self._retry_future = value
+        self._coordinator.future = value
 
     @property
     def is_retrying(self) -> bool:
-        return self._retry_future is not None
+        return self._coordinator.is_retrying
+
+    @property
+    def cancel_handle(self) -> AbortController | None:
+        return self._coordinator.cancel_handle
+
+    @cancel_handle.setter
+    def cancel_handle(self, value: AbortController | None) -> None:
+        self._coordinator.cancel_handle = value
 
     def abort(self) -> None:
-        if self._retry_abort_controller is not None:
-            self._retry_abort_controller.abort()
+        self._coordinator.abort()
 
     async def wait(self) -> None:
-        retry_future = self._retry_future
-        if retry_future is None:
-            return
-        if isinstance(retry_future, asyncio.Future):
-            await retry_future
-        await self.agent.wait_for_idle()
+        await self._coordinator.wait()
 
     def ensure_future(self) -> asyncio.Future[None]:
-        if not isinstance(self._retry_future, asyncio.Future):
-            self._retry_future = asyncio.get_running_loop().create_future()
-        return self._retry_future
+        return self._coordinator.ensure_waiter()
 
     async def finish(
         self,
@@ -121,84 +144,91 @@ class RetryController:
         attempt: int,
         final_error: str | None = None,
     ) -> None:
-        event: AgentSessionEvent = {
-            "type": "auto_retry_end",
-            "success": success,
-            "attempt": attempt,
-        }
-        if final_error is not None:
-            event["final_error"] = final_error
-            self.record_runtime_exception(
-                code="retry_cancelled" if final_error == "Retry cancelled" else "retry_failed",
-                exc=final_error,
+        await self._coordinator.finish(
+            RetryOutcome(
+                success=success,
+                attempt=attempt,
+                error=final_error,
+                cancelled=final_error == "Retry cancelled",
             )
-        await self.dispatch_event(event)
-        retry_future = self._retry_future
-        if isinstance(retry_future, asyncio.Future) and not retry_future.done():
-            retry_future.set_result(None)
-        self._retry_future = None
-        self._retry_abort_controller = None
-        self._retry_attempt = 0
+        )
 
-    async def finish_success_if_needed(self, assistant_message: AssistantMessage) -> None:
-        if assistant_message.stop_reason != "error" and self._retry_attempt > 0:
-            await self.finish(success=True, attempt=self._retry_attempt)
+    async def finish_success_if_needed(
+        self, assistant_message: AssistantMessage
+    ) -> None:
+        if assistant_message.stop_reason != "error" and self.attempt > 0:
+            await self.finish(success=True, attempt=self.attempt)
 
     def should_prepare_retry(self, assistant_message: AssistantMessage) -> bool:
         settings = self.get_settings()
         return settings.enabled and self.is_retryable_error(assistant_message)
 
     def is_retryable_error(self, assistant_message: AssistantMessage) -> bool:
-        if assistant_message.stop_reason != "error" or not assistant_message.error_message:
+        if (
+            assistant_message.stop_reason != "error"
+            or not assistant_message.error_message
+        ):
             return False
         context_window = self.agent.model.context_window or 0
         if is_context_overflow(assistant_message, context_window):
             return False
-        if any(pattern.search(assistant_message.error_message) for pattern in _NON_RETRYABLE_ERROR_PATTERNS):
+        if any(
+            pattern.search(assistant_message.error_message)
+            for pattern in _NON_RETRYABLE_ERROR_PATTERNS
+        ):
             return False
-        return any(pattern.search(assistant_message.error_message) for pattern in _RETRYABLE_ERROR_PATTERNS)
+        return any(
+            pattern.search(assistant_message.error_message)
+            for pattern in _RETRYABLE_ERROR_PATTERNS
+        )
 
     async def handle_retryable_error(self, assistant_message: AssistantMessage) -> bool:
         settings = self.get_settings()
-        if not settings.enabled:
-            if self._retry_future is not None:
-                await self.finish(
-                    success=False,
-                    attempt=self._retry_attempt,
-                    final_error=assistant_message.error_message,
-                )
-            return False
+        return await self._coordinator.retry(
+            assistant_message.error_message or "",
+            policy=RetryPolicy(
+                enabled=settings.enabled,
+                max_attempts=settings.max_retries,
+                base_delay_ms=settings.base_delay_ms,
+            ),
+            before_retry=self._remove_failed_assistant,
+        )
 
-        self.ensure_future()
-        self._retry_attempt += 1
-        if self._retry_attempt > settings.max_retries:
-            await self.finish(
-                success=False,
-                attempt=self._retry_attempt - 1,
-                final_error=assistant_message.error_message,
-            )
-            return False
-
-        delay_ms = settings.base_delay_ms * 2 ** (self._retry_attempt - 1)
+    async def _on_started(self, attempt: RetryAttempt) -> None:
         await self.dispatch_event(
             {
                 "type": "auto_retry_start",
-                "attempt": self._retry_attempt,
-                "max_attempts": settings.max_retries,
-                "delay_ms": delay_ms,
-                "error_message": assistant_message.error_message,
+                "attempt": attempt.attempt,
+                "max_attempts": attempt.max_attempts,
+                "delay_ms": attempt.delay_ms,
+                "error_message": attempt.error,
             }
         )
-        if self.agent.state.messages and getattr(self.agent.state.messages[-1], "role", None) == "assistant":
+
+    async def _on_finished(self, outcome: RetryOutcome) -> None:
+        final_error = "Retry cancelled" if outcome.cancelled else outcome.error
+        if final_error is not None:
+            self.record_runtime_exception(
+                code="retry_cancelled" if outcome.cancelled else "retry_failed",
+                exc=final_error,
+            )
+            event: AgentSessionEvent = {
+                "type": "auto_retry_end",
+                "success": outcome.success,
+                "attempt": outcome.attempt,
+                "final_error": final_error,
+            }
+        else:
+            event = {
+                "type": "auto_retry_end",
+                "success": outcome.success,
+                "attempt": outcome.attempt,
+            }
+        await self.dispatch_event(event)
+
+    def _remove_failed_assistant(self) -> None:
+        if (
+            self.agent.state.messages
+            and getattr(self.agent.state.messages[-1], "role", None) == "assistant"
+        ):
             self.agent.state.set_messages(self.agent.state.messages[:-1])
-
-        self._retry_abort_controller = AbortController()
-        try:
-            await self.sleep_for_retry(delay_ms, self._retry_abort_controller.signal)
-        except asyncio.CancelledError:
-            attempt = self._retry_attempt
-            await self.finish(success=False, attempt=attempt, final_error="Retry cancelled")
-            return False
-
-        asyncio.create_task(self.continue_run())
-        return True

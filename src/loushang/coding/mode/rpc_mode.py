@@ -7,14 +7,12 @@ import json
 import sys
 import uuid
 from collections.abc import Sequence
-from dataclasses import asdict, is_dataclass
 from math import isfinite
 from pathlib import Path
 from typing import Any, NotRequired, Required, TextIO, TypedDict, cast
 
 from loushang.coding.commands import complete_slash_commands
-from loushang.coding.diagnostics import (
-    DiagnosticsQuery,
+from loushang.coding.diagnostics.serialization import (
     serialize_diagnostic,
     serialize_diagnostic_summary,
     serialize_error_report,
@@ -29,9 +27,12 @@ from loushang.coding.event import (
 )
 from loushang.coding.message.json_codec import serialize_agent_message
 from loushang.coding.mode.base import ModeAdapter, ModeState
+from loushang.coding.mode.rpc_json import project_rpc_value
 from loushang.coding.store import SessionQuery
-from loushang.coding.tools import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.coding.types import ModelSelection
+from loushang.harness.diagnostics.types import DiagnosticsQuery
+from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.protocol import JsonValueError, require_json_mapping, require_json_value
 
 _THINKING_LEVEL_ORDER: tuple[str, ...] = ("off", "minimal", "low", "medium", "high", "xhigh")
 _MISSING = object()
@@ -416,13 +417,25 @@ class RpcMode(ModeAdapter):
 
     async def _handle_line(self, line: str) -> None:
         try:
-            payload = json.loads(line)
-        except json.JSONDecodeError as exc:
-            self._write_response_error(command="parse", error=f"Failed to parse command: {exc.msg}")
+            payload = json.loads(line, parse_constant=_reject_json_constant)
+        except ValueError as exc:
+            detail = exc.msg if isinstance(exc, json.JSONDecodeError) else str(exc)
+            self._write_response_error(command="parse", error=f"Failed to parse command: {detail}")
             return
 
         if not isinstance(payload, dict):
             self._write_response_error(command="invalid", error="RPC commands must be JSON objects")
+            return
+
+        command_id = _usable_rpc_request_id(payload.get("id"))
+        try:
+            payload = require_json_mapping(payload, name="rpc_command")
+        except JsonValueError as exc:
+            self._write_response_error(
+                id=command_id,
+                command="invalid",
+                error=f"RPC command contains a value outside strict JSON: {exc}",
+            )
             return
 
         if payload.get("type") == "extension_ui_response":
@@ -1987,7 +2000,34 @@ class RpcMode(ModeAdapter):
         return self._camelize(self._serialize_json_value(stats))
 
     def _serialize_session_listing_item(self, session: Any) -> dict[str, Any]:
-        serialized = self._serialize_json_value(session)
+        fields = (
+            "session_id",
+            "cwd",
+            "session_file",
+            "parent_session",
+            "leaf_id",
+            "created_at",
+            "updated_at",
+            "name",
+            "message_count",
+            "entry_count",
+            "first_message",
+            "all_messages_text",
+            "last_message_preview",
+            "model",
+            "has_diagnostics",
+            "diagnostic_count",
+            "last_diagnostic_code",
+            "last_diagnostic_level",
+        )
+        raw = {
+            name: value
+            for name in fields
+            if (value := self._safe_getattr(session, name, _MISSING)) is not _MISSING
+        }
+        if not isinstance(raw.get("session_id"), str):
+            raise TypeError("session listing items require session_id")
+        serialized = self._serialize_json_value(raw)
         if not isinstance(serialized, dict):
             raise TypeError("session listing items must serialize to objects")
         return self._camelize(serialized)
@@ -2197,51 +2237,8 @@ class RpcMode(ModeAdapter):
         except Exception:
             return default
 
-    def _serialize_json_value(self, value: object, *, _seen: set[int] | None = None) -> object:
-        if _seen is None:
-            _seen = set()
-
-        if isinstance(value, (str, int, float, bool)) or value is None:
-            return value
-        if isinstance(value, Path):
-            return str(value)
-        if is_dataclass(value):
-            return {key: self._serialize_json_value(item) for key, item in asdict(value).items()}
-        if isinstance(value, dict):
-            obj_id = id(value)
-            if obj_id in _seen:
-                return "<circular>"
-            _seen.add(obj_id)
-            serialized = {}
-            for key, item in value.items():
-                try:
-                    key_text = str(key)
-                except Exception:
-                    key_text = ""
-                serialized[key_text] = self._serialize_json_value(item, _seen=_seen)
-            _seen.remove(obj_id)
-            return serialized
-        if isinstance(value, list | tuple | set | frozenset):
-            obj_id = id(value)
-            if obj_id in _seen:
-                return "<circular>"
-            _seen.add(obj_id)
-            serialized = [self._serialize_json_value(item, _seen=_seen) for item in value]
-            _seen.remove(obj_id)
-            return serialized
-        if hasattr(value, "__dict__"):
-            obj_id = id(value)
-            if obj_id in _seen:
-                return "<circular>"
-            _seen.add(obj_id)
-            serialized = {
-                key: self._serialize_json_value(item, _seen=_seen)
-                for key, item in vars(value).items()
-                if not key.startswith("_")
-            }
-            _seen.remove(obj_id)
-            return serialized
-        return repr(value)
+    def _serialize_json_value(self, value: object) -> object:
+        return project_rpc_value(value)
 
     def _camelize(self, value: object) -> object:
         if isinstance(value, dict):
@@ -2267,13 +2264,15 @@ class RpcMode(ModeAdapter):
     def _safe_string(self, value: Any) -> str:
         if value is None:
             return ""
-        try:
+        if isinstance(value, str):
+            return value
+        if isinstance(value, Path):
             return str(value)
-        except Exception:
-            try:
-                return repr(value)
-            except Exception:
-                return ""
+        if isinstance(value, float) and not isfinite(value):
+            return ""
+        if isinstance(value, bool | int | float):
+            return str(value)
+        return ""
 
     def _coerce_images(self, images: object) -> list[object] | None:
         if images is None:
@@ -2327,7 +2326,13 @@ class RpcMode(ModeAdapter):
             if value is None:
                 continue
             if isinstance(value, int | float) and not isinstance(value, bool):
-                return float(value)
+                try:
+                    normalized = float(value)
+                except OverflowError as exc:
+                    raise ValueError(f"{key} must be a finite number") from exc
+                if isfinite(normalized):
+                    return normalized
+                raise ValueError(f"{key} must be a finite number")
             raise ValueError(f"{key} must be a number")
         return None
 
@@ -2398,15 +2403,22 @@ class RpcMode(ModeAdapter):
         self._write_json_line(payload)
 
     def _write_json_line(self, payload: object) -> None:
-        def _safe_extract_fallback_fields(item: object) -> tuple[object | None, object | None]:
+        def _safe_extract_fallback_fields(item: object) -> tuple[str | None, str | None]:
             if not isinstance(item, dict):
                 return None, None
-            fallback_command = item.get("command")
-            fallback_id = item.get("id")
             return (
-                fallback_id if fallback_id is not None else None,
-                fallback_command if fallback_command is not None else None,
+                _strict_fallback_string(item.get("id")),
+                _strict_fallback_string(item.get("command")),
             )
+
+        def _strict_fallback_string(value: object) -> str | None:
+            if type(value) is not str:
+                return None
+            try:
+                projected = project_rpc_value(value, name="rpc_fallback")
+            except Exception:
+                return None
+            return projected if isinstance(projected, str) else None
 
         try:
             serialized = self._serialize_json_value(payload)
@@ -2420,14 +2432,13 @@ class RpcMode(ModeAdapter):
                 "error": "Failed to serialize RPC output.",
             }
             if fallback_id is not None:
-                fallback_payload["id"] = fallback_id if isinstance(fallback_id, str) else self._safe_string(fallback_id)
+                fallback_payload["id"] = fallback_id
             if fallback_command is not None:
-                fallback_payload["command"] = (
-                    fallback_command if isinstance(fallback_command, str) else self._safe_string(fallback_command)
-                )
+                fallback_payload["command"] = fallback_command
             line = json.dumps(
-                fallback_payload,
+                project_rpc_value(fallback_payload, name="rpc_fallback"),
                 ensure_ascii=False,
+                allow_nan=False,
             )
         self.stdout.write(line + "\n")
         flush = getattr(self.stdout, "flush", None)
@@ -2493,6 +2504,20 @@ def _stream_supports_fileno(stream: TextIO) -> bool:
     except (io.UnsupportedOperation, OSError, ValueError):
         return False
     return True
+
+
+def _reject_json_constant(value: str) -> object:
+    raise ValueError(f"invalid JSON numeric constant: {value}")
+
+
+def _usable_rpc_request_id(value: object) -> str | None:
+    if type(value) is not str:
+        return None
+    try:
+        projected = require_json_value(value, name="rpc_command.id")
+    except JsonValueError:
+        return None
+    return projected if isinstance(projected, str) else None
 
 
 def _package_lifecycle_failure(record: dict[str, Any]) -> str | None:

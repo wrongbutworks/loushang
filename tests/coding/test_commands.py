@@ -111,3 +111,43 @@ def test_complete_slash_commands_filters_by_prefix_and_marks_conflicts() -> None
             "kind": "command",
         },
     ]
+
+
+def test_session_command_descriptor_remains_a_runtime_class() -> None:
+    from loushang.coding.commands import (
+        CommandSourceInfo,
+        SessionCommandDescriptor,
+    )
+    from loushang.harness.capabilities.commands import CommandDescriptor
+
+    command = SessionCommandDescriptor(
+        name="review",
+        description="Review a change",
+        source="prompt",
+        source_info=CommandSourceInfo(path="/tmp/prompts/review.md"),
+    )
+
+    assert isinstance(command, SessionCommandDescriptor)
+    assert isinstance(command, CommandDescriptor)
+
+
+def test_session_command_descriptor_preserves_legacy_positional_fields() -> None:
+    from loushang.coding.commands import (
+        CommandSourceInfo,
+        SessionCommandDescriptor,
+    )
+
+    command = SessionCommandDescriptor(
+        "review",
+        "Review a change",
+        "prompt",
+        CommandSourceInfo(path="/tmp/prompts/review.md"),
+        "review:project",
+        "review",
+        "<target>",
+    )
+
+    assert command.invocation_name == "review:project"
+    assert command.conflict_group == "review"
+    assert command.argument_hint == "<target>"
+    assert command.aliases == ()

@@ -7,12 +7,6 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from loushang.coding.tools.output_preview import (
-    DEFAULT_TOOL_OUTPUT_PREVIEW_LINES,
-    collapse_tool_output_preview,
-    drop_tool_timing_tail_line,
-    prefers_tail_tool_output,
-)
 from loushang.coding.ui.screen_state import ScreenCodingTuiState, ScreenTranscriptWindow
 from loushang.coding.ui.status_line import (
     StatusLinePreviewSnapshot,
@@ -27,6 +21,12 @@ from loushang.coding.ui.transcript_source import (
     TranscriptSource,
 )
 from loushang.coding.ui.transcript_style import apply_coding_transcript_style
+from loushang.harness.tools.workspace.output_preview import (
+    DEFAULT_TOOL_OUTPUT_PREVIEW_LINES,
+    collapse_tool_output_preview,
+    drop_tool_timing_tail_line,
+    prefers_tail_tool_output,
+)
 from loushang.tui import (
     BottomFrame,
     Composer,

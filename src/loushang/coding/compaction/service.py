@@ -3,26 +3,31 @@ from __future__ import annotations
 from typing import Any
 
 from loushang.coding.compaction.types import CompactionResult, CompactionStatus
+from loushang.harness.context.compaction import (
+    CompactionCoordinator as HarnessCompactionCoordinator,
+)
 
 
 class CompactionCoordinator:
     """Thin service boundary for session compaction orchestration."""
 
     def __init__(self) -> None:
-        self._active_session: Any | None = None
-        self._is_compacting = False
-        self._last_reason: str | None = None
-        self._last_result: CompactionResult | None = None
-        self._last_error: str | None = None
-        self._aborted = False
+        self._coordinator: HarnessCompactionCoordinator[CompactionResult | None] = (
+            HarnessCompactionCoordinator()
+        )
 
     def get_status(self) -> CompactionStatus:
+        status = self._coordinator.get_status()
         return CompactionStatus(
-            is_compacting=self._is_compacting,
-            last_reason=self._last_reason,
-            last_result=self._last_result,
-            last_error=self._last_error,
-            aborted=self._aborted,
+            is_compacting=status.is_compacting,
+            last_reason=status.last_reason,
+            last_result=(
+                status.last_result
+                if isinstance(status.last_result, CompactionResult)
+                else None
+            ),
+            last_error=status.last_error,
+            aborted=status.aborted,
         )
 
     async def compact_session(
@@ -31,59 +36,42 @@ class CompactionCoordinator:
         *,
         custom_instructions: str | None = None,
     ) -> CompactionResult:
-        if self._is_compacting:
-            raise RuntimeError("Compaction already in progress")
-        self._begin(session, reason="manual")
-        try:
+        async def operation() -> CompactionResult:
             compact_session = getattr(session, "compact_session", None)
             if callable(compact_session):
-                result = await compact_session(custom_instructions=custom_instructions)
-            else:
-                result = await session.compact(custom_instructions=custom_instructions)
-            self._last_result = result
-            return result
-        except Exception as exc:
-            self._last_error = str(exc)
-            raise
-        finally:
-            self._finish()
+                return await compact_session(custom_instructions=custom_instructions)
+            return await session.compact(custom_instructions=custom_instructions)
+
+        result = await self._coordinator.run(
+            operation,
+            reason="manual",
+            abort_driver=_abort_driver(session),
+        )
+        if result is None:
+            raise RuntimeError("Manual compaction did not produce a result")
+        return result
 
     async def maybe_compact_after_turn(self, session: Any, assistant_message: object) -> CompactionResult | None:
-        if self._is_compacting:
+        if self._coordinator.is_compacting:
             return None
-        self._begin(session, reason="threshold")
-        try:
+
+        async def operation() -> CompactionResult | None:
             maybe_compact = getattr(session, "maybe_compact_after_turn", None)
             if callable(maybe_compact):
-                result = await maybe_compact(assistant_message)
-            else:
-                checker = getattr(session, "_check_auto_compaction", None)
-                result = await checker(assistant_message) if callable(checker) else None
-            if isinstance(result, CompactionResult):
-                self._last_result = result
-            return result
-        except Exception as exc:
-            self._last_error = str(exc)
-            raise
-        finally:
-            self._finish()
+                return await maybe_compact(assistant_message)
+            checker = getattr(session, "_check_auto_compaction", None)
+            return await checker(assistant_message) if callable(checker) else None
+
+        return await self._coordinator.run(
+            operation,
+            reason="threshold",
+            abort_driver=_abort_driver(session),
+        )
 
     def abort(self) -> None:
-        self._aborted = True
-        session = self._active_session
-        if session is None:
-            return
-        abort_compaction = getattr(session, "abort_compaction", None)
-        if callable(abort_compaction):
-            abort_compaction()
+        self._coordinator.abort()
 
-    def _begin(self, session: Any, *, reason: str) -> None:
-        self._active_session = session
-        self._is_compacting = True
-        self._last_reason = reason
-        self._last_error = None
-        self._aborted = False
 
-    def _finish(self) -> None:
-        self._is_compacting = False
-        self._active_session = None
+def _abort_driver(session: Any):
+    abort_compaction = getattr(session, "abort_compaction", None)
+    return abort_compaction if callable(abort_compaction) else None

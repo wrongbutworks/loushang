@@ -10,8 +10,9 @@ Updated direction:
 This document records module ownership for the prepared agent run contract. It is
 intentionally an inventory, not an implementation plan.
 It remains accurate for the current thin facade; future host/adapter substrate
-migration should update this inventory or add a follow-up inventory before code
-moves.
+migration is tracked by the follow-up
+[Coding To Harness Migration Inventory](../harness/coding-to-harness-migration-inventory.md)
+before code moves.
 
 ## Scope
 
@@ -120,8 +121,8 @@ not harness candidates.
 | `exec` | Local command execution service | Product adapter | Do not move. |
 | `policy` | Coding tool permission and approval policy | Product adapter | Do not move. |
 | `prompt` | Coding prompt assembly, preflight, templates | Product adapter | Do not move. |
-| `loader` / `resources` / `skill` | Coding resource discovery and injection | Product adapter | Do not move. May later split shared resource loader if method needs it. |
-| `package` / `plugin` | Coding package/plugin lifecycle and materialization | Product adapter | Do not move. |
+| `loader` / `resources` / `skill` | Resource discovery and Coding injection | Harness mechanism plus Product adapter | Move platform roots/layout, standard conventions, descriptors, discovery, merge, and reload to Harness. Keep content, activation, trust, and projection in Coding. |
+| `package` / `plugin` | Package/plugin lifecycle and materialization | Harness mechanism plus Product adapter | Move source/manifest/materialization and generic registry/resolver mechanics to Harness. Keep product policy, settings, and presentation in Coding. |
 | `extensions` | Coding extension API, runner, policy, contributions | Product adapter | Do not move to agent. |
 | `domain` | Method-to-coding prepared turn bridge | Product adapter | Keep as product bridge. |
 | `control` | Settings, model controls, auth integration | Product adapter | Do not move. |
@@ -135,7 +136,8 @@ Explicit non-goals:
 
 - no migration of read / ls / find / grep / bash / edit / write tools
 - no migration of slash commands
-- no migration of AGENTS.md or coding prompt assembly
+- standard `AGENTS.md` discovery may migrate to Harness; Coding prompt assembly
+  and instruction projection remain product-owned
 - no migration of extension policy or UI/autocomplete integration
 - no migration of coding session JSONL schema
 

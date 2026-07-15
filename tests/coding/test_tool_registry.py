@@ -76,6 +76,33 @@ def test_tool_registry_exposes_builtin_tool_family() -> None:
     assert registry.get_definition("bash").label == "Bash"
 
 
+def test_registry_resolves_harness_contributions_without_mutating_state() -> None:
+    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.harness.tools.contribution import ToolPackDefinition
+
+    registry = ToolRegistry()
+    register_builtin_tools(registry)
+    registry.disable_tool("bash")
+
+    result = registry.resolve_contributions(
+        packs=(
+            ToolPackDefinition(name="read_only", tools=("read", "ls", "find", "grep", "bash")),
+        ),
+        include_packs=("read_only",),
+    )
+
+    assert [definition.name for definition in result.definitions] == ["read", "ls", "find", "grep"]
+    assert result.diagnostics == ()
+    assert [definition.name for definition in registry.list_enabled_definitions()] == [
+        "read",
+        "ls",
+        "find",
+        "grep",
+        "write",
+        "edit",
+    ]
+
+
 def test_tool_factory_surface_exposes_pi_style_tool_groups() -> None:
     from loushang.coding.tools import (
         ALL_TOOL_NAMES,
@@ -555,6 +582,51 @@ def test_register_builtin_tools_reuses_factory_but_keeps_legacy_order() -> None:
     registry = ToolRegistry()
     register_builtin_tools(registry)
 
+    assert [definition.name for definition in registry.list_definitions()] == [
+        "bash",
+        "read",
+        "ls",
+        "find",
+        "grep",
+        "write",
+        "edit",
+    ]
+
+
+def test_register_builtin_tools_uses_harness_pack_resolver(monkeypatch) -> None:
+    import loushang.coding.tools.builtins as builtins
+    from loushang.coding.tools import ToolRegistry
+
+    calls: list[dict[str, object]] = []
+    real_resolver = builtins.resolve_tool_contributions
+
+    def spy_resolver(contributions, **kwargs):
+        calls.append(
+            {
+                "contributions": tuple(contributions),
+                "packs": tuple(kwargs.get("packs", ())),
+                "include_packs": tuple(kwargs.get("include_packs", ())),
+            }
+        )
+        return real_resolver(calls[-1]["contributions"], **kwargs)
+
+    monkeypatch.setattr(builtins, "resolve_tool_contributions", spy_resolver)
+
+    registry = ToolRegistry()
+    builtins.register_builtin_tools(registry)
+
+    assert len(calls) == 1
+    assert [contribution.definition.name for contribution in calls[0]["contributions"]] == [
+        "bash",
+        "read",
+        "ls",
+        "find",
+        "grep",
+        "write",
+        "edit",
+    ]
+    assert [pack.name for pack in calls[0]["packs"]] == ["coding.builtin"]
+    assert calls[0]["include_packs"] == ("coding.builtin",)
     assert [definition.name for definition in registry.list_definitions()] == [
         "bash",
         "read",

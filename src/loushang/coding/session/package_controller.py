@@ -5,21 +5,22 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from loushang.coding.control import SettingsManager
-from loushang.coding.diagnostics import DiagnosticsService
-from loushang.coding.loader import DefaultResourceLoader, ResourceDiagnostic
+from loushang.coding.loader import DefaultResourceLoader
 from loushang.coding.package.materializer import (
     PackageMaterializationRecord,
     PackageMaterializer,
 )
 from loushang.coding.package.projection import collect_package_entries
-from loushang.coding.package.resource_roots import resolve_package_resource_roots
-from loushang.coding.package.source import is_remote_package_source
 from loushang.coding.package.source_manager import (
     PackageSourceResolver,
     configured_package_sources,
     package_source_scopes,
 )
 from loushang.coding.store import SessionManager
+from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.packages.roots import resolve_package_resource_roots
+from loushang.harness.resources.packages.source import is_remote_package_source
 
 SettingsManagerProvider = Callable[[], SettingsManager | None]
 PackageMaterializerProvider = Callable[[], PackageMaterializer | None]

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-import inspect
 from collections.abc import Callable, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from enum import Enum
+from typing import Any, cast
 
 from loushang.agent.types import (
+    AfterToolCallContext,
     AfterToolCallResult,
     AgentToolResult,
+    BeforeToolCallContext,
     BeforeToolCallResult,
 )
 from loushang.ai.types import ToolCall
@@ -17,7 +19,13 @@ from loushang.coding.extensions.types import (
     ToolCallDecision,
     ToolResultDecision,
 )
-from loushang.coding.loader import ResourceDiagnostic
+from loushang.harness.extensions.routing import (
+    ExtensionRoutePlan,
+    ExtensionRouter,
+    ResolvedExtensionRoute,
+    RouteStep,
+)
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 
 class HookKind(str, Enum):
@@ -31,6 +39,19 @@ ContextFactory = Callable[[LoadedExtension], ExtensionContext]
 RuntimeErrorHandler = Callable[[LoadedExtension, str, Exception], None]
 
 
+@dataclass(frozen=True)
+class _BeforeToolState:
+    event: BeforeToolCallContext
+    changed: bool = False
+    result: BeforeToolCallResult | None = None
+
+
+@dataclass(frozen=True)
+class _AfterToolState:
+    event: AfterToolCallContext
+    changed: bool = False
+
+
 class HookDispatcher:
     def __init__(
         self,
@@ -39,154 +60,169 @@ class HookDispatcher:
         context_factory: ContextFactory,
         diagnostics: list[ResourceDiagnostic],
         runtime_error_handler: RuntimeErrorHandler | None = None,
+        route_plan: ExtensionRoutePlan | None = None,
     ) -> None:
-        self._extensions = list(extensions)
         self._context_factory = context_factory
         self._diagnostics = diagnostics
-        self._runtime_error_handler = runtime_error_handler
+        plan = route_plan or ExtensionRoutePlan.from_extensions(
+            extensions, diagnostics=diagnostics
+        )
+        self._router = ExtensionRouter(
+            plan,
+            diagnostics=diagnostics,
+            runtime_error_handler=runtime_error_handler,
+            include_route_id_in_error_metadata=False,
+            include_provenance_in_error_metadata=False,
+        )
 
-    async def before_tool_call(self, event, signal: object | None = None) -> BeforeToolCallResult | None:
+    async def before_tool_call(
+        self,
+        event: BeforeToolCallContext,
+        signal: object | None = None,
+    ) -> BeforeToolCallResult | None:
         del signal
-        current_event = event
-        changed = False
-        for extension in self._extensions:
-            handlers = extension.hooks.get("tool_call", [])
-            if not handlers:
-                continue
-            context = self._context_factory(extension)
-            for handler in handlers:
-                try:
-                    decision = handler(current_event, context)
-                    if inspect.isawaitable(decision):
-                        decision = await decision
-                except Exception as exc:
-                    self._record_hook_error(
-                        extension=extension,
-                        event="tool_call",
-                        code="extension_tool_call_failed",
-                        message=f"Extension hook 'tool_call' failed: {exc}",
-                        error=exc,
+
+        def reducer(
+            state: _BeforeToolState,
+            decision: object,
+            route: ResolvedExtensionRoute,
+        ) -> RouteStep[_BeforeToolState]:
+            if not isinstance(decision, ToolCallDecision):
+                self._diagnostics.append(
+                    ResourceDiagnostic(
+                        code="invalid_extension_tool_call_decision",
+                        message="tool_call hooks must return ToolCallDecision or None.",
+                        source_path=route.extension.source_path,
                     )
-                    continue
-                if decision is None:
-                    continue
-                if not isinstance(decision, ToolCallDecision):
-                    self._diagnostics.append(
-                        ResourceDiagnostic(
-                            code="invalid_extension_tool_call_decision",
-                            message="tool_call hooks must return ToolCallDecision or None.",
-                            source_path=extension.source_path,
-                        )
-                    )
-                    continue
-                if decision.diagnostics:
-                    self._diagnostics.extend(decision.diagnostics)
-                rewritten_tool_name = decision.tool_name or current_event.tool_call.name
-                rewritten_arguments = decision.arguments if decision.arguments is not None else current_event.args
-                if rewritten_tool_name != current_event.tool_call.name or rewritten_arguments != current_event.args:
-                    changed = True
-                    current_event = replace(
-                        current_event,
-                        tool_call=ToolCall(
-                            type="toolCall",
-                            id=current_event.tool_call.id,
-                            name=rewritten_tool_name,
-                            arguments=rewritten_arguments,
-                            thought_signature=current_event.tool_call.thought_signature,
-                        ),
-                        args=rewritten_arguments,
-                    )
-                if decision.block:
-                    return BeforeToolCallResult(
-                        block=True,
-                        reason=decision.reason,
-                        tool_name=current_event.tool_call.name if changed else None,
-                        arguments=current_event.args if changed else None,
-                    )
-        if not changed:
+                )
+                return RouteStep(state)
+            if decision.diagnostics:
+                self._diagnostics.extend(decision.diagnostics)
+            current_event = state.event
+            rewritten_tool_name = decision.tool_name or current_event.tool_call.name
+            rewritten_arguments = cast(
+                dict[str, Any],
+                decision.arguments
+                if decision.arguments is not None
+                else current_event.args,
+            )
+            changed = state.changed
+            if (
+                rewritten_tool_name != current_event.tool_call.name
+                or rewritten_arguments != current_event.args
+            ):
+                changed = True
+                current_event = replace(
+                    current_event,
+                    tool_call=ToolCall(
+                        type="toolCall",
+                        id=current_event.tool_call.id,
+                        name=rewritten_tool_name,
+                        arguments=rewritten_arguments,
+                        thought_signature=current_event.tool_call.thought_signature,
+                    ),
+                    args=rewritten_arguments,
+                )
+            result = None
+            if decision.block:
+                result = BeforeToolCallResult(
+                    block=True,
+                    reason=decision.reason,
+                    tool_name=current_event.tool_call.name if changed else None,
+                    arguments=(
+                        cast(dict[str, Any], current_event.args) if changed else None
+                    ),
+                )
+            return RouteStep(
+                _BeforeToolState(
+                    event=current_event,
+                    changed=changed,
+                    result=result,
+                ),
+                stop=result is not None,
+            )
+
+        outcome = await self._router.intercept(
+            "tool_call",
+            _BeforeToolState(event=event),
+            event_factory=lambda state, route: state.event,
+            reducer=reducer,
+            context_factory=self._context_factory,
+        )
+        state = outcome.state
+        if state.result is not None:
+            return state.result
+        if not state.changed:
             return None
         return BeforeToolCallResult(
-            tool_name=current_event.tool_call.name,
-            arguments=current_event.args,
+            tool_name=state.event.tool_call.name,
+            arguments=cast(dict[str, Any], state.event.args),
         )
 
-    async def after_tool_call(self, event, signal: object | None = None) -> AfterToolCallResult | None:
+    async def after_tool_call(
+        self,
+        event: AfterToolCallContext,
+        signal: object | None = None,
+    ) -> AfterToolCallResult | None:
         del signal
-        current_event = event
-        changed = False
-        for extension in self._extensions:
-            handlers = extension.hooks.get("tool_result", [])
-            if not handlers:
-                continue
-            context = self._context_factory(extension)
-            for handler in handlers:
-                try:
-                    decision = handler(current_event, context)
-                    if inspect.isawaitable(decision):
-                        decision = await decision
-                except Exception as exc:
-                    self._record_hook_error(
-                        extension=extension,
-                        event="tool_result",
-                        code="extension_tool_result_failed",
-                        message=f"Extension hook 'tool_result' failed: {exc}",
-                        error=exc,
+
+        def reducer(
+            state: _AfterToolState,
+            decision: object,
+            route: ResolvedExtensionRoute,
+        ) -> RouteStep[_AfterToolState]:
+            if not isinstance(decision, ToolResultDecision):
+                self._diagnostics.append(
+                    ResourceDiagnostic(
+                        code="invalid_extension_tool_result_decision",
+                        message="tool_result hooks must return ToolResultDecision or None.",
+                        source_path=route.extension.source_path,
                     )
-                    continue
-                if decision is None:
-                    continue
-                if not isinstance(decision, ToolResultDecision):
-                    self._diagnostics.append(
-                        ResourceDiagnostic(
-                            code="invalid_extension_tool_result_decision",
-                            message="tool_result hooks must return ToolResultDecision or None.",
-                            source_path=extension.source_path,
-                        )
+                )
+                return RouteStep(state)
+            if decision.diagnostics:
+                self._diagnostics.extend(decision.diagnostics)
+            if decision.result is None:
+                return RouteStep(state)
+            if not isinstance(decision.result, AgentToolResult):
+                self._diagnostics.append(
+                    ResourceDiagnostic(
+                        code="invalid_extension_tool_result_decision",
+                        message=(
+                            "tool_result decisions must return AgentToolResult "
+                            "instances when overriding results."
+                        ),
+                        source_path=route.extension.source_path,
                     )
-                    continue
-                if decision.diagnostics:
-                    self._diagnostics.extend(decision.diagnostics)
-                if decision.result is None:
-                    continue
-                if not isinstance(decision.result, AgentToolResult):
-                    self._diagnostics.append(
-                        ResourceDiagnostic(
-                            code="invalid_extension_tool_result_decision",
-                            message=(
-                                "tool_result decisions must return AgentToolResult instances when overriding results."
-                            ),
-                            source_path=extension.source_path,
-                        )
-                    )
-                    continue
-                changed = True
-                current_event = replace(current_event, result=decision.result)
-        if not changed:
+                )
+                return RouteStep(state)
+            return RouteStep(
+                _AfterToolState(
+                    event=replace(
+                        state.event,
+                        result=decision.result,
+                        hook_details=decision.result.hook_details(),
+                    ),
+                    changed=True,
+                )
+            )
+
+        outcome = await self._router.reduce(
+            "tool_result",
+            _AfterToolState(event=event),
+            event_factory=lambda state, route: state.event,
+            reducer=reducer,
+            context_factory=self._context_factory,
+        )
+        state = outcome.state
+        if not state.changed:
             return None
         return AfterToolCallResult(
-            content=current_event.result.content,
-            details=current_event.result.details,
-            terminate=current_event.result.terminate,
+            content=state.event.result.content,
+            details=state.event.result.details,
+            terminate=state.event.result.terminate,
+            projector=state.event.result.projector,
         )
-
-    def _record_hook_error(
-        self,
-        *,
-        extension: LoadedExtension,
-        event: str,
-        code: str,
-        message: str,
-        error: Exception,
-    ) -> None:
-        self._diagnostics.append(
-            ResourceDiagnostic(
-                code=code,
-                message=message,
-                source_path=extension.source_path,
-            )
-        )
-        if self._runtime_error_handler is not None:
-            self._runtime_error_handler(extension, event, error)
 
 
 __all__ = [

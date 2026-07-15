@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol, TypedDict, runtime_checkable
 
 
@@ -11,6 +11,20 @@ class OAuthCredentials:
     refresh_token: str | None = None
     expires_at: float | None = None
     extra: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class AuthResolution:
+    provider: str
+    model_id: str
+    endpoint_id: str
+    auth_required: bool
+    satisfied: bool
+    api_key: str | None = None
+    api_key_env: str | None = None
+    source: str | None = None
+    message: str | None = None
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 class OAuthAuthInfo(TypedDict, total=False):

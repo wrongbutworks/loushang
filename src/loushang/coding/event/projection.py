@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any, Literal, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any, Literal
 
 from loushang.agent.types import AgentToolResult
 from loushang.coding.event.serialization import serialize_session_event
@@ -9,18 +9,21 @@ from loushang.coding.event.types import AgentSessionEvent
 from loushang.coding.message.json_codec import (
     serialize_agent_message,
     serialize_assistant_message_event,
-    serialize_json_value,
 )
-from loushang.coding.tools import (
-    ToolDefinitionResolver,
-    ToolRenderOutput,
-    ToolRenderRuntime,
-)
-from loushang.coding.tools.protocol import project_tool_details_for_protocol
+from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.harness.tools.core import ToolRenderOutput
+from loushang.harness.tools.workspace.protocol import project_tool_details_for_protocol
+from loushang.protocol import JsonValueError, require_json_mapping
 
 JsonEventView = Literal["full", "compact", "assistant_stream", "tools", "final"]
 
-SUPPORTED_JSON_EVENT_VIEWS: tuple[JsonEventView, ...] = ("full", "compact", "assistant_stream", "tools", "final")
+SUPPORTED_JSON_EVENT_VIEWS: tuple[JsonEventView, ...] = (
+    "full",
+    "compact",
+    "assistant_stream",
+    "tools",
+    "final",
+)
 
 _EVENT_SELECTOR_ALIASES: dict[str, tuple[str, ...]] = {
     "assistant": ("assistant_*",),
@@ -94,7 +97,9 @@ def project_session_event(
     raise ValueError(f"unsupported json event view: {event_view}")
 
 
-def should_emit_projected_event(payload: dict[str, Any], event_select: Sequence[str]) -> bool:
+def should_emit_projected_event(
+    payload: dict[str, Any], event_select: Sequence[str]
+) -> bool:
     if not event_select:
         return True
     event_type = payload.get("type")
@@ -111,7 +116,9 @@ def should_emit_projected_event(payload: dict[str, Any], event_select: Sequence[
     return False
 
 
-def shape_stream_event(payload: dict[str, Any], *, event_view: JsonEventView) -> dict[str, Any]:
+def shape_stream_event(
+    payload: dict[str, Any], *, event_view: JsonEventView
+) -> dict[str, Any]:
     shaped = dict(payload)
     event_type = shaped.get("type")
     if isinstance(event_type, str):
@@ -167,7 +174,11 @@ def _project_assistant_stream_event(event: AgentSessionEvent) -> list[dict[str, 
 
 
 def _project_tools_event(event: AgentSessionEvent) -> list[dict[str, Any]]:
-    if event["type"] in {"tool_execution_start", "tool_execution_update", "tool_execution_end"}:
+    if event["type"] in {
+        "tool_execution_start",
+        "tool_execution_update",
+        "tool_execution_end",
+    }:
         return [serialize_session_event(event)]
     return []
 
@@ -183,7 +194,11 @@ def _with_rendered_tool_payloads(
     if not payloads or tool_render_runtime is None or tool_definition_resolver is None:
         return payloads
     event_type = event["type"]
-    if event_type not in {"tool_execution_start", "tool_execution_update", "tool_execution_end"}:
+    if event_type not in {
+        "tool_execution_start",
+        "tool_execution_update",
+        "tool_execution_end",
+    }:
         return payloads
     if event_type == "tool_execution_end":
         collapsed = _serialize_tool_render_output(
@@ -214,11 +229,19 @@ def _with_rendered_tool_payloads(
                 expanded=tool_render_expanded,
             )
         )
-        collapsed_text = _payload_plain_text(serialized) if not tool_render_expanded else None
-        expanded_text = _payload_plain_text(serialized) if tool_render_expanded else None
+        collapsed_text = (
+            _payload_plain_text(serialized) if not tool_render_expanded else None
+        )
+        expanded_text = (
+            _payload_plain_text(serialized) if tool_render_expanded else None
+        )
     if serialized is None:
         return payloads
-    output_key = "renderedToolCall" if event_type == "tool_execution_start" else "renderedToolResult"
+    output_key = (
+        "renderedToolCall"
+        if event_type == "tool_execution_start"
+        else "renderedToolResult"
+    )
     enriched: list[dict[str, Any]] = []
     for payload in payloads:
         updated = dict(payload)
@@ -231,7 +254,9 @@ def _with_rendered_tool_payloads(
             expanded_text=expanded_text,
         )
         if output_key == "renderedToolResult":
-            rendered_payload.setdefault("isPartial", event_type == "tool_execution_update")
+            rendered_payload.setdefault(
+                "isPartial", event_type == "tool_execution_update"
+            )
             rendered_payload.setdefault("expanded", tool_render_expanded)
         updated[output_key] = rendered_payload
         enriched.append(updated)
@@ -261,8 +286,12 @@ def _serialize_tool_render_output(rendered: ToolRenderOutput) -> dict[str, Any] 
     if isinstance(rendered, str):
         return {"type": "text", "text": rendered, "plainText": rendered}
     if isinstance(rendered, dict):
-        payload = serialize_json_value(rendered)
-        if not isinstance(payload, dict):
+        try:
+            payload = require_json_mapping(
+                rendered,
+                name="rendered_tool_output",
+            )
+        except JsonValueError:
             return None
         if isinstance(payload.get("html"), str):
             payload.setdefault("type", "html")
@@ -319,10 +348,11 @@ def _rendered_tool_result_status(event: AgentSessionEvent) -> str:
     if event["type"] == "tool_execution_update":
         return "partial"
     result = event.get("result")
-    if isinstance(result, AgentToolResult) and isinstance(result.details, Mapping):
-        if result.details.get("timed_out") is True or result.details.get("timedOut") is True:
+    details = _event_result_details(result)
+    if details:
+        if details.get("timed_out") is True or details.get("timedOut") is True:
             return "timed_out"
-        if result.details.get("cancelled") is True or result.details.get("canceled") is True:
+        if details.get("cancelled") is True or details.get("canceled") is True:
             return "cancelled"
     if bool(event.get("is_error", False)):
         return "error"
@@ -331,15 +361,22 @@ def _rendered_tool_result_status(event: AgentSessionEvent) -> str:
     return "ok"
 
 
-def _rendered_tool_duration_ms(event: AgentSessionEvent, payload: Mapping[str, Any]) -> int | None:
+def _rendered_tool_duration_ms(
+    event: AgentSessionEvent, payload: Mapping[str, Any]
+) -> int | None:
     for candidate in (payload.get("durationMs"),):
         resolved = _non_negative_int(candidate)
         if resolved is not None:
             return resolved
-    result = event.get("partial_result") if event["type"] == "tool_execution_update" else event.get("result")
-    if isinstance(result, AgentToolResult) and isinstance(result.details, Mapping):
+    result = (
+        event.get("partial_result")
+        if event["type"] == "tool_execution_update"
+        else event.get("result")
+    )
+    details = _event_result_details(result)
+    if details:
         for key in ("durationMs", "duration_ms", "elapsedMs", "elapsed_ms"):
-            resolved = _non_negative_int(result.details.get(key))
+            resolved = _non_negative_int(details.get(key))
             if resolved is not None:
                 return resolved
     for candidate in (event.get("duration_ms"), event.get("durationMs")):
@@ -358,14 +395,23 @@ def _non_negative_int(value: object) -> int | None:
 
 
 def _rendered_tool_artifacts(event: AgentSessionEvent) -> list[dict[str, str]]:
-    result = event.get("partial_result") if event["type"] == "tool_execution_update" else event.get("result")
-    if not isinstance(result, AgentToolResult) or not isinstance(result.details, Mapping):
+    result = (
+        event.get("partial_result")
+        if event["type"] == "tool_execution_update"
+        else event.get("result")
+    )
+    event_details = _event_result_details(result)
+    if not event_details:
         return []
-    details = project_tool_details_for_protocol(result.details)
+    details = project_tool_details_for_protocol(event_details)
     artifacts: list[dict[str, str]] = []
     for key in ("stdout_artifact_path", "stderr_artifact_path", "fullOutputPath"):
         value = details.get(key)
-        if isinstance(value, str) and value and all(artifact["path"] != value for artifact in artifacts):
+        if (
+            isinstance(value, str)
+            and value
+            and all(artifact["path"] != value for artifact in artifacts)
+        ):
             artifact = {
                 "type": "file",
                 "path": value,
@@ -376,6 +422,16 @@ def _rendered_tool_artifacts(event: AgentSessionEvent) -> list[dict[str, str]]:
                 artifact["stream"] = stream
             artifacts.append(artifact)
     return artifacts
+
+
+def _event_result_details(result: object) -> Mapping[str, Any]:
+    if not isinstance(result, AgentToolResult):
+        return {}
+    try:
+        details = result.event_details()
+    except Exception:
+        return {}
+    return details if isinstance(details, Mapping) else {}
 
 
 def _artifact_name(path: str) -> str:
@@ -403,7 +459,9 @@ def _serialize_assistant_delta(event: AgentSessionEvent) -> dict[str, Any] | Non
     message = event["message"]
     if getattr(message, "role", None) != "assistant":
         return None
-    assistant_event = serialize_assistant_message_event(event["assistant_message_event"])
+    assistant_event = serialize_assistant_message_event(
+        event["assistant_message_event"]
+    )
     assistant_event_type = assistant_event["type"]
     if assistant_event_type in {"text_delta", "thinking_delta", "toolcall_delta"}:
         return {

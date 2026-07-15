@@ -27,6 +27,7 @@
 - `loushang.work`
 - `loushang.observability`
 - `loushang.ontology`
+- `loushang.protocol`
 
 `loushang.channel` 已有最小协议类型包，用于承载 `WorkOperation` /
 `WorkEvent` 边界消息。现有 RPC/JSONL 能力仍先作为
@@ -50,6 +51,7 @@ loushang/
       work/
       observability/
       ontology/
+      protocol/
   tests/
 ```
 
@@ -98,6 +100,8 @@ CLI / TUI
 - `tui` 提供通用终端 UI primitives
 - `coding` 提供产品化装配，并通过 `loushang.coding.ui` 连接 coding core 与 `loushang.tui`
 - `channel` 定义边界通信协议类型，当前已落地最小 envelope / endpoint surface
+- `protocol` 提供不依赖产品、Harness、Agent 或 AI 的严格 JSON wire-value
+  algebra，供上述层共同使用
 
 ## Agent and Channel Documentation
 

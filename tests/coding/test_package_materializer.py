@@ -1070,7 +1070,7 @@ def test_package_materializer_check_updates_uses_configured_timeout(tmp_path, mo
         captured_timeouts.append(timeout_seconds)
         return None, f"timed out checking {source_arg}"
 
-    monkeypatch.setattr("loushang.coding.package.materializer._remote_git_head_result_async", fake_remote_head)
+    monkeypatch.setattr("loushang.harness.resources.packages.materializer._remote_git_head_result_async", fake_remote_head)
     materializer = PackageMaterializer(
         install_root=tmp_path / "packages",
         backend=backend,
@@ -1106,7 +1106,7 @@ def test_package_materializer_check_updates_emits_progress_events(tmp_path, monk
         del source_arg, timeout_seconds
         return "abc", ""
 
-    monkeypatch.setattr("loushang.coding.package.materializer._remote_git_head_result_async", fake_remote_head)
+    monkeypatch.setattr("loushang.harness.resources.packages.materializer._remote_git_head_result_async", fake_remote_head)
     materializer = PackageMaterializer(
         install_root=tmp_path / "packages",
         backend=backend,
@@ -1145,7 +1145,7 @@ def test_package_materializer_check_updates_reports_python_package_update(tmp_pa
         checked.append((record.resolved_name or "", timeout_seconds))
         return "1.3.0", ""
 
-    monkeypatch.setattr("loushang.coding.package.materializer._pypi_latest_version_result_async", fake_pypi_latest)
+    monkeypatch.setattr("loushang.harness.resources.packages.materializer._pypi_latest_version_result_async", fake_pypi_latest)
     materializer = PackageMaterializer(
         install_root=tmp_path / "packages",
         backend=None,
@@ -1197,7 +1197,7 @@ def test_package_materializer_check_updates_skips_pinned_python_packages(tmp_pat
         checked.append(record.source)
         return "1.3.0", ""
 
-    monkeypatch.setattr("loushang.coding.package.materializer._pypi_latest_version_result_async", fake_pypi_latest)
+    monkeypatch.setattr("loushang.harness.resources.packages.materializer._pypi_latest_version_result_async", fake_pypi_latest)
     materializer = PackageMaterializer(
         install_root=tmp_path / "packages",
         backend=None,

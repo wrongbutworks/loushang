@@ -4243,6 +4243,62 @@ def test_rpc_mode_reports_invalid_json_and_unsupported_commands() -> None:
     assert unsupported["errorInfo"]["command"] == "unknown"
 
 
+def test_rpc_mode_rejects_non_finite_input_numbers() -> None:
+    from loushang.coding.mode import run_rpc_mode
+
+    session = FakeSession(session_id="session-a", cwd="/tmp/project")
+    runtime = FakeRuntime(session)
+    stdin = StringIO(
+        "\n".join(
+            [
+                '{"type":"get_state","value":NaN}',
+                '{"type":"get_state","value":Infinity}',
+                '{"type":"get_state","value":-Infinity}',
+                '{"id":"bash","type":"bash","command":"printf hi","timeoutSeconds":1e400}',
+                '{"id":"prompt","type":"prompt","message":"\\ud800"}',
+            ]
+        )
+        + "\n"
+    )
+    stdout = StringIO()
+
+    async def scenario() -> None:
+        exit_code = await run_rpc_mode(runtime=runtime, stdin=stdin, stdout=stdout)
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    responses = _parse_jsonl(stdout)
+    assert session.bash_calls == []
+    assert session.prompt_calls == []
+    assert [response["command"] for response in responses[:3]] == ["parse", "parse", "parse"]
+    assert [response["error"] for response in responses[:3]] == [
+        "Failed to parse command: invalid JSON numeric constant: NaN",
+        "Failed to parse command: invalid JSON numeric constant: Infinity",
+        "Failed to parse command: invalid JSON numeric constant: -Infinity",
+    ]
+    assert responses[3] == {
+        "id": "bash",
+        "type": "response",
+        "command": "invalid",
+        "success": False,
+        "error": (
+            "RPC command contains a value outside strict JSON: "
+            "rpc_command.timeoutSeconds must be JSON-safe: non-finite float"
+        ),
+    }
+    assert responses[4] == {
+        "id": "prompt",
+        "type": "response",
+        "command": "invalid",
+        "success": False,
+        "error": (
+            "RPC command contains a value outside strict JSON: "
+            "rpc_command.message must be JSON-safe: string is not valid UTF-8"
+        ),
+    }
+
+
 def test_rpc_mode_jsonl_framing_preserves_unicode_line_separators() -> None:
     from loushang.coding.mode import run_rpc_mode
 
@@ -4673,7 +4729,7 @@ def test_rpc_mode_extension_ui_dialog_cancelled_responses_return_defaults() -> N
     asyncio.run(scenario())
 
 
-def test_rpc_mode_write_json_line_serializes_circular_payloads_safely() -> None:
+def test_rpc_mode_write_json_line_rejects_circular_payloads() -> None:
     from loushang.coding.mode import RpcMode
 
     runtime = FakeRuntime(FakeSession(session_id="session-a", cwd="/tmp/project"))
@@ -4684,7 +4740,14 @@ def test_rpc_mode_write_json_line_serializes_circular_payloads_safely() -> None:
     payload["data"] = payload
 
     mode._write_json_line(payload)
-    assert _parse_jsonl(stdout) == [{"type": "response", "command": "probe", "success": True, "data": "<circular>"}]
+    assert _parse_jsonl(stdout) == [
+        {
+            "type": "response",
+            "command": "probe",
+            "success": False,
+            "error": "Failed to serialize RPC output.",
+        }
+    ]
 
 
 def test_rpc_mode_write_json_line_preserves_command_on_fallback() -> None:
@@ -4703,6 +4766,37 @@ def test_rpc_mode_write_json_line_preserves_command_on_fallback() -> None:
     mode._write_json_line({"type": "response", "id": "id-1", "command": "probe", "data": BadSlots()})
     assert _parse_jsonl(stdout) == [
         {"type": "response", "command": "probe", "success": False, "error": "Failed to serialize RPC output.", "id": "id-1"},
+    ]
+
+
+def test_rpc_mode_write_json_line_drops_invalid_fallback_fields() -> None:
+    from loushang.coding.mode import RpcMode
+
+    class Unsupported:
+        pass
+
+    runtime = FakeRuntime(FakeSession(session_id="session-a", cwd="/tmp/project"))
+    stdout = StringIO()
+    mode = RpcMode(runtime=runtime, stdin=StringIO(""), stdout=stdout)
+
+    mode._write_json_line(
+        {
+            "type": "response",
+            "id": "\ud800",
+            "command": "\ud800",
+            "data": Unsupported(),
+        }
+    )
+
+    rendered = stdout.getvalue()
+    rendered.encode("utf-8")
+    assert _parse_jsonl(stdout) == [
+        {
+            "type": "response",
+            "command": "response",
+            "success": False,
+            "error": "Failed to serialize RPC output.",
+        }
     ]
 
 

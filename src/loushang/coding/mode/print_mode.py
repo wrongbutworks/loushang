@@ -3,7 +3,8 @@ from __future__ import annotations
 import inspect
 import json
 import sys
-from typing import Any, Literal, Mapping, Sequence, TextIO
+from collections.abc import Mapping, Sequence
+from typing import Any, Literal, TextIO
 
 from loushang.coding.event import (
     SUPPORTED_JSON_EVENT_VIEWS,
@@ -14,8 +15,9 @@ from loushang.coding.event import (
 )
 from loushang.coding.message.json_codec import serialize_session_header
 from loushang.coding.mode.base import ModeAdapter, ModeState
-from loushang.coding.tools import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.coding.work_shell import CodingWorkShell
+from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.protocol import require_json_value
 from loushang.work import EventLogBackend
 
 
@@ -209,7 +211,10 @@ class PrintMode(ModeAdapter):
         self.stdout.write(rendered + "\n")
 
     def _write_json_line(self, payload: object) -> None:
-        self.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        projected = require_json_value(payload, name="print_json_event")
+        self.stdout.write(
+            json.dumps(projected, ensure_ascii=False, allow_nan=False) + "\n"
+        )
 
     def _configure_tool_rendering(self, session: Any) -> None:
         if not self.render_tool_events:
@@ -375,21 +380,31 @@ def _serialize_model_snapshot(session: Any, state: Any) -> dict[str, object] | N
     if model is not None:
         provider = _safe_getattr(model, "provider_id", None) or _safe_getattr(model, "provider", None)
         model_id = _safe_getattr(model, "id", None)
-        if isinstance(provider, str) and isinstance(model_id, str) and provider and model_id:
-            if not _is_unknown_model(provider, model_id):
-                name = _safe_getattr(model, "name", model_id)
-                return {
-                    "provider": provider,
-                    "id": model_id,
-                    "name": name if isinstance(name, str) and name else str(model_id),
-                }
+        if (
+            isinstance(provider, str)
+            and isinstance(model_id, str)
+            and provider
+            and model_id
+            and not _is_unknown_model(provider, model_id)
+        ):
+            name = _safe_getattr(model, "name", model_id)
+            return {
+                "provider": provider,
+                "id": model_id,
+                "name": name if isinstance(name, str) and name else str(model_id),
+            }
 
     model_selection = _safe_getattr(state, "model_selection", None)
     provider = _safe_getattr(model_selection, "provider", None)
     model_id = _safe_getattr(model_selection, "model_id", None)
-    if isinstance(provider, str) and isinstance(model_id, str) and provider and model_id:
-        if not _is_unknown_model(provider, model_id):
-            return {"provider": provider, "id": model_id, "name": model_id}
+    if (
+        isinstance(provider, str)
+        and isinstance(model_id, str)
+        and provider
+        and model_id
+        and not _is_unknown_model(provider, model_id)
+    ):
+        return {"provider": provider, "id": model_id, "name": model_id}
     return None
 
 

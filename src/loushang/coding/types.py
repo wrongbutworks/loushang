@@ -1,13 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class ModelSelection:
-    provider: str
-    model_id: str
-    endpoint_id: str | None = None
-
+from loushang.ai.model import ModelSelection
 
 __all__ = ["ModelSelection"]
