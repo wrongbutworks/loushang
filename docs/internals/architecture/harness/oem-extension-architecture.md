@@ -131,30 +131,32 @@ This categorisation is important because OEMs typically need all three:
 | Category | Execution | OEM use case |
 | --- | --- | --- |
 | **Contribution** (aggregate) | All declarations run independently; failure is isolated | Ship custom tools, commands, methods, skills |
-| **Interceptor** (pipeline) | Handlers form a pipeline; each sees previous output; failure governed by `on_error` | Ship custom hooks, policy evaluators, approval resolvers |
-| **Replacement** (exclusive) | Only one active per slot | Ship custom model providers, channel adapters, storage backends |
+| **Interceptor** (pipeline) | Handlers form a pipeline; each sees previous output; failure governed by `on_error` | Ship custom hooks and policy evaluators |
+| **Replacement** (exclusive) | Only one active per slot; failure propagates to the Product-selected fallback | Ship approval resolvers, custom model providers, channel adapters, storage backends |
 
-Current harness extension dispatch only supports contribution-type execution
-with stable insertion order. Interceptor pipelines and replacement slots
-require the ordering and routing extensions described in
-[Extension Runtime Core Boundary](extension-runtime-core-boundary.md#extension-routing-and-ordering).
+Harness extension dispatch now provides stable dependency-aware observer,
+interceptor, reducer, and first-match routing. Policy contributions use the
+interceptor chain; approval contributions use an exclusive replacement slot.
+The Product/OEM layer still supplies activation and trust decisions; Harness
+enforces them while building executable routes and registries. See the
+[Control Plane Runtime Boundary](control-plane-runtime-boundary.md).
 
 ## ExtensionSurfaceType Gaps
 
-The current nine surface types are sufficient for contribution-focused OEMs
-but insufficient for OEMs that need to inject policy, approval, methods, or
-channel adapters through an extension package.
+Policy and approval now have focused runtime contribution records and injection
+paths. Method and Channel remain outside Harness until their owning layers
+define corresponding registries.
 
 Missing surface types and the harness processing path each requires:
 
 | Surface type | What it carries | Harness processing path |
 | --- | --- | --- |
-| `policy` | A `PolicyEvaluator` implementation | Host or harness policy broker loads and injects it |
-| `approval` | An `ApprovalResolver` implementation | Harness approval broker loads and injects it |
+| `policy` | A `PolicyEvaluator` implementation | Harness validates it and composes it into the resolved evaluator chain |
+| `approval` | An `ApprovalResolver` implementation | Harness validates the exclusive replacement and supplies it to the approval broker |
 | `method` | A method resource (`METHOD.md` or `SKILL.md` path) | Method loader discovers and registers it |
 | `channel` | A channel adapter (transport + encoding) | Channel registry accepts and activates it |
 
-Each new surface type needs:
+The remaining Method and Channel surface types each need:
 1. A `from_surface()` factory in the corresponding harness module.
 2. An injection path from `ExtensionInventory` to the harness engine.
 3. Contract tests proving an OEM can ship the surface in a plugin without

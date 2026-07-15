@@ -11,6 +11,7 @@ from loushang.harness.workspace.exec import (
     ExecRequest,
     ExecResult,
     ExecService,
+    materialize_exec_request,
 )
 
 
@@ -34,7 +35,50 @@ def test_exec_records_normalize_sequences_and_validate_rolling_limit() -> None:
         ExecRequest(command=["true"], rolling_max_bytes=0)
 
 
-def test_exec_service_delegates_to_custom_backend_and_streams_updates(tmp_path: Path) -> None:
+def test_exec_request_materialization_preserves_abi_and_freezes_process_state(
+    tmp_path: Path,
+) -> None:
+    request = ExecRequest(
+        ("printf", "ok"),
+        None,
+        (("B", "override"),),
+        5,
+    )
+    inherited = {"A": "one", "B": "base"}
+
+    materialized = materialize_exec_request(
+        request,
+        environ=inherited,
+        cwd=str(tmp_path),
+    )
+    inherited["A"] = "changed"
+
+    assert request.timeout_seconds == 5
+    assert request.env == (("B", "override"),)
+    assert request.effective_environment is None
+    assert materialized.cwd == str(tmp_path)
+    assert materialized.env == (("B", "override"),)
+    assert dict(materialized.effective_environment or ()) == {
+        "A": "one",
+        "B": "override",
+    }
+    assert (
+        materialize_exec_request(materialized, environ={"A": "later"}) is materialized
+    )
+
+
+def test_exec_request_materialization_preserves_explicit_empty_cwd() -> None:
+    materialized = materialize_exec_request(
+        ExecRequest(command=("true",), cwd=""),
+        environ={},
+    )
+
+    assert materialized.cwd == ""
+
+
+def test_exec_service_delegates_to_custom_backend_and_streams_updates(
+    tmp_path: Path,
+) -> None:
     seen: list[tuple[tuple[str, ...], str | None, object | None]] = []
     updates: list[ExecOutputChunk] = []
 
@@ -59,10 +103,50 @@ def test_exec_service_delegates_to_custom_backend_and_streams_updates(tmp_path: 
         )
 
         assert result.stdout == "remote\n"
-        assert seen == [(('deploy',), str(tmp_path), signal)]
+        assert seen == [(("deploy",), str(tmp_path), signal)]
 
     asyncio.run(scenario())
     assert updates == [ExecOutputChunk(stream="stdout", text="remote\n")]
+
+
+def test_exec_service_custom_backend_receives_one_frozen_process_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[ExecRequest] = []
+    original_cwd = tmp_path / "original"
+    changed_cwd = tmp_path / "changed"
+    original_cwd.mkdir()
+    changed_cwd.mkdir()
+    monkeypatch.chdir(original_cwd)
+    monkeypatch.setenv("HARNESS_EXEC_SNAPSHOT", "original")
+
+    async def backend(request, **kwargs):
+        del kwargs
+        captured.append(request)
+        monkeypatch.chdir(changed_cwd)
+        monkeypatch.setenv("HARNESS_EXEC_SNAPSHOT", "changed")
+        await asyncio.sleep(0)
+        return ExecResult(exit_code=0)
+
+    asyncio.run(
+        ExecService(backend=backend).execute(
+            ExecRequest(
+                command=["remote"],
+                env=(("HARNESS_EXEC_OVERRIDE", "caller"),),
+            )
+        )
+    )
+
+    request = captured[0]
+    assert request.cwd == str(original_cwd)
+    assert request.env == (("HARNESS_EXEC_OVERRIDE", "caller"),)
+    assert (
+        dict(request.effective_environment or ())["HARNESS_EXEC_SNAPSHOT"] == "original"
+    )
+    assert (
+        dict(request.effective_environment or ())["HARNESS_EXEC_OVERRIDE"] == "caller"
+    )
 
 
 def test_exec_service_rejects_invalid_backend_result() -> None:
@@ -77,7 +161,9 @@ def test_exec_service_rejects_invalid_backend_result() -> None:
     asyncio.run(scenario())
 
 
-def test_exec_service_runs_subprocess_and_preserves_interleaved_chunks(tmp_path: Path) -> None:
+def test_exec_service_runs_subprocess_and_preserves_interleaved_chunks(
+    tmp_path: Path,
+) -> None:
     updates: list[tuple[str, str]] = []
 
     async def scenario() -> None:
@@ -121,11 +207,18 @@ def test_exec_service_runs_subprocess_and_preserves_interleaved_chunks(tmp_path:
     ]
 
 
-def test_exec_service_builds_tail_preview_and_full_output_artifact(tmp_path: Path) -> None:
+def test_exec_service_builds_tail_preview_and_full_output_artifact(
+    tmp_path: Path,
+) -> None:
     async def scenario() -> None:
         result = await ExecService().execute(
             ExecRequest(
-                command=["/usr/bin/env", "python3", "-c", "print('a'); print('b'); print('c'); print('d')"],
+                command=[
+                    "/usr/bin/env",
+                    "python3",
+                    "-c",
+                    "print('a'); print('b'); print('c'); print('d')",
+                ],
                 cwd=str(tmp_path),
                 preview_max_lines=2,
                 preview_max_bytes=1024,
@@ -137,7 +230,10 @@ def test_exec_service_builds_tail_preview_and_full_output_artifact(tmp_path: Pat
         assert result.stdout_truncated is True
         assert result.stdout_truncated_by == "lines"
         assert result.stdout_artifact_path is not None
-        assert Path(result.stdout_artifact_path).read_text(encoding="utf-8") == "a\nb\nc\nd\n"
+        assert (
+            Path(result.stdout_artifact_path).read_text(encoding="utf-8")
+            == "a\nb\nc\nd\n"
+        )
 
     asyncio.run(scenario())
 
@@ -167,7 +263,9 @@ def test_exec_service_rolls_capture_without_losing_artifact(tmp_path: Path) -> N
         assert len(result.stdout.encode("utf-8")) <= 512
         assert result.stdout_preview == "line-0398\nline-0399\n"
         assert result.stdout_artifact_path is not None
-        assert Path(result.stdout_artifact_path).read_text(encoding="utf-8") == full_output
+        assert (
+            Path(result.stdout_artifact_path).read_text(encoding="utf-8") == full_output
+        )
 
     asyncio.run(scenario())
 

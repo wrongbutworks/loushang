@@ -6,11 +6,14 @@ from pathlib import Path
 from typing import Literal, cast
 
 from loushang.agent.types import AgentTool, ensure_agent_tool, is_agent_tool_like
+from loushang.harness.contributions import ExtensionSurfaceDescriptor
 from loushang.harness.extensions.events import VALID_EXTENSION_EVENTS
+from loushang.harness.extensions.routing import RegisteredExtensionHandler
 from loushang.harness.extensions.types import (
     ExtensionHandler,
     LoadedExtension,
     RegisteredCommand,
+    RegisteredControlContribution,
     RegisteredFlag,
     RegisteredShortcut,
 )
@@ -36,6 +39,8 @@ class ExtensionContributionAPI:
         self._source_path = source_path
         self._entry_path = entry_path
         self._hooks: dict[str, list[object]] = {}
+        self._handler_registrations: list[RegisteredExtensionHandler] = []
+        self._control_contributions: list[RegisteredControlContribution] = []
         self._tool_definitions: list[ToolDefinition] = []
         self._commands: dict[str, RegisteredCommand] = {}
         self._flags: dict[str, RegisteredFlag] = {}
@@ -46,9 +51,39 @@ class ExtensionContributionAPI:
         self._diagnostics: list[ResourceDiagnostic] = []
         self._runtime_state: object | None = None
 
-    def on(self, event_name: str, handler: object) -> None:
+    def on(
+        self,
+        event_name: str,
+        handler: object,
+        *,
+        route_id: str | None = None,
+        priority: int = 0,
+        after: Sequence[str] = (),
+        before: Sequence[str] = (),
+        on_error: Literal["skip", "fail_chain"] = "skip",
+    ) -> None:
         if event_name not in VALID_EXTENSION_EVENTS:
             raise ValueError(f"Unsupported extension event: {event_name}")
+        if not callable(handler):
+            raise TypeError("Extension hook handler must be callable.")
+        event_registration_count = sum(
+            registration.event_name == event_name
+            for registration in self._handler_registrations
+        )
+        registration = RegisteredExtensionHandler(
+            local_route_id=(
+                f"legacy-{event_registration_count + 1:04d}"
+                if route_id is None
+                else route_id
+            ),
+            event_name=event_name,
+            handler=cast(ExtensionHandler, handler),
+            priority=priority,
+            after=_normalize_references(after),
+            before=_normalize_references(before),
+            on_error=on_error,
+        )
+        self._handler_registrations.append(registration)
         self._hooks.setdefault(event_name, []).append(handler)
 
     def register_tool(
@@ -64,6 +99,45 @@ class ExtensionContributionAPI:
         )
         self._tool_definitions.append(definition)
         self._register_runtime_tool(definition)
+
+    def register_policy(
+        self,
+        name: str,
+        evaluator: object,
+        *,
+        priority: int = 0,
+        after: Sequence[str] = (),
+        before: Sequence[str] = (),
+        on_error: Literal["skip", "fail_chain"] = "fail_chain",
+    ) -> None:
+        self._register_control_contribution(
+            "policy",
+            name,
+            evaluator,
+            priority=priority,
+            after=after,
+            before=before,
+            on_error=on_error,
+        )
+
+    def register_approval(
+        self,
+        name: str,
+        resolver: object,
+        *,
+        priority: int = 0,
+        after: Sequence[str] = (),
+        before: Sequence[str] = (),
+    ) -> None:
+        self._register_control_contribution(
+            "approval",
+            name,
+            resolver,
+            priority=priority,
+            after=after,
+            before=before,
+            on_error="fail_chain",
+        )
 
     def registerTool(
         self,
@@ -220,6 +294,8 @@ class ExtensionContributionAPI:
                 name: cast(list[ExtensionHandler], list(handlers))
                 for name, handlers in self._hooks.items()
             },
+            handler_registrations=list(self._handler_registrations),
+            control_contributions=list(self._control_contributions),
             tool_definitions=list(self._tool_definitions),
             commands=dict(self._commands),
             flags=dict(self._flags),
@@ -236,6 +312,57 @@ class ExtensionContributionAPI:
         callback = getattr(self._runtime_bindings(), "register_tool", None)
         if callable(callback):
             callback(definition, SourceInfo(path=self._entry_path or self._source_path))
+
+    def _register_control_contribution(
+        self,
+        contribution_type: Literal["policy", "approval"],
+        name: str,
+        value: object,
+        *,
+        priority: int,
+        after: Sequence[str],
+        before: Sequence[str],
+        on_error: Literal["skip", "fail_chain"],
+    ) -> None:
+        normalized_name = name.strip()
+        if not normalized_name:
+            raise ValueError("Control contribution name must not be empty.")
+        if isinstance(priority, bool) or not isinstance(priority, int):
+            raise TypeError("Control contribution priority must be an integer.")
+        normalized_after = _normalize_references(after)
+        normalized_before = _normalize_references(before)
+        if on_error not in {"skip", "fail_chain"}:
+            raise ValueError(
+                f"Unsupported control contribution error policy: {on_error}"
+            )
+        self._control_contributions.append(
+            RegisteredControlContribution(
+                descriptor=ExtensionSurfaceDescriptor(
+                    type=contribution_type,
+                    name=normalized_name,
+                    extension_id=self._name,
+                    source_path=self._entry_path or self._source_path,
+                    priority=priority,
+                    after=normalized_after,
+                    before=normalized_before,
+                    on_error=on_error,
+                    metadata={"source": "runtime"},
+                ),
+                value=value,
+            )
+        )
+
+
+def _normalize_references(references: Sequence[str]) -> tuple[str, ...]:
+    if isinstance(references, str):
+        raise TypeError("Extension ordering references must be a sequence of strings.")
+    values = tuple(references)
+    if not all(isinstance(reference, str) for reference in values):
+        raise TypeError("Extension ordering references must be a sequence of strings.")
+    normalized = tuple(reference.strip() for reference in values)
+    if any(not reference for reference in normalized):
+        raise ValueError("Extension ordering references must not be empty.")
+    return normalized
 
 
 __all__ = ["ExtensionContributionAPI"]

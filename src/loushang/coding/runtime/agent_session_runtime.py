@@ -127,6 +127,7 @@ class AgentSessionRuntime:
             delay_seconds=session_index_flush_delay,
         )
         if current_session is not None:
+            self._open_session_approvals(current_session)
             self._bind_runtime_host(current_session)
 
     @property
@@ -152,6 +153,18 @@ class AgentSessionRuntime:
         self, callback: BeforeSessionInvalidateCallback | None
     ) -> None:
         self._session_host.set_before_invalidate(callback)
+
+    def subscribe_before_session_invalidate(
+        self,
+        callback: BeforeSessionInvalidateCallback,
+    ) -> Callable[[], None]:
+        return self._session_host.subscribe_before_invalidate(callback)
+
+    def subscribe_after_session_invalidate(
+        self,
+        callback: BeforeSessionInvalidateCallback,
+    ) -> Callable[[], None]:
+        return self._session_host.subscribe_after_invalidate(callback)
 
     async def create_session(
         self, *, cwd: str, parent_session: str | None = None
@@ -527,10 +540,11 @@ class AgentSessionRuntime:
         )
         await self._session_host.replace(
             session,
-            prepare=self._bind_runtime_host,
+            prepare=self._prepare_session_for_replacement,
             before_release=lambda previous: self._prepare_session_shutdown(
                 previous, shutdown_event
             ),
+            activate=self._open_session_approvals,
         )
 
     def get_current_session(self) -> AgentSession | None:
@@ -835,6 +849,7 @@ class AgentSessionRuntime:
             previous: AgentSession | None,
         ) -> None:
             session = candidate.session
+            self._open_session_approvals(session)
             starter = getattr(session, "start_extension_runtime", None)
             if callable(starter):
                 start_reason = (
@@ -857,8 +872,8 @@ class AgentSessionRuntime:
 
         return await self._session_operations.run(
             prepare,
-            prepare_session=lambda candidate, _previous: self._bind_runtime_host(
-                candidate.session
+            prepare_session=lambda candidate, _previous: (
+                self._prepare_session_for_replacement(candidate.session)
             ),
             before_release=lambda previous, candidate: self._prepare_session_shutdown(
                 previous,
@@ -967,6 +982,18 @@ class AgentSessionRuntime:
         setter = getattr(session, "set_extension_runtime_host", None)
         if callable(setter):
             setter(self)
+
+    def _prepare_session_for_replacement(self, session: AgentSession) -> None:
+        stage_session_approvals = getattr(session, "_stage_session_approvals", None)
+        if callable(stage_session_approvals):
+            stage_session_approvals()
+        self._bind_runtime_host(session)
+
+    @staticmethod
+    def _open_session_approvals(session: AgentSession) -> None:
+        open_session_approvals = getattr(session, "_open_session_approvals", None)
+        if callable(open_session_approvals):
+            open_session_approvals()
 
     def _record_session_index_flush_failure(
         self, exc: Exception, *, all_sessions: bool

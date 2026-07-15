@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Any, Literal
 
 from loushang.harness.contributions import ExtensionSurfaceDescriptor
+from loushang.harness.extensions.routing_types import (
+    ExtensionHandler,
+    RegisteredExtensionHandler,
+)
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.source import SourceInfo
 from loushang.harness.resources.types import (
@@ -19,7 +23,6 @@ from loushang.harness.resources.types import (
 )
 from loushang.harness.tools.core import ToolDefinition
 
-ExtensionHandler = Callable[[object, object], object | None]
 InputSource = Literal["interactive", "rpc", "extension"]
 
 
@@ -87,6 +90,18 @@ class ExtensionPolicyDecision:
     @property
     def active(self) -> bool:
         return self.enabled
+
+
+@dataclass(frozen=True)
+class RegisteredControlContribution:
+    descriptor: ExtensionSurfaceDescriptor
+    value: object
+
+    def __post_init__(self) -> None:
+        if self.descriptor.type not in {"policy", "approval"}:
+            raise ValueError(
+                "control contributions must use policy or approval surfaces"
+            )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -160,10 +175,31 @@ class LoadedExtension:
     manifest: object | None = None
     policy: ExtensionPolicyDecision | None = None
     contributions: list[ExtensionSurfaceDescriptor] = field(default_factory=list)
+    handler_registrations: list[RegisteredExtensionHandler] = field(
+        default_factory=list
+    )
+    control_contributions: list[RegisteredControlContribution] = field(
+        default_factory=list
+    )
+
+    def __post_init__(self) -> None:
+        if self.handler_registrations and not self.hooks:
+            projected: dict[str, list[ExtensionHandler]] = {}
+            for registration in self.handler_registrations:
+                projected.setdefault(registration.event_name, []).append(
+                    registration.handler
+                )
+            object.__setattr__(self, "hooks", projected)
 
     @property
     def surfaces(self) -> list[ExtensionSurfaceDescriptor]:
         return list(self.contributions)
+
+
+def extension_is_active(extension: LoadedExtension) -> bool:
+    """Return whether an extension may contribute executable capabilities."""
+
+    return extension.policy is None or extension.policy.active
 
 
 @dataclass(frozen=True)
@@ -189,11 +225,14 @@ __all__ = [
     "ExtensionHandler",
     "ExtensionPolicyDecision",
     "ExtensionResourceContribution",
+    "extension_is_active",
     "InputEvent",
     "InputEventResult",
     "InputSource",
     "LoadedExtension",
     "RegisteredCommand",
+    "RegisteredControlContribution",
+    "RegisteredExtensionHandler",
     "RegisteredFlag",
     "RegisteredShortcut",
     "ResolvedCommand",

@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 from .service import ExecBackend, ExecService
-from .types import ExecOutputChunk, ExecRequest, ExecResult, ExecUpdateCallback
+from .types import (
+    ExecOutputChunk,
+    ExecRequest,
+    ExecResult,
+    ExecUpdateCallback,
+    materialize_exec_request,
+)
 
 __all__ = [
     "ExecBackend",
@@ -10,4 +16,5 @@ __all__ = [
     "ExecResult",
     "ExecService",
     "ExecUpdateCallback",
+    "materialize_exec_request",
 ]

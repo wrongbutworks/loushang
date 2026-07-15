@@ -2,7 +2,8 @@
 
 ## Status
 
-Status: implementation complete for integration into `lane/harness`.
+Status: implementation complete, including the follow-on control-plane routing
+closure, for integration into `lane/harness`.
 
 This boundary moves the product-neutral extension runtime core into
 `loushang.harness.extensions`. Coding remains a product adapter and preserves
@@ -21,8 +22,8 @@ Harness owns these mechanisms:
   attachment, and contribution projection;
 - deterministic command naming, first-wins flag/shortcut/tool resolution,
   source provenance, and duplicate diagnostics;
-- ordered failure-contained observer dispatch and sequential input
-  transformation;
+- stable dependency-aware route planning, failure-contained observer dispatch,
+  opaque-state reducers/interceptors, and sequential input transformation;
 - resource contribution execution and `promptPaths`, `skillPaths`, and
   `themePaths` normalization;
 - registered-tool execution wrapping with an injected context factory.
@@ -52,8 +53,8 @@ Coding keeps:
 - session switch/fork/compact/tree decisions and Coding event projection;
 - system-prompt augmentation, model/provider behavior, Agent tool-call result
   adaptation, compaction behavior, and UI integration;
-- the `ExtensionRunner` composition adapter that connects Harness engines to a
-  Coding session.
+- the `ExtensionRunner` composition adapter and Product reducers that connect
+  Harness routing to Coding session, prompt, context, and Agent result types.
 
 `loushang.coding.extensions.loader.ExtensionLoader` now only injects the Coding
 API factory, Coding permission policy, and legacy event names into the Harness
@@ -79,16 +80,16 @@ Extensions fall into three categories with different execution semantics:
 | Category | Behaviour | Failure strategy | Examples |
 | --- | --- | --- | --- |
 | **Contribution** | All declarations are aggregated; each runs independently | One failure produces a diagnostic; others continue | tool, command, skill, method, prompt, resource_root |
-| **Interceptor** | Handlers form a pipeline; each sees the output of the previous | Step failure is governed by `on_error` (skip / fail_chain) | hook, policy, approval |
-| **Replacement** | Only one active provider per slot; later registrations replace earlier ones | Not applicable — only one runs | model_provider, channel adapter, storage backend |
+| **Interceptor** | Handlers form a pipeline; each sees the output of the previous | Step failure is governed by `on_error` (skip / fail_chain) | hook, policy |
+| **Replacement** | Only one active provider per slot; the first active provider in resolved order wins and conflicts are diagnosed | Failure propagates to the Product-selected fallback; there is no chain to skip | approval, model_provider, channel adapter, storage backend |
 
 Harness owns the scheduling categories. Product adapters and OEMs decide
 which extensions are active in each category and inject policy for each slot.
 
 ## Extension Routing And Ordering
 
-Current extension execution uses insertion order. The descriptor already
-carries `priority` and should grow explicit ordering and error-policy fields:
+Extension execution is compiled into an event-scoped route plan. The descriptor
+and registered-handler records carry explicit ordering and error-policy fields:
 
 ```python
 @dataclass(frozen=True)
@@ -99,21 +100,27 @@ class ExtensionSurfaceDescriptor:
     source_path: Path
     active: bool = True
     priority: int = 0
-    after: tuple[str, ...] = ()       # run after these surfaces (by name or extension_id)
-    before: tuple[str, ...] = ()      # run before these surfaces
-    on_error: Literal["skip", "fail_chain"] = "skip"
     permission_requirements: tuple[str, ...] = ()
     diagnostics: tuple[ResourceDiagnostic, ...] = ()
     metadata: dict[str, object] = field(default_factory=dict)
+    # Appended to preserve the legacy positional constructor contract.
+    after: tuple[str, ...] = ()       # canonical route/extension references
+    before: tuple[str, ...] = ()
+    on_error: Literal["skip", "fail_chain"] = "skip"
 ```
 
-When `after` or `before` constraints create a cycle, harness emits a diagnostic
-and falls back to insertion order for the conflicting set.
+Routes use stable topological ordering with priority and registration order as
+tie-breakers. When `after` or `before` constraints create a cycle, Harness
+preserves edges outside the strongly connected component, emits a diagnostic,
+and uses priority plus registration order inside the conflicting component.
+Legacy `LoadedExtension.hooks` values synthesize registrations in existing
+extension and handler order.
 
 ## ExtensionSurfaceType Gaps
 
-The current `ExtensionSurfaceType` literal covers nine surfaces. Several
-surface types that OEM products need are not yet defined:
+The control-plane closure adds executable `policy` and `approval` contribution
+paths. Method and Channel surfaces remain owned by their respective layers and
+are not added as unprocessed Harness vocabulary:
 
 ```python
 ExtensionSurfaceType = Literal[
@@ -127,21 +134,23 @@ ExtensionSurfaceType = Literal[
     "ui",
     "autocomplete",
     "resource_root",
-    # proposed — each requires a harness processing path
-    "policy",          # inject a PolicyEvaluator
-    "approval",        # inject an ApprovalResolver
-    "method",          # register a method resource
-    "channel",         # register a channel adapter
+    # implemented control-plane contributions
+    "policy",          # inject a PolicyEvaluator chain member
+    "approval",        # select an ApprovalResolver replacement
 ]
 ```
 
-Each new surface type requires:
-1. a `from_surface()` factory in the corresponding Harness module that loads
-   and validates the extension's source;
-2. an injection path from `ExtensionInventory` to the Harness engine that
-   consumes it (e.g. host runtime, policy broker, channel registry);
-3. contract tests proving an OEM can ship the surface in a plugin without
-   importing product packages.
+Runtime values use focused control-contribution records rather than mutable
+descriptor metadata. Policy contributions compose in resolved route order;
+approval is an exclusive replacement slot with deterministic conflict
+diagnostics. Policy contributions fail the chain by default; advisory skip
+semantics must be explicit. The selected approval replacement validates its
+result and reports route/source diagnostics before propagating failures, while
+cancellation remains undiagnosed. Product/OEM code supplies activation and
+trust decisions before composition; Harness applies inactive filtering
+consistently across executable surfaces. See the
+[Control Plane Runtime Boundary](control-plane-runtime-boundary.md) for the
+runtime contracts and compatibility matrix.
 
 ## Failure And Ordering Contract
 

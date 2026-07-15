@@ -1,18 +1,23 @@
 from __future__ import annotations
 
-import inspect
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
+from dataclasses import dataclass
 
-from loushang.harness.extensions.registry import source_info_from_extension
+from loushang.harness.extensions.routing import (
+    ExtensionContextFactory,
+    ExtensionRoutePlan,
+    ExtensionRouter,
+    ExtensionRuntimeErrorHandler,
+    ResolvedExtensionRoute,
+    RouteStep,
+)
 from loushang.harness.extensions.types import (
     InputEvent,
     InputEventResult,
+    InputSource,
     LoadedExtension,
 )
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
-
-ExtensionContextFactory = Callable[[LoadedExtension], object]
-ExtensionRuntimeErrorHandler = Callable[[LoadedExtension, str, Exception], None]
 
 
 class ExtensionDispatcher:
@@ -25,47 +30,39 @@ class ExtensionDispatcher:
         context_factory: ExtensionContextFactory,
         diagnostics: list[ResourceDiagnostic],
         runtime_error_handler: ExtensionRuntimeErrorHandler | None = None,
+        route_plan: ExtensionRoutePlan | None = None,
     ) -> None:
-        self._extensions = tuple(extensions)
         self._context_factory = context_factory
         self._diagnostics = diagnostics
-        self._runtime_error_handler = runtime_error_handler
+        plan = route_plan or ExtensionRoutePlan.from_extensions(
+            extensions, diagnostics=diagnostics
+        )
+        self._router = ExtensionRouter(
+            plan,
+            diagnostics=diagnostics,
+            runtime_error_handler=runtime_error_handler,
+            include_route_id_in_error_metadata=False,
+        )
 
     def has_handlers(self, event_name: str) -> bool:
-        return any(extension.hooks.get(event_name) for extension in self._extensions)
+        return self._router.has_handlers(event_name)
 
     async def dispatch(self, event_name: str, event: object) -> tuple[object, ...]:
-        results: list[object] = []
-        for extension in self._extensions:
-            context = self._context_factory(extension)
-            for handler in extension.hooks.get(event_name, ()):
-                try:
-                    result = handler(event, context)
-                    if inspect.isawaitable(result):
-                        result = await result
-                except Exception as exc:
-                    self._record_error(extension, event_name, exc)
-                    continue
-                if result is not None:
-                    results.append(result)
-        return tuple(results)
+        return await self._router.observe(
+            event_name,
+            event,
+            context_factory=self._context_factory,
+        )
 
     async def dispatch_first_truthy(
         self, event_name: str, event: object
     ) -> object | None:
-        for extension in self._extensions:
-            context = self._context_factory(extension)
-            for handler in extension.hooks.get(event_name, ()):
-                try:
-                    result = handler(event, context)
-                    if inspect.isawaitable(result):
-                        result = await result
-                except Exception as exc:
-                    self._record_error(extension, event_name, exc)
-                    continue
-                if result:
-                    return result
-        return None
+        return await self._router.first(
+            event_name,
+            event,
+            predicate=bool,
+            context_factory=self._context_factory,
+        )
 
     async def dispatch_input(
         self,
@@ -74,100 +71,107 @@ class ExtensionDispatcher:
         *,
         source: str = "interactive",
     ) -> InputEventResult:
-        current_text = text
-        current_images = images
-        transformed = False
-        for extension in self._extensions:
-            context = self._context_factory(extension)
-            for handler in extension.hooks.get("input", ()):
-                event = InputEvent(
-                    text=current_text,
-                    images=current_images,
-                    source=_normalize_input_source(source),
-                )
-                try:
-                    result = handler(event, context)
-                    if inspect.isawaitable(result):
-                        result = await result
-                except Exception as exc:
-                    self._record_error(extension, "input", exc)
-                    continue
-                action, result_text, result_images = _coerce_input_result(result)
-                if action in {None, "continue"}:
-                    continue
-                if action == "handled":
-                    return InputEventResult(
+        initial = _InputDispatchState(text=text, images=images)
+
+        def event_factory(
+            state: _InputDispatchState,
+            route: ResolvedExtensionRoute,
+        ) -> InputEvent:
+            del route
+            return InputEvent(
+                text=state.text,
+                images=state.images,
+                source=_normalize_input_source(source),
+            )
+
+        def reducer(
+            state: _InputDispatchState,
+            result: object,
+            route: ResolvedExtensionRoute,
+        ) -> RouteStep[_InputDispatchState]:
+            action, result_text, result_images = _coerce_input_result(result)
+            if action in {None, "continue"}:
+                return RouteStep(state)
+            if action == "handled":
+                return RouteStep(
+                    _InputDispatchState(
+                        text=state.text,
+                        images=state.images,
                         action="handled",
-                        text=current_text,
-                        images=current_images,
-                    )
-                if action == "transform":
-                    if result_text is None:
-                        self._diagnostics.append(
-                            _invalid_input_diagnostic(
-                                extension,
-                                "input transform results must include string text.",
-                            )
+                        transformed=state.transformed,
+                    ),
+                    stop=True,
+                )
+            if action == "transform":
+                if result_text is None:
+                    self._diagnostics.append(
+                        _invalid_input_diagnostic(
+                            route.extension,
+                            "input transform results must include string text.",
                         )
-                        continue
-                    current_text = result_text
-                    if result_images is not None:
-                        current_images = result_images
-                    transformed = True
-                    continue
-                self._diagnostics.append(
-                    _invalid_input_diagnostic(
-                        extension,
-                        (
-                            "input hooks must return action 'continue', 'transform', "
-                            "'handled', or None."
+                    )
+                    return RouteStep(state)
+                return RouteStep(
+                    _InputDispatchState(
+                        text=result_text,
+                        images=(
+                            result_images if result_images is not None else state.images
                         ),
+                        transformed=True,
                     )
                 )
-        if transformed or current_text != text or current_images is not images:
+            self._diagnostics.append(
+                _invalid_input_diagnostic(
+                    route.extension,
+                    (
+                        "input hooks must return action 'continue', 'transform', "
+                        "'handled', or None."
+                    ),
+                )
+            )
+            return RouteStep(state)
+
+        outcome = await self._router.intercept(
+            "input",
+            initial,
+            event_factory=event_factory,
+            reducer=reducer,
+            context_factory=self._context_factory,
+        )
+        state = outcome.state
+        if state.action == "handled":
+            return InputEventResult(
+                action="handled",
+                text=state.text,
+                images=state.images,
+            )
+        if state.transformed or state.text != text or state.images is not images:
             return InputEventResult(
                 action="transform",
-                text=current_text,
-                images=current_images,
+                text=state.text,
+                images=state.images,
             )
         return InputEventResult(
             action="continue",
-            text=current_text,
-            images=current_images,
+            text=state.text,
+            images=state.images,
         )
 
-    def _record_error(
-        self,
-        extension: LoadedExtension,
-        event_name: str,
-        error: Exception,
-    ) -> None:
-        source_info = source_info_from_extension(extension)
-        self._diagnostics.append(
-            ResourceDiagnostic(
-                code=f"extension_{event_name}_failed",
-                message=f"Extension hook '{event_name}' failed: {error}",
-                source_path=extension.source_path,
-                metadata={
-                    "extension_name": extension.name,
-                    "hook": event_name,
-                    "source": source_info.source,
-                    "scope": source_info.scope,
-                    "origin": source_info.origin,
-                    "base_dir": (
-                        source_info.base_dir.as_posix()
-                        if source_info.base_dir is not None
-                        else extension.source_path.parent.as_posix()
-                    ),
-                },
-            )
-        )
-        if self._runtime_error_handler is not None:
-            self._runtime_error_handler(extension, event_name, error)
+
+@dataclass(frozen=True)
+class _InputDispatchState:
+    text: str
+    images: list[object] | None
+    action: str = "continue"
+    transformed: bool = False
 
 
-def _normalize_input_source(source: str) -> str:
-    return source if source in {"interactive", "rpc", "extension"} else "interactive"
+def _normalize_input_source(source: str) -> InputSource:
+    if source == "rpc":
+        return "rpc"
+    if source == "extension":
+        return "extension"
+    return "interactive"
 
 
 def _coerce_input_result(

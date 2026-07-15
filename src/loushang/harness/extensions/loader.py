@@ -263,10 +263,23 @@ def _finalize_loaded_extension(
     enabled: bool,
     policy_resolver: ExtensionPolicyResolver,
 ) -> LoadedExtension:
+    extension_id = manifest.id if manifest is not None else loaded.name
+    source_path = loaded.entry_path or loaded.source_path
     with_policy = replace(
         loaded,
         manifest=manifest,
         policy=policy_resolver(manifest, enabled),
+        control_contributions=[
+            replace(
+                contribution,
+                descriptor=replace(
+                    contribution.descriptor,
+                    extension_id=extension_id,
+                    source_path=source_path,
+                ),
+            )
+            for contribution in loaded.control_contributions
+        ],
     )
     return replace(
         with_policy, contributions=list(surfaces_from_loaded_extension(with_policy))

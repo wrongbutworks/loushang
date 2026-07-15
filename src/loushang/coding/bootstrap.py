@@ -28,6 +28,7 @@ from loushang.coding.package.source_manager import (
     PackageSourceResolver,
     package_source_scopes,
 )
+from loushang.coding.policy import InteractiveApprovalResolver
 from loushang.coding.prompt import assemble_prompt
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession
@@ -165,7 +166,8 @@ def create_services(
     return BootstrapServices(
         settings_manager=resolved_settings_manager,
         model_registry=model_registry,
-        auth_manager=auth_manager or AuthManager(ai_registry=model_registry.ai_registry),
+        auth_manager=auth_manager
+        or AuthManager(ai_registry=model_registry.ai_registry),
         resource_loader=resource_loader or DefaultResourceLoader(),
         diagnostics_service=DiagnosticsService(),
         exec_service=exec_service or ExecService(),
@@ -221,13 +223,19 @@ def create_agent_session_services(
             default_model,
         )
     ):
-        raise ValueError("service components cannot be overridden when services is provided")
+        raise ValueError(
+            "service components cannot be overridden when services is provided"
+        )
 
-    _apply_resource_loader_options(resolved_services.resource_loader, resource_loader_options)
+    _apply_resource_loader_options(
+        resolved_services.resource_loader, resource_loader_options
+    )
     resource_bundle = resolved_services.resource_loader.discover_resources(resolved_cwd)
     loader_diagnostics = tuple(resource_bundle.diagnostics)
     extension_runner = ExtensionRunner(resource_bundle.extensions)
-    flag_diagnostics = _apply_extension_flag_values(extension_runner, extension_flag_values)
+    flag_diagnostics = _apply_extension_flag_values(
+        extension_runner, extension_flag_values
+    )
     resource_bundle = extension_runner.discover_resources(resource_bundle)
     diagnostics = tuple(
         resolved_services.diagnostics_service.normalize_resource_diagnostic(
@@ -308,11 +316,16 @@ def create_agent_session(
     package_materializer: PackageMaterializer | None = None,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
+    approval_resolver: InteractiveApprovalResolver | None = None,
 ) -> AgentSession:
     services = services or create_services()
     settings = services.settings_manager.get_settings()
-    resolved_package_materializer = package_materializer or _default_package_materializer(session_manager)
-    resolved_thinking = settings.thinking_level if thinking_level is None else thinking_level
+    resolved_package_materializer = (
+        package_materializer or _default_package_materializer(session_manager)
+    )
+    resolved_thinking = (
+        settings.thinking_level if thinking_level is None else thinking_level
+    )
     session_id = session_manager.get_header().id
     configuration = _activate_session_configuration(
         settings=settings,
@@ -325,10 +338,21 @@ def create_agent_session(
     extension_runner = _require_configured_extension_runner(configuration)
     cwd_bound_services_audit = configuration.cwd_bound_services_audit
     loader_system_prompt = _loader_system_prompt_override(services.resource_loader)
-    base_prompt = system_prompt if system_prompt is not None else loader_system_prompt if loader_system_prompt is not None else settings.system_prompt
-    append_fragments = [*_loader_append_system_prompt(services.resource_loader), *(append_system_prompt or ())]
+    base_prompt = (
+        system_prompt
+        if system_prompt is not None
+        else loader_system_prompt
+        if loader_system_prompt is not None
+        else settings.system_prompt
+    )
+    append_fragments = [
+        *_loader_append_system_prompt(services.resource_loader),
+        *(append_system_prompt or ()),
+    ]
     base_prompt = _append_system_prompt_fragments(base_prompt, append_fragments)
-    prompt_assembly = assemble_prompt(base_prompt=base_prompt, resource_bundle=resource_bundle)
+    prompt_assembly = assemble_prompt(
+        base_prompt=base_prompt, resource_bundle=resource_bundle
+    )
     resolved_prompt = prompt_assembly.system_prompt
     resolved_model: Model | None
     if model is None:
@@ -346,7 +370,9 @@ def create_agent_session(
 
     no_tools_mode = _normalize_no_tools(no_tools)
     resolved_tool_registry = tool_registry
-    allowed_tool_names_set = set(allowed_tool_names) if allowed_tool_names is not None else None
+    allowed_tool_names_set = (
+        set(allowed_tool_names) if allowed_tool_names is not None else None
+    )
     if no_tools_mode == "all":
         allowed_tool_names_set = set()
     if resolved_tool_registry is None and tools:
@@ -354,10 +380,12 @@ def create_agent_session(
         for tool in tools:
             resolved_tool_registry.register_tool(tool)
 
-    resource_bundle, resolved_tool_registry, extension_tool_diagnostics = _register_extension_tools(
-        extension_runner=extension_runner,
-        resource_bundle=resource_bundle,
-        tool_registry=resolved_tool_registry,
+    resource_bundle, resolved_tool_registry, extension_tool_diagnostics = (
+        _register_extension_tools(
+            extension_runner=extension_runner,
+            resource_bundle=resource_bundle,
+            tool_registry=resolved_tool_registry,
+        )
     )
     _record_resource_diagnostics(
         diagnostics_service=services.diagnostics_service,
@@ -415,9 +443,12 @@ def create_agent_session(
         session_start_event=session_start_event,
         package_materializer=resolved_package_materializer,
         exec_service=services.exec_service,
+        approval_resolver=approval_resolver,
     )
     session.cwd_bound_services_audit = cwd_bound_services_audit
-    scoped_models = _scoped_models_from_enabled_patterns(settings.enabled_models, services.model_registry)
+    scoped_models = _scoped_models_from_enabled_patterns(
+        settings.enabled_models, services.model_registry
+    )
     if scoped_models:
         session.setScopedModels(scoped_models)
     return session
@@ -706,9 +737,7 @@ def _record_default_model_unavailable(
         if selection.endpoint_id
         else f"{selection.provider}:{selection.model_id}"
     )
-    message = (
-        f"Default model unavailable: {selection_ref}; using startup fallback."
-    )
+    message = f"Default model unavailable: {selection_ref}; using startup fallback."
     diagnostics_service.record(
         diagnostics_service.normalize_error(
             code="default_model_unavailable",
@@ -764,6 +793,7 @@ def create_agent_session_from_services(
     session_start_event: SessionStartEvent | None = None,
     package_materializer: PackageMaterializer | None = None,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
+    approval_resolver: InteractiveApprovalResolver | None = None,
 ) -> CreateAgentSessionResult:
     extension_flag_values = (
         agent_services.extension_runner.get_flag_values()
@@ -787,6 +817,7 @@ def create_agent_session_from_services(
         package_materializer=package_materializer,
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,
+        approval_resolver=approval_resolver,
     )
 
 
@@ -808,6 +839,7 @@ def create_agent_session_result(
     package_materializer: PackageMaterializer | None = None,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
+    approval_resolver: InteractiveApprovalResolver | None = None,
 ) -> CreateAgentSessionResult:
     resolved_services = services or create_services()
     session = create_agent_session(
@@ -827,12 +859,15 @@ def create_agent_session_result(
         package_materializer=package_materializer,
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,
+        approval_resolver=approval_resolver,
     )
     return CreateAgentSessionResult(
         session=session,
         resource_bundle=session.resource_bundle,
         diagnostics=tuple(
-            resolved_services.diagnostics_service.get_diagnostics(session_id=session.session_id)
+            resolved_services.diagnostics_service.get_diagnostics(
+                session_id=session.session_id
+            )
         ),
         cwd_bound_services_audit=session.cwd_bound_services_audit,
     )
@@ -887,7 +922,9 @@ def _apply_extension_flag_values(
     return diagnostics
 
 
-def _default_package_materializer(session_manager: SessionManager) -> PackageMaterializer:
+def _default_package_materializer(
+    session_manager: SessionManager,
+) -> PackageMaterializer:
     session_dir = session_manager.get_session_dir()
     if session_dir.name == "sessions":
         install_root = session_dir.parent / "packages"
@@ -930,8 +967,16 @@ def _loader_append_system_prompt(resource_loader: object) -> list[str]:
 
 
 def _append_system_prompt_fragments(base_prompt: str, fragments: list[str]) -> str:
-    parts = [base_prompt.strip()] if isinstance(base_prompt, str) and base_prompt.strip() else []
-    parts.extend(fragment.strip() for fragment in fragments if isinstance(fragment, str) and fragment.strip())
+    parts = (
+        [base_prompt.strip()]
+        if isinstance(base_prompt, str) and base_prompt.strip()
+        else []
+    )
+    parts.extend(
+        fragment.strip()
+        for fragment in fragments
+        if isinstance(fragment, str) and fragment.strip()
+    )
     return "\n\n".join(parts)
 
 
@@ -973,7 +1018,11 @@ def _reload_model_registry_with_project_layer(
     session_cwd: str,
     auth_manager: AuthManager | None = None,
 ) -> None:
-    project_root = resource_bundle.agents_path.parent if resource_bundle.agents_path is not None else Path(session_cwd)
+    project_root = (
+        resource_bundle.agents_path.parent
+        if resource_bundle.agents_path is not None
+        else Path(session_cwd)
+    )
     project_models_dir = project_root / ".loushang" / "models"
     if not project_models_dir.is_dir():
         return
@@ -1045,7 +1094,11 @@ def _scoped_models_from_enabled_patterns(
 
 def _split_model_thinking_pattern(pattern: str) -> tuple[str, ThinkingLevel | None]:
     name, separator, suffix = pattern.rpartition(":")
-    if separator and suffix in {"off", "minimal", "low", "medium", "high", "xhigh"} and name:
+    if (
+        separator
+        and suffix in {"off", "minimal", "low", "medium", "high", "xhigh"}
+        and name
+    ):
         return name, suffix
     return pattern, None
 
@@ -1069,7 +1122,9 @@ def _register_extension_tools(
     )
     conflict_diagnostics = _extension_tool_conflict_diagnostics(resolution)
     diagnostics: list[ResourceDiagnostic] = list(conflict_diagnostics.values())
-    for contribution in _extension_tool_registration_contributions(resolution, conflict_names=set(conflict_diagnostics)):
+    for contribution in _extension_tool_registration_contributions(
+        resolution, conflict_names=set(conflict_diagnostics)
+    ):
         resolved_tool_registry.register_tool(
             contribution.definition,
             source_info=contribution.source_info,
@@ -1109,7 +1164,9 @@ def _extension_tool_registration_contributions(
     return tuple(contributions)
 
 
-def _extension_tool_contributions(extension_runner: ExtensionRunner) -> tuple[ToolContribution, ...]:
+def _extension_tool_contributions(
+    extension_runner: ExtensionRunner,
+) -> tuple[ToolContribution, ...]:
     return tuple(
         ToolContribution(
             definition,
@@ -1123,7 +1180,9 @@ def _extension_tool_contributions(extension_runner: ExtensionRunner) -> tuple[To
     )
 
 
-def _extension_tool_conflict_diagnostics(resolution: ToolResolutionResult) -> dict[str, ResourceDiagnostic]:
+def _extension_tool_conflict_diagnostics(
+    resolution: ToolResolutionResult,
+) -> dict[str, ResourceDiagnostic]:
     conflicts: dict[str, ResourceDiagnostic] = {}
     for diagnostic in resolution.diagnostics:
         if diagnostic.code != "duplicate_tool":
@@ -1163,7 +1222,11 @@ def _replace_images_with_placeholder(message: Message) -> Message:
     filtered: list[object] = []
     for block in content:
         if getattr(block, "type", None) == "image":
-            if not (filtered and isinstance(filtered[-1], TextPart) and filtered[-1].text == placeholder.text):
+            if not (
+                filtered
+                and isinstance(filtered[-1], TextPart)
+                and filtered[-1].text == placeholder.text
+            ):
                 filtered.append(placeholder)
             continue
         filtered.append(block)
@@ -1200,13 +1263,21 @@ def _record_package_lockfile_diagnostics(
     for diagnostic in materializer.get_lockfile_diagnostics():
         diagnostics_service.capture_failure(
             code=str(diagnostic.get("code") or "package_lockfile_unreadable"),
-            error=str(diagnostic.get("message") or "Package lockfile could not be read."),
+            error=str(
+                diagnostic.get("message") or "Package lockfile could not be read."
+            ),
             phase="startup",
             source="bootstrap",
             level="warning",
             session_id=session_id,
-            source_path=Path(str(diagnostic["path"])) if isinstance(diagnostic.get("path"), str) else None,
-            details={key: value for key, value in diagnostic.items() if key not in {"code", "message", "path"}},
+            source_path=Path(str(diagnostic["path"]))
+            if isinstance(diagnostic.get("path"), str)
+            else None,
+            details={
+                key: value
+                for key, value in diagnostic.items()
+                if key not in {"code", "message", "path"}
+            },
         )
 
 
@@ -1351,6 +1422,7 @@ def create_agent_session_runtime(
     agent_factory: AgentFactory = Agent,
     persist: bool = True,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
+    approval_resolver: InteractiveApprovalResolver | None = None,
 ) -> AgentSessionRuntime:
     fixed_services = services if services is not None else create_services()
     runtime_diagnostics_service = fixed_services.diagnostics_service
@@ -1360,7 +1432,11 @@ def create_agent_session_runtime(
         *,
         session_start_event: SessionStartEvent | None = None,
     ) -> AgentSession:
-        session_services = services_factory(session_manager.get_cwd()) if services_factory is not None else fixed_services
+        session_services = (
+            services_factory(session_manager.get_cwd())
+            if services_factory is not None
+            else fixed_services
+        )
         session = create_agent_session(
             session_manager=session_manager,
             model=model,
@@ -1376,6 +1452,7 @@ def create_agent_session_runtime(
             agent_factory=agent_factory,
             session_start_event=session_start_event,
             append_system_prompt=append_system_prompt,
+            approval_resolver=approval_resolver,
         )
         if not persist:
             session.agent.session_id = None

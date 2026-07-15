@@ -159,8 +159,8 @@ def parse_extension_manifest(path: Path) -> ExtensionManifestParseResult:
         )
         return ExtensionManifestParseResult(diagnostics=diagnostics)
 
-    extension_id = _string_or_none(extension.get("id"))
-    name = _string_or_none(extension.get("name"))
+    extension_id = _identifier_or_none(extension.get("id"))
+    name = _identifier_or_none(extension.get("name"))
     if not extension_id:
         diagnostics.append(
             _diagnostic(
@@ -391,6 +391,13 @@ def _parse_dependencies(value: object) -> ExtensionDependencyDeclaration:
 
 def _string_or_none(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _identifier_or_none(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
 
 
 def _string_tuple(value: object) -> tuple[str, ...]:

@@ -72,6 +72,24 @@ Product runtime failure. Activation and after-commit failures still propagate
 after the new candidate becomes current, matching the accepted session
 transition contract.
 
+`SessionTransitionHost` also exposes post-release invalidation notifications.
+They run after the previous session is disposed and the current slot is cleared,
+but before candidate activation. Unlike the existing primary and subscribed
+before-invalidate callbacks, these notifications are non-veto observers:
+ordinary observer failures are isolated so cleanup projections cannot roll a
+transition back after the old runtime has already been released. Cancellation
+still propagates. An observer may schedule a later transition, but direct
+same-task replacement or disposal re-entry is rejected because the outer
+candidate has not yet reached activation.
+
+The release boundary is split around its irreversible step. Product
+before-release callbacks and primary/before-invalidate callbacks run while the
+old session is still current and may veto the transition. After they succeed,
+the host clears the current slot before calling the session disposer. A disposer
+failure or cancellation therefore propagates without republishing an object
+that may already be partly or fully finalized; an uncommitted candidate is
+still rolled back by `SessionOperationCoordinator`.
+
 ## Product Ownership
 
 Coding and future Product adapters retain:

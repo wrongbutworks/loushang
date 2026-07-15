@@ -58,7 +58,9 @@ from loushang.tui import (
 )
 from loushang.tui.cell_width import truncate_to_width, wrap_cells
 
-ScreenSurfacePurpose = Literal["info", "model", "command", "settings", "dialog", "approval"]
+ScreenSurfacePurpose = Literal[
+    "info", "model", "command", "settings", "dialog", "approval"
+]
 ScreenSurfacePresentation = Literal["bottom", "bottom-exclusive"]
 SurfaceEventKind = Literal["surface_submit", "surface_close"]
 SurfaceEventSource = Literal["model", "command", "settings", "dialog", "approval"]
@@ -105,7 +107,9 @@ class ScreenSurfaceView(FocusableMixin):
             return None
         handler = getattr(self.content, "handle_input", None)
         if callable(handler):
-            intent = _screen_input_intent_or_none(handler(self._translate_content_input_event(event)))
+            intent = _screen_input_intent_or_none(
+                handler(self._translate_content_input_event(event))
+            )
             if intent is not None:
                 return intent
         if event.kind == "key" and event.key in {"escape", "esc"}:
@@ -122,7 +126,9 @@ class ScreenSurfaceView(FocusableMixin):
         reserved_footer_lines = 2 if self.footer else 0
         body_constraints = RenderConstraints(
             width=width,
-            max_height=max(1, constraints.max_height - len(lines) - reserved_footer_lines),
+            max_height=max(
+                1, constraints.max_height - len(lines) - reserved_footer_lines
+            ),
         )
         if isinstance(self.content, InfoPanel):
             body_lines: list[str] = []
@@ -132,11 +138,16 @@ class ScreenSurfaceView(FocusableMixin):
             self._last_info_body_line_count = len(body_lines)
             max_offset = self._max_info_scroll_offset()
             self._info_scroll_offset = max(0, min(self._info_scroll_offset, max_offset))
-            visible_body_lines = body_lines[self._info_scroll_offset : self._info_scroll_offset + body_constraints.max_height]
+            visible_body_lines = body_lines[
+                self._info_scroll_offset : self._info_scroll_offset
+                + body_constraints.max_height
+            ]
             body_start_row = len(lines)
             lines.extend(visible_body_lines)
             if visible_body_lines:
-                cursor = CursorDeclaration(row=body_start_row + len(visible_body_lines) - 1, column=0)
+                cursor = CursorDeclaration(
+                    row=body_start_row + len(visible_body_lines) - 1, column=0
+                )
         else:
             self._last_content_start_row = len(lines)
             result = self.content.render(body_constraints)
@@ -144,7 +155,9 @@ class ScreenSurfaceView(FocusableMixin):
             if result.cursor is not None:
                 cursor_row = self._last_content_start_row + result.cursor.row
                 if cursor_row < constraints.max_height:
-                    cursor = CursorDeclaration(row=cursor_row, column=result.cursor.column)
+                    cursor = CursorDeclaration(
+                        row=cursor_row, column=result.cursor.column
+                    )
         footer = self._footer_text()
         if footer and len(lines) < constraints.max_height:
             if len(lines) + 1 < constraints.max_height:
@@ -256,7 +269,9 @@ class ModelSelectorSurface:
         header = [RenderLine(self._scope_line()), RenderLine("")]
         body_height = constraints.max_height - len(header)
         if body_height <= 0:
-            return RenderResult.from_lines(header[: constraints.max_height], constraints=constraints)
+            return RenderResult.from_lines(
+                header[: constraints.max_height], constraints=constraints
+            )
         body = self._surface.render(
             RenderConstraints(
                 width=constraints.width,
@@ -264,8 +279,14 @@ class ModelSelectorSurface:
                 visible_height=constraints.visible_height,
             )
         )
-        cursor = replace(body.cursor, row=body.cursor.row + len(header)) if body.cursor is not None else None
-        return RenderResult.from_lines([*header, *body.lines], constraints=constraints, cursor=cursor)
+        cursor = (
+            replace(body.cursor, row=body.cursor.row + len(header))
+            if body.cursor is not None
+            else None
+        )
+        return RenderResult.from_lines(
+            [*header, *body.lines], constraints=constraints, cursor=cursor
+        )
 
     def _rebuild_surface(self) -> None:
         items = self.scoped_items if self._scope == "scoped" else self.all_items
@@ -301,7 +322,11 @@ class ModelSelectorSurface:
         return f"Scope: {all_models} | scoped"
 
     def _handle_ordinal_text(self, text: str) -> tuple[bool, InputIntent | None]:
-        if self._surface.filter_text or not text or any(digit not in "0123456789" for digit in text):
+        if (
+            self._surface.filter_text
+            or not text
+            or any(digit not in "0123456789" for digit in text)
+        ):
             self._pending_ordinal = ""
             return False, None
         consumed = False
@@ -330,9 +355,8 @@ class ModelSelectorSurface:
             return consumed, None
 
         ordinal = int(candidate)
-        if (
-            1 <= ordinal <= len(items)
-            and not self._has_longer_ordinal_match(candidate, len(items))
+        if 1 <= ordinal <= len(items) and not self._has_longer_ordinal_match(
+            candidate, len(items)
         ):
             self._pending_ordinal = ""
             return True, self._select_ordinal(ordinal)
@@ -364,7 +388,10 @@ class ModelSelectorSurface:
         if not prefix:
             return False
         ordinal = int(prefix)
-        return 1 <= ordinal <= item_count or ModelSelectorSurface._has_longer_ordinal_match(prefix, item_count)
+        return (
+            1 <= ordinal <= item_count
+            or ModelSelectorSurface._has_longer_ordinal_match(prefix, item_count)
+        )
 
     @staticmethod
     def _has_longer_ordinal_match(prefix: str, item_count: int) -> bool:
@@ -384,11 +411,15 @@ class ScreenSurfaceManager:
     app: ScreenCodingTuiApp
     session: Any
     status_provider: CodingTuiStatusProvider
-    on_approval: Callable[[dict[str, Any]], Awaitable[None]] | None = None
+    on_approval: Callable[[dict[str, Any]], Awaitable[bool | None]] | None = None
     command_catalog: ScreenCommandCatalog | None = None
-    _handlers: dict[SurfaceEventSource, Callable[[Any], Awaitable[None]]] = field(init=False, repr=False)
+    _handlers: dict[SurfaceEventSource, Callable[[Any], Awaitable[None]]] = field(
+        init=False, repr=False
+    )
     _active_overlay_view: ScreenSurfaceView | None = None
     _active_overlay_handle: SurfaceHandle | None = None
+    _approval_queue: list[ApprovalSurface] = field(default_factory=list, repr=False)
+    _approval_transitioning: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._handlers = {
@@ -399,7 +430,9 @@ class ScreenSurfaceManager:
             "approval": self._handle_approval_submit,
         }
         if self.command_catalog is None:
-            self.command_catalog = CodingCommandCatalog(session_commands=_session_commands_provider(self.session))
+            self.command_catalog = CodingCommandCatalog(
+                session_commands=_session_commands_provider(self.session)
+            )
 
     def is_local_command(self, text: str) -> bool:
         return self._lookup_local_command(text) is not None
@@ -412,7 +445,9 @@ class ScreenSurfaceManager:
         if command.name == "model" and isinstance(intent, ModelSelectIntent):
             await self._handle_model_intent(intent)
         elif command.name == "models" and isinstance(intent, ModelsIntent):
-            models_text = await format_available_models(self.session, query=intent.query)
+            models_text = await format_available_models(
+                self.session, query=intent.query
+            )
             self._open_info(
                 "Available Models",
                 _models_info_body(models_text),
@@ -429,11 +464,15 @@ class ScreenSurfaceManager:
                     command_catalog=self._list_command_catalog(),
                 ),
             )
-        elif command.name == "terminal" and isinstance(intent, TerminalDiagnosticsIntent):
+        elif command.name == "terminal" and isinstance(
+            intent, TerminalDiagnosticsIntent
+        ):
             self._open_terminal_diagnostics()
         elif command.name == "hotkeys" and isinstance(intent, HotkeysIntent):
             self._open_info("Hotkeys", format_hotkeys())
-        elif command.name in {"settings", "config"} and isinstance(intent, SettingsIntent):
+        elif command.name in {"settings", "config"} and isinstance(
+            intent, SettingsIntent
+        ):
             await self._open_settings()
         return None
 
@@ -446,7 +485,11 @@ class ScreenSurfaceManager:
         return command
 
     def _list_command_catalog(self) -> CodingCommandCatalog | None:
-        return self.command_catalog if isinstance(self.command_catalog, CodingCommandCatalog) else None
+        return (
+            self.command_catalog
+            if isinstance(self.command_catalog, CodingCommandCatalog)
+            else None
+        )
 
     async def handle_surface_intent(self, intent: InputIntent) -> int | None:
         surface = self._current_surface()
@@ -465,13 +508,21 @@ class ScreenSurfaceManager:
         await handler(event.payload)
         return None
 
-    def _normalize_surface_intent(self, intent: InputIntent, surface: ScreenSurfaceView) -> SurfaceEvent | None:
+    def _normalize_surface_intent(
+        self, intent: InputIntent, surface: ScreenSurfaceView
+    ) -> SurfaceEvent | None:
         if intent.kind in {"surface_close", "dialog_cancel"}:
+            if surface.purpose == "approval":
+                return _approval_surface_event(surface, approved=False)
             return SurfaceEvent(kind="surface_close", source=None)
         if surface.purpose == "model" and intent.kind in {"command", "select"}:
-            return SurfaceEvent(kind="surface_submit", source="model", payload=intent.text)
+            return SurfaceEvent(
+                kind="surface_submit", source="model", payload=intent.text
+            )
         if surface.purpose == "command" and intent.kind in {"command", "select"}:
-            return SurfaceEvent(kind="surface_submit", source="command", payload=intent.text)
+            return SurfaceEvent(
+                kind="surface_submit", source="command", payload=intent.text
+            )
         if surface.purpose == "settings" and intent.kind == "setting":
             return SurfaceEvent(
                 kind="surface_submit",
@@ -481,17 +532,10 @@ class ScreenSurfaceManager:
         if surface.purpose == "dialog" and intent.kind == "dialog_confirm":
             return SurfaceEvent(kind="surface_submit", source="dialog")
         if surface.purpose == "approval" and intent.kind in {"approve", "reject"}:
-            action_id = getattr(surface.content, "action_id", None)
-            action = getattr(surface.content, "action", None)
-            return SurfaceEvent(
-                kind="surface_submit",
-                source="approval",
-                payload={
-                    "action_id": action_id,
-                    "action": action,
-                    "approved": intent.kind == "approve",
-                    "raw_note": intent.note or action_id,
-                },
+            return _approval_surface_event(
+                surface,
+                approved=intent.kind == "approve",
+                note=intent.note,
             )
         return None
 
@@ -530,14 +574,24 @@ class ScreenSurfaceManager:
     async def _handle_dialog_submit(self, _payload: Any | None = None) -> None:
         self.close_surface()
 
-    async def _handle_approval_submit(self, payload: dict[str, Any] | None = None) -> None:
+    async def _handle_approval_submit(
+        self, payload: dict[str, Any] | None = None
+    ) -> None:
+        self._approval_transitioning = True
         self.close_surface()
-        if payload is not None and payload.get("approved"):
-            self.app.set_status(f"Action confirmed: {payload.get('action')}")
-        elif payload is not None:
-            self.app.set_status("Action rejected")
-        if self.on_approval is not None:
-            await self.on_approval(payload or {})
+        try:
+            accepted = True
+            if self.on_approval is not None:
+                accepted = await self.on_approval(payload or {}) is not False
+            if not accepted:
+                self.app.set_status("Approval request is no longer pending")
+            elif payload is not None and payload.get("approved"):
+                self.app.set_status(f"Action confirmed: {payload.get('action')}")
+            elif payload is not None:
+                self.app.set_status("Action rejected")
+        finally:
+            self._approval_transitioning = False
+            self._open_next_approval()
 
     def close_surface(self) -> None:
         if self._active_overlay_handle is not None:
@@ -545,6 +599,29 @@ class ScreenSurfaceManager:
         self._active_overlay_handle = None
         self._active_overlay_view = None
         self.app.active_surface = None
+
+    def clear_approval_surfaces(self) -> None:
+        self._approval_queue.clear()
+        current = self._current_surface()
+        if isinstance(current, ScreenSurfaceView) and current.purpose == "approval":
+            self.close_surface()
+
+    def dismiss_approval(self, action_id: str) -> None:
+        current = self._current_surface()
+        if (
+            isinstance(current, ScreenSurfaceView)
+            and current.purpose == "approval"
+            and getattr(current.content, "action_id", None) == action_id
+        ):
+            self.close_surface()
+            if not self._approval_transitioning:
+                self._open_next_approval()
+            return
+        self._approval_queue = [
+            approval
+            for approval in self._approval_queue
+            if approval.action_id != action_id
+        ]
 
     async def _handle_model_intent(self, intent: ModelSelectIntent) -> None:
         if intent.query.strip():
@@ -560,29 +637,53 @@ class ScreenSurfaceManager:
 
     async def _handle_command_intent(self, intent: CommandSelectIntent) -> None:
         if intent.query.strip():
-            command = intent.query if intent.query.startswith("/") else f"/{intent.query}"
+            command = (
+                intent.query if intent.query.startswith("/") else f"/{intent.query}"
+            )
             self.app.composer.set_text(command + " ")
             self.app.set_status(f"Command selected: {command}")
             return
         self._open_palette(
             "Commands",
-            await coding_command_palette(self.session, title="Commands", command_catalog=self._list_command_catalog()),
+            await coding_command_palette(
+                self.session,
+                title="Commands",
+                command_catalog=self._list_command_catalog(),
+            ),
             purpose="command",
         )
 
-    def _open_palette(self, title: str, palette: CommandPalette, *, purpose: Literal["model", "command"]) -> None:
+    def _open_palette(
+        self,
+        title: str,
+        palette: CommandPalette,
+        *,
+        purpose: Literal["model", "command"],
+    ) -> None:
         surface = CommandSurface(_palette_items(palette), max_visible=8)
-        self._open_surface(ScreenSurfaceView(title=title, purpose=purpose, content=surface))
+        self._open_surface(
+            ScreenSurfaceView(title=title, purpose=purpose, content=surface)
+        )
 
     async def _open_model_selector(self) -> None:
-        current_label = model_label_from_selection(await get_session_model_selection(self.session))
+        current_label = model_label_from_selection(
+            await get_session_model_selection(self.session)
+        )
         choices = await available_model_choices(self.session)
         current_value = await current_model_choice_value(self.session, choices=choices)
         scoped_selections = await iter_scoped_model_selections(self.session)
         descriptions = await model_detail_descriptions_by_label(self.session)
         surface = ModelSelectorSurface(
-            all_items=tuple(_model_choice_selector_items(choices, current_value=current_value)),
-            scoped_items=tuple(_model_selector_items(scoped_selections, current_label=current_label, descriptions=descriptions)),
+            all_items=tuple(
+                _model_choice_selector_items(choices, current_value=current_value)
+            ),
+            scoped_items=tuple(
+                _model_selector_items(
+                    scoped_selections,
+                    current_label=current_label,
+                    descriptions=descriptions,
+                )
+            ),
             selected_value=current_value or current_label,
             max_visible=10,
         )
@@ -616,7 +717,11 @@ class ScreenSurfaceManager:
 
     def _open_terminal_diagnostics(self) -> None:
         provider = self.app.terminal_diagnostics_provider
-        text = provider() if provider is not None else "Terminal diagnostics are not available outside an active TUI session."
+        text = (
+            provider()
+            if provider is not None
+            else "Terminal diagnostics are not available outside an active TUI session."
+        )
         self._open_info("Terminal", text)
 
     async def _open_settings(self) -> None:
@@ -638,16 +743,32 @@ class ScreenSurfaceManager:
             )
         )
 
-    def open_approval(self, *, action: str, risk: str = "", action_id: str | None = None) -> None:
+    def open_approval(
+        self, *, action: str, risk: str = "", action_id: str | None = None
+    ) -> None:
+        approval = ApprovalSurface(action=action, risk=risk, action_id=action_id)
+        current = self._current_surface()
+        if self._approval_transitioning or (
+            isinstance(current, ScreenSurfaceView) and current.purpose == "approval"
+        ):
+            self._approval_queue.append(approval)
+            return
+        self._open_approval_surface(approval)
+
+    def _open_approval_surface(self, approval: ApprovalSurface) -> None:
         self._open_surface(
             ScreenSurfaceView(
                 title="Approval",
                 purpose="approval",
-                content=ApprovalSurface(action=action, risk=risk, action_id=action_id),
+                content=approval,
                 footer="",
                 presentation="bottom-exclusive",
             )
         )
+
+    def _open_next_approval(self) -> None:
+        if self._approval_queue:
+            self._open_approval_surface(self._approval_queue.pop(0))
 
     def _open_surface(self, view: ScreenSurfaceView) -> None:
         self.close_surface()
@@ -669,22 +790,52 @@ class ScreenSurfaceManager:
         )
 
     def _current_surface(self) -> ScreenSurfaceView | Any | None:
-        return self._active_overlay_view if self._active_overlay_view is not None else self.app.active_surface
+        return (
+            self._active_overlay_view
+            if self._active_overlay_view is not None
+            else self.app.active_surface
+        )
 
     async def _refresh_model_label(self) -> None:
-        label = model_label_from_selection(await get_session_model_selection(self.session))
+        label = model_label_from_selection(
+            await get_session_model_selection(self.session)
+        )
         if label is not None:
             self.app.state.model_label = label
 
 
+def _approval_surface_event(
+    surface: ScreenSurfaceView,
+    *,
+    approved: bool,
+    note: str | None = None,
+) -> SurfaceEvent:
+    action_id = getattr(surface.content, "action_id", None)
+    action = getattr(surface.content, "action", None)
+    return SurfaceEvent(
+        kind="surface_submit",
+        source="approval",
+        payload={
+            "action_id": action_id,
+            "action": action,
+            "approved": approved,
+            "raw_note": note or action_id,
+        },
+    )
+
+
 def _palette_items(palette: CommandPalette) -> list[SelectItem]:
     return [
-        SelectItem(label=item.display_label(), value=item.value, description=item.description)
+        SelectItem(
+            label=item.display_label(), value=item.value, description=item.description
+        )
         for item in palette.items
     ]
 
 
-def _model_selector_description(label: str, *, current_label: str | None, descriptions: dict[str, str]) -> str:
+def _model_selector_description(
+    label: str, *, current_label: str | None, descriptions: dict[str, str]
+) -> str:
     if label == current_label:
         return "current"
     return descriptions.get(label, "")
@@ -713,7 +864,9 @@ def _model_selector_items(
             SelectItem(
                 label=f"{ordinal} {label}",
                 value=label,
-                description=_model_selector_description(label, current_label=current_label, descriptions=descriptions),
+                description=_model_selector_description(
+                    label, current_label=current_label, descriptions=descriptions
+                ),
             )
         )
     return items
@@ -732,13 +885,17 @@ def _model_choice_selector_items(
             SelectItem(
                 label=f"{ordinal} {choice.label}",
                 value=choice.value,
-                description=_model_choice_selector_description(choice, current_value=current_value),
+                description=_model_choice_selector_description(
+                    choice, current_value=current_value
+                ),
             )
         )
     return items
 
 
-def _model_choice_selector_description(choice: ModelChoice, *, current_value: str | None) -> str:
+def _model_choice_selector_description(
+    choice: ModelChoice, *, current_value: str | None
+) -> str:
     parts: list[str] = []
     if choice.value == current_value:
         parts.append("current")
@@ -755,7 +912,9 @@ def _model_choice_selector_description(choice: ModelChoice, *, current_value: st
     return " - ".join(parts)
 
 
-def _selected_model_item_index(items: tuple[SelectItem, ...], selected_value: str | None) -> int:
+def _selected_model_item_index(
+    items: tuple[SelectItem, ...], selected_value: str | None
+) -> int:
     if selected_value is None:
         return 0
     for index, item in enumerate(items):

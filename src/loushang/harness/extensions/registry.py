@@ -9,6 +9,7 @@ from loushang.harness.extensions.types import (
     ResolvedCommand,
     ResolvedFlag,
     ResolvedShortcut,
+    extension_is_active,
 )
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.source import SourceInfo
@@ -43,10 +44,13 @@ class ExtensionRegistrySnapshot:
 def resolve_extension_registry(
     extensions: list[LoadedExtension] | tuple[LoadedExtension, ...],
 ) -> ExtensionRegistrySnapshot:
-    commands = _resolve_commands(extensions)
-    flags, flag_defaults, flag_diagnostics = _resolve_flags(extensions)
-    shortcuts, shortcut_diagnostics = _resolve_shortcuts(extensions)
-    tools, tool_diagnostics = _resolve_tools(extensions)
+    active_extensions = tuple(
+        extension for extension in extensions if extension_is_active(extension)
+    )
+    commands = _resolve_commands(active_extensions)
+    flags, flag_defaults, flag_diagnostics = _resolve_flags(active_extensions)
+    shortcuts, shortcut_diagnostics = _resolve_shortcuts(active_extensions)
+    tools, tool_diagnostics = _resolve_tools(active_extensions)
     return ExtensionRegistrySnapshot(
         commands=commands,
         flags=flags,

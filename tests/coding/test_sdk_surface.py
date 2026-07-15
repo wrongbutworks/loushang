@@ -106,6 +106,7 @@ def test_coding_top_level_exposes_sdk_surface_snapshot() -> None:
         "agent_factory",
         "persist",
         "append_system_prompt",
+        "approval_resolver",
     )
     assert snapshot.to_dict()["missing_exports"] == []
 
@@ -140,7 +141,9 @@ def test_coding_sdk_surface_compatibility_report_flags_contract_drift() -> None:
             "actual": tuple(inspect.signature(coding.create_agent_session).parameters),
         }
     }
-    assert report.to_dict()["signature_mismatches"]["create_agent_session"]["expected"] == [
+    assert report.to_dict()["signature_mismatches"]["create_agent_session"][
+        "expected"
+    ] == [
         "session_manager",
         "wrong",
     ]
@@ -159,7 +162,9 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "thinking_level",
         "system_prompt",
     )
-    assert tuple(inspect.signature(coding.create_agent_session_services).parameters) == (
+    assert tuple(
+        inspect.signature(coding.create_agent_session_services).parameters
+    ) == (
         "cwd",
         "services",
         "ai_model_registry",
@@ -192,11 +197,14 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "package_materializer",
         "append_system_prompt",
         "extension_flag_values",
+        "approval_resolver",
     )
-    assert tuple(inspect.signature(coding.create_agent_session_result).parameters) == tuple(
-        inspect.signature(coding.create_agent_session).parameters
-    )
-    assert tuple(inspect.signature(coding.create_agent_session_from_services).parameters) == (
+    assert tuple(
+        inspect.signature(coding.create_agent_session_result).parameters
+    ) == tuple(inspect.signature(coding.create_agent_session).parameters)
+    assert tuple(
+        inspect.signature(coding.create_agent_session_from_services).parameters
+    ) == (
         "agent_services",
         "session_manager",
         "model",
@@ -212,6 +220,7 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "session_start_event",
         "package_materializer",
         "append_system_prompt",
+        "approval_resolver",
     )
     assert tuple(inspect.signature(coding.create_agent_session_runtime).parameters) == (
         "session_dir",
@@ -229,10 +238,13 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "agent_factory",
         "persist",
         "append_system_prompt",
+        "approval_resolver",
     )
 
 
-def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics(tmp_path) -> None:
+def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics(
+    tmp_path,
+) -> None:
     import loushang.coding as coding
 
     project_root = tmp_path / "project"
@@ -278,9 +290,14 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
 
     read_only_defs = coding.create_read_only_tool_definitions()
     all_defs = coding.create_all_tool_definitions()
-    assert {"read", "grep", "ls", "find"}.issubset({definition.name for definition in read_only_defs})
+    assert {"read", "grep", "ls", "find"}.issubset(
+        {definition.name for definition in read_only_defs}
+    )
     assert {"read", "bash", "edit", "write"}.issubset(set(all_defs))
-    assert all(isinstance(definition, coding.ToolDefinition) for definition in all_defs.values())
+    assert all(
+        isinstance(definition, coding.ToolDefinition)
+        for definition in all_defs.values()
+    )
 
     runtime = coding.create_agent_session_runtime(
         session_dir=tmp_path / "runtime-sessions",
@@ -305,10 +322,19 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
     import_result = asyncio.run(runtime.importFromJsonl(str(imported_file)))
     imported = runtime.get_current_session()
 
-    assert forked.session_manager.get_header().parent_session == str(created.session_manager.session_file)
+    assert forked.session_manager.get_header().parent_session == str(
+        created.session_manager.session_file
+    )
     assert import_result == {"cancelled": False}
     assert imported is not None
-    assert [message.content[0].text for message in imported.get_session_context().messages] == ["imported"]
+    assert [
+        message.content[0].text for message in imported.get_session_context().messages
+    ] == ["imported"]
     assert runtime.get_packages() == []
-    assert runtime.get_diagnostics_summary(coding.DiagnosticsQuery(level="error")).total_count == 0
+    assert (
+        runtime.get_diagnostics_summary(
+            coding.DiagnosticsQuery(level="error")
+        ).total_count
+        == 0
+    )
     assert runtime.get_diagnostics(coding.DiagnosticsQuery(source="session")) == []

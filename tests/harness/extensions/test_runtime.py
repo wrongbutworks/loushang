@@ -9,9 +9,11 @@ from loushang.harness.extensions.loader import ExtensionLoader
 from loushang.harness.extensions.registry import resolve_extension_registry
 from loushang.harness.extensions.resources import ExtensionResourceRuntime
 from loushang.harness.extensions.types import (
+    ExtensionPolicyDecision,
     LoadedExtension,
     RegisteredCommand,
     RegisteredFlag,
+    RegisteredShortcut,
 )
 from loushang.harness.resources.types import ExtensionDescriptor, ResourceBundle
 from loushang.harness.tools.core import ToolDefinition
@@ -35,6 +37,45 @@ def test_contribution_api_builds_product_neutral_extension() -> None:
     assert list(extension.hooks) == ["agent_start"]
     assert list(extension.commands) == ["inspect"]
     assert extension.flags["verbose"].default is False
+
+
+def test_loaded_extension_preserves_legacy_positional_field_order() -> None:
+    async def execute(
+        tool_call_id: str,
+        arguments: dict[str, object],
+        signal: object | None,
+        on_update: object | None,
+    ) -> object:
+        del tool_call_id, arguments, signal, on_update
+        return object()
+
+    tool = ToolDefinition(
+        name="lookup",
+        label="Lookup",
+        description="Lookup",
+        parameters={},
+        execute=execute,  # type: ignore[arg-type]
+    )
+
+    def hook(event: object, context: object) -> None:
+        del event, context
+
+    extension = LoadedExtension(
+        "legacy",
+        Path("/tmp/legacy.py"),
+        None,
+        "filesystem",
+        "project_local",
+        "project",
+        None,
+        {"context": [hook]},
+        [tool],
+    )
+
+    assert extension.hooks == {"context": [hook]}
+    assert extension.tool_definitions == [tool]
+    assert extension.handler_registrations == []
+    assert extension.control_contributions == []
 
 
 def test_loader_executes_register_api_without_coding_runtime(tmp_path: Path) -> None:
@@ -153,6 +194,58 @@ def test_registry_resolves_contributions_and_preserves_first_wins() -> None:
         "duplicate_extension_tool",
         "duplicate_extension_flag",
     ]
+
+
+def test_registry_excludes_every_surface_from_inactive_extensions() -> None:
+    async def command_handler(arguments: str, context: object) -> None:
+        del arguments, context
+
+    async def execute(
+        tool_call_id: str,
+        arguments: dict[str, object],
+        signal: object | None,
+        on_update: object | None,
+    ) -> object:
+        del tool_call_id, arguments, signal, on_update
+        return object()
+
+    inactive = LoadedExtension(
+        name="inactive",
+        source_path=Path("/tmp/inactive.py"),
+        commands={"deploy": RegisteredCommand(name="deploy", handler=command_handler)},
+        flags={
+            "verbose": RegisteredFlag(
+                name="verbose",
+                type="boolean",
+                default=True,
+            )
+        },
+        shortcuts={
+            "ctrl+d": RegisteredShortcut(
+                shortcut="ctrl+d",
+                handler=lambda context: context,
+            )
+        },
+        tool_definitions=[
+            ToolDefinition(
+                name="deploy",
+                label="Deploy",
+                description="Deploy",
+                parameters={},
+                execute=execute,  # type: ignore[arg-type]
+            )
+        ],
+        policy=ExtensionPolicyDecision(enabled=False),
+    )
+
+    registry = resolve_extension_registry([inactive])
+
+    assert registry.commands == ()
+    assert registry.flags == ()
+    assert registry.shortcuts == ()
+    assert registry.tools == ()
+    assert registry.flag_defaults == {}
+    assert registry.diagnostics == ()
 
 
 def test_dispatcher_preserves_order_and_contains_failures() -> None:

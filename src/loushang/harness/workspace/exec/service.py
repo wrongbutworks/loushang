@@ -8,14 +8,22 @@ import tempfile
 from collections.abc import Awaitable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Protocol, TextIO
+from typing import Literal, Protocol, TextIO
 
 from loushang.harness.workspace.truncation import truncate_tail
 
-from .types import ExecOutputChunk, ExecRequest, ExecResult, ExecUpdateCallback
+from .types import (
+    ExecOutputChunk,
+    ExecRequest,
+    ExecResult,
+    ExecUpdateCallback,
+    materialize_exec_request,
+)
 
 
 class ExecBackend(Protocol):
+    """Execute a materialized request without rereading cwd or environment."""
+
     def __call__(
         self,
         request: ExecRequest,
@@ -36,6 +44,7 @@ class ExecService:
         signal: object | None = None,
         on_update: ExecUpdateCallback | None = None,
     ) -> ExecResult:
+        request = materialize_exec_request(request)
         if self._backend is not None:
             result = self._backend(request, signal=signal, on_update=on_update)
             if inspect.isawaitable(result):
@@ -44,8 +53,8 @@ class ExecService:
                 raise TypeError("exec backend must return ExecResult")
             return result
 
-        env = os.environ.copy()
-        env.update(dict(request.env))
+        assert request.effective_environment is not None
+        env = dict(request.effective_environment)
 
         process = await asyncio.create_subprocess_exec(
             *request.command,
@@ -74,7 +83,11 @@ class ExecService:
             rolling_max_bytes=request.rolling_max_bytes,
         )
 
-        async def _read_stream(stream_name: str, stream, sink: _StreamCapture) -> None:
+        async def _read_stream(
+            stream_name: Literal["stdout", "stderr"],
+            stream,
+            sink: _StreamCapture,
+        ) -> None:
             while True:
                 chunk = await stream.readline()
                 if not chunk:
@@ -88,8 +101,12 @@ class ExecService:
                     if inspect.isawaitable(update):
                         await update
 
-        stdout_task = asyncio.create_task(_read_stream("stdout", process.stdout, stdout_capture))
-        stderr_task = asyncio.create_task(_read_stream("stderr", process.stderr, stderr_capture))
+        stdout_task = asyncio.create_task(
+            _read_stream("stdout", process.stdout, stdout_capture)
+        )
+        stderr_task = asyncio.create_task(
+            _read_stream("stderr", process.stderr, stderr_capture)
+        )
         wait_task = asyncio.create_task(process.wait())
 
         if process.stdin is not None:
@@ -98,7 +115,9 @@ class ExecService:
             await process.stdin.drain()
             process.stdin.close()
 
-        abort_task = asyncio.create_task(_wait_for_abort(signal)) if signal is not None else None
+        abort_task = (
+            asyncio.create_task(_wait_for_abort(signal)) if signal is not None else None
+        )
         timed_out = False
         cancelled = False
 
@@ -106,7 +125,7 @@ class ExecService:
             if request.timeout_seconds is None and abort_task is None:
                 await wait_task
             else:
-                waiters = {wait_task}
+                waiters: set[asyncio.Task[int] | asyncio.Task[None]] = {wait_task}
                 if abort_task is not None:
                     waiters.add(abort_task)
                 done, pending = await asyncio.wait(
@@ -148,7 +167,9 @@ class ExecService:
             max_bytes=request.preview_max_bytes,
         )
         return ExecResult(
-            exit_code=process.returncode if process.returncode is not None else (-1 if timed_out or cancelled else 0),
+            exit_code=process.returncode
+            if process.returncode is not None
+            else (-1 if timed_out or cancelled else 0),
             stdout=stdout,
             stderr=stderr,
             timed_out=timed_out,
@@ -325,7 +346,9 @@ def _build_preview(
     preview = truncate_tail(content, max_lines=max_lines, max_bytes=max_bytes)
     if not preview.truncated or not content:
         return preview, None
-    artifact_path = _write_output_artifact(content, artifact_dir=artifact_dir, stream_name=stream_name)
+    artifact_path = _write_output_artifact(
+        content, artifact_dir=artifact_dir, stream_name=stream_name
+    )
     return preview, artifact_path
 
 
@@ -354,8 +377,12 @@ def _build_preview_from_capture(
     return replace(preview, truncated=True, truncated_by="bytes"), capture.artifact_path
 
 
-def _write_output_artifact(content: str, *, artifact_dir: str | None, stream_name: str) -> str:
-    fd, path = tempfile.mkstemp(prefix=f"loushang-exec-{stream_name}-", suffix=".log", dir=artifact_dir)
+def _write_output_artifact(
+    content: str, *, artifact_dir: str | None, stream_name: str
+) -> str:
+    fd, path = tempfile.mkstemp(
+        prefix=f"loushang-exec-{stream_name}-", suffix=".log", dir=artifact_dir
+    )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(content)

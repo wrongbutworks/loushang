@@ -55,6 +55,37 @@ packages = ["acme-sdk>=0.3"]
     assert result.manifest.dependencies.python.packages == ("acme-sdk>=0.3",)
 
 
+def test_extension_manifest_parser_normalizes_identifiers_and_rejects_blank_id(
+    tmp_path,
+) -> None:
+    from loushang.coding.extensions.manifest import parse_extension_manifest
+
+    manifest_path = tmp_path / "loushang-extension.toml"
+    manifest_path.write_text(
+        '[extension]\nid = "  acme.review  "\nname = "  Acme Review  "\n',
+        encoding="utf-8",
+    )
+
+    normalized = parse_extension_manifest(manifest_path)
+
+    assert normalized.manifest is not None
+    assert normalized.manifest.id == "acme.review"
+    assert normalized.manifest.name == "Acme Review"
+    assert normalized.diagnostics == []
+
+    manifest_path.write_text(
+        '[extension]\nid = "   "\nname = "Acme Review"\n',
+        encoding="utf-8",
+    )
+
+    blank = parse_extension_manifest(manifest_path)
+
+    assert blank.manifest is None
+    assert [diagnostic.code for diagnostic in blank.diagnostics] == [
+        "missing_extension_manifest_id"
+    ]
+
+
 def test_extension_manifest_rejects_removed_provider_hooks(tmp_path) -> None:
     from loushang.coding.extensions.contributions import surfaces_from_loaded_extension
     from loushang.coding.extensions.manifest import parse_extension_manifest

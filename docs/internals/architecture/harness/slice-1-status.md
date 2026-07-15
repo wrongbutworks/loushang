@@ -9,6 +9,12 @@ harness migration is complete, and it does not make `lane/harness` ready to
 merge directly to `main`. The lane remains the integration branch for follow-on
 harness slices and product-adapter verification.
 
+This document is a historical closure record. The later
+[Control Plane Runtime Boundary](control-plane-runtime-boundary.md) moves
+pending approval lifecycle and neutral policy mechanisms into Harness while
+preserving Coding presentation and risk defaults; its ownership supersedes the
+"Coding Still Owns" snapshot below.
+
 Slice 1 delivered neutral approval, tools-core, tool-contribution, and
 presentation substrate while preserving coding behavior through compatibility
 adapters.
@@ -111,7 +117,7 @@ Presentation:
 - `ToolRenderRuntime` state, last-rendered, invalidation, and renderer
   fail-soft behavior
 
-## Coding Still Owns
+## Coding Still Owns At Slice 1 Closure
 
 Coding still owns product semantics and concrete runtime behavior:
 
