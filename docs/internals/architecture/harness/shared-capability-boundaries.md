@@ -307,10 +307,10 @@ Harness may own:
 Product adapters own:
 
 - Product controller policy and adapters;
-- transcript storage;
+- storage-provider selection and Product storage layout;
 - JSONL schemas;
 - command execution;
-- product event buses;
+- Product event projection buses;
 - resource activation and projection policy;
 - UI-facing session models;
 - session replacement decisions and events, concrete persistence/index
@@ -321,15 +321,19 @@ harness.
 
 `loushang.harness.host.types` now owns neutral host status, lifecycle events,
 run state, and queue snapshots. `loushang.harness.host.queue` owns the generic
-input-queue ledger, `loushang.harness.host.events` owns ordered event dispatch,
-and `loushang.harness.host.runtime` owns driver-delegating run/abort/idle/dispose
-coordination. Harness host/resource/extension modules also own turn, retry,
-watch/refresh, and bind/refresh/invalidate state machines.
+input-queue ledger; `loushang.harness.events` owns the common runtime envelope,
+scoped publisher, and ordered dispatch. `loushang.harness.host.events` is the
+accepted Host compatibility re-export. `loushang.harness.host.runtime` owns
+driver-delegating run/abort/idle/dispose coordination. Harness
+host/resource/extension modules also own turn, retry, watch/refresh, and
+bind/refresh/invalidate state machines.
 `loushang.harness.runtime` owns generic bindings/contexts, session transitions,
 operation phases, rollback, import staging, replacement callback order,
 navigation abort scopes, and coalesced scheduling. Coding retains message
-construction and delivery, its event schema and projection, replacement
-decisions, controller policy/adapters, transcript storage, and UI state.
+construction and delivery, its Product event schema and projection,
+replacement decisions, controller policy/adapters, storage composition, and UI
+state. Harness storage owns the persistence protocols and Memory/File reference
+backends; the optional Agent transcript profile owns open transcript commits.
 
 ## Work, Method, And Channel References
 

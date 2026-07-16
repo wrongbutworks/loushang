@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 
 from loushang.coding.event import AgentSessionEvent
-from loushang.harness.host.events import OrderedEventBus
+from loushang.harness.events import OrderedEventBus
 
 SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]
 

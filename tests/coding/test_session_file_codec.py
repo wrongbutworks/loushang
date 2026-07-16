@@ -107,7 +107,7 @@ def test_native_session_rejects_invalid_complete_record(tmp_path: Path) -> None:
         load_session_file(path)
 
 
-def test_load_repository_migrates_current_session_v3_once(tmp_path: Path) -> None:
+def test_native_repository_rejects_session_v3_without_rewriting(tmp_path: Path) -> None:
     path = tmp_path / "session.jsonl"
     values = [
         {
@@ -130,25 +130,19 @@ def test_load_repository_migrates_current_session_v3_once(tmp_path: Path) -> Non
         "".join(json.dumps(value) + "\n" for value in values),
         encoding="utf-8",
     )
+    original = path.read_bytes()
 
-    repository = load_session_repository(path)
+    with pytest.raises(SessionFileError) as error:
+        load_session_repository(path)
 
-    assert repository.header.conversation_id == _header().conversation_id
-    assert repository.header.metadata["cwd"] == "/workspace/project"
-    assert repository.header.metadata["loushang.session.source"] == {
-        "format": "loushang.session",
-        "version": 3,
-    }
-    assert repository.records[0].kind == AGENT_MESSAGE_KIND
-    assert json.loads(path.read_text(encoding="utf-8").splitlines()[0])["type"] == (
-        "conversation"
-    )
+    assert error.value.code == "unsupported_session_format"
+    assert path.read_bytes() == original
 
 
 @pytest.mark.parametrize(
     ("contents", "code"),
     [
-        ("not-json\n", "invalid_session_json"),
+        ("not-json\n", "invalid_session_header_json"),
         (
             '{"type":"record","recordId":"record-1"}\n',
             "unsupported_session_format",
@@ -184,7 +178,7 @@ def test_read_only_repository_rejects_append(tmp_path: Path) -> None:
         repository.append(_message_record("record-2", "record-1"))
 
 
-def test_read_only_repository_converts_session_v3_without_rewriting_source(
+def test_read_only_repository_rejects_session_v3_without_rewriting_source(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "session.jsonl"
@@ -211,12 +205,11 @@ def test_read_only_repository_converts_session_v3_without_rewriting_source(
     )
     original = path.read_bytes()
 
-    repository = load_session_repository(path, writable=False)
+    with pytest.raises(SessionFileError) as error:
+        load_session_repository(path, writable=False)
 
-    assert repository.records[0].kind == AGENT_MESSAGE_KIND
+    assert error.value.code == "unsupported_session_format"
     assert path.read_bytes() == original
-    with pytest.raises(RuntimeError, match="read-only"):
-        repository.append(_message_record("record-2", "record-1"))
 
 
 @pytest.mark.parametrize("loader", [load_session_file, load_session_repository])

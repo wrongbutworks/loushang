@@ -12,7 +12,9 @@ from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolContext, ToolDefinition, ToolRegistry, tool
 
 
-async def _execute_noop(tool_call_id: str, params: dict[str, object], signal=None, on_update=None):
+async def _execute_noop(
+    tool_call_id: str, params: dict[str, object], signal=None, on_update=None
+):
     del tool_call_id, params, signal, on_update
     return AgentToolResult(content=[], details={})
 
@@ -28,13 +30,20 @@ def _tool_definition(
         name=name,
         label=label or name.replace("_", " ").title(),
         description=description or f"{name} tool",
-        parameters={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+        parameters={
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": False,
+        },
         execute=_execute_noop,
         prompt_snippet=prompt_snippet,
     )
 
 
-def test_tool_controller_materializes_active_registry_tools_and_rebuilds_prompt(tmp_path) -> None:
+def test_tool_controller_materializes_active_registry_tools_and_rebuilds_prompt(
+    tmp_path,
+) -> None:
     @tool(prompt_snippet="Show the session cwd.")
     async def show_session_cwd(ctx: ToolContext) -> str:
         """Show the session cwd."""
@@ -47,12 +56,16 @@ def test_tool_controller_materializes_active_registry_tools_and_rebuilds_prompt(
 
     controller = ToolController(
         agent=agent,
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         tool_registry=registry,
         allowed_tool_names=None,
         initial_active_tool_names=["show_session_cwd"],
         base_prompt="Base prompt.",
-        get_resource_bundle=lambda: ResourceBundle(cwd=Path("/tmp/project"), prompt_fragments=["Repo rules"]),
+        get_resource_bundle=lambda: ResourceBundle(
+            cwd=Path("/tmp/project"), prompt_fragments=["Repo rules"]
+        ),
         get_diagnostics_service=lambda: diagnostics,
     )
     controller.apply_active_tools(["show_session_cwd"])
@@ -67,7 +80,9 @@ def test_tool_controller_materializes_active_registry_tools_and_rebuilds_prompt(
 
 
 def test_tool_controller_filters_allowed_visible_and_active_tools(tmp_path) -> None:
-    async def _execute(tool_call_id: str, params: dict[str, object], signal=None, on_update=None):
+    async def _execute(
+        tool_call_id: str, params: dict[str, object], signal=None, on_update=None
+    ):
         del tool_call_id, params, signal, on_update
         return AgentToolResult(content=[], details={})
 
@@ -77,7 +92,12 @@ def test_tool_controller_filters_allowed_visible_and_active_tools(tmp_path) -> N
             name="read",
             label="Read",
             description="Read files",
-            parameters={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+            parameters={
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            },
             execute=_execute,
         )
     )
@@ -86,13 +106,20 @@ def test_tool_controller_filters_allowed_visible_and_active_tools(tmp_path) -> N
             name="bash",
             label="Bash",
             description="Run commands",
-            parameters={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+            parameters={
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            },
             execute=_execute,
         )
     )
     controller = ToolController(
         agent=Agent(initial_state={"tools": []}),
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         tool_registry=registry,
         allowed_tool_names={"read"},
         initial_active_tool_names=["bash", "read", "missing"],
@@ -114,18 +141,31 @@ def test_tool_controller_reads_runtime_tools_when_registry_is_absent(tmp_path) -
         name = "runtime_tool"
         label = "Runtime Tool"
         description = "runtime tool"
-        parameters = {"type": "object", "properties": {}, "required": [], "additionalProperties": False}
+        parameters = {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": False,
+        }
         prepare_arguments = None
         execution_mode = "parallel"
 
-        async def execute(self, tool_call_id: str, params: dict[str, object], signal=None, on_update=None):
+        async def execute(
+            self,
+            tool_call_id: str,
+            params: dict[str, object],
+            signal=None,
+            on_update=None,
+        ):
             del tool_call_id, params, signal, on_update
             return AgentToolResult(content=[], details={})
 
     agent = Agent(initial_state={"tools": [RuntimeTool()]})
     controller = ToolController(
         agent=agent,
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         tool_registry=None,
         allowed_tool_names=None,
         initial_active_tool_names=["runtime_tool"],
@@ -135,7 +175,9 @@ def test_tool_controller_reads_runtime_tools_when_registry_is_absent(tmp_path) -
     )
 
     assert controller.get_active_tool_names() == ["runtime_tool"]
-    assert [definition.name for definition in controller.get_all_tools()] == ["runtime_tool"]
+    assert [definition.name for definition in controller.get_all_tools()] == [
+        "runtime_tool"
+    ]
     assert controller.get_tool_definition("runtime_tool").name == "runtime_tool"
 
 
@@ -154,15 +196,22 @@ def test_tool_controller_routes_runtime_registration_through_contribution_resolv
     )
     registry = ToolRegistry()
     registry.register_tool(base_tool, source_info={"source": "base"})
-    runtime_source_info = {"source": "extension", "path": str(tmp_path / "extension.py")}
-    calls: list[tuple[tuple[str, ...], object | None, dict[str, object], dict[str, object]]] = []
+    runtime_source_info = {
+        "source": "extension",
+        "path": str(tmp_path / "extension.py"),
+    }
+    calls: list[
+        tuple[tuple[str, ...], object | None, dict[str, object], dict[str, object]]
+    ] = []
 
     def spy_resolver(contributions, **kwargs):
         contribution_tuple = tuple(contributions)
         runtime_contribution = contribution_tuple[-1]
         calls.append(
             (
-                tuple(contribution.definition.name for contribution in contribution_tuple),
+                tuple(
+                    contribution.definition.name for contribution in contribution_tuple
+                ),
                 runtime_contribution.source_info,
                 dict(runtime_contribution.metadata),
                 dict(kwargs),
@@ -170,10 +219,14 @@ def test_tool_controller_routes_runtime_registration_through_contribution_resolv
         )
         return resolve_tool_contributions(contribution_tuple, **kwargs)
 
-    monkeypatch.setattr(tool_controller, "resolve_tool_contributions", spy_resolver, raising=False)
+    monkeypatch.setattr(
+        tool_controller, "resolve_tool_contributions", spy_resolver, raising=False
+    )
     controller = ToolController(
         agent=Agent(initial_state={"tools": []}),
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         tool_registry=registry,
         allowed_tool_names=None,
         initial_active_tool_names=[],
@@ -182,7 +235,9 @@ def test_tool_controller_routes_runtime_registration_through_contribution_resolv
         get_diagnostics_service=lambda: None,
     )
 
-    definition = controller.register_runtime_tool(runtime_tool, source_info=runtime_source_info)
+    definition = controller.register_runtime_tool(
+        runtime_tool, source_info=runtime_source_info
+    )
 
     assert definition.name == "runtime_tool"
     assert calls == [
@@ -196,7 +251,10 @@ def test_tool_controller_routes_runtime_registration_through_contribution_resolv
             {"fail_on_errors": False},
         )
     ]
-    assert [definition.name for definition in registry.list_definitions()] == ["read", "runtime_tool"]
+    assert [definition.name for definition in registry.list_definitions()] == [
+        "read",
+        "runtime_tool",
+    ]
     assert registry.get_source_info("runtime_tool") == runtime_source_info
 
 
@@ -237,7 +295,9 @@ def test_tool_controller_registers_selected_runtime_resolver_contribution(
     registry = ToolRegistry()
     controller = ToolController(
         agent=Agent(initial_state={"tools": []}),
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         tool_registry=registry,
         allowed_tool_names=None,
         initial_active_tool_names=[],
@@ -246,14 +306,21 @@ def test_tool_controller_registers_selected_runtime_resolver_contribution(
         get_diagnostics_service=lambda: None,
     )
 
-    definition = controller.register_runtime_tool(runtime_tool, source_info={"source": "runtime"})
+    definition = controller.register_runtime_tool(
+        runtime_tool, source_info={"source": "runtime"}
+    )
 
     assert definition.description == "Selected runtime contribution"
-    assert registry.get_definition("runtime_tool").description == "Selected runtime contribution"
+    assert (
+        registry.get_definition("runtime_tool").description
+        == "Selected runtime contribution"
+    )
     assert registry.get_source_info("runtime_tool") == selected_source_info
 
 
-def test_tool_controller_runtime_registration_preserves_duplicate_overwrite_behavior(tmp_path) -> None:
+def test_tool_controller_runtime_registration_preserves_duplicate_overwrite_behavior(
+    tmp_path,
+) -> None:
     registry = ToolRegistry()
     registry.register_tool(
         _tool_definition("runtime_tool", description="Original runtime tool"),
@@ -261,7 +328,9 @@ def test_tool_controller_runtime_registration_preserves_duplicate_overwrite_beha
     )
     controller = ToolController(
         agent=Agent(initial_state={"tools": []}),
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         tool_registry=registry,
         allowed_tool_names=None,
         initial_active_tool_names=[],
@@ -276,8 +345,13 @@ def test_tool_controller_runtime_registration_preserves_duplicate_overwrite_beha
     )
 
     assert definition.description == "Replacement runtime tool"
-    assert [definition.name for definition in registry.list_definitions()] == ["runtime_tool"]
-    assert registry.get_definition("runtime_tool").description == "Replacement runtime tool"
+    assert [definition.name for definition in registry.list_definitions()] == [
+        "runtime_tool"
+    ]
+    assert (
+        registry.get_definition("runtime_tool").description
+        == "Replacement runtime tool"
+    )
     assert registry.get_source_info("runtime_tool") == {"source": "runtime"}
 
 
@@ -293,7 +367,9 @@ def test_tool_controller_rebinds_active_same_name_runtime_replacement(tmp_path) 
     agent = Agent(initial_state={"system_prompt": "stale", "tools": []})
     controller = ToolController(
         agent=agent,
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         tool_registry=registry,
         allowed_tool_names=None,
         initial_active_tool_names=["runtime_tool"],
@@ -318,17 +394,23 @@ def test_tool_controller_rebinds_active_same_name_runtime_replacement(tmp_path) 
     assert "- runtime_tool: original behavior" not in agent.system_prompt
 
 
-def test_tool_controller_runtime_registration_preserves_default_activation(tmp_path) -> None:
+def test_tool_controller_runtime_registration_preserves_default_activation(
+    tmp_path,
+) -> None:
     registry = ToolRegistry()
     agent = Agent(initial_state={"system_prompt": "stale", "tools": []})
     controller = ToolController(
         agent=agent,
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         tool_registry=registry,
         allowed_tool_names=None,
         initial_active_tool_names=[],
         base_prompt="Base prompt.",
-        get_resource_bundle=lambda: ResourceBundle(cwd=Path("/tmp/project"), prompt_fragments=[]),
+        get_resource_bundle=lambda: ResourceBundle(
+            cwd=Path("/tmp/project"), prompt_fragments=[]
+        ),
         get_diagnostics_service=lambda: None,
         default_activate_new_tools=True,
     )

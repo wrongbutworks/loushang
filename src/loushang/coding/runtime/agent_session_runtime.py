@@ -200,7 +200,7 @@ class AgentSessionRuntime:
                     self._sync_session_extension_diagnostics(current_session)
                     if decision is not None and decision.cancel:
                         return CancelledSessionOperation(None)
-            manager = SessionManager.new(
+            manager = await SessionManager.new(
                 session_dir=self.session_dir,
                 cwd=resolved_cwd,
                 persist=self.persist,
@@ -286,7 +286,7 @@ class AgentSessionRuntime:
                     self._sync_session_extension_diagnostics(current_session)
                     if decision is not None and decision.cancel:
                         return CancelledSessionOperation(None)
-            manager = SessionManager.open(
+            manager = await SessionManager.open(
                 session_file, session_dir=self.session_dir, persist=self.persist
             )
             missing_issue = get_missing_session_cwd_issue(
@@ -296,7 +296,7 @@ class AgentSessionRuntime:
                 if missing_cwd != "fallback" or fallback_cwd is None:
                     raise MissingSessionCwdError(missing_issue)
                 resolved_fallback_cwd = self._resolve_import_cwd(fallback_cwd)
-                manager = SessionManager.open(
+                manager = await SessionManager.open(
                     session_file,
                     session_dir=self.session_dir,
                     cwd_override=resolved_fallback_cwd,
@@ -384,16 +384,15 @@ class AgentSessionRuntime:
                 self._sync_session_extension_diagnostics(current)
             if decision is not None and decision.cancel:
                 return CancelledSessionOperation(selected_text)
-            manager = (
-                SessionManager.new(
+            if fork_target_id is None:
+                manager = await SessionManager.new(
                     session_dir=self.session_dir,
                     cwd=current.session_manager.get_cwd(),
                     persist=self.persist,
                     parent_session=_session_file_from_session(current),
                 )
-                if fork_target_id is None
-                else current.session_manager.fork(fork_target_id)
-            )
+            else:
+                manager = await current.session_manager.fork(fork_target_id)
             return self._create_session_candidate(
                 manager,
                 current=current,
@@ -482,7 +481,7 @@ class AgentSessionRuntime:
                     if cwd_override is not None
                     else None
                 )
-                manager = SessionManager.open(
+                manager = await SessionManager.open(
                     destination,
                     session_dir=self.session_dir,
                     cwd_override=cwd,
@@ -561,13 +560,13 @@ class AgentSessionRuntime:
     ) -> list[SessionSummary]:
         return SessionManager.find_sessions(self.session_dir, query)
 
-    def rename_session(
+    async def rename_session(
         self, session_id: str | Path, name: str | None
     ) -> SessionSummary:
         session_file: Path | None = None
         try:
             session_file = self._resolve_session_file(session_id)
-            summary = SessionManager.rename_session(session_file, name)
+            summary = await SessionManager.rename_session(session_file, name)
             if self.auto_refresh_session_index:
                 self._schedule_session_index_flush()
             return summary
@@ -586,11 +585,11 @@ class AgentSessionRuntime:
             )
             raise
 
-    def delete_session(self, session_id: str | Path) -> bool:
+    async def delete_session(self, session_id: str | Path) -> bool:
         session_file: Path | None = None
         try:
             session_file = self._resolve_session_file(session_id)
-            deleted = SessionManager.delete_session(
+            deleted = await SessionManager.delete_session(
                 session_file,
                 current_session_file=_session_file_from_session(self._current_session),
             )

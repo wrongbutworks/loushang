@@ -288,7 +288,7 @@ class CompactionController:
             result = await compact_fn(**compact_kwargs)
 
         result = _with_preparation_details(result, preparation)
-        self.session_manager.append_compaction(
+        await self.session_manager.append_compaction(
             result.summary,
             result.first_kept_entry_id,
             result.tokens_before,

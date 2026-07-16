@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import redirect_stderr
+from datetime import UTC, datetime
 from io import StringIO
 
 import pytest
@@ -10,8 +11,20 @@ from loushang.harness.conversation import (
     ConversationHeader,
     NativeConversationHeaderCodec,
 )
+from loushang.harness.events import RuntimeEvent
 
 _HEADER_CODEC = NativeConversationHeaderCodec()
+
+
+def _runtime_event(payload: dict[str, object], sequence: int) -> RuntimeEvent[object]:
+    return RuntimeEvent(
+        event_id=f"event-{sequence}",
+        kind=f"agent.{payload['type']}",
+        stream_id="session:test",
+        sequence=sequence,
+        occurred_at=datetime(2026, 7, 16, tzinfo=UTC),
+        payload=payload,
+    )
 
 
 def _session_header(
@@ -79,13 +92,17 @@ def test_print_mode_run_once_prompts_session_and_waits_for_idle() -> None:
     asyncio.run(scenario())
 
 
-def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_behavior() -> None:
+def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_behavior() -> (
+    None
+):
     from loushang.ai.types import AssistantMessage, TextPart, Usage
     from loushang.coding.mode import PrintMode
     from loushang.work import InMemoryEventLogBackend
 
     image = {"type": "image", "mime_type": "image/png", "data": "abc"}
-    usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    usage = Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
     assistant = AssistantMessage(
         role="assistant",
         content=[TextPart(type="text", text="done")],
@@ -108,6 +125,7 @@ def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_beha
         def __init__(self) -> None:
             self.prompt_calls: list[tuple[str, object]] = []
             self.listeners = []
+            self.runtime_listeners = []
 
         def subscribe(self, listener):
             self.listeners.append(listener)
@@ -117,21 +135,33 @@ def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_beha
 
             return unsubscribe
 
+        def subscribe_runtime_events(self, listener):
+            self.runtime_listeners.append(listener)
+
+            def unsubscribe() -> None:
+                self.runtime_listeners.remove(listener)
+
+            return unsubscribe
+
         async def prompt(self, user_input: str, images=None) -> None:
             self.prompt_calls.append((user_input, images))
-            for listener in list(self.listeners):
-                result = listener(
-                    {
-                        "type": "message_update",
-                        "message": {"role": "assistant"},
-                        "assistant_message_event": {"type": "text_delta", "text": "done"},
-                    }
-                )
-                if result is not None:
-                    await result
-                result = listener({"type": "message_end", "message": assistant})
-                if result is not None:
-                    await result
+            payloads = [
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistant_message_event": {"type": "text_delta", "text": "done"},
+                },
+                {"type": "message_end", "message": assistant},
+            ]
+            for sequence, payload in enumerate(payloads, start=1):
+                for listener in list(self.listeners):
+                    result = listener(payload)
+                    if result is not None:
+                        await result
+                for listener in list(self.runtime_listeners):
+                    result = listener(_runtime_event(payload, sequence))
+                    if result is not None:
+                        await result
 
         async def wait_for_idle(self) -> None:
             return None
@@ -176,7 +206,9 @@ def test_print_mode_projects_assistant_text_and_tool_events() -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage
     from loushang.coding.mode import PrintMode
 
-    usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    usage = Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
 
     class FakeRuntime:
         pass
@@ -322,7 +354,9 @@ def test_print_mode_returns_nonzero_and_prints_error_on_failure() -> None:
     async def scenario() -> None:
         stdout = StringIO()
         stderr = StringIO()
-        mode = PrintMode(runtime=FakeRuntime(), session=FakeSession(), stdout=stdout, stderr=stderr)
+        mode = PrintMode(
+            runtime=FakeRuntime(), session=FakeSession(), stdout=stdout, stderr=stderr
+        )
 
         exit_code = await mode.run_once("hello")
 
@@ -386,7 +420,9 @@ def test_print_mode_run_once_disposes_runtime_after_exit(output_mode: str) -> No
         exit_code = await mode.run_once("hello")
 
         assert exit_code == 0
-        assert runtime.shutdown_events == [{"type": "session_shutdown", "reason": "quit"}]
+        assert runtime.shutdown_events == [
+            {"type": "session_shutdown", "reason": "quit"}
+        ]
 
     asyncio.run(scenario())
 
@@ -417,7 +453,9 @@ def test_print_mode_run_once_disposes_runtime_after_prompt_error() -> None:
     async def scenario() -> None:
         runtime = FakeRuntime()
         stderr = StringIO()
-        mode = PrintMode(runtime=runtime, session=FakeSession(), stdout=StringIO(), stderr=stderr)
+        mode = PrintMode(
+            runtime=runtime, session=FakeSession(), stdout=StringIO(), stderr=stderr
+        )
 
         exit_code = await mode.run_once("hello")
 
@@ -441,7 +479,9 @@ def test_print_mode_returns_nonzero_and_disposes_on_assistant_error_message() ->
         provider="faux",
         model="faux-model",
         response_id=None,
-        usage=Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}),
+        usage=Usage(
+            input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+        ),
         stop_reason="error",
         error_message="provider failure",
         timestamp=0.0,
@@ -476,7 +516,9 @@ def test_print_mode_returns_nonzero_and_disposes_on_assistant_error_message() ->
     async def scenario() -> None:
         runtime = FakeRuntime()
         stderr = StringIO()
-        mode = PrintMode(runtime=runtime, session=FakeSession(), stdout=StringIO(), stderr=stderr)
+        mode = PrintMode(
+            runtime=runtime, session=FakeSession(), stdout=StringIO(), stderr=stderr
+        )
 
         exit_code = await mode.run_once("hello")
 
@@ -492,7 +534,9 @@ def test_print_mode_returns_nonzero_on_aborted_assistant_message() -> None:
 
     from loushang.coding.mode import PrintMode
 
-    assistant = SimpleNamespace(role="assistant", stop_reason="aborted", error_message=None)
+    assistant = SimpleNamespace(
+        role="assistant", stop_reason="aborted", error_message=None
+    )
 
     class FakeRuntime:
         def __init__(self) -> None:
@@ -520,7 +564,9 @@ def test_print_mode_returns_nonzero_on_aborted_assistant_message() -> None:
     async def scenario() -> None:
         runtime = FakeRuntime()
         stderr = StringIO()
-        mode = PrintMode(runtime=runtime, session=FakeSession(), stdout=StringIO(), stderr=stderr)
+        mode = PrintMode(
+            runtime=runtime, session=FakeSession(), stdout=StringIO(), stderr=stderr
+        )
 
         exit_code = await mode.run_once("hello")
 
@@ -639,7 +685,11 @@ def test_run_print_mode_sends_follow_up_messages_after_initial_prompt() -> None:
         )
 
         assert exit_code == 0
-        assert session.prompt_calls == [("first", None), ("second", None), ("third", None)]
+        assert session.prompt_calls == [
+            ("first", None),
+            ("second", None),
+            ("third", None),
+        ]
         assert session.wait_calls == 3
 
     asyncio.run(scenario())
@@ -769,6 +819,7 @@ def test_run_mode_passes_work_event_log_to_print_adapter() -> None:
 
         def __init__(self) -> None:
             self.listeners = []
+            self.runtime_listeners = []
 
         def subscribe(self, listener):
             self.listeners.append(listener)
@@ -778,16 +829,27 @@ def test_run_mode_passes_work_event_log_to_print_adapter() -> None:
 
             return unsubscribe
 
+        def subscribe_runtime_events(self, listener):
+            self.runtime_listeners.append(listener)
+
+            def unsubscribe() -> None:
+                self.runtime_listeners.remove(listener)
+
+            return unsubscribe
+
         async def prompt(self, user_input: str, images=None) -> None:
             del user_input, images
+            payload = {
+                "type": "message_update",
+                "message": {"role": "assistant"},
+                "assistant_message_event": {"type": "text_delta", "text": "done"},
+            }
             for listener in list(self.listeners):
-                result = listener(
-                    {
-                        "type": "message_update",
-                        "message": {"role": "assistant"},
-                        "assistant_message_event": {"type": "text_delta", "text": "done"},
-                    }
-                )
+                result = listener(payload)
+                if result is not None:
+                    await result
+            for listener in list(self.runtime_listeners):
+                result = listener(_runtime_event(payload, 1))
                 if result is not None:
                     await result
 
@@ -807,7 +869,9 @@ def test_run_mode_passes_work_event_log_to_print_adapter() -> None:
         )
 
         assert exit_code == 0
-        assert [entry.payload["kind"] for entry in event_log.query(session_id="session-1")] == [
+        assert [
+            entry.payload["kind"] for entry in event_log.query(session_id="session-1")
+        ] == [
             "SubmitCodingTurn",
             "WorkRunStarted",
             "ContentDelta",
@@ -860,11 +924,27 @@ def test_dispatch_mode_action_routes_to_adapter_contract() -> None:
         adapter = FakeAdapter()
 
         assert await dispatch_mode_action(adapter, ModeAction("start", "hello")) == 10
-        assert await dispatch_mode_action(adapter, ModeAction("submit_input", "next")) == 12
-        assert await dispatch_mode_action(adapter, ModeAction("render_event", {"type": "noop"})) == 0
-        assert await dispatch_mode_action(adapter, ModeAction("get_state")) == {"sessionId": "s1", "messageCount": 0}
+        assert (
+            await dispatch_mode_action(adapter, ModeAction("submit_input", "next"))
+            == 12
+        )
+        assert (
+            await dispatch_mode_action(
+                adapter, ModeAction("render_event", {"type": "noop"})
+            )
+            == 0
+        )
+        assert await dispatch_mode_action(adapter, ModeAction("get_state")) == {
+            "sessionId": "s1",
+            "messageCount": 0,
+        }
         assert await dispatch_mode_action(adapter, ModeAction("wait_for_idle")) == 13
-        assert await dispatch_mode_action(adapter, ModeAction("rebind_session", "next-session")) == 14
+        assert (
+            await dispatch_mode_action(
+                adapter, ModeAction("rebind_session", "next-session")
+            )
+            == 14
+        )
         assert await dispatch_mode_action(adapter, ModeAction("dispose")) == 15
         assert await dispatch_mode_action(adapter, ModeAction("stop")) == 11
         assert adapter.calls == [
@@ -885,7 +965,9 @@ def test_mode_action_normalization_accepts_wire_payload_and_rejects_invalid() ->
     from loushang.coding.mode import ModeAction, normalize_mode_action
 
     assert normalize_mode_action(ModeAction("stop")) == ModeAction("stop")
-    assert normalize_mode_action({"type": "submit_input", "payload": "hello"}) == ModeAction("submit_input", "hello")
+    assert normalize_mode_action(
+        {"type": "submit_input", "payload": "hello"}
+    ) == ModeAction("submit_input", "hello")
     assert normalize_mode_action({"type": "get_state"}) == ModeAction("get_state")
 
     with pytest.raises(ValueError, match="Mode action requires string type"):
@@ -934,7 +1016,12 @@ def test_dispatch_mode_action_accepts_wire_payload() -> None:
 
     async def scenario() -> None:
         adapter = FakeAdapter()
-        assert await dispatch_mode_action(adapter, {"type": "submit_input", "payload": "from-wire"}) == 7
+        assert (
+            await dispatch_mode_action(
+                adapter, {"type": "submit_input", "payload": "from-wire"}
+            )
+            == 7
+        )
         assert adapter.inputs == ["from-wire"]
 
     asyncio.run(scenario())
@@ -985,7 +1072,9 @@ def test_print_mode_json_output_writes_header_before_event_lines() -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage
     from loushang.coding.mode import PrintMode
 
-    usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    usage = Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
 
     class FakeRuntime:
         pass
@@ -1036,7 +1125,12 @@ def test_print_mode_json_output_writes_header_before_event_lines() -> None:
 
     async def scenario() -> None:
         stdout = StringIO()
-        mode = PrintMode(runtime=FakeRuntime(), session=FakeSession(), stdout=stdout, output_mode="json")
+        mode = PrintMode(
+            runtime=FakeRuntime(),
+            session=FakeSession(),
+            stdout=stdout,
+            output_mode="json",
+        )
 
         exit_code = await mode.run_once("hello")
 
@@ -1147,7 +1241,9 @@ def test_print_mode_rejects_rendered_tool_events_for_text_output() -> None:
     class FakeSession:
         pass
 
-    with pytest.raises(ValueError, match="render_tool_events is only supported for json output mode"):
+    with pytest.raises(
+        ValueError, match="render_tool_events is only supported for json output mode"
+    ):
         PrintMode(
             runtime=FakeRuntime(),
             session=FakeSession(),
@@ -1156,7 +1252,9 @@ def test_print_mode_rejects_rendered_tool_events_for_text_output() -> None:
         )
 
 
-def test_print_mode_json_compact_view_projects_assistant_stream_and_tool_lifecycle() -> None:
+def test_print_mode_json_compact_view_projects_assistant_stream_and_tool_lifecycle() -> (
+    None
+):
     import asyncio
     import json
     from io import StringIO
@@ -1165,7 +1263,9 @@ def test_print_mode_json_compact_view_projects_assistant_stream_and_tool_lifecyc
     from loushang.ai.types import AssistantMessage, TextPart, Usage
     from loushang.coding.mode import PrintMode
 
-    usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    usage = Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
     assistant = AssistantMessage(
         role="assistant",
         content=[TextPart(type="text", text="hello")],
@@ -1220,7 +1320,11 @@ def test_print_mode_json_compact_view_projects_assistant_stream_and_tool_lifecyc
                     {
                         "type": "message_update",
                         "message": assistant,
-                        "assistant_message_event": {"type": "text_delta", "content_index": 0, "delta": "he"},
+                        "assistant_message_event": {
+                            "type": "text_delta",
+                            "content_index": 0,
+                            "delta": "he",
+                        },
                     }
                 )
                 listener({"type": "message_end", "message": assistant})
@@ -1252,7 +1356,7 @@ def test_print_mode_json_compact_view_projects_assistant_stream_and_tool_lifecyc
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
         assert [line["type"] for line in lines] == [
-                "conversation",
+            "conversation",
             "tool_execution_start",
             "assistant_delta",
             "assistant_final",
@@ -1285,7 +1389,9 @@ def test_print_mode_json_can_include_rendered_tool_event_payloads() -> None:
 
     def render_result(result, options, theme, context):
         del theme
-        return {"text": f"{context.state['command']} {result.content[0].text} partial={options.isPartial}"}
+        return {
+            "text": f"{context.state['command']} {result.content[0].text} partial={options.isPartial}"
+        }
 
     definition = ToolDefinition(
         name="bash",
@@ -1346,7 +1452,9 @@ def test_print_mode_json_can_include_rendered_tool_event_payloads() -> None:
                         "tool_call_id": "tc1",
                         "tool_name": "bash",
                         "args": {"command": "echo hi"},
-                        "partial_result": AgentToolResult(content=[TextPart(type="text", text="running")], details={}),
+                        "partial_result": AgentToolResult(
+                            content=[TextPart(type="text", text="running")], details={}
+                        ),
                     }
                 )
 
@@ -1400,7 +1508,9 @@ def test_print_mode_json_event_select_filters_projected_events() -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage
     from loushang.coding.mode import PrintMode
 
-    usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    usage = Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
     assistant = AssistantMessage(
         role="assistant",
         content=[TextPart(type="text", text="hello")],
@@ -1455,7 +1565,11 @@ def test_print_mode_json_event_select_filters_projected_events() -> None:
                     {
                         "type": "message_update",
                         "message": assistant,
-                        "assistant_message_event": {"type": "text_delta", "content_index": 0, "delta": "he"},
+                        "assistant_message_event": {
+                            "type": "text_delta",
+                            "content_index": 0,
+                            "delta": "he",
+                        },
                     }
                 )
                 listener({"type": "message_end", "message": assistant})
@@ -1487,7 +1601,11 @@ def test_print_mode_json_event_select_filters_projected_events() -> None:
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
-        assert [line["type"] for line in lines] == ["conversation", "assistant_delta", "assistant_final"]
+        assert [line["type"] for line in lines] == [
+            "conversation",
+            "assistant_delta",
+            "assistant_final",
+        ]
 
     asyncio.run(scenario())
 
@@ -1566,7 +1684,11 @@ def test_print_mode_json_full_view_event_select_supports_prefix_patterns() -> No
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
-        assert [line["type"] for line in lines] == ["conversation", "tool_execution_start", "tool_execution_end"]
+        assert [line["type"] for line in lines] == [
+            "conversation",
+            "tool_execution_start",
+            "tool_execution_end",
+        ]
 
     asyncio.run(scenario())
 
@@ -1645,7 +1767,11 @@ def test_print_mode_json_event_select_accepts_single_string_pattern() -> None:
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
-        assert [line["type"] for line in lines] == ["conversation", "tool_execution_start", "tool_execution_end"]
+        assert [line["type"] for line in lines] == [
+            "conversation",
+            "tool_execution_start",
+            "tool_execution_end",
+        ]
 
     asyncio.run(scenario())
 
@@ -1691,7 +1817,12 @@ def test_print_mode_json_default_stderr_routes_errors_off_stdout() -> None:
         stdout = StringIO()
         stderr = StringIO()
         with redirect_stderr(stderr):
-            mode = PrintMode(runtime=FakeRuntime(), session=FakeSession(), stdout=stdout, output_mode="json")
+            mode = PrintMode(
+                runtime=FakeRuntime(),
+                session=FakeSession(),
+                stdout=stdout,
+                output_mode="json",
+            )
             exit_code = await mode.run_once("hello")
 
         header = serialize_session_header(
@@ -1751,7 +1882,13 @@ def test_print_mode_json_failure_keeps_stdout_json_and_writes_error_to_stderr() 
     async def scenario() -> None:
         stdout = StringIO()
         stderr = StringIO()
-        mode = PrintMode(runtime=FakeRuntime(), session=FakeSession(), stdout=stdout, stderr=stderr, output_mode="json")
+        mode = PrintMode(
+            runtime=FakeRuntime(),
+            session=FakeSession(),
+            stdout=stdout,
+            stderr=stderr,
+            output_mode="json",
+        )
 
         exit_code = await mode.run_once("hello")
 
@@ -1806,7 +1943,13 @@ def test_print_mode_json_header_failure_returns_error_without_writing_stdout() -
     async def scenario() -> None:
         stdout = StringIO()
         stderr = StringIO()
-        mode = PrintMode(runtime=FakeRuntime(), session=FakeSession(), stdout=stdout, stderr=stderr, output_mode="json")
+        mode = PrintMode(
+            runtime=FakeRuntime(),
+            session=FakeSession(),
+            stdout=stdout,
+            stderr=stderr,
+            output_mode="json",
+        )
 
         exit_code = await mode.run_once("hello")
 
@@ -1874,7 +2017,12 @@ def test_print_mode_json_writes_header_before_subscription() -> None:
             async def wait_for_idle(self) -> None:
                 return None
 
-        mode = PrintMode(runtime=FakeRuntime(), session=FakeSession(), stdout=stdout, output_mode="json")
+        mode = PrintMode(
+            runtime=FakeRuntime(),
+            session=FakeSession(),
+            stdout=stdout,
+            output_mode="json",
+        )
 
         exit_code = await mode.run_once("hello")
 
@@ -1905,7 +2053,9 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
     from loushang.coding.mode import PrintMode
     from loushang.harness.agent_transcript import ApplicationMessage
 
-    usage = Usage(input=1, output=2, cache_read=3, cache_write=4, total_tokens=5, cost={})
+    usage = Usage(
+        input=1, output=2, cache_read=3, cache_write=4, total_tokens=5, cost={}
+    )
     assistant = AssistantMessage(
         role="assistant",
         content=[TextPart(type="text", text="hello")],
@@ -2025,19 +2175,37 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
     session_events = [
         ({"type": "agent_start"}, check_agent_start),
         ({"type": "turn_start"}, check_turn_start),
-            ({"type": "agent_end", "messages": [assistant, application_message]}, check_agent_end),
-        ({"type": "turn_end", "message": assistant, "tool_results": [tool_result]}, check_turn_end),
+        (
+            {"type": "agent_end", "messages": [assistant, application_message]},
+            check_agent_end,
+        ),
+        (
+            {"type": "turn_end", "message": assistant, "tool_results": [tool_result]},
+            check_turn_end,
+        ),
         ({"type": "message_start", "message": assistant}, check_message_start),
         (
             {
                 "type": "message_update",
                 "message": assistant,
-                "assistant_message_event": {"type": "text_delta", "content_index": 0, "delta": "he"},
+                "assistant_message_event": {
+                    "type": "text_delta",
+                    "content_index": 0,
+                    "delta": "he",
+                },
             },
             check_message_update,
         ),
         ({"type": "message_end", "message": assistant}, check_message_end),
-        ({"type": "tool_execution_start", "tool_call_id": "t1", "tool_name": "bash", "args": {"x": 1}}, check_tool_execution_start),
+        (
+            {
+                "type": "tool_execution_start",
+                "tool_call_id": "t1",
+                "tool_name": "bash",
+                "args": {"x": 1},
+            },
+            check_tool_execution_start,
+        ),
         (
             {
                 "type": "tool_execution_update",
@@ -2064,7 +2232,10 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
             },
             check_tool_execution_end,
         ),
-        ({"type": "queue_update", "steering": ["a"], "follow_up": ["b"]}, check_queue_update),
+        (
+            {"type": "queue_update", "steering": ["a"], "follow_up": ["b"]},
+            check_queue_update,
+        ),
         ({"type": "compaction_start", "reason": "manual"}, check_compaction_start),
         (
             {
@@ -2087,7 +2258,15 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
             },
             check_auto_retry_start,
         ),
-        ({"type": "auto_retry_end", "success": True, "attempt": 2, "final_error": "ignored"}, check_auto_retry_end),
+        (
+            {
+                "type": "auto_retry_end",
+                "success": True,
+                "attempt": 2,
+                "final_error": "ignored",
+            },
+            check_auto_retry_end,
+        ),
     ]
 
     class FakeRuntime:
@@ -2127,7 +2306,12 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
 
     async def scenario() -> None:
         stdout = StringIO()
-        mode = PrintMode(runtime=FakeRuntime(), session=FakeSession(), stdout=stdout, output_mode="json")
+        mode = PrintMode(
+            runtime=FakeRuntime(),
+            session=FakeSession(),
+            stdout=stdout,
+            output_mode="json",
+        )
 
         exit_code = await mode.run_once("hello")
 
@@ -2229,7 +2413,9 @@ def test_print_mode_json_event_sink_rejects_non_finite_values_without_output() -
     from loushang.protocol import JsonValueError
 
     stdout = StringIO()
-    mode = PrintMode(runtime=object(), session=object(), stdout=stdout, output_mode="json")
+    mode = PrintMode(
+        runtime=object(), session=object(), stdout=stdout, output_mode="json"
+    )
 
     with pytest.raises(JsonValueError) as exc_info:
         mode.render_event(

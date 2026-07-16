@@ -161,6 +161,43 @@ def test_neutral_conversation_core_does_not_import_agent_ai_or_products() -> Non
     assert _find_forbidden_imports(boundary) == []
 
 
+def test_neutral_storage_and_event_cores_do_not_import_runtime_or_products() -> None:
+    forbidden = (
+        "loushang.agent",
+        "loushang.ai",
+        "loushang.channel",
+        "loushang.coding",
+        "loushang.method",
+        "loushang.tui",
+        "loushang.work",
+    )
+    boundaries = (
+        ImportBoundary(
+            name="storage",
+            root=Path("src/loushang/harness/storage"),
+            forbidden_prefixes=forbidden,
+        ),
+        ImportBoundary(
+            name="events",
+            root=Path("src/loushang/harness/events"),
+            forbidden_prefixes=forbidden,
+        ),
+    )
+
+    assert [
+        offender
+        for boundary in boundaries
+        for offender in _find_forbidden_imports(boundary)
+    ] == []
+
+
+def test_coding_work_projection_subscribes_to_runtime_events() -> None:
+    source = Path("src/loushang/coding/work_shell.py").read_text(encoding="utf-8")
+
+    assert "subscribe_runtime_events" in source
+    assert "self.session.subscribe(listener)" not in source
+
+
 def test_importing_channel_types_does_not_eagerly_load_agent_or_ai() -> None:
     script = """
 import importlib
@@ -1617,7 +1654,7 @@ def test_harness_host_runtime_boundary_is_documented() -> None:
         "implementation complete for integration into `lane/harness`",
         "`loushang.harness.host.runtime.HostRuntime`",
         "`loushang.harness.host.queue.HostInputQueue`",
-        "`loushang.harness.host.events.OrderedEventBus`",
+        "`loushang.harness.events.OrderedEventBus`",
         "must not implement a second agent loop",
         "Coding maps running, aborting, and disposing",
         "product-neutral reference driver",

@@ -10,7 +10,13 @@ def _runtime_footer(cwd: str) -> str:
     return f"Current date: {date.today().isoformat()}\nCurrent working directory: {cwd}"
 
 
-def _model(model_id: str, *, provider: str = "faux", endpoint: str = "anthropic-messages", name: str | None = None) -> Model:
+def _model(
+    model_id: str,
+    *,
+    provider: str = "faux",
+    endpoint: str = "anthropic-messages",
+    name: str | None = None,
+) -> Model:
     return Model(
         id=model_id,
         name=name,
@@ -56,21 +62,31 @@ def test_settings_manager_updates_slice_objects_and_notifies_subscribers() -> No
     manager.subscribe(seen.append)
 
     manager.update_settings(
-        compaction=CompactionSettings(enabled=False, reserve_tokens=2048, keep_recent_tokens=8192),
+        compaction=CompactionSettings(
+            enabled=False, reserve_tokens=2048, keep_recent_tokens=8192
+        ),
         branch_summary=BranchSummarySettings(enabled=False, reserve_tokens=1024),
         retry=RetrySettings(enabled=False, max_retries=1, base_delay_ms=50),
         images=ImageSettings(auto_resize=False, block_images=True),
     )
 
     settings = manager.get_settings()
-    assert settings.compaction == CompactionSettings(enabled=False, reserve_tokens=2048, keep_recent_tokens=8192)
-    assert settings.branch_summary == BranchSummarySettings(enabled=False, reserve_tokens=1024)
-    assert settings.retry == RetrySettings(enabled=False, max_retries=1, base_delay_ms=50)
+    assert settings.compaction == CompactionSettings(
+        enabled=False, reserve_tokens=2048, keep_recent_tokens=8192
+    )
+    assert settings.branch_summary == BranchSummarySettings(
+        enabled=False, reserve_tokens=1024
+    )
+    assert settings.retry == RetrySettings(
+        enabled=False, max_retries=1, base_delay_ms=50
+    )
     assert settings.images == ImageSettings(auto_resize=False, block_images=True)
     assert seen[-1] == settings
 
 
-def test_settings_manager_apply_overrides_is_session_only_and_flush_is_awaitable(tmp_path) -> None:
+def test_settings_manager_apply_overrides_is_session_only_and_flush_is_awaitable(
+    tmp_path,
+) -> None:
     import asyncio
     import json
 
@@ -108,7 +124,9 @@ def test_settings_manager_apply_overrides_is_session_only_and_flush_is_awaitable
     assert seen[-1] == manager.get_settings()
 
 
-def test_create_services_provides_settings_and_model_resolution_for_sessions(tmp_path) -> None:
+def test_create_services_provides_settings_and_model_resolution_for_sessions(
+    tmp_path,
+) -> None:
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session import ModelSelection
@@ -116,14 +134,25 @@ def test_create_services_provides_settings_and_model_resolution_for_sessions(tmp
 
     services = create_services(ai_model_registry=AiModelRegistry())
     services.model_registry.register_model(_model("alpha", name="Alpha"))
-    services.settings_manager.set_default_model(ModelSelection(provider="faux", model_id="alpha"))
-    services.settings_manager.update_settings(system_prompt="Be precise.", thinking_level="high")
+    services.settings_manager.set_default_model(
+        ModelSelection(provider="faux", model_id="alpha")
+    )
+    services.settings_manager.update_settings(
+        system_prompt="Be precise.", thinking_level="high"
+    )
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     session = create_agent_session(session_manager=manager, services=services)
 
-    assert session.get_model_selection() == ModelSelection(provider="faux", model_id="alpha")
-    assert session.agent.system_prompt == f"Be precise.\n\n{_runtime_footer('/tmp/project')}"
+    assert session.get_model_selection() == ModelSelection(
+        provider="faux", model_id="alpha"
+    )
+    assert (
+        session.agent.system_prompt
+        == f"Be precise.\n\n{_runtime_footer('/tmp/project')}"
+    )
     assert session.agent.thinking_level == "high"
 
 
@@ -140,8 +169,12 @@ def test_model_registry_records_problem_for_ambiguous_model_selection() -> None:
     )
 
     registry = ModelRegistry(ai_registry=AiModelRegistry())
-    registry.register_model(_model("alpha", provider="faux", endpoint="anthropic-messages"))
-    registry.register_model(_model("alpha", provider="faux", endpoint="openai-responses"))
+    registry.register_model(
+        _model("alpha", provider="faux", endpoint="anthropic-messages")
+    )
+    registry.register_model(
+        _model("alpha", provider="faux", endpoint="openai-responses")
+    )
 
     reset_observability()
     try:
@@ -207,22 +240,36 @@ def test_runtime_uses_latest_settings_for_new_sessions(tmp_path) -> None:
 
     services = create_services(ai_model_registry=AiModelRegistry())
     services.model_registry.register_model(_model("alpha", name="Alpha"))
-    services.model_registry.register_model(_model("beta", endpoint="responses", name="Beta"))
-    services.settings_manager.set_default_model(ModelSelection(provider="faux", model_id="alpha"))
+    services.model_registry.register_model(
+        _model("beta", endpoint="responses", name="Beta")
+    )
+    services.settings_manager.set_default_model(
+        ModelSelection(provider="faux", model_id="alpha")
+    )
 
-    runtime = create_agent_session_runtime(session_dir=tmp_path, services=services, persist=False)
+    runtime = create_agent_session_runtime(
+        session_dir=tmp_path, services=services, persist=False
+    )
     first = asyncio.run(runtime.create_session(cwd=str(project_a)))
 
-    services.settings_manager.set_default_model(ModelSelection(provider="faux", model_id="beta"))
+    services.settings_manager.set_default_model(
+        ModelSelection(provider="faux", model_id="beta")
+    )
     services.settings_manager.update_settings(thinking_level="minimal")
     second = asyncio.run(runtime.create_session(cwd=str(project_b)))
 
-    assert first.get_model_selection() == ModelSelection(provider="faux", model_id="alpha")
-    assert second.get_model_selection() == ModelSelection(provider="faux", model_id="beta")
+    assert first.get_model_selection() == ModelSelection(
+        provider="faux", model_id="alpha"
+    )
+    assert second.get_model_selection() == ModelSelection(
+        provider="faux", model_id="beta"
+    )
     assert second.agent.thinking_level == "minimal"
 
 
-def test_create_services_can_use_preloaded_persistent_settings_manager(tmp_path) -> None:
+def test_create_services_can_use_preloaded_persistent_settings_manager(
+    tmp_path,
+) -> None:
     import json
 
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
@@ -264,15 +311,26 @@ def test_create_services_can_use_preloaded_persistent_settings_manager(tmp_path)
     )
     services.model_registry.register_model(_model("alpha", name="Alpha"))
 
-    manager = SessionManager.new(session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False)
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
+    )
     session = create_agent_session(session_manager=manager, services=services)
 
-    assert session.get_model_selection() == ModelSelection(provider="faux", model_id="alpha")
+    assert session.get_model_selection() == ModelSelection(
+        provider="faux", model_id="alpha"
+    )
     assert session.agent.thinking_level == "minimal"
-    assert session.agent.system_prompt == f"Use project policy.\n\n{_runtime_footer(str(project_root))}"
+    assert (
+        session.agent.system_prompt
+        == f"Use project policy.\n\n{_runtime_footer(str(project_root))}"
+    )
 
 
-def test_session_restores_persisted_model_and_accepts_model_selection_updates(tmp_path) -> None:
+def test_session_restores_persisted_model_and_accepts_model_selection_updates(
+    tmp_path,
+) -> None:
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session import ModelSelection
@@ -280,19 +338,29 @@ def test_session_restores_persisted_model_and_accepts_model_selection_updates(tm
 
     services = create_services(ai_model_registry=AiModelRegistry())
     services.model_registry.register_model(_model("alpha", name="Alpha"))
-    services.model_registry.register_model(_model("beta", endpoint="responses", name="Beta"))
-    services.settings_manager.set_default_model(ModelSelection(provider="faux", model_id="alpha"))
+    services.model_registry.register_model(
+        _model("beta", endpoint="responses", name="Beta")
+    )
+    services.settings_manager.set_default_model(
+        ModelSelection(provider="faux", model_id="alpha")
+    )
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_model_change("faux", "beta")
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(manager.append_model_change("faux", "beta"))
 
     session = create_agent_session(session_manager=manager, services=services)
 
-    assert session.get_model_selection() == ModelSelection(provider="faux", model_id="beta")
+    assert session.get_model_selection() == ModelSelection(
+        provider="faux", model_id="beta"
+    )
 
     asyncio.run(session.set_model(ModelSelection(provider="faux", model_id="alpha")))
 
-    assert session.get_model_selection() == ModelSelection(provider="faux", model_id="alpha")
+    assert session.get_model_selection() == ModelSelection(
+        provider="faux", model_id="alpha"
+    )
     assert [entry.kind for entry in manager.get_entries()] == [
         "agent.model_selection",
         "agent.model_selection",

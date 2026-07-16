@@ -14,8 +14,20 @@ def _ignore_tool(tool: object, source_info: object | None = None) -> None:
     del tool, source_info
 
 
-def _ignore_entry(custom_type: str, data: object | None = None) -> None:
+async def _ignore_entry(custom_type: str, data: object | None = None) -> None:
     del custom_type, data
+
+
+async def _ignore_session_name(name: str | None) -> None:
+    del name
+
+
+async def _ignore_label(entry_id: str, label: str | None) -> None:
+    del entry_id, label
+
+
+async def _ignore_thinking_level(level: str) -> None:
+    del level
 
 
 @dataclass
@@ -35,21 +47,19 @@ class ProductRuntimeBindings:
     session_manager: object | None = None
     model_registry: object | None = None
     get_signal: Callable[[], object | None] = lambda: None
-    append_entry: Callable[[str, object | None], None] = _ignore_entry
+    append_entry: Callable[[str, object | None], Awaitable[None]] = _ignore_entry
     send_message: Callable[[object, object | None], Awaitable[None]] | None = None
-    send_user_message: (
-        Callable[[object, object | None], Awaitable[None]] | None
-    ) = None
-    set_session_name: Callable[[str | None], None] = lambda name: None
+    send_user_message: Callable[[object, object | None], Awaitable[None]] | None = None
+    set_session_name: Callable[[str | None], Awaitable[None]] = _ignore_session_name
     get_session_name: Callable[[], str | None] = lambda: None
-    set_label: Callable[[str, str | None], None] = lambda entry_id, label: None
+    set_label: Callable[[str, str | None], Awaitable[None]] = _ignore_label
     list_commands: Callable[[], list[object]] = lambda: []
     abort: Callable[[], None] = lambda: None
     is_idle: Callable[[], bool] = lambda: True
     has_pending_messages: Callable[[], bool] = lambda: False
     get_context_usage: Callable[[], object | None] = lambda: None
     get_thinking_level: Callable[[], str] = lambda: "off"
-    set_thinking_level: Callable[[str], None] = lambda level: None
+    set_thinking_level: Callable[[str], Awaitable[None]] = _ignore_thinking_level
     register_provider: Callable[[str, object], None] | None = None
     unregister_provider: Callable[[str], None] | None = None
     set_extension_status: Callable[[str, str | None], None] = lambda key, text: None
@@ -61,12 +71,8 @@ class ProductRuntimeBindings:
     navigate_tree: (
         Callable[[str, object | None], Awaitable[dict[str, object]]] | None
     ) = None
-    fork: (
-        Callable[[str, object | None], Awaitable[dict[str, object]]] | None
-    ) = None
-    new_session: (
-        Callable[[object | None], Awaitable[dict[str, object]]] | None
-    ) = None
+    fork: Callable[[str, object | None], Awaitable[dict[str, object]]] | None = None
+    new_session: Callable[[object | None], Awaitable[dict[str, object]]] | None = None
     switch_session: (
         Callable[[str, object | None], Awaitable[dict[str, object]]] | None
     ) = None

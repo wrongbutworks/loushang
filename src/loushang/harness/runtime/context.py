@@ -86,7 +86,13 @@ class UnboundProductRuntimeContext:
         rolling_max_bytes: int = 100 * 1024,
     ) -> ExecResult:
         del command, args, cwd, env, timeout_seconds, stdin, signal, on_update
-        del preview_max_lines, preview_max_bytes, artifact_dir, capture_full_output, rolling_max_bytes
+        del (
+            preview_max_lines,
+            preview_max_bytes,
+            artifact_dir,
+            capture_full_output,
+            rolling_max_bytes,
+        )
         raise RuntimeError("Extension runtime is not bound.")
 
     def get_active_tool_names(self) -> list[str]:
@@ -134,35 +140,41 @@ class UnboundProductRuntimeContext:
     def get_thinking_level(self) -> str:
         return self.getThinkingLevel()
 
-    def setThinkingLevel(self, level: str) -> None:
+    async def setThinkingLevel(self, level: str) -> None:
         del level
 
-    def set_thinking_level(self, level: str) -> None:
-        self.setThinkingLevel(level)
+    async def set_thinking_level(self, level: str) -> None:
+        await self.setThinkingLevel(level)
 
-    def appendEntry(self, custom_type: str, data: object | None = None) -> None:
+    async def appendEntry(self, custom_type: str, data: object | None = None) -> None:
         del custom_type, data
 
-    def append_entry(self, custom_type: str, data: object | None = None) -> None:
-        self.appendEntry(custom_type, data)
+    async def append_entry(self, custom_type: str, data: object | None = None) -> None:
+        await self.appendEntry(custom_type, data)
 
     async def sendMessage(self, message: object, options: object | None = None) -> None:
         del message, options
 
-    async def send_message(self, message: object, options: object | None = None) -> None:
+    async def send_message(
+        self, message: object, options: object | None = None
+    ) -> None:
         await self.sendMessage(message, options)
 
-    async def sendUserMessage(self, content: object, options: object | None = None) -> None:
+    async def sendUserMessage(
+        self, content: object, options: object | None = None
+    ) -> None:
         del content, options
 
-    async def send_user_message(self, content: object, options: object | None = None) -> None:
+    async def send_user_message(
+        self, content: object, options: object | None = None
+    ) -> None:
         await self.sendUserMessage(content, options)
 
-    def setSessionName(self, name: str | None) -> None:
+    async def setSessionName(self, name: str | None) -> None:
         del name
 
-    def set_session_name(self, name: str | None) -> None:
-        self.setSessionName(name)
+    async def set_session_name(self, name: str | None) -> None:
+        await self.setSessionName(name)
 
     def getSessionName(self) -> str | None:
         return None
@@ -170,11 +182,11 @@ class UnboundProductRuntimeContext:
     def get_session_name(self) -> str | None:
         return self.getSessionName()
 
-    def setLabel(self, entry_id: str, label: str | None) -> None:
+    async def setLabel(self, entry_id: str, label: str | None) -> None:
         del entry_id, label
 
-    def set_label(self, entry_id: str, label: str | None) -> None:
-        self.setLabel(entry_id, label)
+    async def set_label(self, entry_id: str, label: str | None) -> None:
+        await self.setLabel(entry_id, label)
 
     def listCommands(self):
         return []
@@ -222,14 +234,20 @@ class UnboundProductRuntimeContext:
     async def reload(self) -> None:
         return None
 
-    async def navigateTree(self, target_id: str, options: object | None = None) -> dict[str, object]:
+    async def navigateTree(
+        self, target_id: str, options: object | None = None
+    ) -> dict[str, object]:
         del target_id, options
         return {"cancelled": False}
 
-    async def navigate_tree(self, target_id: str, options: object | None = None) -> dict[str, object]:
+    async def navigate_tree(
+        self, target_id: str, options: object | None = None
+    ) -> dict[str, object]:
         return await self.navigateTree(target_id, options)
 
-    async def fork(self, entry_id: str, options: object | None = None) -> dict[str, object]:
+    async def fork(
+        self, entry_id: str, options: object | None = None
+    ) -> dict[str, object]:
         del entry_id, options
         return {"cancelled": True}
 
@@ -240,11 +258,15 @@ class UnboundProductRuntimeContext:
     async def new_session(self, options: object | None = None) -> dict[str, object]:
         return await self.newSession(options)
 
-    async def switchSession(self, session_path: str, options: object | None = None) -> dict[str, object]:
+    async def switchSession(
+        self, session_path: str, options: object | None = None
+    ) -> dict[str, object]:
         del session_path, options
         return {"cancelled": True}
 
-    async def switch_session(self, session_path: str, options: object | None = None) -> dict[str, object]:
+    async def switch_session(
+        self, session_path: str, options: object | None = None
+    ) -> dict[str, object]:
         return await self.switchSession(session_path, options)
 
     def shutdown(self) -> None:
@@ -262,10 +284,14 @@ class UnboundProductRuntimeContext:
     def setStatus(self, key: str, text: str | None) -> None:
         self.set_status(key, text)
 
-    def set_widget(self, key: str, lines: list[str] | None, *, placement: str | None = None) -> None:
+    def set_widget(
+        self, key: str, lines: list[str] | None, *, placement: str | None = None
+    ) -> None:
         del key, lines, placement
 
-    def setWidget(self, key: str, lines: list[str] | None, *, placement: str | None = None) -> None:
+    def setWidget(
+        self, key: str, lines: list[str] | None, *, placement: str | None = None
+    ) -> None:
         self.set_widget(key, lines, placement=placement)
 
     def set_title(self, title: str) -> None:
@@ -331,15 +357,25 @@ class UnboundProductRuntimeContext:
     def setToolsExpanded(self, expanded: bool) -> None:
         del expanded
 
-    async def select(self, title: str, options: list[str], *, timeout: float | None = None) -> str | None:
+    async def select(
+        self, title: str, options: list[str], *, timeout: float | None = None
+    ) -> str | None:
         del title, options, timeout
         return None
 
-    async def confirm(self, title: str, message: str, *, timeout: float | None = None) -> bool:
+    async def confirm(
+        self, title: str, message: str, *, timeout: float | None = None
+    ) -> bool:
         del title, message, timeout
         return False
 
-    async def input(self, title: str, placeholder: str | None = None, *, timeout: float | None = None) -> str | None:
+    async def input(
+        self,
+        title: str,
+        placeholder: str | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> str | None:
         del title, placeholder, timeout
         return None
 
@@ -483,17 +519,17 @@ class BoundProductRuntimeContext:
     def get_thinking_level(self) -> str:
         return self.getThinkingLevel()
 
-    def setThinkingLevel(self, level: str) -> None:
-        self._require_bindings().set_thinking_level(level)
+    async def setThinkingLevel(self, level: str) -> None:
+        await self._require_bindings().set_thinking_level(level)
 
-    def set_thinking_level(self, level: str) -> None:
-        self.setThinkingLevel(level)
+    async def set_thinking_level(self, level: str) -> None:
+        await self.setThinkingLevel(level)
 
-    def appendEntry(self, custom_type: str, data: object | None = None) -> None:
-        self._require_bindings().append_entry(custom_type, data)
+    async def appendEntry(self, custom_type: str, data: object | None = None) -> None:
+        await self._require_bindings().append_entry(custom_type, data)
 
-    def append_entry(self, custom_type: str, data: object | None = None) -> None:
-        self.appendEntry(custom_type, data)
+    async def append_entry(self, custom_type: str, data: object | None = None) -> None:
+        await self.appendEntry(custom_type, data)
 
     async def sendMessage(self, message: object, options: object | None = None) -> None:
         callback = self._require_bindings().send_message
@@ -502,24 +538,30 @@ class BoundProductRuntimeContext:
         await callback(message, options)
         return None
 
-    async def send_message(self, message: object, options: object | None = None) -> None:
+    async def send_message(
+        self, message: object, options: object | None = None
+    ) -> None:
         await self.sendMessage(message, options)
 
-    async def sendUserMessage(self, content: object, options: object | None = None) -> None:
+    async def sendUserMessage(
+        self, content: object, options: object | None = None
+    ) -> None:
         callback = self._require_bindings().send_user_message
         if callback is None:
             return None
         await callback(content, options)
         return None
 
-    async def send_user_message(self, content: object, options: object | None = None) -> None:
+    async def send_user_message(
+        self, content: object, options: object | None = None
+    ) -> None:
         await self.sendUserMessage(content, options)
 
-    def setSessionName(self, name: str | None) -> None:
-        self._require_bindings().set_session_name(name)
+    async def setSessionName(self, name: str | None) -> None:
+        await self._require_bindings().set_session_name(name)
 
-    def set_session_name(self, name: str | None) -> None:
-        self.setSessionName(name)
+    async def set_session_name(self, name: str | None) -> None:
+        await self.setSessionName(name)
 
     def getSessionName(self) -> str | None:
         return self._require_bindings().get_session_name()
@@ -527,11 +569,11 @@ class BoundProductRuntimeContext:
     def get_session_name(self) -> str | None:
         return self.getSessionName()
 
-    def setLabel(self, entry_id: str, label: str | None) -> None:
-        self._require_bindings().set_label(entry_id, label)
+    async def setLabel(self, entry_id: str, label: str | None) -> None:
+        await self._require_bindings().set_label(entry_id, label)
 
-    def set_label(self, entry_id: str, label: str | None) -> None:
-        self.setLabel(entry_id, label)
+    async def set_label(self, entry_id: str, label: str | None) -> None:
+        await self.setLabel(entry_id, label)
 
     def listCommands(self):
         return list(self._require_bindings().list_commands())
@@ -589,17 +631,23 @@ class BoundProductRuntimeContext:
         await callback()
         return None
 
-    async def navigateTree(self, target_id: str, options: object | None = None) -> dict[str, object]:
+    async def navigateTree(
+        self, target_id: str, options: object | None = None
+    ) -> dict[str, object]:
         callback = self._require_bindings().navigate_tree
         if callback is None:
             return {"cancelled": False}
         result = await callback(target_id, options)
         return result if isinstance(result, dict) else {"cancelled": False}
 
-    async def navigate_tree(self, target_id: str, options: object | None = None) -> dict[str, object]:
+    async def navigate_tree(
+        self, target_id: str, options: object | None = None
+    ) -> dict[str, object]:
         return await self.navigateTree(target_id, options)
 
-    async def fork(self, entry_id: str, options: object | None = None) -> dict[str, object]:
+    async def fork(
+        self, entry_id: str, options: object | None = None
+    ) -> dict[str, object]:
         callback = self._require_bindings().fork
         if callback is None:
             return {"cancelled": True}
@@ -616,14 +664,18 @@ class BoundProductRuntimeContext:
     async def new_session(self, options: object | None = None) -> dict[str, object]:
         return await self.newSession(options)
 
-    async def switchSession(self, session_path: str, options: object | None = None) -> dict[str, object]:
+    async def switchSession(
+        self, session_path: str, options: object | None = None
+    ) -> dict[str, object]:
         callback = self._require_bindings().switch_session
         if callback is None:
             return {"cancelled": True}
         result = await callback(session_path, options)
         return result if isinstance(result, dict) else {"cancelled": False}
 
-    async def switch_session(self, session_path: str, options: object | None = None) -> dict[str, object]:
+    async def switch_session(
+        self, session_path: str, options: object | None = None
+    ) -> dict[str, object]:
         return await self.switchSession(session_path, options)
 
     def shutdown(self) -> None:
@@ -648,12 +700,16 @@ class BoundProductRuntimeContext:
     def setStatus(self, key: str, text: str | None) -> None:
         self.set_status(key, text)
 
-    def set_widget(self, key: str, lines: list[str] | None, *, placement: str | None = None) -> None:
+    def set_widget(
+        self, key: str, lines: list[str] | None, *, placement: str | None = None
+    ) -> None:
         ui = self._ui_context()
         if ui is not None:
             ui.set_widget(key, lines, placement=placement)
 
-    def setWidget(self, key: str, lines: list[str] | None, *, placement: str | None = None) -> None:
+    def setWidget(
+        self, key: str, lines: list[str] | None, *, placement: str | None = None
+    ) -> None:
         self.set_widget(key, lines, placement=placement)
 
     def set_title(self, title: str) -> None:
@@ -736,17 +792,37 @@ class BoundProductRuntimeContext:
     def setToolsExpanded(self, expanded: bool) -> None:
         self._call_ui_noop("setToolsExpanded", expanded)
 
-    async def select(self, title: str, options: list[str], *, timeout: float | None = None) -> str | None:
+    async def select(
+        self, title: str, options: list[str], *, timeout: float | None = None
+    ) -> str | None:
         ui = self._ui_context()
-        return await ui.select(title, options, timeout=timeout) if ui is not None else None
+        return (
+            await ui.select(title, options, timeout=timeout) if ui is not None else None
+        )
 
-    async def confirm(self, title: str, message: str, *, timeout: float | None = None) -> bool:
+    async def confirm(
+        self, title: str, message: str, *, timeout: float | None = None
+    ) -> bool:
         ui = self._ui_context()
-        return await ui.confirm(title, message, timeout=timeout) if ui is not None else False
+        return (
+            await ui.confirm(title, message, timeout=timeout)
+            if ui is not None
+            else False
+        )
 
-    async def input(self, title: str, placeholder: str | None = None, *, timeout: float | None = None) -> str | None:
+    async def input(
+        self,
+        title: str,
+        placeholder: str | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> str | None:
         ui = self._ui_context()
-        return await ui.input(title, placeholder, timeout=timeout) if ui is not None else None
+        return (
+            await ui.input(title, placeholder, timeout=timeout)
+            if ui is not None
+            else None
+        )
 
     async def editor(self, title: str, prefill: str | None = None) -> str | None:
         ui = self._ui_context()
@@ -763,5 +839,6 @@ class BoundProductRuntimeContext:
         method = getattr(ui, method_name, None) if ui is not None else None
         if callable(method):
             method(*args)
+
 
 __all__ = ["BoundProductRuntimeContext", "UnboundProductRuntimeContext"]

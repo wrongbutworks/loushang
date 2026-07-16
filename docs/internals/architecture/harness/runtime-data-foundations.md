@@ -50,12 +50,13 @@ structural accessors: record id and parent id. The repository provides:
 - accumulated journal-load and compatible-graph diagnostics;
 - detached read-only loading when a Product must not mutate the source file.
 
-Coding's `SessionManager` is still the Product facade. It keeps
-`SessionHeader`, `SessionEntry`, labels, summary/query relevance, context
-rebuild, recovery wording, file naming, deletion, retention, and public APIs.
-It delegates conversation state, graph traversal, append persistence, replay,
-catalog/query mechanics, and fork materialization through
-`ConversationRepository`, which composes `TranscriptRepository` internally.
+Coding's `SessionManager` is still the Product facade, now asynchronous for
+create/load/mutation/delete. It keeps labels, summary/query relevance, recovery
+wording, file naming, retention, public APIs, and backend composition. It
+delegates open transcript state, graph traversal, revision-checked append,
+replay, context rebuild, and fork materialization through
+`AgentTranscriptSessionStore` over an injected `ConversationStore`; catalog and
+index projection remain separate Product concerns.
 
 The follow-on Conversation Runtime Core now wraps this lower-level repository
 with `loushang.harness.conversation.ConversationRepository`, catalog/query,

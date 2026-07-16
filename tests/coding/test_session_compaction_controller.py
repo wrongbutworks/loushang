@@ -47,17 +47,29 @@ def _assistant_text_message(text: str) -> AssistantMessage:
     )
 
 
-def test_compaction_controller_appends_compaction_and_rebuilds_agent_context(tmp_path) -> None:
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="older context that should be compacted")],
-            timestamp=0.0,
+def test_compaction_controller_appends_compaction_and_rebuilds_agent_context(
+    tmp_path,
+) -> None:
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[
+                    TextPart(type="text", text="older context that should be compacted")
+                ],
+                timestamp=0.0,
+            )
         )
     )
-    assistant_id = manager.append_message(_assistant_text_message("recent reply"))
-    agent = Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"})
+    assistant_id = asyncio.run(
+        manager.append_message(_assistant_text_message("recent reply"))
+    )
+    agent = Agent(
+        initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
+    )
     agent.state.set_messages(manager.build_session_context().messages)
     events: list[object] = []
 
@@ -87,16 +99,31 @@ def test_compaction_controller_appends_compaction_and_rebuilds_agent_context(tmp
         dispatch_event=_dispatch_event,
     )
 
-    result = asyncio.run(controller.compact(reason="manual", will_retry=False, compact_fn=_fake_compact))
+    result = asyncio.run(
+        controller.compact(reason="manual", will_retry=False, compact_fn=_fake_compact)
+    )
 
     assert result.summary == "controller summary"
-    assert [entry.kind for entry in manager.get_entries()] == ["agent.message", "agent.message", "context.compaction_checkpoint"]
+    assert [entry.kind for entry in manager.get_entries()] == [
+        "agent.message",
+        "agent.message",
+        "context.compaction_checkpoint",
+    ]
     compaction_entry = manager.get_entries()[-1]
     assert isinstance(compaction_entry.payload.details, dict)
-    assert compaction_entry.payload.details["compactionPlan"]["firstKeptEntryId"] == assistant_id
-    assert compaction_entry.payload.details["compactionPlan"]["summarizedEntryIds"] == []
-    assert compaction_entry.payload.details["compactionPlan"]["turnPrefixEntryIds"] == [manager.get_entries()[0].record_id]
-    assert compaction_entry.payload.details["compactionPlan"]["keptEntryIds"] == [assistant_id]
+    assert (
+        compaction_entry.payload.details["compactionPlan"]["firstKeptEntryId"]
+        == assistant_id
+    )
+    assert (
+        compaction_entry.payload.details["compactionPlan"]["summarizedEntryIds"] == []
+    )
+    assert compaction_entry.payload.details["compactionPlan"]["turnPrefixEntryIds"] == [
+        manager.get_entries()[0].record_id
+    ]
+    assert compaction_entry.payload.details["compactionPlan"]["keptEntryIds"] == [
+        assistant_id
+    ]
     assert compaction_entry.payload.details["compactionPlan"]["isSplitTurn"] is True
     assert compaction_entry.payload.details["compactionPlan"]["keepRecentTokens"] == 1
     assert [getattr(message, "role", None) for message in agent.state.messages] == [

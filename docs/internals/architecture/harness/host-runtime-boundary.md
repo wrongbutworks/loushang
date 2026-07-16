@@ -4,8 +4,9 @@
 
 Status: implementation complete for integration into `lane/harness`.
 
-This document defines the product-neutral host lifecycle, input-queue ledger,
-and ordered event-dispatch mechanisms owned by `loushang.harness.host`.
+This document defines the product-neutral host lifecycle and input-queue ledger
+owned by `loushang.harness.host`, composed with ordered event-dispatch
+mechanisms from `loushang.harness.events`.
 Coding remains responsible for Product input semantics, session persistence,
 controller policy and adapters, commands, resource activation, extension
 policy, and presentation. Reusable controller state machines are defined by
@@ -93,7 +94,7 @@ callback.
 
 ## Ordered Events
 
-`loushang.harness.host.events.OrderedEventBus` owns:
+`loushang.harness.events.OrderedEventBus` owns:
 
 - subscription and unsubscription;
 - sync or async listeners;
@@ -101,9 +102,13 @@ callback.
 - direct dispatch and drain behavior;
 - synchronous dispatch when no event loop is available.
 
-The bus is generic over its event payload. Coding continues to own
-`AgentSessionEvent`, event projection, UI interpretation, and extension event
-mapping.
+The bus is generic over its event payload. `RuntimeEventPublisher` owns one
+stream's event id, timestamp, and monotonic sequence. Coding continues to own
+`AgentSessionEvent` as a Product projection input, UI interpretation, and
+extension event mapping; common observers subscribe to `RuntimeEvent`.
+Transcript commit observations are scheduled from exact Store receipts after
+durable success, so Product projection failure cannot roll back or repeat the
+append.
 
 ## Coding Adapter
 

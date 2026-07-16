@@ -75,6 +75,11 @@ planning, work event persistence, or AI provider behavior.
   defines the optional common Agent/AI transcript schema and codec profile,
   opaque preservation, Native v3 migration, idempotent application-message
   commit, Product extension points, and its narrow AI/Agent import allowlist.
+- [Store And Runtime Event Protocol Migration](store-event-protocol-migration.md)
+  records the implemented protocol-based Store cutover, Memory/File reference
+  adapters, Agent transcript persistence facade, common runtime-event envelope,
+  commit/publication ordering, and the deliberately deferred SQL, Redis,
+  outbox, and extension-provider work.
 - [Product Runtime Core Boundary](product-runtime-core-boundary.md) defines
   shared runtime bindings and contexts, session-transition ownership,
   coalesced scheduling, AI/Agent data-contract placement, and the irreducible

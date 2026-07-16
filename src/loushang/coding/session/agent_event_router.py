@@ -6,11 +6,9 @@ from typing import Protocol
 
 from loushang.agent import AbortSignal, AgentEvent
 from loushang.ai.types import AssistantMessage
-from loushang.coding.event import AgentSessionEvent
-from loushang.harness.host.routing import PayloadEventRouter
 
-AppendMessage = Callable[[object], None]
-EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
+AppendMessage = Callable[[object], Awaitable[str]]
+EventDispatcher = Callable[..., Awaitable[None]]
 ExtensionEventEmitter = Callable[[AgentEvent], Awaitable[None]]
 ToolExecutionErrorRecorder = Callable[[AgentEvent], None]
 ExtensionDiagnosticsSync = Callable[..., None]
@@ -51,13 +49,11 @@ class AgentEventRouter:
     record_assistant_response_error: AssistantResponseErrorRecorder
     check_auto_compaction: AutoCompactionChecker
     consume_user_message: UserMessageConsumer | None = None
-    _router: PayloadEventRouter[AgentEvent] = field(init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        self._router = PayloadEventRouter(
-            kind_of=lambda event: event["type"],
-            mirrors=(self.dispatch_event, self.emit_extension_agent_event),
-        )
+    _committed_messages: dict[int, tuple[object, str]] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
 
     async def handle(self, event: AgentEvent, signal: AbortSignal) -> None:
         del signal
@@ -67,11 +63,15 @@ class AgentEventRouter:
             and self.consume_user_message is not None
         ):
             self.consume_user_message(event["message"])
+        source_record_id: str | None = None
+        committed_message: object | None = None
         if event["type"] == "message_end":
-            self.append_message(event["message"])
+            committed_message = event["message"]
+            source_record_id = await self._append_message_once(committed_message)
         if event["type"] == "tool_execution_end" and event.get("is_error"):
             self.record_tool_execution_error(event)
-        await self._router.route(event)
+        await self.dispatch_event(event, source_record_id=source_record_id)
+        await self.emit_extension_agent_event(event)
         if event["type"] == "message_end" and isinstance(
             event["message"], AssistantMessage
         ):
@@ -94,6 +94,23 @@ class AgentEventRouter:
                 if did_retry:
                     return
             await self.check_auto_compaction(last_assistant_message)
+        if committed_message is not None:
+            self._forget_committed_message(committed_message)
+
+    async def _append_message_once(self, message: object) -> str:
+        identity = id(message)
+        existing = self._committed_messages.get(identity)
+        if existing is not None and existing[0] is message:
+            return existing[1]
+        record_id = await self.append_message(message)
+        self._committed_messages[identity] = (message, record_id)
+        return record_id
+
+    def _forget_committed_message(self, message: object) -> None:
+        identity = id(message)
+        existing = self._committed_messages.get(identity)
+        if existing is not None and existing[0] is message:
+            self._committed_messages.pop(identity, None)
 
 
 def _last_assistant_message(messages: Sequence[object]) -> AssistantMessage | None:

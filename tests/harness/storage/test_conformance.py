@@ -1,0 +1,405 @@
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Callable
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from loushang.harness.journal import JournalLoadPolicy, JsonlJournal
+from loushang.harness.storage import (
+    ConversationKey,
+    ConversationStore,
+    FileConversationStore,
+    MemoryConversationStore,
+    StoreAlreadyExistsError,
+    StoreConflictError,
+    StoreDataError,
+    StoreNotFoundError,
+)
+
+
+@dataclass(frozen=True)
+class _Header:
+    title: str
+
+
+@dataclass(frozen=True)
+class _Record:
+    record_id: str
+    text: str
+
+
+class _HeaderCodec:
+    def encode_header(self, header: _Header):
+        return {"type": "conversation", "title": header.title}
+
+    def decode_header(self, value):
+        if value.get("type") != "conversation":
+            raise ValueError("invalid header")
+        return _Header(title=str(value["title"]))
+
+
+class _RecordCodec:
+    def encode_record(self, record: _Record):
+        return {"recordId": record.record_id, "text": record.text}
+
+    def decode_record(self, value):
+        return _Record(record_id=str(value["recordId"]), text=str(value["text"]))
+
+
+_NOW = datetime(2026, 7, 16, 12, 0, tzinfo=timezone.utc)
+_StoreFactory = Callable[[], ConversationStore[_Header, _Record]]
+
+
+def _record_id(record: _Record) -> str:
+    return record.record_id
+
+
+def _memory_factory(
+    *,
+    record_id: Callable[[_Record], str | None] = _record_id,
+) -> _StoreFactory:
+    def create() -> ConversationStore[_Header, _Record]:
+        return MemoryConversationStore(
+            clock=lambda: _NOW,
+            record_id=record_id,
+        )
+
+    return create
+
+
+def _file_factory(
+    tmp_path: Path,
+    *,
+    record_id: Callable[[_Record], str | None] = _record_id,
+) -> _StoreFactory:
+    root = tmp_path / "conversations"
+
+    def path_for(key: ConversationKey) -> Path:
+        return root / key.namespace / f"{key.conversation_id}.jsonl"
+
+    def journal_factory(path: Path) -> JsonlJournal[_Header, _Record]:
+        return JsonlJournal(
+            path,
+            header_codec=_HeaderCodec(),
+            record_codec=_RecordCodec(),
+            load_policy=JournalLoadPolicy(header="required"),
+        )
+
+    def create() -> ConversationStore[_Header, _Record]:
+        return FileConversationStore(
+            create_path=path_for,
+            resolve_path=lambda key: path_for(key),
+            scan_paths=lambda namespace: (root / namespace).glob("*.jsonl"),
+            key_for_path=lambda namespace, path: ConversationKey(
+                namespace,
+                path.stem,
+            ),
+            journal_factory=journal_factory,
+            clock=lambda: _NOW,
+            record_id=record_id,
+        )
+
+    return create
+
+
+@pytest.fixture(params=("memory", "file"))
+def store_factory(request: pytest.FixtureRequest, tmp_path: Path) -> _StoreFactory:
+    if request.param == "memory":
+        return _memory_factory()
+    return _file_factory(tmp_path)
+
+
+def test_store_implements_protocol_and_round_trips_initial_records(
+    store_factory: _StoreFactory,
+) -> None:
+    async def scenario() -> None:
+        store = store_factory()
+        key = ConversationKey("coding", "session-1")
+        records = (_Record("record-1", "first"), _Record("record-2", "second"))
+
+        assert isinstance(store, ConversationStore)
+        created = await store.create(key, _Header("Original"), records)
+        loaded = await store.load(key)
+
+        assert created == loaded
+        assert loaded.header == _Header("Original")
+        assert loaded.records == records
+        assert loaded.revision == 2
+
+    asyncio.run(scenario())
+
+
+def test_append_checks_revision_before_mutation(store_factory: _StoreFactory) -> None:
+    async def scenario() -> None:
+        store = store_factory()
+        key = ConversationKey("coding", "session-1")
+        await store.create(key, _Header("Immutable"))
+
+        receipt = await store.append(
+            key,
+            _Record("record-1", "first"),
+            expected_revision=0,
+        )
+        assert receipt.revision == 1
+        assert receipt.record_id == "record-1"
+        assert receipt.committed_at == _NOW
+
+        with pytest.raises(StoreConflictError):
+            await store.append(
+                key,
+                _Record("record-2", "stale"),
+                expected_revision=0,
+            )
+
+        loaded = await store.load(key)
+        assert loaded.header == _Header("Immutable")
+        assert loaded.records == (_Record("record-1", "first"),)
+        assert loaded.revision == 1
+
+    asyncio.run(scenario())
+
+
+def test_create_existing_key_fails_without_replacing_data(
+    store_factory: _StoreFactory,
+) -> None:
+    async def scenario() -> None:
+        store = store_factory()
+        key = ConversationKey("coding", "session-1")
+        await store.create(key, _Header("Original"), (_Record("one", "kept"),))
+
+        with pytest.raises(StoreAlreadyExistsError):
+            await store.create(key, _Header("Replacement"))
+
+        loaded = await store.load(key)
+        assert loaded.header == _Header("Original")
+        assert loaded.records == (_Record("one", "kept"),)
+
+    asyncio.run(scenario())
+
+
+def test_missing_load_append_and_delete_share_not_found_error(
+    store_factory: _StoreFactory,
+) -> None:
+    async def scenario() -> None:
+        store = store_factory()
+        key = ConversationKey("coding", "missing")
+
+        with pytest.raises(StoreNotFoundError):
+            await store.load(key)
+        with pytest.raises(StoreNotFoundError):
+            await store.append(
+                key,
+                _Record("record-1", "missing"),
+                expected_revision=0,
+            )
+        with pytest.raises(StoreNotFoundError):
+            await store.delete(key)
+
+    asyncio.run(scenario())
+
+
+def test_scan_is_namespace_scoped_and_delete_removes_key(
+    store_factory: _StoreFactory,
+) -> None:
+    async def scenario() -> None:
+        store = store_factory()
+        coding_b = ConversationKey("coding", "b")
+        coding_a = ConversationKey("coding", "a")
+        research = ConversationKey("research", "a")
+        await store.create(coding_b, _Header("B"))
+        await store.create(research, _Header("Research"))
+        await store.create(coding_a, _Header("A"))
+
+        assert await store.scan("coding") == (coding_a, coding_b)
+        assert await store.scan("research") == (research,)
+
+        await store.delete(coding_a)
+        assert await store.scan("coding") == (coding_b,)
+
+    asyncio.run(scenario())
+
+
+def test_file_delete_preserves_default_lock_artifact(tmp_path: Path) -> None:
+    store = _file_factory(tmp_path)()
+    key = ConversationKey("coding", "conversation-1")
+
+    async def scenario() -> None:
+        await store.create(key, _Header("conversation-1"))
+        path = tmp_path / "conversations" / "coding" / "conversation-1.jsonl"
+        assert path.with_name(f"{path.name}.lock").exists()
+
+        await store.delete(key)
+
+        assert not path.exists()
+        assert path.with_name(f"{path.name}.lock").exists()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("revision", [-1, True, 1.5])
+def test_invalid_expected_revision_is_rejected(
+    store_factory: _StoreFactory,
+    revision: Any,
+) -> None:
+    async def scenario() -> None:
+        store = store_factory()
+        key = ConversationKey("coding", "session-1")
+        await store.create(key, _Header("Header"))
+        with pytest.raises((TypeError, ValueError)):
+            await store.append(
+                key,
+                _Record("record-1", "invalid revision"),
+                expected_revision=revision,
+            )
+        assert (await store.load(key)).revision == 0
+
+    asyncio.run(scenario())
+
+
+def test_file_append_loads_counts_and_appends_inside_one_exclusive_lock(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "session.jsonl"
+    lock_depth = 0
+    lock_entries: list[str] = []
+
+    @contextmanager
+    def lock_factory(target: Path, mode: str):
+        nonlocal lock_depth
+        assert target == path
+        assert mode == "exclusive"
+        lock_entries.append(mode)
+        lock_depth += 1
+        try:
+            yield
+        finally:
+            lock_depth -= 1
+
+    class LockCheckingCodec(_RecordCodec):
+        def encode_record(self, record: _Record):
+            assert lock_depth == 1
+            return super().encode_record(record)
+
+        def decode_record(self, value):
+            assert lock_depth == 1
+            return super().decode_record(value)
+
+    def journal_factory(target: Path):
+        return JsonlJournal(
+            target,
+            header_codec=_HeaderCodec(),
+            record_codec=LockCheckingCodec(),
+            load_policy=JournalLoadPolicy(header="required"),
+            lock_factory=lock_factory,
+        )
+
+    key = ConversationKey("coding", "session-1")
+    store = FileConversationStore(
+        create_path=lambda ignored: path,
+        resolve_path=lambda ignored: path,
+        scan_paths=lambda ignored: (path,),
+        key_for_path=lambda namespace, ignored: key,
+        journal_factory=journal_factory,
+    )
+
+    async def scenario() -> None:
+        await store.create(key, _Header("Header"))
+        lock_entries.clear()
+        await store.append(
+            key,
+            _Record("record-1", "atomic"),
+            expected_revision=0,
+        )
+
+    asyncio.run(scenario())
+    assert lock_entries == ["exclusive"]
+
+
+def test_file_maps_corrupted_persistence_to_data_error(tmp_path: Path) -> None:
+    factory = _file_factory(tmp_path)
+
+    async def scenario() -> None:
+        store = factory()
+        key = ConversationKey("coding", "session-1")
+        await store.create(key, _Header("Header"))
+        path = tmp_path / "conversations" / "coding" / "session-1.jsonl"
+        path.write_text("not-json\n", encoding="utf-8")
+
+        with pytest.raises(StoreDataError):
+            await store.load(key)
+        with pytest.raises(StoreDataError):
+            await store.append(
+                key,
+                _Record("record-1", "blocked"),
+                expected_revision=0,
+            )
+
+    asyncio.run(scenario())
+
+
+def test_file_create_with_initial_records_is_atomic_on_codec_failure(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "session.jsonl"
+
+    class FailingRecordCodec(_RecordCodec):
+        def encode_record(self, record: _Record):
+            if record.record_id == "broken":
+                raise ValueError("cannot encode record")
+            return super().encode_record(record)
+
+    store = FileConversationStore(
+        create_path=lambda ignored: path,
+        resolve_path=lambda ignored: path,
+        scan_paths=lambda ignored: (),
+        key_for_path=lambda namespace, ignored: ConversationKey(
+            namespace,
+            "session-1",
+        ),
+        journal_factory=lambda target: JsonlJournal(
+            target,
+            header_codec=_HeaderCodec(),
+            record_codec=FailingRecordCodec(),
+            load_policy=JournalLoadPolicy(header="required"),
+        ),
+    )
+
+    async def scenario() -> None:
+        with pytest.raises(StoreDataError):
+            await store.create(
+                ConversationKey("coding", "session-1"),
+                _Header("Header"),
+                (_Record("kept", "first"), _Record("broken", "second")),
+            )
+
+    asyncio.run(scenario())
+    assert not path.exists()
+
+
+def test_receipt_projection_failure_does_not_commit(tmp_path: Path) -> None:
+    factories = (
+        _memory_factory(record_id=lambda record: ""),
+        _file_factory(tmp_path, record_id=lambda record: ""),
+    )
+
+    async def scenario(factory: _StoreFactory) -> None:
+        base_store = factory()
+        key = ConversationKey("coding", "session-1")
+        await base_store.create(key, _Header("Header"))
+
+        with pytest.raises((StoreDataError, ValueError)):
+            await base_store.append(
+                key,
+                _Record("record-1", "must not commit"),
+                expected_revision=0,
+            )
+        assert (await base_store.load(key)).revision == 0
+
+    for factory in factories:
+        asyncio.run(scenario(factory))

@@ -1325,16 +1325,16 @@ def test_extension_api_runtime_action_methods_delegate_from_command_closure() ->
 
     async def _act(args, ctx):
         del args, ctx
-        api.append_entry("demo_state", {"ok": True})
+        await api.append_entry("demo_state", {"ok": True})
         await api.send_message({"customType": "notice", "content": "hello"})
         await api.send_user_message("follow up", {"deliverAs": "followUp"})
         await api.set_active_tools(["read", "grep"])
         await api.set_model({"provider": "demo", "model_id": "next"})
         tracker["thinking_before"] = api.get_thinking_level()
-        api.set_thinking_level("high")
-        api.set_session_name("Renamed")
+        await api.set_thinking_level("high")
+        await api.set_session_name("Renamed")
         seen_name = api.get_session_name()
-        api.set_label("entry-1", "important")
+        await api.set_label("entry-1", "important")
         tracker["seen_name"] = seen_name
 
     api.register_command("act", handler=_act)
@@ -1495,6 +1495,18 @@ def _runtime_bindings(
     async def _set_model(selection) -> None:
         runtime_tracker["set_model_calls"].append(selection)
 
+    async def _append_entry(custom_type: str, data: object | None = None) -> None:
+        runtime_tracker["append_entry_calls"].append((custom_type, data))
+
+    async def _set_session_name(name: str | None) -> None:
+        runtime_tracker["set_session_name_calls"].append(name)
+
+    async def _set_label(entry_id: str, label: str | None) -> None:
+        runtime_tracker["set_label_calls"].append((entry_id, label))
+
+    async def _set_thinking_level(level: str) -> None:
+        runtime_tracker["set_thinking_level_calls"].append(level)
+
     return ExtensionRuntimeBindings(
         cwd=cwd,
         session_manager=session_manager,
@@ -1505,18 +1517,12 @@ def _runtime_bindings(
         get_model_selection=lambda: model_selection,
         set_active_tools=_set_active_tools,
         set_model=_set_model,
-        append_entry=lambda custom_type, data=None: runtime_tracker[
-            "append_entry_calls"
-        ].append((custom_type, data)),
+        append_entry=_append_entry,
         send_message=_send_message,
         send_user_message=_send_user_message,
-        set_session_name=lambda name: runtime_tracker["set_session_name_calls"].append(
-            name
-        ),
+        set_session_name=_set_session_name,
         get_session_name=lambda: "Demo Session",
-        set_label=lambda entry_id, label: runtime_tracker["set_label_calls"].append(
-            (entry_id, label)
-        ),
+        set_label=_set_label,
         list_commands=list_commands,
         request_resource_refresh=lambda: runtime_tracker.__setitem__(
             "resource_refresh_requests",
@@ -1532,9 +1538,7 @@ def _runtime_bindings(
         has_pending_messages=has_pending_messages,
         get_context_usage=get_context_usage,
         get_thinking_level=get_thinking_level,
-        set_thinking_level=lambda level: runtime_tracker[
-            "set_thinking_level_calls"
-        ].append(level),
+        set_thinking_level=_set_thinking_level,
         compact=_compact,
         get_system_prompt=get_system_prompt,
         wait_for_idle=wait_for_idle or _wait_for_idle,
@@ -2172,13 +2176,13 @@ def test_extension_runner_context_pi_style_session_and_registry_actions_delegate
     async def _before(event, ctx):
         del event
         await ctx.setActiveTools(["read", "grep"])
-        ctx.appendEntry("demo_state", {"enabled": True})
+        await ctx.appendEntry("demo_state", {"enabled": True})
         await ctx.sendMessage(
             {"customType": "demo_message", "content": "hello"}, {"triggerTurn": False}
         )
         await ctx.sendUserMessage("run this", {"deliverAs": "followUp"})
-        ctx.setSessionName("Demo")
-        ctx.setLabel("entry-1", "Bookmark")
+        await ctx.setSessionName("Demo")
+        await ctx.setLabel("entry-1", "Bookmark")
         seen.append(
             (
                 ctx.getActiveTools(),

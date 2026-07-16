@@ -204,7 +204,7 @@ class TreeController:
         summary_result = plan.hook_summary
         summary_entry_id: str | None = None
         if summary_result is not None:
-            summary_entry_id = self._append_branch_summary(
+            summary_entry_id = await self._append_branch_summary(
                 plan,
                 summary_result,
                 from_hook=True,
@@ -229,7 +229,7 @@ class TreeController:
             if summary_result.error:
                 raise RuntimeError(summary_result.error)
             if summary_result.summary:
-                summary_entry_id = self._append_branch_summary(
+                summary_entry_id = await self._append_branch_summary(
                     plan,
                     summary_result,
                     from_hook=False,
@@ -238,7 +238,7 @@ class TreeController:
         if summary_entry_id is None:
             self._apply_navigation_leaf(plan.new_leaf_id)
             if plan.label:
-                self.session_manager.append_label(plan.target_id, plan.label)
+                await self.session_manager.append_label(plan.target_id, plan.label)
         self._rebuild_agent_context()
         return TreeNavigationResult(
             cancelled=False,
@@ -246,7 +246,7 @@ class TreeController:
             summary_entry_id=summary_entry_id,
         )
 
-    def _append_branch_summary(
+    async def _append_branch_summary(
         self,
         plan: _SummaryNavigationPlan,
         summary: BranchSummaryResult,
@@ -255,14 +255,14 @@ class TreeController:
     ) -> str:
         if summary.summary is None:
             raise RuntimeError("Branch summary did not include summary text")
-        entry_id = self.session_manager.branch_with_summary(
+        entry_id = await self.session_manager.branch_with_summary(
             plan.new_leaf_id,
             summary.summary,
             details=_project_branch_summary_details(summary.details),
             from_hook=from_hook,
         )
         if plan.label:
-            self.session_manager.append_label(entry_id, plan.label)
+            await self.session_manager.append_label(entry_id, plan.label)
         return entry_id
 
     async def _finish_summary_navigation(

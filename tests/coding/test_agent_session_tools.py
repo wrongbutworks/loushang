@@ -24,7 +24,9 @@ def test_session_materialized_decorated_tool_receives_session_cwd(tmp_path) -> N
     async def show_session_cwd(ctx: ToolContext) -> str:
         return ctx.cwd or ""
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     registry = ToolRegistry()
     registry.register_tool(show_session_cwd)
     model = Model(
@@ -62,7 +64,9 @@ def test_session_materialized_decorated_tool_receives_session_cwd(tmp_path) -> N
     assert result.content[0].text == "/tmp/project"
 
 
-def test_session_get_all_tools_without_registry_supports_raw_runtime_tools(tmp_path) -> None:
+def test_session_get_all_tools_without_registry_supports_raw_runtime_tools(
+    tmp_path,
+) -> None:
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
@@ -72,14 +76,27 @@ def test_session_get_all_tools_without_registry_supports_raw_runtime_tools(tmp_p
         name = "runtime_tool"
         label = "Runtime Tool"
         description = "runtime tool"
-        parameters = {"type": "object", "properties": {}, "required": [], "additionalProperties": False}
+        parameters = {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": False,
+        }
         prepare_arguments = None
 
-        async def execute(self, tool_call_id: str, params: dict[str, object], signal=None, on_update=None):
+        async def execute(
+            self,
+            tool_call_id: str,
+            params: dict[str, object],
+            signal=None,
+            on_update=None,
+        ):
             del tool_call_id, params, signal, on_update
             return AgentToolResult(content=[], details={})
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     model = Model(
         id="faux-model",
         name="Faux",
@@ -105,7 +122,9 @@ def test_session_get_all_tools_without_registry_supports_raw_runtime_tools(tmp_p
 
     session = AgentSession(agent=agent, session_manager=manager)
 
-    assert [definition.name for definition in session.get_all_tools()] == ["runtime_tool"]
+    assert [definition.name for definition in session.get_all_tools()] == [
+        "runtime_tool"
+    ]
 
 
 def test_agent_session_tracks_active_tool_names_and_runtime_tools(tmp_path) -> None:
@@ -117,7 +136,9 @@ def test_agent_session_tracks_active_tool_names_and_runtime_tools(tmp_path) -> N
     from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     registry = ToolRegistry()
     register_builtin_tools(registry)
     model = Model(
@@ -185,7 +206,9 @@ def test_agent_session_builtin_tools_command_can_restore_active_tools(tmp_path) 
     from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     registry = ToolRegistry()
     register_builtin_tools(registry)
     model = Model(
@@ -222,10 +245,34 @@ def test_agent_session_builtin_tools_command_can_restore_active_tools(tmp_path) 
 
     assert off_result is not None
     assert off_result.result["active_tools"] == []
-    assert session.get_active_tool_names() == ["read", "ls", "find", "grep", "bash", "edit", "write"]
-    assert [tool.name for tool in session.agent.tools] == ["read", "ls", "find", "grep", "bash", "edit", "write"]
+    assert session.get_active_tool_names() == [
+        "read",
+        "ls",
+        "find",
+        "grep",
+        "bash",
+        "edit",
+        "write",
+    ]
+    assert [tool.name for tool in session.agent.tools] == [
+        "read",
+        "ls",
+        "find",
+        "grep",
+        "bash",
+        "edit",
+        "write",
+    ]
     assert reset_result is not None
-    assert reset_result.result["active_tools"] == ["read", "ls", "find", "grep", "bash", "edit", "write"]
+    assert reset_result.result["active_tools"] == [
+        "read",
+        "ls",
+        "find",
+        "grep",
+        "bash",
+        "edit",
+        "write",
+    ]
 
 
 def test_agent_session_exposes_pi_style_tool_surface_aliases(tmp_path) -> None:
@@ -260,8 +307,12 @@ def test_agent_session_exposes_pi_style_tool_surface_aliases(tmp_path) -> None:
                 "tools": [],
             }
         ),
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
-        resource_bundle=ResourceBundle(cwd=Path("/tmp/project"), prompt_fragments=["Repo rules"]),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
+        resource_bundle=ResourceBundle(
+            cwd=Path("/tmp/project"), prompt_fragments=["Repo rules"]
+        ),
         tool_registry=registry,
         active_tool_names=["bash"],
         base_prompt="Base prompt.",
@@ -296,7 +347,9 @@ def test_agent_session_exposes_pi_style_tool_surface_aliases(tmp_path) -> None:
     assert "- bash:" not in session.agent.system_prompt
 
 
-def test_agent_session_allowed_tool_names_filter_visible_and_active_tools(tmp_path) -> None:
+def test_agent_session_allowed_tool_names_filter_visible_and_active_tools(
+    tmp_path,
+) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
@@ -329,8 +382,12 @@ def test_agent_session_allowed_tool_names_filter_visible_and_active_tools(tmp_pa
                 "tools": [],
             }
         ),
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
-        resource_bundle=ResourceBundle(cwd=Path("/tmp/project"), prompt_fragments=["Repo rules"]),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
+        resource_bundle=ResourceBundle(
+            cwd=Path("/tmp/project"), prompt_fragments=["Repo rules"]
+        ),
         tool_registry=registry,
         allowed_tool_names=["read", "grep"],
         active_tool_names=["bash", "read", "grep", "missing"],
@@ -339,7 +396,10 @@ def test_agent_session_allowed_tool_names_filter_visible_and_active_tools(tmp_pa
 
     assert session.get_active_tool_names() == ["read", "grep"]
     assert [tool.name for tool in session.agent.tools] == ["read", "grep"]
-    assert [definition.name for definition in session.get_all_tools()] == ["read", "grep"]
+    assert [definition.name for definition in session.get_all_tools()] == [
+        "read",
+        "grep",
+    ]
     assert session.getToolDefinition("bash") is None
     assert "Available tools:\n- read:" in session.agent.system_prompt
     assert "- grep:" in session.agent.system_prompt
@@ -351,7 +411,9 @@ def test_agent_session_allowed_tool_names_filter_visible_and_active_tools(tmp_pa
     assert [tool.name for tool in session.agent.tools] == ["grep"]
 
 
-def test_agent_session_extension_context_register_tool_refreshes_active_tools_and_prompt(tmp_path) -> None:
+def test_agent_session_extension_context_register_tool_refreshes_active_tools_and_prompt(
+    tmp_path,
+) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
@@ -361,7 +423,9 @@ def test_agent_session_extension_context_register_tool_refreshes_active_tools_an
     from loushang.coding.session import AgentSession
     from loushang.coding.tools import ToolDefinition
 
-    async def execute_dynamic(tool_call_id: str, params: dict[str, object], signal=None, on_update=None):
+    async def execute_dynamic(
+        tool_call_id: str, params: dict[str, object], signal=None, on_update=None
+    ):
         del tool_call_id, params, signal, on_update
         return AgentToolResult(content=[], details={})
 
@@ -372,10 +436,17 @@ def test_agent_session_extension_context_register_tool_refreshes_active_tools_an
                 name="dynamic_tool",
                 label="Dynamic Tool",
                 description="Tool registered from session_start",
-                parameters={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+                parameters={
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                    "additionalProperties": False,
+                },
                 execute=execute_dynamic,
                 prompt_snippet="- dynamic_tool: Run dynamic test behavior",
-                prompt_guidelines=("Use dynamic_tool when the user asks for dynamic behavior tests.",),
+                prompt_guidelines=(
+                    "Use dynamic_tool when the user asks for dynamic behavior tests.",
+                ),
             )
         )
 
@@ -383,7 +454,9 @@ def test_agent_session_extension_context_register_tool_refreshes_active_tools_an
     register_builtin_tools(registry)
     session = AgentSession(
         agent=Agent(initial_state={"system_prompt": "Base prompt.", "tools": []}),
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         resource_bundle=ResourceBundle(cwd=Path("/tmp/project"), prompt_fragments=[]),
         tool_registry=registry,
         extension_runner=ExtensionRunner(
@@ -399,7 +472,9 @@ def test_agent_session_extension_context_register_tool_refreshes_active_tools_an
         base_prompt="Base prompt.",
     )
 
-    assert "dynamic_tool" not in [definition.name for definition in session.get_all_tools()]
+    assert "dynamic_tool" not in [
+        definition.name for definition in session.get_all_tools()
+    ]
 
     asyncio.run(session.reload_extension_runtime())
 
@@ -407,8 +482,13 @@ def test_agent_session_extension_context_register_tool_refreshes_active_tools_an
     assert "dynamic_tool" in session.get_active_tool_names()
     assert "dynamic_tool" in [tool.name for tool in session.agent.tools]
     assert "- dynamic_tool: Run dynamic test behavior" in session.agent.system_prompt
-    assert "Use dynamic_tool when the user asks for dynamic behavior tests." in session.agent.system_prompt
-    dynamic_tool_info = next(tool for tool in session.getAllTools() if tool["name"] == "dynamic_tool")
+    assert (
+        "Use dynamic_tool when the user asks for dynamic behavior tests."
+        in session.agent.system_prompt
+    )
+    dynamic_tool_info = next(
+        tool for tool in session.getAllTools() if tool["name"] == "dynamic_tool"
+    )
     assert dynamic_tool_info["sourceInfo"] == {
         "path": "<inline:1>",
         "source": "inline",
@@ -418,18 +498,24 @@ def test_agent_session_extension_context_register_tool_refreshes_active_tools_an
     }
 
 
-def test_agent_session_extension_api_register_tool_after_runtime_bind_updates_session_tools(tmp_path) -> None:
+def test_agent_session_extension_api_register_tool_after_runtime_bind_updates_session_tools(
+    tmp_path,
+) -> None:
     from loushang.agent import Agent
     from loushang.coding import SessionManager, ToolRegistry
     from loushang.coding.extensions import ExtensionAPI, ExtensionRunner
     from loushang.coding.session import AgentSession
     from loushang.coding.tools import ToolDefinition
 
-    async def execute_dynamic(tool_call_id: str, params: dict[str, object], signal=None, on_update=None):
+    async def execute_dynamic(
+        tool_call_id: str, params: dict[str, object], signal=None, on_update=None
+    ):
         del tool_call_id, params, signal, on_update
         return AgentToolResult(content=[], details={})
 
-    api = ExtensionAPI(name="demo", source_path=tmp_path / "demo.py", entry_path=tmp_path / "demo.py")
+    api = ExtensionAPI(
+        name="demo", source_path=tmp_path / "demo.py", entry_path=tmp_path / "demo.py"
+    )
 
     def _session_start(event, ctx):
         del event, ctx
@@ -438,7 +524,12 @@ def test_agent_session_extension_api_register_tool_after_runtime_bind_updates_se
                 name="api_dynamic_tool",
                 label="API Dynamic Tool",
                 description="Tool registered through the runtime-bound api",
-                parameters={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+                parameters={
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                    "additionalProperties": False,
+                },
                 execute=execute_dynamic,
                 prompt_snippet="- api_dynamic_tool: Run api dynamic behavior",
             )
@@ -447,7 +538,9 @@ def test_agent_session_extension_api_register_tool_after_runtime_bind_updates_se
     api.on("session_start", _session_start)
     session = AgentSession(
         agent=Agent(initial_state={"system_prompt": "Base prompt.", "tools": []}),
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         tool_registry=ToolRegistry(),
         extension_runner=ExtensionRunner([api.build_loaded_extension()]),
         base_prompt="Base prompt.",
@@ -455,19 +548,25 @@ def test_agent_session_extension_api_register_tool_after_runtime_bind_updates_se
 
     asyncio.run(session.reload_extension_runtime())
 
-    assert [definition.name for definition in session.get_all_tools()] == ["api_dynamic_tool"]
+    assert [definition.name for definition in session.get_all_tools()] == [
+        "api_dynamic_tool"
+    ]
     assert session.get_active_tool_names() == ["api_dynamic_tool"]
     assert "- api_dynamic_tool: Run api dynamic behavior" in session.agent.system_prompt
 
 
-def test_agent_session_dynamic_extension_tools_respect_allowed_tool_names(tmp_path) -> None:
+def test_agent_session_dynamic_extension_tools_respect_allowed_tool_names(
+    tmp_path,
+) -> None:
     from loushang.agent import Agent
     from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.session import AgentSession
     from loushang.coding.tools import ToolDefinition
 
-    async def execute_dynamic(tool_call_id: str, params: dict[str, object], signal=None, on_update=None):
+    async def execute_dynamic(
+        tool_call_id: str, params: dict[str, object], signal=None, on_update=None
+    ):
         del tool_call_id, params, signal, on_update
         return AgentToolResult(content=[], details={})
 
@@ -478,7 +577,12 @@ def test_agent_session_dynamic_extension_tools_respect_allowed_tool_names(tmp_pa
                 name="dynamic_tool",
                 label="Dynamic Tool",
                 description="Tool registered from session_start",
-                parameters={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+                parameters={
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                    "additionalProperties": False,
+                },
                 execute=execute_dynamic,
                 prompt_snippet="- dynamic_tool: Run dynamic test behavior",
             )
@@ -488,10 +592,18 @@ def test_agent_session_dynamic_extension_tools_respect_allowed_tool_names(tmp_pa
     register_builtin_tools(registry)
     session = AgentSession(
         agent=Agent(initial_state={"system_prompt": "Base prompt.", "tools": []}),
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         tool_registry=registry,
         extension_runner=ExtensionRunner(
-            [LoadedExtension(name="demo", source_path=tmp_path / "demo.py", hooks={"session_start": [_session_start]})]
+            [
+                LoadedExtension(
+                    name="demo",
+                    source_path=tmp_path / "demo.py",
+                    hooks={"session_start": [_session_start]},
+                )
+            ]
         ),
         allowed_tool_names=["read", "dynamic_tool"],
         active_tool_names=["read", "dynamic_tool"],
@@ -500,7 +612,10 @@ def test_agent_session_dynamic_extension_tools_respect_allowed_tool_names(tmp_pa
 
     asyncio.run(session.reload_extension_runtime())
 
-    assert [definition.name for definition in session.get_all_tools()] == ["read", "dynamic_tool"]
+    assert [definition.name for definition in session.get_all_tools()] == [
+        "read",
+        "dynamic_tool",
+    ]
     assert session.get_active_tool_names() == ["read", "dynamic_tool"]
     assert "- read:" in session.agent.system_prompt
     assert "- dynamic_tool: Run dynamic test behavior" in session.agent.system_prompt
@@ -508,10 +623,18 @@ def test_agent_session_dynamic_extension_tools_respect_allowed_tool_names(tmp_pa
 
     no_tools_session = AgentSession(
         agent=Agent(initial_state={"system_prompt": "Base prompt.", "tools": []}),
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         tool_registry=ToolRegistry(),
         extension_runner=ExtensionRunner(
-            [LoadedExtension(name="demo", source_path=tmp_path / "demo.py", hooks={"session_start": [_session_start]})]
+            [
+                LoadedExtension(
+                    name="demo",
+                    source_path=tmp_path / "demo.py",
+                    hooks={"session_start": [_session_start]},
+                )
+            ]
         ),
         allowed_tool_names=[],
         active_tool_names=[],
@@ -533,7 +656,9 @@ def test_agent_session_get_all_tools_projects_sdk_source_info(tmp_path) -> None:
     from loushang.coding.session import AgentSession
     from loushang.coding.tools import ToolDefinition
 
-    async def execute_custom_tool(tool_call_id: str, params: dict[str, object], signal=None, on_update=None):
+    async def execute_custom_tool(
+        tool_call_id: str, params: dict[str, object], signal=None, on_update=None
+    ):
         del tool_call_id, params, signal, on_update
         return AgentToolResult(content=[], details={})
 
@@ -543,7 +668,12 @@ def test_agent_session_get_all_tools_projects_sdk_source_info(tmp_path) -> None:
             name="custom_tool",
             label="Custom Tool",
             description="custom tool",
-            parameters={"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+            parameters={
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            },
             execute=execute_custom_tool,
         )
     )
@@ -569,7 +699,9 @@ def test_agent_session_get_all_tools_projects_sdk_source_info(tmp_path) -> None:
                 "tools": [],
             }
         ),
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         tool_registry=registry,
     )
 
@@ -577,7 +709,12 @@ def test_agent_session_get_all_tools_projects_sdk_source_info(tmp_path) -> None:
         {
             "name": "custom_tool",
             "description": "custom tool",
-            "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": False,
+            },
             "sourceInfo": {
                 "path": "<sdk:custom_tool>",
                 "source": "sdk",
@@ -598,7 +735,9 @@ def test_agent_session_tracks_multiple_builtin_tool_names(tmp_path) -> None:
     from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     registry = ToolRegistry()
     register_builtin_tools(registry)
     model = Model(
@@ -638,8 +777,14 @@ def test_agent_session_tracks_multiple_builtin_tool_names(tmp_path) -> None:
 
     assert session.get_active_tool_names() == ["bash", "read", "grep"]
     assert [tool.name for tool in session.agent.tools] == ["bash", "read", "grep"]
-    assert "read: Read text files and images from the coding workspace." in session.agent.system_prompt
-    assert "grep: Search file contents for patterns in the coding workspace." in session.agent.system_prompt
+    assert (
+        "read: Read text files and images from the coding workspace."
+        in session.agent.system_prompt
+    )
+    assert (
+        "grep: Search file contents for patterns in the coding workspace."
+        in session.agent.system_prompt
+    )
 
 
 def test_agent_session_tracks_mutation_builtin_tool_names(tmp_path) -> None:
@@ -651,7 +796,9 @@ def test_agent_session_tracks_mutation_builtin_tool_names(tmp_path) -> None:
     from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     registry = ToolRegistry()
     register_builtin_tools(registry)
     model = Model(
@@ -691,11 +838,19 @@ def test_agent_session_tracks_mutation_builtin_tool_names(tmp_path) -> None:
 
     assert session.get_active_tool_names() == ["write", "edit"]
     assert [tool.name for tool in session.agent.tools] == ["write", "edit"]
-    assert "write: Write a text file in the coding workspace." in session.agent.system_prompt
-    assert "edit: Apply exact text replacements to a file in the coding workspace." in session.agent.system_prompt
+    assert (
+        "write: Write a text file in the coding workspace."
+        in session.agent.system_prompt
+    )
+    assert (
+        "edit: Apply exact text replacements to a file in the coding workspace."
+        in session.agent.system_prompt
+    )
 
 
-def test_session_active_tools_still_materialize_after_substrate_migration(tmp_path) -> None:
+def test_session_active_tools_still_materialize_after_substrate_migration(
+    tmp_path,
+) -> None:
     import asyncio
 
     from loushang.ai.model import Capabilities, Model
@@ -709,7 +864,9 @@ def test_session_active_tools_still_materialize_after_substrate_migration(tmp_pa
 
     registry = ToolRegistry()
     registry.register_tool(show_session_cwd)
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     model = Model(
         id="faux-model",
         name="Faux",
@@ -746,7 +903,9 @@ def test_bash_tool_forwards_exec_updates_and_preview_metadata(tmp_path) -> None:
     seen_updates: list[AgentToolResult[dict[str, object]]] = []
 
     class FakeExecService:
-        async def execute(self, request: ExecRequest, signal=None, on_update=None) -> ExecResult:
+        async def execute(
+            self, request: ExecRequest, signal=None, on_update=None
+        ) -> ExecResult:
             del request, signal
             if on_update is not None:
                 await on_update(ExecOutputChunk(stream="stdout", text="chunk-1\n"))
@@ -787,8 +946,14 @@ def test_bash_tool_forwards_exec_updates_and_preview_metadata(tmp_path) -> None:
 
     assert seen_updates[0].content == []
     assert seen_updates[0].details is None
-    assert [update.content[0].text for update in seen_updates[1:]] == ["chunk-1\n", "chunk-1\nchunk-err\n"]
-    assert [update.details["stream"] for update in seen_updates[1:]] == ["stdout", "stderr"]
+    assert [update.content[0].text for update in seen_updates[1:]] == [
+        "chunk-1\n",
+        "chunk-1\nchunk-err\n",
+    ]
+    assert [update.details["stream"] for update in seen_updates[1:]] == [
+        "stdout",
+        "stderr",
+    ]
 
 
 def test_bash_tool_details_include_pi_style_truncation_schema(tmp_path) -> None:
@@ -801,7 +966,9 @@ def test_bash_tool_details_include_pi_style_truncation_schema(tmp_path) -> None:
     stdout_artifact_path = str(tmp_path / "stdout.log")
 
     class FakeExecService:
-        async def execute(self, request: ExecRequest, signal=None, on_update=None) -> ExecResult:
+        async def execute(
+            self, request: ExecRequest, signal=None, on_update=None
+        ) -> ExecResult:
             del request, signal, on_update
             return ExecResult(
                 exit_code=0,
@@ -830,7 +997,9 @@ def test_bash_tool_details_include_pi_style_truncation_schema(tmp_path) -> None:
     asyncio.run(scenario())
 
 
-def test_bash_tool_full_output_path_uses_stderr_artifact_when_stdout_is_present(tmp_path) -> None:
+def test_bash_tool_full_output_path_uses_stderr_artifact_when_stdout_is_present(
+    tmp_path,
+) -> None:
     import asyncio
 
     from loushang.coding.exec import ExecRequest, ExecResult
@@ -840,7 +1009,9 @@ def test_bash_tool_full_output_path_uses_stderr_artifact_when_stdout_is_present(
     stderr_artifact_path = str(tmp_path / "stderr.log")
 
     class FakeExecService:
-        async def execute(self, request: ExecRequest, signal=None, on_update=None) -> ExecResult:
+        async def execute(
+            self, request: ExecRequest, signal=None, on_update=None
+        ) -> ExecResult:
             del request, signal, on_update
             return ExecResult(
                 exit_code=0,
@@ -893,7 +1064,9 @@ def test_agent_session_execute_bash_records_command_execution(tmp_path) -> None:
                 await on_update(ExecOutputChunk(stream="stdout", text="hi\n"))
             return ExecResult(exit_code=0, stdout="hi\n", stderr="")
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     registry = ToolRegistry()
     exec_service = RecordingExecService()
     register_builtin_tools(
@@ -949,7 +1122,9 @@ def test_agent_session_execute_bash_records_command_execution(tmp_path) -> None:
     assert session.agent.state.messages[-1].role == "user"
 
 
-def test_agent_session_abort_bash_cancels_active_execution_and_records_command(tmp_path) -> None:
+def test_agent_session_abort_bash_cancels_active_execution_and_records_command(
+    tmp_path,
+) -> None:
     import asyncio
 
     from loushang.agent import Agent
@@ -977,9 +1152,13 @@ def test_agent_session_abort_bash_cancels_active_execution_and_records_command(t
                 await on_update(ExecOutputChunk(stream="stdout", text="partial\n"))
             while signal is not None and not getattr(signal, "aborted", False):
                 await asyncio.sleep(0.01)
-            return ExecResult(exit_code=-1, stdout="partial\n", stderr="", cancelled=True)
+            return ExecResult(
+                exit_code=-1, stdout="partial\n", stderr="", cancelled=True
+            )
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     registry = ToolRegistry()
     exec_service = BlockingExecService()
     register_builtin_tools(

@@ -6,10 +6,6 @@ from loushang.coding.store.file_lock import session_file_lock
 from loushang.harness.agent_transcript import (
     AgentTranscriptProfile,
     AgentTranscriptRecord,
-    SessionV3MigrationError,
-    is_native_conversation_file,
-    migrate_session_v3_file,
-    read_session_v3_file,
 )
 from loushang.harness.conversation import (
     ConversationHeader,
@@ -120,19 +116,6 @@ def load_session_repository(
     persist_to_source = writable if persist is None else persist
     if persist_to_source and not writable:
         raise ValueError("read-only session repositories cannot persist changes")
-    if not persist_to_source and not is_native_conversation_file(path):
-        try:
-            result = read_session_v3_file(path)
-        except SessionV3MigrationError as exc:
-            raise _migration_file_error(exc, path=path) from exc
-        return _create_detached_repository(
-            header=result.header,
-            records=result.records,
-            path=path,
-            writable=writable,
-        )
-    if persist_to_source:
-        _migrate_legacy_session(path)
     try:
         journal = session_journal(
             path,
@@ -164,19 +147,9 @@ def load_session_repository(
         raise _session_file_error(exc) from exc
 
 
-def _migrate_legacy_session(path: Path) -> None:
-    if is_native_conversation_file(path):
-        return
-    try:
-        migrate_session_v3_file(path)
-    except SessionV3MigrationError as exc:
-        raise _migration_file_error(exc, path=path) from exc
-
-
 def load_session_file(
     path: Path,
 ) -> tuple[ConversationHeader, list[AgentTranscriptRecord]]:
-    _migrate_legacy_session(path)
     try:
         snapshot: JsonlSnapshot[ConversationHeader, AgentTranscriptRecord] = (
             session_journal(path).load()
@@ -190,6 +163,22 @@ def load_session_file(
             code="missing_conversation_header",
         )
     return snapshot.header, list(snapshot.records)
+
+
+def load_current_session_header(path: Path) -> ConversationHeader:
+    """Read one current Native header without migration or file mutation."""
+
+    try:
+        snapshot = session_journal(path).load()
+    except JournalFileError as exc:
+        raise _session_file_error(exc) from exc
+    if snapshot.header is None:
+        raise SessionFileError(
+            "Session file must start with a conversation header",
+            path=path,
+            code="missing_conversation_header",
+        )
+    return snapshot.header
 
 
 def _create_detached_repository(
@@ -240,23 +229,11 @@ def _session_file_error(error: JournalFileError) -> SessionFileError:
     return SessionFileError(message, path=error.path, code=code)
 
 
-def _migration_file_error(
-    error: SessionV3MigrationError,
-    *,
-    path: Path,
-) -> SessionFileError:
-    code = {
-        "unsupported_conversation_format": "unsupported_session_format",
-        "unsupported_native_conversation_version": "unsupported_session_format",
-        "unsupported_session_version": "unsupported_session_format",
-    }.get(error.code, error.code)
-    return SessionFileError(str(error), path=path, code=code)
-
-
 __all__ = [
     "SessionFileError",
     "append_session_entry",
     "create_session_repository",
+    "load_current_session_header",
     "load_session_file",
     "load_session_repository",
     "session_journal",

@@ -73,7 +73,7 @@ def test_agent_session_coordinates_public_lifecycle_through_host_runtime(
         agent.wait_for_idle = wait_for_idle  # type: ignore[method-assign]
         session = AgentSession(
             agent=agent,
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path,
                 cwd=tmp_path,
                 persist=False,

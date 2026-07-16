@@ -11,8 +11,12 @@ from loushang.coding.store import SessionManager
 from loushang.harness.conversation import CommandExecutionRecord
 
 
-def test_bash_controller_executes_tool_forwards_output_and_records_context(tmp_path) -> None:
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+def test_bash_controller_executes_tool_forwards_output_and_records_context(
+    tmp_path,
+) -> None:
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     agent = Agent()
     chunks: list[ExecOutputChunk] = []
     executed: list[tuple[str, dict[str, object]]] = []
@@ -66,8 +70,12 @@ def test_bash_controller_executes_tool_forwards_output_and_records_context(tmp_p
     assert command.command == "printf hi"
 
 
-def test_bash_controller_execute_pi_style_translates_options_and_result_aliases(tmp_path) -> None:
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+def test_bash_controller_execute_pi_style_translates_options_and_result_aliases(
+    tmp_path,
+) -> None:
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     agent = Agent()
     chunks: list[str] = []
     executed: list[dict[str, object]] = []
@@ -131,7 +139,9 @@ def test_bash_controller_execute_pi_style_translates_options_and_result_aliases(
 
 
 def test_bash_controller_record_pi_style_result_normalizes_aliases(tmp_path) -> None:
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     agent = Agent()
     controller = BashController(
         agent=agent,
@@ -140,10 +150,12 @@ def test_bash_controller_record_pi_style_result_normalizes_aliases(tmp_path) -> 
         get_tool_registry=lambda: None,
     )
 
-    controller.record_pi_style_result(
-        "echo hi",
-        {"output": "hi\n", "exitCode": 0, "fullOutputPath": "/tmp/out.log"},
-        {"excludeFromContext": True},
+    asyncio.run(
+        controller.record_pi_style_result(
+            "echo hi",
+            {"output": "hi\n", "exitCode": 0, "fullOutputPath": "/tmp/out.log"},
+            {"excludeFromContext": True},
+        )
     )
 
     assert agent.state.messages == []

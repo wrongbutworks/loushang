@@ -17,7 +17,9 @@ def _usage() -> Usage:
     )
 
 
-def _assistant_message(*, stop_reason: str = "stop", error_message: str | None = None) -> AssistantMessage:
+def _assistant_message(
+    *, stop_reason: str = "stop", error_message: str | None = None
+) -> AssistantMessage:
     return AssistantMessage(
         role="assistant",
         content=[TextPart(type="text", text="reply")],
@@ -33,12 +35,16 @@ def _assistant_message(*, stop_reason: str = "stop", error_message: str | None =
 
 
 class _RetryRecorder:
-    def __init__(self, order: list[str], *, retryable: bool = False, did_retry: bool = False) -> None:
+    def __init__(
+        self, order: list[str], *, retryable: bool = False, did_retry: bool = False
+    ) -> None:
         self.order = order
         self.retryable = retryable
         self.did_retry = did_retry
 
-    async def finish_success_if_needed(self, assistant_message: AssistantMessage) -> None:
+    async def finish_success_if_needed(
+        self, assistant_message: AssistantMessage
+    ) -> None:
         del assistant_message
         self.order.append("retry_finish_success")
 
@@ -74,19 +80,38 @@ def test_agent_event_router_preserves_assistant_message_end_ordering() -> None:
     assistant = _assistant_message()
 
     async def scenario() -> None:
+        async def append_message(message: object) -> str:
+            order.append(f"append:{message.role}")
+            return "record-1"
+
+        async def dispatch_event(event: object, **kwargs: object) -> None:
+            assert kwargs["source_record_id"] == "record-1"
+            await _record_async(order, f"dispatch:{event['type']}")
+
         router = AgentEventRouter(
-            append_message=lambda message: order.append(f"append:{message.role}"),
-            dispatch_event=lambda event: _record_async(order, f"dispatch:{event['type']}"),
-            emit_extension_agent_event=lambda event: _record_async(order, f"extension:{event['type']}"),
-            record_tool_execution_error=lambda event: order.append(f"tool_error:{event['type']}"),
+            append_message=append_message,
+            dispatch_event=dispatch_event,
+            emit_extension_agent_event=lambda event: _record_async(
+                order, f"extension:{event['type']}"
+            ),
+            record_tool_execution_error=lambda event: order.append(
+                f"tool_error:{event['type']}"
+            ),
             retry_controller=_RetryRecorder(order),
             compaction_controller=_CompactionRecorder(order),
-            sync_extension_diagnostics=lambda **kwargs: order.append(f"sync:{kwargs['phase']}"),
-            record_assistant_response_error=lambda message: order.append(f"assistant_error:{message.role}"),
-            check_auto_compaction=lambda message: _record_async(order, f"auto_compact:{message.role}"),
+            sync_extension_diagnostics=lambda **kwargs: order.append(
+                f"sync:{kwargs['phase']}"
+            ),
+            record_assistant_response_error=lambda message: order.append(
+                f"assistant_error:{message.role}"
+            ),
+            check_auto_compaction=lambda message: _record_async(
+                order, f"auto_compact:{message.role}"
+            ),
         )
 
         await router.handle({"type": "message_end", "message": assistant}, object())
+        assert router._committed_messages == {}
 
     asyncio.run(scenario())
 
@@ -99,20 +124,119 @@ def test_agent_event_router_preserves_assistant_message_end_ordering() -> None:
     ]
 
 
-def test_agent_event_router_records_tool_errors_before_dispatch_and_extension_mirror() -> None:
+def test_agent_event_router_does_not_dispatch_after_append_failure() -> None:
     order: list[str] = []
 
     async def scenario() -> None:
+        async def fail_append(message: object) -> str:
+            del message
+            order.append("append")
+            raise OSError("store unavailable")
+
         router = AgentEventRouter(
-            append_message=lambda message: order.append(f"append:{message.role}"),
-            dispatch_event=lambda event: _record_async(order, f"dispatch:{event['type']}"),
-            emit_extension_agent_event=lambda event: _record_async(order, f"extension:{event['type']}"),
-            record_tool_execution_error=lambda event: order.append(f"tool_error:{event['type']}"),
+            append_message=fail_append,
+            dispatch_event=lambda event, **kwargs: _record_async(order, "dispatch"),
+            emit_extension_agent_event=lambda event: _record_async(order, "extension"),
+            record_tool_execution_error=lambda event: None,
             retry_controller=_RetryRecorder(order),
             compaction_controller=_CompactionRecorder(order),
-            sync_extension_diagnostics=lambda **kwargs: order.append(f"sync:{kwargs['phase']}"),
-            record_assistant_response_error=lambda message: order.append(f"assistant_error:{message.role}"),
-            check_auto_compaction=lambda message: _record_async(order, f"auto_compact:{message.role}"),
+            sync_extension_diagnostics=lambda **kwargs: None,
+            record_assistant_response_error=lambda message: None,
+            check_auto_compaction=lambda message: _record_async(order, "compact"),
+        )
+
+        try:
+            await router.handle(
+                {"type": "message_end", "message": _assistant_message()}, object()
+            )
+        except OSError as exc:
+            assert str(exc) == "store unavailable"
+        else:
+            raise AssertionError("append failure must propagate")
+
+    asyncio.run(scenario())
+
+    assert order == ["append"]
+
+
+def test_agent_event_router_retries_projection_without_appending_again() -> None:
+    order: list[str] = []
+    assistant = _assistant_message()
+
+    async def scenario() -> None:
+        attempts = 0
+
+        async def append_message(message: object) -> str:
+            order.append(f"append:{message.role}")
+            return "record-1"
+
+        async def dispatch_event(event: object, **kwargs: object) -> None:
+            nonlocal attempts
+            attempts += 1
+            order.append(f"dispatch:{attempts}")
+            if attempts == 1:
+                raise RuntimeError("projection failed")
+
+        router = AgentEventRouter(
+            append_message=append_message,
+            dispatch_event=dispatch_event,
+            emit_extension_agent_event=lambda event: _record_async(
+                order, f"extension:{event['type']}"
+            ),
+            record_tool_execution_error=lambda event: None,
+            retry_controller=_RetryRecorder(order),
+            compaction_controller=_CompactionRecorder(order),
+            sync_extension_diagnostics=lambda **kwargs: None,
+            record_assistant_response_error=lambda message: None,
+            check_auto_compaction=lambda message: _record_async(order, "compact"),
+        )
+        event = {"type": "message_end", "message": assistant}
+
+        try:
+            await router.handle(event, object())
+        except RuntimeError as exc:
+            assert str(exc) == "projection failed"
+        else:
+            raise AssertionError("projection failure must propagate")
+        await router.handle(event, object())
+        assert router._committed_messages == {}
+
+    asyncio.run(scenario())
+
+    assert order.count("append:assistant") == 1
+    assert order[:3] == ["append:assistant", "dispatch:1", "dispatch:2"]
+
+
+def test_agent_event_router_records_tool_errors_before_dispatch_and_extension_mirror() -> (
+    None
+):
+    order: list[str] = []
+
+    async def scenario() -> None:
+        async def dispatch_event(event: object, **kwargs: object) -> None:
+            assert kwargs["source_record_id"] is None
+            await _record_async(order, f"dispatch:{event['type']}")
+
+        router = AgentEventRouter(
+            append_message=lambda message: _append_async(order, message),
+            dispatch_event=dispatch_event,
+            emit_extension_agent_event=lambda event: _record_async(
+                order, f"extension:{event['type']}"
+            ),
+            record_tool_execution_error=lambda event: order.append(
+                f"tool_error:{event['type']}"
+            ),
+            retry_controller=_RetryRecorder(order),
+            compaction_controller=_CompactionRecorder(order),
+            sync_extension_diagnostics=lambda **kwargs: order.append(
+                f"sync:{kwargs['phase']}"
+            ),
+            record_assistant_response_error=lambda message: order.append(
+                f"assistant_error:{message.role}"
+            ),
+            check_auto_compaction=lambda message: _record_async(
+                order, f"auto_compact:{message.role}"
+            ),
         )
 
         await router.handle({"type": "tool_execution_end", "is_error": True}, object())
@@ -128,19 +252,35 @@ def test_agent_event_router_records_tool_errors_before_dispatch_and_extension_mi
 
 def test_agent_event_router_retries_before_auto_compaction_and_short_circuits() -> None:
     order: list[str] = []
-    assistant = _assistant_message(stop_reason="error", error_message="503 service unavailable")
+    assistant = _assistant_message(
+        stop_reason="error", error_message="503 service unavailable"
+    )
 
     async def scenario() -> None:
+        async def dispatch_event(event: object, **kwargs: object) -> None:
+            assert kwargs["source_record_id"] is None
+            await _record_async(order, f"dispatch:{event['type']}")
+
         router = AgentEventRouter(
-            append_message=lambda message: order.append(f"append:{message.role}"),
-            dispatch_event=lambda event: _record_async(order, f"dispatch:{event['type']}"),
-            emit_extension_agent_event=lambda event: _record_async(order, f"extension:{event['type']}"),
-            record_tool_execution_error=lambda event: order.append(f"tool_error:{event['type']}"),
+            append_message=lambda message: _append_async(order, message),
+            dispatch_event=dispatch_event,
+            emit_extension_agent_event=lambda event: _record_async(
+                order, f"extension:{event['type']}"
+            ),
+            record_tool_execution_error=lambda event: order.append(
+                f"tool_error:{event['type']}"
+            ),
             retry_controller=_RetryRecorder(order, retryable=True, did_retry=True),
             compaction_controller=_CompactionRecorder(order),
-            sync_extension_diagnostics=lambda **kwargs: order.append(f"sync:{kwargs['phase']}"),
-            record_assistant_response_error=lambda message: order.append(f"assistant_error:{message.role}"),
-            check_auto_compaction=lambda message: _record_async(order, f"auto_compact:{message.role}"),
+            sync_extension_diagnostics=lambda **kwargs: order.append(
+                f"sync:{kwargs['phase']}"
+            ),
+            record_assistant_response_error=lambda message: order.append(
+                f"assistant_error:{message.role}"
+            ),
+            check_auto_compaction=lambda message: _record_async(
+                order, f"auto_compact:{message.role}"
+            ),
         )
 
         await router.handle({"type": "agent_end", "messages": [assistant]}, object())
@@ -161,3 +301,8 @@ def test_agent_event_router_retries_before_auto_compaction_and_short_circuits() 
 
 async def _record_async(order: list[str], value: str) -> None:
     order.append(value)
+
+
+async def _append_async(order: list[str], message: object) -> str:
+    order.append(f"append:{getattr(message, 'role', 'unknown')}")
+    return "record-1"
