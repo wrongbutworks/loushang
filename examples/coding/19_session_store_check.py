@@ -137,11 +137,11 @@ def main() -> None:
         session_file = session.session_manager.get_session_file()
         if session_file is None:
             raise RuntimeError("persisted session file is missing")
-        print(f"session_created: id={session.session_manager.get_header().id}")
+        print(f"session_created: id={session.session_manager.get_header().conversation_id}")
         print(f"session_file: {session_file}")
         print_event("tool.end", {"name": "session_create", "status": "ok", "session_file": str(session_file)})
 
-        print_event("message.start", {"step": "round-1", "session_id": session.session_manager.get_header().id})
+        print_event("message.start", {"step": "round-1", "session_id": session.session_manager.get_header().conversation_id})
         asyncio.run(
             _prompt(session, "请确认会话已创建，并写入一条用户状态记录。", timeout_seconds=6.0)
         )
@@ -154,15 +154,15 @@ def main() -> None:
 
         restored = asyncio.run(runtime.restore_session(session_file))
         print_event("message.start", {"step": "restore"})
-        print(f"restored_session_id={restored.session_manager.get_header().id}")
+        print(f"restored_session_id={restored.session_manager.get_header().conversation_id}")
         print(f"messages_after_restore={_message_count(restored)}")
         print(
             f"restore_ok="
-            f"{str(_message_count(restored) == before_count and restored.session_manager.get_header().id == session.session_manager.get_header().id).lower()}"
+            f"{str(_message_count(restored) == before_count and restored.session_manager.get_header().conversation_id == session.session_manager.get_header().conversation_id).lower()}"
         )
         print_event("message.end", {"step": "restore", "restore_ok": True})
 
-        print_event("message.start", {"step": "round-2", "session_id": restored.session_manager.get_header().id})
+        print_event("message.start", {"step": "round-2", "session_id": restored.session_manager.get_header().conversation_id})
         asyncio.run(
             _prompt(restored, "请继续刚才会话，说明落盘与恢复一致。", timeout_seconds=6.0)
         )
@@ -174,7 +174,7 @@ def main() -> None:
         print(f"runtime_session_list_count={len(sessions)}")
         ids = [record.session_id for record in sessions]
         print(f"runtime_session_ids={ids}")
-        print_event("model.end", {"step": "session_list", "count": len(sessions), "contains_current": session.session_manager.get_header().id in ids})
+        print_event("model.end", {"step": "session_list", "count": len(sessions), "contains_current": session.session_manager.get_header().conversation_id in ids})
 
         print_event("message.end", {"result": "pass", "status": "done"})
 

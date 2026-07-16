@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TypeVar, cast
 
+from loushang.agent.json_codec import AgentMessageJsonCodec, CustomMessageJsonCodec
 from loushang.ai.json_codec import (
     deserialize_content_part,
     deserialize_message,
@@ -56,6 +57,30 @@ def create_agent_transcript_payload_registry() -> ConversationPayloadCodecRegist
     registry = ConversationPayloadCodecRegistry()
     register_standard_payload_codecs(registry)
     return registry
+
+
+def create_agent_transcript_message_codec() -> AgentMessageJsonCodec:
+    """Compose AI messages with the standard application-message carrier."""
+
+    def serialize(message: ApplicationMessage) -> dict[str, object]:
+        encoded = _encode_application_message(message)
+        if not isinstance(encoded, dict):
+            raise TypeError("application message codec must emit a JSON object")
+        return {"role": message.role, **encoded}
+
+    def deserialize(value: dict[str, object]) -> ApplicationMessage:
+        return _decode_application_message(require_json_value(value))
+
+    return AgentMessageJsonCodec(
+        (
+            CustomMessageJsonCodec(
+                role="application",
+                message_type=ApplicationMessage,
+                serialize=serialize,
+                deserialize=deserialize,
+            ),
+        )
+    )
 
 
 def register_standard_payload_codecs(
@@ -455,6 +480,7 @@ def _mapping(value: Mapping[str, JSONValue], key: str) -> dict[str, JSONValue]:
 
 __all__ = [
     "STANDARD_PAYLOAD_VERSION",
+    "create_agent_transcript_message_codec",
     "create_agent_transcript_payload_registry",
     "register_standard_payload_codecs",
 ]

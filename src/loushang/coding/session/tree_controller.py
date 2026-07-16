@@ -13,9 +13,13 @@ from loushang.coding.compaction import (
 )
 from loushang.coding.event import AgentSessionEvent
 from loushang.coding.extensions import ExtensionRunner, SessionBeforeTreeEvent
-from loushang.coding.message import CustomMessageEntry, SessionMessageEntry
 from loushang.coding.session.types import TreeNavigationResult
 from loushang.coding.store import SessionManager
+from loushang.harness.agent_transcript import (
+    AGENT_MESSAGE_KIND,
+    APPLICATION_MESSAGE_KIND,
+    ApplicationMessage,
+)
 from loushang.harness.runtime import (
     NavigationFailure,
     NavigationTransactionCoordinator,
@@ -95,14 +99,16 @@ class TreeController:
             raise ValueError(f"Entry {target_id} not found")
 
         editor_text: str | None = None
-        if isinstance(target_entry, SessionMessageEntry) and isinstance(
-            target_entry.message, UserMessage
+        if target_entry.kind == AGENT_MESSAGE_KIND and isinstance(
+            target_entry.payload, UserMessage
         ):
             new_leaf_id = target_entry.parent_id
-            editor_text = _extract_user_message_text(target_entry.message)
-        elif isinstance(target_entry, CustomMessageEntry):
+            editor_text = _extract_user_message_text(target_entry.payload)
+        elif target_entry.kind == APPLICATION_MESSAGE_KIND and isinstance(
+            target_entry.payload, ApplicationMessage
+        ):
             new_leaf_id = target_entry.parent_id
-            editor_text = _extract_custom_message_text(target_entry)
+            editor_text = _extract_custom_message_text(target_entry.payload)
         else:
             new_leaf_id = target_id
 
@@ -314,10 +320,12 @@ def _extract_user_message_text(message: UserMessage) -> str:
     )
 
 
-def _extract_custom_message_text(entry: CustomMessageEntry) -> str:
-    if isinstance(entry.content, str):
-        return entry.content
-    return "".join(block.text for block in entry.content if isinstance(block, TextPart))
+def _extract_custom_message_text(message: ApplicationMessage) -> str:
+    if isinstance(message.content, str):
+        return message.content
+    return "".join(
+        block.text for block in message.content if isinstance(block, TextPart)
+    )
 
 
 def _project_branch_summary_details(details: object | None) -> JSONValue:

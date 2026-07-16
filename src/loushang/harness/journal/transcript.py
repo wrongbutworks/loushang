@@ -27,12 +27,14 @@ class TranscriptRepository(Generic[H, R]):
         diagnostics: Sequence[JournalDiagnostic] = (),
         leaf_id: str | None = None,
         source_path: Path | None = None,
+        writable: bool = True,
     ) -> None:
         self._header = header
         self._records = list(records)
         self._record_id = record_id
         self._parent_id = parent_id
         self._journal = journal
+        self._writable = writable
         self._source_path = source_path or (
             journal.path if journal is not None else None
         )
@@ -62,6 +64,7 @@ class TranscriptRepository(Generic[H, R]):
             mode=mode,
             leaf_id=leaf_id,
             source_path=journal.path if journal is not None else None,
+            writable=True,
         )
         if journal is not None:
             journal.rewrite(repository.records, header=header)
@@ -89,6 +92,7 @@ class TranscriptRepository(Generic[H, R]):
             mode=mode,
             diagnostics=snapshot.diagnostics,
             source_path=journal.path,
+            writable=writable,
         )
 
     @property
@@ -112,6 +116,7 @@ class TranscriptRepository(Generic[H, R]):
         return (*self._load_diagnostics, *self._graph.diagnostics)
 
     def set_header(self, header: H, *, rewrite: bool = False) -> None:
+        self._require_writable()
         if rewrite and self._journal is not None:
             self._journal.rewrite(self._records, header=header)
         self._header = header
@@ -148,6 +153,7 @@ class TranscriptRepository(Generic[H, R]):
         self._leaf_id = None
 
     def append(self, record: R) -> str:
+        self._require_writable()
         candidate_records = [*self._records, record]
         candidate_graph = self._build_graph(candidate_records)
         record_id = self._record_id(record)
@@ -161,6 +167,7 @@ class TranscriptRepository(Generic[H, R]):
         return record_id
 
     def rewrite(self) -> None:
+        self._require_writable()
         if self._journal is not None:
             self._journal.rewrite(self._records, header=self._header)
 
@@ -199,6 +206,10 @@ class TranscriptRepository(Generic[H, R]):
             return None
         candidate = self._record_id(self._records[-1])
         return candidate if self._graph.get(candidate) is not None else None
+
+    def _require_writable(self) -> None:
+        if not self._writable:
+            raise RuntimeError("Transcript repository is read-only")
 
 
 __all__ = ["TranscriptRepository"]

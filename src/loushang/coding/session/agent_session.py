@@ -43,7 +43,6 @@ from loushang.coding.extensions import (
     SessionStartEvent,
 )
 from loushang.coding.loader import DefaultResourceLoader
-from loushang.coding.message import SessionContext
 from loushang.coding.package.materializer import (
     PackageMaterializer,
     PackageProgressEvent,
@@ -111,6 +110,7 @@ from loushang.coding.session.types import (
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager, SessionRecord
 from loushang.coding.tools import ToolRegistry
+from loushang.harness.agent_transcript import AgentTranscriptContext
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import (
     DiagnosticRecord,
@@ -498,7 +498,7 @@ class AgentSession:
             follow_up=self._queue_controller.get_follow_up_messages(),
         )
 
-    def get_session_context(self) -> SessionContext:
+    def get_session_context(self) -> AgentTranscriptContext:
         return self.session_manager.build_session_context()
 
     def get_session_record(self) -> SessionRecord:

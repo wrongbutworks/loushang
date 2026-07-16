@@ -16,7 +16,6 @@ from loushang.coding.extensions import (
     SessionShutdownEvent,
     SessionStartEvent,
 )
-from loushang.coding.message import SessionMessageEntry
 from loushang.coding.session import AgentSession
 from loushang.coding.store import (
     SessionManager,
@@ -24,6 +23,7 @@ from loushang.coding.store import (
     SessionRecord,
     SessionSummary,
 )
+from loushang.harness.agent_transcript import AGENT_MESSAGE_KIND
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import (
     DiagnosticPhase,
@@ -1254,7 +1254,7 @@ def _session_id_from_session(session: object) -> str | None:
     get_header = getattr(session_manager, "get_header", None)
     if not callable(get_header):
         return None
-    return getattr(get_header(), "id", None)
+    return getattr(get_header(), "conversation_id", None)
 
 
 async def _emit_session_shutdown(
@@ -1338,11 +1338,13 @@ def _resolve_fork_target(
     if position != "before":
         raise ValueError(f"Unsupported fork position: {position}")
     entry = manager.get_entry(entry_id)
-    if not isinstance(entry, SessionMessageEntry) or not isinstance(
-        entry.message, UserMessage
+    if (
+        entry is None
+        or entry.kind != AGENT_MESSAGE_KIND
+        or not isinstance(entry.payload, UserMessage)
     ):
         raise ValueError("Fork position 'before' requires a user message entry.")
-    return entry.parent_id, _user_message_text(entry.message)
+    return entry.parent_id, _user_message_text(entry.payload)
 
 
 def _user_message_text(message: UserMessage) -> str:

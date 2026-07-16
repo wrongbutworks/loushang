@@ -24,6 +24,7 @@ from loushang.harness.agent_transcript import (
     ModelSelectionSnapshot,
     RecordAnnotationPatch,
     ThinkingSelectionSnapshot,
+    create_agent_transcript_message_codec,
     create_agent_transcript_payload_registry,
 )
 from loushang.harness.conversation import CommandExecutionRecord
@@ -115,6 +116,17 @@ def test_registered_codec_rejects_corrupted_known_payload() -> None:
         )
 
     assert error.value.code == "invalid_known_payload"
+
+
+def test_agent_message_codec_preserves_application_message_identity() -> None:
+    message = _payloads()[APPLICATION_MESSAGE_KIND]
+    assert isinstance(message, ApplicationMessage)
+    codec = create_agent_transcript_message_codec()
+
+    encoded = codec.serialize(message)
+
+    assert encoded["role"] == "application"
+    assert codec.deserialize(encoded) == message
 
 
 def test_patch_contracts_distinguish_remove_from_setting_json_null() -> None:

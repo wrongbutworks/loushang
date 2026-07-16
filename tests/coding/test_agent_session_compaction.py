@@ -108,7 +108,9 @@ def test_agent_session_compact_appends_compaction_and_rebuilds_context(tmp_path,
 
     def _session_compact(event, ctx):
         del ctx
-        extension_events.append((event.type, event.compactionEntry.type, event.fromExtension))
+        extension_events.append(
+            (event.type, event.compactionEntry.kind, event.fromExtension)
+        )
 
     session._extension_runner = ExtensionRunner(
         [
@@ -136,21 +138,26 @@ def test_agent_session_compact_appends_compaction_and_rebuilds_context(tmp_path,
     result = asyncio.run(session.compact())
 
     assert result.summary == "condensed summary"
-    assert [entry.type for entry in manager.get_entries()] == ["message", "message", "compaction"]
+    assert [entry.kind for entry in manager.get_entries()] == ["agent.message", "agent.message", "context.compaction_checkpoint"]
     assert [getattr(message, "role", None) for message in session.agent.state.messages] == [
-        "compactionSummary",
+        "user",
         "assistant",
     ]
     assert [getattr(message, "role", None) for message in session.get_session_context().messages] == [
-        "compactionSummary",
+        "user",
         "assistant",
     ]
-    assert session.get_session_context().messages[0].summary == "condensed summary"
-    assert extension_events == [("session_compact", "compaction", False)]
+    assert (
+        "condensed summary"
+        in session.get_session_context().messages[0].content[0].text
+    )
+    assert extension_events == [
+        ("session_compact", "context.compaction_checkpoint", False)
+    ]
     compaction_entry = manager.get_entries()[-1]
-    assert isinstance(compaction_entry.details, dict)
-    assert compaction_entry.details["source"] == "test"
-    assert compaction_entry.details["compactionPlan"]["firstKeptEntryId"] == assistant_id
+    assert isinstance(compaction_entry.payload.details, dict)
+    assert compaction_entry.payload.details["source"] == "test"
+    assert compaction_entry.payload.details["compactionPlan"]["firstKeptEntryId"] == assistant_id
 
     assert events[0]["type"] == "compaction_start"
     assert events[0]["reason"] == "manual"
@@ -162,7 +169,7 @@ def test_agent_session_compact_appends_compaction_and_rebuilds_context(tmp_path,
         "summary": "condensed summary",
         "first_kept_entry_id": assistant_id,
         "tokens_before": result.tokens_before,
-        "details": compaction_entry.details,
+        "details": compaction_entry.payload.details,
     }
     assert events[-1]["aborted"] is False
     assert events[-1]["will_retry"] is False
@@ -270,7 +277,7 @@ def test_agent_session_compact_emits_error_event_on_failure(tmp_path, monkeypatc
     with pytest.raises(RuntimeError, match="boom"):
         asyncio.run(session.compact())
 
-    assert [entry.type for entry in manager.get_entries()] == ["message", "message"]
+    assert [entry.kind for entry in manager.get_entries()] == ["agent.message", "agent.message"]
     assert events[0]["type"] == "compaction_start"
     assert events[0]["reason"] == "manual"
     assert events[0]["usage"]["reserve_tokens"] == 8192
@@ -343,7 +350,7 @@ def test_agent_session_compact_respects_extension_before_compact_cancellation(tm
     with pytest.raises(RuntimeError, match="Compaction cancelled"):
         asyncio.run(session.compact())
 
-    assert [entry.type for entry in manager.get_entries()] == ["message", "message"]
+    assert [entry.kind for entry in manager.get_entries()] == ["agent.message", "agent.message"]
     assert events[0]["type"] == "compaction_start"
     assert events[0]["reason"] == "manual"
     assert events[0]["usage"]["reserve_tokens"] == 8192
@@ -392,7 +399,7 @@ def test_agent_session_compact_respects_extension_before_compact_result_override
         return SessionBeforeCompactResult(
             compaction=CompactionResult(
                 summary="extension summary",
-                first_kept_entry_id=manager.get_entries()[0].id,
+                first_kept_entry_id=manager.get_entries()[0].record_id,
                 tokens_before=123,
                 details={"source": "extension"},
             )
@@ -422,20 +429,20 @@ def test_agent_session_compact_respects_extension_before_compact_result_override
     assert called
     assert compacted is False
     assert result.summary == "extension summary"
-    assert result.first_kept_entry_id == manager.get_entries()[0].id
+    assert result.first_kept_entry_id == manager.get_entries()[0].record_id
     assert result.tokens_before == 123
-    assert [entry.type for entry in manager.get_entries()] == ["message", "message", "compaction"]
+    assert [entry.kind for entry in manager.get_entries()] == ["agent.message", "agent.message", "context.compaction_checkpoint"]
     compaction_entry = manager.get_entries()[-1]
-    assert compaction_entry.from_hook is True
-    assert compaction_entry.details == {
+    assert compaction_entry.payload.from_hook is True
+    assert compaction_entry.payload.details == {
         "source": "extension",
         "compactionPlan": {
             "previousCompactionId": None,
             "previousFirstKeptEntryId": None,
-            "firstKeptEntryId": manager.get_entries()[1].id,
+            "firstKeptEntryId": manager.get_entries()[1].record_id,
             "summarizedEntryIds": [],
-            "turnPrefixEntryIds": [manager.get_entries()[0].id],
-            "keptEntryIds": [manager.get_entries()[1].id],
+            "turnPrefixEntryIds": [manager.get_entries()[0].record_id],
+            "keptEntryIds": [manager.get_entries()[1].record_id],
             "isSplitTurn": True,
             "tokensBefore": 0,
             "keepRecentTokens": 1,
@@ -527,7 +534,7 @@ def test_agent_session_auto_compacts_after_agent_end_when_threshold_exceeded(tmp
 
     asyncio.run(scenario())
 
-    assert any(entry.type == "compaction" for entry in manager.get_entries())
+    assert any(entry.kind == "context.compaction_checkpoint" for entry in manager.get_entries())
     compaction_end = next(event for event in events if event["type"] == "compaction_end")
     assert compaction_end["reason"] == "threshold"
     assert compaction_end["will_retry"] is False
@@ -624,7 +631,7 @@ def test_agent_session_auto_compaction_uses_compact_percent_threshold(tmp_path, 
 
     asyncio.run(scenario())
 
-    assert any(entry.type == "compaction" for entry in manager.get_entries())
+    assert any(entry.kind == "context.compaction_checkpoint" for entry in manager.get_entries())
     compaction_end = next(event for event in events if event["type"] == "compaction_end")
     assert compaction_end["reason"] == "threshold"
 
@@ -654,7 +661,7 @@ def test_agent_session_auto_compaction_ignores_stale_assistant_usage_before_late
         timestamp=1.0,
     )
     manager.append_message(stale_assistant)
-    manager.append_compaction(summary="summary", first_kept_entry_id=manager.get_entries()[0].id, tokens_before=100)
+    manager.append_compaction(summary="summary", first_kept_entry_id=manager.get_entries()[0].record_id, tokens_before=100)
     events = []
     session = AgentSession(
         agent=Agent(
@@ -818,7 +825,7 @@ def test_agent_session_compacts_before_prompt_when_previous_usage_crossed_thresh
     asyncio.run(session.prompt("next request"))
 
     assert calls == ["compact", "prompt"]
-    assert any(entry.type == "compaction" for entry in manager.get_entries())
+    assert any(entry.kind == "context.compaction_checkpoint" for entry in manager.get_entries())
 
 
 @pytest.mark.parametrize(
@@ -882,7 +889,7 @@ def test_agent_session_streaming_control_does_not_pre_prompt_compact(
 
     asyncio.run(session.prompt("queued control", streaming_behavior=streaming_behavior))
 
-    assert [entry.type for entry in manager.get_entries()] == ["message", "message"]
+    assert [entry.kind for entry in manager.get_entries()] == ["agent.message", "agent.message"]
     assert session.get_steering_messages() == expected_steering
     assert session.get_follow_up_messages() == expected_follow_up
 

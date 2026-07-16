@@ -6,6 +6,38 @@ from io import StringIO
 
 import pytest
 
+from loushang.harness.conversation import (
+    ConversationHeader,
+    NativeConversationHeaderCodec,
+)
+
+_HEADER_CODEC = NativeConversationHeaderCodec()
+
+
+def _session_header(
+    *,
+    type: str,
+    version: int,
+    id: str,
+    timestamp: str,
+    cwd: str,
+    parent_session: str | None,
+) -> ConversationHeader:
+    del type, version
+    metadata = {"cwd": cwd}
+    if parent_session is not None:
+        metadata["parentSession"] = parent_session
+    return ConversationHeader(
+        conversation_id=id,
+        version=1,
+        created_at=timestamp,
+        metadata=metadata,
+    )
+
+
+def serialize_session_header(header: ConversationHeader) -> dict[str, object]:
+    return dict(_HEADER_CODEC.encode_header(header))
+
 
 def test_print_mode_run_once_prompts_session_and_waits_for_idle() -> None:
     from loushang.coding.mode import PrintMode
@@ -302,7 +334,6 @@ def test_print_mode_returns_nonzero_and_prints_error_on_failure() -> None:
 
 @pytest.mark.parametrize("output_mode", ["text", "json"])
 def test_print_mode_run_once_disposes_runtime_after_exit(output_mode: str) -> None:
-    from loushang.coding.message import SessionHeader
     from loushang.coding.mode import PrintMode
 
     class FakeRuntime:
@@ -313,8 +344,8 @@ def test_print_mode_run_once_disposes_runtime_after_exit(output_mode: str) -> No
             self.shutdown_events.append({"type": "session_shutdown", "reason": "quit"})
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -952,7 +983,6 @@ def test_print_mode_json_output_writes_header_before_event_lines() -> None:
     from io import StringIO
 
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.message import SessionHeader
     from loushang.coding.mode import PrintMode
 
     usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
@@ -961,8 +991,8 @@ def test_print_mode_json_output_writes_header_before_event_lines() -> None:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1012,8 +1042,8 @@ def test_print_mode_json_output_writes_header_before_event_lines() -> None:
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
-        assert lines[0]["type"] == "session"
-        assert lines[0]["id"] == "s1"
+        assert lines[0]["type"] == "conversation"
+        assert lines[0]["conversationId"] == "s1"
         assert lines[1]["type"] == "agent_start"
         assert lines[2]["type"] == "message_end"
         assert lines[2]["message"]["role"] == "assistant"
@@ -1026,15 +1056,14 @@ def test_run_print_mode_supports_json_output_mode() -> None:
     import json
     from io import StringIO
 
-    from loushang.coding.message import SessionHeader
     from loushang.coding.mode import run_print_mode
 
     class FakeRuntime:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1075,7 +1104,7 @@ def test_run_print_mode_supports_json_output_mode() -> None:
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
-        assert lines[0]["type"] == "session"
+        assert lines[0]["type"] == "conversation"
         assert lines[1]["type"] == "agent_start"
 
     asyncio.run(scenario())
@@ -1134,7 +1163,6 @@ def test_print_mode_json_compact_view_projects_assistant_stream_and_tool_lifecyc
 
     from loushang.agent import AgentToolResult
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.message import SessionHeader
     from loushang.coding.mode import PrintMode
 
     usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
@@ -1155,8 +1183,8 @@ def test_print_mode_json_compact_view_projects_assistant_stream_and_tool_lifecyc
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1224,7 +1252,7 @@ def test_print_mode_json_compact_view_projects_assistant_stream_and_tool_lifecyc
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
         assert [line["type"] for line in lines] == [
-            "session",
+                "conversation",
             "tool_execution_start",
             "assistant_delta",
             "assistant_final",
@@ -1243,7 +1271,6 @@ def test_print_mode_json_can_include_rendered_tool_event_payloads() -> None:
 
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.message import SessionHeader
     from loushang.coding.mode import PrintMode
     from loushang.coding.tools import ToolDefinition
 
@@ -1274,8 +1301,8 @@ def test_print_mode_json_can_include_rendered_tool_event_payloads() -> None:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1371,7 +1398,6 @@ def test_print_mode_json_event_select_filters_projected_events() -> None:
 
     from loushang.agent import AgentToolResult
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.message import SessionHeader
     from loushang.coding.mode import PrintMode
 
     usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
@@ -1392,8 +1418,8 @@ def test_print_mode_json_event_select_filters_projected_events() -> None:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1461,7 +1487,7 @@ def test_print_mode_json_event_select_filters_projected_events() -> None:
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
-        assert [line["type"] for line in lines] == ["session", "assistant_delta", "assistant_final"]
+        assert [line["type"] for line in lines] == ["conversation", "assistant_delta", "assistant_final"]
 
     asyncio.run(scenario())
 
@@ -1472,15 +1498,14 @@ def test_print_mode_json_full_view_event_select_supports_prefix_patterns() -> No
     from io import StringIO
 
     from loushang.agent import AgentToolResult
-    from loushang.coding.message import SessionHeader
     from loushang.coding.mode import PrintMode
 
     class FakeRuntime:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1541,7 +1566,7 @@ def test_print_mode_json_full_view_event_select_supports_prefix_patterns() -> No
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
-        assert [line["type"] for line in lines] == ["session", "tool_execution_start", "tool_execution_end"]
+        assert [line["type"] for line in lines] == ["conversation", "tool_execution_start", "tool_execution_end"]
 
     asyncio.run(scenario())
 
@@ -1552,15 +1577,14 @@ def test_print_mode_json_event_select_accepts_single_string_pattern() -> None:
     from io import StringIO
 
     from loushang.agent import AgentToolResult
-    from loushang.coding.message import SessionHeader
     from loushang.coding.mode import PrintMode
 
     class FakeRuntime:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1621,7 +1645,7 @@ def test_print_mode_json_event_select_accepts_single_string_pattern() -> None:
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
-        assert [line["type"] for line in lines] == ["session", "tool_execution_start", "tool_execution_end"]
+        assert [line["type"] for line in lines] == ["conversation", "tool_execution_start", "tool_execution_end"]
 
     asyncio.run(scenario())
 
@@ -1631,16 +1655,14 @@ def test_print_mode_json_default_stderr_routes_errors_off_stdout() -> None:
     import json
     from io import StringIO
 
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.message.json_codec import serialize_session_header
     from loushang.coding.mode import PrintMode
 
     class FakeRuntime:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1673,7 +1695,7 @@ def test_print_mode_json_default_stderr_routes_errors_off_stdout() -> None:
             exit_code = await mode.run_once("hello")
 
         header = serialize_session_header(
-            SessionHeader(
+            _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1694,16 +1716,14 @@ def test_print_mode_json_failure_keeps_stdout_json_and_writes_error_to_stderr() 
     import json
     from io import StringIO
 
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.message.json_codec import serialize_session_header
     from loushang.coding.mode import PrintMode
 
     class FakeRuntime:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1737,7 +1757,7 @@ def test_print_mode_json_failure_keeps_stdout_json_and_writes_error_to_stderr() 
 
         lines = stdout.getvalue().splitlines()
         header = serialize_session_header(
-            SessionHeader(
+            _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1802,16 +1822,14 @@ def test_print_mode_json_writes_header_before_subscription() -> None:
     import json
     from io import StringIO
 
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.message.json_codec import serialize_session_header
     from loushang.coding.mode import PrintMode
 
     class FakeRuntime:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -1831,7 +1849,7 @@ def test_print_mode_json_writes_header_before_subscription() -> None:
             def subscribe(self, listener):
                 header = json.dumps(
                     serialize_session_header(
-                        SessionHeader(
+                        _session_header(
                             type="session",
                             version=3,
                             id="s1",
@@ -1863,7 +1881,7 @@ def test_print_mode_json_writes_header_before_subscription() -> None:
         assert exit_code == 0
         assert stdout.getvalue().splitlines()[0] == json.dumps(
             serialize_session_header(
-                SessionHeader(
+                _session_header(
                     type="session",
                     version=3,
                     id="s1",
@@ -1884,12 +1902,8 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
 
     from loushang.agent import AgentToolResult
     from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, Usage
-    from loushang.coding.message import SessionHeader
-    from loushang.coding.message.custom_messages import (
-        BranchSummaryMessage,
-        CompactionSummaryMessage,
-    )
     from loushang.coding.mode import PrintMode
+    from loushang.harness.agent_transcript import ApplicationMessage
 
     usage = Usage(input=1, output=2, cache_read=3, cache_write=4, total_tokens=5, cost={})
     assistant = AssistantMessage(
@@ -1913,8 +1927,12 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
         timestamp=2.0,
         details={"ok": True},
     )
-    branch_summary = BranchSummaryMessage(role="branchSummary", summary="done", from_id="b1", timestamp=4.0)
-    compaction_summary = CompactionSummaryMessage(role="compactionSummary", summary="compact", tokens_before=10, timestamp=5.0)
+    application_message = ApplicationMessage(
+        application_message_id="application-1",
+        custom_type="notice",
+        content="done",
+        timestamp=4.0,
+    )
 
     def check_agent_start(payload: dict[str, object]) -> None:
         assert payload == {"type": "agent_start"}
@@ -1928,8 +1946,7 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
         messages = payload["messages"]
         assert isinstance(messages, list)
         assert messages[0]["responseId"] == "resp-1"
-        assert messages[1]["role"] == "branchSummary"
-        assert messages[2]["role"] == "compactionSummary"
+        assert messages[1]["role"] == "application"
         assert "response_id" not in messages[0]
 
     def check_turn_end(payload: dict[str, object]) -> None:
@@ -2008,7 +2025,7 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
     session_events = [
         ({"type": "agent_start"}, check_agent_start),
         ({"type": "turn_start"}, check_turn_start),
-        ({"type": "agent_end", "messages": [assistant, branch_summary, compaction_summary]}, check_agent_end),
+            ({"type": "agent_end", "messages": [assistant, application_message]}, check_agent_end),
         ({"type": "turn_end", "message": assistant, "tool_results": [tool_result]}, check_turn_end),
         ({"type": "message_start", "message": assistant}, check_message_start),
         (
@@ -2077,8 +2094,8 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",
@@ -2117,7 +2134,7 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
         lines = stdout.getvalue().splitlines()
         assert exit_code == 0
         assert len(lines) == 1 + len(session_events)
-        assert json.loads(lines[0])["type"] == "session"
+        assert json.loads(lines[0])["type"] == "conversation"
         for line, (_, checker) in zip(lines[1:], session_events, strict=True):
             payload = json.loads(line)
             checker(payload)
@@ -2132,15 +2149,14 @@ def test_print_mode_json_serializes_tool_results_and_preserves_utf8() -> None:
 
     from loushang.agent import AgentToolResult, FunctionalToolOutputProjector
     from loushang.ai.types import TextPart
-    from loushang.coding.message import SessionHeader
     from loushang.coding.mode import PrintMode
 
     class FakeRuntime:
         pass
 
     class FakeSessionManager:
-        def get_header(self) -> SessionHeader:
-            return SessionHeader(
+        def get_header(self) -> ConversationHeader:
+            return _session_header(
                 type="session",
                 version=3,
                 id="s1",

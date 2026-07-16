@@ -115,7 +115,7 @@ def test_context_usage_snapshot_marks_pre_compaction_usage_stale(tmp_path) -> No
     manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="before")], timestamp=0.0))
     manager.append_message(_assistant(total_tokens=95, timestamp=1.0))
-    first_kept_entry_id = manager.get_entries()[0].id
+    first_kept_entry_id = manager.get_entries()[0].record_id
     manager.append_compaction("summary", first_kept_entry_id, 95)
     manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="after")], timestamp=2.0))
 

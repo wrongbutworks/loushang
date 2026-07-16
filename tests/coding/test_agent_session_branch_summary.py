@@ -220,17 +220,17 @@ def test_navigate_tree_with_summary_appends_branch_summary_and_emits_events(tmp_
     assert session.session_manager.get_leaf_id() == result.summary_entry_id
     summary_entry = session.session_manager.get_entry(result.summary_entry_id)
     assert summary_entry is not None
-    assert summary_entry.type == "branch_summary"
+    assert summary_entry.kind == "context.branch_summary"
     assert summary_entry.parent_id == assistant1_id
-    assert summary_entry.summary == "branch return summary"
-    assert summary_entry.details == {
+    assert summary_entry.payload.summary == "branch return summary"
+    assert summary_entry.payload.details == {
         "readFiles": ["README.md"],
         "modifiedFiles": ["src/app.py"],
     }
     assert [getattr(message, "role", None) for message in session.agent.state.messages] == [
         "user",
         "assistant",
-        "branchSummary",
+        "user",
     ]
     assert events[0] == {
         "type": "branch_summary_start",
@@ -312,19 +312,22 @@ def test_navigate_tree_uses_extension_before_tree_summary_override(tmp_path, mon
     assert generate_called is False
     assert result.summary_entry_id is not None
     summary_entry_id = result.summary_entry_id
-    assert session.session_manager.get_leaf_id() == manager.get_entries()[-1].id
+    assert (
+        session.session_manager.get_leaf_id()
+        == manager.get_entries()[-1].record_id
+    )
     summary_entry = session.session_manager.get_entry(summary_entry_id)
     assert summary_entry is not None
-    assert summary_entry.type == "branch_summary"
-    assert summary_entry.summary == "extension summary"
-    assert summary_entry.from_hook is True
+    assert summary_entry.kind == "context.branch_summary"
+    assert summary_entry.payload.summary == "extension summary"
+    assert summary_entry.payload.from_hook is True
     assert session.session_manager.get_label(summary_entry_id) == "from-extension"
     assert [getattr(message, "role", None) for message in session.agent.state.messages] == [
         "user",
         "assistant",
-        "branchSummary",
+        "user",
     ]
-    assert manager.get_entries()[-1].id != summary_entry_id
+    assert manager.get_entries()[-1].record_id != summary_entry_id
 
 
 def test_abort_branch_summary_cancels_inflight_navigation(tmp_path, monkeypatch) -> None:

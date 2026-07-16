@@ -65,9 +65,13 @@ class CommandController:
                         name=command.invocation_name,
                         description=command.description,
                         source="extension",
-                        source_info=_command_source_info_from_extension(command.source_info),
+                        source_info=_command_source_info_from_extension(
+                            command.source_info
+                        ),
                         invocation_name=command.invocation_name,
-                        conflict_group=command.name if command.invocation_name != command.name else None,
+                        conflict_group=command.name
+                        if command.invocation_name != command.name
+                        else None,
                     )
                 )
         resource_bundle = self.get_resource_bundle()
@@ -99,7 +103,9 @@ class CommandController:
                 )
         return commands
 
-    async def execute_command_async(self, invocation_name: str, args: str) -> CommandExecutionResult | None:
+    async def execute_command_async(
+        self, invocation_name: str, args: str
+    ) -> CommandExecutionResult | None:
         invocation_name = normalize_command_name(invocation_name)
         invocation = ParsedSlashCommand(
             name=invocation_name,
@@ -124,16 +130,22 @@ class CommandController:
         if extension_runner is not None:
             command = extension_runner.get_command(invocation.name)
             if command is not None:
-                context = extension_runner.create_command_context(fallback_cwd=self.session_manager.get_cwd())
+                context = extension_runner.create_command_context(
+                    fallback_cwd=self.session_manager.get_cwd()
+                )
                 try:
                     await command.handler(invocation.args, context)
                 except Exception as exc:
                     self.record_extension_command_error(command=command, exc=exc)
                     return CommandDispatchOutcome.handled_result(
-                        CommandExecutionResult(invocation_name=command.invocation_name, result=None)
+                        CommandExecutionResult(
+                            invocation_name=command.invocation_name, result=None
+                        )
                     )
                 return CommandDispatchOutcome.handled_result(
-                    CommandExecutionResult(invocation_name=command.invocation_name, result=None)
+                    CommandExecutionResult(
+                        invocation_name=command.invocation_name, result=None
+                    )
                 )
         return CommandDispatchOutcome.unhandled()
 
@@ -141,7 +153,9 @@ class CommandController:
         self,
         invocation: ParsedSlashCommand,
     ) -> CommandDispatchOutcome[CommandExecutionResult]:
-        result = await self.execute_builtin_command_async(invocation.name, invocation.args)
+        result = await self.execute_builtin_command_async(
+            invocation.name, invocation.args
+        )
         if result is None:
             return CommandDispatchOutcome.unhandled()
         return CommandDispatchOutcome.handled_result(result)
@@ -155,12 +169,18 @@ class CommandController:
             return CommandDispatchOutcome.unhandled()
         return CommandDispatchOutcome.handled_result(result)
 
-    async def execute_builtin_command_async(self, invocation_name: str, args: str) -> CommandExecutionResult | None:
+    async def execute_builtin_command_async(
+        self, invocation_name: str, args: str
+    ) -> CommandExecutionResult | None:
         if self.builtin_backend is None:
             return None
-        return await execute_builtin_command_async(invocation_name, args, self.builtin_backend)
+        return await execute_builtin_command_async(
+            invocation_name, args, self.builtin_backend
+        )
 
-    def execute_resource_command(self, invocation_name: str, args: str) -> CommandExecutionResult | None:
+    def execute_resource_command(
+        self, invocation_name: str, args: str
+    ) -> CommandExecutionResult | None:
         resource_bundle = self.get_resource_bundle()
         if resource_bundle is None:
             self.record_command_not_found(invocation_name, args)
@@ -192,7 +212,7 @@ class CommandController:
             phase="runtime",
             source="session",
             level="warning",
-            session_id=self.session_manager.get_header().id,
+            session_id=self.session_manager.get_header().conversation_id,
             entry_id=self.session_manager.get_leaf_id(),
             details={
                 "invocation_name": invocation_name,
@@ -200,13 +220,19 @@ class CommandController:
             },
         )
 
-    async def get_command_argument_completions(self, invocation_name: str, prefix: str) -> list[object] | None:
+    async def get_command_argument_completions(
+        self, invocation_name: str, prefix: str
+    ) -> list[object] | None:
         extension_runner = self.get_extension_runner()
         if extension_runner is None:
             return None
-        return await extension_runner.get_command_argument_completions(invocation_name, prefix)
+        return await extension_runner.get_command_argument_completions(
+            invocation_name, prefix
+        )
 
-    def extract_extension_command_invocation(self, user_input: str) -> tuple[str, str] | None:
+    def extract_extension_command_invocation(
+        self, user_input: str
+    ) -> tuple[str, str] | None:
         extension_runner = self.get_extension_runner()
         if extension_runner is None:
             return None
@@ -218,7 +244,9 @@ class CommandController:
             return None
         return invocation_name, args
 
-    def extract_builtin_command_invocation(self, user_input: str) -> tuple[str, str] | None:
+    def extract_builtin_command_invocation(
+        self, user_input: str
+    ) -> tuple[str, str] | None:
         if self.builtin_backend is None:
             return None
         parsed = split_slash_command(user_input)
@@ -238,7 +266,9 @@ class CommandController:
                 "Use prompt() or execute the command when not streaming."
             )
 
-    def preflight_user_input(self, user_input: str, *, allow_extension_commands: bool = True):
+    def preflight_user_input(
+        self, user_input: str, *, allow_extension_commands: bool = True
+    ):
         del allow_extension_commands
         result = preflight_user_input(
             user_input,
@@ -247,7 +277,9 @@ class CommandController:
         self.record_preflight_diagnostics(result.diagnostics)
         return result
 
-    async def preflight_user_input_async(self, user_input: str, *, allow_extension_commands: bool = True):
+    async def preflight_user_input_async(
+        self, user_input: str, *, allow_extension_commands: bool = True
+    ):
         if allow_extension_commands:
             command = self.extract_extension_command_invocation(user_input)
             if command is not None:
@@ -266,7 +298,9 @@ class CommandController:
         self.record_preflight_diagnostics(result.diagnostics)
         return result
 
-    def record_preflight_diagnostics(self, diagnostics: tuple[ResourceDiagnostic, ...]) -> None:
+    def record_preflight_diagnostics(
+        self, diagnostics: tuple[ResourceDiagnostic, ...]
+    ) -> None:
         diagnostics_service = self.get_diagnostics_service()
         if diagnostics_service is None or not diagnostics:
             return
@@ -275,13 +309,15 @@ class CommandController:
                 diagnostic,
                 phase="runtime",
                 source="session",
-                session_id=self.session_manager.get_header().id,
+                session_id=self.session_manager.get_header().conversation_id,
                 entry_id=self.session_manager.get_leaf_id(),
             )
             for diagnostic in diagnostics
         )
 
-    def record_extension_command_error(self, *, command: ResolvedCommand, exc: BaseException) -> None:
+    def record_extension_command_error(
+        self, *, command: ResolvedCommand, exc: BaseException
+    ) -> None:
         diagnostics_service = self.get_diagnostics_service()
         if diagnostics_service is None:
             return
@@ -291,7 +327,7 @@ class CommandController:
             error=exc if isinstance(exc, Exception) else str(exc),
             phase="runtime",
             source="extensions",
-            session_id=self.session_manager.get_header().id,
+            session_id=self.session_manager.get_header().conversation_id,
             entry_id=self.session_manager.get_leaf_id(),
             source_path=command.source_info.path,
             details={
@@ -303,19 +339,25 @@ class CommandController:
                     "source": source_info.source,
                     "scope": source_info.scope,
                     "origin": source_info.origin,
-                    "base_dir": source_info.base_dir.as_posix() if source_info.base_dir is not None else None,
+                    "base_dir": source_info.base_dir.as_posix()
+                    if source_info.base_dir is not None
+                    else None,
                 },
             },
         )
 
 
-def _command_source_info_from_extension(source_info: ExtensionSourceInfo) -> CommandSourceInfo:
+def _command_source_info_from_extension(
+    source_info: ExtensionSourceInfo,
+) -> CommandSourceInfo:
     return CommandSourceInfo(
         path=source_info.path.as_posix(),
         source=source_info.source,
         scope=source_info.scope,
         origin=source_info.origin,
-        base_dir=source_info.base_dir.as_posix() if source_info.base_dir is not None else source_info.path.parent.as_posix(),
+        base_dir=source_info.base_dir.as_posix()
+        if source_info.base_dir is not None
+        else source_info.path.parent.as_posix(),
     )
 
 

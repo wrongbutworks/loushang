@@ -66,7 +66,7 @@ sufficient.
 | `coding.ui` | Never harness | Product-owned TUI adapter and screen/controller state. Shared terminal primitives belong in `loushang.tui`, not harness. |
 | `coding.mode` | Keep product | Transitional print/RPC mode adapters stay coding until channel is implemented. RPC now uses an explicit transport projection for known dataclasses, paths, mappings, lists, and tuples while rejecting cycles, sets, arbitrary objects, `__dict__` discovery, non-finite floats, and `repr()` fallback. |
 | `coding.cli` | Keep product | Product CLI. It may expose harness-backed behavior but remains coding-owned. |
-| `coding.message` | Product adapter | Strict JSON lives in Protocol; AI codecs live in AI; custom-message dispatch/tool-output projection live in Agent; neutral conversation envelopes and `CommandExecutionRecord` live in Harness. Coding keeps its session header/entry variants, historical custom-message codecs and roles, message transforms, and compatibility imports. |
+| `coding.message` | Migrated and removed | `harness.conversation` owns the neutral envelope, repository, replay, and opaque-record behavior. The optional `harness.agent_transcript` profile owns standard Agent transcript payloads, codecs, state/context projection, writer, idempotent application-message commit, and the current Session v3 to Native v1 migration. Coding keeps only product presentation and orchestration policy. |
 | `coding.store` | Product adapter | File locking, strict JSONL, parent-linked repositories, branch/tree/fork/LCA/delta, checkpoint replay, catalog/query, and rebuildable indexes now live in Harness. Coding directly uses `ConversationRepository` and `ConversationCatalog`; it keeps transcript schemas/codecs, Product summary/search fields, labels, paths, naming, retention, recovery, and storage policy. Journal-offset projection checkpoints remain deferred. |
 | `coding.control` | Product adapter | Transactional ordered layers and persistence, `ConfigFieldSpec` / `SchemaConfigCodec`, scoped revisions and `ConfigChange` records, subscriptions, issue collection, injected-runner value resolution, and the explicit activation DAG live in `loushang.harness.config`. Coding keeps `ControlConfig`, fields, defaults, validation, paths, removed-setting compatibility, convenience APIs, diagnostic wording, effect selection/order/callbacks, provider registration, credential handling, model/auth interpretation, persisted selection policy, commands, and UI. Harness neither executes shell commands nor stores credentials; `ModelRegistry` and `AuthManager` do not move. |
 | `coding.package`, `coding.plugin`, `coding.resources`, `coding.skill` | Split candidate | Package source/manifest/materialization, standard roots/layout, registry/resolver, discovery, and skill-loading mechanisms now live under `loushang.harness.resources`. Coding keeps built-in content registration, compatibility convention activation, additional roots, trust/approval policy, settings/CLI projection, and compatibility facades. |
@@ -186,7 +186,9 @@ small merge units.
 Workflow execution mechanics remain a separate ownership decision within this
 wave. Do not move `coding.workflow` wholesale before reconciling its test-scenario
 semantics with the separate `loushang.method` and `loushang.work` layers. Moving
-`coding.message` wholesale is explicitly not part of this wave.
+The later Agent Transcript Profile wave completed this ownership transfer and
+removed `coding.message`; see
+[Agent Transcript Profile Boundary](agent-transcript-profile-boundary.md).
 
 ### Wave 4: Session And Runtime Consolidation
 

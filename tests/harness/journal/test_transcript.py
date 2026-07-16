@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 
 @dataclass(frozen=True)
 class _Header:
@@ -135,8 +137,6 @@ def test_transcript_repository_does_not_mutate_memory_when_append_fails() -> Non
             del record
             raise OSError("disk full")
 
-    import pytest
-
     repository = _repository(
         header=_Header("t1"),
         records=(_Record("root", None, "one"),),
@@ -150,7 +150,7 @@ def test_transcript_repository_does_not_mutate_memory_when_append_fails() -> Non
     assert repository.leaf_id == "root"
 
 
-def test_transcript_repository_detached_load_does_not_write_source(
+def test_transcript_repository_read_only_load_rejects_append(
     tmp_path: Path,
 ) -> None:
     from loushang.harness.journal import TranscriptRepository
@@ -166,7 +166,8 @@ def test_transcript_repository_detached_load_does_not_write_source(
         parent_id=lambda record: record.parent_id,
         writable=False,
     )
-    detached.append(_Record("local", "root", "two"))
+    with pytest.raises(RuntimeError, match="read-only"):
+        detached.append(_Record("local", "root", "two"))
 
-    assert detached.leaf_id == "local"
+    assert detached.leaf_id == "root"
     assert path.read_bytes() == original_bytes

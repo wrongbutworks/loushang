@@ -293,7 +293,10 @@ def test_session_restores_persisted_model_and_accepts_model_selection_updates(tm
     asyncio.run(session.set_model(ModelSelection(provider="faux", model_id="alpha")))
 
     assert session.get_model_selection() == ModelSelection(provider="faux", model_id="alpha")
-    assert [entry.type for entry in manager.get_entries()] == ["model_change", "model_change"]
+    assert [entry.kind for entry in manager.get_entries()] == [
+        "agent.model_selection",
+        "agent.model_selection",
+    ]
 
 
 def test_create_services_exposes_ai_backed_auth_manager(monkeypatch) -> None:

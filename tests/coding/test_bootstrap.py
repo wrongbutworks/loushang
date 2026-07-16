@@ -236,7 +236,7 @@ def test_create_agent_session_uses_manager_header_as_agent_session_id(tmp_path) 
     )
 
     assert session.session_manager is manager
-    assert session.agent.session_id == manager.get_header().id
+    assert session.agent.session_id == manager.get_header().conversation_id
     assert session.get_model_selection() is not None
     assert session.get_model_selection().model_id == "faux-model"
 
@@ -588,7 +588,7 @@ def test_create_agent_session_runtime_builds_working_default_sessions(tmp_path) 
         await session.prompt("hi")
 
         assert runtime.get_current_session() is session
-        assert session.session_manager.get_header().id
+        assert session.session_manager.get_header().conversation_id
         assert session.agent.session_id is None
         assert [
             message.content[0].text
@@ -1939,10 +1939,10 @@ def test_runtime_tool_failures_still_surface_as_tool_result_errors(tmp_path) -> 
     assert diagnostics[0].details["tool_name"] == "runtime_tool"
 
 
-def test_create_agent_session_wires_coding_convert_to_llm(tmp_path) -> None:
+def test_create_agent_session_projects_application_messages_to_model_input(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.message import BranchSummaryMessage
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import ApplicationMessage
 
     manager = SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project", persist=False
@@ -1954,8 +1954,11 @@ def test_create_agent_session_wires_coding_convert_to_llm(tmp_path) -> None:
 
     converted = session.agent.convert_to_llm(
         [
-            BranchSummaryMessage(
-                role="branchSummary", summary="done", from_id="b1", timestamp=0.0
+            ApplicationMessage(
+                application_message_id="application-1",
+                custom_type="notice",
+                content="done",
+                timestamp=0.0,
             )
         ]
     )
@@ -2723,7 +2726,7 @@ def test_create_agent_session_records_resource_loading_diagnostics(tmp_path) -> 
 
     assert len(diagnostics) == 1
     assert diagnostics[0].code == "duplicate_prompt"
-    assert diagnostics[0].session_id == manager.get_header().id
+    assert diagnostics[0].session_id == manager.get_header().conversation_id
 
 
 def test_create_agent_session_records_startup_package_root_diagnostics(
@@ -2763,7 +2766,7 @@ def test_create_agent_session_records_startup_package_root_diagnostics(
 
     assert [record.code for record in diagnostics] == ["package_root_unavailable"]
     assert diagnostics[0].type == "warning"
-    assert diagnostics[0].session_id == manager.get_header().id
+    assert diagnostics[0].session_id == manager.get_header().conversation_id
     assert diagnostics[0].details == {
         "check": "package_root",
         "ok": False,
@@ -2796,7 +2799,7 @@ def test_create_agent_session_records_executable_source_identity_diagnostic(
 
     assert len(diagnostics) == 1
     assert diagnostics[0].type == "info"
-    assert diagnostics[0].session_id == manager.get_header().id
+    assert diagnostics[0].session_id == manager.get_header().conversation_id
     assert diagnostics[0].source_path is not None
     assert diagnostics[0].details["check"] == "executable_source_identity"
     assert diagnostics[0].details["ok"] is True

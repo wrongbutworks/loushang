@@ -55,7 +55,7 @@ class SessionDiagnosticsBridge:
             return []
         return self.diagnostics_service.get_diagnostics(
             query=_diagnostics_query_for_session(
-                query, self.session_manager.get_header().id
+                query, self.session_manager.get_header().conversation_id
             )
         )
 
@@ -71,7 +71,7 @@ class SessionDiagnosticsBridge:
         service = self.diagnostics_service or DiagnosticsService()
         return service.get_diagnostics_summary(
             query=_diagnostics_query_for_session(
-                query, self.session_manager.get_header().id
+                query, self.session_manager.get_header().conversation_id
             )
         )
 
@@ -88,7 +88,7 @@ class SessionDiagnosticsBridge:
             error=exc,
             phase="runtime",
             source="session",
-            session_id=self.session_manager.get_header().id,
+            session_id=self.session_manager.get_header().conversation_id,
             entry_id=self.session_manager.get_leaf_id(),
         )
 
@@ -102,7 +102,7 @@ class SessionDiagnosticsBridge:
                 diagnostic,
                 phase="runtime",
                 source="extensions",
-                session_id=self.session_manager.get_header().id,
+                session_id=self.session_manager.get_header().conversation_id,
                 entry_id=self.session_manager.get_leaf_id(),
                 level=_extension_diagnostic_level(diagnostic.code),
             )
@@ -126,7 +126,7 @@ class SessionDiagnosticsBridge:
                 diagnostic,
                 phase=phase,
                 source="extensions",
-                session_id=self.session_manager.get_header().id,
+                session_id=self.session_manager.get_header().conversation_id,
                 entry_id=self.session_manager.get_leaf_id(),
                 level=_extension_diagnostic_level(diagnostic.code),
             )
@@ -149,7 +149,7 @@ class SessionDiagnosticsBridge:
             error=assistant_message.error_message,
             phase="runtime",
             source="provider",
-            session_id=self.session_manager.get_header().id,
+            session_id=self.session_manager.get_header().conversation_id,
             entry_id=self.session_manager.get_leaf_id(),
             details={
                 "provider": assistant_message.provider,
@@ -175,7 +175,7 @@ class SessionDiagnosticsBridge:
             error=message,
             phase="runtime",
             source="tool",
-            session_id=self.session_manager.get_header().id,
+            session_id=self.session_manager.get_header().conversation_id,
             entry_id=self.session_manager.get_leaf_id(),
             details={
                 "tool_call_id": tool_call_id,
@@ -191,7 +191,7 @@ class SessionDiagnosticsBridge:
                 phase="runtime",
                 source="policy",
                 level="warning",
-                session_id=self.session_manager.get_header().id,
+                session_id=self.session_manager.get_header().conversation_id,
                 entry_id=self.session_manager.get_leaf_id(),
                 details=_policy_diagnostic_details(
                     tool_call_id=tool_call_id,

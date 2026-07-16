@@ -73,7 +73,7 @@ def test_export_session_to_jsonl_writes_branch_entries_and_header(tmp_path) -> N
 
     assert output.endswith(".jsonl")
     header, entries = load_session_file(tmp_path / "out.jsonl")
-    assert header.id == session.session_id
+    assert header.conversation_id == session.session_id
     assert len(entries) == len(session.session_manager.get_branch())
 
 
@@ -121,8 +121,14 @@ def test_export_session_to_jsonl_rechains_current_branch_parent_ids(tmp_path) ->
     lines = [json.loads(line) for line in Path(output).read_text(encoding="utf-8").splitlines()]
     entries = lines[1:]
 
-    assert [entry["message"]["content"][0]["text"] for entry in entries] == ["root", "kept"]
-    assert [entry["parentId"] for entry in entries] == [None, entries[0]["id"]]
+    assert [entry["payload"]["content"][0]["text"] for entry in entries] == [
+        "root",
+        "kept",
+    ]
+    assert [entry["parentId"] for entry in entries] == [
+        None,
+        entries[0]["recordId"],
+    ]
 
 
 def test_render_transcript_uses_stable_message_ids() -> None:
@@ -447,7 +453,14 @@ def test_export_session_to_html_embeds_entry_tree_and_summary_entries(tmp_path) 
     assert encoded is not None
     data = json.loads(base64.b64decode(encoded.group(1)).decode("utf-8"))
     assert data["leafId"] == manager.get_leaf_id()
-    assert [entry["type"] for entry in data["entries"]] == ["message", "message", "branch_summary", "compaction", "label"]
+    assert [entry["type"] for entry in data["entries"]] == ["record"] * 5
+    assert [entry["kind"] for entry in data["entries"]] == [
+        "agent.message",
+        "agent.message",
+        "context.branch_summary",
+        "context.compaction_checkpoint",
+        "record.annotation_patch",
+    ]
     assert data["tree"]["entryCount"] == 5
     assert data["tree"]["leafId"] == manager.get_leaf_id()
     assert "Session Tree" in html

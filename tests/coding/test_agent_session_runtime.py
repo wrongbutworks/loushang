@@ -189,8 +189,8 @@ def test_runtime_renames_and_deletes_sessions_by_resolved_reference(tmp_path) ->
     other_file = other_manager.get_session_file()
     assert other_file is not None
 
-    renamed = runtime.rename_session(other_manager.get_header().id[:4], "Other Session")
-    deleted = runtime.delete_session(other_manager.get_header().id[:4])
+    renamed = runtime.rename_session(other_manager.get_header().conversation_id[:4], "Other Session")
+    deleted = runtime.delete_session(other_manager.get_header().conversation_id[:4])
 
     assert renamed.name == "Other Session"
     assert deleted is True
@@ -230,7 +230,7 @@ def test_runtime_rename_session_records_failure_diagnostic(tmp_path) -> None:
         def __init__(self, manager: SessionManager) -> None:
             self.session_manager = manager
             self.diagnostics_service = None
-            self.session_id = manager.get_header().id
+            self.session_id = manager.get_header().conversation_id
 
     project = tmp_path / "project"
     project.mkdir()
@@ -272,7 +272,7 @@ def test_runtime_delete_session_records_failure_diagnostic(tmp_path) -> None:
         def __init__(self, manager: SessionManager) -> None:
             self.session_manager = manager
             self.diagnostics_service = None
-            self.session_id = manager.get_header().id
+            self.session_id = manager.get_header().conversation_id
 
     project = tmp_path / "project"
     project.mkdir()
@@ -449,25 +449,25 @@ def test_runtime_auto_refreshes_session_index_after_rename_and_delete(tmp_path) 
     second = SessionManager.new(session_dir=tmp_path, cwd=str(project), persist=True)
 
     async def scenario() -> None:
-        runtime.rename_session(first.get_header().id, "Renamed")
+        runtime.rename_session(first.get_header().conversation_id, "Renamed")
         assert SessionManager.load_index(tmp_path) == []
         await runtime.drain_session_index_flush()
         assert (
             next(
                 summary
                 for summary in SessionManager.load_index(tmp_path)
-                if summary.session_id == first.get_header().id
+                if summary.session_id == first.get_header().conversation_id
             ).name
             == "Renamed"
         )
 
-        runtime.delete_session(second.get_header().id)
+        runtime.delete_session(second.get_header().conversation_id)
         await runtime.drain_session_index_flush()
 
     asyncio.run(scenario())
 
     assert {summary.session_id for summary in SessionManager.load_index(tmp_path)} == {
-        first.get_header().id
+        first.get_header().conversation_id
     }
 
 
@@ -566,8 +566,8 @@ def test_runtime_fork_session_switches_to_selected_branch(tmp_path) -> None:
     assert original_file is not None
     assert forked.session_manager.session_file is not None
     assert forked.session_manager.session_file != original_file
-    assert forked.session_manager.get_header().parent_session == str(original_file)
-    assert [entry.id for entry in forked.session_manager.get_branch()] == [
+    assert forked.session_manager.get_header().metadata.get("parentSession") == str(original_file)
+    assert [entry.record_id for entry in forked.session_manager.get_branch()] == [
         first_id,
         second_id,
     ]
@@ -606,7 +606,7 @@ def test_runtime_fork_session_before_user_message_returns_selected_text(
 
     assert runtime.get_current_session() is forked
     assert selected_text == "tail"
-    assert [entry.id for entry in forked.session_manager.get_branch()] == [
+    assert [entry.record_id for entry in forked.session_manager.get_branch()] == [
         first_id,
         second_id,
     ]
@@ -653,7 +653,7 @@ def test_runtime_exposes_pi_style_lifecycle_method_aliases(tmp_path) -> None:
         "selected_text": "tail",
     }
     assert forked is not None
-    assert [entry.id for entry in forked.session_manager.get_branch()] == [
+    assert [entry.record_id for entry in forked.session_manager.get_branch()] == [
         first_id,
         second_id,
     ]
@@ -667,7 +667,7 @@ def test_runtime_exposes_pi_style_lifecycle_method_aliases(tmp_path) -> None:
     )
     assert new_result == {"cancelled": False}
     assert (
-        runtime.get_current_session().session_manager.get_header().parent_session
+        runtime.get_current_session().session_manager.get_header().metadata.get("parentSession")
         == str(first_session_file)
     )
 
@@ -714,7 +714,7 @@ def test_runtime_pi_style_new_session_runs_setup_and_with_session(tmp_path) -> N
     assert result == {"cancelled": False}
     assert created is not None
     assert created is not session
-    assert created.session_manager.get_header().parent_session == str(
+    assert created.session_manager.get_header().metadata.get("parentSession") == str(
         first_session_file
     )
     assert [
@@ -763,7 +763,7 @@ def test_runtime_pi_style_switch_and_fork_run_with_session(tmp_path) -> None:
         )
 
     async def _fork_with_session(ctx):
-        events.append(("fork", [entry.id for entry in ctx.sessionManager.get_branch()]))
+        events.append(("fork", [entry.record_id for entry in ctx.sessionManager.get_branch()]))
 
     switch_result = asyncio.run(
         runtime.switchSession(target_file, {"withSession": _switch_with_session})
@@ -815,7 +815,7 @@ def test_runtime_replacement_callback_failures_keep_replacement_and_record_diagn
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
             self.session_manager = manager
-            self.session_id = manager.get_header().id
+            self.session_id = manager.get_header().conversation_id
             self.extension_runner = None
             self.diagnostics_service = diagnostics_service
             self.disposed = False
@@ -1036,7 +1036,7 @@ def test_runtime_import_from_jsonl_race_retry_emits_before_switch_once_for_final
             self.session_manager = manager
             self.extension_runner = runner
             self.diagnostics_service = None
-            self.session_id = manager.get_header().id
+            self.session_id = manager.get_header().conversation_id
 
         def set_extension_runtime_host(self, _host) -> None:
             return None
@@ -1155,7 +1155,7 @@ def test_runtime_import_from_jsonl_records_failure_diagnostic(tmp_path) -> None:
             self.session_manager = manager
             self.extension_runner = None
             self.diagnostics_service = None
-            self.session_id = manager.get_header().id
+            self.session_id = manager.get_header().conversation_id
 
         def set_extension_runtime_host(self, _host) -> None:
             return None
@@ -1248,7 +1248,7 @@ def test_runtime_restore_session_records_failure_diagnostic(tmp_path) -> None:
             self.session_manager = manager
             self.extension_runner = None
             self.diagnostics_service = None
-            self.session_id = manager.get_header().id
+            self.session_id = manager.get_header().conversation_id
 
         def set_extension_runtime_host(self, _host) -> None:
             return None
@@ -1314,7 +1314,7 @@ def test_runtime_restore_can_fallback_when_stored_cwd_is_missing(tmp_path) -> No
             self.session_manager = next_manager
             self.extension_runner = None
             self.diagnostics_service = None
-            self.session_id = next_manager.get_header().id
+            self.session_id = next_manager.get_header().conversation_id
 
         def set_extension_runtime_host(self, _host) -> None:
             return None
@@ -1365,7 +1365,7 @@ def test_runtime_import_from_jsonl_cwd_override_bypasses_missing_stored_cwd(
             self.session_manager = manager
             self.extension_runner = None
             self.diagnostics_service = None
-            self.session_id = manager.get_header().id
+            self.session_id = manager.get_header().conversation_id
 
         def set_extension_runtime_host(self, _host) -> None:
             return None
@@ -1656,7 +1656,7 @@ def test_extension_command_context_fork_uses_runtime_host(tmp_path) -> None:
     assert results == [{"cancelled": False}]
     assert forked is not None
     assert forked is not session
-    assert [entry.id for entry in forked.session_manager.get_branch()] == [
+    assert [entry.record_id for entry in forked.session_manager.get_branch()] == [
         first_id,
         second_id,
     ]
@@ -1718,7 +1718,7 @@ def test_extension_command_context_fork_supports_before_position(tmp_path) -> No
     result = asyncio.run(session.execute_command_async("fork", third_id))
     forked = runtime.get_current_session()
     assert forked is not None
-    seen_branches.append([entry.id for entry in forked.session_manager.get_branch()])
+    seen_branches.append([entry.record_id for entry in forked.session_manager.get_branch()])
 
     assert result.result is None
     assert results == [
@@ -1787,7 +1787,7 @@ def test_extension_command_context_fork_defaults_to_before_position(tmp_path) ->
         {"cancelled": False, "selected_text": "tail", "selectedText": "tail"}
     ]
     assert forked is not None
-    assert [entry.id for entry in forked.session_manager.get_branch()] == [
+    assert [entry.record_id for entry in forked.session_manager.get_branch()] == [
         first_id,
         second_id,
     ]
@@ -1816,7 +1816,7 @@ def test_extension_command_context_fork_before_runs_with_session_on_new_fork(
             seen.append(
                 (
                     replaced_ctx.cwd,
-                    [entry.id for entry in replaced_ctx.sessionManager.get_branch()],
+                    [entry.record_id for entry in replaced_ctx.sessionManager.get_branch()],
                 )
             )
 
@@ -1930,7 +1930,7 @@ def test_extension_command_context_new_session_uses_runtime_host(tmp_path) -> No
     assert result.result is None
     assert created is not None
     assert created is not session
-    assert created.session_manager.get_header().parent_session == "parent-1"
+    assert created.session_manager.get_header().metadata.get("parentSession") == "parent-1"
     assert created.session_manager.get_cwd() == str(project.resolve())
     assert [
         message.content[0].text for message in created.get_session_context().messages
@@ -2077,9 +2077,10 @@ def test_replaced_session_context_send_message_becomes_stale_after_next_replacem
     current = runtime.get_current_session()
     assert result.result is None
     assert current is not None
-    assert [entry.custom_type for entry in current.session_manager.get_entries()] == [
-        "demo"
-    ]
+    assert [
+        entry.payload.custom_type
+        for entry in current.session_manager.get_entries()
+    ] == ["demo"]
 
     asyncio.run(runtime.newSession())
 
@@ -2399,7 +2400,7 @@ def test_agent_session_runtime_create_restore_and_fork_reconstruct_extension_sta
     session = asyncio.run(runtime.create_session(cwd=str(project)))
     restored = asyncio.run(runtime.restore_session(session.session_file))
     restored.session_manager.append_message(_user_message("branch me"))
-    fork_entry_id = restored.session_manager.get_entries()[0].id
+    fork_entry_id = restored.session_manager.get_entries()[0].record_id
     asyncio.run(runtime.fork_session(fork_entry_id))
 
     assert events == [
@@ -2584,7 +2585,7 @@ def test_runtime_new_session_reuses_current_cwd_and_disposes_previous_session(
     assert first.disposed is True
     assert second.disposed is False
     assert (
-        second.session_manager.get_header().id != first.session_manager.get_header().id
+        second.session_manager.get_header().conversation_id != first.session_manager.get_header().conversation_id
     )
 
 
@@ -3414,8 +3415,8 @@ def test_runtime_restore_session_allows_extension_non_cancel_decision(tmp_path) 
     assert current.disposed is True
     assert runtime.get_current_session() is restored
     assert isinstance(restored, DummySession)
-    assert [entry.id for entry in restored.session_manager.get_entries()] == [
-        target_manager.get_entries()[0].id
+    assert [entry.record_id for entry in restored.session_manager.get_entries()] == [
+        target_manager.get_entries()[0].record_id
     ]
     assert seen == [
         ("resume", str(project.resolve()), str(target_manager.session_file))
@@ -3475,5 +3476,5 @@ def test_runtime_fork_session_allows_extension_non_cancel_decision(tmp_path) -> 
     assert forked is not current
     assert runtime.get_current_session() is forked
     assert current.disposed is True
-    assert [entry.id for entry in forked.session_manager.get_branch()] == [fork_entry]
+    assert [entry.record_id for entry in forked.session_manager.get_branch()] == [fork_entry]
     assert seen == [(fork_entry, str(project.resolve()))]

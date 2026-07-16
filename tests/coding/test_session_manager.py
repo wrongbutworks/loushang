@@ -24,7 +24,7 @@ def test_new_session_manager_has_header_and_no_leaf(tmp_path) -> None:
         persist=False,
     )
 
-    assert manager.get_header().type == "session"
+    assert manager.get_header().version == 1
     assert manager.get_leaf_id() is None
 
 
@@ -38,8 +38,8 @@ def test_new_session_manager_accepts_custom_session_id(tmp_path) -> None:
         session_id="my-custom-id",
     )
 
-    assert manager.get_header().id == "my-custom-id"
-    assert manager.get_session_file() == tmp_path / f"{manager.get_header().timestamp.replace(':', '-').replace('.', '-')}_my-custom-id.jsonl"
+    assert manager.get_header().conversation_id == "my-custom-id"
+    assert manager.get_session_file() == tmp_path / f"{manager.get_header().created_at.replace(':', '-').replace('.', '-')}_my-custom-id.jsonl"
 
 
 def test_in_memory_session_manager_accepts_custom_session_id() -> None:
@@ -47,7 +47,7 @@ def test_in_memory_session_manager_accepts_custom_session_id() -> None:
 
     manager = SessionManager.in_memory(cwd="/tmp/project", session_id="memory-session")
 
-    assert manager.get_header().id == "memory-session"
+    assert manager.get_header().conversation_id == "memory-session"
     assert manager.get_session_file() is None
 
 
@@ -107,8 +107,8 @@ def test_branch_changes_active_leaf_without_losing_existing_path(tmp_path) -> No
     manager.branch(first_id)
     branch_leaf_id = manager.append_session_info("forked")
 
-    assert [entry.id for entry in manager.get_branch()] == [first_id, branch_leaf_id]
-    assert [entry.id for entry in manager.get_branch(third_id)] == [first_id, second_id, third_id]
+    assert [entry.record_id for entry in manager.get_branch()] == [first_id, branch_leaf_id]
+    assert [entry.record_id for entry in manager.get_branch(third_id)] == [first_id, second_id, third_id]
     assert manager.get_entry(branch_leaf_id).parent_id == first_id
 
 
@@ -156,14 +156,13 @@ def test_create_branched_session_persists_only_selected_path(tmp_path) -> None:
 
     forked = SessionManager.load(branched_file)
 
-    assert [entry.id for entry in forked.get_branch()] == [first_id, second_id]
-    assert forked.get_header().parent_session == str(manager.session_file)
+    assert [entry.record_id for entry in forked.get_branch()] == [first_id, second_id]
+    assert forked.get_header().metadata["parentSession"] == str(manager.session_file)
 
 
-def test_append_message_rejects_projected_summary_messages(tmp_path) -> None:
+def test_append_message_rejects_non_transcript_messages(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.message import BranchSummaryMessage, CompactionSummaryMessage
     from loushang.coding.store import SessionManager
 
     manager = SessionManager.new(
@@ -172,15 +171,8 @@ def test_append_message_rejects_projected_summary_messages(tmp_path) -> None:
         persist=False,
     )
 
-    with pytest.raises(ValueError):
-        manager.append_message(
-            BranchSummaryMessage(role="branchSummary", summary="done", from_id="b1", timestamp=0.0)
-        )
-
-    with pytest.raises(ValueError):
-        manager.append_message(
-            CompactionSummaryMessage(role="compactionSummary", summary="compact", tokens_before=10, timestamp=0.0)
-        )
+    with pytest.raises(TypeError, match="Unsupported transcript message"):
+        manager.append_message(object())
 
 
 def test_session_manager_rejects_non_json_custom_metadata(tmp_path) -> None:
@@ -205,8 +197,11 @@ def test_session_manager_rejects_non_json_custom_metadata(tmp_path) -> None:
 
 def test_branch_with_summary_creates_projected_branch_entry(tmp_path) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.message import BranchSummaryEntry
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import (
+        CONTEXT_BRANCH_SUMMARY_KIND,
+        BranchContextSummary,
+    )
 
     manager = SessionManager.new(
         session_dir=tmp_path,
@@ -233,13 +228,14 @@ def test_branch_with_summary_creates_projected_branch_entry(tmp_path) -> None:
 
     summary_entry = manager.get_entry(summary_id)
 
-    assert isinstance(summary_entry, BranchSummaryEntry)
+    assert summary_entry.kind == CONTEXT_BRANCH_SUMMARY_KIND
+    assert isinstance(summary_entry.payload, BranchContextSummary)
     assert manager.get_leaf_id() == summary_id
     assert summary_entry.parent_id == root_id
-    assert summary_entry.from_id == root_id
-    assert [entry.id for entry in manager.get_branch()] == [root_id, summary_id]
-    assert [entry.id for entry in manager.get_branch(tail_id)] == [root_id, tail_id]
-    assert [message.role for message in manager.build_session_context().messages] == ["user", "branchSummary"]
+    assert summary_entry.payload.from_record_id == root_id
+    assert [entry.record_id for entry in manager.get_branch()] == [root_id, summary_id]
+    assert [entry.record_id for entry in manager.get_branch(tail_id)] == [root_id, tail_id]
+    assert [message.role for message in manager.build_session_context().messages] == ["user", "user"]
 
 
 def test_get_tree_and_children_reflect_current_branches(tmp_path) -> None:
@@ -264,13 +260,13 @@ def test_get_tree_and_children_reflect_current_branches(tmp_path) -> None:
     second_child_id = manager.append_session_info("fork")
 
     assert manager.get_leaf_entry() is not None
-    assert manager.get_leaf_entry().id == second_child_id
-    assert [entry.id for entry in manager.get_children(root_id)] == [first_child_id, second_child_id]
+    assert manager.get_leaf_entry().record_id == second_child_id
+    assert [entry.record_id for entry in manager.get_children(root_id)] == [first_child_id, second_child_id]
 
     tree = manager.get_tree()
 
-    assert [node.entry.id for node in tree] == [root_id]
-    assert [child.entry.id for child in tree[0].children] == [first_child_id, second_child_id]
+    assert [node.record.record_id for node in tree] == [root_id]
+    assert [child.record.record_id for child in tree[0].children] == [first_child_id, second_child_id]
 
 
 def test_labels_are_indexed_and_rebuilt_on_reload(tmp_path) -> None:
@@ -355,7 +351,7 @@ def test_session_summary_includes_context_metadata(tmp_path) -> None:
 
     summary = manager.get_session_summary()
 
-    assert summary.session_id == manager.get_header().id
+    assert summary.session_id == manager.get_header().conversation_id
     assert summary.cwd == "/tmp/project"
     assert summary.name == "Demo Session"
     assert summary.message_count == 2
@@ -392,7 +388,7 @@ def test_list_summaries_and_find_sessions_query_across_session_files(tmp_path) -
 
     summaries = SessionManager.list_summaries(tmp_path)
 
-    assert {summary.session_id for summary in summaries} == {first.get_header().id, second.get_header().id}
+    assert {summary.session_id for summary in summaries} == {first.get_header().conversation_id, second.get_header().conversation_id}
     assert [summary.name for summary in SessionManager.find_sessions(tmp_path, SessionQuery(cwd="/tmp/project-a"))] == ["Alpha"]
     assert [summary.name for summary in SessionManager.find_sessions(tmp_path, SessionQuery(name="bet"))] == ["Beta"]
     assert [summary.name for summary in SessionManager.find_sessions(tmp_path, SessionQuery(text="repository"))] == ["Alpha"]
@@ -422,7 +418,7 @@ def test_list_summaries_skips_one_projection_failure(tmp_path, monkeypatch) -> N
     original = session_manager_module._SESSION_SUMMARY_PROJECTOR
 
     def project(header, records, leaf_id, source_path):
-        if header.id == "bad":
+        if header.conversation_id == "bad":
             raise ValueError("bad product projection")
         return original.project(
             header=header,
@@ -497,8 +493,8 @@ def test_session_manager_rename_and_delete_refresh_existing_index(tmp_path) -> N
     SessionManager.delete_session(second_file)
     deleted_index = SessionManager.list_indexed_summaries(tmp_path)
 
-    assert next(summary for summary in renamed_index if summary.session_id == first.get_header().id).name == "Indexed Name"
-    assert {summary.session_id for summary in deleted_index} == {first.get_header().id}
+    assert next(summary for summary in renamed_index if summary.session_id == first.get_header().conversation_id).name == "Indexed Name"
+    assert {summary.session_id for summary in deleted_index} == {first.get_header().conversation_id}
 
 
 def test_session_manager_rename_and_delete_survive_index_refresh_failure(tmp_path, monkeypatch) -> None:
@@ -570,7 +566,7 @@ def test_find_sessions_matches_parent_session_across_symlink_aliases(tmp_path) -
 
     matched = SessionManager.find_sessions(real_dir, SessionQuery(parent_session=str(alias_b / parent_file.name)))
 
-    assert [summary.session_id for summary in matched] == [child.get_header().id]
+    assert [summary.session_id for summary in matched] == [child.get_header().conversation_id]
 
 
 def test_find_sessions_supports_quoted_phrase_regex_and_named_filter(tmp_path) -> None:
@@ -596,13 +592,13 @@ def test_find_sessions_supports_quoted_phrase_regex_and_named_filter(tmp_path) -
     )
 
     assert [summary.session_id for summary in SessionManager.find_sessions(tmp_path, SessionQuery(text='"node cve"'))] == [
-        first.get_header().id
+        first.get_header().conversation_id
     ]
     assert [summary.session_id for summary in SessionManager.find_sessions(tmp_path, SessionQuery(text=r"re:\bbrave\b"))] == [
-        second.get_header().id
+        second.get_header().conversation_id
     ]
     assert [summary.session_id for summary in SessionManager.find_sessions(tmp_path, SessionQuery(named=True))] == [
-        first.get_header().id
+        first.get_header().conversation_id
     ]
     assert SessionManager.find_sessions(tmp_path, SessionQuery(text="re:(")) == []
 
@@ -630,7 +626,7 @@ def test_find_sessions_relevance_sort_scores_earlier_matches_before_recent(tmp_p
 
     result = SessionManager.find_sessions(tmp_path, SessionQuery(text='"brave"', sort_by="relevance"))
 
-    assert [summary.session_id for summary in result] == [early_match.get_header().id, later_match.get_header().id]
+    assert [summary.session_id for summary in result] == [early_match.get_header().conversation_id, later_match.get_header().conversation_id]
 
 
 def test_session_summary_searches_all_messages_and_uses_message_modified_time(tmp_path) -> None:
@@ -677,11 +673,11 @@ def test_session_summary_searches_all_messages_and_uses_message_modified_time(tm
     assert summary.all_messages_text == "initial alpha task middle-only searchable needle"
     assert summary.updated_at == "1970-01-01T00:33:20Z"
     assert [item.session_id for item in SessionManager.find_sessions(tmp_path, SessionQuery(text="middle-only"))] == [
-        first.get_header().id
+        first.get_header().conversation_id
     ]
     assert [item.session_id for item in SessionManager.list_summaries(tmp_path)] == [
-        second.get_header().id,
-        first.get_header().id,
+        second.get_header().conversation_id,
+        first.get_header().conversation_id,
     ]
 
 
@@ -786,10 +782,10 @@ def test_session_manager_writes_and_queries_session_index(tmp_path) -> None:
         summary.session_id for summary in root_summaries
     ]
     assert [summary.session_id for summary in SessionManager.find_indexed_sessions(tmp_path, SessionQuery(text="alpha"))] == [
-        first.get_header().id
+        first.get_header().conversation_id
     ]
     assert [summary.session_id for summary in SessionManager.find_all_indexed_sessions(tmp_path, SessionQuery(text="beta"))] == [
-        nested.get_header().id
+        nested.get_header().conversation_id
     ]
     assert [summary.session_id for summary in SessionManager.list_all_indexed_summaries(tmp_path)] == [
         nested_summaries[0].session_id,
@@ -807,8 +803,8 @@ def test_session_manager_rebuilds_invalid_session_index(tmp_path) -> None:
 
     summaries = SessionManager.list_indexed_summaries(tmp_path)
 
-    assert [summary.session_id for summary in summaries] == [session.get_header().id]
-    assert SessionManager.load_index(tmp_path)[0].session_id == session.get_header().id
+    assert [summary.session_id for summary in summaries] == [session.get_header().conversation_id]
+    assert SessionManager.load_index(tmp_path)[0].session_id == session.get_header().conversation_id
 
 
 def test_session_manager_preserves_corrupt_index_for_diagnostics(tmp_path) -> None:
@@ -822,7 +818,7 @@ def test_session_manager_preserves_corrupt_index_for_diagnostics(tmp_path) -> No
 
     summaries = SessionManager.list_indexed_summaries(tmp_path)
 
-    assert [summary.session_id for summary in summaries] == [session.get_header().id]
+    assert [summary.session_id for summary in summaries] == [session.get_header().conversation_id]
     corrupt_files = sorted(tmp_path.glob(".session-index.json.corrupt-*"))
     assert len(corrupt_files) == 1
     assert corrupt_files[0].read_text(encoding="utf-8") == "not-json\n"
@@ -846,8 +842,8 @@ def test_session_manager_rebuilds_stale_index_when_indexed_session_file_disappea
     summaries = SessionManager.list_indexed_summaries(tmp_path)
     raw_index = json.loads(SessionManager.index_file(tmp_path).read_text(encoding="utf-8"))
 
-    assert [summary.session_id for summary in summaries] == [first.get_header().id]
-    assert [item["session_id"] for item in raw_index["summaries"]] == [first.get_header().id]
+    assert [summary.session_id for summary in summaries] == [first.get_header().conversation_id]
+    assert [item["session_id"] for item in raw_index["summaries"]] == [first.get_header().conversation_id]
 
 
 def test_session_manager_rebuilds_nested_stale_indexes_during_all_index_query(tmp_path) -> None:
@@ -869,7 +865,7 @@ def test_session_manager_rebuilds_nested_stale_indexes_during_all_index_query(tm
     summaries = SessionManager.list_all_indexed_summaries(tmp_path)
     nested_index = json.loads(SessionManager.index_file(nested_dir).read_text(encoding="utf-8"))
 
-    assert [summary.session_id for summary in summaries] == [root.get_header().id]
+    assert [summary.session_id for summary in summaries] == [root.get_header().conversation_id]
     assert nested_index["summaries"] == []
 
 
@@ -902,7 +898,7 @@ def test_session_manager_open_can_override_session_dir_and_cwd(tmp_path) -> None
     assert opened.get_cwd() == "/tmp/current"
     assert opened.get_session_dir() == future_dir
     assert opened.get_session_file() == manager.get_session_file()
-    assert opened.get_header().cwd == "/tmp/current"
+    assert opened.get_header().metadata["cwd"] == "/tmp/current"
 
 
 def test_session_manager_open_recovers_invalid_empty_session_file(tmp_path) -> None:
@@ -927,41 +923,39 @@ def test_session_manager_open_recovers_invalid_empty_session_file(tmp_path) -> N
     assert recovered.get_cwd() == "/tmp/current"
     assert recovered.get_entries() == []
     assert len(lines) == 1
-    assert json.loads(lines[0])["type"] == "session"
-    assert reopened.get_header().id == recovered.get_header().id
+    assert json.loads(lines[0])["type"] == "conversation"
+    assert reopened.get_header().conversation_id == recovered.get_header().conversation_id
     assert reopened.get_cwd() == "/tmp/current"
 
 
-def test_session_manager_open_recovers_invalid_header_session_file(tmp_path) -> None:
-    import json
+def test_session_manager_open_rejects_invalid_header_session_file(tmp_path) -> None:
+    import pytest
 
-    from loushang.coding.store import SessionManager
+    from loushang.coding.store import SessionFileError, SessionManager
 
     session_file = tmp_path / "broken.jsonl"
     session_file.write_text("not-json\n", encoding="utf-8")
 
-    recovered = SessionManager.open(session_file, cwd_override="/tmp/current", persist=True)
+    with pytest.raises(SessionFileError, match="invalid strict JSON"):
+        SessionManager.open(session_file, cwd_override="/tmp/current", persist=True)
 
-    header = json.loads(session_file.read_text(encoding="utf-8").splitlines()[0])
-    assert header["type"] == "session"
-    assert header["cwd"] == "/tmp/current"
-    assert recovered.get_header().id == header["id"]
+    assert session_file.read_text(encoding="utf-8") == "not-json\n"
 
 
-def test_session_manager_open_recovers_missing_header_session_file(tmp_path) -> None:
-    import json
+def test_session_manager_open_rejects_missing_header_session_file(tmp_path) -> None:
+    import pytest
 
-    from loushang.coding.store import SessionManager
+    from loushang.coding.store import SessionFileError, SessionManager
 
     session_file = tmp_path / "not-session.jsonl"
     session_file.write_text('{"type":"message","id":"e1","timestamp":"x"}\n', encoding="utf-8")
 
-    recovered = SessionManager.open(session_file, cwd_override="/tmp/current", persist=True)
+    with pytest.raises(SessionFileError, match="neither Session v3 nor Native"):
+        SessionManager.open(session_file, cwd_override="/tmp/current", persist=True)
 
-    lines = session_file.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 1
-    assert json.loads(lines[0])["type"] == "session"
-    assert recovered.get_entries() == []
+    assert session_file.read_text(encoding="utf-8") == (
+        '{"type":"message","id":"e1","timestamp":"x"}\n'
+    )
 
 
 def test_session_manager_continue_recent_uses_latest_summary_or_creates_new(tmp_path) -> None:
@@ -993,7 +987,7 @@ def test_session_manager_continue_recent_uses_latest_summary_or_creates_new(tmp_
 
     assert continued.get_session_file() == newer.get_session_file()
     assert continued.get_cwd() == "/tmp/current"
-    assert continued.get_header().cwd == "/tmp/current"
+    assert continued.get_header().metadata["cwd"] == "/tmp/current"
 
 
 def test_session_manager_in_memory_and_fork_from(tmp_path) -> None:
@@ -1023,5 +1017,5 @@ def test_session_manager_in_memory_and_fork_from(tmp_path) -> None:
     assert forked.get_cwd() == "/tmp/target"
     assert forked.get_session_file() is not None
     assert forked.get_session_file().parent == tmp_path / "target"
-    assert forked.get_header().parent_session == str(source.get_session_file())
-    assert [entry.id for entry in forked.get_entries()] == [entry.id for entry in source.get_entries()]
+    assert forked.get_header().metadata["parentSession"] == str(source.get_session_file())
+    assert [entry.record_id for entry in forked.get_entries()] == [entry.record_id for entry in source.get_entries()]

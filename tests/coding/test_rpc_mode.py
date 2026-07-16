@@ -29,7 +29,6 @@ from loushang.coding.loader import (
     ResourceBundle,
     SkillDescriptor,
 )
-from loushang.coding.message import SessionMessageEntry
 from loushang.coding.session.types import (
     AgentSessionState,
     CommandSourceInfo,
@@ -38,6 +37,8 @@ from loushang.coding.session.types import (
 )
 from loushang.coding.store import SessionQuery
 from loushang.coding.types import ModelSelection
+from loushang.harness.agent_transcript import AGENT_MESSAGE_KIND
+from loushang.harness.conversation import ConversationRecord
 
 
 def _assistant_message(text: str) -> AssistantMessage:
@@ -60,6 +61,17 @@ def _user_message(text: str) -> UserMessage:
         role="user",
         content=[TextPart(type="text", text=text)],
         timestamp=0.0,
+    )
+
+
+def _message_record(record_id: str, message: UserMessage) -> ConversationRecord[object]:
+    return ConversationRecord(
+        record_id=record_id,
+        parent_id=None,
+        kind=AGENT_MESSAGE_KIND,
+        payload_version=1,
+        created_at="2026-05-21T00:00:00Z",
+        payload=message,
     )
 
 
@@ -443,8 +455,7 @@ class FakeSession:
         entry = self.session_manager.get_entry(entry_id)
         if entry is None:
             return None
-        message = getattr(entry, "message", None)
-        content = getattr(message, "content", getattr(entry, "content", None))
+        content = getattr(getattr(entry, "payload", None), "content", None)
         if isinstance(content, str):
             return content or None
         if isinstance(content, list):
@@ -1644,13 +1655,7 @@ def test_rpc_mode_fork_response_includes_selected_user_text() -> None:
     current = FakeSession(session_id="session-a", cwd="/tmp/project-a")
     current.session_manager.set_entry(
         "entry-42",
-        SessionMessageEntry(
-            type="message",
-            id="entry-42",
-            parent_id=None,
-            timestamp="2026-05-21T00:00:00Z",
-            message=_user_message("selected text"),
-        ),
+        _message_record("entry-42", _user_message("selected text")),
     )
     next_session = FakeSession(session_id="session-b", cwd="/tmp/project-b")
     runtime = FakeRuntime(current)
@@ -1674,13 +1679,7 @@ def test_rpc_mode_fork_accepts_at_position() -> None:
     current = FakeSession(session_id="session-a", cwd="/tmp/project-a")
     current.session_manager.set_entry(
         "entry-42",
-        SessionMessageEntry(
-            type="message",
-            id="entry-42",
-            parent_id=None,
-            timestamp="2026-05-21T00:00:00Z",
-            message=_user_message("selected text"),
-        ),
+        _message_record("entry-42", _user_message("selected text")),
     )
     next_session = FakeSession(session_id="session-b", cwd="/tmp/project-b")
     runtime = FakeRuntime(current)

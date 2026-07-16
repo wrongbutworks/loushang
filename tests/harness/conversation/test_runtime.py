@@ -155,6 +155,8 @@ def test_conversation_repository_persists_branches_builds_tree_and_folds(
         writable=False,
     )
     assert read_only.path == path
+    with pytest.raises(RuntimeError, match="read-only"):
+        read_only.append(_record("blocked", "right", "blocked"))
 
 
 def test_conversation_repository_forks_only_the_selected_branch() -> None:

@@ -92,17 +92,18 @@ def test_coding_work_shell_wraps_prompt_and_logs_operation_run_and_projected_eve
 
 
 def test_coding_work_shell_projects_custom_messages_with_product_codec() -> None:
-    from loushang.coding.message import create_custom_message
     from loushang.coding.work_shell import CodingWorkShell
+    from loushang.harness.agent_transcript import ApplicationMessage
     from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
-        message = create_custom_message(
+        message = ApplicationMessage(
+            application_message_id="application-1",
             custom_type="review-note",
             content="check this",
             display=True,
             details={"severity": "warning"},
-            timestamp="2026-06-01T10:30:00+00:00",
+            timestamp=1_780_309_800.0,
         )
         event_log = InMemoryEventLogBackend()
         shell = CodingWorkShell(
@@ -122,12 +123,15 @@ def test_coding_work_shell_projects_custom_messages_with_product_codec() -> None
 
         projected = event_log.query(run_id="run-1")[2]
         assert projected.payload["payload"]["message"] == {
-            "role": "custom",
-            "customType": "review-note",
+                "role": "application",
+                "applicationMessageId": "application-1",
+                "customType": "review-note",
                 "content": "check this",
                 "display": True,
                 "details": {"severity": "warning"},
                 "timestamp": message.timestamp,
+                "origin": "application",
+                "deliveryMode": "direct",
             }
 
     asyncio.run(scenario())

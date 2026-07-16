@@ -15,26 +15,14 @@ from loushang.coding.compaction.types import (
     CompactionPreparation,
     CompactionResult,
 )
-from loushang.coding.message import (
-    BranchSummaryEntry,
-    CompactionEntry,
-    CustomMessageEntry,
-    SessionEntry,
-    SessionMessageEntry,
-    create_branch_summary_message,
-    create_custom_message,
+from loushang.harness.agent_transcript import (
+    AgentTranscriptProfile,
+    AgentTranscriptRecord,
+    ContextCompactionCheckpoint,
+    context_item_to_model_message,
 )
-from loushang.coding.message.custom_messages import (
-    BashExecutionMessage,
-    BranchSummaryMessage,
-    CompactionSummaryMessage,
-    CustomMessage,
-)
-from loushang.coding.message.transformers import convert_to_llm
 from loushang.harness.context import (
     ConversationCompactionPlanner,
-    ConversationPreviousSummary,
-    ConversationRecordPorts,
 )
 from loushang.harness.context.budget import calculate_compaction_budget
 from loushang.harness.context.summary import (
@@ -44,6 +32,12 @@ from loushang.harness.context.summary import (
 from loushang.harness.context.usage import ContextUsageEstimate
 
 TOOL_RESULT_MAX_CHARS = 2_000
+
+_TRANSCRIPT_PROFILE = AgentTranscriptProfile(
+    context_token_estimator=lambda messages: (
+        estimate_context_tokens(list(messages)).tokens
+    )
+)
 
 
 @dataclass(frozen=True)
@@ -125,7 +119,7 @@ def should_compact(
 
 
 def prepare_compaction(
-    entries: list[SessionEntry], keep_recent_tokens: int
+    entries: list[AgentTranscriptRecord], keep_recent_tokens: int
 ) -> CompactionPreparation:
     prepared = _prepare_compaction(entries, keep_recent_tokens)
     return CompactionPreparation(
@@ -141,7 +135,7 @@ def prepare_compaction(
 
 
 def plan_compaction(
-    entries: list[SessionEntry], keep_recent_tokens: int
+    entries: list[AgentTranscriptRecord], keep_recent_tokens: int
 ) -> CompactionPlan:
     return _prepare_compaction(entries, keep_recent_tokens).plan
 
@@ -161,7 +155,7 @@ def compaction_plan_to_payload(plan: CompactionPlan) -> dict[str, object]:
 
 
 def _prepare_compaction(
-    entries: list[SessionEntry], keep_recent_tokens: int
+    entries: list[AgentTranscriptRecord], keep_recent_tokens: int
 ) -> _PreparedCompaction:
     if not any(_entry_to_agent_message(entry) is not None for entry in entries):
         raise ValueError("Compaction requires at least one visible message entry.")
@@ -188,15 +182,15 @@ def _prepare_compaction(
             (
                 entry
                 for entry in entries
-                if entry.id == previous_boundary.record_id
-                and isinstance(entry, CompactionEntry)
+                if entry.record_id == previous_boundary.record_id
+                and isinstance(entry.payload, ContextCompactionCheckpoint)
             ),
             None,
         )
         if previous_entry is not None and isinstance(
-            previous_entry.first_kept_entry_id, str
+            previous_entry.payload.first_kept_record_id, str
         ):
-            previous_first_kept_entry_id = previous_entry.first_kept_entry_id
+            previous_first_kept_entry_id = previous_entry.payload.first_kept_record_id
     plan = CompactionPlan(
         previous_compaction_id=(
             previous_boundary.record_id if previous_boundary is not None else None
@@ -220,62 +214,14 @@ def _prepare_compaction(
     )
 
 
-def _compaction_record_role(entry: SessionEntry) -> str | None:
-    if isinstance(entry, BranchSummaryEntry | CustomMessageEntry):
-        return "user"
-    message = _entry_to_agent_message(entry)
-    role = getattr(message, "role", None)
-    return role if isinstance(role, str) else None
-
-
-def _compaction_record_tokens(entry: SessionEntry) -> int:
-    message = _entry_to_agent_message(entry)
-    return _estimate_message_tokens(message) if message is not None else 0
-
-
-def _compaction_context_tokens(entries: tuple[SessionEntry, ...]) -> int:
-    messages = [
-        message
-        for entry in entries
-        if (message := _entry_to_agent_message(entry)) is not None
-    ]
-    return estimate_context_tokens(messages).tokens
-
-
-def _previous_compaction(
-    entry: SessionEntry,
-) -> ConversationPreviousSummary[str] | None:
-    if not isinstance(entry, CompactionEntry):
-        return None
-    return ConversationPreviousSummary(
-        first_kept_record_id=_compatible_first_kept_entry_id(entry),
-        content=entry.summary,
-    )
-
-
-def _compatible_first_kept_entry_id(entry: CompactionEntry) -> str:
-    value = entry.first_kept_entry_id
-    if isinstance(value, str) and value.strip():
-        return value
-    return f"__missing_first_kept__:{entry.id}"
-
-
-def _coding_compaction_planner() -> ConversationCompactionPlanner[SessionEntry, str]:
+def _coding_compaction_planner() -> ConversationCompactionPlanner[
+    AgentTranscriptRecord, str
+]:
     return ConversationCompactionPlanner(
-        ConversationRecordPorts(
-            record_id=lambda entry: entry.id,
-            is_visible=lambda entry: _entry_to_agent_message(entry) is not None,
-            role=_compaction_record_role,
-            estimate_tokens=_compaction_record_tokens,
-            estimate_context_tokens=_compaction_context_tokens,
-            separates_cut_group=lambda entry: isinstance(
-                entry, CompactionEntry | SessionMessageEntry
-            ),
-            previous_summary=_previous_compaction,
-        ),
-        turn_start_roles=frozenset({"user", "bashExecution"}),
+        _TRANSCRIPT_PROFILE.record_ports(),
+        turn_start_roles=frozenset({"user"}),
         non_cut_roles=frozenset({"toolResult"}),
-        missing_previous_summary="summary_only",
+        missing_previous_summary="error",
     )
 
 
@@ -397,45 +343,11 @@ def _estimate_message_tokens(message: AgentMessage) -> int:
                 chars += 4_800
         return (chars + 3) // 4
 
-    if isinstance(message, BashExecutionMessage):
-        chars = len(message.command) + len(message.output)
-        return (chars + 3) // 4
-
-    if isinstance(message, CustomMessage):
-        if isinstance(message.content, str):
-            chars = len(message.content)
-        else:
-            for block in message.content:
-                if getattr(block, "type", None) == "text":
-                    chars += len(block.text)
-                elif getattr(block, "type", None) == "image":
-                    chars += 4_800
-        return (chars + 3) // 4
-
-    if isinstance(message, BranchSummaryMessage | CompactionSummaryMessage):
-        return (len(message.summary) + 3) // 4
-
     return 0
 
 
-def _entry_to_agent_message(entry: SessionEntry) -> AgentMessage | None:
-    if isinstance(entry, SessionMessageEntry):
-        return entry.message
-    if isinstance(entry, CustomMessageEntry):
-        return create_custom_message(
-            custom_type=entry.custom_type,
-            content=entry.content,
-            display=entry.display,
-            details=entry.details,
-            timestamp=entry.timestamp,
-        )
-    if isinstance(entry, BranchSummaryEntry):
-        return create_branch_summary_message(
-            summary=entry.summary,
-            from_id=entry.from_id,
-            timestamp=entry.timestamp,
-        )
-    return None
+def _entry_to_agent_message(entry: AgentTranscriptRecord) -> AgentMessage | None:
+    return _TRANSCRIPT_PROFILE.record_to_context_item(entry)
 
 
 async def _summarize_messages(
@@ -450,7 +362,13 @@ async def _summarize_messages(
     mode = "update" if preparation.previous_summary else "initial"
     prompt = build_summary_prompt(
         CODING_COMPACTION_SUMMARY_PROFILE,
-        _serialize_conversation(convert_to_llm(preparation.messages_to_summarize)),
+        _serialize_conversation(
+            [
+                projected
+                for message in preparation.messages_to_summarize
+                if (projected := context_item_to_model_message(message)) is not None
+            ]
+        ),
         mode=mode,
         previous_summary=preparation.previous_summary,
         custom_instructions=custom_instructions,
@@ -486,7 +404,7 @@ async def _summarize_turn_prefix(
 ) -> str:
     prompt = build_summary_prompt(
         CODING_TURN_PREFIX_SUMMARY_PROFILE,
-        _serialize_conversation(convert_to_llm(messages)),
+        _serialize_conversation(_model_messages(messages)),
         mode="turn-prefix",
         previous_summary=None,
         custom_instructions=None,
@@ -518,7 +436,7 @@ def _build_summarization_prompt(
     previous_summary: str | None,
     custom_instructions: str | None,
 ) -> str:
-    conversation = _serialize_conversation(convert_to_llm(messages))
+    conversation = _serialize_conversation(_model_messages(messages))
     return compose_summary_prompt(
         content=conversation,
         instructions=base_prompt,
@@ -559,6 +477,14 @@ def _serialize_conversation(messages: Sequence[object]) -> str:
             if text:
                 parts.append(f"[Tool result]: {_truncate_for_summary(text)}")
     return "\n\n".join(parts)
+
+
+def _model_messages(messages: Sequence[AgentMessage]) -> list[object]:
+    return [
+        projected
+        for message in messages
+        if (projected := context_item_to_model_message(message)) is not None
+    ]
 
 
 def _content_text(content: object) -> str:
