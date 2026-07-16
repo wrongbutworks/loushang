@@ -1396,34 +1396,9 @@ def test_anthropic_cache_retention_none_suppresses_cache_key_fields(
     assert "cache_control" not in payload["messages"][0]["content"][0]
 
 
-def test_anthropic_provider_clamps_explicit_max_tokens(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _fake_anthropic_module(
-        monkeypatch,
-        [
-            SimpleNamespace(
-                type="message_start",
-                message=SimpleNamespace(id="resp_1", usage=None),
-            ),
-            SimpleNamespace(type="message_stop"),
-        ],
-    )
-
-    provider = AnthropicProvider()
-    stream = asyncio.run(
-        _stream(
-            provider,
-            Model(
-                id="claude-test", provider="anthropic", endpoint="anthropic-messages"
-            ),
-            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
-            CallOptions(auth=ApiKeyAuth("test-key"), max_output_tokens=0),
-        )
-    )
-    asyncio.run(stream.result())
-
-    assert _FakeAsyncAnthropic.last_stream_kwargs["max_tokens"] == 1
+def test_call_options_rejects_max_tokens_before_anthropic_provider() -> None:
+    with pytest.raises(ValueError, match="max_output_tokens"):
+        CallOptions(auth=ApiKeyAuth("test-key"), max_output_tokens=0)
 
 
 def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(

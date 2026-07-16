@@ -23,7 +23,6 @@ ROOT_STABLE_EXPORTS = (
     "OAuthBearerAuth",
     "ReasoningOptions",
     "RetryOptions",
-    "TimeoutOptions",
     "ThinkingLevel",
     "StructuredOutputError",
     "StructuredOutputOptions",
@@ -66,7 +65,6 @@ API_NON_ENTRYPOINTS = (
     "StopReason",
     "TextSignatureV1",
     "ThinkingLevel",
-    "TimeoutOptions",
 )
 
 ADVANCED_ROOT_EXPORTS_REMOVED = {

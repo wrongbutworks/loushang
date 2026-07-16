@@ -143,12 +143,13 @@
 - `temperature`
 - `max_output_tokens`
 - `cancellation`
-- `api_key`
-- `headers`
+- `auth`
 - `cache_key`
+- `cache_retention`
 - `reasoning`
 - `retry`
-- `timeout`
+- `timeout_seconds`
+- `idle_timeout_seconds`
 - `trace`
 
 `cache_key` 是调用方提供的不透明缓存/亲和键；协议 adapter 可以把它映射为
@@ -174,15 +175,8 @@
 - `max_attempts`
 - `max_delay_seconds`
 
-### TimeoutOptions
-
-超时相关选项。
-
-典型属性包括：
-
-- `connect_seconds`
-- `total_seconds`
-- `idle_seconds`
+`timeout_seconds` 是单次 provider attempt 的完整 deadline；
+`idle_timeout_seconds` 是 stream 相邻 raw part 之间的最大空闲时间。
 
 ### ThinkingLevel
 

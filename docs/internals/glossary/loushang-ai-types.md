@@ -427,16 +427,16 @@ assistant message 用量统计。
 
 建议字段：
 
-- `temperature: float | None = None`
+- `temperature: float | int | None = None`
 - `max_output_tokens: int | None = None`
 - `cancellation: object | None = None`
-- `api_key: str | None = None`
+- `auth: AuthCredential | None = None`
 - `cache_retention: CacheRetention | None = None`
 - `cache_key: str | None = None`
-- `headers: dict[str, str] | None = None`
 - `reasoning: ReasoningOptions | None = None`
 - `retry: RetryOptions | None = None`
-- `timeout: TimeoutOptions | None = None`
+- `timeout_seconds: float | int | None = None`
+- `idle_timeout_seconds: float | int | None = None`
 - `trace: object | None = None`
 
 说明：
@@ -446,6 +446,8 @@ assistant message 用量统计。
 - provider 与 streaming 层应在调用前、流式迭代中与收敛结果前检查该信号
 - 检测到取消后，应映射为 `aborted` 协议语义
 - `cache_key` 是调用方提供的不透明缓存/亲和键，不是 AI 包管理的 session
+- `timeout_seconds` 是单次 provider attempt 的完整 deadline
+- `idle_timeout_seconds` 只约束 stream 相邻 raw part 之间的空闲时间
 
 ### ReasoningOptions
 
@@ -454,7 +456,7 @@ assistant message 用量统计。
 建议字段：
 
 - `enabled: bool | None = None`
-- `effort: ThinkingLevel | str | None = None`
+- `effort: ThinkingLevel | None = None`
 - `budget_tokens: int | None = None`
 - `expose_summary: bool = False`
 
@@ -466,16 +468,6 @@ assistant message 用量统计。
 
 - `max_attempts: int = 1`
 - `max_delay_seconds: float = 30.0`
-
-### TimeoutOptions
-
-超时相关选项。
-
-建议字段：
-
-- `connect_seconds: float | int | None = None`
-- `total_seconds: float | int | None = None`
-- `idle_seconds: float | int | None = None`
 
 ### Provider-Specific Options
 

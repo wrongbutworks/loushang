@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 import loushang.ai.provider.runtime as runtime_module
-from loushang.ai.errors import AIProviderProtocolError
+from loushang.ai.errors import AIProviderProtocolError, AITimeoutError
 from loushang.ai.model import Auth, Model
 from loushang.ai.options import CallOptions, RetryOptions
 from loushang.ai.provider import ProviderRequest
@@ -703,6 +703,126 @@ def test_provider_runtime_consumer_close_closes_source_without_leaking_task() ->
     assert asyncio.run(_run()) is True
 
 
+def test_provider_runtime_total_deadline_times_out_and_closes_source() -> None:
+    source = _BlockingRawSource()
+
+    async def _run():
+        stream = start_provider_runtime(
+            lambda: source,
+            options=CallOptions(timeout_seconds=0.02),
+            request=_request(),
+        )
+        events = [event async for event in stream]
+        await asyncio.wait_for(source.closed.wait(), timeout=1)
+        return events
+
+    events = asyncio.run(_run())
+
+    assert [event["type"] for event in events] == ["error"]
+    assert events[0]["error_info"]["code"] == "timeout"
+
+
+def test_provider_runtime_idle_timeout_applies_between_raw_parts() -> None:
+    closed = asyncio.Event()
+
+    async def _parts():
+        try:
+            yield {"type": "response_start", "response_id": "resp_idle"}
+            await asyncio.sleep(10)
+            yield {"type": "response_done"}
+        finally:
+            closed.set()
+
+    async def _run():
+        stream = start_provider_runtime(
+            _parts,
+            options=CallOptions(idle_timeout_seconds=0.02),
+            request=_request(),
+        )
+        events = [event async for event in stream]
+        await asyncio.wait_for(closed.wait(), timeout=1)
+        return events
+
+    events = asyncio.run(_run())
+
+    assert [event["type"] for event in events] == ["start", "error"]
+    assert events[-1]["error_info"]["code"] == "timeout"
+
+
+def test_provider_runtime_idle_timeout_does_not_apply_before_first_raw_part() -> None:
+    async def _parts():
+        await asyncio.sleep(0.02)
+        yield {"type": "response_start", "response_id": "resp_first"}
+        yield {"type": "response_done"}
+
+    async def _run():
+        stream = start_provider_runtime(
+            _parts,
+            options=CallOptions(
+                timeout_seconds=0.2,
+                idle_timeout_seconds=0.005,
+            ),
+            request=_request(),
+        )
+        return [event async for event in stream]
+
+    events = asyncio.run(_run())
+
+    assert [event["type"] for event in events] == ["start", "done"]
+
+
+def test_provider_runtime_total_deadline_wins_while_tokens_keep_arriving() -> None:
+    closed = asyncio.Event()
+
+    async def _parts():
+        try:
+            yield {"type": "response_start", "response_id": "resp_total"}
+            while True:
+                await asyncio.sleep(0.005)
+                yield {"type": "text_delta", "text": "."}
+        finally:
+            closed.set()
+
+    async def _run():
+        stream = start_provider_runtime(
+            _parts,
+            options=CallOptions(
+                timeout_seconds=0.04,
+                idle_timeout_seconds=0.02,
+            ),
+            request=_request(),
+        )
+        events = [event async for event in stream]
+        await asyncio.wait_for(closed.wait(), timeout=1)
+        return events
+
+    events = asyncio.run(_run())
+
+    assert any(event["type"] == "text_delta" for event in events)
+    assert events[-1]["type"] == "error"
+    assert events[-1]["error_info"]["code"] == "timeout"
+
+
+def test_provider_runtime_complete_mode_timeout_raises_typed_error() -> None:
+    source = _BlockingRawSource()
+
+    async def _run() -> AITimeoutError:
+        stream = start_provider_runtime(
+            lambda: source,
+            options=CallOptions(timeout_seconds=0.02),
+            request=_request(mode="complete"),
+        )
+        with pytest.raises(AITimeoutError) as exc_info:
+            await stream.result()
+        await asyncio.wait_for(source.closed.wait(), timeout=1)
+        return exc_info.value
+
+    error = asyncio.run(_run())
+
+    assert error.info.code.value == "timeout"
+    assert error.info.provider == "provider-a"
+
+
 def _model() -> Model:
     return Model(
         id="model-a",
@@ -714,13 +834,14 @@ def _model() -> Model:
     )
 
 
-def _request() -> ProviderRequest:
+def _request(*, mode: str = "stream") -> ProviderRequest:
     return ProviderRequest(
         model=_model(),
         provider="provider-a",
         endpoint="openai-responses",
         api="openai-responses",
         base_url="https://provider.test/v1",
+        mode=mode,  # type: ignore[arg-type]
     )
 
 

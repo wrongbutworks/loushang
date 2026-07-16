@@ -2312,7 +2312,7 @@ def test_openai_completions_payload_synthesizes_missing_tool_result_for_assistan
     ]
 
 
-def test_openai_completions_uses_transport_timeout_when_options_omits_timeout(
+def test_openai_completions_leaves_timeout_ownership_to_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
@@ -2335,7 +2335,7 @@ def test_openai_completions_uses_transport_timeout_when_options_omits_timeout(
         )
     )
 
-    assert _FakeAsyncOpenAI.last_init_kwargs["timeout"] == 12
+    assert "timeout" not in _FakeAsyncOpenAI.last_init_kwargs
 
 
 def test_openai_completions_stream_maps_thinking_tool_calls_and_reasoning_details(

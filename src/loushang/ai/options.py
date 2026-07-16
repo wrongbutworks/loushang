@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal
+from math import isfinite
+from typing import Literal
+from unicodedata import category
 
 from loushang.ai.auth.credentials import AuthCredential
 from loushang.ai.structured import StructuredOutputOptions
@@ -14,15 +17,32 @@ ThinkingLevel = Literal["minimal", "low", "medium", "high", "xhigh"]
 CacheRetention = Literal["none", "short", "long"]
 
 
-ToolChoice = str | dict[str, Any]
+ToolChoice = str | Mapping[str, object]
+
+_TOOL_CHOICE_STRINGS = frozenset({"auto", "none", "required", "any"})
+_THINKING_LEVELS = frozenset({"minimal", "low", "medium", "high", "xhigh"})
 
 
 @dataclass(frozen=True, slots=True)
 class ReasoningOptions:
     enabled: bool | None = None
-    effort: ThinkingLevel | str | None = None
+    effort: ThinkingLevel | None = None
     budget_tokens: int | None = None
     expose_summary: bool = False
+
+    def __post_init__(self) -> None:
+        if self.enabled is not None and not isinstance(self.enabled, bool):
+            raise TypeError("enabled must be a boolean or None")
+        if self.effort is not None and self.effort not in _THINKING_LEVELS:
+            raise ValueError(f"Unsupported reasoning effort: {self.effort!r}")
+        if self.budget_tokens is not None and (
+            isinstance(self.budget_tokens, bool)
+            or not isinstance(self.budget_tokens, int)
+            or self.budget_tokens <= 0
+        ):
+            raise ValueError("budget_tokens must be a positive integer or None")
+        if not isinstance(self.expose_summary, bool):
+            raise TypeError("expose_summary must be a boolean")
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,12 +50,20 @@ class RetryOptions:
     max_attempts: int = 1
     max_delay_seconds: float = 30.0
 
-
-@dataclass(frozen=True, slots=True)
-class TimeoutOptions:
-    connect_seconds: float | int | None = None
-    total_seconds: float | int | None = None
-    idle_seconds: float | int | None = None
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.max_attempts, bool)
+            or not isinstance(self.max_attempts, int)
+            or self.max_attempts < 1
+        ):
+            raise ValueError("max_attempts must be an integer greater than or equal to 1")
+        if (
+            isinstance(self.max_delay_seconds, bool)
+            or not isinstance(self.max_delay_seconds, int | float)
+            or not isfinite(self.max_delay_seconds)
+            or self.max_delay_seconds < 0
+        ):
+            raise ValueError("max_delay_seconds must be a finite non-negative number")
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,7 +74,8 @@ class CallOptions:
     cache_key: str | None = None
     max_output_tokens: int | None = None
     temperature: float | int | None = None
-    timeout: TimeoutOptions | None = None
+    timeout_seconds: float | int | None = None
+    idle_timeout_seconds: float | int | None = None
     retry: RetryOptions | None = None
     trace: object | None = None
     pairing_mode: PairingMode = "strict"
@@ -60,16 +89,98 @@ class CallOptions:
                 raise TypeError("cache_key must be a string or None")
             if not self.cache_key.strip():
                 raise ValueError("cache_key must be non-empty")
+            if any(category(character) == "Cc" for character in self.cache_key):
+                raise ValueError("cache_key must not contain control characters")
+        if self.max_output_tokens is not None and (
+            isinstance(self.max_output_tokens, bool)
+            or not isinstance(self.max_output_tokens, int)
+            or self.max_output_tokens <= 0
+        ):
+            raise ValueError("max_output_tokens must be a positive integer or None")
+        if self.temperature is not None and (
+            isinstance(self.temperature, bool)
+            or not isinstance(self.temperature, int | float)
+            or not isfinite(self.temperature)
+        ):
+            raise ValueError("temperature must be a finite number or None")
+        if self.cache_retention not in {None, "none", "short", "long"}:
+            raise ValueError(f"Unsupported cache_retention: {self.cache_retention!r}")
+        if self.pairing_mode not in {"strict", "repair"}:
+            raise ValueError(f"Unsupported pairing_mode: {self.pairing_mode!r}")
+        _validate_optional_positive_number(self.timeout_seconds, "timeout_seconds")
+        _validate_optional_positive_number(
+            self.idle_timeout_seconds,
+            "idle_timeout_seconds",
+        )
+        if self.retry is not None and not isinstance(self.retry, RetryOptions):
+            raise TypeError("retry must be RetryOptions")
         if self.reasoning is not None and not isinstance(
             self.reasoning, ReasoningOptions
         ):
             raise TypeError("reasoning must be ReasoningOptions")
+        _validate_tool_choice(self.tool_choice)
+
+
+def _validate_optional_positive_number(value: object, field_name: str) -> None:
+    if value is None:
+        return
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not isfinite(value)
+        or value <= 0
+    ):
+        raise ValueError(f"{field_name} must be a finite positive number or None")
+
+
+def _validate_tool_choice(value: ToolChoice | None) -> None:
+    if value is None:
+        return
+    if isinstance(value, str):
+        if value not in _TOOL_CHOICE_STRINGS:
+            raise ValueError(f"Unsupported tool_choice: {value!r}")
+        return
+    if not isinstance(value, Mapping):
+        raise TypeError("tool_choice must be a supported string or mapping")
+
+    choice_type = value.get("type")
+    if isinstance(choice_type, str) and choice_type in _TOOL_CHOICE_STRINGS:
+        allowed = {"type", "disable_parallel_tool_use"}
+        disable_parallel = value.get("disable_parallel_tool_use")
+        if set(value) <= allowed and (
+            disable_parallel is None or isinstance(disable_parallel, bool)
+        ):
+            return
+    if (
+        choice_type == "tool"
+        and set(value) == {"type", "name"}
+        and isinstance(value.get("name"), str)
+        and value["name"]
+    ):
+        return
+    if choice_type == "function":
+        if (
+            set(value) == {"type", "name"}
+            and isinstance(value.get("name"), str)
+            and value["name"]
+        ):
+            return
+        if set(value) == {"type", "function"}:
+            function = value.get("function")
+            if (
+                isinstance(function, Mapping)
+                and set(function) == {"name"}
+                and isinstance(function.get("name"), str)
+                and function["name"]
+            ):
+                return
+    raise ValueError("tool_choice mapping has an unsupported shape")
 
 def get_max_output_tokens(options: object | None) -> int | None:
     if options is None:
         return None
     value = getattr(options, "max_output_tokens", None)
-    return value if isinstance(value, int) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def get_reasoning_options(options: object | None) -> ReasoningOptions | None:
@@ -111,6 +222,8 @@ def is_reasoning_requested(options: object | None) -> bool:
         return False
     reasoning = get_reasoning_options(options)
     if reasoning is not None:
+        if reasoning.enabled is False:
+            return False
         return bool(
             reasoning.enabled
             or reasoning.effort
@@ -123,11 +236,29 @@ def is_reasoning_requested(options: object | None) -> bool:
 def get_timeout_seconds(options: object | None) -> float | int | None:
     if options is None:
         return None
-    timeout = getattr(options, "timeout", None)
-    if isinstance(timeout, TimeoutOptions):
-        value = timeout.total_seconds
-        return value if isinstance(value, int | float) and value > 0 else None
-    return None
+    value = getattr(options, "timeout_seconds", None)
+    return (
+        value
+        if isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and isfinite(value)
+        and value > 0
+        else None
+    )
+
+
+def get_idle_timeout_seconds(options: object | None) -> float | int | None:
+    if options is None:
+        return None
+    value = getattr(options, "idle_timeout_seconds", None)
+    return (
+        value
+        if isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and isfinite(value)
+        and value > 0
+        else None
+    )
 
 
 def get_retry_attempts(options: object | None) -> int | None:
@@ -144,7 +275,7 @@ def get_retry_max_delay_ms(options: object | None) -> int | None:
         return None
     retry = getattr(options, "retry", None)
     if isinstance(retry, RetryOptions):
-        return int(max(0.0, retry.max_delay_seconds) * 1000)
+        return int(retry.max_delay_seconds * 1000)
     return None
 
 
@@ -156,6 +287,5 @@ __all__ = [
     "RetryOptions",
     "StructuredOutputOptions",
     "ThinkingLevel",
-    "TimeoutOptions",
     "ToolChoice",
 ]

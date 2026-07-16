@@ -207,7 +207,7 @@ def _validate_resolved_base_url(value: str) -> str:
 def _resolve_max_tokens(options, defaults: dict[str, object]) -> int | None:
     value = get_max_output_tokens(options)
     if isinstance(value, int):
-        return max(1, value)
+        return value
     if value is None:
         default_value = defaults.get("maxOutputTokens")
         if not isinstance(default_value, int):

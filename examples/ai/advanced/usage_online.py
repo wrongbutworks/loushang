@@ -28,7 +28,6 @@ from dataclasses import dataclass
 from loushang.ai import (
     CallOptions,
     Model,
-    TimeoutOptions,
     complete,
     get_model,
     stream,
@@ -139,7 +138,7 @@ def _build_options(
     del route
     return CallOptions(auth=ApiKeyAuth(api_key),
         max_output_tokens=max_tokens,
-        timeout=TimeoutOptions(total_seconds=timeout),
+        timeout_seconds=timeout,
     )
 
 

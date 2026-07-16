@@ -18,7 +18,6 @@ from loushang.ai.options import (
     ReasoningOptions,
     RetryOptions,
     ThinkingLevel,
-    TimeoutOptions,
 )
 from loushang.ai.structured import (
     StructuredOutputError,
@@ -86,7 +85,6 @@ __all__ = [
     "OAuthBearerAuth",
     "ReasoningOptions",
     "RetryOptions",
-    "TimeoutOptions",
     "ThinkingLevel",
     "StructuredOutputError",
     "StructuredOutputOptions",

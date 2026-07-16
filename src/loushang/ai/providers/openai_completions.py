@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from contextlib import suppress
@@ -10,7 +9,6 @@ from loushang.ai.context import NormalizedContext
 from loushang.ai.errors import AIProviderProtocolError, UnsupportedCapabilityError
 from loushang.ai.event_stream.raw_parts import RawPart, UsageDeltaPart
 from loushang.ai.model.domain import OpenAICompletionsConfig
-from loushang.ai.options import get_timeout_seconds
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.errors import (
@@ -97,13 +95,10 @@ class OpenAICompletionsProvider:
                 include_affinity=True,
             )
 
-        timeout_s = _resolve_timeout_seconds(options, resolved)
         client_kwargs: dict[str, Any] = {
             "api_key": "",
             "base_url": resolved.base_url,
         }
-        if isinstance(timeout_s, int | float):
-            client_kwargs["timeout"] = timeout_s
         client = self._client or AsyncOpenAI(**client_kwargs)  # type: ignore[call-arg]
         _debug("client", {"base_url": resolved.base_url, "headers": default_headers})
 
@@ -199,11 +194,7 @@ class OpenAICompletionsProvider:
             return
 
         stream_ctx = response
-        # 流式超时/空闲看门狗：若超过 timeout 无增量则报错退出，避免“假死”
-        inactivity_timeout = (
-            timeout_s if isinstance(timeout_s, (int, float)) and timeout_s > 0 else 30
-        )
-        _debug("stream_begin", {"inactivity_timeout": inactivity_timeout})
+        _debug("stream_begin")
         try:
             emitted_response_start = False
             emitted_any_text = False
@@ -213,20 +204,10 @@ class OpenAICompletionsProvider:
             received_finish_reason = False
             while True:
                 try:
-                    chunk = await asyncio.wait_for(
-                        stream_ctx.__anext__(), timeout=inactivity_timeout
-                    )  # type: ignore[attr-defined]
+                    chunk = await stream_ctx.__anext__()  # type: ignore[attr-defined]
                 except StopAsyncIteration:
                     _debug("stream_end", {"reason": "upstream_eof"})
                     break
-                except asyncio.TimeoutError:
-                    _debug("stream_timeout", {"after_seconds": inactivity_timeout})
-                    yield provider_error_part_from_raw(
-                        f"inactivity timeout after {inactivity_timeout}s",
-                        code="timeout",
-                        source=self.api,
-                    )
-                    return
                 except Exception as e:
                     _debug("stream_iter_error", {"exceptionType": type(e).__name__})
                     yield provider_error_part(e, source=self.api)
@@ -813,20 +794,6 @@ def _active_routing_namespace(
 def _uses_copilot_dynamic_headers(resolved: object) -> bool:
     transport = getattr(resolved, "transport", None)
     return getattr(transport, "kind", None) == "github-copilot"
-
-
-def _resolve_timeout_seconds(options, resolved) -> float | int | None:
-    option_timeout = get_timeout_seconds(options)
-    if isinstance(option_timeout, int | float):
-        return option_timeout
-    transport_timeout = getattr(
-        getattr(resolved, "transport", None),
-        "timeout",
-        None,
-    )
-    if isinstance(transport_timeout, int | float) and transport_timeout > 0:
-        return transport_timeout
-    return None
 
 
 def _get_cache_control(

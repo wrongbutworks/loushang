@@ -12,10 +12,14 @@ from email.utils import parsedate_to_datetime
 from typing import Any, cast
 from uuid import uuid4
 
-from loushang.ai.errors import AIProviderProtocolError
+from loushang.ai.errors import AIProviderProtocolError, AITimeoutError
 from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
 from loushang.ai.event_stream.raw_parts import RawPart
-from loushang.ai.options import RetryOptions
+from loushang.ai.options import (
+    RetryOptions,
+    get_idle_timeout_seconds,
+    get_timeout_seconds,
+)
 from loushang.ai.provider.cancellation import is_signal_cancelled, wait_signal_cancelled
 from loushang.ai.provider.errors import (
     normalize_provider_error,
@@ -53,6 +57,27 @@ class _RuntimeCancelled(Exception):
     pass
 
 
+class _AttemptDeadline:
+    def __init__(self, timeout_seconds: float | int | None) -> None:
+        self.expired = False
+        self._task = asyncio.current_task()
+        self._handle: asyncio.TimerHandle | None = None
+        if timeout_seconds is not None:
+            self._handle = asyncio.get_running_loop().call_later(
+                float(timeout_seconds),
+                self._expire,
+            )
+
+    def _expire(self) -> None:
+        self.expired = True
+        if self._task is not None:
+            self._task.cancel()
+
+    def cancel(self) -> None:
+        if self._handle is not None:
+            self._handle.cancel()
+
+
 def start_provider_runtime(
     raw_parts: RawPartSource,
     *,
@@ -85,9 +110,11 @@ def start_provider_runtime(
             max_attempts = _retry_max_attempts(options)
             attempt = 1
             while attempt <= max_attempts:
+                deadline = _AttemptDeadline(get_timeout_seconds(options))
                 pending: deque[RawPart] = deque()
                 pending_bytes = 0
                 visible_output_started = False
+                raw_part_received = False
                 retry_next_attempt = False
                 source = None
                 try:
@@ -104,9 +131,18 @@ def start_provider_runtime(
                         source = await _await_or_cancel(source, cancellation_task)
                     while True:
                         try:
-                            part = await _next_raw_part(source, cancellation_task)
+                            part = await _next_raw_part(
+                                source,
+                                cancellation_task,
+                                idle_timeout_seconds=(
+                                    get_idle_timeout_seconds(options)
+                                    if raw_part_received
+                                    else None
+                                ),
+                            )
                         except StopAsyncIteration:
                             break
+                        raw_part_received = True
 
                         if _signals_cancelled(signals):
                             raise _RuntimeCancelled
@@ -121,6 +157,9 @@ def start_provider_runtime(
                                 model=model,
                             )
                         ):
+                            deadline.cancel()
+                            await _close_source(source)
+                            source = None
                             await _sleep_before_retry(
                                 options=options,
                                 attempt=attempt,
@@ -204,7 +243,19 @@ def start_provider_runtime(
                     )
                     await assembler.emit({"type": "aborted"})
                     return
-                except Exception as error:
+                except (Exception, asyncio.CancelledError) as caught:
+                    if isinstance(caught, asyncio.CancelledError):
+                        if not deadline.expired:
+                            raise
+                        error: Exception = AITimeoutError(
+                            "Provider request timed out.",
+                            source=request.api,
+                            provider=request.provider,
+                            endpoint=request.endpoint,
+                            model=_runtime_model_id(request=request, model=model),
+                        )
+                    else:
+                        error = caught
                     if _signals_cancelled(signals):
                         await _flush_pending(assembler, pending)
                         _emit_runtime_cancel_trace(
@@ -220,6 +271,9 @@ def start_provider_runtime(
                         and attempt < max_attempts
                         and _retryable_exception(error, source=request.api)
                     ):
+                        deadline.cancel()
+                        await _close_source(source)
+                        source = None
                         await _sleep_before_retry(
                             options=options,
                             attempt=attempt,
@@ -253,6 +307,7 @@ def start_provider_runtime(
                     await assembler.emit(error_part)
                     return
                 finally:
+                    deadline.cancel()
                     await _close_source(source)
         finally:
             await _cancel_task(cancellation_task)
@@ -510,9 +565,17 @@ async def _await_or_cancel(awaitable, cancellation_task: asyncio.Task[None] | No
     return await task
 
 
-async def _next_raw_part(source, cancellation_task: asyncio.Task[None] | None):
+async def _next_raw_part(
+    source,
+    cancellation_task: asyncio.Task[None] | None,
+    *,
+    idle_timeout_seconds: float | int | None,
+):
     iterator = source.__aiter__() if hasattr(source, "__aiter__") else source
-    return await _await_or_cancel(iterator.__anext__(), cancellation_task)
+    next_part = _await_or_cancel(iterator.__anext__(), cancellation_task)
+    if idle_timeout_seconds is None:
+        return await next_part
+    return await asyncio.wait_for(next_part, timeout=float(idle_timeout_seconds))
 
 
 async def _close_source(source) -> None:
@@ -541,7 +604,7 @@ def _retry_max_attempts(options: object | None) -> int:
         return 1
     retry = getattr(options, "retry", None)
     if isinstance(retry, RetryOptions):
-        return max(1, retry.max_attempts)
+        return retry.max_attempts
     return 1
 
 
@@ -550,7 +613,7 @@ def _retry_max_delay_seconds(options: object | None) -> float:
         return _DEFAULT_MAX_RETRY_DELAY_SECONDS
     retry = getattr(options, "retry", None)
     if isinstance(retry, RetryOptions):
-        return max(0.0, float(retry.max_delay_seconds))
+        return float(retry.max_delay_seconds)
     return _DEFAULT_MAX_RETRY_DELAY_SECONDS
 
 

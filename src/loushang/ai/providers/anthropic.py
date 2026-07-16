@@ -465,7 +465,7 @@ class AnthropicProvider(AnthropicProviderBase):
         params: dict[str, Any] = {
             "model": upstream_model_id,
             "messages": messages_param,
-            "max_tokens": max(1, int(max_tokens)),
+            "max_tokens": max_tokens,
         }
         if system_param:
             params["system"] = system_param

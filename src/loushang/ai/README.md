@@ -185,8 +185,12 @@ Provider 管理、归一化诊断、pricing、tool transform 和 JSON repair 等
 input 和 attachment 请求也会在模型未声明支持时直接失败。
 
 通用调用参数使用 `CallOptions`。核心 provider 不再有 provider-specific option
-class；普通调用只通过 `CallOptions`、`ReasoningOptions`、`RetryOptions` 和
-`TimeoutOptions` 这组根包契约表达。
+class；普通调用只通过 `CallOptions`、`ReasoningOptions` 和 `RetryOptions`
+这组根包契约表达。
+
+`CallOptions.timeout_seconds` 是单次 provider attempt 的完整 deadline，覆盖请求创建、
+首包、非流式响应和完整流消费。`CallOptions.idle_timeout_seconds` 只用于 stream，约束
+相邻 raw part 之间的最大空闲时间。两者都由 core runtime 执行。
 
 `CallOptions.cache_key` 是调用方提供的、不透明且在相关请求之间稳定的缓存/亲和键。
 协议 adapter 可以把它映射为上游 `prompt_cache_key`、真实 `session_id` header、
@@ -239,7 +243,6 @@ client-request 或 affinity header，但 AI 包不把它解释成 session，也�
 - `RetryOptions`
 - `StructuredOutputOptions`
 - `StructuredOutputResult`
-- `TimeoutOptions`
 - `ThinkingLevel`
 
 ### Deprecation policy
