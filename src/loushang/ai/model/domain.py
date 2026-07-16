@@ -1003,6 +1003,38 @@ class Capabilities:
     attachment: bool = False
     temperature: bool = False
 
+    def __post_init__(self) -> None:
+        for attr in (
+            "reasoning",
+            "stream",
+            "tool_use",
+            "structured_output",
+            "attachment",
+            "temperature",
+        ):
+            if not isinstance(getattr(self, attr), bool):
+                raise ValueError(f"capability field must be a boolean: {attr}")
+        for attr in ("context_window", "max_tokens"):
+            value = getattr(self, attr)
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int) or value <= 0
+            ):
+                raise ValueError(f"capability field must be a positive integer: {attr}")
+        for attr in ("input", "output"):
+            value = getattr(self, attr)
+            if not isinstance(value, (list, tuple)) or not value:
+                raise ValueError(f"capability field must be a non-empty modality sequence: {attr}")
+            if (
+                any(
+                    not isinstance(modality, str)
+                    or modality not in ALLOWED_MODALITIES
+                    for modality in value
+                )
+                or len(set(value)) != len(value)
+            ):
+                raise ValueError(f"capability field has invalid modalities: {attr}")
+            object.__setattr__(self, attr, tuple(value))
+
     @property
     def supports_thinking(self) -> bool:
         return self.reasoning
@@ -1022,16 +1054,18 @@ class Capabilities:
         if isinstance(capabilities_raw, Mapping):
             raw = capabilities_raw
         return cls(
-            input=_parse_modalities(raw.get("input")),
-            output=_parse_modalities(raw.get("output")),
-            context_window=_as_optional_int(raw.get("contextWindow")),
-            max_tokens=_as_optional_int(raw.get("maxTokens")),
-            reasoning=bool(raw.get("reasoning", False)),
-            stream=bool(raw.get("stream", False)),
-            tool_use=bool(raw.get("toolUse", False)),
-            structured_output=bool(raw.get("structuredOutput", False)),
-            attachment=bool(raw.get("attachment", False)),
-            temperature=bool(raw.get("temperature", False)),
+            input=_parse_modalities(raw["input"]) if "input" in raw else ("text",),
+            output=(
+                _parse_modalities(raw["output"]) if "output" in raw else ("text",)
+            ),
+            context_window=_positive_int_from_raw(raw, "contextWindow"),
+            max_tokens=_positive_int_from_raw(raw, "maxTokens"),
+            reasoning=_capability_bool_from_raw(raw, "reasoning"),
+            stream=_capability_bool_from_raw(raw, "stream"),
+            tool_use=_capability_bool_from_raw(raw, "toolUse"),
+            structured_output=_capability_bool_from_raw(raw, "structuredOutput"),
+            attachment=_capability_bool_from_raw(raw, "attachment"),
+            temperature=_capability_bool_from_raw(raw, "temperature"),
         )
 
     def to_raw(self) -> dict[str, object]:
@@ -1056,6 +1090,28 @@ class Defaults(Mapping[str, object]):
     items_by_key: Mapping[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        for key in ("contextWindow", "maxTokens", "maxOutputTokens"):
+            if key not in self.items_by_key:
+                continue
+            value = self.items_by_key[key]
+            if (
+                isinstance(value, bool) or not isinstance(value, int) or value <= 0
+            ):
+                raise ValueError(f"model default must be a positive integer: {key}")
+        if "temperature" in self.items_by_key:
+            temperature = self.items_by_key["temperature"]
+            if (
+                isinstance(temperature, bool)
+                or not isinstance(temperature, int | float)
+                or not isfinite(temperature)
+            ):
+                raise ValueError("model default must be a finite number: temperature")
+        if "reasoningEffort" in self.items_by_key:
+            reasoning_effort = self.items_by_key["reasoningEffort"]
+            if not isinstance(reasoning_effort, str) or not reasoning_effort.strip():
+                raise ValueError(
+                    "model default must be a non-empty string: reasoningEffort"
+                )
         object.__setattr__(
             self,
             "items_by_key",
@@ -1399,29 +1455,39 @@ def _model_to_raw(
 
 
 def _parse_modalities(raw: object) -> tuple[Modality, ...]:
-    if isinstance(raw, str):
-        values = tuple(
-            value.strip()
-            for value in raw.split(",")
-            if value.strip() in ALLOWED_MODALITIES
-        )
-        return _coerce_modalities(values)
-    if isinstance(raw, (list, tuple)):
-        values = tuple(
-            value.strip()
+    if (
+        not isinstance(raw, list)
+        or not raw
+        or any(
+            not isinstance(value, str) or value not in ALLOWED_MODALITIES
             for value in raw
-            if isinstance(value, str) and value.strip() in ALLOWED_MODALITIES
         )
-        return _coerce_modalities(values)
-    return ("text",)
+        or len(set(raw)) != len(raw)
+    ):
+        raise ValueError("capability field has invalid modalities")
+    return cast(tuple[Modality, ...], tuple(raw))
+
+
+def _capability_bool_from_raw(raw: Mapping[str, object], key: str) -> bool:
+    if key not in raw:
+        return False
+    value = raw[key]
+    if not isinstance(value, bool):
+        raise ValueError(f"capability field must be a boolean: {key}")
+    return value
+
+
+def _positive_int_from_raw(raw: Mapping[str, object], key: str) -> int | None:
+    if key not in raw:
+        return None
+    value = raw[key]
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"capability field must be a positive integer: {key}")
+    return value
 
 
 def _as_optional_str(value: object) -> str | None:
     return value if isinstance(value, str) else None
-
-
-def _as_optional_int(value: object) -> int | None:
-    return value if isinstance(value, int) else None
 
 
 def _as_optional_number(value: object) -> float | int | None:
@@ -1466,12 +1532,6 @@ def _as_str_tuple(value: object) -> tuple[str, ...]:
     if not isinstance(value, (list, tuple)):
         return ()
     return tuple(item for item in value if isinstance(item, str) and item)
-
-
-def _coerce_modalities(values: tuple[str, ...]) -> tuple[Modality, ...]:
-    return tuple(
-        cast(Modality, value) for value in values if value in ALLOWED_MODALITIES
-    ) or ("text",)
 
 
 def build_endpoint_key(provider_id: str, endpoint_id: str) -> str:

@@ -158,9 +158,8 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
             _validate_routing_mapping(
                 endpoint.get("routing"), f"{endpoint_path}.routing"
             )
-            _validate_keyed_mapping(
+            _validate_defaults_mapping(
                 endpoint.get("defaults"),
-                ALLOWED_DEFAULT_KEYS,
                 f"{endpoint_path}.defaults",
             )
             models = _require_mapping(endpoint.get("models"), f"{endpoint_path}.models")
@@ -181,9 +180,8 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                 _validate_upstream_id(
                     model.get("upstreamId"), f"{model_path}.upstreamId"
                 )
-                _validate_keyed_mapping(
+                _validate_defaults_mapping(
                     model.get("defaults"),
-                    ALLOWED_DEFAULT_KEYS,
                     f"{model_path}.defaults",
                 )
                 _validate_pricing_mapping(model.get("pricing"), f"{model_path}.pricing")
@@ -202,6 +200,25 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                 _validate_modalities(
                     capabilities.get("output"), f"{model_path}.capabilities.output"
                 )
+                for key in (
+                    "reasoning",
+                    "stream",
+                    "toolUse",
+                    "structuredOutput",
+                    "attachment",
+                    "temperature",
+                ):
+                    if key in capabilities:
+                        _validate_bool(
+                            capabilities[key],
+                            f"{model_path}.capabilities.{key}",
+                        )
+                for key in ("contextWindow", "maxTokens"):
+                    if key in capabilities:
+                        _validate_positive_int(
+                            capabilities[key],
+                            f"{model_path}.capabilities.{key}",
+                        )
 
 
 def _require_mapping(value: object, path: str) -> dict[str, Any]:
@@ -239,6 +256,13 @@ def _validate_positive_number(value: object, path: str) -> None:
         or value <= 0
     ):
         raise ValueError(f"models registry field must be a positive number: {path}")
+
+
+def _validate_positive_int(value: object, path: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(
+            f"models registry field must be a positive integer: {path}"
+        )
 
 
 def _validate_optional_non_negative_number(value: object, path: str) -> None:
@@ -360,6 +384,29 @@ def _validate_pricing_mapping(value: object, path: str) -> None:
             _validate_optional_non_negative_number(mapping[key], f"{path}.{key}")
 
 
+def _validate_defaults_mapping(value: object, path: str) -> None:
+    _validate_keyed_mapping(value, ALLOWED_DEFAULT_KEYS, path)
+    if value is None:
+        return
+    mapping = _require_mapping(value, path)
+    for key in ("contextWindow", "maxTokens", "maxOutputTokens"):
+        if key in mapping:
+            _validate_positive_int(mapping[key], f"{path}.{key}")
+    if "temperature" in mapping:
+        temperature = mapping["temperature"]
+        if (
+            isinstance(temperature, bool)
+            or not isinstance(temperature, int | float)
+            or not isfinite(temperature)
+        ):
+            raise ValueError(
+                "models registry field must be a finite number: "
+                f"{path}.temperature"
+            )
+    if "reasoningEffort" in mapping:
+        _require_str(mapping["reasoningEffort"], f"{path}.reasoningEffort")
+
+
 def _validate_transport_mapping(value: object, path: str) -> None:
     if value is None:
         return
@@ -408,8 +455,13 @@ def _validate_upstream_id(value: object, path: str) -> None:
 def _validate_modalities(value: object, path: str) -> None:
     if value is None:
         return
-    if not isinstance(value, list) or not all(
-        isinstance(item, str) and item in ALLOWED_MODALITIES for item in value
+    if (
+        not isinstance(value, list)
+        or not value
+        or not all(
+            isinstance(item, str) and item in ALLOWED_MODALITIES for item in value
+        )
+        or len(set(value)) != len(value)
     ):
         raise ValueError(f"models registry field has invalid modalities: {path}")
 

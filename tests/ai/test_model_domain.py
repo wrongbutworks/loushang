@@ -8,6 +8,8 @@ import pytest
 from loushang.ai.model import (
     AnthropicMessagesConfig,
     Auth,
+    Capabilities,
+    Defaults,
     Endpoint,
     EndpointRouting,
     EndpointTransport,
@@ -18,6 +20,52 @@ from loushang.ai.model import (
     Pricing,
     Provider,
 )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"stream": "false"},
+        {"tool_use": 1},
+        {"reasoning": None},
+        {"max_tokens": True},
+        {"context_window": 0},
+        {"context_window": 1.5},
+        {"input": ()},
+        {"input": ("text", "text")},
+        {"output": ("audio",)},
+    ],
+)
+def test_capabilities_reject_invalid_programmatic_values(
+    kwargs: dict[str, object],
+) -> None:
+    with pytest.raises(ValueError, match="capability field"):
+        Capabilities(**kwargs)  # type: ignore[arg-type]
+
+
+def test_capabilities_from_raw_rejects_lossy_coercion() -> None:
+    with pytest.raises(ValueError, match="must be a boolean"):
+        Capabilities.from_raw({"stream": "false"})
+    with pytest.raises(ValueError, match="invalid modalities"):
+        Capabilities.from_raw({"input": ["text", "audio"]})
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {"contextWindow": True},
+        {"contextWindow": None},
+        {"maxTokens": 0},
+        {"maxOutputTokens": 1.5},
+        {"temperature": float("inf")},
+        {"temperature": None},
+        {"reasoningEffort": " "},
+        {"reasoningEffort": None},
+    ],
+)
+def test_defaults_reject_invalid_programmatic_values(raw: dict[str, object]) -> None:
+    with pytest.raises(ValueError, match="model default"):
+        Defaults.from_raw(raw)
 
 
 def test_openai_completions_adapter_round_trip() -> None:

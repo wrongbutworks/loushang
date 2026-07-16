@@ -305,6 +305,66 @@ def test_registry_rejects_invalid_catalog_boundary_values(
         validate_model_registry_raw(raw)
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("reasoning", None, "must be a boolean"),
+        ("stream", "false", "must be a boolean"),
+        ("toolUse", 1, "must be a boolean"),
+        ("contextWindow", 1.5, "positive integer"),
+        ("maxTokens", True, "positive integer"),
+        ("maxTokens", 0, "positive integer"),
+        ("maxTokens", -1, "positive integer"),
+        ("input", [], "invalid modalities"),
+        ("input", "text", "invalid modalities"),
+        ("output", ["text", "text"], "invalid modalities"),
+    ],
+)
+def test_registry_rejects_invalid_capability_values(
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    raw = _registry_raw(endpoint_adapter={"developerRole": False})
+    capabilities = raw["providers"]["custom"]["endpoints"]["test-endpoint"][
+        "models"
+    ]["test-model"]["capabilities"]
+    assert isinstance(capabilities, dict)
+    capabilities[field] = value
+
+    with pytest.raises(ValueError, match=message):
+        validate_model_registry_raw(raw)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("contextWindow", True, "positive integer"),
+        ("maxTokens", 0, "positive integer"),
+        ("maxOutputTokens", 1.5, "positive integer"),
+        ("temperature", True, "finite number"),
+        ("temperature", float("nan"), "finite number"),
+        ("reasoningEffort", "", "non-empty string"),
+    ],
+)
+@pytest.mark.parametrize("scope", ["endpoint", "model"])
+def test_registry_rejects_invalid_defaults(
+    scope: str,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    defaults = {field: value}
+    raw = _registry_raw(
+        endpoint_adapter={"developerRole": False},
+        endpoint_extra={"defaults": defaults} if scope == "endpoint" else None,
+        model_extra={"defaults": defaults} if scope == "model" else None,
+    )
+
+    with pytest.raises(ValueError, match=message):
+        validate_model_registry_raw(raw)
+
+
 def test_registry_rejects_endpoint_with_both_auth_shapes() -> None:
     raw = _registry_raw(endpoint_adapter={"developerRole": False})
     endpoint = raw["providers"]["custom"]["endpoints"]["test-endpoint"]
