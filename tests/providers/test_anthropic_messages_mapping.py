@@ -286,6 +286,7 @@ def test_anthropic_provider_uses_typed_transport_for_fine_grained_beta(
             id="anthropic-messages",
             provider="anthropic",
             api="anthropic-messages",
+            base_url="https://api.anthropic.test",
             transport=EndpointTransport(kind="httpx"),
             models={
                 "claude-sonnet-4-5": Model(
@@ -330,6 +331,7 @@ def test_anthropic_provider_uses_upstream_model_id(
             id="anthropic-messages",
             provider="anthropic",
             api="anthropic-messages",
+            base_url="https://api.anthropic.test",
             models={
                 "claude-sonnet-4-5_public": Model(
                     id="claude-sonnet-4-5_public",

@@ -27,7 +27,7 @@ class ProviderRequest:
     provider: str
     endpoint: str
     api: str
-    base_url: str | None
+    base_url: str
     model: Model
     context: ProviderContext = field(
         default_factory=lambda: NormalizedContext(system_prompt=None)
@@ -50,6 +50,10 @@ class ProviderRequest:
         object.__setattr__(self, "headers", MappingProxyType(dict(self.headers)))
         if not isinstance(self.model, Model):
             raise TypeError("ProviderRequest.model must be Model")
+        if not isinstance(self.base_url, str) or not self.base_url.strip():
+            raise ValueError("ProviderRequest.base_url must be a resolved non-empty string")
+        if "{" in self.base_url or "}" in self.base_url:
+            raise ValueError("ProviderRequest.base_url contains an unresolved template")
         model = self.model
         expected_provider = model.provider_id
         expected_endpoint = model.endpoint_id

@@ -33,6 +33,7 @@ def test_faux_provider_stream_resolves_request_when_omitted() -> None:
         provider="faux",
         endpoint="anthropic-messages",
         api="anthropic-messages",
+        base_url="https://provider.test/v1",
         auth=Auth(kind="none"),
     )
 

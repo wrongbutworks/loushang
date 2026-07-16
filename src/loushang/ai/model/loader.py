@@ -132,6 +132,11 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
             _validate_optional_str(
                 endpoint.get("baseUrlEnv"), f"{endpoint_path}.baseUrlEnv"
             )
+            if "baseUrl" not in endpoint and "baseUrlEnv" not in endpoint:
+                raise ValueError(
+                    "models registry endpoint must declare baseUrl or baseUrlEnv: "
+                    f"{endpoint_path}"
+                )
             _validate_optional_str(endpoint.get("region"), f"{endpoint_path}.region")
             _validate_optional_str(endpoint.get("lane"), f"{endpoint_path}.lane")
             _validate_optional_str(endpoint.get("docs"), f"{endpoint_path}.docs")
@@ -206,13 +211,13 @@ def _require_mapping(value: object, path: str) -> dict[str, Any]:
 
 
 def _require_str(value: object, path: str) -> str:
-    if not isinstance(value, str) or not value:
+    if not isinstance(value, str) or not value.strip():
         raise ValueError(f"models registry field must be a non-empty string: {path}")
     return value
 
 
 def _validate_optional_str(value: object, path: str) -> None:
-    if value is not None and (not isinstance(value, str) or not value):
+    if value is not None and (not isinstance(value, str) or not value.strip()):
         raise ValueError(f"models registry field must be a non-empty string: {path}")
 
 

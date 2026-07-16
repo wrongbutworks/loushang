@@ -45,6 +45,7 @@ def _model(
     adapter: object | None = None,
     region: str | None = None,
     base_url: str | None = "https://example.test/v1",
+    base_url_env: str | None = None,
     capabilities: Capabilities | None = None,
     defaults: Defaults | None = None,
     transport: EndpointTransport | None = None,
@@ -58,6 +59,7 @@ def _model(
         endpoint=endpoint or api,
         api=api,
         base_url=base_url,
+        base_url_env=base_url_env,
         region=region,
         auth=auth,
         capabilities=capabilities or Capabilities(stream=True),
@@ -118,7 +120,7 @@ def test_builtin_openai_style_model_resolves_its_bound_facts() -> None:
     assert resolved.upstream_model_id == "kimi-k2.7-code"
 
 
-def test_resolver_accepts_concrete_model_without_incidental_endpoint_metadata() -> None:
+def test_resolver_rejects_concrete_model_without_base_url() -> None:
     model = Model(
         id="faux-model",
         provider="faux-provider",
@@ -126,17 +128,12 @@ def test_resolver_accepts_concrete_model_without_incidental_endpoint_metadata() 
         api="faux-api",
     )
 
-    resolved = resolve_request_for_model(
-        model,
-        options=_Options(auth=ApiKeyAuth("token")),
-        env={"LOUSHANG_REGION": "ignored"},
-    )
-
-    assert resolved.model is model
-    assert resolved.provider == "faux-provider"
-    assert resolved.endpoint == "faux-api"
-    assert resolved.api == "faux-api"
-    assert resolved.region is None
+    with pytest.raises(ValueError, match="no configured provider base URL"):
+        resolve_request_for_model(
+            model,
+            options=_Options(auth=ApiKeyAuth("token")),
+            env={"LOUSHANG_REGION": "ignored"},
+        )
 
 
 @pytest.mark.parametrize(
@@ -303,6 +300,36 @@ def test_missing_base_url_env_template_fails() -> None:
         )
 
 
+def test_missing_base_url_env_fails_without_sdk_fallback() -> None:
+    model = _model(base_url=None, base_url_env="CUSTOM_BASE_URL")
+
+    with pytest.raises(ValueError, match="CUSTOM_BASE_URL is required"):
+        resolve_request_for_model(
+            model, options=_Options(auth=ApiKeyAuth("token")), env={}
+        )
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_empty_base_url_env_value_fails(value: str) -> None:
+    model = _model(base_url=None, base_url_env="CUSTOM_BASE_URL")
+
+    with pytest.raises(ValueError, match="must contain a non-empty base URL"):
+        resolve_request_for_model(
+            model,
+            options=_Options(auth=ApiKeyAuth("token")),
+            env={"CUSTOM_BASE_URL": value},
+        )
+
+
+def test_unresolved_base_url_template_fails() -> None:
+    model = _model(base_url="https://{host}/v1")
+
+    with pytest.raises(ValueError, match="unresolved template"):
+        resolve_request_for_model(
+            model, options=_Options(auth=ApiKeyAuth("token")), env={}
+        )
+
+
 def test_provider_request_rejects_unrelated_base_url() -> None:
     model = _model(base_url="https://catalog.example/v1")
 
@@ -312,6 +339,24 @@ def test_provider_request_rejects_unrelated_base_url() -> None:
             base_url="https://runtime.example/v1",
             headers={"Authorization": "Bearer token"},
         )
+
+
+@pytest.mark.parametrize(
+    ("base_url", "message"),
+    [
+        ("", "resolved non-empty string"),
+        ("   ", "resolved non-empty string"),
+        ("https://{HOST}/v1", "unresolved template"),
+    ],
+)
+def test_provider_request_requires_resolved_base_url(
+    base_url: str,
+    message: str,
+) -> None:
+    model = _model(base_url=base_url)
+
+    with pytest.raises(ValueError, match=message):
+        _request(model, base_url=base_url)
 
 
 @pytest.mark.parametrize(
@@ -350,7 +395,7 @@ def test_provider_request_requires_typed_model() -> None:
             provider="custom",
             endpoint="openai-responses",
             api="openai-responses",
-            base_url=None,
+            base_url="https://example.test/v1",
         )
 
 
@@ -371,6 +416,7 @@ def test_provider_request_repr_redacts_headers() -> None:
 
 def test_normalize_provider_request_adds_model_default_core_adapter_config() -> None:
     model = _model(adapter=None)
+    assert model.base_url is not None
     request = ProviderRequest(
         model=model,
         provider=model.provider_id,

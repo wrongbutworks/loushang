@@ -116,6 +116,34 @@ def test_load_model_registry_from_file_rejects_missing_providers_with_field_path
     assert "must be an object" in message
 
 
+def test_endpoint_requires_base_url_or_base_url_env() -> None:
+    raw = _registry_raw()
+    endpoint = raw["providers"]["custom"]["endpoints"]["test-endpoint"]
+    del endpoint["baseUrl"]
+
+    with pytest.raises(ValueError, match="must declare baseUrl or baseUrlEnv"):
+        validate_model_registry_raw(raw)
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_endpoint_rejects_empty_base_url(value: str) -> None:
+    raw = _registry_raw(endpoint_extra={"baseUrl": value})
+
+    with pytest.raises(ValueError, match="baseUrl"):
+        validate_model_registry_raw(raw)
+
+
+def test_endpoint_accepts_base_url_env_without_literal_url() -> None:
+    raw = _registry_raw(
+        endpoint_adapter={"developerRole": False},
+        endpoint_extra={"baseUrlEnv": "CUSTOM_BASE_URL"},
+    )
+    endpoint = raw["providers"]["custom"]["endpoints"]["test-endpoint"]
+    del endpoint["baseUrl"]
+
+    validate_model_registry_raw(raw)
+
+
 def _set_nested(
     raw: dict[str, object],
     path: tuple[str, ...],

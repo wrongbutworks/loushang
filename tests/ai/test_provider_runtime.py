@@ -709,6 +709,7 @@ def _model() -> Model:
         provider="provider-a",
         endpoint="openai-responses",
         api="openai-responses",
+        base_url="https://provider.test/v1",
         auth=Auth(kind="none"),
     )
 
@@ -719,7 +720,7 @@ def _request() -> ProviderRequest:
         provider="provider-a",
         endpoint="openai-responses",
         api="openai-responses",
-        base_url=None,
+        base_url="https://provider.test/v1",
     )
 
 

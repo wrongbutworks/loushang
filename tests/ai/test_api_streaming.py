@@ -14,6 +14,7 @@ from loushang.ai.api.streaming import (
     stream,
 )
 from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.context import NormalizedContext, normalize_context
 from loushang.ai.errors import AIRateLimitError, UnsupportedCapabilityError
 from loushang.ai.model import (
@@ -215,6 +216,7 @@ def test_public_stream_suppresses_cache_key_when_retention_is_none() -> None:
         provider="custom",
         endpoint="faux",
         api="faux",
+        base_url="https://provider.test/v1",
         auth=Auth(kind="none"),
         capabilities=Capabilities(input=("text",), stream=True),
         adapter=OpenAIResponsesConfig(prompt_cache_key=True),
@@ -1134,6 +1136,7 @@ def test_stream_validates_effective_model_capabilities() -> None:
         provider="custom",
         endpoint="faux",
         api="faux",
+        base_url="https://provider.test/v1",
         auth=Auth(kind="none"),
         capabilities=Capabilities(input=("text",), stream=True),
     )
@@ -1173,6 +1176,7 @@ def test_stream_uses_effective_model_capabilities() -> None:
         provider="custom",
         endpoint="faux",
         api="faux",
+        base_url="https://provider.test/v1",
         auth=Auth(kind="none"),
         capabilities=Capabilities(input=("text", "image"), stream=True),
     )
@@ -1213,6 +1217,7 @@ def test_stream_normalizes_context_against_effective_model_api() -> None:
         provider="anthropic",
         endpoint="anthropic-messages",
         api="anthropic-messages",
+        base_url="https://provider.test/v1",
         auth=Auth(kind="none"),
         capabilities=Capabilities(input=("text",), stream=True),
     )
@@ -1343,6 +1348,36 @@ def test_stream_public_path_uses_openai_completions_typed_request(
             },
         }
     ]
+
+
+def test_stream_missing_base_url_fails_before_sdk_client_construction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    registry = ApiProviderRegistry()
+    registry.register_api_provider(OpenAICompletionsProvider())
+    model = Model(
+        id="missing-base-url",
+        provider="custom",
+        endpoint="openai-completions",
+        api="openai-completions",
+        auth=Auth(kind="apiKey", header="Authorization", prefix="Bearer "),
+        capabilities=Capabilities(input=("text",), stream=True),
+        adapter=OpenAICompletionsConfig(),
+    )
+
+    async def _run() -> None:
+        await stream(
+            model,
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            CallOptions(auth=ApiKeyAuth("must-not-reach-sdk")),
+            provider_registry=registry,
+        )
+
+    with pytest.raises(ValueError, match="no configured provider base URL"):
+        asyncio.run(_run())
+
+    assert _FakeAsyncOpenAI.last_init_kwargs == {}
 
 
 def test_stream_public_path_uses_openai_responses_typed_request(
@@ -1656,12 +1691,13 @@ def _provider_request(
     **kwargs: object,
 ) -> ProviderRequest:
     resolved_capabilities = capabilities or Capabilities(input=("text",), stream=True)
+    resolved_base_url = base_url or "https://provider.test/v1"
     model = Model(
         id=model_id,
         provider=provider,
         endpoint=endpoint,
         api=api,
-        base_url=base_url,
+        base_url=resolved_base_url,
         auth=Auth(kind="none"),
         capabilities=resolved_capabilities,
         adapter=adapter_config,  # type: ignore[arg-type]
@@ -1671,7 +1707,7 @@ def _provider_request(
         provider=provider,
         endpoint=endpoint,
         api=api,
-        base_url=base_url,
+        base_url=resolved_base_url,
         capabilities=model.capabilities,
         adapter_config=model.adapter or default_adapter_config(api),
         defaults=dict(model.defaults),

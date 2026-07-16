@@ -222,6 +222,7 @@ def _patch_resolved_request(monkeypatch: pytest.MonkeyPatch, *, api: str) -> Non
             id=api,
             provider="test-provider",
             api=api,
+            base_url="https://provider.test/v1",
             models={
                 _model.id: Model(
                     id=_model.id,
@@ -247,7 +248,7 @@ def _patch_resolved_request(monkeypatch: pytest.MonkeyPatch, *, api: str) -> Non
             api=api,
             provider="test-provider",
             endpoint=api,
-            base_url=None,
+            base_url="https://provider.test/v1",
             model=request_model,
             capabilities=request_model.capabilities,
         )

@@ -99,11 +99,16 @@ def bound_test_model(
     if not isinstance(pricing, Pricing):
         pricing = None
     auth = _test_auth(options)
+    resolved_base_url = (
+        base_url
+        or getattr(model, "base_url", None)
+        or "https://provider.test/v1"
+    )
     endpoint = Endpoint(
         id=endpoint_id,
         provider=provider_id,
         api=api,
-        base_url=base_url if base_url is not None else getattr(model, "base_url", None),
+        base_url=resolved_base_url,
         auth=auth,
         adapter=adapter_config,
         defaults=Defaults.from_raw(defaults or getattr(model, "defaults", None)),
@@ -169,7 +174,7 @@ def make_provider_request(
         provider=request_model.provider_id,
         endpoint=request_model.endpoint_id,
         api=request_model.api,
-        base_url=base_url,
+        base_url=request_model.base_url or "https://provider.test/v1",
         headers=dict(headers or {}),
         defaults=dict(request_model.defaults),
         transport=request_model.transport,

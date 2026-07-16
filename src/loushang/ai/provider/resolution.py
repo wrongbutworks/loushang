@@ -113,12 +113,12 @@ def resolve_request_for_model(
         )
     provider_id, endpoint_id, api = identity
     resolved_env = dict(os.environ) if env is None else env
+    base_url = _resolve_base_url(model, resolved_env)
     auth_view = resolve_auth_for_model(
         model,
         options=options,
         env=resolved_env,
     )
-    base_url = _resolve_base_url(model, resolved_env)
     defaults = dict(model.defaults)
     headers = dict(auth_view.headers)
     max_tokens = _resolve_max_tokens(options, defaults)
@@ -160,30 +160,48 @@ def _concrete_model_identity(model: Model) -> tuple[str, str, str] | None:
 def _resolve_base_url(
     model: Model,
     env: dict[str, str] | None,
-) -> str | None:
+) -> str:
     resolved_env = env or {}
     base_url_env = model.base_url_env
-    if base_url_env:
-        value = resolved_env.get(base_url_env)
-        if isinstance(value, str) and value:
-            return value
+    if base_url_env and base_url_env in resolved_env:
+        value = resolved_env[base_url_env]
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(
+                f"Environment variable {base_url_env} must contain a non-empty base URL"
+            )
+        return _validate_resolved_base_url(value)
     base_url = model.base_url
     if base_url is None:
-        return None
-    return _expand_env_template(base_url, resolved_env)
+        if base_url_env:
+            raise ValueError(
+                f"Environment variable {base_url_env} is required for provider base URL"
+            )
+        raise ValueError(
+            f"Model {model.id!r} has no configured provider base URL"
+        )
+    return _validate_resolved_base_url(_expand_env_template(base_url, resolved_env))
 
 
 def _expand_env_template(value: str, env: dict[str, str]) -> str:
     def _replace(match: re.Match[str]) -> str:
         name = match.group(1)
         replacement = env.get(name)
-        if not isinstance(replacement, str) or not replacement:
+        if not isinstance(replacement, str) or not replacement.strip():
             raise ValueError(
                 f"Environment variable {name} is required by baseUrl template"
             )
         return replacement
 
     return re.sub(r"\{([A-Z_][A-Z0-9_]*)\}", _replace, value)
+
+
+def _validate_resolved_base_url(value: str) -> str:
+    resolved = value.strip()
+    if not resolved:
+        raise ValueError("Provider base URL must be a non-empty string")
+    if "{" in resolved or "}" in resolved:
+        raise ValueError("Provider base URL contains an unresolved template")
+    return resolved
 
 
 def _resolve_max_tokens(options, defaults: dict[str, object]) -> int | None:

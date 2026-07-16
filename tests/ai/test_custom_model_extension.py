@@ -165,13 +165,15 @@ def test_layered_registry_rejects_duplicate_builtin_full_model_id(
     builtin_model = load_builtin_model_registry().list_models()[0]
     api = builtin_model.api
     assert api is not None
+    assert builtin_model.base_url is not None
     providers = raw["providers"]
     assert isinstance(providers, dict)
     providers.clear()
     providers[builtin_model.provider_id] = {
         "endpoints": {
-            builtin_model.endpoint_id: {
-                "api": api,
+                builtin_model.endpoint_id: {
+                    "api": api,
+                    "baseUrl": builtin_model.base_url,
                 "models": {
                     builtin_model.id: {
                         "capabilities": {
