@@ -227,7 +227,6 @@ def test_anthropic_provider_complete_mode_maps_non_stream_response(
         "text_delta",
         "stop_reason",
         "response_error",
-        "response_done",
     ]
     assert parts[2] == {"type": "thinking_delta", "text": "plan"}
     assert parts[3] == {

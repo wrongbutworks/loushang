@@ -384,7 +384,6 @@ def test_openai_completions_complete_mode_maps_non_stream_response(
         "tool_call_done",
         "stop_reason",
         "response_error",
-        "response_done",
     ]
     assert parts[1]["input"] == 2
     assert parts[1]["output"] == 2
@@ -1107,7 +1106,21 @@ def test_openai_completions_supplied_request_protocol_and_dialect_project_to_pay
 def test_openai_completions_public_stream_uses_supplied_typed_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _fake_openai_module(monkeypatch)
+    _fake_openai_module(
+        monkeypatch,
+        chunks=[
+            SimpleNamespace(
+                id="chatcmpl_typed_request",
+                choices=[
+                    SimpleNamespace(
+                        delta=SimpleNamespace(content=None),
+                        finish_reason="stop",
+                    )
+                ],
+                usage=None,
+            )
+        ],
+    )
     provider = OpenAICompletionsProvider()
     request = make_provider_request(
         _Model(),

@@ -6,11 +6,15 @@ from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import Any, TypedDict, cast
 
 from loushang.ai.context import NormalizedContext
+from loushang.ai.errors import AIProviderProtocolError
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import OpenAIResponsesConfig
 from loushang.ai.model.registry import resolve_model_api
 from loushang.ai.options import is_reasoning_requested
-from loushang.ai.provider.errors import provider_error_part_from_raw
+from loushang.ai.provider.errors import (
+    provider_error_part,
+    provider_error_part_from_raw,
+)
 from loushang.ai.tool.providers import to_openai_responses_tools
 from loushang.ai.tool.transform import (
     MISSING_TOOL_RESULT_TEXT,
@@ -166,6 +170,7 @@ async def process_responses_stream(
     current_reasoning_item: dict[str, Any] | None = None
     tool_call_ids_by_item_id: dict[str, str] = {}
     tool_call_ids_by_index: dict[int, str] = {}
+    emitted_response_start = False
     emit_thinking = False
     if options is not None:
         try:
@@ -179,6 +184,7 @@ async def process_responses_stream(
             resp = getattr(event, "response", None)
             rid = getattr(resp, "id", None)
             if isinstance(rid, str):
+                emitted_response_start = True
                 yield {"type": "response_start", "response_id": rid}
         elif etype == "response.output_item.added":
             item = getattr(event, "item", None)
@@ -311,9 +317,18 @@ async def process_responses_stream(
                     done_part["index"] = index
                     tool_call_ids_by_index.pop(index, None)
                 yield _raw_part(done_part)
-        elif etype in {"response.completed", "response.done"}:
+        elif etype in {
+            "response.completed",
+            "response.done",
+            "response.failed",
+            "response.incomplete",
+        }:
             resp = getattr(event, "response", None)
             if resp is not None:
+                rid = getattr(resp, "id", None)
+                if not emitted_response_start and isinstance(rid, str) and rid:
+                    emitted_response_start = True
+                    yield {"type": "response_start", "response_id": rid}
                 multiplier = _service_tier_cost_multiplier(
                     getattr(resp, "service_tier", None)
                 )
@@ -341,11 +356,15 @@ async def process_responses_stream(
                     thinking_closed = True
                 if (not text_closed) and text_buf:
                     text_closed = True
-                status = getattr(resp, "status", None)
-                yield {
-                    "type": "stop_reason",
-                    "stop_reason": map_responses_status_to_reason(status),
-                }
+                for part in _response_terminal_parts(resp, source=source):
+                    yield part
+                return
+            yield provider_error_part_from_raw(
+                "response terminal event did not include a response",
+                code="provider_protocol",
+                source=source,
+            )
+            return
         elif etype == "error":
             code = getattr(event, "code", None)
             message = getattr(event, "message", None)
@@ -353,26 +372,15 @@ async def process_responses_stream(
                 f"Error Code {code}: {message}" if code or message else "Unknown error"
             )
             yield provider_error_part_from_raw(err, code=code, source=source)
-        elif etype == "response.failed":
-            response = getattr(event, "response", None)
-            error = getattr(response, "error", None) if response else None
-            incomplete = (
-                getattr(response, "incomplete_details", None) if response else None
-            )
-            if error is not None:
-                msg = f"{getattr(error, 'code', 'unknown')}: {getattr(error, 'message', 'no message')}"
-            elif incomplete is not None:
-                msg = f"incomplete: {getattr(incomplete, 'reason', 'unknown')}"
-            else:
-                msg = "Unknown error (no error details in response)"
-            raw_code = getattr(error, "code", None) if error is not None else None
-            yield provider_error_part_from_raw(
-                msg,
-                code=raw_code,
-                source=source,
-            )
+            return
 
-    yield {"type": "response_done"}
+    yield provider_error_part(
+        AIProviderProtocolError(
+            "provider stream ended before a terminal response event",
+            source=source,
+        ),
+        source=source,
+    )
 
 
 def process_responses_response(
@@ -414,19 +422,42 @@ def process_responses_response(
     if usage is not None:
         yield _responses_usage_part(usage)
 
+    yield from _response_terminal_parts(response, source=source)
+
+
+def _response_terminal_parts(
+    response: object,
+    *,
+    source: str,
+) -> Iterator[RawPart]:
     status = getattr(response, "status", None)
-    yield {
-        "type": "stop_reason",
-        "stop_reason": map_responses_status_to_reason(status),
-    }
+    if status == "incomplete":
+        incomplete_details = getattr(response, "incomplete_details", None)
+        reason = getattr(incomplete_details, "reason", None)
+        if reason in {"max_output_tokens", "max_tokens", "length"}:
+            yield {"type": "stop_reason", "stop_reason": "length"}
+            yield {"type": "response_done"}
+            return
+        yield {"type": "stop_reason", "stop_reason": "error"}
+        yield provider_error_part_from_raw(
+            "response incomplete",
+            code=reason,
+            source=source,
+        )
+        return
     if status in {"failed", "cancelled"}:
         error = getattr(response, "error", None)
         code = getattr(error, "code", None) if error is not None else status
         message = (
             getattr(error, "message", None) if error is not None else "response failed"
         )
+        yield {"type": "stop_reason", "stop_reason": "error"}
         yield provider_error_part_from_raw(message, code=code, source=source)
-
+        return
+    yield {
+        "type": "stop_reason",
+        "stop_reason": map_responses_status_to_reason(status),
+    }
     yield {"type": "response_done"}
 
 

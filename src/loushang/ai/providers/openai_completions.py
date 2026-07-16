@@ -7,7 +7,7 @@ from contextlib import suppress
 from typing import Any, cast
 
 from loushang.ai.context import NormalizedContext
-from loushang.ai.errors import UnsupportedCapabilityError
+from loushang.ai.errors import AIProviderProtocolError, UnsupportedCapabilityError
 from loushang.ai.event_stream.raw_parts import RawPart, UsageDeltaPart
 from loushang.ai.model.domain import OpenAICompletionsConfig
 from loushang.ai.options import get_timeout_seconds
@@ -210,6 +210,7 @@ class OpenAICompletionsProvider:
             active_tool_call_ids: list[str] = []
             active_tool_call_indexes: dict[str, int] = {}
             tool_call_ids_by_index: dict[int, str] = {}
+            received_finish_reason = False
             while True:
                 try:
                     chunk = await asyncio.wait_for(
@@ -225,13 +226,11 @@ class OpenAICompletionsProvider:
                         code="timeout",
                         source=self.api,
                     )
-                    yield {"type": "response_done"}
-                    break
+                    return
                 except Exception as e:
                     _debug("stream_iter_error", {"exceptionType": type(e).__name__})
                     yield provider_error_part(e, source=self.api)
-                    yield {"type": "response_done"}
-                    break
+                    return
                 if not chunk:
                     continue
                 # response id
@@ -408,6 +407,7 @@ class OpenAICompletionsProvider:
                 # finish reason
                 finish = getattr(choice, "finish_reason", None)
                 if isinstance(finish, str):
+                    received_finish_reason = True
                     for tool_call_id in active_tool_call_ids:
                         done_part: dict[str, object] = {
                             "type": "tool_call_done",
@@ -450,7 +450,16 @@ class OpenAICompletionsProvider:
                             code=finish,
                             source=self.api,
                         )
-            # 正常结束：上游结束迭代后，补发 response_done 以关闭装配器
+                        return
+            if not received_finish_reason:
+                yield provider_error_part(
+                    AIProviderProtocolError(
+                        "provider stream ended before a terminal response event",
+                        source=self.api,
+                    ),
+                    source=self.api,
+                )
+                return
             for tool_call_id in active_tool_call_ids:
                 done_part = {"type": "tool_call_done", "tool_call_id": tool_call_id}
                 if tool_call_id in active_tool_call_indexes:
@@ -461,7 +470,6 @@ class OpenAICompletionsProvider:
         except Exception as e:
             _debug("stream_iter_error_outer", {"exceptionType": type(e).__name__})
             yield provider_error_part(e, source=self.api)
-            yield {"type": "response_done"}
         finally:
             await close_provider_stream(stream_ctx)
 
@@ -504,6 +512,7 @@ def _iter_complete_response_parts(
                         code=finish,
                         source=source,
                     )
+                    return
     yield {"type": "response_done"}
 
 

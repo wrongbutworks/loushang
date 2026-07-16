@@ -235,7 +235,6 @@ def test_openai_responses_complete_mode_maps_non_stream_response(
         "usage_delta",
         "stop_reason",
         "response_error",
-        "response_done",
     ]
     assert parts[1] == {"type": "thinking_delta", "text": "plan"}
     assert parts[4]["signature"] == '{"v": 1, "id": "msg_1"}'
@@ -1377,6 +1376,10 @@ def test_openai_responses_function_call_delta_uses_composite_call_id() -> None:
                         call_id="call_1",
                     ),
                 ),
+                SimpleNamespace(
+                    type="response.completed",
+                    response=SimpleNamespace(status="completed"),
+                ),
             ]
         )
     )
@@ -1399,6 +1402,7 @@ def test_openai_responses_function_call_delta_uses_composite_call_id() -> None:
             "tool_call_id": "call_1|fc_1",
             "index": 1,
         },
+        {"type": "stop_reason", "stop_reason": "stop"},
         {"type": "response_done"},
     ]
 
@@ -1434,6 +1438,93 @@ def test_openai_responses_accepts_response_done_completion_alias() -> None:
         },
         {"type": "stop_reason", "stop_reason": "stop"},
         {"type": "response_done"},
+    ]
+
+
+@pytest.mark.parametrize("reason", ["max_output_tokens", "max_tokens", "length"])
+def test_openai_responses_incomplete_length_is_successful_truncation(reason: str) -> None:
+    parts = asyncio.run(
+        _collect_raw_parts(
+            [
+                SimpleNamespace(
+                    type="response.incomplete",
+                    response=SimpleNamespace(
+                        id="resp_incomplete",
+                        status="incomplete",
+                        incomplete_details=SimpleNamespace(reason=reason),
+                        usage=SimpleNamespace(
+                            input_tokens=3,
+                            output_tokens=2,
+                            total_tokens=5,
+                            input_tokens_details=SimpleNamespace(cached_tokens=1),
+                        ),
+                    ),
+                )
+            ]
+        )
+    )
+
+    assert parts[-2:] == [
+        {"type": "stop_reason", "stop_reason": "length"},
+        {"type": "response_done"},
+    ]
+    assert parts[0] == {"type": "response_start", "response_id": "resp_incomplete"}
+    assert parts[1]["type"] == "usage_delta"
+
+
+def test_openai_responses_unclassified_incomplete_is_error() -> None:
+    parts = asyncio.run(
+        _collect_raw_parts(
+            [
+                SimpleNamespace(
+                    type="response.incomplete",
+                    response=SimpleNamespace(
+                        id="resp_incomplete",
+                        status="incomplete",
+                        incomplete_details=SimpleNamespace(reason="content_filter"),
+                        usage=None,
+                    ),
+                ),
+                SimpleNamespace(
+                    type="response.completed",
+                    response=SimpleNamespace(status="completed"),
+                ),
+            ]
+        )
+    )
+
+    assert [part["type"] for part in parts] == [
+        "response_start",
+        "stop_reason",
+        "response_error",
+    ]
+
+
+def test_openai_responses_failed_is_error_without_success_terminal() -> None:
+    parts = asyncio.run(
+        _collect_raw_parts(
+            [
+                SimpleNamespace(
+                    type="response.failed",
+                    response=SimpleNamespace(
+                        id="resp_failed",
+                        status="failed",
+                        error=SimpleNamespace(code="server_error", message="failed"),
+                        usage=None,
+                    ),
+                ),
+                SimpleNamespace(
+                    type="response.completed",
+                    response=SimpleNamespace(status="completed"),
+                ),
+            ]
+        )
+    )
+
+    assert [part["type"] for part in parts] == [
+        "response_start",
+        "stop_reason",
+        "response_error",
     ]
 
 

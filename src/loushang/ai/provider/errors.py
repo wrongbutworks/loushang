@@ -205,6 +205,8 @@ def _public_provider_error_message(code: AIErrorCode) -> str:
         return "Provider request timed out."
     if code is AIErrorCode.SERVICE_UNAVAILABLE:
         return "Provider service unavailable."
+    if code is AIErrorCode.PROVIDER_PROTOCOL:
+        return "provider stream ended before a terminal response event"
     return "Provider request failed."
 
 

@@ -1685,7 +1685,18 @@ def _provider_request(
 def _fake_openai_module(monkeypatch: pytest.MonkeyPatch) -> None:
     _FakeAsyncOpenAI.last_init_kwargs = {}
     _FakeAsyncOpenAI.last_create_kwargs = {}
-    _FakeAsyncOpenAI.chunks = []
+    _FakeAsyncOpenAI.chunks = [
+        SimpleNamespace(
+            id="chatcmpl_public",
+            choices=[
+                SimpleNamespace(
+                    delta=SimpleNamespace(content=None),
+                    finish_reason="stop",
+                )
+            ],
+            usage=None,
+        )
+    ]
     _FakeAsyncOpenAI.events = [
         SimpleNamespace(
             type="response.completed",

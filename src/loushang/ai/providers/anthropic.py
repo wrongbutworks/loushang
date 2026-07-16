@@ -8,6 +8,7 @@ from typing import Any, cast
 
 from loushang.ai.auth.credentials import OAuthBearerAuth
 from loushang.ai.context import NormalizedContext
+from loushang.ai.errors import AIProviderProtocolError
 from loushang.ai.event_stream.raw_parts import RawPart, UsageDeltaPart
 from loushang.ai.model.domain import AnthropicMessagesConfig
 from loushang.ai.options import (
@@ -765,6 +766,7 @@ class AnthropicProvider(AnthropicProviderBase):
                                     code=stop_reason,
                                     source=self.api,
                                 )
+                                return
                         usage = getattr(event, "usage", None)
                         if usage:
                             usage_part = _usage_part_from_anthropic_usage(usage)
@@ -772,11 +774,8 @@ class AnthropicProvider(AnthropicProviderBase):
                                 yield usage_part
                         continue
                     if etype == "message_stop":
-                        # 若 provider 报告需要工具但未下发细粒度工具流，做提示（兜底策略可后续扩展）
-                        # 这里不阻断 response_done，只发出 debug error 便于定位
-                        # 具体 fallback（同步调用/非流式拉取）作为后续增强
                         yield {"type": "response_done"}
-                        continue
+                        return
                     if etype == "error":
                         err = getattr(event, "error", None)
                         msg = getattr(err, "message", None) if err is not None else None
@@ -786,6 +785,14 @@ class AnthropicProvider(AnthropicProviderBase):
                             code=code,
                             source=self.api,
                         )
+                        return
+            yield provider_error_part(
+                AIProviderProtocolError(
+                    "provider stream ended before a terminal response event",
+                    source=self.api,
+                ),
+                source=self.api,
+            )
         except Exception as e:
             _debug("stream_iter_error", {"exceptionType": type(e).__name__})
             yield provider_error_part(e, source=self.api)
@@ -860,6 +867,7 @@ def _iter_complete_response_parts(
                 code=stop_reason,
                 source=source,
             )
+            return
     yield {"type": "response_done"}
 
 

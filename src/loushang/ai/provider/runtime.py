@@ -177,7 +177,25 @@ def start_provider_runtime(
                         attempt += 1
                         continue
                     await _flush_pending(assembler, pending)
-                    await assembler.emit({"type": "response_done"})
+                    error_part = _provider_error_part_for_request(
+                        AIProviderProtocolError(
+                            "provider stream ended before a terminal response event",
+                            source=request.api,
+                            provider=request.provider,
+                            endpoint=request.endpoint,
+                            model=_runtime_model_id(request=request, model=model),
+                        ),
+                        request=request,
+                        model=model,
+                    )
+                    _emit_runtime_error_trace(
+                        options,
+                        part=error_part,
+                        request=request,
+                        model=model,
+                        call_id=call_id,
+                    )
+                    await assembler.emit(error_part)
                     return
                 except _RuntimeCancelled:
                     await _flush_pending(assembler, pending)

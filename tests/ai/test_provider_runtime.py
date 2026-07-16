@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 import loushang.ai.provider.runtime as runtime_module
+from loushang.ai.errors import AIProviderProtocolError
 from loushang.ai.model import Auth, Model
 from loushang.ai.options import CallOptions, RetryOptions
 from loushang.ai.provider import ProviderRequest
@@ -82,7 +83,7 @@ def test_provider_runtime_assembles_raw_parts() -> None:
     assert events[-1]["message"].content[0].text == "hello"
 
 
-def test_provider_runtime_emits_done_when_source_omits_terminal_part() -> None:
+def test_provider_runtime_rejects_source_without_terminal_part() -> None:
     async def _parts():
         yield {"type": "response_start", "response_id": "resp_missing_done"}
         yield {"type": "text_delta", "text": "hello"}
@@ -93,20 +94,59 @@ def test_provider_runtime_emits_done_when_source_omits_terminal_part() -> None:
             options=None,
             request=_request(),
         )
-        events = [event async for event in stream]
-        return events, await stream.result()
+        return [event async for event in stream]
 
-    events, message = asyncio.run(_run())
+    events = asyncio.run(_run())
 
     assert [event["type"] for event in events] == [
         "start",
         "text_start",
         "text_delta",
-        "text_end",
-        "done",
+        "error",
     ]
-    assert message.content[0].text == "hello"
-    assert message.response_id == "resp_missing_done"
+    assert events[-1]["error_info"]["code"] == "provider_protocol"
+    assert events[-1]["error_info"]["message"] == (
+        "provider stream ended before a terminal response event"
+    )
+
+
+def test_provider_runtime_result_raises_protocol_error_for_unexpected_eof() -> None:
+    async def _parts():
+        yield {"type": "response_start", "response_id": "resp_missing_done"}
+
+    async def _run():
+        stream = start_provider_runtime(_parts, options=None, request=_request())
+        with pytest.raises(AIProviderProtocolError) as exc_info:
+            await stream.result()
+        return exc_info.value
+
+    error = asyncio.run(_run())
+
+    assert str(error) == "provider stream ended before a terminal response event"
+
+
+@pytest.mark.parametrize("terminal", ["response_done", "response_error", "aborted"])
+def test_provider_runtime_stops_after_first_terminal_part(terminal: str) -> None:
+    consumed_after_terminal = False
+
+    async def _parts():
+        nonlocal consumed_after_terminal
+        if terminal == "response_error":
+            yield {"type": terminal, "message": "failed"}
+        else:
+            yield {"type": terminal}
+        consumed_after_terminal = True
+        yield {"type": "response_done"}
+
+    async def _run():
+        stream = start_provider_runtime(_parts, options=None, request=_request())
+        return [event async for event in stream]
+
+    events = asyncio.run(_run())
+
+    assert len(events) == 1
+    assert events[0]["type"] == ("done" if terminal == "response_done" else "error")
+    assert consumed_after_terminal is False
 
 
 def test_provider_runtime_converts_adapter_exceptions_to_error_events() -> None:
