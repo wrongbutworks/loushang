@@ -39,7 +39,7 @@
                 "reasoning": true,
                 "stream": true,
                 "toolUse": true,
-                "structuredOutput": true,
+                "structuredOutput": false,
                 "attachment": false,
                 "temperature": false
               },
@@ -70,7 +70,7 @@
                 "reasoning": true,
                 "stream": true,
                 "toolUse": true,
-                "structuredOutput": true,
+                "structuredOutput": false,
                 "attachment": false,
                 "temperature": true
               },
@@ -390,7 +390,7 @@
                 "reasoning": true,
                 "stream": true,
                 "toolUse": true,
-                "structuredOutput": true,
+                "structuredOutput": false,
                 "attachment": false,
                 "temperature": true
               }
@@ -535,7 +535,7 @@
                 "reasoning": true,
                 "stream": true,
                 "toolUse": true,
-                "structuredOutput": true,
+                "structuredOutput": false,
                 "attachment": false,
                 "temperature": true
               },
@@ -683,7 +683,7 @@
                 "stream": true,
                 "toolUse": true,
                 "structuredOutput": true,
-                "attachment": true,
+                "attachment": false,
                 "temperature": true
               }
             }

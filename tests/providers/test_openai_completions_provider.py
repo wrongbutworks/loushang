@@ -429,9 +429,7 @@ def test_openai_completions_stream_usage_only_chunk_updates_message_and_cost(
         reasoning_effort=None,
     )
     provider = OpenAICompletionsProvider()
-    model = _Model(
-        pricing=Pricing(input=1, output=2, cache_read=0.5, cache_write=0.25)
-    )
+    model = _Model(pricing=Pricing(input=1, output=2, cache_read=0.5, cache_write=0.25))
 
     async def _scenario():
         stream = await _stream(
@@ -2023,6 +2021,37 @@ def test_openai_completions_explicit_moonshot_thinking_toggle(
     assert _FakeAsyncOpenAI.last_create_kwargs["extra_body"] == {
         "thinking": {"type": "disabled"}
     }
+
+
+def test_openai_completions_uses_resolved_temperature(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    provider = OpenAICompletionsProvider()
+    request = make_provider_request(
+        _Model(),
+        api="openai-completions",
+        options=CallOptions(auth=ApiKeyAuth("test-key")),
+        temperature=0.4,
+    )
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                request.model,
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                request.options,
+                request,
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["temperature"] == 0.4
     assert "reasoning_effort" not in _FakeAsyncOpenAI.last_create_kwargs
 
 
@@ -2658,9 +2687,7 @@ def _patch_resolved_request(
             getattr(options, "max_output_tokens", None) if options is not None else None
         )
         resolved_max_tokens = (
-            max(1, option_max_tokens)
-            if isinstance(option_max_tokens, int)
-            else max_tokens
+            option_max_tokens if isinstance(option_max_tokens, int) else max_tokens
         )
         adapter_config = _adapter_config_from_compat(compat)
         resolved_capabilities = capabilities or Capabilities(
@@ -2691,6 +2718,10 @@ def _patch_resolved_request(
             max_tokens=resolved_max_tokens,
             capabilities=request_model.capabilities,
             reasoning_effort=reasoning_effort,
+            reasoning_enabled=reasoning_effort is not None,
+            temperature=(
+                getattr(options, "temperature", None) if options is not None else None
+            ),
             routing=request_model.routing,
             transport=request_model.transport,
             upstream_model_id=request_model.upstream_id or request_model.id,

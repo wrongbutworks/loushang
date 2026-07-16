@@ -140,8 +140,8 @@ class OpenAICompletionsProvider:
             params["max_tokens"] = max_tokens
         else:
             params["max_completion_tokens"] = max_tokens
-        if getattr(options, "temperature", None) is not None:
-            params["temperature"] = getattr(options, "temperature")
+        if resolved.temperature is not None:
+            params["temperature"] = resolved.temperature
         if tools_param is not None:
             params["tools"] = tools_param
             if is_stream_request and adapter_config.tool_stream:
@@ -158,6 +158,7 @@ class OpenAICompletionsProvider:
             extra_body,
             model=model,
             thinking_format=thinking_format,
+            reasoning_enabled=resolved.reasoning_enabled,
             reasoning_effort=reasoning_effort,
             reasoning_effort_map=reasoning_effort_map,
             supports_reasoning_effort=supports_reasoning_effort,
@@ -658,6 +659,7 @@ def _apply_reasoning_params(
     *,
     model,
     thinking_format: str | None,
+    reasoning_enabled: bool | None,
     reasoning_effort: str | None,
     reasoning_effort_map: Mapping[str, str | None],
     supports_reasoning_effort: bool,
@@ -665,23 +667,25 @@ def _apply_reasoning_params(
 ) -> None:
     if not _supports_reasoning(model, capabilities):
         return
+    if reasoning_enabled is None:
+        return
     if thinking_format in {"zai", "qwen"}:
-        params["enable_thinking"] = bool(reasoning_effort)
+        params["enable_thinking"] = reasoning_enabled
         return
     if thinking_format == "moonshot":
         extra_body["thinking"] = {
-            "type": "enabled" if isinstance(reasoning_effort, str) else "disabled"
+            "type": "enabled" if reasoning_enabled else "disabled"
         }
         return
     if thinking_format == "qwen-chat-template":
         params["chat_template_kwargs"] = {
-            "enable_thinking": bool(reasoning_effort),
+            "enable_thinking": reasoning_enabled,
             "preserve_thinking": True,
         }
         return
     if thinking_format == "deepseek":
         extra_body["thinking"] = {
-            "type": "enabled" if isinstance(reasoning_effort, str) else "disabled"
+            "type": "enabled" if reasoning_enabled else "disabled"
         }
         _apply_reasoning_effort_if_supported(
             params,
@@ -692,7 +696,7 @@ def _apply_reasoning_params(
         return
     if thinking_format == "zai-thinking":
         params["thinking"] = {
-            "type": "enabled" if isinstance(reasoning_effort, str) else "disabled"
+            "type": "enabled" if reasoning_enabled else "disabled"
         }
         _apply_reasoning_effort_if_supported(
             params,
@@ -704,12 +708,12 @@ def _apply_reasoning_params(
     if thinking_format == "openrouter":
         params["reasoning"] = {
             "effort": _map_reasoning_effort(reasoning_effort, reasoning_effort_map)
-            if isinstance(reasoning_effort, str)
+            if reasoning_enabled and isinstance(reasoning_effort, str)
             else "none"
         }
         return
     if thinking_format == "together":
-        params["reasoning"] = {"enabled": bool(reasoning_effort)}
+        params["reasoning"] = {"enabled": reasoning_enabled}
         _apply_reasoning_effort_if_supported(
             params,
             reasoning_effort,
@@ -717,12 +721,15 @@ def _apply_reasoning_params(
             supports_reasoning_effort,
         )
         return
-    _apply_reasoning_effort_if_supported(
-        params,
-        reasoning_effort,
-        reasoning_effort_map,
-        supports_reasoning_effort,
-    )
+    if reasoning_enabled:
+        _apply_reasoning_effort_if_supported(
+            params,
+            reasoning_effort,
+            reasoning_effort_map,
+            supports_reasoning_effort,
+        )
+    elif supports_reasoning_effort:
+        params["reasoning_effort"] = "none"
 
 
 def _apply_reasoning_effort_if_supported(

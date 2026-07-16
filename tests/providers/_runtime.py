@@ -152,6 +152,7 @@ def make_provider_request(
     upstream_model_id: str | None = None,
     max_tokens: int | None = None,
     reasoning_effort: str | None = None,
+    reasoning_enabled: bool | None = None,
     temperature: float | int | None = None,
 ) -> ProviderRequest:
     request_model = bound_test_model(
@@ -181,6 +182,7 @@ def make_provider_request(
         routing=request_model.routing,
         max_tokens=max_tokens,
         reasoning_effort=reasoning_effort,
+        reasoning_enabled=reasoning_enabled,
         temperature=temperature,
         upstream_model_id=request_model.upstream_id or request_model.id,
         capabilities=request_model.capabilities,

@@ -16,7 +16,7 @@ from loushang.ai.model.domain import (
     OpenAIResponsesConfig,
     default_adapter_config,
 )
-from loushang.ai.options import get_max_output_tokens, get_reasoning_effort
+from loushang.ai.options import get_max_output_tokens, get_reasoning_options
 from loushang.ai.provider.protocol import ProviderContext, ProviderRequest
 
 
@@ -122,7 +122,7 @@ def resolve_request_for_model(
     defaults = dict(model.defaults)
     headers = dict(auth_view.headers)
     max_tokens = _resolve_max_tokens(options, defaults)
-    reasoning_effort = _resolve_reasoning_effort(options, defaults)
+    reasoning_enabled, reasoning_effort = _resolve_reasoning(options, defaults)
     temperature = _resolve_temperature(options, defaults)
     return ProviderRequest(
         model=model,
@@ -142,6 +142,7 @@ def resolve_request_for_model(
         routing=model.routing,
         max_tokens=max_tokens,
         reasoning_effort=reasoning_effort,
+        reasoning_enabled=reasoning_enabled,
         temperature=temperature,
     )
 
@@ -217,16 +218,29 @@ def _resolve_max_tokens(options, defaults: dict[str, object]) -> int | None:
     return value if isinstance(value, int) else None
 
 
-def _resolve_reasoning_effort(
+def _resolve_reasoning(
     options,
     defaults: dict[str, Any],
-) -> str | None:
-    value = get_reasoning_effort(options)
-    if value is None:
-        default_value = defaults.get("reasoningEffort")
-        if isinstance(default_value, str):
-            value = default_value
-    return value if isinstance(value, str) else None
+) -> tuple[bool | None, str | None]:
+    default_effort = defaults.get("reasoningEffort")
+    if not isinstance(default_effort, str):
+        default_effort = None
+
+    reasoning = get_reasoning_options(options)
+    if reasoning is None:
+        return (True, default_effort) if default_effort is not None else (None, None)
+    if reasoning.enabled is False:
+        return False, None
+
+    has_explicit_request = (
+        reasoning.enabled is True
+        or reasoning.effort is not None
+        or reasoning.budget_tokens is not None
+        or reasoning.expose_summary
+    )
+    if has_explicit_request:
+        return True, reasoning.effort or default_effort
+    return (True, default_effort) if default_effort is not None else (None, None)
 
 
 def _resolve_temperature(options, defaults: dict[str, Any]) -> float | int | None:

@@ -13,8 +13,6 @@ from loushang.ai.event_stream.raw_parts import RawPart, UsageDeltaPart
 from loushang.ai.model.domain import AnthropicMessagesConfig
 from loushang.ai.options import (
     get_reasoning_budget_tokens,
-    get_reasoning_effort,
-    is_reasoning_requested,
 )
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import ProviderRequest
@@ -382,7 +380,7 @@ class AnthropicProvider(AnthropicProviderBase):
         # 门闸：按 typed protocol/headers 决定是否注入 beta（与 httpx 对齐）
         need_ilt = self.should_inject_interleaved_thinking(
             model_id=model.id,
-            options=options,
+            reasoning_enabled=resolved.reasoning_enabled,
             adapter_config=adapter_config,
         )
         need_fg = self.should_inject_fine_grained_tools(
@@ -449,7 +447,7 @@ class AnthropicProvider(AnthropicProviderBase):
         max_tokens = resolve_output_token_budget(model, resolved).value
         thinking_cfg: dict[str, object] | None = None
         # 思考模式：自适应或预算式；与 temperature 互斥
-        want_thinking = is_reasoning_requested(options)
+        want_thinking = resolved.reasoning_enabled is True
         if want_thinking:
             if self.supports_adaptive_thinking(model.id):
                 thinking_cfg = {"type": "adaptive"}
@@ -474,10 +472,9 @@ class AnthropicProvider(AnthropicProviderBase):
         if thinking_cfg:
             params["thinking"] = thinking_cfg
         # 若存在自适应思考的 effort，注入 output_config
-        want_thinking = is_reasoning_requested(options)
         if want_thinking and self.supports_adaptive_thinking(model.id):
             effort = self.map_thinking_level_to_effort(
-                get_reasoning_effort(options), model.id
+                resolved.reasoning_effort, model.id
             )
             if effort:
                 params["output_config"] = {"effort": effort}
@@ -518,10 +515,9 @@ class AnthropicProvider(AnthropicProviderBase):
         # temperature：仅在未启用思考时设置
         if (
             not thinking_cfg
-            and options is not None
-            and getattr(options, "temperature", None) is not None
+            and resolved.temperature is not None
         ):
-            params["temperature"] = options.temperature
+            params["temperature"] = resolved.temperature
         # Clamp max_tokens by remaining context if capability provides window
         remaining = compute_remaining_context(
             getattr(model, "context_window", None),

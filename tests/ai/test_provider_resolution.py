@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
+from loushang.ai import CallOptions, ReasoningOptions
 from loushang.ai.auth import ApiKeyAuth, AuthCredential
 from loushang.ai.model import (
     AnthropicMessagesConfig,
@@ -152,6 +153,59 @@ def test_resolver_rejects_unbound_model(model: Model) -> None:
 def test_resolver_rejects_non_model_input() -> None:
     with pytest.raises(TypeError, match="model must be Model"):
         resolve_request_for_model(object())  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("reasoning", "default_effort", "expected_enabled", "expected_effort"),
+    [
+        (None, "medium", True, "medium"),
+        (ReasoningOptions(enabled=False), "medium", False, None),
+        (ReasoningOptions(enabled=True), "medium", True, "medium"),
+        (ReasoningOptions(effort="high"), "medium", True, "high"),
+        (ReasoningOptions(budget_tokens=2048), "medium", True, "medium"),
+        (ReasoningOptions(expose_summary=True), None, True, None),
+        (ReasoningOptions(), "medium", True, "medium"),
+        (ReasoningOptions(), None, None, None),
+    ],
+)
+def test_resolver_produces_authoritative_reasoning_state(
+    reasoning: ReasoningOptions | None,
+    default_effort: str | None,
+    expected_enabled: bool | None,
+    expected_effort: str | None,
+) -> None:
+    defaults = (
+        Defaults.from_raw({"reasoningEffort": default_effort})
+        if default_effort is not None
+        else Defaults()
+    )
+
+    resolved = resolve_request_for_model(
+        _model(defaults=defaults),
+        options=CallOptions(auth=ApiKeyAuth("token"), reasoning=reasoning),
+        env={},
+    )
+
+    assert resolved.reasoning_enabled is expected_enabled
+    assert resolved.reasoning_effort == expected_effort
+
+
+def test_resolver_applies_default_and_explicit_temperature() -> None:
+    model = _model(defaults=Defaults.from_raw({"temperature": 0.4}))
+
+    default_request = resolve_request_for_model(
+        model,
+        options=CallOptions(auth=ApiKeyAuth("token")),
+        env={},
+    )
+    override_request = resolve_request_for_model(
+        model,
+        options=CallOptions(auth=ApiKeyAuth("token"), temperature=0.7),
+        env={},
+    )
+
+    assert default_request.temperature == 0.4
+    assert override_request.temperature == 0.7
 
 
 def test_resolver_uses_bound_model_without_registry_reselection() -> None:

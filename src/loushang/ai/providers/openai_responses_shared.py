@@ -10,7 +10,6 @@ from loushang.ai.errors import AIProviderProtocolError
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import OpenAIResponsesConfig
 from loushang.ai.model.registry import resolve_model_api
-from loushang.ai.options import is_reasoning_requested
 from loushang.ai.provider.errors import (
     provider_error_part,
     provider_error_part_from_raw,
@@ -160,7 +159,7 @@ def build_copilot_dynamic_headers(messages: list[object]) -> dict[str, str]:
 async def process_responses_stream(
     openai_stream,
     *,
-    options=None,
+    reasoning_enabled: bool = False,
     source: str = "openai-responses",
 ) -> AsyncIterator[RawPart]:
     thinking_buf: list[str] = []
@@ -171,12 +170,7 @@ async def process_responses_stream(
     tool_call_ids_by_item_id: dict[str, str] = {}
     tool_call_ids_by_index: dict[int, str] = {}
     emitted_response_start = False
-    emit_thinking = False
-    if options is not None:
-        try:
-            emit_thinking = is_reasoning_requested(options)
-        except Exception:
-            emit_thinking = False
+    emit_thinking = reasoning_enabled
 
     async for event in openai_stream:
         etype = getattr(event, "type", None)
@@ -386,19 +380,14 @@ async def process_responses_stream(
 def process_responses_response(
     response: object,
     *,
-    options=None,
+    reasoning_enabled: bool = False,
     source: str = "openai-responses",
 ) -> Iterator[RawPart]:
     rid = getattr(response, "id", None)
     if isinstance(rid, str) and rid:
         yield {"type": "response_start", "response_id": rid}
 
-    emit_thinking = False
-    if options is not None:
-        try:
-            emit_thinking = is_reasoning_requested(options)
-        except Exception:
-            emit_thinking = False
+    emit_thinking = reasoning_enabled
 
     output = getattr(response, "output", None)
     if isinstance(output, list):

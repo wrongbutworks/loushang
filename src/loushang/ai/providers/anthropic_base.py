@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from loushang.ai.model.domain import AnthropicMessagesConfig
-from loushang.ai.options import CacheRetention, is_reasoning_requested
+from loushang.ai.options import CacheRetention
 from loushang.ai.providers.anthropic_oauth_compat import AnthropicOAuthBridge
 from loushang.ai.providers.provider_helpers import (
     get_header_case_insensitive,
@@ -154,13 +154,12 @@ class AnthropicProviderBase:
         cls,
         *,
         model_id: str,
-        options: object | None,
+        reasoning_enabled: bool | None,
         adapter_config: AnthropicMessagesConfig | None,
     ) -> bool:
         if adapter_config is not None and adapter_config.interleaved_thinking is False:
             return False
-        want_thinking = is_reasoning_requested(options)
-        if not want_thinking:
+        if reasoning_enabled is not True:
             return False
         if cls.supports_adaptive_thinking(model_id):
             return False

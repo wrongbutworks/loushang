@@ -13,11 +13,7 @@ from loushang.ai.model import (
     OpenAICompletionsConfig,
     OpenAIResponsesConfig,
 )
-from loushang.ai.options import (
-    CallOptions,
-    PairingMode,
-    is_reasoning_requested,
-)
+from loushang.ai.options import CallOptions, PairingMode
 from loushang.ai.provider import (
     ProviderInvocationMode,
     normalize_provider_request_for_api,
@@ -56,16 +52,8 @@ def _has_tools(normalized_context: NormalizedContext) -> bool:
     return bool(normalized_context.tools)
 
 
-def _requests_reasoning(options) -> bool:
-    return is_reasoning_requested(options)
-
-
 def _requests_structured_output(options) -> bool:
     return get_structured_output_options(options) is not None
-
-
-def _requests_temperature(options) -> bool:
-    return options is not None and getattr(options, "temperature", None) is not None
 
 
 def _requests_tool_choice(options) -> bool:
@@ -147,6 +135,7 @@ def _validate_capability(
     capabilities,
     normalized_context: NormalizedContext,
     options,
+    resolved_request,
     *,
     require_stream: bool,
 ) -> None:
@@ -166,7 +155,7 @@ def _validate_capability(
             details={"capability": "tool_use"},
         )
 
-    if _requests_reasoning(options) and not _supports(
+    if getattr(resolved_request, "reasoning_enabled", None) is True and not _supports(
         capabilities, "reasoning"
     ):
         raise UnsupportedCapabilityError(
@@ -184,7 +173,9 @@ def _validate_capability(
             details={"capability": "structured_output"},
         )
 
-    if _requests_temperature(options) and not _supports(capabilities, "temperature"):
+    if getattr(resolved_request, "temperature", None) is not None and not _supports(
+        capabilities, "temperature"
+    ):
         raise UnsupportedCapabilityError(
             f"Model {model.id!r} does not support temperature",
             model=getattr(model, "id", None),
@@ -296,6 +287,7 @@ async def _start_stream(
         resolved.capabilities,
         normalized,
         options,
+        resolved,
         require_stream=require_stream,
     )
     _validate_explicit_adapter_config(resolved_model, resolved, options)

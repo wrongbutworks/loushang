@@ -8,10 +8,7 @@ from typing import Any
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import OpenAIResponsesConfig
-from loushang.ai.options import (
-    get_reasoning_effort,
-    get_reasoning_summary,
-)
+from loushang.ai.options import get_reasoning_summary
 from loushang.ai.output_budget import resolve_output_token_budget
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.errors import provider_error_part
@@ -222,21 +219,19 @@ class OpenAIResponsesProvider:
                 resolved,
             ).value
         # 温度
-        if getattr(options, "temperature", None) is not None:
-            params["temperature"] = getattr(options, "temperature")
-        # 推理配置（最小实现）
+        if resolved.temperature is not None:
+            params["temperature"] = resolved.temperature
         if _supports_reasoning(capabilities):
-            reasoning_effort = get_reasoning_effort(options) or getattr(
-                resolved, "reasoning_effort", None
-            )
-            reasoning_summary = get_reasoning_summary(options)
-            if reasoning_effort or reasoning_summary:
-                params["reasoning"] = {
-                    "effort": reasoning_effort or "medium",
-                    "summary": reasoning_summary or "auto",
+            if resolved.reasoning_enabled is True:
+                reasoning: dict[str, str] = {
+                    "effort": resolved.reasoning_effort or "medium",
                 }
+                reasoning_summary = get_reasoning_summary(options)
+                if reasoning_summary is not None:
+                    reasoning["summary"] = reasoning_summary
+                params["reasoning"] = reasoning
                 params["include"] = ["reasoning.encrypted_content"]
-            else:
+            elif resolved.reasoning_enabled is False:
                 params["reasoning"] = {"effort": "none"}
         text_format = openai_responses_text_format(options)
         if text_format is not None:
@@ -259,7 +254,7 @@ class OpenAIResponsesProvider:
         if not is_stream_request:
             for part in process_responses_response(
                 response,
-                options=options,
+                reasoning_enabled=resolved.reasoning_enabled is True,
                 source=self.api,
             ):
                 yield part
@@ -268,7 +263,7 @@ class OpenAIResponsesProvider:
         try:
             async for part in process_responses_stream(
                 response,
-                options=options,
+                reasoning_enabled=resolved.reasoning_enabled is True,
                 source=self.api,
             ):
                 yield part

@@ -25,6 +25,7 @@ from loushang.ai.model import (
     OpenAIResponsesConfig,
     default_adapter_config,
 )
+from loushang.ai.options import get_reasoning_effort, is_reasoning_requested
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.invocation import call_api_provider_stream
 from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
@@ -1663,6 +1664,9 @@ def _patch_resolved_request(
     provider: str = "faux",
 ) -> None:
     def _resolve_request(_model, options=None):
+        reasoning_enabled = None
+        if options is not None and getattr(options, "reasoning", None) is not None:
+            reasoning_enabled = is_reasoning_requested(options)
         return _provider_request(
             api=api,
             provider=provider,
@@ -1671,6 +1675,13 @@ def _patch_resolved_request(
             model_id=getattr(_model, "id", "test-model"),
             options=options,
             capabilities=capabilities or Capabilities(input=("text",), stream=True),
+            reasoning_enabled=reasoning_enabled,
+            reasoning_effort=(
+                get_reasoning_effort(options) if reasoning_enabled is True else None
+            ),
+            temperature=(
+                getattr(options, "temperature", None) if options is not None else None
+            ),
         )
 
     monkeypatch.setattr(

@@ -1253,6 +1253,7 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_false_options(
             fine_grained_tools=True,
             interleaved_thinking=True,
         ),
+        reasoning_enabled=True,
     )
 
     asyncio.run(
@@ -1399,6 +1400,69 @@ def test_anthropic_cache_retention_none_suppresses_cache_key_fields(
 def test_call_options_rejects_max_tokens_before_anthropic_provider() -> None:
     with pytest.raises(ValueError, match="max_output_tokens"):
         CallOptions(auth=ApiKeyAuth("test-key"), max_output_tokens=0)
+
+
+def test_anthropic_explicit_reasoning_disable_omits_thinking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
+    provider = AnthropicProvider()
+    request = make_provider_request(
+        _Model(reasoning=True),
+        api="anthropic-messages",
+        options=CallOptions(auth=ApiKeyAuth("test-key")),
+        reasoning_enabled=False,
+        reasoning_effort=None,
+    )
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                request.model,
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                request.options,
+                request,
+            )
+        )
+    )
+
+    assert "thinking" not in _FakeAsyncAnthropic.last_stream_kwargs
+
+
+def test_anthropic_uses_resolved_temperature(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
+    provider = AnthropicProvider()
+    request = make_provider_request(
+        _Model(),
+        api="anthropic-messages",
+        options=CallOptions(auth=ApiKeyAuth("test-key")),
+        temperature=0.4,
+    )
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                request.model,
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                request.options,
+                request,
+            )
+        )
+    )
+
+    assert _FakeAsyncAnthropic.last_stream_kwargs["temperature"] == 0.4
 
 
 def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(

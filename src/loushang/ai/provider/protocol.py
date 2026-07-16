@@ -40,6 +40,7 @@ class ProviderRequest:
     routing: EndpointRouting = field(default_factory=EndpointRouting)
     max_tokens: int | None = None
     reasoning_effort: str | None = None
+    reasoning_enabled: bool | None = None
     temperature: float | int | None = None
     upstream_model_id: str | None = None
     capabilities: Capabilities = field(default_factory=Capabilities)
@@ -54,6 +55,14 @@ class ProviderRequest:
             raise ValueError("ProviderRequest.base_url must be a resolved non-empty string")
         if "{" in self.base_url or "}" in self.base_url:
             raise ValueError("ProviderRequest.base_url contains an unresolved template")
+        if self.reasoning_enabled is not None and not isinstance(
+            self.reasoning_enabled, bool
+        ):
+            raise TypeError("ProviderRequest.reasoning_enabled must be a boolean or None")
+        if self.reasoning_enabled is False and self.reasoning_effort is not None:
+            raise ValueError(
+                "ProviderRequest.reasoning_effort must be None when reasoning is disabled"
+            )
         model = self.model
         expected_provider = model.provider_id
         expected_endpoint = model.endpoint_id

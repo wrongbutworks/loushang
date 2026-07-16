@@ -18,7 +18,8 @@ from loushang.ai.model import (
     OpenAIResponsesConfig,
     Pricing,
 )
-from loushang.ai.provider import ProviderRequest
+from loushang.ai.options import get_reasoning_effort, is_reasoning_requested
+from loushang.ai.provider import ProviderRequest, resolve_request_for_model
 from loushang.ai.providers.openai_responses import OpenAIResponsesProvider
 from loushang.ai.providers.openai_responses_shared import process_responses_stream
 from loushang.ai.structured import StructuredOutputOptions
@@ -1022,6 +1023,56 @@ def test_openai_responses_payload_maps_reasoning_option(
     ]
 
 
+def test_openai_responses_explicit_reasoning_disable_overrides_effort() -> None:
+    model = bound_test_model(
+        _Model(reasoning=True),
+        api="openai-responses",
+        options=CallOptions(auth=ApiKeyAuth("test-key")),
+        defaults={"reasoningEffort": "medium"},
+    )
+    request = resolve_request_for_model(
+        model,
+        options=CallOptions(
+            auth=ApiKeyAuth("test-key"),
+            reasoning=ReasoningOptions(enabled=False),
+        ),
+    )
+
+    assert request.reasoning_enabled is False
+    assert request.reasoning_effort is None
+
+
+def test_openai_responses_uses_resolved_temperature(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    provider = OpenAIResponsesProvider()
+    request = make_provider_request(
+        _Model(),
+        api="openai-responses",
+        options=CallOptions(auth=ApiKeyAuth("test-key")),
+        temperature=0.4,
+    )
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                provider,
+                request.model,
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                request.options,
+                request,
+            )
+        )
+    )
+
+    assert _FakeAsyncOpenAI.last_create_kwargs["temperature"] == 0.4
+
+
 def test_openai_responses_payload_uses_resolved_capabilities_for_reasoning(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1442,7 +1493,9 @@ def test_openai_responses_accepts_response_done_completion_alias() -> None:
 
 
 @pytest.mark.parametrize("reason", ["max_output_tokens", "max_tokens", "length"])
-def test_openai_responses_incomplete_length_is_successful_truncation(reason: str) -> None:
+def test_openai_responses_incomplete_length_is_successful_truncation(
+    reason: str,
+) -> None:
     parts = asyncio.run(
         _collect_raw_parts(
             [
@@ -1826,9 +1879,7 @@ def _patch_resolved_request(
             getattr(options, "max_output_tokens", None) if options is not None else None
         )
         resolved_max_tokens = (
-            max(1, option_max_tokens)
-            if isinstance(option_max_tokens, int)
-            else max_tokens
+            option_max_tokens if isinstance(option_max_tokens, int) else max_tokens
         )
         resolved_adapter = adapter_config or _responses_adapter_config_from_compat(
             compat or {}
@@ -1861,6 +1912,15 @@ def _patch_resolved_request(
             routing=request_model.routing,
             max_tokens=resolved_max_tokens,
             capabilities=request_model.capabilities,
+            reasoning_enabled=(
+                is_reasoning_requested(options)
+                if getattr(options, "reasoning", None) is not None
+                else None
+            ),
+            reasoning_effort=get_reasoning_effort(options),
+            temperature=(
+                getattr(options, "temperature", None) if options is not None else None
+            ),
             upstream_model_id=request_model.upstream_id or request_model.id,
         )
 

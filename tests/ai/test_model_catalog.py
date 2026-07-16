@@ -103,3 +103,14 @@ def test_builtin_catalog_only_declares_implemented_modalities() -> None:
 
     assert modalities <= {"text", "image"}
     assert "image" in modalities
+
+
+def test_builtin_catalog_capabilities_match_public_adapter_surface() -> None:
+    registry = load_builtin_model_registry()
+
+    assert all(not model.capabilities.attachment for model in registry.list_models())
+    assert all(
+        not model.capabilities.structured_output
+        for model in registry.list_models()
+        if model.api == "anthropic-messages"
+    )
