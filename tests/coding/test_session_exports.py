@@ -467,6 +467,19 @@ def test_export_session_to_html_embeds_entry_tree_and_summary_entries(tmp_path) 
     assert "branch summary text" in html
     assert "compact summary text" in html
     assert "summary label" in html
+    assert "main branch" not in html
+
+
+def test_product_transcript_dispositions_cover_every_standard_kind() -> None:
+    from loushang.coding.session.export_html.tool_renderer import (
+        HTML_TRANSCRIPT_DISPOSITIONS,
+    )
+    from loushang.coding.ui.session_history import TUI_TRANSCRIPT_DISPOSITIONS
+    from loushang.harness.agent_transcript import STANDARD_AGENT_TRANSCRIPT_KINDS
+
+    expected = set(STANDARD_AGENT_TRANSCRIPT_KINDS)
+    assert set(HTML_TRANSCRIPT_DISPOSITIONS) == expected
+    assert set(TUI_TRANSCRIPT_DISPOSITIONS) == expected
 
 
 def test_export_session_to_html_embeds_system_prompt_and_tool_definitions(tmp_path) -> None:

@@ -388,14 +388,14 @@ def _session_messages(session: Any) -> list[object]:
         except Exception:
             context = None
         messages = _safe_getattr(context, "messages", None)
-        if isinstance(messages, list):
+        if isinstance(messages, list | tuple):
             return list(messages)
     messages = _safe_getattr(session, "messages", None)
-    if isinstance(messages, list):
+    if isinstance(messages, list | tuple):
         return list(messages)
     agent_state = _safe_getattr(_safe_getattr(session, "agent", None), "state", None)
     messages = _safe_getattr(agent_state, "messages", None)
-    if isinstance(messages, list):
+    if isinstance(messages, list | tuple):
         return list(messages)
     return []
 
@@ -448,10 +448,10 @@ def _count_messages(session: Any) -> int:
             context = None
         else:
             messages = _safe_getattr(context, "messages", None)
-            if isinstance(messages, list):
+            if isinstance(messages, list | tuple):
                 return len(messages)
     messages = _safe_getattr(session, "messages", None)
-    if isinstance(messages, list):
+    if isinstance(messages, list | tuple):
         return len(messages)
     return 0
 

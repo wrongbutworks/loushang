@@ -69,7 +69,10 @@ def create_agent_transcript_message_codec() -> AgentMessageJsonCodec:
         return {"role": message.role, **encoded}
 
     def deserialize(value: dict[str, object]) -> ApplicationMessage:
-        return _decode_application_message(require_json_value(value))
+        return _decode_application_message(
+            require_json_value(value),
+            allow_message_role=True,
+        )
 
     return AgentMessageJsonCodec(
         (
@@ -177,7 +180,7 @@ def _encode_thinking_selection(payload: object) -> JSONValue:
 
 
 def _decode_thinking_selection(value: JSONValue) -> ThinkingSelectionSnapshot:
-    payload = _object(value, name="thinking selection")
+    payload = _payload_object(value, name="thinking selection", fields={"level"})
     return ThinkingSelectionSnapshot(level=_text(payload, "level"))
 
 
@@ -191,7 +194,11 @@ def _encode_model_selection(payload: object) -> JSONValue:
 
 
 def _decode_model_selection(value: JSONValue) -> ModelSelectionSnapshot:
-    payload = _object(value, name="model selection")
+    payload = _payload_object(
+        value,
+        name="model selection",
+        fields={"provider", "modelId", "endpointId"},
+    )
     return ModelSelectionSnapshot(
         provider=_text(payload, "provider"),
         model_id=_text(payload, "modelId"),
@@ -214,7 +221,20 @@ def _encode_command_execution(payload: object) -> JSONValue:
 
 
 def _decode_command_execution(value: JSONValue) -> CommandExecutionRecord:
-    payload = _object(value, name="command execution")
+    payload = _payload_object(
+        value,
+        name="command execution",
+        fields={
+            "command",
+            "output",
+            "exitCode",
+            "cancelled",
+            "truncated",
+            "fullOutputPath",
+            "excludeFromContext",
+            "metadata",
+        },
+    )
     return CommandExecutionRecord(
         command=_string(payload, "command"),
         output=_string(payload, "output"),
@@ -241,7 +261,17 @@ def _encode_compaction_checkpoint(payload: object) -> JSONValue:
 def _decode_compaction_checkpoint(
     value: JSONValue,
 ) -> ContextCompactionCheckpoint:
-    payload = _object(value, name="context compaction checkpoint")
+    payload = _payload_object(
+        value,
+        name="context compaction checkpoint",
+        fields={
+            "summary",
+            "firstKeptRecordId",
+            "tokensBefore",
+            "details",
+            "fromHook",
+        },
+    )
     return ContextCompactionCheckpoint(
         summary=_string(payload, "summary"),
         first_kept_record_id=_text(payload, "firstKeptRecordId"),
@@ -262,7 +292,11 @@ def _encode_branch_summary(payload: object) -> JSONValue:
 
 
 def _decode_branch_summary(value: JSONValue) -> BranchContextSummary:
-    payload = _object(value, name="branch context summary")
+    payload = _payload_object(
+        value,
+        name="branch context summary",
+        fields={"fromRecordId", "summary", "details", "fromHook"},
+    )
     return BranchContextSummary(
         from_record_id=_text(payload, "fromRecordId"),
         summary=_string(payload, "summary"),
@@ -290,8 +324,30 @@ def _encode_application_message(payload: object) -> JSONValue:
     }
 
 
-def _decode_application_message(value: JSONValue) -> ApplicationMessage:
-    payload = _object(value, name="application message")
+def _decode_application_message(
+    value: JSONValue,
+    *,
+    allow_message_role: bool = False,
+) -> ApplicationMessage:
+    fields = {
+        "applicationMessageId",
+        "customType",
+        "content",
+        "timestamp",
+        "display",
+        "details",
+        "origin",
+        "deliveryMode",
+    }
+    if allow_message_role:
+        fields.add("role")
+    payload = _payload_object(
+        value,
+        name="application message",
+        fields=fields,
+    )
+    if allow_message_role and _text(payload, "role") != "application":
+        raise ValueError("application message role is invalid")
     content_value = _field(payload, "content")
     if isinstance(content_value, str):
         content: str | list[TextPart | ImagePart] = content_value
@@ -338,7 +394,11 @@ def _encode_extension_data(payload: object) -> JSONValue:
 
 
 def _decode_extension_data(value: JSONValue) -> ExtensionData:
-    payload = _object(value, name="extension data")
+    payload = _payload_object(
+        value,
+        name="extension data",
+        fields={"extensionType", "data"},
+    )
     return ExtensionData(
         extension_type=_text(payload, "extensionType"),
         data=_field(payload, "data"),
@@ -356,7 +416,11 @@ def _encode_annotation_patch(payload: object) -> JSONValue:
 
 
 def _decode_annotation_patch(value: JSONValue) -> RecordAnnotationPatch:
-    payload = _object(value, name="record annotation patch")
+    payload = _payload_object(
+        value,
+        name="record annotation patch",
+        fields={"targetRecordId", "namespace", "operation", "value"},
+    )
     operation = _text(payload, "operation")
     if operation not in {"set", "remove"}:
         raise ValueError("record annotation operation is invalid")
@@ -377,7 +441,11 @@ def _encode_metadata_patch(payload: object) -> JSONValue:
 
 
 def _decode_metadata_patch(value: JSONValue) -> ConversationMetadataPatch:
-    payload = _object(value, name="conversation metadata patch")
+    payload = _payload_object(
+        value,
+        name="conversation metadata patch",
+        fields={"values", "removedKeys"},
+    )
     removed = _field(payload, "removedKeys")
     if not isinstance(removed, list) or not all(
         isinstance(item, str) for item in removed
@@ -397,6 +465,21 @@ def _instance(value: object, expected: type[PayloadT]) -> PayloadT:
 
 def _object(value: object, *, name: str) -> dict[str, JSONValue]:
     return require_json_mapping(value, name=name)
+
+
+def _payload_object(
+    value: object,
+    *,
+    name: str,
+    fields: set[str],
+) -> dict[str, JSONValue]:
+    payload = _object(value, name=name)
+    unexpected = set(payload).difference(fields)
+    if unexpected:
+        raise ValueError(
+            f"{name} contains unknown fields: {', '.join(sorted(unexpected))}"
+        )
+    return payload
 
 
 def _field(value: Mapping[str, JSONValue], key: str) -> JSONValue:

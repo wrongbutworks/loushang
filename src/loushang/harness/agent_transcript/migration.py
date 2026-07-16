@@ -121,14 +121,7 @@ def migrate_session_v3_file(path: str | Path) -> SessionV3MigrationResult:
 
     target = Path(path)
     with journal_file_lock(target, "exclusive"):
-        try:
-            raw = target.read_text(encoding="utf-8")
-        except OSError as exc:
-            raise SessionV3MigrationError(
-                "Session file could not be read",
-                code="session_read_failed",
-                path=target,
-            ) from exc
+        raw = _read_session_text(target)
         values = _parse_jsonl(raw, path=target)
         result = _convert_or_load_native(values, path=target)
         if result.disposition == "already_native":
@@ -153,6 +146,16 @@ def migrate_session_v3_file(path: str | Path) -> SessionV3MigrationResult:
         return result
 
 
+def read_session_v3_file(path: str | Path) -> SessionV3MigrationResult:
+    """Read and convert Session v3 without modifying the source file."""
+
+    target = Path(path)
+    with journal_file_lock(target, "shared"):
+        raw = _read_session_text(target)
+        values = _parse_jsonl(raw, path=target)
+        return _convert_or_load_native(values, path=target)
+
+
 def is_native_conversation_file(path: str | Path) -> bool:
     """Return whether the first nonblank line identifies a Native conversation."""
 
@@ -169,6 +172,17 @@ def is_native_conversation_file(path: str | Path) -> bool:
     except (json.JSONDecodeError, ValueError):
         return False
     return isinstance(value, dict) and value.get("type") == "conversation"
+
+
+def _read_session_text(target: Path) -> str:
+    try:
+        return target.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise SessionV3MigrationError(
+            "Session file could not be read",
+            code="session_read_failed",
+            path=target,
+        ) from exc
 
 
 def _convert_or_load_native(

@@ -34,6 +34,7 @@ from loushang.harness.agent_transcript.migration import (
     convert_session_v3_snapshot,
     is_native_conversation_file,
     migrate_session_v3_file,
+    read_session_v3_file,
 )
 from loushang.harness.agent_transcript.profile import (
     AgentTranscriptProfile,
@@ -124,6 +125,7 @@ __all__ = [
     "estimate_record_tokens",
     "is_native_conversation_file",
     "migrate_session_v3_file",
+    "read_session_v3_file",
     "record_is_visible",
     "record_role",
     "record_to_context_item",

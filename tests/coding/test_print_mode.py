@@ -471,7 +471,7 @@ def test_print_mode_returns_nonzero_and_disposes_on_assistant_error_message() ->
             return None
 
         def get_session_context(self):
-            return SimpleNamespace(messages=list(self._messages))
+            return SimpleNamespace(messages=tuple(self._messages))
 
     async def scenario() -> None:
         runtime = FakeRuntime()

@@ -14,7 +14,11 @@ from loushang.coding.store.file_codec import (
     write_session_file,
 )
 from loushang.harness.agent_transcript import AGENT_MESSAGE_KIND
-from loushang.harness.conversation import ConversationHeader, ConversationRecord
+from loushang.harness.conversation import (
+    ConversationHeader,
+    ConversationRecord,
+    NativeConversationHeaderCodec,
+)
 
 
 def _header() -> ConversationHeader:
@@ -69,6 +73,28 @@ def test_native_session_load_skips_only_partial_tail(tmp_path: Path) -> None:
 
     assert header == _header()
     assert records == [record]
+
+
+def test_writable_repository_repairs_partial_tail_before_append(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "session.jsonl"
+    first = _message_record()
+    write_session_file(path, _header(), [first])
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write('{"type":"record"')
+
+    repository = load_session_repository(path)
+    repository.append(_message_record("record-2", "record-1"))
+    reloaded = load_session_repository(path)
+
+    assert [record.record_id for record in reloaded.records] == [
+        "record-1",
+        "record-2",
+    ]
+    assert [diagnostic.code for diagnostic in repository.diagnostics] == [
+        "partial_journal_tail"
+    ]
 
 
 def test_native_session_rejects_invalid_complete_record(tmp_path: Path) -> None:
@@ -156,3 +182,60 @@ def test_read_only_repository_rejects_append(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="read-only"):
         repository.append(_message_record("record-2", "record-1"))
+
+
+def test_read_only_repository_converts_session_v3_without_rewriting_source(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "session.jsonl"
+    values = [
+        {
+            "type": "session",
+            "version": 3,
+            "id": "session-1",
+            "timestamp": "2026-07-16T00:00:00Z",
+            "cwd": "/workspace/project",
+            "parentSession": None,
+        },
+        {
+            "type": "message",
+            "id": "record-1",
+            "parentId": None,
+            "timestamp": "2026-07-16T00:00:01Z",
+            "message": {"role": "user", "content": "Hello", "timestamp": 1.0},
+        },
+    ]
+    path.write_text(
+        "".join(json.dumps(value) + "\n" for value in values),
+        encoding="utf-8",
+    )
+    original = path.read_bytes()
+
+    repository = load_session_repository(path, writable=False)
+
+    assert repository.records[0].kind == AGENT_MESSAGE_KIND
+    assert path.read_bytes() == original
+    with pytest.raises(RuntimeError, match="read-only"):
+        repository.append(_message_record("record-2", "record-1"))
+
+
+@pytest.mark.parametrize("loader", [load_session_file, load_session_repository])
+def test_native_future_version_is_rejected(tmp_path: Path, loader) -> None:
+    path = tmp_path / "session.jsonl"
+    header = _header()
+    future_header = ConversationHeader(
+        conversation_id=header.conversation_id,
+        version=2,
+        created_at=header.created_at,
+        metadata=header.metadata,
+    )
+    native_codec = NativeConversationHeaderCodec()
+    path.write_text(
+        json.dumps(native_codec.encode_header(future_header)) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SessionFileError) as error:
+        loader(path)
+
+    assert error.value.code == "unsupported_session_format"

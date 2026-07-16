@@ -18,6 +18,7 @@ from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
     APPLICATION_MESSAGE_KIND,
+    AgentTranscriptContext,
     ApplicationMessage,
 )
 from loushang.harness.runtime import (
@@ -30,6 +31,7 @@ EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
 RuntimeExceptionRecorder = Callable[..., None]
 ExtensionDiagnosticsSync = Callable[..., None]
 BranchSummaryGenerator = Callable[..., Awaitable[BranchSummaryResult]]
+SessionContextApplier = Callable[[AgentTranscriptContext], None]
 
 
 def _noop_record_runtime_exception(*, code: str, exc: Exception | str) -> None:
@@ -58,6 +60,7 @@ class TreeController:
     agent: Agent
     session_manager: SessionManager
     dispatch_event: EventDispatcher
+    apply_session_context: SessionContextApplier | None = None
     extension_runner: ExtensionRunner | None = None
     record_runtime_exception: RuntimeExceptionRecorder = _noop_record_runtime_exception
     sync_extension_diagnostics: ExtensionDiagnosticsSync = (
@@ -309,6 +312,9 @@ class TreeController:
 
     def _rebuild_agent_context(self) -> None:
         session_context = self.session_manager.build_session_context()
+        if self.apply_session_context is not None:
+            self.apply_session_context(session_context)
+            return
         self.agent.state.set_messages(session_context.messages)
 
 

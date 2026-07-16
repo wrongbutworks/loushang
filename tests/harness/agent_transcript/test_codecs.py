@@ -118,6 +118,24 @@ def test_registered_codec_rejects_corrupted_known_payload() -> None:
     assert error.value.code == "invalid_known_payload"
 
 
+def test_registered_codec_rejects_unknown_fields_in_known_payload() -> None:
+    registry = create_agent_transcript_payload_registry()
+
+    with pytest.raises(JournalCodecError) as error:
+        registry.decode(
+            MODEL_SELECTION_KIND,
+            STANDARD_PAYLOAD_VERSION,
+            {
+                "provider": "provider",
+                "modelId": "model",
+                "endpointId": None,
+                "futurePolicy": "must not be dropped",
+            },
+        )
+
+    assert error.value.code == "invalid_known_payload"
+
+
 def test_agent_message_codec_preserves_application_message_identity() -> None:
     message = _payloads()[APPLICATION_MESSAGE_KIND]
     assert isinstance(message, ApplicationMessage)

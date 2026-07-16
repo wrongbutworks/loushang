@@ -19,10 +19,10 @@ def _usage() -> Usage:
     )
 
 
-def _model() -> Model:
+def _model(model_id: str = "faux-model") -> Model:
     return Model(
-        id="faux-model",
-        name="Faux",
+        id=model_id,
+        name=model_id,
         provider="faux",
         endpoint="anthropic-messages",
         capabilities=Capabilities(
@@ -34,13 +34,17 @@ def _model() -> Model:
     )
 
 
-def _assistant_text_message(text: str) -> AssistantMessage:
+def _assistant_text_message(
+    text: str,
+    *,
+    model_id: str = "faux-model",
+) -> AssistantMessage:
     return AssistantMessage(
         role="assistant",
         content=[TextPart(type="text", text=text)],
         api="anthropic-messages",
         provider="faux",
-        model="faux-model",
+        model=model_id,
         response_id=None,
         usage=_usage(),
         stop_reason="stop",
@@ -88,6 +92,68 @@ def test_navigate_tree_to_message_switches_leaf_and_rebuilds_context(tmp_path) -
     assert session.session_manager.get_leaf_id() == assistant1_id
     assert [getattr(message, "role", None) for message in session.agent.state.messages] == ["user", "assistant"]
     assert session.agent.state.messages[1].content[0].text == "reply 1"
+
+
+def test_navigate_tree_restores_target_branch_model_and_thinking(tmp_path) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.session import AgentSession, ModelSelection
+    from loushang.coding.store import SessionManager
+
+    default_model = _model("default-model")
+    first_model = _model("first-model")
+    second_model = _model("second-model")
+    built_models: list[str] = []
+
+    class ModelRegistry:
+        def list_models(self):
+            return [
+                ModelSelection(provider="faux", model_id=first_model.id),
+                ModelSelection(provider="faux", model_id=second_model.id),
+            ]
+
+        def build_model(self, selection):
+            built_models.append(selection.model_id)
+            return {
+                first_model.id: first_model,
+                second_model.id: second_model,
+            }[selection.model_id]
+
+    manager = SessionManager.new(
+        session_dir=tmp_path,
+        cwd="/tmp/project",
+        persist=False,
+    )
+    root_id = manager.append_message(
+        UserMessage(role="user", content="root", timestamp=0.0)
+    )
+    manager.append_thinking_level_change("low")
+    manager.append_model_change("faux", first_model.id)
+    first_branch_leaf = manager.append_message(
+        _assistant_text_message("first", model_id=first_model.id)
+    )
+    manager.branch(root_id)
+    manager.append_thinking_level_change("high")
+    manager.append_model_change("faux", second_model.id)
+    manager.append_message(_assistant_text_message("second", model_id=second_model.id))
+    session = AgentSession(
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": default_model,
+                "thinking_level": "off",
+            }
+        ),
+        session_manager=manager,
+        model_registry=ModelRegistry(),  # type: ignore[arg-type]
+    )
+    assert built_models == [second_model.id]
+    assert session.agent.model.id == second_model.id
+    assert session.agent.thinking_level == "high"
+
+    asyncio.run(session.navigate_tree(first_branch_leaf))
+
+    assert session.agent.model.id == first_model.id
+    assert session.agent.thinking_level == "low"
 
 
 def test_navigate_tree_to_user_message_returns_editor_text(tmp_path) -> None:

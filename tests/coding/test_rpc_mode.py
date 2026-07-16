@@ -233,7 +233,7 @@ class FakeSession:
         return self._state.model_selection
 
     def get_session_context(self):
-        return SimpleNamespace(messages=list(self._messages))
+        return SimpleNamespace(messages=tuple(self._messages))
 
     async def prompt(self, user_input: str, images=None, **kwargs) -> None:
         self.prompt_calls.append((user_input, images))

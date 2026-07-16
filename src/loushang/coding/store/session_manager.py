@@ -615,7 +615,11 @@ class SessionManager:
 
     @classmethod
     def load(cls, session_file: Path, persist: bool = True) -> SessionManager:
-        repository = load_session_repository(session_file, writable=persist)
+        repository = load_session_repository(
+            session_file,
+            writable=True,
+            persist=persist,
+        )
         header = repository.header
         entries = list(repository.records)
         labels_by_target_id, label_timestamps_by_target_id = _build_label_indexes(

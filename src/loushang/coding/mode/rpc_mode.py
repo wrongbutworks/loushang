@@ -2355,10 +2355,10 @@ class RpcMode(ModeAdapter):
                 context = None
             else:
                 messages = self._safe_getattr(context, "messages", None)
-                if isinstance(messages, list):
+                if isinstance(messages, list | tuple):
                     return list(messages)
         messages = self._safe_getattr(session, "messages", None)
-        if isinstance(messages, list):
+        if isinstance(messages, list | tuple):
             return list(messages)
         return []
 

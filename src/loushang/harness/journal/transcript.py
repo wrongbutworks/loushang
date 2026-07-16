@@ -54,7 +54,12 @@ class TranscriptRepository(Generic[H, R]):
         journal: JsonlJournal[H, R] | None = None,
         mode: BranchMode = "strict",
         leaf_id: str | None = None,
+        diagnostics: Sequence[JournalDiagnostic] = (),
+        source_path: Path | None = None,
+        writable: bool = True,
     ) -> TranscriptRepository[H, R]:
+        if journal is not None and not writable:
+            raise ValueError("read-only transcripts cannot create a journal")
         repository = cls(
             header=header,
             records=records,
@@ -62,9 +67,12 @@ class TranscriptRepository(Generic[H, R]):
             parent_id=parent_id,
             journal=journal,
             mode=mode,
+            diagnostics=diagnostics,
             leaf_id=leaf_id,
-            source_path=journal.path if journal is not None else None,
-            writable=True,
+            source_path=(
+                journal.path if journal is not None and source_path is None else source_path
+            ),
+            writable=writable,
         )
         if journal is not None:
             journal.rewrite(repository.records, header=header)

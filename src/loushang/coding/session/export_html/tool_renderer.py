@@ -19,7 +19,12 @@ from loushang.harness.agent_transcript import (
     COMMAND_EXECUTION_KIND,
     CONTEXT_BRANCH_SUMMARY_KIND,
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
+    CONVERSATION_METADATA_PATCH_KIND,
+    EXTENSION_DATA_KIND,
+    MODEL_SELECTION_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
+    STANDARD_AGENT_TRANSCRIPT_KINDS,
+    THINKING_SELECTION_KIND,
     AgentTranscriptRecord,
     ApplicationMessage,
     BranchContextSummary,
@@ -32,6 +37,21 @@ from loushang.harness.tools.workspace.presentation import render_tool_result_tex
 
 from .ansi import render_ansi_pre
 from .markdown import render_markdown
+
+HTML_TRANSCRIPT_DISPOSITIONS = {
+    AGENT_MESSAGE_KIND: "render",
+    THINKING_SELECTION_KIND: "state-only",
+    MODEL_SELECTION_KIND: "state-only",
+    COMMAND_EXECUTION_KIND: "render",
+    CONTEXT_COMPACTION_CHECKPOINT_KIND: "render",
+    CONTEXT_BRANCH_SUMMARY_KIND: "render",
+    APPLICATION_MESSAGE_KIND: "render",
+    EXTENSION_DATA_KIND: "hidden",
+    RECORD_ANNOTATION_PATCH_KIND: "tree-only",
+    CONVERSATION_METADATA_PATCH_KIND: "metadata-only",
+}
+if set(HTML_TRANSCRIPT_DISPOSITIONS) != set(STANDARD_AGENT_TRANSCRIPT_KINDS):
+    raise RuntimeError("HTML transcript dispositions must cover every standard kind")
 
 
 def render_transcript(
@@ -292,6 +312,9 @@ def _render_message(
     message_id: str | None = None,
 ) -> str | None:
     if isinstance(message, ConversationRecord):
+        disposition = HTML_TRANSCRIPT_DISPOSITIONS.get(message.kind)
+        if disposition is not None and disposition != "render":
+            return None
         if message.kind == AGENT_MESSAGE_KIND:
             return _render_message(
                 message.payload,

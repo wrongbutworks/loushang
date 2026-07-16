@@ -51,6 +51,36 @@ def test_in_memory_session_manager_accepts_custom_session_id() -> None:
     assert manager.get_session_file() is None
 
 
+def test_loaded_non_persistent_session_is_mutable_without_rewriting_source(
+    tmp_path,
+) -> None:
+    from loushang.ai.types import UserMessage
+    from loushang.coding.store import SessionManager
+
+    source = SessionManager.new(
+        session_dir=tmp_path,
+        cwd="/tmp/project",
+        persist=True,
+    )
+    source.append_message(UserMessage(role="user", content="saved", timestamp=0.0))
+    source_file = source.get_session_file()
+    assert source_file is not None
+    original = source_file.read_bytes()
+
+    detached = SessionManager.open(
+        source_file,
+        cwd_override="/tmp/other-project",
+        persist=False,
+    )
+    detached.append_message(
+        UserMessage(role="user", content="memory only", timestamp=1.0)
+    )
+
+    assert detached.get_cwd() == "/tmp/other-project"
+    assert len(detached.get_entries()) == 2
+    assert source_file.read_bytes() == original
+
+
 def test_new_session_manager_rejects_blank_custom_session_id(tmp_path) -> None:
     import pytest
 

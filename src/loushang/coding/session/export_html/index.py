@@ -43,6 +43,7 @@ def export_session_to_html(
     renderer = _custom_message_renderer(session)
     context_usage = stats.context_usage
     entries = session.session_manager.get_entries()
+    branch_entries = session.session_manager.get_branch()
     session_data = _encode_session_data(
         {
             "header": dict(
@@ -90,7 +91,11 @@ def export_session_to_html(
         )
         .replace(
             "{{TRANSCRIPT}}",
-            render_transcript(entries, custom_renderer=renderer, theme=theme),
+            render_transcript(
+                branch_entries,
+                custom_renderer=renderer,
+                theme=theme,
+            ),
         )
         .replace(
             "{{TOOL_SECTIONS}}",

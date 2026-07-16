@@ -164,6 +164,7 @@ class AgentSession:
         approval_resolver: InteractiveApprovalResolver | None = None,
     ) -> None:
         self.agent = agent
+        self._session_default_model = agent.model
         self.session_manager = session_manager
         self._settings_controller = SessionSettingsController(settings_manager)
         self.model_registry = model_registry
@@ -253,6 +254,7 @@ class AgentSession:
             session_manager=self.session_manager,
             extension_runner=self._extension_runner,
             dispatch_event=self._dispatch_event,
+            apply_session_context=self._apply_agent_transcript_context,
             record_runtime_exception=self._record_runtime_exception,
             sync_extension_diagnostics=self._sync_extension_diagnostics,
         )
@@ -460,21 +462,7 @@ class AgentSession:
         )
         self._unsubscribe_agent = self.agent.subscribe(self._handle_agent_event)
         session_context = self.session_manager.build_session_context()
-        self.agent.state.set_messages(session_context.messages)
-        if self.session_manager.get_entries():
-            self.agent.thinking_level = session_context.thinking_level
-        if session_context.model is not None:
-            selection = ModelSelection(
-                provider=session_context.model["provider"],
-                model_id=session_context.model["model_id"],
-                endpoint_id=session_context.model.get("endpoint_id"),
-            )
-            if (
-                self.get_model_selection() != selection
-                and self.model_registry is not None
-            ):
-                with suppress(KeyError, ValueError):
-                    self.agent.model = self.model_registry.build_model(selection)
+        self._apply_agent_transcript_context(session_context)
         if self._tool_registry is not None:
             initial_active_tool_names = (
                 list(active_tool_names)
@@ -491,6 +479,25 @@ class AgentSession:
         self._configure_auth_bridge()
 
     # Public facade: state, commands, diagnostics, packages, and exports.
+
+    def _apply_agent_transcript_context(
+        self,
+        session_context: AgentTranscriptContext,
+    ) -> None:
+        self.agent.state.set_messages(session_context.messages)
+        if self.session_manager.get_entries():
+            self.agent.thinking_level = session_context.thinking_level
+
+        resolved_model = self._session_default_model
+        if session_context.model is not None and self.model_registry is not None:
+            selection = ModelSelection(
+                provider=session_context.model["provider"],
+                model_id=session_context.model["model_id"],
+                endpoint_id=session_context.model.get("endpoint_id"),
+            )
+            with suppress(KeyError, ValueError):
+                resolved_model = self.model_registry.build_model(selection)
+        self.agent.model = resolved_model
 
     def get_state(self) -> AgentSessionState:
         return self._view_controller.get_state(
