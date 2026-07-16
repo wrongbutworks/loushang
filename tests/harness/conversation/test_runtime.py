@@ -30,6 +30,7 @@ def _record(
         record_id=record_id,
         parent_id=parent_id,
         kind=kind,
+        payload_version=1,
         created_at="2026-07-13T00:00:00Z",
         payload=payload,
     )
@@ -69,9 +70,11 @@ def _journal(path: Path):
         ),
         record_codec=FunctionalConversationRecordCodec[ConversationRecord[str]](
             encoder=lambda record: {
-                "type": record.kind,
+                "type": "record",
                 "id": record.record_id,
                 "parentId": record.parent_id,
+                "kind": record.kind,
+                "payloadVersion": record.payload_version,
                 "createdAt": record.created_at,
                 "payload": record.payload,
                 "metadata": dict(record.metadata),
@@ -83,7 +86,8 @@ def _journal(path: Path):
                     if value.get("parentId") is not None
                     else None
                 ),
-                kind=str(value["type"]),
+                kind=str(value["kind"]),
+                payload_version=int(value["payloadVersion"]),
                 created_at=str(value["createdAt"]),
                 payload=str(value["payload"]),
                 metadata=dict(value.get("metadata", {})),

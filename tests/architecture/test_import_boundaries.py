@@ -65,7 +65,6 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
             name="harness",
             root=Path("src/loushang/harness"),
             forbidden_prefixes=(
-                "loushang.ai",
                 "loushang.agent.Agent",
                 "loushang.agent.agent",
                 "loushang.agent.harness",
@@ -116,6 +115,50 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
         offenders.extend(_find_forbidden_imports(boundary))
 
     assert offenders == []
+
+
+def test_harness_agent_transcript_has_a_narrow_ai_agent_dependency_allowlist() -> None:
+    harness_root = Path("src/loushang/harness")
+    profile_root = harness_root / "agent_transcript"
+    allowed_profile_prefixes = (
+        "loushang.ai.types",
+        "loushang.ai.json_codec",
+        "loushang.agent.types",
+        "loushang.agent.json_codec",
+    )
+    offenders: list[str] = []
+
+    for path in sorted(harness_root.rglob("*.py")):
+        is_profile = path == profile_root or profile_root in path.parents
+        for imported in _absolute_imports(path):
+            is_ai_import = _matches_any(imported, ("loushang.ai",))
+            is_profile_agent_import = is_profile and _matches_any(
+                imported, ("loushang.agent",)
+            )
+            if not is_ai_import and not is_profile_agent_import:
+                continue
+            if is_profile and _matches_any(imported, allowed_profile_prefixes):
+                continue
+            offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
+def test_neutral_conversation_core_does_not_import_agent_ai_or_products() -> None:
+    boundary = ImportBoundary(
+        name="conversation",
+        root=Path("src/loushang/harness/conversation"),
+        forbidden_prefixes=(
+            "loushang.agent",
+            "loushang.ai",
+            "loushang.coding",
+            "loushang.method",
+            "loushang.tui",
+            "loushang.work",
+        ),
+    )
+
+    assert _find_forbidden_imports(boundary) == []
 
 
 def test_importing_channel_types_does_not_eagerly_load_agent_or_ai() -> None:
@@ -560,7 +603,7 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
         "`loushang.harness.config.LayeredConfig[T]`",
         "`ContextSalienceRanker`",
         "`SummaryProfile`",
-        "Harness never serializes `AgentMessage`",
+        "Only the separate optional Agent transcript profile serializes Agent messages",
         "Harness never stores credentials",
         "No type-only, protocol-only, or duplicate parallel implementation counts as a completed batch",
         "Lack of a second production consumer is not a blocking gate",
@@ -715,8 +758,8 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
         "`ConversationCatalog`",
         "`ConversationCompactionPlanner`",
         "`CommandExecutionRecord`",
-        "must not import Coding, AI messages, model/provider code, Product stores, Method, Work, TUI, or channel implementations",
-        "The split is deliberately asymmetric: Harness owns the control mechanics; Products name and interpret the data",
+        "These neutral conversation packages must not import Coding, Agent, AI messages, model/provider code, Product stores, Method, Work, TUI, or channel implementations",
+        "the neutral core owns control mechanics, the optional Agent profile owns common Agent transcript meanings",
     }
     assert (
         sorted(phrase for phrase in required_phrases if phrase not in design_text) == []

@@ -4,6 +4,15 @@ from loushang.harness.conversation.catalog import (
     ConversationCatalog,
     ProjectionQuery,
 )
+from loushang.harness.conversation.native_codec import (
+    CONVERSATION_ENVELOPE_TYPE,
+    CONVERSATION_RECORD_TYPE,
+    ConversationPayloadCodec,
+    ConversationPayloadCodecRegistry,
+    FunctionalConversationPayloadCodec,
+    NativeConversationHeaderCodec,
+    NativeConversationRecordCodec,
+)
 from loushang.harness.conversation.ports import (
     ConversationFolder,
     ConversationHeaderCodec,
@@ -31,17 +40,22 @@ from loushang.harness.conversation.types import (
     ConversationHeader,
     ConversationRecord,
     ConversationTreeNode,
+    OpaquePayload,
 )
 
 __all__ = [
     "BranchDelta",
     "CommandExecutionRecord",
+    "CONVERSATION_ENVELOPE_TYPE",
+    "CONVERSATION_RECORD_TYPE",
     "ConversationCatalog",
     "ConversationCheckpoint",
     "ConversationFolder",
     "ConversationHeader",
     "ConversationHeaderCodec",
     "ConversationProjector",
+    "ConversationPayloadCodec",
+    "ConversationPayloadCodecRegistry",
     "ConversationRecord",
     "ConversationRecordCodec",
     "ConversationReplayFolder",
@@ -52,8 +66,12 @@ __all__ = [
     "FunctionalConversationFolder",
     "FunctionalConversationHeaderCodec",
     "FunctionalConversationProjector",
+    "FunctionalConversationPayloadCodec",
     "FunctionalConversationRecordCodec",
     "MissingCheckpointPolicy",
+    "NativeConversationHeaderCodec",
+    "NativeConversationRecordCodec",
+    "OpaquePayload",
     "ProjectionQuery",
     "fold_records",
 ]

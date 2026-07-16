@@ -11,9 +11,12 @@ layered configuration, and context salience/summary profiles. It follows the
 dependency-first migration rule and replaces duplicate Product mechanics in
 the same branch as each adapter.
 
-The wave does not define a universal Product transcript, configuration schema,
-or summarization policy. Harness owns the engines; Products own the payloads,
-defaults, policy, and presentation passed into those engines.
+This foundation wave did not define an Agent transcript profile, configuration
+schema, or summarization policy. Harness owns the engines; Products own domain
+payloads, defaults, policy, and presentation passed into those engines. The
+follow-on [Agent Transcript Profile](agent-transcript-profile-boundary.md) now
+defines an optional common schema for Agent-backed Products without changing
+the neutrality of these foundations.
 
 ## Ownership Decision
 
@@ -25,10 +28,12 @@ defaults, policy, and presentation passed into those engines.
 | Salience | Explainable signals, structural weighted scorer, stable ranking, and a custom scorer protocol | Content interpretation, weights, pinning, grouping, selection threshold, and compaction policy |
 | Summary profile | Profile and section records, tagged prompt composition, mode selection, prompt override, and structural validation | System/user prompt text, serialized content, required sections, placeholder rules, model call, and artifact projection |
 
-Harness implementations in this wave must not import Coding, Work, Method,
-TUI, AI, Agent runtime, providers, or any Product package. Payloads remain
-generic or opaque. In particular, Harness never serializes `AgentMessage`,
-resolves a model or API key, or writes a Product summary record.
+Harness implementations in this foundation package must not import Coding,
+Work, Method, TUI, AI, Agent runtime, providers, or any Product package.
+Payloads remain generic or opaque. In particular, the generic journal and
+conversation foundations never serialize `AgentMessage`, resolve a model or
+API key, or write a Product summary record. Only the separate optional Agent
+transcript profile serializes Agent messages through its exact codec allowlist.
 
 ## Transcript Repository
 
@@ -59,10 +64,11 @@ Product adapters should depend on the conversation owner rather than importing
 `TranscriptRepository` or `BranchGraph` directly; see
 [Conversation Runtime Core Boundary](conversation-runtime-core-boundary.md).
 
-No universal transcript envelope or message schema is introduced. Stable base
-AI message codecs belong to `loushang.ai`; extension-message codec composition
-belongs to `loushang.agent`; each Product owns codecs for its custom transcript
-records.
+This foundation introduced no concrete message schema. Stable base AI message
+codecs remain in `loushang.ai`, extension-message codec composition remains in
+`loushang.agent`, and the optional Agent transcript profile composes those
+stable codecs into the neutral conversation envelope. Each Product owns codecs
+only for its domain-specific transcript records.
 
 ## Projection Index
 
@@ -173,7 +179,9 @@ Coding cutover, and duplicate removal are sufficient evidence.
 
 This wave does not:
 
-- move Coding transcript records or custom message codecs into Harness;
+- move Coding transcript records or custom message codecs into Harness in this
+  completed foundation wave; that historical non-goal is superseded by the
+  separate Agent Transcript Profile wave;
 - move AI base-message codecs, model registry, or auth resolution into Harness;
 - move Product setting fields, defaults, credential policy, or presentation;
 - move Product system prompts, compaction prompt text, model calls, or content
