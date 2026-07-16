@@ -102,7 +102,7 @@ class OpenAICompletionsProvider:
         client = self._client or AsyncOpenAI(**client_kwargs)  # type: ignore[call-arg]
         _debug("client", {"base_url": resolved.base_url, "headers": default_headers})
 
-        capabilities = getattr(resolved, "capabilities", None)
+        capabilities = model.capabilities
         messages_param = _build_messages(
             model,
             normalized,
@@ -117,7 +117,7 @@ class OpenAICompletionsProvider:
             _apply_anthropic_cache_control(messages_param, tools_param, cache_control)
 
         max_tokens = resolve_output_token_budget(model, resolved).value
-        upstream_model_id = getattr(resolved, "upstream_model_id", None) or model.id
+        upstream_model_id = model.upstream_id or model.id
         is_stream_request = getattr(resolved, "mode", "stream") == "stream"
         params: dict[str, Any] = {
             "model": upstream_model_id,
@@ -167,7 +167,7 @@ class OpenAICompletionsProvider:
         _apply_provider_routing(
             params,
             request_overrides=getattr(
-                getattr(resolved, "routing", None),
+                model.routing,
                 "request_overrides",
                 {},
             ),
@@ -456,8 +456,8 @@ class OpenAICompletionsProvider:
             await close_provider_stream(stream_ctx)
 
 
-def _request_adapter_config(request: object) -> OpenAICompletionsConfig:
-    adapter_config = getattr(request, "adapter_config", None)
+def _request_adapter_config(request: ProviderRequest) -> OpenAICompletionsConfig:
+    adapter_config = request.model.adapter
     if isinstance(adapter_config, OpenAICompletionsConfig):
         return adapter_config
     return OpenAICompletionsConfig()
@@ -645,9 +645,9 @@ def _validate_cache_options(
     if cache_retention == "long" and not adapter_config.long_cache_retention:
         raise UnsupportedCapabilityError(
             f"Model {getattr(model, 'id', '<unknown>')!r} does not support long cache retention",
-            source=getattr(resolved, "api", None),
-            provider=getattr(resolved, "provider", None),
-            endpoint=getattr(resolved, "endpoint", None),
+            source=getattr(model, "api", None),
+            provider=getattr(model, "provider_id", None),
+            endpoint=getattr(model, "endpoint_id", None),
             model=getattr(model, "id", None),
             details={"capability": "cache_long_retention"},
         )
@@ -695,9 +695,7 @@ def _apply_reasoning_params(
         )
         return
     if thinking_format == "zai-thinking":
-        params["thinking"] = {
-            "type": "enabled" if reasoning_enabled else "disabled"
-        }
+        params["thinking"] = {"type": "enabled" if reasoning_enabled else "disabled"}
         _apply_reasoning_effort_if_supported(
             params,
             reasoning_effort,
@@ -799,7 +797,7 @@ def _active_routing_namespace(
 
 
 def _uses_copilot_dynamic_headers(resolved: object) -> bool:
-    transport = getattr(resolved, "transport", None)
+    transport = getattr(getattr(resolved, "model", None), "transport", None)
     return getattr(transport, "kind", None) == "github-copilot"
 
 

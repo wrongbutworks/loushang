@@ -9,7 +9,7 @@ import pytest
 
 from loushang.ai import CallOptions, ReasoningOptions
 from loushang.ai.auth import ApiKeyAuth, HeadersAuth, NoAuth
-from loushang.ai.context import normalize_context
+from loushang.ai.context import NormalizedContext, normalize_context
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import (
     Capabilities,
@@ -1901,17 +1901,11 @@ def _patch_resolved_request(
         )
         return ProviderRequest(
             model=request_model,
-            provider=request_model.provider_id,
-            endpoint=request_model.endpoint_id,
-            api="openai-responses",
+            context=NormalizedContext(system_prompt=None),
+            options=options,
             base_url=base_url,
             headers=headers,
-            adapter_config=request_model.adapter,
-            defaults=dict(request_model.defaults),
-            transport=request_model.transport,
-            routing=request_model.routing,
-            max_tokens=resolved_max_tokens,
-            capabilities=request_model.capabilities,
+            max_output_tokens=resolved_max_tokens,
             reasoning_enabled=(
                 is_reasoning_requested(options)
                 if getattr(options, "reasoning", None) is not None
@@ -1921,7 +1915,6 @@ def _patch_resolved_request(
             temperature=(
                 getattr(options, "temperature", None) if options is not None else None
             ),
-            upstream_model_id=request_model.upstream_id or request_model.id,
         )
 
     monkeypatch.setattr(

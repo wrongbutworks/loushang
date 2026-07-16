@@ -39,11 +39,15 @@ def validate_provider_request_validator_contract(provider: Any) -> None:
     try:
         signature = inspect.signature(method)
     except (TypeError, ValueError):
-        raise TypeError("Provider validate_request signature is not inspectable") from None
+        raise TypeError(
+            "Provider validate_request signature is not inspectable"
+        ) from None
 
     parameters = list(signature.parameters.values())
     if len(parameters) != 1:
-        raise TypeError("Provider validate_request must accept exactly one ProviderRequest")
+        raise TypeError(
+            "Provider validate_request must accept exactly one ProviderRequest"
+        )
     parameter = parameters[0]
     if parameter.kind not in (
         inspect.Parameter.POSITIONAL_ONLY,
@@ -74,9 +78,10 @@ async def call_api_provider_stream(
     request: ProviderRequest,
 ):
     invoke_raw_method = getattr(provider, "invoke_raw", None)
-    if request.api != provider.api:
+    if request.model.api != provider.api:
         raise ValueError(
-            f"Mismatched api: provider={provider.api!r} request.api={request.api!r}"
+            f"Mismatched api: provider={provider.api!r} "
+            f"request.model.api={request.model.api!r}"
         )
     if not callable(invoke_raw_method):
         raise TypeError("Provider missing required invoke_raw method")

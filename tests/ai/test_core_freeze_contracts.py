@@ -431,7 +431,7 @@ def test_bound_model_resolves_without_default_registry_lookup(
         env={},
     )
 
-    assert request.provider == "company-aif002"
-    assert request.endpoint == "anthropic-messages"
-    assert request.api == "anthropic-messages"
+    assert request.model.provider_id == "company-aif002"
+    assert request.model.endpoint_id == "anthropic-messages"
+    assert request.model.api == "anthropic-messages"
     assert request.base_url == "https://ai.company.example/v1"

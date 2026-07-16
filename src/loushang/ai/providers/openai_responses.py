@@ -66,8 +66,8 @@ def _validate_cache_options(
         raise UnsupportedCapabilityError(
             f"Model {getattr(model, 'id', '<unknown>')!r} does not support long cache retention",
             source=getattr(resolved, "api", None),
-            provider=getattr(resolved, "provider", None),
-            endpoint=getattr(resolved, "endpoint", None),
+            provider=getattr(model, "provider_id", None),
+            endpoint=getattr(model, "endpoint_id", None),
             model=getattr(model, "id", None),
             details={"capability": "cache_long_retention"},
         )
@@ -87,8 +87,8 @@ def _validate_max_output_tokens_option(
     raise UnsupportedCapabilityError(
         f"Model {getattr(model, 'id', '<unknown>')!r} does not support max_output_tokens",
         source=getattr(resolved, "api", None),
-        provider=getattr(resolved, "provider", None),
-        endpoint=getattr(resolved, "endpoint", None),
+        provider=getattr(model, "provider_id", None),
+        endpoint=getattr(model, "endpoint_id", None),
         model=getattr(model, "id", None),
         details={"capability": "max_output_tokens"},
     )
@@ -143,7 +143,7 @@ class OpenAIResponsesProvider:
             )
 
         # 构造 Responses API 输入。下一步会继续向 pi-ai 的 shared conversion 收敛。
-        capabilities = getattr(resolved, "capabilities", None)
+        capabilities = model.capabilities
         input_items = convert_responses_messages(
             model,
             normalized,
@@ -186,7 +186,7 @@ class OpenAIResponsesProvider:
         )
         _debug("client", {"base_url": resolved.base_url, "headers": default_headers})
 
-        upstream_model_id = getattr(resolved, "upstream_model_id", None) or model.id
+        upstream_model_id = model.upstream_id or model.id
         is_stream_request = getattr(resolved, "mode", "stream") == "stream"
         params: dict[str, Any] = {
             "model": upstream_model_id,
@@ -283,13 +283,13 @@ def _supports_reasoning(capabilities: object | None) -> bool:
     return bool(getattr(capabilities, "reasoning", False))
 
 
-def _request_adapter_config(request: object) -> OpenAIResponsesConfig:
-    adapter_config = getattr(request, "adapter_config", None)
+def _request_adapter_config(request: ProviderRequest) -> OpenAIResponsesConfig:
+    adapter_config = request.model.adapter
     if isinstance(adapter_config, OpenAIResponsesConfig):
         return adapter_config
     return OpenAIResponsesConfig()
 
 
 def _uses_copilot_dynamic_headers(resolved: object) -> bool:
-    transport = getattr(resolved, "transport", None)
+    transport = getattr(getattr(resolved, "model", None), "transport", None)
     return getattr(transport, "kind", None) == "github-copilot"

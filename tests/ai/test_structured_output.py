@@ -12,6 +12,7 @@ from loushang.ai import (
     complete_structured,
 )
 from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.context import NormalizedContext
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import Capabilities, Endpoint, Model, ModelRegistry, Provider
 from loushang.ai.provider import ProviderRequest
@@ -217,7 +218,6 @@ class _StructuredProvider:
 
 def _patch_resolved_request(monkeypatch: pytest.MonkeyPatch, *, api: str) -> None:
     def _resolve_request(_model, options=None):
-        del options
         endpoint = Endpoint(
             id=api,
             provider="test-provider",
@@ -245,12 +245,10 @@ def _patch_resolved_request(monkeypatch: pytest.MonkeyPatch, *, api: str) -> Non
             }
         ).get_model("test-provider", api, _model.id)
         return ProviderRequest(
-            api=api,
-            provider="test-provider",
-            endpoint=api,
             base_url="https://provider.test/v1",
             model=request_model,
-            capabilities=request_model.capabilities,
+            context=NormalizedContext(system_prompt=None),
+            options=options,
         )
 
     monkeypatch.setattr(

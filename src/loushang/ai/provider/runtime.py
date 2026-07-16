@@ -91,10 +91,10 @@ def start_provider_runtime(
     call_id = uuid4().hex
     assembler = RawAssembler(
         stream=stream,
-        api=request.api,
-        provider=getattr(model, "provider_id", request.provider),
-        model=getattr(model, "id", None) or request.upstream_model_id or "",
-        pricing=getattr(model, "pricing", None),
+        api=model.api or "",
+        provider=model.provider_id,
+        model=model.id,
+        pricing=model.pricing,
     )
 
     async def _run() -> None:
@@ -219,9 +219,9 @@ def start_provider_runtime(
                     error_part = _provider_error_part_for_request(
                         AIProviderProtocolError(
                             "provider stream ended before a terminal response event",
-                            source=request.api,
-                            provider=request.provider,
-                            endpoint=request.endpoint,
+                            source=model.api or "",
+                            provider=model.provider_id,
+                            endpoint=model.endpoint_id,
                             model=_runtime_model_id(request=request, model=model),
                         ),
                         request=request,
@@ -249,9 +249,9 @@ def start_provider_runtime(
                             raise
                         error: Exception = AITimeoutError(
                             "Provider request timed out.",
-                            source=request.api,
-                            provider=request.provider,
-                            endpoint=request.endpoint,
+                            source=model.api or "",
+                            provider=model.provider_id,
+                            endpoint=model.endpoint_id,
                             model=_runtime_model_id(request=request, model=model),
                         )
                     else:
@@ -269,7 +269,7 @@ def start_provider_runtime(
                     if (
                         not visible_output_started
                         and attempt < max_attempts
-                        and _retryable_exception(error, source=request.api)
+                        and _retryable_exception(error, source=model.api or "")
                     ):
                         deadline.cancel()
                         await _close_source(source)
@@ -281,7 +281,7 @@ def start_provider_runtime(
                             retry_after_seconds=_retry_after_seconds_from_exception(
                                 error
                             ),
-                            reason=_retry_reason_from_exception(error, request.api),
+                            reason=_retry_reason_from_exception(error, model.api or ""),
                             request=request,
                             model=model,
                             call_id=call_id,
@@ -316,9 +316,7 @@ def start_provider_runtime(
     return stream
 
 
-async def _flush_pending(
-    assembler: RawAssembler, pending: deque[RawPart]
-) -> None:
+async def _flush_pending(assembler: RawAssembler, pending: deque[RawPart]) -> None:
     while pending:
         await assembler.emit(pending.popleft())
 
@@ -339,9 +337,9 @@ def _append_pending_part(
     ):
         raise AIProviderProtocolError(
             "Pre-visible provider buffer exceeded retry bounds.",
-            source=request.api,
-            provider=request.provider,
-            endpoint=request.endpoint,
+            source=model.api or "",
+            provider=model.provider_id,
+            endpoint=model.endpoint_id,
             model=_runtime_model_id(request=request, model=model),
             details={
                 "maxParts": _PENDING_RETRY_BUFFER_MAX_PARTS,
@@ -384,7 +382,7 @@ def _runtime_model_id(*, request: ProviderRequest, model) -> str | None:
     value = getattr(request.model, "id", None)
     if isinstance(value, str) and value:
         return value
-    return request.upstream_model_id
+    return None
 
 
 def _runtime_trace_base(
@@ -395,9 +393,9 @@ def _runtime_trace_base(
 ) -> dict[str, object]:
     return {
         "callId": call_id,
-        "api": getattr(request, "api", None),
-        "provider": getattr(request, "provider", None),
-        "endpoint": getattr(request, "endpoint", None),
+        "api": request.model.api,
+        "provider": request.model.provider_id,
+        "endpoint": request.model.endpoint_id,
         "model": _runtime_model_id(request=request, model=model),
     }
 
@@ -408,14 +406,14 @@ def _provider_error_part_for_request(
     request: ProviderRequest,
     model,
 ) -> RawPart:
-    part = dict(provider_error_part(error, source=request.api))
+    part = dict(provider_error_part(error, source=request.model.api or ""))
     raw_info = part.get("error_info")
     if isinstance(raw_info, Mapping):
         info = dict(raw_info)
         if info.get("provider") is None:
-            info["provider"] = request.provider
+            info["provider"] = request.model.provider_id
         if info.get("endpoint") is None:
-            info["endpoint"] = request.endpoint
+            info["endpoint"] = request.model.endpoint_id
         if info.get("model") is None:
             info["model"] = _runtime_model_id(request=request, model=model)
         part["error_info"] = info
@@ -437,9 +435,7 @@ def _emit_runtime_request_trace(
         "attempt": attempt,
         "maxAttempts": max_attempts,
     }
-    upstream_model_id = getattr(request, "upstream_model_id", None)
-    if upstream_model_id is not None:
-        event["upstreamModel"] = upstream_model_id
+    event["upstreamModel"] = request.model.upstream_id or request.model.id
     emit_trace(options, event)
 
 
@@ -454,8 +450,8 @@ def _emit_runtime_error_trace(
     try:
         error_info = provider_error_info_from_raw(
             cast(Mapping[str, object], part),
-            source=request.api,
-            provider=getattr(request, "provider", None),
+            source=request.model.api or "",
+            provider=request.model.provider_id,
             model=getattr(model, "id", None),
         )
     except Exception:
@@ -630,8 +626,8 @@ def _retryable_response_error_part(
     try:
         error_info = provider_error_info_from_raw(
             cast(Mapping[str, object], part),
-            source=request.api,
-            provider=request.provider,
+            source=request.model.api or "",
+            provider=request.model.provider_id,
             model=getattr(model, "id", None),
         )
     except Exception:
@@ -763,8 +759,8 @@ def _retry_reason_from_part(
     try:
         info = provider_error_info_from_raw(
             cast(Mapping[str, object], part),
-            source=request.api,
-            provider=request.provider,
+            source=request.model.api or "",
+            provider=request.model.provider_id,
             model=getattr(model, "id", None),
         )
     except Exception:

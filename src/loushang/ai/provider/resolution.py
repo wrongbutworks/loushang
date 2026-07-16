@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import re
-from dataclasses import replace
 from typing import Any
 
 from loushang.ai.auth.support import resolve_auth_for_model
@@ -21,9 +20,10 @@ from loushang.ai.provider.protocol import ProviderContext, ProviderRequest
 
 
 def ensure_request_api(provider_api: str, request: ProviderRequest) -> ProviderRequest:
-    if request.api != provider_api:
+    if request.model.api != provider_api:
         raise ValueError(
-            f"Mismatched api: provider={provider_api!r} request.api={request.api!r}"
+            f"Mismatched api: provider={provider_api!r} "
+            f"request.model.api={request.model.api!r}"
         )
     return request
 
@@ -33,27 +33,17 @@ def normalize_provider_request_for_api(
     request: ProviderRequest,
 ) -> ProviderRequest:
     request = ensure_request_api(provider_api, request)
+    adapter_config = request.model.adapter
     if provider_api == "openai-completions":
-        adapter_config = _ensure_core_adapter_config(
-            request.adapter_config,
-            provider_api,
-            OpenAICompletionsConfig,
+        _ensure_core_adapter_config(
+            adapter_config, provider_api, OpenAICompletionsConfig
         )
-        return replace(request, adapter_config=adapter_config)
     if provider_api == "openai-responses":
-        adapter_config = _ensure_core_adapter_config(
-            request.adapter_config,
-            provider_api,
-            OpenAIResponsesConfig,
-        )
-        return replace(request, adapter_config=adapter_config)
+        _ensure_core_adapter_config(adapter_config, provider_api, OpenAIResponsesConfig)
     if provider_api == "anthropic-messages":
-        adapter_config = _ensure_core_adapter_config(
-            request.adapter_config,
-            provider_api,
-            AnthropicMessagesConfig,
+        _ensure_core_adapter_config(
+            adapter_config, provider_api, AnthropicMessagesConfig
         )
-        return replace(request, adapter_config=adapter_config)
     return request
 
 
@@ -111,7 +101,6 @@ def resolve_request_for_model(
         raise ValueError(
             f"Model {model.id!r} is not bound to a concrete provider endpoint"
         )
-    provider_id, endpoint_id, api = identity
     resolved_env = dict(os.environ) if env is None else env
     base_url = _resolve_base_url(model, resolved_env)
     auth_view = resolve_auth_for_model(
@@ -128,19 +117,9 @@ def resolve_request_for_model(
         model=model,
         context=context or NormalizedContext(system_prompt=None),
         options=options,
-        provider=provider_id,
-        endpoint=endpoint_id,
-        api=api,
         base_url=base_url,
-        region=model.region,
         headers=headers,
-        capabilities=model.capabilities,
-        adapter_config=model.adapter or default_adapter_config(api),
-        defaults=defaults,
-        upstream_model_id=model.upstream_id or model.id,
-        transport=model.transport,
-        routing=model.routing,
-        max_tokens=max_tokens,
+        max_output_tokens=max_tokens,
         reasoning_effort=reasoning_effort,
         reasoning_enabled=reasoning_enabled,
         temperature=temperature,
@@ -177,9 +156,7 @@ def _resolve_base_url(
             raise ValueError(
                 f"Environment variable {base_url_env} is required for provider base URL"
             )
-        raise ValueError(
-            f"Model {model.id!r} has no configured provider base URL"
-        )
+        raise ValueError(f"Model {model.id!r} has no configured provider base URL")
     return _validate_resolved_base_url(_expand_env_template(base_url, resolved_env))
 
 

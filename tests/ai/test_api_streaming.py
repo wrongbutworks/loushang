@@ -23,7 +23,6 @@ from loushang.ai.model import (
     Model,
     OpenAICompletionsConfig,
     OpenAIResponsesConfig,
-    default_adapter_config,
 )
 from loushang.ai.options import get_reasoning_effort, is_reasoning_requested
 from loushang.ai.provider import ProviderRequest
@@ -90,7 +89,7 @@ class _ValidatingProvider(_Provider):
 
 class _RejectingValidatorProvider(_Provider):
     def validate_request(self, request: ProviderRequest) -> None:
-        raise TypeError(f"invalid adapter for {request.api}")
+        raise TypeError(f"invalid adapter for {request.model.api}")
 
 
 class _ErrorProvider(_Provider):
@@ -203,9 +202,9 @@ def test_public_invocation_preserves_effective_model_identity(entrypoint: str) -
 
     assert provider.request is not None
     assert provider.request.model is model
-    assert provider.request.provider == model.provider_id
-    assert provider.request.endpoint == model.endpoint_id
-    assert provider.request.region == model.region
+    assert provider.request.model.provider_id == model.provider_id
+    assert provider.request.model.endpoint_id == model.endpoint_id
+    assert provider.request.model.region == model.region
 
 
 def test_public_stream_suppresses_cache_key_when_retention_is_none() -> None:
@@ -794,7 +793,7 @@ def test_stream_passes_request_through_registered_provider(
     )
 
     _assert_normalized_provider_context(provider.context)
-    assert provider.request.api == "faux"
+    assert provider.request.model.api == "faux"
 
 
 def test_stream_runs_optional_provider_request_validator_before_iteration(
@@ -816,7 +815,7 @@ def test_stream_runs_optional_provider_request_validator_before_iteration(
 
     assert provider.validated_request is provider.request
     assert provider.validated_request is not None
-    assert provider.validated_request.api == "faux"
+    assert provider.validated_request.model.api == "faux"
     asyncio.run(event_stream.aclose())
 
 
@@ -922,7 +921,7 @@ def test_stream_maps_reasoning_options_before_provider_call(
         budget_tokens=2048,
         expose_summary=True,
     )
-    assert provider.request.api == api
+    assert provider.request.model.api == api
 
 
 def test_stream_rejects_legacy_provider_from_custom_registry(
@@ -977,7 +976,7 @@ def test_call_api_provider_stream_supports_registered_provider(
         )
     )
 
-    assert provider.request.api == "faux"
+    assert provider.request.model.api == "faux"
     assert provider.context.messages[0].role == "user"
 
 
@@ -1713,19 +1712,15 @@ def _provider_request(
         capabilities=resolved_capabilities,
         adapter=adapter_config,  # type: ignore[arg-type]
     )
+    request_values = dict(kwargs)
+    if "max_tokens" in request_values:
+        request_values["max_output_tokens"] = request_values.pop("max_tokens")
+    request_values.setdefault("context", NormalizedContext(system_prompt=None))
+    request_values.setdefault("options", None)
     return ProviderRequest(
         model=model,
-        provider=provider,
-        endpoint=endpoint,
-        api=api,
         base_url=resolved_base_url,
-        capabilities=model.capabilities,
-        adapter_config=model.adapter or default_adapter_config(api),
-        defaults=dict(model.defaults),
-        transport=model.transport,
-        routing=model.routing,
-        upstream_model_id=model.id,
-        **kwargs,  # type: ignore[arg-type]
+        **request_values,  # type: ignore[arg-type]
     )
 
 

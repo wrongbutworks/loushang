@@ -6,6 +6,7 @@ import pytest
 
 from loushang.ai import CallOptions, ReasoningOptions
 from loushang.ai.auth import ApiKeyAuth, AuthCredential
+from loushang.ai.context import NormalizedContext
 from loushang.ai.model import (
     AnthropicMessagesConfig,
     Auth,
@@ -17,9 +18,7 @@ from loushang.ai.model import (
     Model,
     ModelRegistry,
     OpenAICompletionsConfig,
-    OpenAIResponsesConfig,
     Provider,
-    default_adapter_config,
     load_builtin_model_registry,
 )
 from loushang.ai.provider import (
@@ -75,17 +74,9 @@ def _model(
 def _request(model: Model, **overrides: object) -> ProviderRequest:
     values: dict[str, object] = {
         "model": model,
-        "provider": model.provider_id,
-        "endpoint": model.endpoint_id,
-        "api": model.api,
+        "context": NormalizedContext(system_prompt=None),
+        "options": None,
         "base_url": model.base_url,
-        "region": model.region,
-        "capabilities": model.capabilities,
-        "adapter_config": model.adapter or default_adapter_config(model.api or ""),
-        "defaults": dict(model.defaults),
-        "transport": model.transport,
-        "routing": model.routing,
-        "upstream_model_id": model.upstream_id or model.id,
     }
     values.update(overrides)
     return ProviderRequest(**values)  # type: ignore[arg-type]
@@ -113,12 +104,12 @@ def test_builtin_openai_style_model_resolves_its_bound_facts() -> None:
     )
 
     assert resolved.model is model
-    assert resolved.provider == "moonshot"
-    assert resolved.endpoint == "openai-completions"
+    assert resolved.model.provider_id == "moonshot"
+    assert resolved.model.endpoint_id == "openai-completions"
     assert resolved.base_url == "https://api.moonshot.cn/v1"
-    assert isinstance(resolved.adapter_config, OpenAICompletionsConfig)
-    assert resolved.adapter_config.reasoning_format == "moonshot"
-    assert resolved.upstream_model_id == "kimi-k2.7-code"
+    assert isinstance(resolved.model.adapter, OpenAICompletionsConfig)
+    assert resolved.model.adapter.reasoning_format == "moonshot"
+    assert (resolved.model.upstream_id or resolved.model.id) == "kimi-k2.7-code"
 
 
 def test_resolver_rejects_concrete_model_without_base_url() -> None:
@@ -278,15 +269,15 @@ def test_resolver_uses_bound_model_without_registry_reselection() -> None:
     )
 
     assert resolved_us.model is selected_us
-    assert resolved_us.provider == "custom"
-    assert resolved_us.endpoint == "regional-us"
-    assert resolved_us.api == "openai-completions"
+    assert resolved_us.model.provider_id == "custom"
+    assert resolved_us.model.endpoint_id == "regional-us"
+    assert resolved_us.model.api == "openai-completions"
     assert resolved_us.base_url == "https://us.example.test/v1"
-    assert resolved_us.region == "us"
-    assert resolved_us.capabilities == us_capabilities
-    assert resolved_us.defaults == dict(us_defaults)
-    assert resolved_us.adapter_config == us_adapter
-    assert resolved_us.upstream_model_id == "upstream-us"
+    assert resolved_us.model.region == "us"
+    assert resolved_us.model.capabilities == us_capabilities
+    assert resolved_us.model.defaults == us_defaults
+    assert resolved_us.model.adapter == us_adapter
+    assert resolved_us.model.upstream_id == "upstream-us"
     assert resolved_us.headers == {
         "x-region-key": "token",
         "x-selected-region": "us",
@@ -300,13 +291,13 @@ def test_resolver_uses_bound_model_without_registry_reselection() -> None:
     )
 
     assert resolved_eu.model is selected_eu
-    assert resolved_eu.endpoint == "regional-eu"
+    assert resolved_eu.model.endpoint_id == "regional-eu"
     assert resolved_eu.base_url == "https://eu.example.test/v1"
-    assert resolved_eu.region == "eu"
-    assert resolved_eu.capabilities == eu_capabilities
-    assert resolved_eu.defaults == dict(eu_defaults)
-    assert resolved_eu.adapter_config == eu_adapter
-    assert resolved_eu.upstream_model_id == "upstream-eu"
+    assert resolved_eu.model.region == "eu"
+    assert resolved_eu.model.capabilities == eu_capabilities
+    assert resolved_eu.model.defaults == eu_defaults
+    assert resolved_eu.model.adapter == eu_adapter
+    assert resolved_eu.model.upstream_id == "upstream-eu"
     assert resolved_eu.headers == {
         "x-region-key": "token",
         "x-selected-region": "eu",
@@ -384,15 +375,16 @@ def test_unresolved_base_url_template_fails() -> None:
         )
 
 
-def test_provider_request_rejects_unrelated_base_url() -> None:
+def test_provider_request_accepts_resolved_runtime_base_url() -> None:
     model = _model(base_url="https://catalog.example/v1")
 
-    with pytest.raises(ValueError, match="base_url"):
-        _request(
-            model,
-            base_url="https://runtime.example/v1",
-            headers={"Authorization": "Bearer token"},
-        )
+    request = _request(
+        model,
+        base_url="https://runtime.example/v1",
+        headers={"Authorization": "Bearer token"},
+    )
+
+    assert request.base_url == "https://runtime.example/v1"
 
 
 @pytest.mark.parametrize(
@@ -413,32 +405,19 @@ def test_provider_request_requires_resolved_base_url(
         _request(model, base_url=base_url)
 
 
-@pytest.mark.parametrize(
-    ("field_name", "value"),
-    [
-        ("provider", "other"),
-        ("endpoint", "other"),
-        ("api", "openai-completions"),
-        ("region", "other"),
-        ("capabilities", Capabilities(reasoning=True)),
-        ("defaults", {"temperature": 0.5}),
-        ("transport", EndpointTransport(kind="httpx")),
-        (
-            "routing",
-            EndpointRouting.from_raw({"requestOverrides": {"x": {"value": 1}}}),
-        ),
-        ("upstream_model_id", "other"),
-        ("adapter_config", OpenAICompletionsConfig()),
-    ],
-)
-def test_provider_request_rejects_facts_mismatched_with_model(
-    field_name: str,
-    value: object,
-) -> None:
-    model = _model(region="global")
-
-    with pytest.raises(ValueError, match=field_name):
-        _request(model, **{field_name: value})
+def test_provider_request_contains_only_runtime_facts() -> None:
+    assert set(ProviderRequest.__dataclass_fields__) == {
+        "model",
+        "context",
+        "options",
+        "base_url",
+        "headers",
+        "mode",
+        "max_output_tokens",
+        "reasoning_effort",
+        "reasoning_enabled",
+        "temperature",
+    }
 
 
 def test_provider_request_requires_typed_model() -> None:
@@ -446,9 +425,8 @@ def test_provider_request_requires_typed_model() -> None:
     with pytest.raises(TypeError, match="model must be Model"):
         ProviderRequest(
             model=object(),  # type: ignore[arg-type]
-            provider="custom",
-            endpoint="openai-responses",
-            api="openai-responses",
+            context=NormalizedContext(system_prompt=None),
+            options=None,
             base_url="https://example.test/v1",
         )
 
@@ -468,22 +446,16 @@ def test_provider_request_repr_redacts_headers() -> None:
     assert "account-secret" not in rendered
 
 
-def test_normalize_provider_request_adds_model_default_core_adapter_config() -> None:
+def test_normalize_provider_request_accepts_model_default_core_adapter_config() -> None:
     model = _model(adapter=None)
     assert model.base_url is not None
     request = ProviderRequest(
         model=model,
-        provider=model.provider_id,
-        endpoint=model.endpoint_id,
-        api=model.api or "",
+        context=NormalizedContext(system_prompt=None),
+        options=None,
         base_url=model.base_url,
-        capabilities=model.capabilities,
-        defaults=dict(model.defaults),
-        transport=model.transport,
-        routing=model.routing,
     )
 
-    assert isinstance(request.adapter_config, OpenAIResponsesConfig)
     assert normalize_provider_request_for_api("openai-responses", request) == request
 
 

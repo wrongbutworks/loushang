@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from loushang.ai.context import NormalizedContext
 from loushang.ai.model import (
     AdapterConfig,
     Auth,
@@ -100,9 +101,7 @@ def bound_test_model(
         pricing = None
     auth = _test_auth(options)
     resolved_base_url = (
-        base_url
-        or getattr(model, "base_url", None)
-        or "https://provider.test/v1"
+        base_url or getattr(model, "base_url", None) or "https://provider.test/v1"
     )
     endpoint = Endpoint(
         id=endpoint_id,
@@ -171,23 +170,14 @@ def make_provider_request(
     )
     return ProviderRequest(
         model=request_model,
+        context=NormalizedContext(system_prompt=None),
         options=options,
-        provider=request_model.provider_id,
-        endpoint=request_model.endpoint_id,
-        api=request_model.api,
         base_url=request_model.base_url or "https://provider.test/v1",
         headers=dict(headers or {}),
-        defaults=dict(request_model.defaults),
-        transport=request_model.transport,
-        routing=request_model.routing,
-        max_tokens=max_tokens,
+        max_output_tokens=max_tokens,
         reasoning_effort=reasoning_effort,
         reasoning_enabled=reasoning_enabled,
         temperature=temperature,
-        upstream_model_id=request_model.upstream_id or request_model.id,
-        capabilities=request_model.capabilities,
-        adapter_config=request_model.adapter,
-        region=request_model.region,
     )
 
 

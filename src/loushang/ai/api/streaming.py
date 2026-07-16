@@ -12,6 +12,7 @@ from loushang.ai.model import (
     Model,
     OpenAICompletionsConfig,
     OpenAIResponsesConfig,
+    default_adapter_config,
 )
 from loushang.ai.options import CallOptions, PairingMode
 from loushang.ai.provider import (
@@ -113,18 +114,22 @@ def _normalize_cache_key_for_adapter(
     return replace(options, cache_key=None)
 
 
-def _validate_explicit_adapter_config(model, resolved, options) -> None:
+def _resolved_adapter_config(model) -> object:
+    return model.adapter or default_adapter_config(model.api or "")
+
+
+def _validate_explicit_adapter_config(model, options) -> None:
     if options is None:
         return
-    adapter_config = getattr(resolved, "adapter_config", None)
+    adapter_config = _resolved_adapter_config(model)
     cache_retention = getattr(options, "cache_retention", None)
     if cache_retention == "long" and not _adapter_supports_long_cache_retention(
         adapter_config
     ):
         raise UnsupportedCapabilityError(
             f"Model {model.id!r} does not support long cache retention",
-            provider=getattr(resolved, "provider", None),
-            endpoint=getattr(resolved, "endpoint", None),
+            provider=model.provider_id,
+            endpoint=model.endpoint_id,
             model=getattr(model, "id", None),
             details={"capability": "cache_long_retention"},
         )
@@ -190,6 +195,7 @@ def _validate_capability(
             details={"capability": "image_input"},
         )
 
+
 def _resolve_api_provider_registry(api_provider_registry=None):
     if api_provider_registry is not None:
         return api_provider_registry
@@ -250,7 +256,7 @@ def _emit_normalization_diagnostics(
                 code=diagnostic.code,
                 path=diagnostic.path,
                 level=diagnostic.level,
-        )
+            )
 
 
 async def _start_stream(
@@ -267,7 +273,7 @@ async def _start_stream(
     resolved_model = resolved.model
     options = _normalize_cache_key_for_adapter(
         options,
-        getattr(resolved, "adapter_config", None),
+        _resolved_adapter_config(resolved_model),
     )
     normalization_result = normalize_context_result(
         context,
@@ -284,15 +290,15 @@ async def _start_stream(
     )
     _validate_capability(
         resolved_model,
-        resolved.capabilities,
+        resolved_model.capabilities,
         normalized,
         options,
         resolved,
         require_stream=require_stream,
     )
-    _validate_explicit_adapter_config(resolved_model, resolved, options)
+    _validate_explicit_adapter_config(resolved_model, options)
     provider = _resolve_api_provider_registry(provider_registry).get_api_provider(
-        resolved.api
+        resolved_model.api or ""
     )
     resolved = normalize_provider_request_for_api(provider.api, resolved)
     validate_provider_request(provider, resolved)
@@ -300,13 +306,13 @@ async def _start_stream(
         options
     ) is not None and not _supports_structured_output_mapping(provider):
         raise UnsupportedCapabilityError(
-            f"Provider API {resolved.api!r} does not support structured output mapping",
-            provider=getattr(resolved, "provider", None),
-            endpoint=getattr(resolved, "endpoint", None),
+            f"Provider API {resolved_model.api!r} does not support structured output mapping",
+            provider=resolved_model.provider_id,
+            endpoint=resolved_model.endpoint_id,
             model=resolved_model.id,
             details={
                 "capability": "structured_output_mapping",
-                "api": resolved.api,
+                "api": resolved_model.api,
             },
         )
     return await call_api_provider_stream(provider, resolved)

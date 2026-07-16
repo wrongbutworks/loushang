@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 import loushang.ai.provider.runtime as runtime_module
+from loushang.ai.context import NormalizedContext
 from loushang.ai.errors import AIProviderProtocolError, AITimeoutError
 from loushang.ai.model import Auth, Model
 from loushang.ai.options import CallOptions, RetryOptions
@@ -837,9 +838,8 @@ def _model() -> Model:
 def _request(*, mode: str = "stream") -> ProviderRequest:
     return ProviderRequest(
         model=_model(),
-        provider="provider-a",
-        endpoint="openai-responses",
-        api="openai-responses",
+        context=NormalizedContext(system_prompt=None),
+        options=None,
         base_url="https://provider.test/v1",
         mode=mode,  # type: ignore[arg-type]
     )

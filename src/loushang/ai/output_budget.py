@@ -28,7 +28,7 @@ def resolve_output_token_budget(
     resolved_request: Any,
     options: Any = None,
 ) -> OutputTokenBudget:
-    default_value = _positive_int(getattr(resolved_request, "max_tokens", None))
+    default_value = _positive_int(getattr(resolved_request, "max_output_tokens", None))
     if default_value is not None:
         return OutputTokenBudget(default_value, "request", True)
 

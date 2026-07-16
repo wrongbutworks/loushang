@@ -386,7 +386,7 @@ class AnthropicProvider(AnthropicProviderBase):
         need_fg = self.should_inject_fine_grained_tools(
             adapter_config=adapter_config,
             headers=default_headers,
-            transport_kind=getattr(getattr(resolved, "transport", None), "kind", None),
+            transport_kind=model.transport.kind,
         )
         if need_ilt or need_fg:
             default_headers = self.apply_beta_headers(
@@ -428,7 +428,7 @@ class AnthropicProvider(AnthropicProviderBase):
             normalized,
             uses_oauth_protocol=uses_oauth_protocol,
         )
-        upstream_model_id = getattr(resolved, "upstream_model_id", None) or model.id
+        upstream_model_id = model.upstream_id or model.id
 
         tools_param = None
         if normalized.tools:
@@ -513,10 +513,7 @@ class AnthropicProvider(AnthropicProviderBase):
                             lb.setdefault("cache_control", cache_control)
                     break
         # temperature：仅在未启用思考时设置
-        if (
-            not thinking_cfg
-            and resolved.temperature is not None
-        ):
+        if not thinking_cfg and resolved.temperature is not None:
             params["temperature"] = resolved.temperature
         # Clamp max_tokens by remaining context if capability provides window
         remaining = compute_remaining_context(
@@ -531,7 +528,7 @@ class AnthropicProvider(AnthropicProviderBase):
                 options,
                 {
                     "type": "clamp",
-                    "api": resolved.api,
+                    "api": model.api,
                     "provider": model.provider_id,
                     "field": "max_tokens",
                     "before": before,
@@ -927,8 +924,8 @@ def _usage_part_from_anthropic_usage(usage: object) -> UsageDeltaPart | None:
     return cast(UsageDeltaPart, part)
 
 
-def _request_adapter_config(request: object) -> AnthropicMessagesConfig:
-    adapter_config = getattr(request, "adapter_config", None)
+def _request_adapter_config(request: ProviderRequest) -> AnthropicMessagesConfig:
+    adapter_config = request.model.adapter
     if isinstance(adapter_config, AnthropicMessagesConfig):
         return adapter_config
     return AnthropicMessagesConfig()

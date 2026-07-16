@@ -124,18 +124,18 @@ def test_json_only_custom_model_loads_merges_queries_and_completes(
     assert len(provider.requests) == 1
     request = provider.requests[0]
     assert request.mode == "complete"
-    assert request.provider == "company"
-    assert request.endpoint == "anthropic-messages"
-    assert request.api == "anthropic-messages"
+    assert request.model.provider_id == "company"
+    assert request.model.endpoint_id == "anthropic-messages"
+    assert request.model.api == "anthropic-messages"
     assert request.base_url == "https://models.company.example"
     assert request.model == model
-    assert request.capabilities == model.capabilities
-    assert request.defaults == dict(model.defaults)
-    assert request.transport == model.transport
-    assert request.routing == model.routing
-    assert request.upstream_model_id == "vendor/company-chat-2026-06"
-    assert getattr(request.adapter_config, "fine_grained_tools") is True
-    assert getattr(request.adapter_config, "long_cache_retention") is False
+    assert request.model.capabilities == model.capabilities
+    assert request.model.defaults == model.defaults
+    assert request.model.transport == model.transport
+    assert request.model.routing == model.routing
+    assert request.model.upstream_id == "vendor/company-chat-2026-06"
+    assert getattr(request.model.adapter, "fine_grained_tools") is True
+    assert getattr(request.model.adapter, "long_cache_retention") is False
 
 
 def test_custom_model_file_rejects_invalid_adapter_field(tmp_path: Path) -> None:
@@ -171,9 +171,9 @@ def test_layered_registry_rejects_duplicate_builtin_full_model_id(
     providers.clear()
     providers[builtin_model.provider_id] = {
         "endpoints": {
-                builtin_model.endpoint_id: {
-                    "api": api,
-                    "baseUrl": builtin_model.base_url,
+            builtin_model.endpoint_id: {
+                "api": api,
+                "baseUrl": builtin_model.base_url,
                 "models": {
                     builtin_model.id: {
                         "capabilities": {
