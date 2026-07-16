@@ -31,6 +31,8 @@ from loushang.tui.core import (
 )
 from loushang.tui.render_loop import DEFAULT_STRATEGY_ORDER, RenderPlanStrategyKind
 
+pytestmark = pytest.mark.tui_render_contract
+
 
 class StaticRoot:
     def __init__(self, lines: tuple[str, ...]) -> None:

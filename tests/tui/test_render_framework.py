@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import pytest
+
 from loushang.tui import (
     ApprovalSurface,
     CommandSurface,
@@ -135,6 +137,7 @@ def test_screen_root_preserves_base_cursor_when_no_surface_is_visible() -> None:
     assert result.cursor == CursorDeclaration(row=0, column=2)
 
 
+@pytest.mark.tui_render_contract
 def test_surface_host_preserves_base_result_identity_without_visible_surfaces() -> None:
     composer = FocusTarget("composer")
     hidden_focus = FocusTarget("hidden")

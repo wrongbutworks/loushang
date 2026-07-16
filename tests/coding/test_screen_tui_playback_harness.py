@@ -130,6 +130,7 @@ def test_screen_tui_input_scenario_writes_coding_jsonl_for_manual_inspection(tmp
     }
 
 
+@pytest.mark.tui_render_contract
 def test_screen_tui_input_scenario_applies_tab_completion_without_screen_clear() -> None:
     result = (
         ScreenTuiInputScenario(width=80, height=12)
@@ -148,6 +149,7 @@ def test_screen_tui_input_scenario_applies_tab_completion_without_screen_clear()
     _assert_interaction_frame_budget(result, "screen-input-tab-completion")
 
 
+@pytest.mark.tui_render_contract
 def test_screen_tui_input_scenario_captures_local_command_without_prompt_echo() -> None:
     result = (
         ScreenTuiInputScenario(width=80, height=12)
@@ -168,6 +170,7 @@ def test_screen_tui_input_scenario_captures_local_command_without_prompt_echo() 
     _assert_interaction_frame_budget(result, "screen-input-local-command")
 
 
+@pytest.mark.tui_render_contract
 def test_screen_tui_input_scenario_routes_active_surface_before_composer() -> None:
     result = (
         ScreenTuiInputScenario(width=80, height=12)
@@ -187,6 +190,7 @@ def test_screen_tui_input_scenario_routes_active_surface_before_composer() -> No
     _assert_interaction_frame_budget(result, "screen-input-active-surface")
 
 
+@pytest.mark.tui_render_contract
 def test_screen_tui_input_scenario_captures_running_steer_without_screen_clear() -> None:
     result = (
         ScreenTuiInputScenario(width=80, height=12)
@@ -208,6 +212,7 @@ def test_screen_tui_input_scenario_captures_running_steer_without_screen_clear()
     _assert_interaction_frame_budget(result, "screen-input-running-steer")
 
 
+@pytest.mark.tui_render_contract
 def test_screen_tui_input_scenario_escape_abort_does_not_pop_pending_steer() -> None:
     result = (
         ScreenTuiInputScenario(width=80, height=12)
@@ -228,6 +233,7 @@ def test_screen_tui_input_scenario_escape_abort_does_not_pop_pending_steer() -> 
     _assert_interaction_frame_budget(result, "screen-input-escape-abort")
 
 
+@pytest.mark.tui_render_contract
 def test_screen_tui_input_scenario_idle_escape_pops_pending_steer() -> None:
     result = ScreenTuiInputScenario(width=80, height=12).with_pending_steers("queued").render().escape().run()
 
@@ -240,6 +246,7 @@ def test_screen_tui_input_scenario_idle_escape_pops_pending_steer() -> None:
     _assert_interaction_frame_budget(result, "screen-input-idle-escape-steer")
 
 
+@pytest.mark.tui_render_contract
 def test_screen_tui_input_scenario_echoes_input_after_long_transcript_without_repaint() -> None:
     result = (
         ScreenTuiInputScenario(width=100, height=18)
