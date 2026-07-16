@@ -1153,6 +1153,56 @@ def test_anthropic_provider_respects_explicit_max_tokens(
     assert _FakeAsyncAnthropic.last_stream_kwargs["max_tokens"] == 1234
 
 
+def test_anthropic_provider_stream_usage_delta_preserves_missing_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_anthropic_module(
+        monkeypatch,
+        [
+            SimpleNamespace(
+                type="message_start",
+                message=SimpleNamespace(
+                    id="resp_usage",
+                    usage=SimpleNamespace(
+                        input_tokens=100,
+                        output_tokens=1,
+                        cache_read_input_tokens=40,
+                        cache_creation_input_tokens=10,
+                    ),
+                ),
+            ),
+            SimpleNamespace(
+                type="message_delta",
+                delta=SimpleNamespace(stop_reason="end_turn"),
+                usage=SimpleNamespace(
+                    input_tokens=None,
+                    output_tokens=20,
+                    cache_read_input_tokens=None,
+                    cache_creation_input_tokens=None,
+                ),
+            ),
+            SimpleNamespace(type="message_stop"),
+        ],
+    )
+    provider = AnthropicProvider()
+
+    async def _scenario():
+        stream = await _stream(
+            provider,
+            _Model(),
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            CallOptions(auth=ApiKeyAuth("test-key")),
+        )
+        return await stream.result()
+
+    message = asyncio.run(_scenario())
+
+    assert message.usage.input == 100
+    assert message.usage.cache_read == 40
+    assert message.usage.cache_write == 10
+    assert message.usage.output == 20
+
+
 def test_anthropic_provider_uses_resolved_capability_max_tokens(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -8,7 +8,7 @@ from typing import Any, cast
 
 from loushang.ai.auth.credentials import OAuthBearerAuth
 from loushang.ai.context import NormalizedContext
-from loushang.ai.event_stream.raw_parts import RawPart
+from loushang.ai.event_stream.raw_parts import RawPart, UsageDeltaPart
 from loushang.ai.model.domain import AnthropicMessagesConfig
 from loushang.ai.options import (
     get_reasoning_budget_tokens,
@@ -586,20 +586,9 @@ class AnthropicProvider(AnthropicProviderBase):
                             yield {"type": "response_start", "response_id": rid}
                         usage = getattr(msg, "usage", None)
                         if usage:
-                            yield {
-                                "type": "usage_delta",
-                                "input": getattr(usage, "input_tokens", 0) or 0,
-                                "output": getattr(usage, "output_tokens", 0) or 0,
-                                "cache_read": getattr(
-                                    usage, "cache_read_input_tokens", 0
-                                )
-                                or 0,
-                                "cache_write": getattr(
-                                    usage, "cache_creation_input_tokens", 0
-                                )
-                                or 0,
-                                "total_tokens": 0,
-                            }
+                            usage_part = _usage_part_from_anthropic_usage(usage)
+                            if usage_part is not None:
+                                yield usage_part
                         continue
                     if etype == "content_block_start":
                         cblk = getattr(event, "content_block", None)
@@ -778,21 +767,9 @@ class AnthropicProvider(AnthropicProviderBase):
                                 )
                         usage = getattr(event, "usage", None)
                         if usage:
-                            yield {
-                                "type": "usage_delta",
-                                "input": getattr(usage, "input_tokens", 0) or 0,
-                                "output": getattr(usage, "output_tokens", 0) or 0,
-                                "cache_read": getattr(
-                                    usage, "cache_read_input_tokens", 0
-                                )
-                                or 0,
-                                "cache_write": getattr(
-                                    usage, "cache_creation_input_tokens", 0
-                                )
-                                or 0,
-                                "total_tokens": (getattr(usage, "input_tokens", 0) or 0)
-                                + (getattr(usage, "output_tokens", 0) or 0),
-                            }
+                            usage_part = _usage_part_from_anthropic_usage(usage)
+                            if usage_part is not None:
+                                yield usage_part
                         continue
                     if etype == "message_stop":
                         # 若 provider 报告需要工具但未下发细粒度工具流，做提示（兜底策略可后续扩展）
@@ -839,7 +816,9 @@ def _iter_complete_response_parts(
 
     usage = getattr(response, "usage", None)
     if usage is not None:
-        yield _usage_part_from_anthropic_usage(usage)
+        usage_part = _usage_part_from_anthropic_usage(usage)
+        if usage_part is not None:
+            yield usage_part
 
     content = getattr(response, "content", None)
     if isinstance(content, list):
@@ -927,17 +906,21 @@ def _iter_complete_tool_call_parts(
     )
 
 
-def _usage_part_from_anthropic_usage(usage: object) -> RawPart:
-    input_tokens = getattr(usage, "input_tokens", 0) or 0
-    output_tokens = getattr(usage, "output_tokens", 0) or 0
-    return {
-        "type": "usage_delta",
-        "input": input_tokens,
-        "output": output_tokens,
-        "cache_read": getattr(usage, "cache_read_input_tokens", 0) or 0,
-        "cache_write": getattr(usage, "cache_creation_input_tokens", 0) or 0,
-        "total_tokens": input_tokens + output_tokens,
-    }
+def _usage_part_from_anthropic_usage(usage: object) -> UsageDeltaPart | None:
+    part: dict[str, object] = {"type": "usage_delta"}
+    for source_field, target_field in (
+        ("input_tokens", "input"),
+        ("output_tokens", "output"),
+        ("cache_read_input_tokens", "cache_read"),
+        ("cache_creation_input_tokens", "cache_write"),
+        ("total_tokens", "total_tokens"),
+    ):
+        value = getattr(usage, source_field, None)
+        if value is not None:
+            part[target_field] = value
+    if len(part) == 1:
+        return None
+    return cast(UsageDeltaPart, part)
 
 
 def _request_adapter_config(request: object) -> AnthropicMessagesConfig:

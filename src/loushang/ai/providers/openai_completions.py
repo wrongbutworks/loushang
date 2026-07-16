@@ -8,7 +8,7 @@ from typing import Any, cast
 
 from loushang.ai.context import NormalizedContext
 from loushang.ai.errors import UnsupportedCapabilityError
-from loushang.ai.event_stream.raw_parts import RawPart
+from loushang.ai.event_stream.raw_parts import RawPart, UsageDeltaPart
 from loushang.ai.model.domain import OpenAICompletionsConfig
 from loushang.ai.options import get_timeout_seconds
 from loushang.ai.output_budget import resolve_output_token_budget
@@ -232,10 +232,7 @@ class OpenAICompletionsProvider:
                     yield provider_error_part(e, source=self.api)
                     yield {"type": "response_done"}
                     break
-                if not chunk or not hasattr(chunk, "choices"):
-                    continue
-                choice = chunk.choices[0] if chunk.choices else None
-                if choice is None:
+                if not chunk:
                     continue
                 # response id
                 if not emitted_response_start:
@@ -246,52 +243,27 @@ class OpenAICompletionsProvider:
                         yield {"type": "response_start", "response_id": resp_id}
                 # usage
                 usage = getattr(chunk, "usage", None)
-                if usage is None and hasattr(choice, "usage"):
-                    usage = getattr(choice, "usage")
                 if usage is not None:
-                    _input = getattr(usage, "prompt_tokens", 0) - (
-                        getattr(
-                            getattr(usage, "prompt_tokens_details", None) or {},
-                            "cached_tokens",
-                            0,
-                        )
-                        or 0
-                    )
-                    _output = (getattr(usage, "completion_tokens", 0) or 0) + (
-                        getattr(
-                            getattr(usage, "completion_tokens_details", None) or {},
-                            "reasoning_tokens",
-                            0,
-                        )
-                        or 0
-                    )
-                    _cache_read = (
-                        getattr(
-                            getattr(usage, "prompt_tokens_details", None) or {},
-                            "cached_tokens",
-                            0,
-                        )
-                        or 0
-                    )
-                    _total = (_input or 0) + (_output or 0) + (_cache_read or 0)
+                    usage_part = _usage_part_from_chat_usage(usage)
                     _debug(
                         "event",
                         {
                             "kind": "usage_delta",
-                            "input": _input,
-                            "output": _output,
-                            "cache_read": _cache_read,
-                            "total_tokens": _total,
+                            "input": usage_part["input"],
+                            "output": usage_part["output"],
+                            "cache_read": usage_part["cache_read"],
+                            "total_tokens": usage_part["total_tokens"],
                         },
                     )
-                    yield {
-                        "type": "usage_delta",
-                        "input": _input,
-                        "output": _output,
-                        "cache_read": _cache_read,
-                        "cache_write": 0,
-                        "total_tokens": _total,
-                    }
+                    yield usage_part
+                choices = getattr(chunk, "choices", None)
+                choice = choices[0] if isinstance(choices, list) and choices else None
+                if choice is None:
+                    continue
+                if usage is None:
+                    choice_usage = getattr(choice, "usage", None)
+                    if choice_usage is not None:
+                        yield _usage_part_from_chat_usage(choice_usage)
                 # deltas
                 delta = getattr(choice, "delta", None)
                 if delta is not None:
@@ -623,7 +595,7 @@ def _iter_complete_message_parts(message: object) -> Iterator[RawPart]:
             )
 
 
-def _usage_part_from_chat_usage(usage: object) -> RawPart:
+def _usage_part_from_chat_usage(usage: object) -> UsageDeltaPart:
     input_tokens = getattr(usage, "prompt_tokens", 0) or 0
     cached = (
         getattr(
@@ -633,14 +605,7 @@ def _usage_part_from_chat_usage(usage: object) -> RawPart:
         )
         or 0
     )
-    output_tokens = (getattr(usage, "completion_tokens", 0) or 0) + (
-        getattr(
-            getattr(usage, "completion_tokens_details", None) or {},
-            "reasoning_tokens",
-            0,
-        )
-        or 0
-    )
+    output_tokens = getattr(usage, "completion_tokens", 0) or 0
     return {
         "type": "usage_delta",
         "input": input_tokens - cached,

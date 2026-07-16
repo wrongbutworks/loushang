@@ -21,6 +21,7 @@ from loushang.ai.model import (
     Model,
     ModelRegistry,
     OpenAICompletionsConfig,
+    Pricing,
     Provider,
 )
 from loushang.ai.model.domain import (
@@ -386,13 +387,79 @@ def test_openai_completions_complete_mode_maps_non_stream_response(
         "response_done",
     ]
     assert parts[1]["input"] == 2
-    assert parts[1]["output"] == 6
-    assert parts[1]["total_tokens"] == 9
+    assert parts[1]["output"] == 2
+    assert parts[1]["total_tokens"] == 5
     assert parts[2] == {"type": "thinking_delta", "text": "plan"}
     assert parts[3]["tool_call_id"] == "call_1"
     assert parts[5]["id"] == "tool_call_0"
     assert parts[6]["delta"] == '{"x":1}'
     assert parts[8] == {"type": "stop_reason", "stop_reason": "error"}
+
+
+def test_openai_completions_stream_usage_only_chunk_updates_message_and_cost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(
+        monkeypatch,
+        chunks=[
+            SimpleNamespace(
+                id="chatcmpl_usage",
+                choices=[
+                    SimpleNamespace(
+                        delta=SimpleNamespace(content="hello"),
+                        finish_reason="stop",
+                    )
+                ],
+                usage=None,
+            ),
+            SimpleNamespace(
+                id="chatcmpl_usage",
+                choices=[],
+                usage=SimpleNamespace(
+                    prompt_tokens=3,
+                    completion_tokens=2,
+                    prompt_tokens_details=SimpleNamespace(cached_tokens=1),
+                    completion_tokens_details=SimpleNamespace(reasoning_tokens=4),
+                ),
+            ),
+        ],
+    )
+    _patch_resolved_request(
+        monkeypatch,
+        compat={"supportsUsageInStreaming": True},
+        reasoning_effort=None,
+    )
+    provider = OpenAICompletionsProvider()
+    model = _Model(
+        pricing=Pricing(input=1, output=2, cache_read=0.5, cache_write=0.25)
+    )
+
+    async def _scenario():
+        stream = await _stream(
+            provider,
+            model,
+            {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
+            CallOptions(auth=ApiKeyAuth("test-key")),
+        )
+        return await stream.result()
+
+    message = asyncio.run(_scenario())
+
+    assert message.response_id == "chatcmpl_usage"
+    assert message.usage == Usage(
+        input=2,
+        output=2,
+        cache_read=1,
+        cache_write=0,
+        total_tokens=5,
+        cost={
+            "input": 0.000002,
+            "output": 0.000004,
+            "cacheRead": 0.0000005,
+            "cacheWrite": 0.0,
+            "total": 0.0000065,
+        },
+    )
 
 
 def test_openai_completions_payload_uses_resolved_capabilities_for_images(
@@ -2668,5 +2735,6 @@ class _Model:
     headers: dict[str, str] = field(default_factory=dict)
     compat: dict[str, object] = field(default_factory=dict)
     defaults: dict[str, object] = field(default_factory=dict)
+    pricing: Pricing | None = None
     provider_id: str = "openai"
     endpoint_id: str = "openai-completions"
