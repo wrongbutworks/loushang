@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any
 
 from loushang.coding.ui.screen_state import ScreenCodingTuiState
 from loushang.coding.ui.session_history import session_history_records
+from loushang.harnesstui.conversation.source import TranscriptSnapshot, TranscriptSource
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     ContextCompactionRecord,
@@ -13,20 +14,6 @@ from loushang.tui.transcript import (
     ToolExecutionRecord,
     UserPromptRecord,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class TranscriptSnapshot:
-    records: tuple[DisplayRecord, ...]
-    evicted_prefix_record_count: int = 0
-    complete: bool = False
-    source_label: str = "Transcript window"
-
-
-class TranscriptSource(Protocol):
-    def snapshot(self) -> TranscriptSnapshot: ...
-
-    def recent_assistant_texts(self) -> tuple[str, ...]: ...
 
 
 # Transcript reader sources intentionally separate three data shapes:

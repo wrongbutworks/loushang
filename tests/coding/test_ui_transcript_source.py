@@ -8,6 +8,13 @@ from loushang.coding.ui.transcript_source import (
     ActiveWindowTranscriptSource,
     SessionTranscriptSource,
 )
+from loushang.coding.ui.transcript_source import (
+    TranscriptSnapshot as CodingTranscriptSnapshot,
+)
+from loushang.coding.ui.transcript_source import (
+    TranscriptSource as CodingTranscriptSource,
+)
+from loushang.harnesstui.conversation.source import TranscriptSnapshot, TranscriptSource
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     ToolExecutionRecord,
@@ -19,6 +26,11 @@ from loushang.tui.transcript import (
 @dataclass(slots=True)
 class _Session:
     messages: list[object]
+
+
+def test_coding_transcript_contracts_are_harnesstui_compatibility_aliases() -> None:
+    assert CodingTranscriptSnapshot is TranscriptSnapshot
+    assert CodingTranscriptSource is TranscriptSource
 
 
 def test_active_window_transcript_source_returns_snapshot_metadata() -> None:
