@@ -25,14 +25,15 @@ from loushang.coding.event.types import (
     CompactionStartEvent,
 )
 from loushang.coding.extensions import ExtensionRunner, SessionBeforeCompactEvent
-from loushang.coding.message import CompactionEntry
 from loushang.coding.session.context_usage import (
     build_context_usage_snapshot,
     build_threshold_compaction_decision,
 )
 from loushang.coding.session.types import ContextUsageSnapshot
 from loushang.coding.store import SessionManager
+from loushang.harness.agent_transcript import CONTEXT_COMPACTION_CHECKPOINT_KIND
 from loushang.harness.context.compaction import CompactionCoordinator
+from loushang.harness.conversation import ConversationRecord
 
 EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
 ExtensionRunnerProvider = Callable[[], ExtensionRunner | None]
@@ -323,17 +324,22 @@ class CompactionController:
         )
 
 
-def _latest_compaction_entry(entries: Sequence[object]) -> CompactionEntry | None:
+def _latest_compaction_entry(
+    entries: Sequence[object],
+) -> ConversationRecord[object] | None:
     for entry in reversed(entries):
-        if isinstance(entry, CompactionEntry):
+        if (
+            isinstance(entry, ConversationRecord)
+            and entry.kind == CONTEXT_COMPACTION_CHECKPOINT_KIND
+        ):
             return entry
     return None
 
 
 def _message_is_before_or_at_entry(
-    message: AssistantMessage, entry: CompactionEntry
+    message: AssistantMessage, entry: ConversationRecord[object]
 ) -> bool:
-    entry_timestamp = _entry_timestamp_ms(entry.timestamp)
+    entry_timestamp = _entry_timestamp_ms(entry.created_at)
     if entry_timestamp is None:
         return False
     return message.timestamp <= entry_timestamp

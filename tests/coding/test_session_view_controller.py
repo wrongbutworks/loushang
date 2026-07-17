@@ -10,9 +10,9 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from loushang.coding.message import BashExecutionMessage
 from loushang.coding.session.types import ModelSelection, RunState
 from loushang.coding.store import SessionManager
+from loushang.harness.conversation import CommandExecutionRecord
 
 
 def _model() -> Model:
@@ -167,9 +167,9 @@ def test_session_view_controller_reports_unknown_current_context_after_compactio
         details={
             "compactionPlan": {
                 "firstKeptEntryId": kept_user_id,
-                "summarizedEntryIds": [manager.get_entries()[0].id, manager.get_entries()[1].id],
+                "summarizedEntryIds": [manager.get_entries()[0].record_id, manager.get_entries()[1].record_id],
                 "turnPrefixEntryIds": [],
-                "keptEntryIds": [kept_user_id, manager.get_entries()[3].id],
+                "keptEntryIds": [kept_user_id, manager.get_entries()[3].record_id],
                 "isSplitTurn": False,
                 "tokensBefore": 195,
                 "keepRecentTokens": 32,
@@ -205,9 +205,9 @@ def test_session_view_controller_reports_unknown_current_context_after_compactio
         "fromHook": None,
         "plan": {
             "firstKeptEntryId": kept_user_id,
-            "summarizedEntryIds": [manager.get_entries()[0].id, manager.get_entries()[1].id],
+            "summarizedEntryIds": [manager.get_entries()[0].record_id, manager.get_entries()[1].record_id],
             "turnPrefixEntryIds": [],
-            "keptEntryIds": [kept_user_id, manager.get_entries()[3].id],
+            "keptEntryIds": [kept_user_id, manager.get_entries()[3].record_id],
             "isSplitTurn": False,
             "tokensBefore": 195,
             "keepRecentTokens": 32,
@@ -253,15 +253,13 @@ def test_session_view_controller_reads_forking_entries_and_last_assistant_text(t
     first_id = manager.append_message(_user_message("first"))
     manager.append_message(_assistant_message("assistant"))
     manager.append_message(
-        BashExecutionMessage(
-            role="bashExecution",
+        CommandExecutionRecord(
             command="printf hi",
             output="hi\n",
             exit_code=0,
             cancelled=False,
             truncated=False,
             full_output_path=None,
-            timestamp=0.0,
         )
     )
     second_id = manager.append_message(_user_message("second"))

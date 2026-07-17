@@ -22,8 +22,8 @@ from loushang.coding.compaction.types import (
     BranchSummaryResult,
     CollectEntriesResult,
 )
-from loushang.coding.message.transformers import convert_to_llm
 from loushang.coding.store import SessionManager
+from loushang.harness.agent_transcript import context_item_to_model_message
 from loushang.harness.context import build_summary_prompt
 
 BRANCH_SUMMARY_PREAMBLE = """The user explored a different conversation branch before returning here.
@@ -65,7 +65,7 @@ def prepare_branch_entries(
         ):
             break
         prepared_messages.insert(0, message)
-        prepared_entry_ids.insert(0, entry.id)
+        prepared_entry_ids.insert(0, entry.record_id)
         total_tokens += tokens
 
     if not prepared_messages and entries:
@@ -73,7 +73,7 @@ def prepare_branch_entries(
         last_message = _entry_to_agent_message(last_entry)
         if last_message is not None:
             prepared_messages = [last_message]
-            prepared_entry_ids = [last_entry.id]
+            prepared_entry_ids = [last_entry.record_id]
             total_tokens = _estimate_message_tokens(last_message)
 
     return BranchPreparation(
@@ -162,14 +162,18 @@ def _branch_summary_prompt(
     replace_instructions: bool,
 ) -> str:
     replace_prompt = (
-        custom_instructions
-        if custom_instructions and replace_instructions
-        else None
+        custom_instructions if custom_instructions and replace_instructions else None
     )
     appended_instructions = None if replace_instructions else custom_instructions
     return build_summary_prompt(
         CODING_BRANCH_SUMMARY_PROFILE,
-        _serialize_conversation(convert_to_llm(messages)),
+        _serialize_conversation(
+            [
+                projected
+                for message in messages
+                if (projected := context_item_to_model_message(message)) is not None
+            ]
+        ),
         mode="branch",
         custom_instructions=appended_instructions,
         prompt_override=replace_prompt,

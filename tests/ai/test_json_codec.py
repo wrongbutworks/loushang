@@ -156,11 +156,15 @@ def test_assistant_event_codec_uses_the_message_codec() -> None:
     }
 
 
-def test_coding_codec_path_reexports_ai_implementation() -> None:
-    from loushang.coding.message import json_codec as coding_codec
+def test_agent_transcript_codec_reuses_ai_message_wire_format() -> None:
+    from loushang.harness.agent_transcript import create_agent_transcript_message_codec
 
-    assert coding_codec.serialize_ai_message is serialize_message
-    assert coding_codec.deserialize_ai_message is deserialize_message
+    codec = create_agent_transcript_message_codec()
+    message = _assistant_message()
+    payload = serialize_message(message)
+
+    assert codec.serialize(message) == payload
+    assert codec.deserialize(payload) == deserialize_message(payload)
 
 
 def test_json_value_codec_rejects_implicit_object_projection() -> None:

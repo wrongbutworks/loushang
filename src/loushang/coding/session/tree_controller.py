@@ -13,9 +13,14 @@ from loushang.coding.compaction import (
 )
 from loushang.coding.event import AgentSessionEvent
 from loushang.coding.extensions import ExtensionRunner, SessionBeforeTreeEvent
-from loushang.coding.message import CustomMessageEntry, SessionMessageEntry
 from loushang.coding.session.types import TreeNavigationResult
 from loushang.coding.store import SessionManager
+from loushang.harness.agent_transcript import (
+    AGENT_MESSAGE_KIND,
+    APPLICATION_MESSAGE_KIND,
+    AgentTranscriptContext,
+    ApplicationMessage,
+)
 from loushang.harness.runtime import (
     NavigationFailure,
     NavigationTransactionCoordinator,
@@ -26,6 +31,7 @@ EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
 RuntimeExceptionRecorder = Callable[..., None]
 ExtensionDiagnosticsSync = Callable[..., None]
 BranchSummaryGenerator = Callable[..., Awaitable[BranchSummaryResult]]
+SessionContextApplier = Callable[[AgentTranscriptContext], None]
 
 
 def _noop_record_runtime_exception(*, code: str, exc: Exception | str) -> None:
@@ -54,6 +60,7 @@ class TreeController:
     agent: Agent
     session_manager: SessionManager
     dispatch_event: EventDispatcher
+    apply_session_context: SessionContextApplier | None = None
     extension_runner: ExtensionRunner | None = None
     record_runtime_exception: RuntimeExceptionRecorder = _noop_record_runtime_exception
     sync_extension_diagnostics: ExtensionDiagnosticsSync = (
@@ -95,14 +102,16 @@ class TreeController:
             raise ValueError(f"Entry {target_id} not found")
 
         editor_text: str | None = None
-        if isinstance(target_entry, SessionMessageEntry) and isinstance(
-            target_entry.message, UserMessage
+        if target_entry.kind == AGENT_MESSAGE_KIND and isinstance(
+            target_entry.payload, UserMessage
         ):
             new_leaf_id = target_entry.parent_id
-            editor_text = _extract_user_message_text(target_entry.message)
-        elif isinstance(target_entry, CustomMessageEntry):
+            editor_text = _extract_user_message_text(target_entry.payload)
+        elif target_entry.kind == APPLICATION_MESSAGE_KIND and isinstance(
+            target_entry.payload, ApplicationMessage
+        ):
             new_leaf_id = target_entry.parent_id
-            editor_text = _extract_custom_message_text(target_entry)
+            editor_text = _extract_custom_message_text(target_entry.payload)
         else:
             new_leaf_id = target_id
 
@@ -303,6 +312,9 @@ class TreeController:
 
     def _rebuild_agent_context(self) -> None:
         session_context = self.session_manager.build_session_context()
+        if self.apply_session_context is not None:
+            self.apply_session_context(session_context)
+            return
         self.agent.state.set_messages(session_context.messages)
 
 
@@ -314,10 +326,12 @@ def _extract_user_message_text(message: UserMessage) -> str:
     )
 
 
-def _extract_custom_message_text(entry: CustomMessageEntry) -> str:
-    if isinstance(entry.content, str):
-        return entry.content
-    return "".join(block.text for block in entry.content if isinstance(block, TextPart))
+def _extract_custom_message_text(message: ApplicationMessage) -> str:
+    if isinstance(message.content, str):
+        return message.content
+    return "".join(
+        block.text for block in message.content if isinstance(block, TextPart)
+    )
 
 
 def _project_branch_summary_details(details: object | None) -> JSONValue:

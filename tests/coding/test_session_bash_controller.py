@@ -8,6 +8,7 @@ from loushang.ai.types import TextPart
 from loushang.coding.exec import ExecOutputChunk
 from loushang.coding.session.bash_controller import BashController
 from loushang.coding.store import SessionManager
+from loushang.harness.conversation import CommandExecutionRecord
 
 
 def test_bash_controller_executes_tool_forwards_output_and_records_context(tmp_path) -> None:
@@ -59,8 +60,10 @@ def test_bash_controller_executes_tool_forwards_output_and_records_context(tmp_p
     assert executed[0][1]["command"] == ["/bin/bash", "-lc", "printf hi"]
     assert chunks == [ExecOutputChunk(stream="stdout", text="streamed\n")]
     assert controller.is_running is False
-    assert agent.state.messages[-1].role == "bashExecution"
-    assert agent.state.messages[-1].command == "printf hi"
+    assert agent.state.messages[-1].role == "user"
+    command = manager.get_entries()[-1].payload
+    assert isinstance(command, CommandExecutionRecord)
+    assert command.command == "printf hi"
 
 
 def test_bash_controller_execute_pi_style_translates_options_and_result_aliases(tmp_path) -> None:
@@ -121,7 +124,10 @@ def test_bash_controller_execute_pi_style_translates_options_and_result_aliases(
         }
     ]
     assert chunks == ["streamed\n"]
-    assert agent.state.messages[-1].exclude_from_context is True
+    assert agent.state.messages == []
+    command = manager.get_entries()[-1].payload
+    assert isinstance(command, CommandExecutionRecord)
+    assert command.exclude_from_context is True
 
 
 def test_bash_controller_record_pi_style_result_normalizes_aliases(tmp_path) -> None:
@@ -140,10 +146,11 @@ def test_bash_controller_record_pi_style_result_normalizes_aliases(tmp_path) -> 
         {"excludeFromContext": True},
     )
 
-    message = agent.state.messages[-1]
-    assert message.role == "bashExecution"
-    assert message.command == "echo hi"
-    assert message.output == "hi\n"
-    assert message.exit_code == 0
-    assert message.full_output_path == "/tmp/out.log"
-    assert message.exclude_from_context is True
+    assert agent.state.messages == []
+    command = manager.get_entries()[-1].payload
+    assert isinstance(command, CommandExecutionRecord)
+    assert command.command == "echo hi"
+    assert command.output == "hi\n"
+    assert command.exit_code == 0
+    assert command.full_output_path == "/tmp/out.log"
+    assert command.exclude_from_context is True

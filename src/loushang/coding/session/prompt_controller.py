@@ -4,9 +4,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Protocol
+from uuid import uuid4
 
 from loushang.ai.types import ImagePart, TextPart, UserMessage
-from loushang.coding.message import create_custom_message
+from loushang.harness.agent_transcript import ApplicationMessage
 from loushang.harness.host.turn import TurnInput, TurnOrchestrator
 
 CommandExtractor = Callable[[str], tuple[str, str] | None]
@@ -207,12 +208,15 @@ def _custom_messages_from_extension(messages: list[object]) -> list[object]:
             content if isinstance(content, str | list) else str(content)
         )
         custom_messages.append(
-            create_custom_message(
+            ApplicationMessage(
+                application_message_id=str(uuid4()),
                 custom_type=custom_type,
                 content=normalized_content,
                 display=bool(message.get("display", True)),
                 details=message.get("details"),
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.now(timezone.utc).timestamp(),
+                origin="extension.before_agent_start",
+                delivery_mode="trigger_turn",
             )
         )
     return custom_messages

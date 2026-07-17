@@ -65,7 +65,6 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
             name="harness",
             root=Path("src/loushang/harness"),
             forbidden_prefixes=(
-                "loushang.ai",
                 "loushang.agent.Agent",
                 "loushang.agent.agent",
                 "loushang.agent.harness",
@@ -118,6 +117,50 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
     assert offenders == []
 
 
+def test_harness_agent_transcript_has_a_narrow_ai_agent_dependency_allowlist() -> None:
+    harness_root = Path("src/loushang/harness")
+    profile_root = harness_root / "agent_transcript"
+    allowed_profile_prefixes = (
+        "loushang.ai.types",
+        "loushang.ai.json_codec",
+        "loushang.agent.types",
+        "loushang.agent.json_codec",
+    )
+    offenders: list[str] = []
+
+    for path in sorted(harness_root.rglob("*.py")):
+        is_profile = path == profile_root or profile_root in path.parents
+        for imported in _absolute_imports(path):
+            is_ai_import = _matches_any(imported, ("loushang.ai",))
+            is_profile_agent_import = is_profile and _matches_any(
+                imported, ("loushang.agent",)
+            )
+            if not is_ai_import and not is_profile_agent_import:
+                continue
+            if is_profile and _matches_any(imported, allowed_profile_prefixes):
+                continue
+            offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
+def test_neutral_conversation_core_does_not_import_agent_ai_or_products() -> None:
+    boundary = ImportBoundary(
+        name="conversation",
+        root=Path("src/loushang/harness/conversation"),
+        forbidden_prefixes=(
+            "loushang.agent",
+            "loushang.ai",
+            "loushang.coding",
+            "loushang.method",
+            "loushang.tui",
+            "loushang.work",
+        ),
+    )
+
+    assert _find_forbidden_imports(boundary) == []
+
+
 def test_importing_channel_types_does_not_eagerly_load_agent_or_ai() -> None:
     script = """
 import importlib
@@ -147,6 +190,17 @@ assert forbidden == [], forbidden
 
 def test_legacy_agent_harness_package_has_been_removed() -> None:
     assert not Path("src/loushang/agent/harness").exists()
+
+
+def test_coding_message_legacy_package_and_imports_have_been_removed() -> None:
+    assert not any(Path("src/loushang/coding/message").glob("*.py"))
+    offenders = [
+        f"{path.as_posix()} imports {imported}"
+        for path in sorted(Path("src/loushang/coding").rglob("*.py"))
+        for imported in _absolute_imports(path)
+        if _matches_any(imported, ("loushang.coding.message",))
+    ]
+    assert offenders == []
 
 
 def test_harness_slice1_symbols_are_not_top_level_exports() -> None:
@@ -521,8 +575,8 @@ def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
             "loushang.harness.context.compaction.CompactionCoordinator",
         },
         Path("src/loushang/coding/store/file_codec.py"): {
-            "loushang.harness.journal.FunctionalJournalHeaderCodec",
-            "loushang.harness.journal.FunctionalJournalRecordCodec",
+            "loushang.harness.conversation.NativeConversationHeaderCodec",
+            "loushang.harness.conversation.NativeConversationRecordCodec",
             "loushang.harness.journal.JsonlJournal",
         },
         Path("src/loushang/coding/store/file_lock.py"): {
@@ -560,7 +614,7 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
         "`loushang.harness.config.LayeredConfig[T]`",
         "`ContextSalienceRanker`",
         "`SummaryProfile`",
-        "Harness never serializes `AgentMessage`",
+        "Only the separate optional Agent transcript profile serializes Agent messages",
         "Harness never stores credentials",
         "No type-only, protocol-only, or duplicate parallel implementation counts as a completed batch",
         "Lack of a second production consumer is not a blocking gate",
@@ -715,8 +769,8 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
         "`ConversationCatalog`",
         "`ConversationCompactionPlanner`",
         "`CommandExecutionRecord`",
-        "must not import Coding, AI messages, model/provider code, Product stores, Method, Work, TUI, or channel implementations",
-        "The split is deliberately asymmetric: Harness owns the control mechanics; Products name and interpret the data",
+        "These neutral conversation packages must not import Coding, Agent, AI messages, model/provider code, Product stores, Method, Work, TUI, or channel implementations",
+        "the neutral core owns control mechanics, the optional Agent profile owns common Agent transcript meanings",
     }
     assert (
         sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
@@ -1471,7 +1525,7 @@ def test_harness_dependency_first_migration_rule_is_documented() -> None:
         "Wave 3: Persistence, Context, And Workflow Mechanics",
         "Wave 4: Session And Runtime Consolidation",
         "This is one capability batch",
-        "Moving `coding.message` wholesale is explicitly not part of this wave",
+        "The later Agent Transcript Profile wave completed this ownership transfer",
     }
     assert (
         sorted(phrase for phrase in required_inventory if phrase not in inventory_text)
@@ -1619,7 +1673,6 @@ def test_harness_product_runtime_core_is_documented_and_adopted() -> None:
     assert "coalesced index scheduling" in inventory_text
 
     from loushang.ai.auth import AuthResolution
-    from loushang.ai.json_codec import deserialize_message, serialize_message
     from loushang.ai.model import ModelSelection
     from loushang.coding.control import AuthResolution as CodingAuthResolution
     from loushang.coding.extensions.runner import (
@@ -1627,7 +1680,6 @@ def test_harness_product_runtime_core_is_documented_and_adopted() -> None:
         _RunnerContext,
     )
     from loushang.coding.extensions.types import ExtensionRuntimeBindings
-    from loushang.coding.message import json_codec as coding_json_codec
     from loushang.coding.types import ModelSelection as CodingModelSelection
     from loushang.harness.runtime import (
         BoundProductRuntimeContext,
@@ -1637,8 +1689,6 @@ def test_harness_product_runtime_core_is_documented_and_adopted() -> None:
 
     assert CodingModelSelection is ModelSelection
     assert CodingAuthResolution is AuthResolution
-    assert coding_json_codec.serialize_ai_message is serialize_message
-    assert coding_json_codec.deserialize_ai_message is deserialize_message
     assert issubclass(ExtensionRuntimeBindings, ProductRuntimeBindings)
     assert issubclass(_BoundExtensionContext, BoundProductRuntimeContext)
     assert issubclass(_RunnerContext, UnboundProductRuntimeContext)

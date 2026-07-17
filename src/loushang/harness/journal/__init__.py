@@ -43,6 +43,7 @@ from loushang.harness.journal.types import (
     JournalFormatProfile,
     JournalLoadPolicy,
     JsonlSnapshot,
+    PartialTailBehavior,
 )
 
 __all__ = [
@@ -67,6 +68,7 @@ __all__ = [
     "JournalRecordCodec",
     "JsonlJournal",
     "JsonlSnapshot",
+    "PartialTailBehavior",
     "JsonProjectionIndex",
     "LegacyJsonConstant",
     "LegacyJsonlParsedLine",

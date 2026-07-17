@@ -277,7 +277,10 @@ def test_agent_session_prompt_persists_messages_and_forwards_events(tmp_path) ->
             getattr(message, "role", None)
             for message in session.get_session_context().messages
         ] == ["user", "assistant"]
-        assert [entry.type for entry in manager.get_entries()] == ["message", "message"]
+        assert [entry.kind for entry in manager.get_entries()] == [
+            "agent.message",
+            "agent.message",
+        ]
         assert event_types[0] == "agent_start"
         assert event_types[-1] == "agent_end"
 
@@ -1015,9 +1018,12 @@ def test_agent_session_applies_before_agent_start_result(tmp_path) -> None:
     assert prompted_system_prompts == ["Extension system prompt"]
     assert prompted_messages
     entries = session_holder["session"].session_manager.get_entries()
-    assert [entry.type for entry in entries[:2]] == ["message", "message"]
-    assert getattr(entries[1].message, "custom_type", None) == "demo_notice"
-    assert entries[1].message.content == "extension context"
+    assert [entry.kind for entry in entries[:2]] == [
+        "agent.message",
+        "application.message",
+    ]
+    assert getattr(entries[1].payload, "custom_type", None) == "demo_notice"
+    assert entries[1].payload.content == "extension context"
 
 
 def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end(
@@ -2110,9 +2116,9 @@ def test_agent_session_get_commands_includes_all_extension_commands(tmp_path) ->
 
 def test_agent_session_lists_user_messages_for_forking(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.message import BashExecutionMessage
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.conversation import CommandExecutionRecord
 
     manager = SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project", persist=False
@@ -2120,15 +2126,13 @@ def test_agent_session_lists_user_messages_for_forking(tmp_path) -> None:
     first_id = manager.append_message(_user_message("first"))
     manager.append_message(_assistant_text_message("assistant"))
     manager.append_message(
-        BashExecutionMessage(
-            role="bashExecution",
+        CommandExecutionRecord(
             command="printf hi",
             output="hi\n",
             exit_code=0,
             cancelled=False,
             truncated=False,
             full_output_path=None,
-            timestamp=0.0,
         )
     )
     second_id = manager.append_message(_user_message("second"))
@@ -2403,9 +2407,9 @@ def test_agent_session_set_model_and_thinking_level_persist_to_store(tmp_path) -
         provider="alt", model_id="alt-model"
     )
     assert session.get_state().thinking_level == "high"
-    assert [entry.type for entry in manager.get_entries()] == [
-        "model_change",
-        "thinking_level_change",
+    assert [entry.kind for entry in manager.get_entries()] == [
+        "agent.model_selection",
+        "agent.thinking_selection",
     ]
     assert session.get_session_context().model == {
         "provider": "alt",
@@ -2953,7 +2957,8 @@ def test_agent_session_exposes_pi_style_runtime_facades(tmp_path) -> None:
     session.recordBashResult(
         "echo hi", {"output": "hi\n", "exitCode": 0}, {"excludeFromContext": True}
     )
-    assert session.get_session_context().messages[-1].role == "bashExecution"
+    assert session.get_session_context().messages == ()
+    assert session.session_manager.get_entries()[-1].kind == "command.execution"
 
 
 def test_agent_session_persists_queue_modes_to_settings(tmp_path) -> None:
@@ -3512,26 +3517,26 @@ def test_agent_session_extension_runtime_actions_update_session_store(tmp_path) 
     asyncio.run(session.start_extension_runtime())
 
     entries = manager.get_entries()
-    assert [entry.type for entry in entries] == [
-        "message",
-        "custom",
-        "custom_message",
-        "session_info",
-        "label",
+    assert [entry.kind for entry in entries] == [
+        "agent.message",
+        "extension.data",
+        "application.message",
+        "conversation.metadata_patch",
+        "record.annotation_patch",
     ]
-    assert entries[1].custom_type == "demo_state"
-    assert entries[1].data == {"enabled": True}
-    assert entries[2].custom_type == "demo_notice"
-    assert entries[2].content == "visible note"
-    assert entries[2].details == {"source": "extension"}
+    assert entries[1].payload.extension_type == "demo_state"
+    assert entries[1].payload.data == {"enabled": True}
+    assert entries[2].payload.custom_type == "demo_notice"
+    assert entries[2].payload.content == "visible note"
+    assert entries[2].payload.details == {"source": "extension"}
     assert manager.get_session_record().metadata.name == "Demo Session"
-    assert manager.get_label(entries[0].id) == "Root"
+    assert manager.get_label(entries[0].record_id) == "Root"
     assert [
         getattr(message, "role", None)
         for message in session.get_session_context().messages
     ] == [
         "user",
-        "custom",
+        "application",
     ]
     assert seen == [
         (
@@ -3719,11 +3724,14 @@ def test_agent_session_send_message_next_turn_is_appended_after_user_message(
         assert result.result is None
         await session.prompt("hello")
 
-        assert [message.role for message in session.messages[:2]] == ["user", "custom"]
+        assert [message.role for message in session.messages[:2]] == [
+            "user",
+            "application",
+        ]
         assert [
             message.custom_type
             for message in session.messages
-            if getattr(message, "role", None) == "custom"
+            if getattr(message, "role", None) == "application"
         ] == ["queued_note"]
 
     asyncio.run(scenario())
@@ -3767,10 +3775,10 @@ def test_agent_session_send_custom_message_public_api_persists_and_emits_events(
         )
     )
 
-    assert [entry.type for entry in session.session_manager.get_entries()] == [
-        "custom_message"
+    assert [entry.kind for entry in session.session_manager.get_entries()] == [
+        "application.message"
     ]
-    assert [message.role for message in session.messages] == ["custom"]
+    assert [message.role for message in session.messages] == ["application"]
     assert events == [("message_start", "demo_notice"), ("message_end", "demo_notice")]
 
 

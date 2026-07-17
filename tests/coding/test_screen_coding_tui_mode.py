@@ -17,11 +17,17 @@ from loushang.ai import (
     Usage,
     UserMessage,
 )
-from loushang.coding.message import CompactionSummaryMessage
-from loushang.coding.message.entries import SessionContext
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.perf_probe import characterize_long_transcript_rendering
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
+from loushang.harness.agent_transcript import (
+    AGENT_MESSAGE_KIND,
+    CONTEXT_COMPACTION_CHECKPOINT_KIND,
+    AgentTranscriptContext,
+    AgentTranscriptState,
+    ContextCompactionCheckpoint,
+)
+from loushang.harness.conversation import ConversationRecord
 from loushang.observability import configure_debug_logging, reset_observability
 from loushang.tui import RenderLoop, TerminalSize
 from loushang.tui.transcript import (
@@ -81,8 +87,11 @@ class _Session:
     def get_model_selection(self) -> object:
         return self.current_model
 
-    def get_session_context(self) -> SessionContext:
-        return SessionContext(messages=list(self.context_messages))
+    def get_session_context(self) -> AgentTranscriptContext:
+        return AgentTranscriptContext(
+            messages=tuple(self.context_messages),
+            state=AgentTranscriptState(),
+        )
 
     def get_available_model_details(self) -> list[Model]:
         return self.model_details
@@ -262,12 +271,30 @@ def test_run_coding_tui_interactive_replays_resumed_session_history(
             is_error=False,
             timestamp=3.0,
         ),
-        CompactionSummaryMessage(
-            role="compactionSummary",
-            summary="older context summary",
-            tokens_before=128,
-            timestamp=4.0,
-        ),
+    ]
+    session.session_manager.get_branch = lambda: [
+        ConversationRecord(
+            record_id=f"record-{index}",
+            parent_id=f"record-{index - 1}" if index else None,
+            kind=AGENT_MESSAGE_KIND,
+            payload_version=1,
+            created_at=f"2026-07-16T00:00:0{index}Z",
+            payload=message,
+        )
+        for index, message in enumerate(session.context_messages)
+    ] + [
+        ConversationRecord(
+            record_id="record-3",
+            parent_id="record-2",
+            kind=CONTEXT_COMPACTION_CHECKPOINT_KIND,
+            payload_version=1,
+            created_at="2026-07-16T00:00:03Z",
+            payload=ContextCompactionCheckpoint(
+                summary="older context summary",
+                first_kept_record_id="record-0",
+                tokens_before=128,
+            ),
+        )
     ]
     captured: dict[str, object] = {}
 

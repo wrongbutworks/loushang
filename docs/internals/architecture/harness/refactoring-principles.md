@@ -88,10 +88,11 @@ Apply that rule with these constraints:
   Harness owners.
 
 Dependency count is evidence about leverage, not evidence about ownership. For
-example, a product transcript schema can remain product-owned even when many
-modules import it. Conversely, a small package-source identity module should
-move early when it is a neutral foundation for discovery, materialization, and
-extension loading.
+example, a domain-specific transcript payload can remain product-owned even
+when many Product modules import it, while a common Agent transcript profile
+belongs in Harness despite initially having one Product adapter. Conversely, a
+small package-source identity module should move early when it is a neutral
+foundation for discovery, materialization, and extension loading.
 
 The preferred dependency flow is:
 

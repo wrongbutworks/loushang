@@ -866,16 +866,17 @@ def test_bash_tool_full_output_path_uses_stderr_artifact_when_stdout_is_present(
     asyncio.run(scenario())
 
 
-def test_agent_session_execute_bash_records_bash_execution_message(tmp_path) -> None:
+def test_agent_session_execute_bash_records_command_execution(tmp_path) -> None:
     import asyncio
 
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
     from loushang.coding.exec import ExecOutputChunk, ExecResult
-    from loushang.coding.message import BashExecutionMessage
     from loushang.coding.policy.types import PolicyDecision
     from loushang.coding.session import AgentSession
+    from loushang.harness.agent_transcript import COMMAND_EXECUTION_KIND
+    from loushang.harness.conversation import CommandExecutionRecord
 
     class AllowingPolicyEngine:
         def evaluate_action(self, *, tool_name: str, exec_request):
@@ -941,21 +942,24 @@ def test_agent_session_execute_bash_records_bash_execution_message(tmp_path) -> 
 
     assert exec_service.requests[0].command == ("/bin/bash", "-lc", "printf hi")
     assert exec_service.requests[0].cwd == "/tmp/project"
-    assert isinstance(session.get_session_context().messages[-1], BashExecutionMessage)
-    assert session.get_session_context().messages[-1].output == "hi\n"
-    assert session.agent.state.messages[-1].role == "bashExecution"
+    record = manager.get_entries()[-1]
+    assert record.kind == COMMAND_EXECUTION_KIND
+    assert isinstance(record.payload, CommandExecutionRecord)
+    assert record.payload.output == "hi\n"
+    assert session.agent.state.messages[-1].role == "user"
 
 
-def test_agent_session_abort_bash_cancels_active_execution_and_records_message(tmp_path) -> None:
+def test_agent_session_abort_bash_cancels_active_execution_and_records_command(tmp_path) -> None:
     import asyncio
 
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
     from loushang.coding.exec import ExecOutputChunk, ExecResult
-    from loushang.coding.message import BashExecutionMessage
     from loushang.coding.policy.types import PolicyDecision
     from loushang.coding.session import AgentSession
+    from loushang.harness.agent_transcript import COMMAND_EXECUTION_KIND
+    from loushang.harness.conversation import CommandExecutionRecord
 
     class AllowingPolicyEngine:
         def evaluate_action(self, *, tool_name: str, exec_request):
@@ -1025,6 +1029,8 @@ def test_agent_session_abort_bash_cancels_active_execution_and_records_message(t
 
     asyncio.run(scenario())
 
-    assert isinstance(session.get_session_context().messages[-1], BashExecutionMessage)
-    assert session.get_session_context().messages[-1].cancelled is True
-    assert session.agent.state.messages[-1].role == "bashExecution"
+    record = manager.get_entries()[-1]
+    assert record.kind == COMMAND_EXECUTION_KIND
+    assert isinstance(record.payload, CommandExecutionRecord)
+    assert record.payload.cancelled is True
+    assert session.agent.state.messages[-1].role == "user"

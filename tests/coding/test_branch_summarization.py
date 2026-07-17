@@ -34,7 +34,7 @@ def test_collect_entries_for_branch_summary_returns_entries_from_old_leaf(tmp_pa
 
     result = collect_entries_for_branch_summary(session, old_leaf_id=branch_a_id, target_id=branch_b_id)
 
-    assert [entry.id for entry in result.entries] == [branch_a_id]
+    assert [entry.record_id for entry in result.entries] == [branch_a_id]
     assert result.common_ancestor_id == root_id
 
 

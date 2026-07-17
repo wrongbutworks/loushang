@@ -7,9 +7,13 @@ from loushang.coding.compaction import (
     calculate_context_tokens,
     estimate_context_tokens,
 )
-from loushang.coding.message import CompactionEntry, SessionMessageEntry
 from loushang.coding.session.types import CompactionDecision, ContextUsageSnapshot
+from loushang.harness.agent_transcript import (
+    AGENT_MESSAGE_KIND,
+    CONTEXT_COMPACTION_CHECKPOINT_KIND,
+)
 from loushang.harness.context.budget import calculate_compaction_budget
+from loushang.harness.conversation import ConversationRecord
 
 
 def current_context_usage(
@@ -17,7 +21,9 @@ def current_context_usage(
     branch_entries: list[object],
     model: object | None,
 ) -> tuple[int | None, int | None, float | None]:
-    snapshot = build_context_usage_snapshot(messages, branch_entries, model, reserve_tokens=0)
+    snapshot = build_context_usage_snapshot(
+        messages, branch_entries, model, reserve_tokens=0
+    )
     return snapshot.tokens, snapshot.context_window, snapshot.percent
 
 
@@ -55,7 +61,9 @@ def build_context_usage_snapshot(
     )
     threshold_tokens = budget.threshold_tokens
     latest_compaction = latest_compaction_entry(branch_entries)
-    if latest_compaction is not None and not has_post_compaction_usage(branch_entries, latest_compaction):
+    if latest_compaction is not None and not has_post_compaction_usage(
+        branch_entries, latest_compaction
+    ):
         return ContextUsageSnapshot(
             tokens=None,
             context_window=context_window,
@@ -148,22 +156,27 @@ def model_context_window(model: object | None) -> int | None:
     return context_window if context_window > 0 else None
 
 
-def latest_compaction_entry(entries: list[object]) -> CompactionEntry | None:
+def latest_compaction_entry(entries: list[object]) -> ConversationRecord[object] | None:
     for entry in reversed(entries):
-        if isinstance(entry, CompactionEntry):
+        if (
+            isinstance(entry, ConversationRecord)
+            and entry.kind == CONTEXT_COMPACTION_CHECKPOINT_KIND
+        ):
             return entry
     return None
 
 
-def has_post_compaction_usage(entries: list[object], compaction: CompactionEntry) -> bool:
+def has_post_compaction_usage(
+    entries: list[object], compaction: ConversationRecord[object]
+) -> bool:
     try:
         compaction_index = entries.index(compaction)
     except ValueError:
         return False
     for entry in reversed(entries[compaction_index + 1 :]):
-        if not isinstance(entry, SessionMessageEntry):
+        if not hasattr(entry, "kind") or entry.kind != AGENT_MESSAGE_KIND:
             continue
-        message = entry.message
+        message = entry.payload
         if not isinstance(message, AssistantMessage):
             continue
         if message.stop_reason in {"aborted", "error"}:

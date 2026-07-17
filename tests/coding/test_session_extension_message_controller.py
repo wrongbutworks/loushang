@@ -56,7 +56,7 @@ def test_extension_message_controller_persists_custom_message_and_emits_events(t
         )
     )
 
-    assert [message.role for message in agent.state.messages] == ["custom"]
+    assert [message.role for message in agent.state.messages] == ["application"]
     assert agent.state.messages[0].custom_type == "demo_notice"
     assert events == [("message_start", "demo_notice"), ("message_end", "demo_notice")]
     assert queue_updates == []

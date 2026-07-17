@@ -90,17 +90,17 @@ def test_compaction_controller_appends_compaction_and_rebuilds_agent_context(tmp
     result = asyncio.run(controller.compact(reason="manual", will_retry=False, compact_fn=_fake_compact))
 
     assert result.summary == "controller summary"
-    assert [entry.type for entry in manager.get_entries()] == ["message", "message", "compaction"]
+    assert [entry.kind for entry in manager.get_entries()] == ["agent.message", "agent.message", "context.compaction_checkpoint"]
     compaction_entry = manager.get_entries()[-1]
-    assert isinstance(compaction_entry.details, dict)
-    assert compaction_entry.details["compactionPlan"]["firstKeptEntryId"] == assistant_id
-    assert compaction_entry.details["compactionPlan"]["summarizedEntryIds"] == []
-    assert compaction_entry.details["compactionPlan"]["turnPrefixEntryIds"] == [manager.get_entries()[0].id]
-    assert compaction_entry.details["compactionPlan"]["keptEntryIds"] == [assistant_id]
-    assert compaction_entry.details["compactionPlan"]["isSplitTurn"] is True
-    assert compaction_entry.details["compactionPlan"]["keepRecentTokens"] == 1
+    assert isinstance(compaction_entry.payload.details, dict)
+    assert compaction_entry.payload.details["compactionPlan"]["firstKeptEntryId"] == assistant_id
+    assert compaction_entry.payload.details["compactionPlan"]["summarizedEntryIds"] == []
+    assert compaction_entry.payload.details["compactionPlan"]["turnPrefixEntryIds"] == [manager.get_entries()[0].record_id]
+    assert compaction_entry.payload.details["compactionPlan"]["keptEntryIds"] == [assistant_id]
+    assert compaction_entry.payload.details["compactionPlan"]["isSplitTurn"] is True
+    assert compaction_entry.payload.details["compactionPlan"]["keepRecentTokens"] == 1
     assert [getattr(message, "role", None) for message in agent.state.messages] == [
-        "compactionSummary",
+        "user",
         "assistant",
     ]
     assert controller.is_compacting is False
@@ -117,7 +117,7 @@ def test_compaction_controller_appends_compaction_and_rebuilds_agent_context(tmp
         "summary": "controller summary",
         "first_kept_entry_id": assistant_id,
         "tokens_before": result.tokens_before,
-        "details": compaction_entry.details,
+        "details": compaction_entry.payload.details,
     }
     assert events[-1]["aborted"] is False
     assert events[-1]["will_retry"] is False

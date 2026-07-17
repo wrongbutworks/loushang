@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 from uuid import uuid4
 
-from loushang.coding.message.json_codec import serialize_agent_message
+from loushang.harness.agent_transcript import create_agent_transcript_message_codec
 from loushang.work.event_log import EventLogBackend, EventLogEntry
 from loushang.work.projection import (
     WorkEventProjectionContext,
@@ -15,12 +15,16 @@ from loushang.work.projection import (
 from loushang.work.types import WorkEvent, WorkOperation, WorkRun
 
 SessionEventListener = Callable[[Mapping[str, object]], Awaitable[None] | None]
+_MESSAGE_CODEC = create_agent_transcript_message_codec()
+serialize_agent_message = _MESSAGE_CODEC.serialize
 
 
 class PromptSession(Protocol):
     def subscribe(self, listener: SessionEventListener) -> Callable[[], None]: ...
 
-    def prompt(self, text: str, *, images: Sequence[object] | None = None) -> Awaitable[None]: ...
+    def prompt(
+        self, text: str, *, images: Sequence[object] | None = None
+    ) -> Awaitable[None]: ...
 
 
 @dataclass
@@ -146,7 +150,9 @@ class CodingWorkShell:
                 event_id_prefix=f"{run_id}-event",
                 message_serializer=serialize_agent_message,
             )
-            for work_event in project_agent_event_to_work_events(event, context=context):
+            for work_event in project_agent_event_to_work_events(
+                event, context=context
+            ):
                 self._append_event(work_event)
 
         unsubscribe = self.session.subscribe(listener)
@@ -273,7 +279,9 @@ class CodingWorkShell:
         )
         return completed_run
 
-    def _append_operation(self, operation: WorkOperation, *, run_id: str, sequence: int) -> None:
+    def _append_operation(
+        self, operation: WorkOperation, *, run_id: str, sequence: int
+    ) -> None:
         self.event_log.append(
             EventLogEntry(
                 entry_id=f"{run_id}-operation-{sequence}",

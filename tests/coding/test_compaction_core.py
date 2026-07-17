@@ -22,7 +22,6 @@ from loushang.coding.compaction import (
     prepare_compaction,
     should_compact,
 )
-from loushang.coding.message import BranchSummaryMessage
 from loushang.coding.store import SessionManager
 
 
@@ -525,21 +524,6 @@ def test_plan_compaction_partitions_do_not_overlap_when_all_context_is_kept(
     assert preparation.plan.kept_entry_ids == (user_id, assistant_id)
 
 
-def test_plan_compaction_recovers_blank_previous_boundary(tmp_path) -> None:
-    session = SessionManager.new(tmp_path, cwd=str(tmp_path), persist=False)
-    session.append_message(UserMessage(role="user", content="old", timestamp=1.0))
-    previous_id = session.append_compaction("legacy summary", "", 10)
-    recent_id = session.append_message(
-        UserMessage(role="user", content="recent", timestamp=2.0)
-    )
-
-    plan = plan_compaction(session.get_branch(), keep_recent_tokens=1)
-
-    assert plan.previous_compaction_id == previous_id
-    assert plan.previous_first_kept_entry_id == ""
-    assert plan.first_kept_entry_id == recent_id
-
-
 def test_top_level_package_exports_compaction_surface() -> None:
     from loushang.coding import CompactionResult as TopLevelCompactionResult
     from loushang.coding import prepare_compaction as top_level_prepare_compaction
@@ -685,7 +669,7 @@ async def test_generate_branch_summary_returns_summary_text(monkeypatch) -> None
     )
 
     result = await generate_branch_summary(
-        [BranchSummaryMessage(role="branchSummary", summary="old summary", from_id="b1", timestamp=0.0)],
+        [UserMessage(role="user", content="old summary", timestamp=0.0)],
         model=object(),
         api_key="",
         signal=None,

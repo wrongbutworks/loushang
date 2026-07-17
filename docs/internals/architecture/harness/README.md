@@ -70,7 +70,11 @@ planning, work event persistence, or AI provider behavior.
 - [Conversation Runtime Core Boundary](conversation-runtime-core-boundary.md)
   defines shared conversation records and ports, repository/catalog/replay,
   branch delta, command execution records, and turn-aware compaction planning
-  while preserving Product schemas, codecs, prompts, and storage policy.
+  while preserving Product prompts, domain payloads, and storage policy.
+- [Agent Transcript Profile Boundary](agent-transcript-profile-boundary.md)
+  defines the optional common Agent/AI transcript schema and codec profile,
+  opaque preservation, Native v3 migration, idempotent application-message
+  commit, Product extension points, and its narrow AI/Agent import allowlist.
 - [Product Runtime Core Boundary](product-runtime-core-boundary.md) defines
   shared runtime bindings and contexts, session-transition ownership,
   coalesced scheduling, AI/Agent data-contract placement, and the irreducible
@@ -120,7 +124,11 @@ Accepted decisions that govern this directory:
 ## Boundary Summary
 
 Harness may depend on stable `loushang.agent` primitives and the existing agent
-loop. `loushang.agent` must not depend on harness.
+loop. `loushang.agent` must not depend on harness. The neutral
+`loushang.harness.conversation` core imports neither Agent nor AI. The optional
+`loushang.harness.agent_transcript` profile is the only Harness package allowed
+to import AI message data and wire codecs, using the exact allowlist recorded in
+[Agent Transcript Profile Boundary](agent-transcript-profile-boundary.md).
 
 Harness must not import:
 
@@ -132,7 +140,8 @@ Harness must not import:
 - `loushang.method`
 - `loushang.work`
 - `loushang.tui`
-- `loushang.ai`
+- `loushang.ai`, except the four explicitly allowlisted AI/Agent data and codec
+  modules used by `loushang.harness.agent_transcript`
 
 If a harness contract needs to refer to method, work, channel, UI, or product
 state, it should carry opaque ids, neutral metadata, or protocol-shaped values.

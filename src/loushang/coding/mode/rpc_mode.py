@@ -25,17 +25,26 @@ from loushang.coding.event import (
     shape_stream_event,
     should_emit_projected_event,
 )
-from loushang.coding.message.json_codec import serialize_agent_message
 from loushang.coding.mode.base import ModeAdapter, ModeState
 from loushang.coding.mode.rpc_json import project_rpc_value
 from loushang.coding.store import SessionQuery
 from loushang.coding.types import ModelSelection
+from loushang.harness.agent_transcript import create_agent_transcript_message_codec
 from loushang.harness.diagnostics.types import DiagnosticsQuery
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.protocol import JsonValueError, require_json_mapping, require_json_value
 
-_THINKING_LEVEL_ORDER: tuple[str, ...] = ("off", "minimal", "low", "medium", "high", "xhigh")
+_THINKING_LEVEL_ORDER: tuple[str, ...] = (
+    "off",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+)
 _MISSING = object()
+_MESSAGE_CODEC = create_agent_transcript_message_codec()
+serialize_agent_message = _MESSAGE_CODEC.serialize
 
 
 class RpcModelCost(TypedDict):
@@ -96,9 +105,16 @@ class RpcExtensionUIContext:
         self._autocomplete_providers: list[object] = []
         self._tools_expanded = False
 
-    async def select(self, title: str, options: list[str], *, timeout: float | None = None) -> str | None:
+    async def select(
+        self, title: str, options: list[str], *, timeout: float | None = None
+    ) -> str | None:
         response = await self._request_dialog(
-            {"method": "select", "title": title, "options": list(options), **_timeout_payload(timeout)},
+            {
+                "method": "select",
+                "title": title,
+                "options": list(options),
+                **_timeout_payload(timeout),
+            },
             timeout=timeout,
             default={"cancelled": True},
         )
@@ -107,31 +123,58 @@ class RpcExtensionUIContext:
         value = response.get("value")
         return value if isinstance(value, str) else None
 
-    async def confirm(self, title: str, message: str, *, timeout: float | None = None) -> bool:
+    async def confirm(
+        self, title: str, message: str, *, timeout: float | None = None
+    ) -> bool:
         response = await self._request_dialog(
-            {"method": "confirm", "title": title, "message": message, **_timeout_payload(timeout)},
+            {
+                "method": "confirm",
+                "title": title,
+                "message": message,
+                **_timeout_payload(timeout),
+            },
             timeout=timeout,
             default={"confirmed": False},
         )
-        return bool(response.get("confirmed", False)) if response.get("cancelled") is not True else False
+        return (
+            bool(response.get("confirmed", False))
+            if response.get("cancelled") is not True
+            else False
+        )
 
-    async def input(self, title: str, placeholder: str | None = None, *, timeout: float | None = None) -> str | None:
-        payload: dict[str, object] = {"method": "input", "title": title, **_timeout_payload(timeout)}
+    async def input(
+        self,
+        title: str,
+        placeholder: str | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> str | None:
+        payload: dict[str, object] = {
+            "method": "input",
+            "title": title,
+            **_timeout_payload(timeout),
+        }
         if placeholder is not None:
             payload["placeholder"] = placeholder
-        response = await self._request_dialog(payload, timeout=timeout, default={"cancelled": True})
+        response = await self._request_dialog(
+            payload, timeout=timeout, default={"cancelled": True}
+        )
         if response.get("cancelled") is True:
             return None
         value = response.get("value")
         return value if isinstance(value, str) else None
 
-    async def editor(self, title: str, prefill: str | None = None, *, timeout: float | None = None) -> str | None:
+    async def editor(
+        self, title: str, prefill: str | None = None, *, timeout: float | None = None
+    ) -> str | None:
         payload: dict[str, object] = {"method": "editor", "title": title}
         if prefill is not None:
             payload["prefill"] = prefill
         if timeout is not None:
             payload["timeout"] = timeout
-        response = await self._request_dialog(payload, timeout=timeout, default={"cancelled": True})
+        response = await self._request_dialog(
+            payload, timeout=timeout, default={"cancelled": True}
+        )
         if response.get("cancelled") is True:
             return None
         value = response.get("value")
@@ -141,7 +184,9 @@ class RpcExtensionUIContext:
         payload: dict[str, object] = {"method": "notify", "message": message}
         if notify_type is not None:
             payload["notifyType"] = notify_type
-        self._notifications.append({key: value for key, value in payload.items() if key != "method"})
+        self._notifications.append(
+            {key: value for key, value in payload.items() if key != "method"}
+        )
         self._emit_request(payload)
 
     def set_status(self, key: str, text: str | None) -> None:
@@ -156,7 +201,9 @@ class RpcExtensionUIContext:
     def setStatus(self, key: str, text: str | None) -> None:
         self.set_status(key, text)
 
-    def set_widget(self, key: str, lines: list[str] | None, *, placement: str | None = None) -> None:
+    def set_widget(
+        self, key: str, lines: list[str] | None, *, placement: str | None = None
+    ) -> None:
         payload: dict[str, object] = {"method": "setWidget", "widgetKey": key}
         if lines is not None:
             payload["widgetLines"] = list(lines)
@@ -171,7 +218,9 @@ class RpcExtensionUIContext:
             self._widgets[key] = widget
         self._emit_request(payload)
 
-    def setWidget(self, key: str, lines: list[str] | None, *, placement: str | None = None) -> None:
+    def setWidget(
+        self, key: str, lines: list[str] | None, *, placement: str | None = None
+    ) -> None:
         self.set_widget(key, lines, placement=placement)
 
     def set_title(self, title: str) -> None:
@@ -288,7 +337,11 @@ class RpcExtensionUIContext:
         future: asyncio.Future[object] = loop.create_future()
         self._pending[request_id] = future
         try:
-            result = await asyncio.wait_for(future, timeout=timeout) if timeout is not None else await future
+            result = (
+                await asyncio.wait_for(future, timeout=timeout)
+                if timeout is not None
+                else await future
+            )
         except TimeoutError:
             self._pending.pop(request_id, None)
             return default
@@ -420,11 +473,15 @@ class RpcMode(ModeAdapter):
             payload = json.loads(line, parse_constant=_reject_json_constant)
         except ValueError as exc:
             detail = exc.msg if isinstance(exc, json.JSONDecodeError) else str(exc)
-            self._write_response_error(command="parse", error=f"Failed to parse command: {detail}")
+            self._write_response_error(
+                command="parse", error=f"Failed to parse command: {detail}"
+            )
             return
 
         if not isinstance(payload, dict):
-            self._write_response_error(command="invalid", error="RPC commands must be JSON objects")
+            self._write_response_error(
+                command="invalid", error="RPC commands must be JSON objects"
+            )
             return
 
         command_id = _usable_rpc_request_id(payload.get("id"))
@@ -444,12 +501,18 @@ class RpcMode(ModeAdapter):
 
         command_id = payload.get("id")
         if command_id is not None and not isinstance(command_id, str):
-            self._write_response_error(command="invalid", error="command id must be a string")
+            self._write_response_error(
+                command="invalid", error="command id must be a string"
+            )
             return
 
         command_type = payload.get("type")
         if not isinstance(command_type, str) or not command_type:
-            self._write_response_error(id=command_id, command="invalid", error="RPC command missing string type")
+            self._write_response_error(
+                id=command_id,
+                command="invalid",
+                error="RPC command missing string type",
+            )
             return
 
         handler = getattr(self, f"_handle_{command_type}_command", None)
@@ -467,11 +530,17 @@ class RpcMode(ModeAdapter):
             if inspect.isawaitable(result):
                 await result
         except Exception as exc:
-            self._write_response_error(id=command_id, command=command_type, error=str(exc))
+            self._write_response_error(
+                id=command_id, command=command_type, error=str(exc)
+            )
 
-    async def _handle_prompt_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_prompt_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         message = self._require_string(payload, "message")
-        streaming_behavior = payload.get("streamingBehavior", payload.get("streaming_behavior"))
+        streaming_behavior = payload.get(
+            "streamingBehavior", payload.get("streaming_behavior")
+        )
         images = self._coerce_images(payload.get("images"))
         task = asyncio.create_task(
             self._run_prompt(
@@ -479,7 +548,9 @@ class RpcMode(ModeAdapter):
                 command_id=command_id,
                 message=message,
                 images=images,
-                streaming_behavior=streaming_behavior if isinstance(streaming_behavior, str) else None,
+                streaming_behavior=streaming_behavior
+                if isinstance(streaming_behavior, str)
+                else None,
             )
         )
         self._active_prompt_task = task
@@ -513,7 +584,9 @@ class RpcMode(ModeAdapter):
             await session.wait_for_idle()
         except Exception as exc:
             if not preflight_succeeded:
-                self._write_response_error(id=command_id, command="prompt", error=str(exc))
+                self._write_response_error(
+                    id=command_id, command="prompt", error=str(exc)
+                )
         else:
             if not preflight_succeeded:
                 self._write_response_success(id=command_id, command="prompt")
@@ -521,20 +594,34 @@ class RpcMode(ModeAdapter):
             if self._active_prompt_task is asyncio.current_task():
                 self._active_prompt_task = None
 
-    def _handle_steer_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
-        self.session.steer(self._require_string(payload, "message"), images=self._coerce_images(payload.get("images")))
+    def _handle_steer_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
+        self.session.steer(
+            self._require_string(payload, "message"),
+            images=self._coerce_images(payload.get("images")),
+        )
         self._write_response_success(id=command_id, command="steer")
 
-    def _handle_follow_up_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
-        self.session.follow_up(self._require_string(payload, "message"), images=self._coerce_images(payload.get("images")))
+    def _handle_follow_up_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
+        self.session.follow_up(
+            self._require_string(payload, "message"),
+            images=self._coerce_images(payload.get("images")),
+        )
         self._write_response_success(id=command_id, command="follow_up")
 
-    def _handle_abort_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_abort_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         del payload
         self.session.abort()
         self._write_response_success(id=command_id, command="abort")
 
-    def _handle_get_state_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_get_state_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         del payload
         try:
             state = self._serialize_session_state(self.session)
@@ -551,7 +638,9 @@ class RpcMode(ModeAdapter):
             data=state,
         )
 
-    def _handle_get_extension_ui_state_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_get_extension_ui_state_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         del payload
         self._write_response_success(
             id=command_id,
@@ -559,7 +648,9 @@ class RpcMode(ModeAdapter):
             data=self.extension_ui_context.get_snapshot(),
         )
 
-    def _handle_get_messages_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_get_messages_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         del payload
         messages = self._get_session_messages(self.session)
         if not isinstance(messages, list):
@@ -581,11 +672,15 @@ class RpcMode(ModeAdapter):
             data={"messages": serialized_messages},
         )
 
-    def _handle_list_sessions_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_list_sessions_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         try:
             query = self._session_query_from_payload(payload)
         except ValueError as error:
-            self._write_response_error(id=command_id, command="list_sessions", error=str(error))
+            self._write_response_error(
+                id=command_id, command="list_sessions", error=str(error)
+            )
             return
         all_sessions = payload.get("allSessions", payload.get("all_sessions", False))
         if not isinstance(all_sessions, bool):
@@ -598,7 +693,13 @@ class RpcMode(ModeAdapter):
             raise ValueError("list_sessions refreshIndex must be boolean")
         use_index = use_index or refresh_index
         if refresh_index:
-            refresher = getattr(self.runtime, "refresh_all_session_indexes" if all_sessions else "refresh_session_index", None)
+            refresher = getattr(
+                self.runtime,
+                "refresh_all_session_indexes"
+                if all_sessions
+                else "refresh_session_index",
+                None,
+            )
             if not callable(refresher):
                 self._write_response_error(
                     id=command_id,
@@ -616,20 +717,45 @@ class RpcMode(ModeAdapter):
                 )
                 return
         finder = (
-            getattr(self.runtime, "find_all_indexed_session_summaries" if use_index else "find_all_session_summaries", None)
+            getattr(
+                self.runtime,
+                "find_all_indexed_session_summaries"
+                if use_index
+                else "find_all_session_summaries",
+                None,
+            )
             if all_sessions
             else None
         )
         if not callable(finder):
-            finder = getattr(self.runtime, "find_indexed_session_summaries" if use_index else "find_session_summaries", None)
+            finder = getattr(
+                self.runtime,
+                "find_indexed_session_summaries"
+                if use_index
+                else "find_session_summaries",
+                None,
+            )
         if callable(finder):
+
             def lister():
                 return finder(query)
         else:
             if all_sessions:
-                lister = getattr(self.runtime, "list_all_indexed_session_summaries" if use_index else "list_all_session_summaries", None)
+                lister = getattr(
+                    self.runtime,
+                    "list_all_indexed_session_summaries"
+                    if use_index
+                    else "list_all_session_summaries",
+                    None,
+                )
             else:
-                lister = getattr(self.runtime, "list_indexed_session_summaries" if use_index else "list_session_summaries", None)
+                lister = getattr(
+                    self.runtime,
+                    "list_indexed_session_summaries"
+                    if use_index
+                    else "list_session_summaries",
+                    None,
+                )
             if not callable(lister) and not use_index:
                 lister = getattr(self.runtime, "list_sessions", None)
         if not callable(lister):
@@ -674,18 +800,26 @@ class RpcMode(ModeAdapter):
         return SessionQuery(
             cwd=self._optional_string(payload, "cwd"),
             name=self._optional_string(payload, "name"),
-            parent_session=self._optional_string(payload, "parentSession", "parent_session"),
+            parent_session=self._optional_string(
+                payload, "parentSession", "parent_session"
+            ),
             text=self._optional_string(payload, "text", "query"),
-            has_diagnostics=self._optional_bool(payload, "hasDiagnostics", "has_diagnostics"),
+            has_diagnostics=self._optional_bool(
+                payload, "hasDiagnostics", "has_diagnostics"
+            ),
             limit=limit,
         )
 
-    async def _handle_new_session_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_new_session_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         previous = self.session
         try:
             session = await self.runtime.new_session(
                 cwd=self._optional_path(payload.get("cwd")),
-                parent_session=self._optional_string(payload, "parentSession", "parent_session"),
+                parent_session=self._optional_string(
+                    payload, "parentSession", "parent_session"
+                ),
             )
         except Exception as error:
             self._write_response_error(
@@ -703,9 +837,13 @@ class RpcMode(ModeAdapter):
             },
         )
 
-    async def _handle_switch_session_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_switch_session_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         previous = self.session
-        session_id = payload.get("sessionId", payload.get("session_id", payload.get("sessionPath")))
+        session_id = payload.get(
+            "sessionId", payload.get("session_id", payload.get("sessionPath"))
+        )
         if not isinstance(session_id, str) or not session_id:
             raise ValueError("switch_session requires sessionId")
         try:
@@ -726,7 +864,9 @@ class RpcMode(ModeAdapter):
             },
         )
 
-    async def _handle_fork_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_fork_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         previous = self.session
         entry_id = payload.get("entryId", payload.get("entry_id"))
         if not isinstance(entry_id, str) or not entry_id:
@@ -739,7 +879,11 @@ class RpcMode(ModeAdapter):
             if callable(fork_with_result):
                 session, text = await fork_with_result(entry_id, position=position)
             else:
-                text = self._extract_session_entry_text(entry_id) if position == "before" else None
+                text = (
+                    self._extract_session_entry_text(entry_id)
+                    if position == "before"
+                    else None
+                )
                 session = await self.runtime.fork_session(entry_id)
         except Exception as error:
             self._write_response_error(
@@ -758,7 +902,9 @@ class RpcMode(ModeAdapter):
             },
         )
 
-    async def _handle_clone_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_clone_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         del payload
         previous = self.session
         try:
@@ -777,7 +923,9 @@ class RpcMode(ModeAdapter):
             data={"cancelled": session is previous},
         )
 
-    async def _handle_set_model_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_set_model_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         provider = self._require_string(payload, "provider")
         model_id = self._require_string(payload, "modelId", "model_id")
         endpoint_id = payload.get("endpointId") or payload.get("endpoint_id")
@@ -831,7 +979,9 @@ class RpcMode(ModeAdapter):
             data=self._serialize_state_model(self.session, self.session.get_state()),
         )
 
-    def _handle_get_available_models_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_get_available_models_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         del payload
         getter = getattr(self.session, "get_available_models", None)
         if not callable(getter):
@@ -872,7 +1022,9 @@ class RpcMode(ModeAdapter):
             data={"models": serialized},
         )
 
-    async def _handle_cycle_model_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_cycle_model_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         del payload
         try:
             selection = await self.session.cycle_model()
@@ -923,9 +1075,13 @@ class RpcMode(ModeAdapter):
             },
         )
 
-    async def _handle_set_active_tools_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_set_active_tools_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         tool_names = payload.get("toolNames", payload.get("tool_names"))
-        if not isinstance(tool_names, list) or not all(isinstance(name, str) and name for name in tool_names):
+        if not isinstance(tool_names, list) or not all(
+            isinstance(name, str) and name for name in tool_names
+        ):
             raise ValueError("set_active_tools requires toolNames")
         try:
             await self.session.set_active_tools(tool_names)
@@ -951,7 +1107,9 @@ class RpcMode(ModeAdapter):
             data=state,
         )
 
-    def _handle_set_thinking_level_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_set_thinking_level_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         level = self._require_string(payload, "level")
         try:
             self.session.set_thinking_level(level)
@@ -964,7 +1122,9 @@ class RpcMode(ModeAdapter):
             return
         self._write_response_success(id=command_id, command="set_thinking_level")
 
-    def _handle_cycle_thinking_level_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_cycle_thinking_level_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         del payload
         try:
             next_level = self.session.cycle_thinking_level()
@@ -981,7 +1141,9 @@ class RpcMode(ModeAdapter):
             data={"level": next_level},
         )
 
-    def _handle_set_steering_mode_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_set_steering_mode_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         mode = self._require_mode(payload, "mode")
         try:
             self.session.set_steering_mode(mode)
@@ -994,7 +1156,9 @@ class RpcMode(ModeAdapter):
             return
         self._write_response_success(id=command_id, command="set_steering_mode")
 
-    def _handle_set_follow_up_mode_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_set_follow_up_mode_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         mode = self._require_mode(payload, "mode")
         try:
             self.session.set_follow_up_mode(mode)
@@ -1007,7 +1171,9 @@ class RpcMode(ModeAdapter):
             return
         self._write_response_success(id=command_id, command="set_follow_up_mode")
 
-    def _handle_get_session_stats_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_get_session_stats_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         del payload
         getter = getattr(self.session, "get_session_stats", None)
         if not callable(getter):
@@ -1048,10 +1214,16 @@ class RpcMode(ModeAdapter):
             data=serialized,
         )
 
-    def _handle_set_session_name_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_set_session_name_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         name = self._require_string(payload, "name").strip()
         if not name:
-            self._write_response_error(id=command_id, command="set_session_name", error="Session name cannot be empty")
+            self._write_response_error(
+                id=command_id,
+                command="set_session_name",
+                error="Session name cannot be empty",
+            )
             return
         try:
             self.session.set_session_name(name)
@@ -1064,7 +1236,9 @@ class RpcMode(ModeAdapter):
             return
         self._write_response_success(id=command_id, command="set_session_name")
 
-    def _handle_get_last_assistant_text_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_get_last_assistant_text_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         del payload
         try:
             text = self._extract_last_assistant_text()
@@ -1081,7 +1255,9 @@ class RpcMode(ModeAdapter):
             data={"text": text},
         )
 
-    def _handle_get_fork_messages_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_get_fork_messages_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         del payload
         getter = getattr(self.session, "getUserMessagesForForking", None)
         if not callable(getter):
@@ -1116,7 +1292,9 @@ class RpcMode(ModeAdapter):
             data={"messages": messages},
         )
 
-    def _handle_get_commands_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_get_commands_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         del payload
         commands = []
         getter = getattr(self.session, "list_commands", None)
@@ -1154,7 +1332,9 @@ class RpcMode(ModeAdapter):
             data={"commands": commands},
         )
 
-    async def _handle_get_command_completions_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_get_command_completions_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         prefix = payload.get("prefix", "")
         if not isinstance(prefix, str):
             self._write_response_error(
@@ -1195,7 +1375,9 @@ class RpcMode(ModeAdapter):
             self._write_response_success(
                 id=command_id,
                 command="get_command_completions",
-                data={"completions": completions if isinstance(completions, list) else []},
+                data={
+                    "completions": completions if isinstance(completions, list) else []
+                },
             )
             return
 
@@ -1227,7 +1409,9 @@ class RpcMode(ModeAdapter):
             data={"completions": completions},
         )
 
-    def _handle_get_diagnostics_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_get_diagnostics_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         self._handle_diagnostics_query_command(
             command_id=command_id,
             payload=payload,
@@ -1237,7 +1421,9 @@ class RpcMode(ModeAdapter):
             fallback_to_last=True,
         )
 
-    def _handle_get_session_diagnostics_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_get_session_diagnostics_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         self._handle_diagnostics_query_command(
             command_id=command_id,
             payload=payload,
@@ -1247,7 +1433,9 @@ class RpcMode(ModeAdapter):
             fallback_to_last=False,
         )
 
-    def _handle_get_diagnostics_summary_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_get_diagnostics_summary_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         self._handle_diagnostics_summary_command(
             command_id=command_id,
             payload=payload,
@@ -1256,7 +1444,9 @@ class RpcMode(ModeAdapter):
             session_method="get_diagnostics_summary",
         )
 
-    def _handle_get_session_diagnostics_summary_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_get_session_diagnostics_summary_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         self._handle_diagnostics_summary_command(
             command_id=command_id,
             payload=payload,
@@ -1287,18 +1477,26 @@ class RpcMode(ModeAdapter):
         query = self._diagnostics_query_from_payload(payload, default_limit=raw_limit)
         getter = getattr(self.runtime, runtime_method, None)
         if callable(getter):
+
             def get_diagnostics():
                 return getter(query=query)
         else:
             getter = getattr(self.session, session_method, None)
             if callable(getter):
+
                 def get_diagnostics():
                     return getter(query=query)
             else:
-                getter = getattr(self.session, "get_last_diagnostics", None) if fallback_to_last else None
+                getter = (
+                    getattr(self.session, "get_last_diagnostics", None)
+                    if fallback_to_last
+                    else None
+                )
                 if callable(getter):
+
                     def get_diagnostics():
                         return getter(limit=raw_limit)
+
         if not callable(getter):
             self._write_response_error(
                 id=command_id,
@@ -1351,31 +1549,46 @@ class RpcMode(ModeAdapter):
             return
         getter = getattr(self.runtime, runtime_method, None)
         if callable(getter):
+
             def get_summary():
                 return getter(query=query)
         else:
             getter = getattr(self.session, session_method, None)
             if callable(getter):
+
                 def get_summary():
                     return getter(query=query)
+
         if not callable(getter):
-            self._write_response_error(id=command_id, command=command, error="Diagnostics are not available.")
+            self._write_response_error(
+                id=command_id, command=command, error="Diagnostics are not available."
+            )
             return
         try:
             summary = serialize_diagnostic_summary(get_summary())
         except Exception as error:
-            self._write_response_error(id=command_id, command=command, error=f"Failed to query diagnostics: {error}")
+            self._write_response_error(
+                id=command_id,
+                command=command,
+                error=f"Failed to query diagnostics: {error}",
+            )
             return
-        self._write_response_success(id=command_id, command=command, data={"summary": summary})
+        self._write_response_success(
+            id=command_id, command=command, data={"summary": summary}
+        )
 
-    def _diagnostics_query_from_payload(self, payload: dict[str, Any], *, default_limit: int | None) -> DiagnosticsQuery:
+    def _diagnostics_query_from_payload(
+        self, payload: dict[str, Any], *, default_limit: int | None
+    ) -> DiagnosticsQuery:
         raw_limit = payload.get("limit", default_limit)
         if raw_limit is not None and (not isinstance(raw_limit, int) or raw_limit <= 0):
             raise ValueError("Diagnostic limit must be a positive integer.")
         return DiagnosticsQuery(
             phase=self._optional_string(payload, "phase"),  # type: ignore[arg-type]
             source=self._optional_string(payload, "source"),  # type: ignore[arg-type]
-            level=self._optional_string(payload, "level", "diagnosticType", "diagnostic_type"),  # type: ignore[arg-type]
+            level=self._optional_string(
+                payload, "level", "diagnosticType", "diagnostic_type"
+            ),  # type: ignore[arg-type]
             session_id=self._optional_string(payload, "sessionId", "session_id"),
             entry_id=self._optional_string(payload, "entryId", "entry_id"),
             tool_call_id=self._optional_string(payload, "toolCallId", "tool_call_id"),
@@ -1383,7 +1596,9 @@ class RpcMode(ModeAdapter):
             limit=raw_limit,
         )
 
-    def _handle_get_last_error_report_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_get_last_error_report_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         del payload
         getter = getattr(self.session, "get_last_error_report", None)
         if not callable(getter):
@@ -1408,7 +1623,9 @@ class RpcMode(ModeAdapter):
             data={"report": report},
         )
 
-    def _handle_get_packages_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_get_packages_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         catalog_path = self._optional_string(payload, "catalogPath", "catalog_path")
         getter = getattr(self.runtime, "get_packages", None)
         if callable(getter):
@@ -1441,9 +1658,13 @@ class RpcMode(ModeAdapter):
                 code="invalid_package_query_response",
             )
             return
-        self._write_response_success(id=command_id, command="get_packages", data={"packages": packages})
+        self._write_response_success(
+            id=command_id, command="get_packages", data={"packages": packages}
+        )
 
-    async def _handle_materialize_package_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_materialize_package_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         await self._handle_package_lifecycle_command(
             command_id=command_id,
             payload=payload,
@@ -1456,7 +1677,9 @@ class RpcMode(ModeAdapter):
             invalid_code="invalid_package_materialization_response",
         )
 
-    async def _handle_install_package_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_install_package_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         await self._handle_package_lifecycle_command(
             command_id=command_id,
             payload=payload,
@@ -1469,7 +1692,9 @@ class RpcMode(ModeAdapter):
             invalid_code="invalid_package_installation_response",
         )
 
-    async def _handle_update_package_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_update_package_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         await self._handle_package_lifecycle_command(
             command_id=command_id,
             payload=payload,
@@ -1482,7 +1707,9 @@ class RpcMode(ModeAdapter):
             invalid_code="invalid_package_update_response",
         )
 
-    async def _handle_update_packages_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_update_packages_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         await self._handle_package_collection_command(
             command_id=command_id,
             command="update_packages",
@@ -1495,7 +1722,9 @@ class RpcMode(ModeAdapter):
             invalid_code="invalid_package_update_response",
         )
 
-    async def _handle_check_package_updates_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_check_package_updates_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         await self._handle_package_collection_command(
             command_id=command_id,
             command="check_package_updates",
@@ -1508,7 +1737,9 @@ class RpcMode(ModeAdapter):
             invalid_code="invalid_package_update_check_response",
         )
 
-    async def _handle_remove_package_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_remove_package_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         await self._handle_package_lifecycle_command(
             command_id=command_id,
             payload=payload,
@@ -1521,7 +1752,9 @@ class RpcMode(ModeAdapter):
             invalid_code="invalid_package_removal_response",
         )
 
-    async def _handle_uninstall_package_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_uninstall_package_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         await self._handle_package_lifecycle_command(
             command_id=command_id,
             payload=payload,
@@ -1551,19 +1784,30 @@ class RpcMode(ModeAdapter):
         if not callable(method):
             method = getattr(self.session, method_name, None)
         if not callable(method):
-            self._write_response_error(id=command_id, command=command, error=unavailable_message)
+            self._write_response_error(
+                id=command_id, command=command, error=unavailable_message
+            )
             return
         try:
             result = method()
             if inspect.isawaitable(result):
                 result = await result
         except Exception as error:
-            self._write_response_error(id=command_id, command=command, error=f"{failure_message}: {error}", code=failure_code)
+            self._write_response_error(
+                id=command_id,
+                command=command,
+                error=f"{failure_message}: {error}",
+                code=failure_code,
+            )
             return
         if not isinstance(result, list):
-            self._write_response_error(id=command_id, command=command, error=invalid_message, code=invalid_code)
+            self._write_response_error(
+                id=command_id, command=command, error=invalid_message, code=invalid_code
+            )
             return
-        self._write_response_success(id=command_id, command=command, data={data_key: result})
+        self._write_response_success(
+            id=command_id, command=command, data={data_key: result}
+        )
 
     async def _handle_package_lifecycle_command(
         self,
@@ -1620,9 +1864,13 @@ class RpcMode(ModeAdapter):
                 code=failure_code,
             )
             return
-        self._write_response_success(id=command_id, command=command, data={"record": record})
+        self._write_response_success(
+            id=command_id, command=command, data={"record": record}
+        )
 
-    async def _handle_bash_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_bash_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         self._ensure_no_active_bash(command="bash")
         command = self._require_string(payload, "command")
         task = asyncio.create_task(
@@ -1631,7 +1879,9 @@ class RpcMode(ModeAdapter):
                 command=command,
                 cwd=self._optional_string(payload, "cwd"),
                 env=self._coerce_env(payload.get("env")),
-                timeout_seconds=self._optional_number(payload, "timeoutSeconds", "timeout_seconds"),
+                timeout_seconds=self._optional_number(
+                    payload, "timeoutSeconds", "timeout_seconds"
+                ),
                 stdin=self._optional_string(payload, "stdin"),
             )
         )
@@ -1677,18 +1927,28 @@ class RpcMode(ModeAdapter):
             if self._active_bash_task is asyncio.current_task():
                 self._active_bash_task = None
 
-    def _handle_abort_bash_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_abort_bash_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         del payload
         self.session.abort_bash()
         self._write_response_success(id=command_id, command="abort_bash")
 
-    async def _handle_compact_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    async def _handle_compact_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         try:
             result = await self.session.compact(
-                custom_instructions=self._optional_string(payload, "customInstructions", "custom_instructions")
+                custom_instructions=self._optional_string(
+                    payload, "customInstructions", "custom_instructions"
+                )
             )
         except Exception as exc:
-            self._write_response_error(id=command_id, command="compact", error=f"Failed to compact session: {exc}")
+            self._write_response_error(
+                id=command_id,
+                command="compact",
+                error=f"Failed to compact session: {exc}",
+            )
             return
         try:
             data = self._camelize(self._serialize_json_value(result))
@@ -1705,7 +1965,9 @@ class RpcMode(ModeAdapter):
             data=data,
         )
 
-    def _handle_set_auto_retry_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_set_auto_retry_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         enabled = payload.get("enabled")
         if not isinstance(enabled, bool):
             raise ValueError("set_auto_retry requires boolean enabled")
@@ -1720,12 +1982,16 @@ class RpcMode(ModeAdapter):
             return
         self._write_response_success(id=command_id, command="set_auto_retry")
 
-    def _handle_abort_retry_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_abort_retry_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         del payload
         self.session.abort_retry()
         self._write_response_success(id=command_id, command="abort_retry")
 
-    def _handle_set_auto_compaction_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_set_auto_compaction_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         enabled = payload.get("enabled")
         if not isinstance(enabled, bool):
             raise ValueError("set_auto_compaction requires boolean enabled")
@@ -1740,7 +2006,9 @@ class RpcMode(ModeAdapter):
             return
         self._write_response_success(id=command_id, command="set_auto_compaction")
 
-    def _handle_export_html_command(self, command_id: str | None, payload: dict[str, Any]) -> None:
+    def _handle_export_html_command(
+        self, command_id: str | None, payload: dict[str, Any]
+    ) -> None:
         output_path = self._optional_string(payload, "outputPath", "output_path")
         try:
             path = self.session.export_to_html(output_path)
@@ -1789,7 +2057,9 @@ class RpcMode(ModeAdapter):
             tool_definition_resolver=self._tool_definition_resolver,
         ):
             if should_emit_projected_event(projected_event, self.event_select):
-                self._write_json_line(shape_stream_event(projected_event, event_view=self.event_view))
+                self._write_json_line(
+                    shape_stream_event(projected_event, event_view=self.event_view)
+                )
 
     def _configure_tool_rendering(self, session: Any) -> None:
         if not self.render_tool_events:
@@ -1815,7 +2085,9 @@ class RpcMode(ModeAdapter):
     def _ensure_no_active_bash(self, *, command: str) -> None:
         task = self._active_bash_task
         if task is not None and not task.done():
-            raise RuntimeError(f"{command} requires the active bash command to finish or abort first")
+            raise RuntimeError(
+                f"{command} requires the active bash command to finish or abort first"
+            )
 
     def _require_current_session(self) -> Any:
         getter = getattr(self.runtime, "get_current_session", None)
@@ -1875,7 +2147,9 @@ class RpcMode(ModeAdapter):
             "isCompacting": bool(self._safe_getattr(state, "is_compacting", False)),
             "steeringMode": self._queue_mode(session, "steering_mode"),
             "followUpMode": self._queue_mode(session, "follow_up_mode"),
-            "autoCompactionEnabled": bool(self._safe_getattr(session, "auto_compaction_enabled", False)),
+            "autoCompactionEnabled": bool(
+                self._safe_getattr(session, "auto_compaction_enabled", False)
+            ),
             "messageCount": len(self._get_session_messages(session)),
             "pendingMessageCount": len(steering) + len(follow_up),
             "thinkingLevel": thinking_level,
@@ -1895,7 +2169,9 @@ class RpcMode(ModeAdapter):
         value = self._safe_getattr(session, attr, None)
         if value in {"all", "one-at-a-time"}:
             return value
-        agent_value = self._safe_getattr(self._safe_getattr(session, "agent", None), attr, None)
+        agent_value = self._safe_getattr(
+            self._safe_getattr(session, "agent", None), attr, None
+        )
         if agent_value in {"all", "one-at-a-time"}:
             return agent_value
         return "one-at-a-time"
@@ -1970,7 +2246,9 @@ class RpcMode(ModeAdapter):
                 return payload
         return None
 
-    def _serialize_available_models(self, session: Any, selections: list[Any]) -> list[RpcModel]:
+    def _serialize_available_models(
+        self, session: Any, selections: list[Any]
+    ) -> list[RpcModel]:
         serialized: list[RpcModel] = []
         for selection in selections:
             try:
@@ -2042,7 +2320,9 @@ class RpcMode(ModeAdapter):
             "name": name,
             "description": description if isinstance(description, str) else None,
             "source": source if isinstance(source, str) else "",
-            "sourceInfo": self._serialize_command_source_info(self._safe_getattr(command, "source_info", None)),
+            "sourceInfo": self._serialize_command_source_info(
+                self._safe_getattr(command, "source_info", None)
+            ),
         }
         invocation_name = self._safe_getattr(command, "invocation_name", None)
         if isinstance(invocation_name, str) and invocation_name:
@@ -2075,14 +2355,16 @@ class RpcMode(ModeAdapter):
                 context = None
             else:
                 messages = self._safe_getattr(context, "messages", None)
-                if isinstance(messages, list):
+                if isinstance(messages, list | tuple):
                     return list(messages)
         messages = self._safe_getattr(session, "messages", None)
-        if isinstance(messages, list):
+        if isinstance(messages, list | tuple):
             return list(messages)
         return []
 
-    def _serialize_model_selection(self, selection: ModelSelection | None) -> dict[str, str] | None:
+    def _serialize_model_selection(
+        self, selection: ModelSelection | None
+    ) -> dict[str, str] | None:
         if selection is None:
             return None
         payload = {
@@ -2093,7 +2375,9 @@ class RpcMode(ModeAdapter):
             payload["endpointId"] = selection.endpoint_id
         return payload
 
-    def _serialize_model_selection_as_model(self, selection: ModelSelection | None) -> RpcModel | None:
+    def _serialize_model_selection_as_model(
+        self, selection: ModelSelection | None
+    ) -> RpcModel | None:
         if selection is None:
             return None
         provider = self._safe_getattr(selection, "provider", None)
@@ -2110,7 +2394,9 @@ class RpcMode(ModeAdapter):
         return payload
 
     def _serialize_model(self, session: Any, model: object) -> RpcModel | None:
-        provider = self._safe_getattr(model, "provider_id", None) or self._safe_getattr(model, "provider", None)
+        provider = self._safe_getattr(model, "provider_id", None) or self._safe_getattr(
+            model, "provider", None
+        )
         model_id = self._safe_getattr(model, "id", None)
         if not provider or not model_id:
             return None
@@ -2163,7 +2449,9 @@ class RpcMode(ModeAdapter):
         return data
 
     def _resolve_model_endpoint(self, session: Any, model: object) -> object | None:
-        provider = self._safe_getattr(model, "provider_id", None) or self._safe_getattr(model, "provider", None)
+        provider = self._safe_getattr(model, "provider_id", None) or self._safe_getattr(
+            model, "provider", None
+        )
         endpoint_id = self._safe_getattr(model, "endpoint_id", None)
         if not provider or not endpoint_id:
             return None
@@ -2242,7 +2530,10 @@ class RpcMode(ModeAdapter):
 
     def _camelize(self, value: object) -> object:
         if isinstance(value, dict):
-            return {_snake_to_camel(str(key)): self._camelize(item) for key, item in value.items()}
+            return {
+                _snake_to_camel(str(key)): self._camelize(item)
+                for key, item in value.items()
+            }
         if isinstance(value, list):
             return [self._camelize(item) for item in value]
         return value
@@ -2288,7 +2579,11 @@ class RpcMode(ModeAdapter):
             raise ValueError("env must contain 2-item string pairs")
         normalized: list[list[str]] = []
         for pair in env:
-            if isinstance(pair, str) or not isinstance(pair, list | tuple) or len(pair) != 2:
+            if (
+                isinstance(pair, str)
+                or not isinstance(pair, list | tuple)
+                or len(pair) != 2
+            ):
                 raise ValueError("env must contain 2-item string pairs")
             if not all(isinstance(part, str) for part in pair):
                 raise ValueError("env must contain 2-item string pairs")
@@ -2365,7 +2660,9 @@ class RpcMode(ModeAdapter):
             return value
         raise ValueError("cwd must be a string")
 
-    def _write_response_success(self, *, command: str, id: str | None = None, data: object = _MISSING) -> None:
+    def _write_response_success(
+        self, *, command: str, id: str | None = None, data: object = _MISSING
+    ) -> None:
         payload: dict[str, object] = {
             "type": "response",
             "command": command,
@@ -2403,7 +2700,9 @@ class RpcMode(ModeAdapter):
         self._write_json_line(payload)
 
     def _write_json_line(self, payload: object) -> None:
-        def _safe_extract_fallback_fields(item: object) -> tuple[str | None, str | None]:
+        def _safe_extract_fallback_fields(
+            item: object,
+        ) -> tuple[str | None, str | None]:
             if not isinstance(item, dict):
                 return None, None
             return (
@@ -2524,7 +2823,11 @@ def _package_lifecycle_failure(record: dict[str, Any]) -> str | None:
     if record.get("lifecycle") != "failed":
         return None
     message = record.get("errorMessage", record.get("error_message"))
-    return str(message) if isinstance(message, str) and message else "Package lifecycle failed."
+    return (
+        str(message)
+        if isinstance(message, str) and message
+        else "Package lifecycle failed."
+    )
 
 
 def _snake_to_camel(value: str) -> str:

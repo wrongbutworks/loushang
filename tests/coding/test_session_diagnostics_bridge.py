@@ -26,7 +26,7 @@ def test_session_diagnostics_bridge_filters_session_views(tmp_path) -> None:
             exc="boom",
             phase="runtime",
             source="session",
-            session_id=manager.get_header().id,
+            session_id=manager.get_header().conversation_id,
         )
     )
     diagnostics.record(
@@ -81,7 +81,7 @@ def test_session_diagnostics_bridge_syncs_new_extension_diagnostics_once(
     assert [record.code for record in records] == ["extension_session_refresh_failed"]
     assert records[0].type == "error"
     assert records[0].source == "extensions"
-    assert records[0].session_id == manager.get_header().id
+    assert records[0].session_id == manager.get_header().conversation_id
     assert records[0].entry_id == manager.get_leaf_id()
 
 
@@ -131,7 +131,7 @@ def test_session_diagnostics_bridge_records_runtime_errors_with_session_context(
         "assistant_response_error",
         "tool_execution_failed",
     ]
-    assert {record.session_id for record in records} == {manager.get_header().id}
+    assert {record.session_id for record in records} == {manager.get_header().conversation_id}
     assert records[1].details["response_id"] == "resp_1"
     assert records[2].message == "tool failed"
     assert records[2].details["tool_call_id"] == "tc1"
@@ -183,7 +183,7 @@ def test_session_diagnostics_bridge_records_policy_tool_errors_with_correlation(
     assert policy_records[0].source == "policy"
     assert policy_records[0].phase == "runtime"
     assert policy_records[0].message == "Tool write is blocked by policy"
-    assert policy_records[0].session_id == manager.get_header().id
+    assert policy_records[0].session_id == manager.get_header().conversation_id
     assert policy_records[0].details["tool_call_id"] == "tc-policy-1"
     assert policy_records[0].details["tool_name"] == "write"
     assert policy_records[0].details["policy_disposition"] == "deny"

@@ -70,7 +70,7 @@ async def run_coding_tui(
             stderr=stderr,
             verbose=verbose,
         )
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         stdout.write(f"■ Error: {str(error) or error.__class__.__name__}\n")
         stdout.flush()
         if verbose:
@@ -459,9 +459,9 @@ def _resume_ref_for_session(session: Any) -> str | None:
     if callable(get_header):
         try:
             header = get_header()
-        except Exception:  # noqa: BLE001
+        except Exception:
             header = None
-        header_id = getattr(header, "id", None)
+        header_id = getattr(header, "conversation_id", None)
         if isinstance(header_id, str) and header_id:
             return header_id
 
@@ -474,7 +474,7 @@ def _session_file_for_resume(session: Any) -> object | None:
     if callable(get_session_file):
         try:
             return get_session_file()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
     return getattr(session, "session_file", None)
 
@@ -516,7 +516,7 @@ def _is_interactive(*, stdin: TextIO, stdout: TextIO) -> bool:
 async def _load_completion_provider(session: Any) -> CompletionProvider:
     try:
         return await coding_inline_completion_provider(session)
-    except Exception as error:  # noqa: BLE001
+    except Exception as error:
         log.problem(
             "coding_ui_completion_provider_failed",
             source="tui",

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Generic, Literal, TypeVar
+
+RecordT = TypeVar("RecordT")
 
 
 @dataclass(frozen=True)
@@ -54,3 +56,11 @@ class SessionQuery:
     sort_by: Literal["recent", "relevance"] = "recent"
     has_diagnostics: bool | None = None
     limit: int | None = None
+
+
+@dataclass(frozen=True)
+class SessionTreeNode(Generic[RecordT]):
+    record: RecordT
+    children: tuple[SessionTreeNode[RecordT], ...] = ()
+    label: str | None = None
+    label_timestamp: str | None = None

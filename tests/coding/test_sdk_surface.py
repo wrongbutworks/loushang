@@ -307,7 +307,7 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
     )
     created = asyncio.run(runtime.create_session(cwd=str(project_root)))
     created.session_manager.append_message(_user_message("runtime root"))
-    fork_entry = created.session_manager.get_entries()[0].id
+    fork_entry = created.session_manager.get_entries()[0].record_id
     forked = asyncio.run(runtime.fork_session(fork_entry))
 
     imported_manager = coding.SessionManager.new(
@@ -322,7 +322,7 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
     import_result = asyncio.run(runtime.importFromJsonl(str(imported_file)))
     imported = runtime.get_current_session()
 
-    assert forked.session_manager.get_header().parent_session == str(
+    assert forked.session_manager.get_header().metadata.get("parentSession") == str(
         created.session_manager.session_file
     )
     assert import_result == {"cancelled": False}
