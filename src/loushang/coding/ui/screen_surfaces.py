@@ -21,13 +21,11 @@ from loushang.coding.ui.intent import (
     parse_prompt_intent,
 )
 from loushang.coding.ui.model import (
-    current_model_first,
     get_session_model_selection,
     iter_scoped_model_selections,
     model_label_from_selection,
 )
 from loushang.coding.ui.model_list import (
-    ModelChoice,
     available_model_choices,
     current_model_choice_value,
     format_available_models,
@@ -38,11 +36,20 @@ from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.settings_page import SettingsPageView
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.harness.commands import CommandDef, CommandKind
+from loushang.harnesstui.commands.presentation import command_palette_select_items
+from loushang.harnesstui.selection.catalog import (
+    model_choice_select_items,
+    model_label_select_items,
+)
 from loushang.harnesstui.selection.model import (
     MODEL_SELECTOR_SELECTED_STYLE as MODEL_SELECTOR_SELECTED_STYLE,
 )
 from loushang.harnesstui.selection.model import (
     ModelSelectorSurface,
+)
+from loushang.harnesstui.surface.factory import (
+    command_surface_view,
+    info_surface_view,
 )
 from loushang.harnesstui.surface.view import (
     ScreenSurfacePresentation,
@@ -54,10 +61,7 @@ from loushang.harnesstui.surface.view import (
 from loushang.tui import (
     ApprovalSurface,
     CommandPalette,
-    CommandSurface,
-    InfoPanel,
     InputIntent,
-    SelectItem,
     Surface,
     SurfaceHandle,
 )
@@ -335,9 +339,13 @@ class ScreenSurfaceManager:
         *,
         purpose: Literal["model", "command"],
     ) -> None:
-        surface = CommandSurface(_palette_items(palette), max_visible=8)
         self._open_surface(
-            ScreenSurfaceView(title=title, purpose=purpose, content=surface)
+            command_surface_view(
+                title=title,
+                purpose=purpose,
+                items=command_palette_select_items(palette),
+                max_visible=8,
+            )
         )
 
     async def _open_model_selector(self) -> None:
@@ -347,14 +355,19 @@ class ScreenSurfaceManager:
         choices = await available_model_choices(self.session)
         current_value = await current_model_choice_value(self.session, choices=choices)
         scoped_selections = await iter_scoped_model_selections(self.session)
+        scoped_labels = [
+            label
+            for selection in scoped_selections
+            if (label := model_label_from_selection(selection)) is not None
+        ]
         descriptions = await model_detail_descriptions_by_label(self.session)
         surface = ModelSelectorSurface(
             all_items=tuple(
-                _model_choice_selector_items(choices, current_value=current_value)
+                model_choice_select_items(choices, current_value=current_value)
             ),
             scoped_items=tuple(
-                _model_selector_items(
-                    scoped_selections,
+                model_label_select_items(
+                    scoped_labels,
                     current_label=current_label,
                     descriptions=descriptions,
                 )
@@ -381,11 +394,9 @@ class ScreenSurfaceManager:
         presentation: ScreenSurfacePresentation = "bottom",
     ) -> None:
         self._open_surface(
-            ScreenSurfaceView(
+            info_surface_view(
                 title=title,
-                purpose="info",
-                content=InfoPanel.from_text(title=title, text=text, footer=""),
-                footer="Enter/Esc to close",
+                text=text,
                 presentation=presentation,
             )
         )
@@ -499,92 +510,9 @@ def _approval_surface_event(
     )
 
 
-def _palette_items(palette: CommandPalette) -> list[SelectItem]:
-    return [
-        SelectItem(
-            label=item.display_label(), value=item.value, description=item.description
-        )
-        for item in palette.items
-    ]
-
-
-def _model_selector_description(
-    label: str, *, current_label: str | None, descriptions: dict[str, str]
-) -> str:
-    if label == current_label:
-        return "current"
-    return descriptions.get(label, "")
-
-
-def _model_selector_items(
-    selections: list[Any],
-    *,
-    current_label: str | None,
-    descriptions: dict[str, str],
-) -> list[SelectItem]:
-    labels = current_model_first(
-        [
-            label
-            for selection in selections
-            if (label := model_label_from_selection(selection)) is not None
-        ],
-        current_label=current_label,
-        label_of=lambda label: label,
-    )
-    ordinal_width = max(2, len(f"{len(labels)}."))
-    items: list[SelectItem] = []
-    for index, label in enumerate(labels, start=1):
-        ordinal = f"{index}.".ljust(ordinal_width)
-        items.append(
-            SelectItem(
-                label=f"{ordinal} {label}",
-                value=label,
-                description=_model_selector_description(
-                    label, current_label=current_label, descriptions=descriptions
-                ),
-            )
-        )
-    return items
-
-
-def _model_choice_selector_items(
-    choices: list[ModelChoice],
-    *,
-    current_value: str | None,
-) -> list[SelectItem]:
-    ordinal_width = max(2, len(f"{len(choices)}."))
-    items: list[SelectItem] = []
-    for index, choice in enumerate(choices, start=1):
-        ordinal = f"{index}.".ljust(ordinal_width)
-        items.append(
-            SelectItem(
-                label=f"{ordinal} {choice.label}",
-                value=choice.value,
-                description=_model_choice_selector_description(
-                    choice, current_value=current_value
-                ),
-            )
-        )
-    return items
-
-
-def _model_choice_selector_description(
-    choice: ModelChoice, *, current_value: str | None
-) -> str:
-    parts: list[str] = []
-    if choice.value == current_value:
-        parts.append("current")
-    if choice.endpoint_id:
-        parts.append(f"endpoint: {choice.endpoint_id}")
-    if choice.region:
-        parts.append(f"region: {choice.region}")
-    if choice.lane:
-        parts.append(f"lane: {choice.lane}")
-    if choice.api:
-        parts.append(f"protocol: {choice.api}")
-    if choice.description:
-        parts.append(choice.description)
-    return " - ".join(parts)
+# Temporary private compatibility name for downstream imports. New code should use
+# the Harnesstui presentation builder directly.
+_palette_items = command_palette_select_items
 
 
 def _recoverable_surface_error(error: Exception) -> str:

@@ -7,11 +7,21 @@ from loushang.harnesstui.selection.catalog import (
     matching_model_choices,
     model_choice_description,
     model_choice_display_label,
+    model_choice_select_items,
     model_choice_value,
     model_completion_provider,
+    model_label_select_items,
     model_search_items,
 )
-from loushang.tui import CompletionItem, CompletionProvider, SearchableListItem
+from loushang.harnesstui.selection.model import ModelSelectorSurface
+from loushang.tui import (
+    CompletionItem,
+    CompletionProvider,
+    InputEvent,
+    InputIntent,
+    SearchableListItem,
+    SelectItem,
+)
 
 
 def _choices() -> tuple[ModelChoice, ...]:
@@ -108,6 +118,73 @@ def test_model_choice_metadata_helpers_and_settings_rows() -> None:
             label="moonshot/kimi",
             description="Long-context model",
         ),
+    )
+
+
+def test_model_label_select_items_preserve_current_order_ordinals_and_details() -> None:
+    labels = tuple(f"provider/model-{index}" for index in range(1, 13))
+
+    items = model_label_select_items(
+        labels,
+        current_label="provider/model-12",
+        descriptions={
+            "provider/model-12": "Current detail is intentionally hidden",
+            "provider/model-1": "First model detail",
+        },
+    )
+
+    assert items[0] == SelectItem(
+        label="1.  provider/model-12",
+        value="provider/model-12",
+        description="current",
+    )
+    assert items[1] == SelectItem(
+        label="2.  provider/model-1",
+        value="provider/model-1",
+        description="First model detail",
+    )
+    assert items[9].label == "10. provider/model-9"
+    assert [item.selected_value for item in items[:2]] == [
+        "provider/model-12",
+        "provider/model-1",
+    ]
+
+
+def test_model_choice_select_items_preserve_metadata_and_description_filtering() -> (
+    None
+):
+    choices = _choices()
+
+    items = model_choice_select_items(
+        choices,
+        current_value="openai:primary:gpt-5",
+    )
+
+    assert items == [
+        SelectItem(
+            label="1. openai/gpt-5",
+            value="openai:primary:gpt-5",
+            description=(
+                "current - endpoint: primary - region: us - lane: coding - "
+                "protocol: responses - General coding model"
+            ),
+        ),
+        SelectItem(
+            label="2. moonshot/kimi",
+            value="moonshot/kimi",
+            description="Long-context model",
+        ),
+    ]
+    assert [item.selected_value for item in items] == [
+        "openai:primary:gpt-5",
+        "moonshot/kimi",
+    ]
+
+    surface = ModelSelectorSurface(all_items=tuple(items))
+    surface.handle_input(InputEvent(kind="text", text="REGION: US"))
+    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(
+        kind="select",
+        text="openai:primary:gpt-5",
     )
 
 

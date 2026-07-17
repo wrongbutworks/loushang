@@ -153,18 +153,24 @@ Harnesstui owns the reusable interaction assembled from those generic widgets:
   and interaction over the neutral status profile;
 - `loushang.harnesstui.surface.view` owns the framed bottom-surface view and its
   information-panel scrolling behavior;
+- `loushang.harnesstui.surface.factory` owns pure information and command
+  surface builders over presentation-ready text and neutral `SelectItem`
+  values;
 - `loushang.harnesstui.selection.model` owns scoped/all model selection over
   product-supplied `SelectItem` values;
 - `loushang.harnesstui.selection.catalog` owns the opaque `ModelChoice` and its
-  text, completion, palette, matching, and settings-list projections;
+  text, completion, palette, matching, settings-list, and selector-row
+  projections;
 - `loushang.harnesstui.commands.presentation` owns duck-typed command text,
-  completion, palette, matching, and display ordering.
+  completion, palette, matching, display ordering, and selector-row
+  projection.
 
 These modules own interaction mechanics, layout, existing copy, and visual
 behavior, but not product data or decisions. Coding continues to own settings
 manager persistence, model and command discovery, model application, command
 catalog and slash-command policy, status-provider updates, approval routing,
-surface lifecycle, and construction of neutral rows and choices. Generic
+surface lifecycle, and adaptation of product data into neutral labels and
+choices. Generic
 `Surface`, `SurfaceHost`, `SelectionSurface`, and `SearchableList` mechanics
 remain in `loushang.tui`.
 

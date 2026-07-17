@@ -21,6 +21,7 @@ from loushang.harnesstui.surface.view import (
 )
 from loushang.tui import (
     ApprovalSurface,
+    CommandSurface,
     CursorDeclaration,
     DialogSurface,
     InputEvent,
@@ -128,6 +129,8 @@ def test_screen_surface_manager_opens_model_surface_and_selects_model() -> None:
     assert app.active_surface.title == "Select Model"
     assert app.active_surface.presentation == "bottom-exclusive"
     assert app.active_surface.exclusive_bottom is True
+    assert isinstance(app.active_surface.content, ModelSelectorSurface)
+    assert app.active_surface.content.max_visible == 10
 
     rendered = app.active_surface.render(RenderConstraints(width=80, max_height=10))
     plain_lines = tuple(strip_control_sequences(line.text) for line in rendered.lines)
@@ -1075,13 +1078,22 @@ def test_screen_surface_manager_command_surface_inserts_selected_command() -> No
     asyncio.run(manager.handle_text("/command"))
 
     assert isinstance(app.active_surface, ScreenSurfaceView)
+    assert app.active_surface.title == "Commands"
+    assert app.active_surface.purpose == "command"
+    assert app.active_surface.footer == "Enter to select - Esc to close"
+    assert app.active_surface.presentation == "bottom"
+    assert isinstance(app.active_surface.content, CommandSurface)
+    assert app.active_surface.content.max_visible == 8
+    assert app.active_surface.handle_input(
+        InputEvent(kind="text", text="report")
+    ) is None
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
-    assert intent == InputIntent(kind="command", text="/model")
+    assert intent == InputIntent(kind="command", text="/report")
 
     asyncio.run(manager.handle_surface_intent(intent))
 
     assert app.active_surface is None
-    assert app.composer.value == "/model "
+    assert app.composer.value == "/report "
 
 
 def test_screen_surface_manager_handles_dialog_surface_confirm() -> None:

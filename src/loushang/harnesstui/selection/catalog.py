@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from loushang.tui import (
@@ -8,6 +8,7 @@ from loushang.tui import (
     CompletionItem,
     CompletionProvider,
     SearchableListItem,
+    SelectItem,
 )
 
 
@@ -103,6 +104,53 @@ def model_search_items(
         )
         for choice in choices
     )
+
+
+def model_label_select_items(
+    labels: Iterable[str],
+    *,
+    current_label: str | None = None,
+    descriptions: Mapping[str, str] | None = None,
+) -> list[SelectItem]:
+    """Build numbered selector rows from product-normalized model labels."""
+
+    model_labels = _current_model_label_first(labels, current_label=current_label)
+    description_by_label = descriptions or {}
+    ordinal_width = _ordinal_width(len(model_labels))
+    return [
+        SelectItem(
+            label=f"{_ordinal(index, width=ordinal_width)} {label}",
+            value=label,
+            description=(
+                "current"
+                if label == current_label
+                else description_by_label.get(label, "")
+            ),
+        )
+        for index, label in enumerate(model_labels, start=1)
+    ]
+
+
+def model_choice_select_items(
+    choices: Iterable[ModelChoice],
+    *,
+    current_value: str | None = None,
+) -> list[SelectItem]:
+    """Build numbered selector rows from presentation-ready model choices."""
+
+    model_choices = list(choices)
+    ordinal_width = _ordinal_width(len(model_choices))
+    return [
+        SelectItem(
+            label=f"{_ordinal(index, width=ordinal_width)} {choice.label}",
+            value=choice.value,
+            description=model_choice_description(
+                choice,
+                current_value=current_value,
+            ),
+        )
+        for index, choice in enumerate(model_choices, start=1)
+    ]
 
 
 def matching_model_choices(
@@ -228,6 +276,31 @@ def model_choice_value(
     return fallback
 
 
+def _current_model_label_first(
+    labels: Iterable[str],
+    *,
+    current_label: str | None,
+) -> list[str]:
+    model_labels = list(labels)
+    if current_label is None:
+        return model_labels
+    current = [label for label in model_labels if label == current_label]
+    if not current:
+        return model_labels
+    return [
+        *current,
+        *(label for label in model_labels if label != current_label),
+    ]
+
+
+def _ordinal_width(item_count: int) -> int:
+    return max(2, len(f"{item_count}."))
+
+
+def _ordinal(index: int, *, width: int) -> str:
+    return f"{index}.".ljust(width)
+
+
 __all__ = [
     "ModelChoice",
     "current_model_choice_first",
@@ -235,11 +308,13 @@ __all__ = [
     "filter_model_choices",
     "format_model_choices",
     "matching_model_choices",
+    "model_choice_select_items",
     "model_choice_description",
     "model_choice_display_label",
     "model_choice_matches",
     "model_choice_value",
     "model_completion_provider",
+    "model_label_select_items",
     "model_palette",
     "model_search_items",
 ]

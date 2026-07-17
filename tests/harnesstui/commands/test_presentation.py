@@ -5,10 +5,17 @@ from types import SimpleNamespace
 from loushang.harnesstui.commands.presentation import (
     command_completion_provider,
     command_palette,
+    command_palette_select_items,
     format_commands,
     matching_command_items,
 )
-from loushang.tui import CommandPalette, CommandPaletteItem, CompletionItem
+from loushang.tui import (
+    CommandPalette,
+    CommandPaletteItem,
+    CommandSurface,
+    CompletionItem,
+    SelectItem,
+)
 
 
 def _commands() -> tuple[object, ...]:
@@ -81,6 +88,45 @@ def test_command_completion_projection_can_keep_session_alphabetical_order() -> 
     provider = command_completion_provider(commands, local_last=False)
 
     assert [item.value for item in provider.items] == ["/a-local", "/z-product"]
+
+
+def test_command_palette_select_items_preserve_surface_fields_and_filtering() -> None:
+    palette = CommandPalette(
+        (
+            CommandPaletteItem(
+                value="/deploy",
+                label="Deploy service",
+                description="Run deployment pipeline",
+            ),
+            CommandPaletteItem(
+                value="/archive",
+                description="Unavailable action",
+                disabled=True,
+            ),
+        )
+    )
+
+    items = command_palette_select_items(palette)
+
+    assert items == [
+        SelectItem(
+            label="Deploy service",
+            value="/deploy",
+            description="Run deployment pipeline",
+        ),
+        SelectItem(
+            label="/archive",
+            value="/archive",
+            description="Unavailable action",
+        ),
+    ]
+    assert [item.selected_value for item in items] == ["/deploy", "/archive"]
+
+    surface = CommandSurface(items)
+    surface.set_filter("PIPELINE")
+    assert surface.selected_item() == items[0]
+    surface.set_filter("unavailable")
+    assert surface.selected_item() == items[1]
 
 
 def test_matching_commands_prefers_exact_value_or_label() -> None:

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from loushang.tui import CommandPalette, CompletionItem, CompletionProvider
+from loushang.tui import (
+    CommandPalette,
+    CompletionItem,
+    CompletionProvider,
+    SelectItem,
+)
 
 
 def format_commands(raw_commands: Iterable[object], *, query: str = "") -> str:
@@ -49,6 +54,19 @@ def command_palette(
 ) -> CommandPalette:
     provider = command_completion_provider(raw_commands)
     return CommandPalette.from_completion_provider(provider, title=title)
+
+
+def command_palette_select_items(palette: CommandPalette) -> list[SelectItem]:
+    """Project a command palette into the generic selection-surface model."""
+
+    return [
+        SelectItem(
+            label=item.display_label(),
+            value=item.value,
+            description=item.description,
+        )
+        for item in palette.items
+    ]
 
 
 def format_command(command: object) -> str:
@@ -131,6 +149,7 @@ __all__ = [
     "command_item_matches",
     "command_label",
     "command_palette",
+    "command_palette_select_items",
     "command_source_priority",
     "format_command",
     "format_commands",

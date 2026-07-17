@@ -326,6 +326,7 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.status.line`" in text
     assert "`loushang.harnesstui.status.plain`" in text
     assert "`loushang.harnesstui.status.snapshot`" in text
+    assert "`loushang.harnesstui.surface.factory`" in text
     assert "`loushang.harnesstui.surface.view`" in text
     assert "`loushang.tui.settings`" in text
 
@@ -344,6 +345,7 @@ def test_harnesstui_capability_entrypoints_exist() -> None:
         Path("src/loushang/harnesstui/status/plain.py"),
         Path("src/loushang/harnesstui/status/settings.py"),
         Path("src/loushang/harnesstui/status/snapshot.py"),
+        Path("src/loushang/harnesstui/surface/factory.py"),
         Path("src/loushang/harnesstui/surface/view.py"),
         Path("src/loushang/tui/settings.py"),
     )
