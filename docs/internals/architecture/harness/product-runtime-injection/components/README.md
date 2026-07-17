@@ -2,9 +2,10 @@
 
 ## Status
 
-Directory for detailed, capability-specific binding contracts. Only the
-runtime-profile foundation below is implemented; all other filenames remain
-planning placeholders until their adoption wave.
+Directory for detailed, capability-specific binding contracts. Runtime-profile
+resolution and capability-composition admission are implemented. Product
+adoption remains incremental; other filenames remain planning placeholders
+until their adoption wave.
 
 ## Authoring Rule
 
@@ -19,6 +20,7 @@ and links back to the requirements it satisfies.
 ## Implemented Design
 
 - [Runtime Profile Resolution And Binding](runtime-profile-resolution.md)
+- [Capability Composition Binding](capability-composition-binding.md)
 
 ## Planned Documents
 

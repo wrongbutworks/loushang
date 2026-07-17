@@ -236,6 +236,166 @@ class RuntimeProfileResolutionError(ValueError):
 
 
 @dataclass(frozen=True)
+class RuntimeProfileLayerGrant:
+    """Product authorization for one externally supplied runtime profile layer.
+
+    The resolver deliberately has no knowledge of extension trust or Product
+    permission policy.  A Product admits a layer with this value before asking
+    the resolver to combine its selections with the Product baseline.
+    """
+
+    source: RuntimeProfileSource
+    layer_id: str
+    allowed_slots: frozenset[str] | None = None
+    granted_permissions: frozenset[str] = frozenset()
+
+    def __post_init__(self) -> None:
+        _require_choice(self.source, name="layer grant source", choices=_SOURCES)
+        if self.source == "product":
+            raise ValueError("Product defaults must be declared on the Product plan")
+        _require_nonempty_string(self.layer_id, name="layer grant id")
+        if self.allowed_slots is not None:
+            slots = frozenset(self.allowed_slots)
+            if any(not isinstance(slot, str) or not slot for slot in slots):
+                raise ValueError("layer grant allowed slots must be non-empty strings")
+            object.__setattr__(self, "allowed_slots", slots)
+        permissions = frozenset(self.granted_permissions)
+        if any(
+            not isinstance(permission, str) or not permission
+            for permission in permissions
+        ):
+            raise ValueError("layer grant permissions must be non-empty strings")
+        object.__setattr__(self, "granted_permissions", permissions)
+
+
+@dataclass(frozen=True)
+class RuntimeProfileAdmission:
+    """Result of Product policy admitting external runtime profile layers."""
+
+    layers: tuple[RuntimeProfileLayer, ...]
+    diagnostics: tuple[RuntimeProfileDiagnostic, ...] = ()
+
+    @property
+    def ok(self) -> bool:
+        return not self.diagnostics
+
+    def require_valid(self) -> tuple[RuntimeProfileLayer, ...]:
+        if self.diagnostics:
+            raise RuntimeProfileResolutionError(self.diagnostics)
+        return self.layers
+
+
+@dataclass(frozen=True)
+class RuntimeProfileAdmissionPolicy:
+    """Admit trusted OEM, extension, and session layers before resolution.
+
+    This is intentionally an allow-list, not a plugin discovery mechanism.
+    Product bootstrap is responsible for authenticating an OEM or extension
+    and deriving the grants it supplies here.  The policy only verifies that a
+    declared layer is entitled to select the requested runtime slots.
+    """
+
+    grants: tuple[RuntimeProfileLayerGrant, ...] = ()
+    slot_permissions: Mapping[str, frozenset[str]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        grants = tuple(self.grants)
+        if any(not isinstance(grant, RuntimeProfileLayerGrant) for grant in grants):
+            raise TypeError(
+                "admission grants must contain RuntimeProfileLayerGrant values"
+            )
+        identities = [(grant.source, grant.layer_id) for grant in grants]
+        if len(identities) != len(set(identities)):
+            raise ValueError("admission grants must have unique source and layer ids")
+        object.__setattr__(self, "grants", grants)
+
+        permissions: dict[str, frozenset[str]] = {}
+        for slot, required in self.slot_permissions.items():
+            _require_nonempty_string(slot, name="slot permission key")
+            values = frozenset(required)
+            if any(
+                not isinstance(permission, str) or not permission
+                for permission in values
+            ):
+                raise ValueError("slot permissions must be non-empty strings")
+            permissions[slot] = values
+        object.__setattr__(self, "slot_permissions", permissions)
+
+    def admit(
+        self,
+        plan: ProductRuntimePlan,
+        layers: Iterable[RuntimeProfileLayer],
+    ) -> RuntimeProfileAdmission:
+        """Return only authorized layers and diagnostics for rejected input."""
+
+        supplied = tuple(layers)
+        if any(not isinstance(layer, RuntimeProfileLayer) for layer in supplied):
+            raise TypeError(
+                "runtime profile layers must contain RuntimeProfileLayer values"
+            )
+        known_slots = {slot.key for slot in plan.slots}
+        grants = {(grant.source, grant.layer_id): grant for grant in self.grants}
+        admitted: list[RuntimeProfileLayer] = []
+        diagnostics: list[RuntimeProfileDiagnostic] = []
+        for layer in supplied:
+            grant = grants.get((layer.source, layer.layer_id))
+            if grant is None:
+                diagnostics.append(
+                    RuntimeProfileDiagnostic(
+                        code="untrusted_runtime_layer",
+                        message="no Product grant admits this runtime profile layer",
+                        source=layer.source,
+                        layer_id=layer.layer_id,
+                    )
+                )
+                continue
+            rejected = False
+            for selection in layer.selections:
+                if selection.slot not in known_slots:
+                    # Preserve this diagnostic shape for the resolver, which
+                    # remains the authority on Product plan validity.
+                    continue
+                if (
+                    grant.allowed_slots is not None
+                    and selection.slot not in grant.allowed_slots
+                ):
+                    diagnostics.append(
+                        RuntimeProfileDiagnostic(
+                            code="runtime_slot_not_granted",
+                            message="runtime layer is not granted access to this slot",
+                            slot=selection.slot,
+                            source=layer.source,
+                            layer_id=layer.layer_id,
+                        )
+                    )
+                    rejected = True
+                    continue
+                required_permissions = self.slot_permissions.get(
+                    selection.slot, frozenset()
+                )
+                missing_permissions = sorted(
+                    required_permissions - grant.granted_permissions
+                )
+                if missing_permissions:
+                    diagnostics.append(
+                        RuntimeProfileDiagnostic(
+                            code="runtime_slot_permission_denied",
+                            message="runtime layer lacks a required slot permission",
+                            slot=selection.slot,
+                            source=layer.source,
+                            layer_id=layer.layer_id,
+                            details={"missingPermissions": missing_permissions},
+                        )
+                    )
+                    rejected = True
+            if not rejected:
+                admitted.append(layer)
+        return RuntimeProfileAdmission(
+            layers=tuple(admitted), diagnostics=tuple(diagnostics)
+        )
+
+
+@dataclass(frozen=True)
 class ResolvedRuntimeSelection:
     """A selection with source provenance retained for diagnostics and replay."""
 
@@ -1138,6 +1298,41 @@ CONTEXT_COMPACTION_SLOT = RuntimeCapabilitySlot(
     refresh_boundary="turn",
     allowed_sources=frozenset({"product", "oem", "extension", "session"}),
 )
+RESOURCE_RUNTIME_SLOT = RuntimeCapabilitySlot(
+    key="resource.runtime",
+    shape="single",
+    scope="workspace",
+    refresh_boundary="sealed",
+    allowed_sources=frozenset({"product", "oem"}),
+)
+PROMPT_SECTIONS_SLOT = RuntimeCapabilitySlot(
+    key="prompt.sections",
+    shape="ordered",
+    scope="session",
+    refresh_boundary="turn",
+    allowed_sources=frozenset({"product", "oem", "extension", "session"}),
+)
+SKILL_ACTIVATION_SLOT = RuntimeCapabilitySlot(
+    key="skill.activation",
+    shape="single",
+    scope="session",
+    refresh_boundary="turn",
+    allowed_sources=frozenset({"product", "oem", "extension", "session"}),
+)
+TOOL_PACKS_SLOT = RuntimeCapabilitySlot(
+    key="tool.packs",
+    shape="ordered",
+    scope="session",
+    refresh_boundary="turn",
+    allowed_sources=frozenset({"product", "oem", "extension"}),
+)
+COMMAND_PACKS_SLOT = RuntimeCapabilitySlot(
+    key="command.packs",
+    shape="ordered",
+    scope="session",
+    refresh_boundary="turn",
+    allowed_sources=frozenset({"product", "oem", "extension"}),
+)
 
 
 def standard_agent_session_slots() -> tuple[RuntimeCapabilitySlot, ...]:
@@ -1150,10 +1345,24 @@ def standard_agent_session_slots() -> tuple[RuntimeCapabilitySlot, ...]:
     )
 
 
+def standard_capability_composition_slots() -> tuple[RuntimeCapabilitySlot, ...]:
+    """Return fresh declarations for shared Product capability composition."""
+
+    return (
+        RESOURCE_RUNTIME_SLOT,
+        PROMPT_SECTIONS_SLOT,
+        SKILL_ACTIVATION_SLOT,
+        TOOL_PACKS_SLOT,
+        COMMAND_PACKS_SLOT,
+    )
+
+
 __all__ = [
     "AGENT_TRANSCRIPT_PROFILE_SLOT",
+    "COMMAND_PACKS_SLOT",
     "CONTEXT_COMPACTION_SLOT",
     "CONVERSATION_STORE_SLOT",
+    "PROMPT_SECTIONS_SLOT",
     "ProductRuntimePlan",
     "ResolvedRuntimeCapability",
     "ResolvedRuntimeProfile",
@@ -1169,6 +1378,9 @@ __all__ = [
     "RuntimeProfileBinding",
     "RuntimeProfileBindings",
     "RuntimeProfileDiagnostic",
+    "RuntimeProfileAdmission",
+    "RuntimeProfileAdmissionPolicy",
+    "RuntimeProfileLayerGrant",
     "RuntimeProfileLayer",
     "RuntimeProfileResolutionError",
     "RuntimeProfileResolver",
@@ -1178,5 +1390,9 @@ __all__ = [
     "RuntimeProfileSource",
     "RuntimeRefreshBoundary",
     "SealedRuntimeCapabilityError",
+    "RESOURCE_RUNTIME_SLOT",
+    "SKILL_ACTIVATION_SLOT",
+    "TOOL_PACKS_SLOT",
     "standard_agent_session_slots",
+    "standard_capability_composition_slots",
 ]

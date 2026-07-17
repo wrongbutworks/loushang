@@ -6,20 +6,28 @@ import pytest
 
 from loushang.harness.runtime import (
     AGENT_TRANSCRIPT_PROFILE_SLOT,
+    COMMAND_PACKS_SLOT,
     CONTEXT_COMPACTION_SLOT,
     CONVERSATION_STORE_SLOT,
+    PROMPT_SECTIONS_SLOT,
+    RESOURCE_RUNTIME_SLOT,
+    SKILL_ACTIVATION_SLOT,
+    TOOL_PACKS_SLOT,
     ProductRuntimePlan,
     RuntimeCapabilityBindingError,
     RuntimeCapabilityImplementation,
     RuntimeCapabilityRegistry,
     RuntimeCapabilitySelection,
     RuntimeCapabilitySlot,
+    RuntimeProfileAdmissionPolicy,
     RuntimeProfileBinder,
     RuntimeProfileLayer,
+    RuntimeProfileLayerGrant,
     RuntimeProfileResolutionError,
     RuntimeProfileResolver,
     RuntimeProfileSnapshot,
     SealedRuntimeCapabilityError,
+    standard_capability_composition_slots,
 )
 
 
@@ -448,3 +456,89 @@ def test_snapshot_rejects_boolean_versions_instead_of_treating_them_as_integers(
         RuntimeProfileSnapshot.from_json(
             {"schemaVersion": True, "productId": "research", "capabilities": []}
         )
+
+
+def test_capability_composition_slots_have_deliberate_source_boundaries() -> None:
+    slots = {slot.key: slot for slot in standard_capability_composition_slots()}
+
+    assert set(slots) == {
+        "resource.runtime",
+        "prompt.sections",
+        "skill.activation",
+        "tool.packs",
+        "command.packs",
+    }
+    assert slots == {
+        "resource.runtime": RESOURCE_RUNTIME_SLOT,
+        "prompt.sections": PROMPT_SECTIONS_SLOT,
+        "skill.activation": SKILL_ACTIVATION_SLOT,
+        "tool.packs": TOOL_PACKS_SLOT,
+        "command.packs": COMMAND_PACKS_SLOT,
+    }
+    assert slots["resource.runtime"].allowed_sources == frozenset({"product", "oem"})
+    assert slots["tool.packs"].allowed_sources == frozenset(
+        {"product", "oem", "extension"}
+    )
+    assert slots["command.packs"].allowed_sources == frozenset(
+        {"product", "oem", "extension"}
+    )
+    assert "session" not in slots["tool.packs"].allowed_sources
+
+
+def test_admission_requires_an_explicit_grant_and_slot_permission() -> None:
+    plan = ProductRuntimePlan(
+        product_id="research",
+        slots=(PROMPT_SECTIONS_SLOT, TOOL_PACKS_SLOT),
+    )
+    extension_layer = RuntimeProfileLayer(
+        source="extension",
+        layer_id="extension:citations",
+        selections=(
+            RuntimeCapabilitySelection(
+                slot="prompt.sections",
+                implementation="citations",
+                implementation_version=1,
+            ),
+            RuntimeCapabilitySelection(
+                slot="tool.packs",
+                implementation="citation-tools",
+                implementation_version=1,
+            ),
+        ),
+    )
+
+    untrusted = RuntimeProfileAdmissionPolicy().admit(plan, (extension_layer,))
+    assert untrusted.layers == ()
+    assert [diagnostic.code for diagnostic in untrusted.diagnostics] == [
+        "untrusted_runtime_layer"
+    ]
+
+    policy = RuntimeProfileAdmissionPolicy(
+        grants=(
+            RuntimeProfileLayerGrant(
+                source="extension",
+                layer_id="extension:citations",
+                allowed_slots=frozenset({"prompt.sections", "tool.packs"}),
+                granted_permissions=frozenset({"prompt.compose"}),
+            ),
+        ),
+        slot_permissions={"tool.packs": frozenset({"tool.execute"})},
+    )
+    denied = policy.admit(plan, (extension_layer,))
+    assert denied.layers == ()
+    assert [diagnostic.code for diagnostic in denied.diagnostics] == [
+        "runtime_slot_permission_denied"
+    ]
+
+    admitted = RuntimeProfileAdmissionPolicy(
+        grants=(
+            RuntimeProfileLayerGrant(
+                source="extension",
+                layer_id="extension:citations",
+                allowed_slots=frozenset({"prompt.sections", "tool.packs"}),
+                granted_permissions=frozenset({"prompt.compose", "tool.execute"}),
+            ),
+        ),
+        slot_permissions={"tool.packs": frozenset({"tool.execute"})},
+    ).admit(plan, (extension_layer,))
+    assert admitted.require_valid() == (extension_layer,)
