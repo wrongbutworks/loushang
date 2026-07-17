@@ -89,6 +89,10 @@ planning, work event persistence, or AI provider behavior.
   common queue, compaction, retry, branch, metadata, package-progress, and
   transcript-commit facts, the single ordered Session stream, and Product event
   projection ownership.
+- [Application Input Runtime Boundary](application-input-runtime-boundary.md)
+  defines common direct and queued ApplicationMessage delivery, one durable
+  commit owner, direct projection retry semantics, and Product Extension/API
+  adapter ownership.
 - [Scenario Runtime Boundary](scenario-runtime-boundary.md) defines reusable
   scripted interaction scenarios, parser and runner ownership, injected command
   assertions, RuntimeEvent observation, and Coding's local execution adapter.
@@ -143,9 +147,11 @@ Accepted decisions that govern this directory:
 Harness may depend on stable `loushang.agent` primitives and the existing agent
 loop. `loushang.agent` must not depend on harness. The neutral
 `loushang.harness.conversation` core imports neither Agent nor AI. The optional
-`loushang.harness.agent_transcript` profile is the only Harness package allowed
-to import AI message data and wire codecs, using the exact allowlist recorded in
-[Agent Transcript Profile Boundary](agent-transcript-profile-boundary.md).
+`loushang.harness.agent_transcript` and the optional
+`loushang.harness.session` profile have narrow, separately tested Agent/AI data
+dependencies. The exact allowlists are recorded in the
+[Agent Transcript Profile Boundary](agent-transcript-profile-boundary.md) and
+[Session Runtime Core](product-runtime-injection/components/session-runtime-core.md).
 
 Harness must not import:
 
@@ -157,8 +163,8 @@ Harness must not import:
 - `loushang.method`
 - `loushang.work`
 - `loushang.tui`
-- `loushang.ai`, except the four explicitly allowlisted AI/Agent data and codec
-  modules used by `loushang.harness.agent_transcript`
+- `loushang.ai`, except the explicitly allowlisted data and codec modules used
+  by optional Agent transcript and Session profiles
 
 If a harness contract needs to refer to method, work, channel, UI, or product
 state, it should carry opaque ids, neutral metadata, or protocol-shaped values.

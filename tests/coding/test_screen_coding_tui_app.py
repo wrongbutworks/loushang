@@ -601,6 +601,7 @@ def test_screen_coding_tui_requests_animation_frames_while_running() -> None:
     assert decision.delay_ms > 0
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_reuses_stable_transcript_render_cache() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -626,6 +627,7 @@ def test_screen_coding_tui_reuses_stable_transcript_render_cache() -> None:
     assert app._transcript_region._stable_line_cache == cached
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_reuses_unchanged_streaming_draft_cache() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -648,6 +650,7 @@ def test_screen_coding_tui_reuses_unchanged_streaming_draft_cache() -> None:
     assert app._transcript_region._draft_segments is first_cached
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_reuses_stable_streaming_markdown_blocks(monkeypatch) -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -684,6 +687,7 @@ def test_screen_coding_tui_reuses_stable_streaming_markdown_blocks(monkeypatch) 
     ]
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_rerenders_current_streaming_table_block(monkeypatch) -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -723,6 +727,7 @@ def test_screen_coding_tui_rerenders_current_streaming_table_block(monkeypatch) 
     assert rendered_tables == 3
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_clears_transient_draft_cache_after_assistant_commit() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -747,6 +752,7 @@ def test_screen_coding_tui_clears_transient_draft_cache_after_assistant_commit()
     assert app._transcript_region._draft_segments == ()
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_promotes_streaming_draft_cache_after_assistant_commit() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -775,6 +781,7 @@ def test_screen_coding_tui_promotes_streaming_draft_cache_after_assistant_commit
     assert app._transcript_region._transient_line_cache_lines is None
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_uses_canonical_markdown_when_final_text_replaces_draft() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -797,6 +804,7 @@ def test_screen_coding_tui_uses_canonical_markdown_when_final_text_replaces_draf
     assert "Old" not in rendered
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_complete_run_does_not_trim_active_transcript_line_window() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -824,6 +832,7 @@ def test_screen_coding_tui_complete_run_does_not_trim_active_transcript_line_win
     assert "turn 0 line 0" in rendered
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_explicit_active_window_trim_keeps_recent_tail() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -852,6 +861,7 @@ def test_screen_coding_tui_explicit_active_window_trim_keeps_recent_tail() -> No
     assert "turn 0 line 0" not in rendered
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_streaming_draft_render_keeps_full_append_stable_lines() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -877,6 +887,7 @@ def test_screen_coding_tui_streaming_draft_render_keeps_full_append_stable_lines
     assert "draft line 0" in rendered
 
 
+@pytest.mark.tui_render_contract
 def test_screen_transcript_segment_tail_matches_legacy_record_boundaries() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -925,6 +936,7 @@ def test_screen_transcript_segment_tail_matches_legacy_record_boundaries() -> No
         assert actual == expected
 
 
+@pytest.mark.tui_render_contract
 def test_screen_app_reuses_committed_segment_for_tick_input_and_chunk() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.tui import RenderLoop, TerminalSize
@@ -1062,6 +1074,7 @@ def test_screen_coding_tui_code_diagrams_do_not_wrap_right_border_with_default_w
     assert all(line.strip() != "│" for line in lines)
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_streaming_draft_buffers_chunks_until_materialized() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -1096,6 +1109,7 @@ def test_screen_coding_tui_streaming_draft_buffers_chunks_until_materialized() -
     assert "- Line 9: chunk" in app.state.records[-1].text
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_render_streaming_draft_without_materializing_full_text() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -1121,6 +1135,7 @@ def test_screen_coding_tui_render_streaming_draft_without_materializing_full_tex
     assert buffer.materialize_count == 0
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_stable_render_cache_has_entry_limit() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -1139,6 +1154,7 @@ def test_screen_coding_tui_stable_render_cache_has_entry_limit() -> None:
     assert len(app._transcript_region._stable_line_cache) <= 2
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_long_stream_keeps_latest_tail_visible() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -1159,6 +1175,7 @@ def test_screen_coding_tui_long_stream_keeps_latest_tail_visible() -> None:
     assert not any("line 0" in line for line in rendered)
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_many_records_render_recent_tail_not_prefix() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -1253,6 +1270,7 @@ def test_screen_coding_tui_preserves_markdown_ansi_when_replacing_assistant_pref
     assert "\x1b[1;36m### Heading" in heading
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_installs_active_transcript_window_without_rendering_evicted_prefix() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 
@@ -1285,6 +1303,7 @@ def test_screen_coding_tui_installs_active_transcript_window_without_rendering_e
     assert "old prompt" not in rendered
 
 
+@pytest.mark.tui_render_contract
 def test_screen_coding_tui_runtime_consumes_transcript_window_reset_as_baseline_repaint() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.tui import FakeTerminalPort, RenderLoop, TerminalSize, TuiRuntime
@@ -1325,6 +1344,7 @@ def test_screen_coding_tui_runtime_consumes_transcript_window_reset_as_baseline_
     assert "summary only" in rendered
 
 
+@pytest.mark.tui_render_contract
 def test_streaming_draft_semantic_segments_match_fresh_flat_render_at_chunk_boundaries() -> None:
     from loushang.coding.ui.screen_app import (
         _ScreenTranscriptRegion,
@@ -1381,6 +1401,7 @@ def test_streaming_draft_semantic_segments_match_fresh_flat_render_at_chunk_boun
             assert actual == expected, (checkpoint, max_height)
 
 
+@pytest.mark.tui_render_contract
 @pytest.mark.parametrize(
     "chunks",
     (
@@ -1445,6 +1466,7 @@ def test_streaming_draft_fallback_shapes_match_fresh_flat_render(
         assert actual == expected, checkpoint
 
 
+@pytest.mark.tui_render_contract
 def test_streaming_draft_reuses_more_than_512_stable_segments_without_reading_source(
     monkeypatch,
 ) -> None:

@@ -103,7 +103,9 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
             root=Path("src/loushang/channel"),
             forbidden_prefixes=(
                 "loushang.agent",
+                "loushang.ai",
                 "loushang.coding",
+                "loushang.harness",
                 "loushang.method",
                 "loushang.tui",
             ),
@@ -152,6 +154,24 @@ def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> 
             if _matches_any(imported, allowed_prefixes):
                 continue
             offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
+def test_harnesstui_does_not_import_product_or_model_layers() -> None:
+    offenders = _find_forbidden_imports(
+        ImportBoundary(
+            name="harnesstui",
+            root=Path("src/loushang/harnesstui"),
+            forbidden_prefixes=(
+                "loushang.agent",
+                "loushang.ai",
+                "loushang.ai.provider",
+                "loushang.ai.providers",
+                "loushang.coding",
+            ),
+        )
+    )
 
     assert offenders == []
 
@@ -254,6 +274,61 @@ def test_coding_session_uses_harness_runtime_events_as_the_only_internal_stream(
     assert "project_runtime_event_to_session_event" in session_source
 
 
+def test_extension_message_controller_is_a_product_api_adapter() -> None:
+    source = Path(
+        "src/loushang/coding/session/extension_message_controller.py"
+    ).read_text(encoding="utf-8")
+
+    assert "ApplicationInputRuntime" in source
+    assert "SessionManager" not in source
+    assert "append_message(" not in source
+
+
+def test_tui_and_harness_do_not_import_harnesstui() -> None:
+    boundaries = (
+        ImportBoundary(
+            name="tui",
+            root=Path("src/loushang/tui"),
+            forbidden_prefixes=("loushang.harnesstui",),
+        ),
+        ImportBoundary(
+            name="harness",
+            root=Path("src/loushang/harness"),
+            forbidden_prefixes=("loushang.harnesstui",),
+        ),
+    )
+
+    offenders = [
+        offender
+        for boundary in boundaries
+        for offender in _find_forbidden_imports(boundary)
+    ]
+
+    assert offenders == []
+
+
+def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
+    path = Path("docs/internals/architecture/harnesstui/README.md")
+    text = path.read_text(encoding="utf-8")
+
+    assert "`loushang.coding.ui` -> `loushang.harnesstui`" in text
+    assert "`loushang.harnesstui.conversation.reader`" in text
+    assert "`loushang.harnesstui.conversation.source`" in text
+    assert "`loushang.harnesstui.conversation.tool_transcript`" in text
+    assert "`loushang.harnesstui.status.line`" in text
+
+
+def test_harnesstui_tool_and_status_entrypoints_exist() -> None:
+    paths = (
+        Path("src/loushang/harnesstui/conversation/tool_transcript.py"),
+        Path("src/loushang/harnesstui/status/line.py"),
+    )
+
+    missing = [path.as_posix() for path in paths if not path.is_file()]
+
+    assert missing == []
+
+
 def test_importing_channel_types_does_not_eagerly_load_agent_or_ai() -> None:
     script = """
 import importlib
@@ -268,6 +343,38 @@ forbidden = sorted(
     or name == "loushang.ai"
     or name.startswith("loushang.ai.")
     or name == "loushang.work.projection"
+)
+assert forbidden == [], forbidden
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_importing_channel_public_api_does_not_eagerly_load_runtime_or_products() -> (
+    None
+):
+    script = """
+import importlib
+import sys
+
+importlib.import_module("loushang.channel")
+forbidden = sorted(
+    name
+    for name in sys.modules
+    if name == "loushang.agent"
+    or name.startswith("loushang.agent.")
+    or name == "loushang.ai"
+    or name.startswith("loushang.ai.")
+    or name == "loushang.coding"
+    or name.startswith("loushang.coding.")
+    or name == "loushang.harness"
+    or name.startswith("loushang.harness.")
 )
 assert forbidden == [], forbidden
 """

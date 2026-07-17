@@ -936,9 +936,7 @@ class SessionManager:
 
     async def append_message(self, message: object) -> str:
         if isinstance(message, ApplicationMessage):
-            return self._complete_application_commit(
-                await self._committer.commit_application_message(message)
-            )
+            return (await self.commit_application_message(message)).record_id
         if isinstance(message, CommandExecutionRecord):
             return self._complete_commit(
                 await self._transcript.append_command_execution(message)
@@ -948,6 +946,14 @@ class SessionManager:
                 await self._transcript.append_agent_message(message)
             )
         raise TypeError(f"Unsupported transcript message: {type(message)!r}")
+
+    async def commit_application_message(
+        self, message: ApplicationMessage
+    ) -> CommitResult:
+        result = await self._committer.commit_application_message(message)
+        if result.disposition == "committed":
+            self._notify_commit(result)
+        return result
 
     async def append_thinking_level_change(self, thinking_level: str) -> str:
         return self._complete_commit(
