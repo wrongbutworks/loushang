@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from io import StringIO
 
+import pytest
+
 from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
 from loushang.coding.ui.playback import ScreenTuiScenario
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
@@ -20,6 +22,8 @@ from loushang.tui import (
     strip_control_sequences,
 )
 from loushang.tui.theme import ThemeResolver
+
+pytestmark = pytest.mark.tui_render_contract
 
 
 def test_screen_coding_tui_streaming_uses_differential_updates_without_clearing_screen() -> None:
