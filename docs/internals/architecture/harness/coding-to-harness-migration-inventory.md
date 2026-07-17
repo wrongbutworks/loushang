@@ -76,7 +76,7 @@ classification of unrelated entries.
 | `coding.event` | Keep product | The common runtime envelope, ordering, queue/compaction/retry/branch/metadata/package payloads, and committed-record fact live in `loushang.harness.events`. Coding retains its accepted Agent/session dictionary only as a JSON, RPC, print, TUI, extension, filtering, and render-enrichment projection. |
 | `coding.extensions.events`, `manifest`, `loader`, `contributions`, `wrapper` | Compatibility shim | Event declarations, manifest parsing, descriptor-driven loading, contribution projection, and tool wrapping live in `loushang.harness.extensions`. Coding paths preserve imports and inject Coding API/policy/legacy-event adapters. |
 | `coding.extensions.api`, `runner`, `types`, `policy`, `hooks` | Product adapter | Neutral records, registration, conflict resolution, stable route planning, observer/interceptor/reducer dispatch, resource contribution execution, binding storage/lifetimes, and generic bound/unbound runtime contexts live in Harness. Coding keeps typed model/thinking/command specialization, provider/UI callback injection, concrete permission defaults, Product result reducers, session decisions, and Agent tool-call adaptation. |
-| `coding.bootstrap` | Keep product | Product assembly. It may call harness engines but should not move. |
+| `coding.bootstrap` | Keep product | Product assembly. It binds Coding's persisted Product-only capability profile to Harness resource/skill activation, prompt composition, and tool/command pack ordering; it may call harness engines but should not move. |
 | `coding.runtime` | Product adapter | Generic binding leases, runtime contexts, current-session transitions, serialized operation phases, uncommitted-candidate rollback, replacement callback ordering, exclusive import staging, navigation abort scopes, and coalesced scheduling live in `loushang.harness.runtime`. Coding keeps composition, cwd/session-file resolution and acceptance policy, concrete create/restore/fork/import/clone decisions, extension event projection, diagnostics codes, transcript semantics, package operations, and index content. |
 | `coding.ui` | Never harness | Product-owned TUI adapter and screen/controller state. Shared terminal primitives belong in `loushang.tui`, not harness. |
 | `coding.mode` | Keep product | Transitional print/RPC mode adapters stay coding until channel is implemented. RPC now uses an explicit transport projection for known dataclasses, paths, mappings, lists, and tuples while rejecting cycles, sets, arbitrary objects, `__dict__` discovery, non-finite floats, and `repr()` fallback. |
@@ -233,7 +233,8 @@ independent validation boundary requires it.
 ### Wave 5: Product Capability Composition
 
 Status: product capability composition core implementation complete for
-integration into `lane/harness`; see
+integration into `lane/harness`. Coding's Product-only profile binding is also
+complete; see
 [Product Capability Composition Core Boundary](product-capability-composition-core.md).
 
 Harness now owns neutral command descriptors, catalogs, conflicts, completion,
@@ -245,8 +246,10 @@ those owners through compatibility adapters.
 Coding keeps command definitions and handlers, prompt content and resource
 projection, default tool packs and activation policy, Agent materialization,
 execution context, diagnostics, audit events, approval/risk policy, and UI.
-This wave composes capability mechanisms without introducing a universal
-Product manifest or moving model/auth/settings into Harness.
+Coding persists the resolved capability snapshot separately from its
+store/transcript `runtimeProfile` and validates it on persistent resume. This
+wave does not introduce a universal Product manifest, admit executable OEM or
+extension factories, or move model/auth/settings into Harness.
 
 ### Product Configuration Runtime
 

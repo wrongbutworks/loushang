@@ -2064,7 +2064,7 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
         },
         Path("src/loushang/coding/prompt/assembler.py"): {
             "loushang.harness.capabilities.prompt.PromptSection",
-            "loushang.harness.capabilities.prompt.compose_prompt_sections",
+            "loushang.harness.capabilities.prompt.PromptSectionComposer",
         },
         Path("src/loushang/coding/session/command_controller.py"): {
             "loushang.harness.capabilities.commands.dispatch_command_async",

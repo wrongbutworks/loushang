@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import cast
 
 from loushang.coding.extensions import ExtensionRunner, ResolvedCommand
@@ -36,7 +36,7 @@ from loushang.harness.capabilities.commands import (
 )
 from loushang.harness.capabilities.packs import (
     CapabilityPack,
-    compose_capability_packs,
+    CapabilityPackComposer,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
@@ -56,6 +56,9 @@ class CommandController:
     get_resource_bundle: Callable[[], ResourceBundle | None]
     get_diagnostics_service: Callable[[], DiagnosticsService | None]
     builtin_backend: BuiltinCommandBackend | None = None
+    pack_composer: CapabilityPackComposer = field(
+        default_factory=CapabilityPackComposer
+    )
 
     def list_commands(self) -> list[SessionCommandDescriptor]:
         builtin_commands: list[SessionCommandDescriptor] = []
@@ -110,7 +113,7 @@ class CommandController:
                     )
                 )
         return list(
-            compose_capability_packs(
+            self.pack_composer.compose(
                 (
                     CapabilityPack(
                         pack_id="coding.builtin-commands",
@@ -145,7 +148,7 @@ class CommandController:
         )
         outcome = await dispatch_command_async(
             invocation,
-            compose_capability_packs(
+            self.pack_composer.compose(
                 (
                     CapabilityPack(
                         pack_id="coding.extension-command-handler",

@@ -458,6 +458,52 @@ def test_snapshot_rejects_boolean_versions_instead_of_treating_them_as_integers(
         )
 
 
+def test_sync_binder_rejects_async_factories_without_creating_an_event_loop() -> None:
+    slot = RuntimeCapabilitySlot(
+        key="pure",
+        shape="single",
+        scope="session",
+        refresh_boundary="sealed",
+        allowed_sources=frozenset({"product"}),
+    )
+    profile = RuntimeProfileResolver().resolve(
+        ProductRuntimePlan(
+            product_id="research",
+            slots=(slot,),
+            defaults=(
+                RuntimeCapabilitySelection(
+                    slot="pure",
+                    implementation="async-only",
+                    implementation_version=1,
+                ),
+            ),
+        )
+    )
+
+    async def create_async(
+        selection: RuntimeCapabilitySelection,
+        context: object | None,
+    ) -> object:
+        del selection, context
+        return object()
+
+    binder = RuntimeProfileBinder(
+        RuntimeCapabilityRegistry(
+            (
+                RuntimeCapabilityImplementation(
+                    slot="pure",
+                    implementation="async-only",
+                    implementation_version=1,
+                    create=create_async,
+                ),
+            )
+        )
+    )
+
+    with pytest.raises(RuntimeCapabilityBindingError, match="cannot await"):
+        binder.bind_sync(profile)
+
+
 def test_capability_composition_slots_have_deliberate_source_boundaries() -> None:
     slots = {slot.key: slot for slot in standard_capability_composition_slots()}
 

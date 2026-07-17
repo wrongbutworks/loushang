@@ -56,19 +56,28 @@ pack. It does not resolve duplicate tool or command names; the existing tool
 contribution resolver and command catalog retain those capability-specific
 conflict rules.
 
-Coding's first adoption uses this mechanism for two compatibility-preserving
-orders:
+Coding binds its current Product-owned default profile through this mechanism
+for the following compatibility-preserving paths:
 
+- disabled-skill activation during bootstrap and resource refresh;
+- prompt-section composition during initial assembly and tool-driven rebuilds;
 - registered Coding tools before extension tool contributions, so the existing
   registry remains authoritative on duplicate tool names;
 - extension command handler, built-in command handler, then resource command
   handler; the command list continues to display built-ins, extensions, then
   resource commands.
 
-The first adoption moves resource activation and pack ordering only. It does
-not yet expose OEM or extension profile selections through Coding settings or
-persist a capability-composition snapshot. Those are the next binding step,
-after each selectable implementation has a real factory and resume contract.
+`coding.capability_profile` records the resolved selection snapshot under the
+separate `capabilityProfile` header key. New sessions and forks write that
+snapshot; persistent resume rejects a different supported-profile snapshot.
+This is independent from `runtimeProfile`, which continues to select the
+store, transcript, and context-compaction runtime.
+
+The current Coding plan admits only Product selections because it registers
+only Product-owned, pure factories. OEM and extension selections are not
+silently accepted through settings or manifests. They become available only
+when Coding owns a concrete factory, grants the source through admission, and
+defines its resume contract.
 
 ## Durable And Refresh Rules
 
@@ -94,9 +103,10 @@ Coding retains:
 - extension API compatibility mapping and user-facing diagnostics;
 - model/auth policy, TUI/RPC presentation, and code artifact semantics.
 
-Coding's first adoption routes its resource activation and tool/command pack
-ordering through this contract. The next binding step must not move model/auth
-execution, terminal/UI behavior, or arbitrary extension code into Harness.
+Coding's current adoption routes resource and skill activation, prompt section
+composition, and tool/command pack ordering through this contract. It must not
+move model/auth execution, terminal/UI behavior, or arbitrary extension code
+into Harness.
 
 ## Verification
 
@@ -104,5 +114,5 @@ execution, terminal/UI behavior, or arbitrary extension code into Harness.
   permission denial.
 - Product tests cover the same resource bundle, prompt output, active skills,
   tool conflict result, and command conflict result before and after adoption.
-- Resume tests assert the persisted runtime profile can be validated without
-  rehydrating executable objects.
+- Resume tests assert the persisted runtime and capability profiles can be
+  validated without rehydrating executable objects.

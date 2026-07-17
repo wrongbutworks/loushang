@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
@@ -100,6 +100,26 @@ class ResourceActivation:
         )
 
 
+@dataclass(frozen=True)
+class ResourceActivationRuntime:
+    """Default sealed resource-runtime implementation for a Product Session."""
+
+    def activate(self, bundle: ResourceBundle | None) -> ResourceActivation:
+        return ResourceActivation(bundle)
+
+
+@dataclass(frozen=True)
+class SkillActivationRuntime:
+    """Default product-neutral skill activation policy."""
+
+    def apply(
+        self,
+        bundle: ResourceBundle,
+        disabled_skills: tuple[str, ...] | list[str],
+    ) -> ResourceBundle:
+        return apply_disabled_skills(bundle, disabled_skills)
+
+
 def apply_disabled_skills(
     bundle: ResourceBundle,
     disabled_skills: tuple[str, ...] | list[str],
@@ -140,5 +160,7 @@ def _skill_matches_disabled_selector(
 __all__ = [
     "CONTEXT_PROMPT_KINDS",
     "ResourceActivation",
+    "ResourceActivationRuntime",
+    "SkillActivationRuntime",
     "apply_disabled_skills",
 ]

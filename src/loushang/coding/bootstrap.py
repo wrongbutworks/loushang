@@ -9,6 +9,7 @@ from loushang.agent import Agent, AgentTool, StreamFn, ThinkingLevel
 from loushang.ai.model import Model
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.types import Message, TextPart
+from loushang.coding.capability_profile import bind_coding_capability_runtime
 from loushang.coding.control import (
     AuthManager,
     ControlConfig,
@@ -38,7 +39,7 @@ from loushang.coding.types import ModelSelection
 from loushang.harness.agent_transcript import context_item_to_model_message
 from loushang.harness.capabilities.packs import (
     CapabilityPack,
-    compose_capability_packs,
+    CapabilityPackComposer,
 )
 from loushang.harness.config import (
     ConfigActivationRuntime,
@@ -46,7 +47,7 @@ from loushang.harness.config import (
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticRecord, StartupCheckResult
-from loushang.harness.resources.activation import apply_disabled_skills
+from loushang.harness.resources.activation import SkillActivationRuntime
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.layout import resolve_user_resource_roots
 from loushang.harness.resources.packages.roots import resolve_package_resource_roots
@@ -99,6 +100,7 @@ class _SessionConfigurationState:
     session_manager: SessionManager
     package_materializer: PackageMaterializer
     extension_flag_values: ExtensionFlagValues | None
+    skill_activation_runtime: SkillActivationRuntime
     resource_bundle: ResourceBundle | None = None
     extension_runner: ExtensionRunner | None = None
     cwd_bound_services_audit: CwdBoundServicesAudit | None = None
@@ -325,6 +327,7 @@ def create_agent_session(
 ) -> AgentSession:
     services = services or create_services()
     settings = services.settings_manager.get_settings()
+    capability_runtime = bind_coding_capability_runtime()
     resolved_package_materializer = (
         package_materializer or _default_package_materializer(session_manager)
     )
@@ -332,131 +335,145 @@ def create_agent_session(
         settings.thinking_level if thinking_level is None else thinking_level
     )
     session_id = session_manager.get_header().conversation_id
-    configuration = _activate_session_configuration(
-        settings=settings,
-        services=services,
-        session_manager=session_manager,
-        package_materializer=resolved_package_materializer,
-        extension_flag_values=extension_flag_values,
-    )
-    resource_bundle = _require_configured_resource_bundle(configuration)
-    extension_runner = _require_configured_extension_runner(configuration)
-    cwd_bound_services_audit = configuration.cwd_bound_services_audit
-    loader_system_prompt = _loader_system_prompt_override(services.resource_loader)
-    base_prompt = (
-        system_prompt
-        if system_prompt is not None
-        else loader_system_prompt
-        if loader_system_prompt is not None
-        else settings.system_prompt
-    )
-    append_fragments = [
-        *_loader_append_system_prompt(services.resource_loader),
-        *(append_system_prompt or ()),
-    ]
-    base_prompt = _append_system_prompt_fragments(base_prompt, append_fragments)
-    prompt_assembly = assemble_prompt(
-        base_prompt=base_prompt, resource_bundle=resource_bundle
-    )
-    resolved_prompt = prompt_assembly.system_prompt
-    resolved_model: Model | None
-    if model is None:
-        default_selection = settings.default_model
-        resolved_model = _resolve_default_model_candidate(
-            default_selection,
-            model_registry=services.model_registry,
+    try:
+        configuration = _activate_session_configuration(
+            settings=settings,
+            services=services,
+            session_manager=session_manager,
+            package_materializer=resolved_package_materializer,
+            extension_flag_values=extension_flag_values,
+            skill_activation_runtime=capability_runtime.skill_activation,
+        )
+        resource_bundle = _require_configured_resource_bundle(configuration)
+        extension_runner = _require_configured_extension_runner(configuration)
+        cwd_bound_services_audit = configuration.cwd_bound_services_audit
+        loader_system_prompt = _loader_system_prompt_override(services.resource_loader)
+        base_prompt = (
+            system_prompt
+            if system_prompt is not None
+            else loader_system_prompt
+            if loader_system_prompt is not None
+            else settings.system_prompt
+        )
+        append_fragments = [
+            *_loader_append_system_prompt(services.resource_loader),
+            *(append_system_prompt or ()),
+        ]
+        base_prompt = _append_system_prompt_fragments(base_prompt, append_fragments)
+        prompt_assembly = assemble_prompt(
+            base_prompt=base_prompt,
+            resource_bundle=resource_bundle,
+            resource_activation=capability_runtime.activate_resources(resource_bundle),
+            prompt_section_composer=capability_runtime.prompt_section_composer,
+        )
+        resolved_prompt = prompt_assembly.system_prompt
+        resolved_model: Model | None
+        if model is None:
+            default_selection = settings.default_model
+            resolved_model = _resolve_default_model_candidate(
+                default_selection,
+                model_registry=services.model_registry,
+                diagnostics_service=services.diagnostics_service,
+                session_id=session_id,
+            )
+        elif isinstance(model, ModelSelection):
+            resolved_model = services.model_registry.build_model(model)
+        else:
+            resolved_model = model
+
+        no_tools_mode = _normalize_no_tools(no_tools)
+        resolved_tool_registry = tool_registry
+        allowed_tool_names_set = (
+            set(allowed_tool_names) if allowed_tool_names is not None else None
+        )
+        if no_tools_mode == "all":
+            allowed_tool_names_set = set()
+        if resolved_tool_registry is None and tools:
+            resolved_tool_registry = ToolRegistry()
+            for tool in tools:
+                resolved_tool_registry.register_tool(tool)
+
+        resource_bundle, resolved_tool_registry, extension_tool_diagnostics = (
+            _register_extension_tools(
+                extension_runner=extension_runner,
+                resource_bundle=resource_bundle,
+                tool_registry=resolved_tool_registry,
+                pack_composer=capability_runtime.tool_pack_composer,
+            )
+        )
+        _record_resource_diagnostics(
             diagnostics_service=services.diagnostics_service,
+            diagnostics=extension_tool_diagnostics,
+            phase="resource_loading",
+            source="bootstrap",
             session_id=session_id,
         )
-    elif isinstance(model, ModelSelection):
-        resolved_model = services.model_registry.build_model(model)
-    else:
-        resolved_model = model
-
-    no_tools_mode = _normalize_no_tools(no_tools)
-    resolved_tool_registry = tool_registry
-    allowed_tool_names_set = (
-        set(allowed_tool_names) if allowed_tool_names is not None else None
-    )
-    if no_tools_mode == "all":
-        allowed_tool_names_set = set()
-    if resolved_tool_registry is None and tools:
-        resolved_tool_registry = ToolRegistry()
-        for tool in tools:
-            resolved_tool_registry.register_tool(tool)
-
-    resource_bundle, resolved_tool_registry, extension_tool_diagnostics = (
-        _register_extension_tools(
-            extension_runner=extension_runner,
-            resource_bundle=resource_bundle,
+        if no_tools_mode == "all" and resolved_tool_registry is None:
+            resolved_tool_registry = ToolRegistry()
+        resolved_active_tool_names = _resolve_initial_active_tool_names(
+            active_tool_names=active_tool_names,
+            allowed_tool_names_set=allowed_tool_names_set,
+            no_tools_mode=no_tools_mode,
             tool_registry=resolved_tool_registry,
         )
-    )
-    _record_resource_diagnostics(
-        diagnostics_service=services.diagnostics_service,
-        diagnostics=extension_tool_diagnostics,
-        phase="resource_loading",
-        source="bootstrap",
-        session_id=session_id,
-    )
-    if no_tools_mode == "all" and resolved_tool_registry is None:
-        resolved_tool_registry = ToolRegistry()
-    resolved_active_tool_names = _resolve_initial_active_tool_names(
-        active_tool_names=active_tool_names,
-        allowed_tool_names_set=allowed_tool_names_set,
-        no_tools_mode=no_tools_mode,
-        tool_registry=resolved_tool_registry,
-    )
-    initial_state: dict[str, object] = {
-        "system_prompt": resolved_prompt,
-        "thinking_level": resolved_thinking,
-        "tools": [],
-    }
-    if resolved_model is not None:
-        initial_state["model"] = resolved_model
+        initial_state: dict[str, object] = {
+            "system_prompt": resolved_prompt,
+            "thinking_level": resolved_thinking,
+            "tools": [],
+        }
+        if resolved_model is not None:
+            initial_state["model"] = resolved_model
 
-    agent_kwargs: dict[str, object] = {
-        "initial_state": initial_state,
-        "session_id": session_id,
-        "convert_to_llm": _convert_to_llm_with_block_images(services.settings_manager),
-        "steering_mode": settings.steering_mode,
-        "follow_up_mode": settings.follow_up_mode,
-        "thinking_budgets": settings.thinking_budgets,
-        "max_retry_delay_ms": settings.retry.provider_max_retry_delay_ms,
-    }
-    if stream_fn is not None:
-        agent_kwargs["stream_fn"] = stream_fn
+        agent_kwargs: dict[str, object] = {
+            "initial_state": initial_state,
+            "session_id": session_id,
+            "convert_to_llm": _convert_to_llm_with_block_images(
+                services.settings_manager
+            ),
+            "steering_mode": settings.steering_mode,
+            "follow_up_mode": settings.follow_up_mode,
+            "thinking_budgets": settings.thinking_budgets,
+            "max_retry_delay_ms": settings.retry.provider_max_retry_delay_ms,
+        }
+        if stream_fn is not None:
+            agent_kwargs["stream_fn"] = stream_fn
 
-    agent = agent_factory(**agent_kwargs)
-    agent.session_id = session_id
-    session = AgentSession(
-        agent=agent,
-        session_manager=session_manager,
-        settings_manager=services.settings_manager,
-        model_registry=services.model_registry,
-        auth_manager=services.auth_manager,
-        resource_loader=services.resource_loader,
-        resource_bundle=resource_bundle,
-        extension_runner=extension_runner,
-        tool_registry=resolved_tool_registry,
-        allowed_tool_names=[] if no_tools_mode == "all" else allowed_tool_names,
-        active_tool_names=resolved_active_tool_names,
-        default_activate_new_tools=no_tools_mode != "all" and active_tool_names is None,
-        show_empty_tool_prompt=no_tools_mode == "all",
-        base_prompt=base_prompt,
-        diagnostics_service=services.diagnostics_service,
-        session_start_event=session_start_event,
-        package_materializer=resolved_package_materializer,
-        exec_service=services.exec_service,
-        approval_resolver=approval_resolver,
-    )
-    session.cwd_bound_services_audit = cwd_bound_services_audit
-    scoped_models = _scoped_models_from_enabled_patterns(
-        settings.enabled_models, services.model_registry
-    )
-    if scoped_models:
-        session.setScopedModels(scoped_models)
-    return session
+        agent = agent_factory(**agent_kwargs)
+        agent.session_id = session_id
+        session = AgentSession(
+            agent=agent,
+            session_manager=session_manager,
+            settings_manager=services.settings_manager,
+            model_registry=services.model_registry,
+            auth_manager=services.auth_manager,
+            resource_loader=services.resource_loader,
+            resource_bundle=resource_bundle,
+            extension_runner=extension_runner,
+            tool_registry=resolved_tool_registry,
+            allowed_tool_names=[] if no_tools_mode == "all" else allowed_tool_names,
+            active_tool_names=resolved_active_tool_names,
+            default_activate_new_tools=(
+                no_tools_mode != "all" and active_tool_names is None
+            ),
+            show_empty_tool_prompt=no_tools_mode == "all",
+            base_prompt=base_prompt,
+            diagnostics_service=services.diagnostics_service,
+            session_start_event=session_start_event,
+            package_materializer=resolved_package_materializer,
+            exec_service=services.exec_service,
+            approval_resolver=approval_resolver,
+            capability_runtime=capability_runtime,
+        )
+        session.cwd_bound_services_audit = cwd_bound_services_audit
+        scoped_models = _scoped_models_from_enabled_patterns(
+            settings.enabled_models, services.model_registry
+        )
+        if scoped_models:
+            session.setScopedModels(scoped_models)
+        return session
+    except Exception:
+        capability_runtime.dispose()
+        raise
 
 
 def _activate_session_configuration(
@@ -466,6 +483,7 @@ def _activate_session_configuration(
     session_manager: SessionManager,
     package_materializer: PackageMaterializer,
     extension_flag_values: ExtensionFlagValues | None,
+    skill_activation_runtime: SkillActivationRuntime | None = None,
 ) -> _SessionConfigurationState:
     state = _SessionConfigurationState(
         services=services,
@@ -473,6 +491,7 @@ def _activate_session_configuration(
         session_manager=session_manager,
         package_materializer=package_materializer,
         extension_flag_values=extension_flag_values,
+        skill_activation_runtime=skill_activation_runtime or SkillActivationRuntime(),
     )
     runtime = ConfigActivationRuntime(
         (
@@ -613,7 +632,9 @@ def _activate_resources(
     bundle = state.services.resource_loader.discover_resources(
         state.session_manager.get_cwd()
     )
-    bundle = apply_disabled_skills(bundle, state.settings.disabled_skills)
+    bundle = state.skill_activation_runtime.apply(
+        bundle, state.settings.disabled_skills
+    )
     _record_resource_diagnostics(
         diagnostics_service=state.services.diagnostics_service,
         diagnostics=bundle.diagnostics,
@@ -643,7 +664,9 @@ def _activate_extensions(
         session_id=state.session_id,
     )
     bundle = runner.discover_resources(bundle)
-    bundle = apply_disabled_skills(bundle, state.settings.disabled_skills)
+    bundle = state.skill_activation_runtime.apply(
+        bundle, state.settings.disabled_skills
+    )
     _record_resource_diagnostics(
         diagnostics_service=state.services.diagnostics_service,
         diagnostics=runner.get_diagnostics(),
@@ -1113,6 +1136,7 @@ def _register_extension_tools(
     extension_runner: ExtensionRunner,
     resource_bundle: ResourceBundle,
     tool_registry: ToolRegistry | None,
+    pack_composer: CapabilityPackComposer | None = None,
 ) -> tuple[ResourceBundle, ToolRegistry | None, list[ResourceDiagnostic]]:
     extension_tools = extension_runner.list_tool_definitions()
     if not extension_tools:
@@ -1124,6 +1148,7 @@ def _register_extension_tools(
     resolution = _resolve_extension_tool_contributions(
         extension_runner=extension_runner,
         tool_registry=resolved_tool_registry,
+        pack_composer=pack_composer,
     )
     conflict_diagnostics = _extension_tool_conflict_diagnostics(resolution)
     diagnostics: list[ResourceDiagnostic] = list(conflict_diagnostics.values())
@@ -1144,9 +1169,11 @@ def _resolve_extension_tool_contributions(
     *,
     extension_runner: ExtensionRunner,
     tool_registry: ToolRegistry,
+    pack_composer: CapabilityPackComposer | None = None,
 ) -> ToolResolutionResult:
     return resolve_tool_contributions(
-        compose_capability_packs(
+        (pack_composer or CapabilityPackComposer())
+        .compose(
             (
                 CapabilityPack(
                     pack_id="coding.registry",
@@ -1160,7 +1187,8 @@ def _resolve_extension_tool_contributions(
                     items=_extension_tool_contributions(extension_runner),
                 ),
             )
-        ).items,
+        )
+        .items,
         fail_on_errors=False,
     )
 

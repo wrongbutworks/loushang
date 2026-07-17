@@ -8,6 +8,11 @@ from uuid import uuid4
 
 from loushang.agent import AgentMessage
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
+from loushang.coding.capability_profile import (
+    coding_capability_snapshot_metadata,
+    resolve_coding_capability_profile,
+    validate_coding_capability_snapshot,
+)
 from loushang.coding.runtime_profile import (
     CodingRuntimeSessionBinding,
     CodingRuntimeSessionContext,
@@ -99,12 +104,15 @@ def _new_header(
     parent_conversation_id: str | None = None,
     parent_session: str | None = None,
     runtime_profile_metadata: dict[str, object] | None = None,
+    capability_profile_metadata: dict[str, object] | None = None,
 ) -> ConversationHeader:
     metadata: dict[str, object] = {"cwd": str(cwd)}
     if parent_session is not None:
         metadata["parentSession"] = parent_session
     if runtime_profile_metadata is not None:
         metadata.update(runtime_profile_metadata)
+    if capability_profile_metadata is not None:
+        metadata.update(capability_profile_metadata)
     return ConversationHeader(
         conversation_id=conversation_id,
         version=CURRENT_SESSION_VERSION,
@@ -674,11 +682,15 @@ class SessionManager:
         resolved_session_id = _resolve_session_id(session_id)
         normalized_cwd = str(cwd)
         runtime_profile = resolve_coding_runtime_profile(persist=persist)
+        capability_profile = resolve_coding_capability_profile()
         header = _new_header(
             conversation_id=resolved_session_id,
             cwd=normalized_cwd,
             parent_session=parent_session,
             runtime_profile_metadata=coding_runtime_snapshot_metadata(runtime_profile),
+            capability_profile_metadata=coding_capability_snapshot_metadata(
+                capability_profile
+            ),
         )
         (
             runtime_binding,
@@ -717,10 +729,20 @@ class SessionManager:
         path = Path(session_file).expanduser().resolve(strict=False)
         header = load_current_session_header(path)
         snapshot = validate_coding_runtime_snapshot(header)
+        capability_snapshot = validate_coding_capability_snapshot(header)
         runtime_profile = resolve_coding_runtime_profile(persist=persist)
+        capability_profile = resolve_coding_capability_profile()
         if persist and snapshot is not None and snapshot != runtime_profile.snapshot():
             raise ValueError(
                 "Coding cannot resume a session with an unsupported runtime profile"
+            )
+        if (
+            persist
+            and capability_snapshot is not None
+            and capability_snapshot != capability_profile.snapshot()
+        ):
+            raise ValueError(
+                "Coding cannot resume a session with an unsupported capability profile"
             )
         (
             runtime_binding,
@@ -832,12 +854,16 @@ class SessionManager:
         source_entries = source.get_entries()
         await source.dispose_runtime_profile()
         runtime_profile = resolve_coding_runtime_profile(persist=persist)
+        capability_profile = resolve_coding_capability_profile()
         header = _new_header(
             conversation_id=_generate_id(),
             cwd=str(target_cwd),
             parent_conversation_id=source_header.conversation_id,
             parent_session=str(Path(source_file)),
             runtime_profile_metadata=coding_runtime_snapshot_metadata(runtime_profile),
+            capability_profile_metadata=coding_capability_snapshot_metadata(
+                capability_profile
+            ),
         )
         target_dir = Path(session_dir)
         (
@@ -1173,6 +1199,9 @@ class SessionManager:
             parent_session=parent_session,
             runtime_profile_metadata=coding_runtime_snapshot_metadata(
                 self.runtime_profile
+            ),
+            capability_profile_metadata=coding_capability_snapshot_metadata(
+                resolve_coding_capability_profile()
             ),
         )
 

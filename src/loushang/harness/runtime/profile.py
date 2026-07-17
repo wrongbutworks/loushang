@@ -1063,6 +1063,32 @@ class RuntimeProfileBinder:
             bound=bound,
         )
 
+    def bind_sync(
+        self,
+        profile: ResolvedRuntimeProfile,
+        *,
+        context: object | None = None,
+    ) -> RuntimeProfileBinding:
+        """Bind only synchronous factories without creating an event loop.
+
+        Product bootstrap is often synchronous.  It may use this narrow path
+        for pure factories, while factories that perform I/O or other async
+        work must continue through :meth:`bind`.
+        """
+
+        bound = self._create_profile_sync(profile, context=context)
+        state = RuntimeBindingState[RuntimeProfileBindings](
+            unbound_message="runtime profile binding has not been initialized",
+            stale_message="runtime profile binding was refreshed",
+        )
+        state.bind(_live_bindings(profile, bound))
+        return RuntimeProfileBinding(
+            profile=profile,
+            context=context,
+            state=state,
+            bound=bound,
+        )
+
     async def rebind(
         self,
         binding: RuntimeProfileBinding,
@@ -1145,6 +1171,82 @@ class RuntimeProfileBinder:
         if errors:
             raise errors[0]
 
+    def dispose_sync(self, binding: RuntimeProfileBinding) -> None:
+        """Dispose a binding created from synchronous factories."""
+
+        if binding._closed:
+            return
+        errors: list[Exception] = []
+        for capability in reversed(binding.profile.capabilities):
+            try:
+                self._dispose_entries_sync(
+                    binding._bound.get(capability.slot.key, ()),
+                    context=binding._context,
+                )
+            except Exception as exc:
+                errors.append(exc)
+        binding._closed = True
+        binding._state.invalidate("runtime profile binding was disposed")
+        if errors:
+            raise errors[0]
+
+    def _create_profile_sync(
+        self,
+        profile: ResolvedRuntimeProfile,
+        *,
+        context: object | None,
+    ) -> dict[str, tuple[_BoundRuntimeCapability, ...]]:
+        bound: dict[str, tuple[_BoundRuntimeCapability, ...]] = {}
+        created: list[_BoundRuntimeCapability] = []
+        try:
+            for capability in profile.capabilities:
+                entries = self._create_capability_sync(capability, context=context)
+                if entries:
+                    bound[capability.slot.key] = entries
+                    created.extend(entries)
+        except Exception:
+            self._dispose_entries_reversing_sync(created, context=context)
+            raise
+        return bound
+
+    def _create_capability_sync(
+        self,
+        capability: ResolvedRuntimeCapability,
+        *,
+        context: object | None,
+    ) -> tuple[_BoundRuntimeCapability, ...]:
+        created: list[_BoundRuntimeCapability] = []
+        try:
+            for resolved in capability.selections:
+                implementation = self._registry.resolve(resolved.selection)
+                value = _require_sync_result(
+                    implementation.create(resolved.selection, context),
+                    slot=resolved.selection.slot,
+                    implementation=resolved.selection.implementation,
+                    implementation_version=resolved.selection.implementation_version,
+                    action="factory",
+                )
+                created.append(
+                    _BoundRuntimeCapability(
+                        resolved=resolved,
+                        implementation=implementation,
+                        value=value,
+                    )
+                )
+        except RuntimeCapabilityBindingError:
+            self._dispose_entries_reversing_sync(created, context=context)
+            raise
+        except Exception as exc:
+            self._dispose_entries_reversing_sync(created, context=context)
+            selection = capability.selections[len(created)].selection
+            raise RuntimeCapabilityBindingError(
+                "capability factory failed",
+                slot=selection.slot,
+                implementation=selection.implementation,
+                implementation_version=selection.implementation_version,
+            ) from exc
+        return tuple(created)
+
     async def _create_profile(
         self,
         profile: ResolvedRuntimeProfile,
@@ -1226,11 +1328,67 @@ class RuntimeProfileBinder:
         with suppress(Exception):
             await self._dispose_entries(entries, context=context)
 
+    def _dispose_entries_sync(
+        self,
+        entries: Iterable[_BoundRuntimeCapability],
+        *,
+        context: object | None,
+    ) -> None:
+        for entry in reversed(tuple(entries)):
+            if entry.implementation.dispose is None:
+                continue
+            try:
+                _require_sync_result(
+                    entry.implementation.dispose(entry.value, context),
+                    slot=entry.resolved.selection.slot,
+                    implementation=entry.resolved.selection.implementation,
+                    implementation_version=entry.resolved.selection.implementation_version,
+                    action="disposer",
+                )
+            except RuntimeCapabilityBindingError:
+                raise
+            except Exception as exc:
+                raise RuntimeCapabilityBindingError(
+                    "capability disposer failed",
+                    slot=entry.resolved.selection.slot,
+                    implementation=entry.resolved.selection.implementation,
+                    implementation_version=entry.resolved.selection.implementation_version,
+                ) from exc
+
+    def _dispose_entries_reversing_sync(
+        self,
+        entries: Iterable[_BoundRuntimeCapability],
+        *,
+        context: object | None,
+    ) -> None:
+        with suppress(Exception):
+            self._dispose_entries_sync(entries, context=context)
+
 
 async def _await_result(value: object | Awaitable[object]) -> object:
     if inspect.isawaitable(value):
         return await value
     return value
+
+
+def _require_sync_result(
+    value: object | Awaitable[object],
+    *,
+    slot: str,
+    implementation: str,
+    implementation_version: int,
+    action: str,
+) -> object:
+    if not inspect.isawaitable(value):
+        return value
+    if inspect.iscoroutine(value):
+        value.close()
+    raise RuntimeCapabilityBindingError(
+        f"synchronous binding cannot await a capability {action}",
+        slot=slot,
+        implementation=implementation,
+        implementation_version=implementation_version,
+    )
 
 
 def _capability_signature(

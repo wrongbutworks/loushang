@@ -21,6 +21,10 @@ from loushang.ai.api_registry import (
 from loushang.ai.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
 from loushang.ai.model import Model, Provider
 from loushang.ai.types import AssistantMessage, ImagePart
+from loushang.coding.capability_profile import (
+    CodingCapabilityRuntimeBinding,
+    bind_coding_capability_runtime,
+)
 from loushang.coding.compaction import (
     CompactionResult,
     CompactionStatus,
@@ -193,6 +197,7 @@ class AgentSession:
         footer_data_provider: FooterDataProvider | None = None,
         exec_service: ExecService | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
+        capability_runtime: CodingCapabilityRuntimeBinding | None = None,
     ) -> None:
         self.agent = agent
         self._session_default_model = agent.model
@@ -213,6 +218,8 @@ class AgentSession:
         self.diagnostics_service = diagnostics_service
         self._package_materializer = package_materializer
         self._exec_service = exec_service or ExecService()
+        capability_runtime = capability_runtime or bind_coding_capability_runtime()
+        self._capability_runtime = capability_runtime
         self.footer_data_provider = footer_data_provider or FooterDataProvider(
             self.session_manager.get_cwd()
         )
@@ -273,6 +280,8 @@ class AgentSession:
             get_resource_bundle=lambda: self.resource_bundle,
             get_diagnostics_service=lambda: self.diagnostics_service,
             emit_tool_audit_event=self._dispatch_event,
+            resource_activation_runtime=capability_runtime.resource_runtime,
+            prompt_section_composer=capability_runtime.prompt_section_composer,
         )
         self._resource_refresh_controller = ResourceRefreshController(
             get_resource_loader=lambda: self._resource_loader,
@@ -285,6 +294,7 @@ class AgentSession:
             record_runtime_diagnostic=self._record_extension_runtime_diagnostic,
             sync_extension_diagnostics=self._sync_extension_diagnostics,
             prepare_resource_refresh=self._prepare_resource_refresh,
+            skill_activation_runtime=capability_runtime.skill_activation,
         )
         self._resource_watch_controller = ResourceChangeWatcher(
             get_paths=self._resource_watch_paths,
@@ -368,6 +378,7 @@ class AgentSession:
                 get_extensions=self.list_extensions,
                 login_provider=self._login_from_builtin,
             ),
+            pack_composer=capability_runtime.command_pack_composer,
         )
         self._extension_event_sink = ExtensionEventSink(
             get_extension_runner=lambda: self._extension_runner,
@@ -1380,12 +1391,16 @@ class AgentSession:
                     self._finalize_after_session_shutdown()
 
     async def _dispose_session_runtime_profile(self) -> None:
-        dispose = getattr(self.session_manager, "dispose_runtime_profile", None)
-        if not callable(dispose):
-            return
-        result = dispose()
-        if asyncio.iscoroutine(result):
-            await result
+        try:
+            dispose = getattr(self.session_manager, "dispose_runtime_profile", None)
+            if callable(dispose):
+                result = dispose()
+                if asyncio.iscoroutine(result):
+                    await result
+        finally:
+            if self._capability_runtime is not None:
+                self._capability_runtime.dispose()
+                self._capability_runtime = None
 
     def _finalize_after_session_shutdown(self) -> None:
         self._close_session_approvals()

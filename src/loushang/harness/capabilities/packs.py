@@ -53,6 +53,17 @@ class CapabilityPackComposition(Generic[T]):
     trace: tuple[CapabilityPackTraceEntry, ...]
 
 
+@dataclass(frozen=True)
+class CapabilityPackComposer:
+    """A selectable, pure ordered-pack composition implementation."""
+
+    def compose(
+        self,
+        packs: Iterable[CapabilityPack[T]],
+    ) -> CapabilityPackComposition[T]:
+        return compose_capability_packs(packs)
+
+
 def compose_capability_packs(
     packs: Iterable[CapabilityPack[T]],
 ) -> CapabilityPackComposition[T]:
@@ -90,6 +101,7 @@ def compose_capability_packs(
 
 __all__ = [
     "CapabilityPack",
+    "CapabilityPackComposer",
     "CapabilityPackComposition",
     "CapabilityPackSource",
     "CapabilityPackTraceEntry",
