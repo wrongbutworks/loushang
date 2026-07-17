@@ -88,7 +88,14 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
             "def render_plain_toolbar",
         ),
         Path("src/loushang/coding/ui/status_provider.py"): (
+            "class CodingTuiStatusProvider",
             "class StatusSnapshot",
+        ),
+        Path("src/loushang/coding/ui/transcript_source.py"): (
+            "def _recent_assistant_texts",
+            "def _merge_active_window_records",
+            "def _decorated_suffix_prefix_overlap",
+            "def _history_projected_record",
         ),
         Path("src/loushang/coding/ui/screen_surfaces.py"): (
             "class ModelSelectorSurface",
@@ -104,6 +111,16 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
     ]
 
     assert offenders == []
+
+
+def test_shared_status_provider_does_not_own_settings_manager_adaptation() -> None:
+    source = Path("src/loushang/harnesstui/status/provider.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "settings_manager" not in source
+    assert "status_line_settings_from_control" not in source
+    assert "status_line_settings_to_patch" not in source
 
 
 def test_old_coding_ui_app_module_is_removed() -> None:
