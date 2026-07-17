@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from typing import cast
 
 from loushang.harnesstui.status.line import (
+    StatusLineAutoValue,
+    StatusLineSeparator,
     StatusLineSettings,
+    StatusLineStyle,
     status_line_settings_from_control,
     status_line_settings_to_patch,
 )
@@ -83,23 +87,36 @@ class CodingTuiStatusProvider:
             enabled = _as_bool(normalized)
             if enabled is None:
                 return f"Invalid status line {bool_field.replace('_', ' ')} value."
-            self._set_statusline_settings(replace(self._statusline_settings, **{bool_field: enabled}))
+            # The validated field name and value are compatible, but mypy cannot
+            # express field-sensitive typing for dynamic dataclass replacement.
+            self._set_statusline_settings(
+                replace(self._statusline_settings, **{bool_field: enabled})  # type: ignore[arg-type]
+            )
             return f"Status line {bool_field.replace('_', ' ')}: {normalized}"
         if item_id in {"statusline.field.queue", "statusline.field.message"}:
             field_name = item_id.rsplit(".", 1)[-1]
             if normalized not in {"auto", "true", "false"}:
                 return f"Invalid status line {field_name} value."
-            self._set_statusline_settings(replace(self._statusline_settings, **{field_name: normalized}))
+            self._set_statusline_settings(
+                replace(
+                    self._statusline_settings,
+                    **{field_name: cast(StatusLineAutoValue, normalized)},  # type: ignore[arg-type]
+                )
+            )
             return f"Status line {field_name}: {normalized}"
         if item_id == "statusline.separator":
             if normalized not in {"pipe", "dot"}:
                 return "Invalid status line separator value."
-            self._set_statusline_settings(replace(self._statusline_settings, separator=normalized))
+            self._set_statusline_settings(
+                replace(self._statusline_settings, separator=cast(StatusLineSeparator, normalized))
+            )
             return f"Status line separator: {normalized}"
         if item_id == "statusline.style":
             if normalized not in {"codex-like", "muted", "plain"}:
                 return "Invalid status line style value."
-            self._set_statusline_settings(replace(self._statusline_settings, style=normalized))
+            self._set_statusline_settings(
+                replace(self._statusline_settings, style=cast(StatusLineStyle, normalized))
+            )
             return f"Status line style: {normalized}"
         return f"Unknown status line setting: {item_id}"
 

@@ -153,3 +153,19 @@ and selection items. Generic `Surface`, `SurfaceHost`, `SelectionSurface`, and
 Compatibility modules in `loushang.coding.ui` re-export the moved class objects
 without subclassing or wrapping them. The explicit module paths above are the
 stable imports; package initializers do not add convenience re-exports.
+
+## Quality Gate
+
+Run `make check-harnesstui` for the product-neutral composition boundary. The
+gate lints and type-checks Harnesstui, its shared TUI settings vocabulary, and
+the explicit Coding adapters, then runs Harnesstui, import-boundary, and direct
+Coding integration tests. Marked render-contract cases are excluded from this
+behavior gate and remain owned by the independent render-performance job.
+Known dynamic dataclass-replacement typing limitations are suppressed only at
+the exact expressions involved; the enclosing adapters remain under the normal
+mypy gate so new diagnostics are enforced.
+
+The deterministic render-performance contract remains a separate gate. Run
+`make test-tui-render-contract` independently when changing render-path code or
+moving a marked contract test; `check-harnesstui` does not change or duplicate
+its thresholds.
