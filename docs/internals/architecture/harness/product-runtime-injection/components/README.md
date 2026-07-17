@@ -20,6 +20,7 @@ and links back to the requirements it satisfies.
 ```text
 runtime-profile-resolution.md
 runtime-binding-lifecycle.md
+session-runtime-core.md
 conversation-store-binding.md
 transcript-profile-binding.md
 memory-binding.md

@@ -99,6 +99,11 @@ Coding continues to own:
 - tool-render enrichment and Product artifact display;
 - Product-specific event payloads and compatibility exports.
 
+The generic Session coordination mechanisms that produce these facts are
+documented separately in [Session Runtime Core](product-runtime-injection/components/session-runtime-core.md).
+They remain optional Agent/AI profile code and do not make the neutral event
+core depend on Agent or AI.
+
 `AgentSessionEvent` is therefore a Coding projection contract, not a runtime
 control or storage model. The removed `coding.session.SessionEventBus` must not
 be recreated.

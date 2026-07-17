@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from loushang.ai.types import AssistantMessage, TextPart, Usage
-from loushang.coding.session.agent_event_router import AgentEventRouter
+from loushang.harness.session import AgentEventRouter
 
 
 def _usage() -> Usage:

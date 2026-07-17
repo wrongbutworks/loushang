@@ -7,9 +7,9 @@ from uuid import uuid4
 
 from loushang.agent import Agent
 from loushang.ai.types import ImagePart
-from loushang.coding.session.queue_controller import QueueController
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import ApplicationMessage
+from loushang.harness.session import QueueController
 
 EventDispatcher = Callable[..., Awaitable[None]]
 RunPrompt = Callable[[object, list[ImagePart] | None], Awaitable[None]]

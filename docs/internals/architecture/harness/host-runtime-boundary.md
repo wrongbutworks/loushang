@@ -116,21 +116,22 @@ append.
 Coding adopts the Host Runtime core as follows:
 
 - `coding.session.types.RunState` re-exports the Harness-owned record;
-- `coding.session.queue_controller.QueueController` delegates ledger state and
-  snapshots to `HostInputQueue` while keeping preflight, AI message creation,
-  Agent delivery, and logs;
+- `harness.session.QueueController` owns visible queue coordination over
+  `HostInputQueue`; Coding injects preflight, extension-command rejection,
+  queue-update projection, and its concrete Agent delivery;
 - `AgentSession` owns one scoped Runtime publisher and ordered bus; its Product
   subscription API is a projection adapter on that same stream;
 - `AgentSession` delegates prompt/continue lifecycle, abort, idle waiting, and
   disposal state to `HostRuntime`;
-- Coding prompt, queue, retry, and compaction controllers supply Product
-  callbacks to Harness turn and lifecycle coordinators;
+- `harness.session.PromptController` and `AgentEventRouter` order generic turn
+  and Agent-event coordination; Coding supplies Product callbacks for prompt
+  content, extensions, retry, compaction, diagnostics, and transcript access;
 - resource and extension controllers supply Product discovery, event,
   diagnostic, and binding callbacks to Harness lifecycle coordinators.
 
-Accepted Coding imports and public behavior remain available. Harness-owned
-records keep their Harness `__module__`; compatibility paths preserve the
-import path, not Coding-owned identity.
+Accepted Coding facade behavior remains available. Harness-owned records keep
+their Harness `__module__`; a compatibility path is retained only where a
+Product-facing import remains part of the accepted API.
 
 ## Product-Owned Behavior
 

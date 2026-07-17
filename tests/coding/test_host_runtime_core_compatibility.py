@@ -5,32 +5,25 @@ import asyncio
 from loushang.agent import Agent
 from loushang.coding.session import RunState as CodingRunState
 from loushang.coding.session.agent_session import AgentSession
-from loushang.coding.session.queue_controller import (
-    QueuedMessageSnapshot as CodingQueuedMessageSnapshot,
-)
-from loushang.coding.session.queue_controller import (
-    QueueSnapshot as CodingQueueSnapshot,
-)
 from loushang.coding.store import SessionManager
 from loushang.harness.host.queue import HostInputQueue
 from loushang.harness.host.runtime import HostRuntime
 from loushang.harness.host.types import (
     HostLifecycleEvent,
-    QueuedMessageSnapshot,
-    QueueSnapshot,
     RunState,
+)
+from loushang.harness.session import (
+    AgentEventRouter,
+    PromptController,
+    QueueController,
 )
 
 
 def test_coding_host_records_share_harness_identity() -> None:
     assert CodingRunState is RunState
-    assert CodingQueueSnapshot is QueueSnapshot
-    assert CodingQueuedMessageSnapshot is QueuedMessageSnapshot
 
 
 def test_coding_queue_adapter_uses_harness_mechanism() -> None:
-    from loushang.coding.session.queue_controller import QueueController
-
     controller = QueueController(
         agent=Agent(),
         preflight_user_input=lambda text: object(),
@@ -76,6 +69,9 @@ def test_agent_session_coordinates_public_lifecycle_through_host_runtime(
                 persist=False,
             ),
         )
+        assert isinstance(session._queue_controller, QueueController)
+        assert isinstance(session._prompt_controller, PromptController)
+        assert isinstance(session._agent_event_router, AgentEventRouter)
         host_events: list[HostLifecycleEvent] = []
         session._host_runtime.subscribe(host_events.append)
 

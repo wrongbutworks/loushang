@@ -52,7 +52,6 @@ from loushang.coding.package.materializer import (
 )
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
 from loushang.coding.policy import InteractiveApprovalResolver
-from loushang.coding.session.agent_event_router import AgentEventRouter
 from loushang.coding.session.auth_bridge_controller import AuthBridgeController
 from loushang.coding.session.auth_commands import (
     SessionOAuthLoginCallbacks,
@@ -87,8 +86,6 @@ from loushang.coding.session.extension_runtime_controller import (
     ExtensionRuntimeController,
 )
 from loushang.coding.session.package_controller import PackageController
-from loushang.coding.session.prompt_controller import PromptController
-from loushang.coding.session.queue_controller import QueueController
 from loushang.coding.session.resource_refresh_controller import (
     ResourceRefreshController,
 )
@@ -138,6 +135,11 @@ from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
+)
+from loushang.harness.session import (
+    AgentEventRouter,
+    PromptController,
+    QueueController,
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import (

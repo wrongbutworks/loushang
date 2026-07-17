@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import cast
+from typing import Protocol, cast
 
-from loushang.agent import Agent, AgentMessage
 from loushang.ai.types import ImagePart, TextPart, UserMessage
 from loushang.harness.host.turn import TurnInputQueue
 from loushang.harness.host.types import (
@@ -22,9 +21,27 @@ QueueUpdateEmitter = Callable[[], None]
 log = get_log(__name__).bind(component="QueueController")
 
 
+class AgentQueueStatePort(Protocol):
+    messages: list[object]
+
+
+class AgentQueuePort(Protocol):
+    state: AgentQueueStatePort
+    steering_mode: QueueMode
+    follow_up_mode: QueueMode
+
+    def clear_all_queues(self) -> None: ...
+
+    def has_queued_messages(self) -> bool: ...
+
+    def steer(self, message: object) -> object: ...
+
+    def follow_up(self, message: object) -> object: ...
+
+
 @dataclass
 class QueueController:
-    agent: Agent
+    agent: AgentQueuePort
     preflight_user_input: PreflightUserInput
     reject_extension_command: RejectExtensionCommand
     emit_queue_update: QueueUpdateEmitter
@@ -125,10 +142,9 @@ class QueueController:
         )
 
     def _submit(self, kind: QueueKind, message: object) -> object:
-        agent_message = cast(AgentMessage, message)
         if kind == "steering":
-            return self.agent.steer(agent_message)
-        return self.agent.follow_up(agent_message)
+            return self.agent.steer(message)
+        return self.agent.follow_up(message)
 
     @staticmethod
     def _observe_queue_event(event: str, item: QueuedMessageSnapshot) -> None:

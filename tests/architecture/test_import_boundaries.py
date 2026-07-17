@@ -117,27 +117,39 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
     assert offenders == []
 
 
-def test_harness_agent_transcript_has_a_narrow_ai_agent_dependency_allowlist() -> None:
+def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> None:
     harness_root = Path("src/loushang/harness")
-    profile_root = harness_root / "agent_transcript"
-    allowed_profile_prefixes = (
-        "loushang.ai.types",
-        "loushang.ai.json_codec",
-        "loushang.agent.types",
-        "loushang.agent.json_codec",
-    )
+    profile_allowlists = {
+        harness_root / "agent_transcript": (
+            "loushang.ai.types",
+            "loushang.ai.json_codec",
+            "loushang.agent.types",
+            "loushang.agent.json_codec",
+        ),
+        harness_root / "session": (
+            "loushang.ai.types",
+            "loushang.agent",
+        ),
+    }
     offenders: list[str] = []
 
     for path in sorted(harness_root.rglob("*.py")):
-        is_profile = path == profile_root or profile_root in path.parents
+        allowed_prefixes = next(
+            (
+                prefixes
+                for profile_root, prefixes in profile_allowlists.items()
+                if path == profile_root or profile_root in path.parents
+            ),
+            (),
+        )
         for imported in _absolute_imports(path):
             is_ai_import = _matches_any(imported, ("loushang.ai",))
-            is_profile_agent_import = is_profile and _matches_any(
+            is_profile_agent_import = bool(allowed_prefixes) and _matches_any(
                 imported, ("loushang.agent",)
             )
             if not is_ai_import and not is_profile_agent_import:
                 continue
-            if is_profile and _matches_any(imported, allowed_profile_prefixes):
+            if _matches_any(imported, allowed_prefixes):
                 continue
             offenders.append(f"{path.as_posix()} imports {imported}")
 
@@ -1841,10 +1853,10 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
         Path("src/loushang/coding/session/extension_runtime_controller.py"): {
             "loushang.harness.extensions.lifecycle.ExtensionRuntimeCoordinator",
         },
-        Path("src/loushang/coding/session/prompt_controller.py"): {
+        Path("src/loushang/harness/session/prompt_controller.py"): {
             "loushang.harness.host.turn.TurnOrchestrator",
         },
-        Path("src/loushang/coding/session/queue_controller.py"): {
+        Path("src/loushang/harness/session/queue_controller.py"): {
             "loushang.harness.host.turn.TurnInputQueue",
         },
         Path("src/loushang/coding/session/resource_refresh_controller.py"): {
