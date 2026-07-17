@@ -15,11 +15,7 @@ from loushang.coding.ui.status_line import (
     status_line_separator,
     status_line_style_mode,
 )
-from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
-from loushang.coding.ui.transcript_source import (
-    ActiveWindowTranscriptSource,
-    TranscriptSource,
-)
+from loushang.coding.ui.transcript_source import ActiveWindowTranscriptSource
 from loushang.coding.ui.transcript_style import apply_coding_transcript_style
 from loushang.harness.tools.workspace.output_preview import (
     DEFAULT_TOOL_OUTPUT_PREVIEW_LINES,
@@ -27,6 +23,8 @@ from loushang.harness.tools.workspace.output_preview import (
     drop_tool_timing_tail_line,
     prefers_tail_tool_output,
 )
+from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
+from loushang.harnesstui.conversation.source import TranscriptSource
 from loushang.tui import (
     BottomFrame,
     Composer,

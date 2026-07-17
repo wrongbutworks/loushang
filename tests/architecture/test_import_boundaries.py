@@ -118,6 +118,58 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
     assert offenders == []
 
 
+def test_harnesstui_does_not_import_product_or_model_layers() -> None:
+    offenders = _find_forbidden_imports(
+        ImportBoundary(
+            name="harnesstui",
+            root=Path("src/loushang/harnesstui"),
+            forbidden_prefixes=(
+                "loushang.agent",
+                "loushang.ai",
+                "loushang.ai.provider",
+                "loushang.ai.providers",
+                "loushang.coding",
+            ),
+        )
+    )
+
+    assert offenders == []
+
+
+def test_tui_and_harness_do_not_import_harnesstui() -> None:
+    boundaries = (
+        ImportBoundary(
+            name="tui",
+            root=Path("src/loushang/tui"),
+            forbidden_prefixes=("loushang.harnesstui",),
+        ),
+        ImportBoundary(
+            name="harness",
+            root=Path("src/loushang/harness"),
+            forbidden_prefixes=("loushang.harnesstui",),
+        ),
+    )
+
+    offenders = [
+        offender
+        for boundary in boundaries
+        for offender in _find_forbidden_imports(boundary)
+    ]
+
+    assert offenders == []
+
+
+def test_harnesstui_reader_slice_boundary_is_documented() -> None:
+    path = Path("docs/internals/architecture/harnesstui/README.md")
+    text = path.read_text(encoding="utf-8")
+
+    assert "`loushang.coding.ui` -> `loushang.harnesstui`" in text
+    assert "`loushang.tui`" in text
+    assert "`loushang.harness`" in text
+    assert "session lifecycle" in text
+    assert "render hot path" in text
+
+
 def test_importing_channel_types_does_not_eagerly_load_agent_or_ai() -> None:
     script = """
 import importlib
