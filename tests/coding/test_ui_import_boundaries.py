@@ -69,6 +69,31 @@ def test_conversation_raw_event_dispatch_stays_in_coding_adapter() -> None:
         assert 'event.get("type")' not in path.read_text(encoding="utf-8")
 
 
+def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
+    moved_definitions = {
+        Path("src/loushang/coding/ui/settings_common.py"): ("class ConfigRow",),
+        Path("src/loushang/coding/ui/settings_config.py"): (
+            "class ConfigSettingsPage",
+        ),
+        Path("src/loushang/coding/ui/settings_status_line.py"): (
+            "class StatusLineSettingsPage",
+        ),
+        Path("src/loushang/coding/ui/screen_surfaces.py"): (
+            "class ModelSelectorSurface",
+            "class ScreenSurfaceView",
+        ),
+    }
+
+    offenders = [
+        f"{path}:{definition}"
+        for path, definitions in moved_definitions.items()
+        for definition in definitions
+        if definition in path.read_text(encoding="utf-8")
+    ]
+
+    assert offenders == []
+
+
 def test_old_coding_ui_app_module_is_removed() -> None:
     result = _run_python_import_boundary_check(
         """

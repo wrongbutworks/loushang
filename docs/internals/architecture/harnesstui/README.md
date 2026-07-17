@@ -24,6 +24,8 @@ This layer owns reusable Harness-oriented terminal interaction, including:
 - neutral tool-result views, transcript blocks, and deterministic presentation
   projection;
 - shared Harness status profiles that product shells can populate and present;
+- reusable settings pages, Harness status configuration, surface framing, and
+  model-selection interaction over neutral TUI items;
 - reusable conversation reading, pending/working presentation, and input
   coordination;
 - UI-side approval presentation and decision routing after the neutral Harness
@@ -123,3 +125,31 @@ existing `make test-tui-render-contract` gate covers this new boundary.
 
 The explicit module path above is the stable import for this capability. The
 package initializer does not provide a convenience re-export.
+
+## Settings, Selection, and Surface Composition
+
+Generic settings vocabulary belongs to the terminal framework.
+`loushang.tui.settings` owns `ConfigRow`, the shared settings theme, value
+formatting, row lookup, and input helpers. It has no Harness or product
+dependency and can be used by any terminal application.
+
+Harnesstui owns the reusable interaction assembled from those generic widgets:
+
+- `loushang.harnesstui.settings.page` owns `ConfigSettingsPage`;
+- `loushang.harnesstui.status.settings` owns status-line settings rows, preview,
+  and interaction over the neutral status profile;
+- `loushang.harnesstui.surface.view` owns the framed bottom-surface view and its
+  information-panel scrolling behavior;
+- `loushang.harnesstui.selection.model` owns scoped/all model selection over
+  product-supplied `SelectItem` values.
+
+These modules own interaction mechanics, layout, existing copy, and visual
+behavior, but not product data or decisions. Coding continues to own settings
+manager persistence, model discovery and selection, status providers, command
+and approval routing, surface lifecycle, and construction of the neutral rows
+and selection items. Generic `Surface`, `SurfaceHost`, `SelectionSurface`, and
+`SearchableList` mechanics remain in `loushang.tui`.
+
+Compatibility modules in `loushang.coding.ui` re-export the moved class objects
+without subclassing or wrapping them. The explicit module paths above are the
+stable imports; package initializers do not add convenience re-exports.

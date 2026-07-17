@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -10,26 +10,17 @@ from loushang.coding.ui.model_list import (
     current_model_choice_value,
     select_available_model,
 )
-from loushang.coding.ui.settings_common import (
-    SETTINGS_PAGE_THEME,
-    SETTINGS_VALUE_COLUMN,
-    ConfigRow,
-    as_bool,
-    bool_text,
-    is_space_event,
-    is_tab_fallback_key,
-)
 from loushang.coding.ui.settings_config import (
-    ConfigSettingsPage,
     config_rows,
     manager_bool_config,
 )
-from loushang.coding.ui.settings_status_line import StatusLineSettingsPage
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider, StatusSnapshot
+from loushang.harnesstui.settings.page import ConfigSettingsPage
 from loushang.harnesstui.status.line import (
     StatusLinePreviewSnapshot,
     StatusLineSettings,
 )
+from loushang.harnesstui.status.settings import StatusLineSettingsPage
 from loushang.tui import (
     CursorDeclaration,
     InputEvent,
@@ -43,6 +34,15 @@ from loushang.tui import (
     TabGroup,
     TabPage,
     truncate_to_width,
+)
+from loushang.tui.settings import (
+    SETTINGS_PAGE_THEME,
+    SETTINGS_VALUE_COLUMN,
+    ConfigRow,
+    as_bool,
+    bool_text,
+    is_space_event,
+    is_tab_fallback_key,
 )
 
 __all__ = [
@@ -428,7 +428,7 @@ def _separator(width: int) -> str:
     return "-" * max(1, width)
 
 
-def _with_separator(lines: tuple[RenderLine, ...], *, width: int) -> list[RenderLine]:
+def _with_separator(lines: Sequence[RenderLine], *, width: int) -> list[RenderLine]:
     if not lines:
         return []
     return [lines[0], RenderLine(_separator(width)), *lines[1:]]
