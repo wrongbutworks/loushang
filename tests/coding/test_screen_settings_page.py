@@ -155,11 +155,22 @@ def _raw(page: SettingsPageView, *, width: int = 100, height: int = 18) -> tuple
 
 
 def test_settings_page_tab_modules_export_page_components() -> None:
+    from loushang.coding.ui.settings_common import ConfigRow
     from loushang.coding.ui.settings_config import ConfigSettingsPage
     from loushang.coding.ui.settings_status_line import StatusLineSettingsPage
+    from loushang.harnesstui.settings.page import (
+        ConfigSettingsPage as SharedConfigSettingsPage,
+    )
+    from loushang.harnesstui.status.settings import (
+        StatusLineSettingsPage as SharedStatusLineSettingsPage,
+    )
+    from loushang.tui.settings import ConfigRow as SharedConfigRow
 
     page = _page()
 
+    assert ConfigSettingsPage is SharedConfigSettingsPage
+    assert StatusLineSettingsPage is SharedStatusLineSettingsPage
+    assert ConfigRow is SharedConfigRow
     assert isinstance(page.config_page, ConfigSettingsPage)
     assert isinstance(page.statusline_page, StatusLineSettingsPage)
 

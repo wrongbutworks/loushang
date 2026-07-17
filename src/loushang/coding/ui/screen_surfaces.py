@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from loushang.coding.commands.catalog import CodingCommandCatalog
@@ -38,33 +38,32 @@ from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.settings_page import SettingsPageView
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.harness.commands import CommandDef, CommandKind
+from loushang.harnesstui.selection.model import (
+    MODEL_SELECTOR_SELECTED_STYLE as MODEL_SELECTOR_SELECTED_STYLE,
+)
+from loushang.harnesstui.selection.model import (
+    ModelSelectorSurface,
+)
+from loushang.harnesstui.surface.view import (
+    ScreenSurfacePresentation,
+    ScreenSurfaceView,
+)
+from loushang.harnesstui.surface.view import (
+    ScreenSurfacePurpose as ScreenSurfacePurpose,
+)
 from loushang.tui import (
     ApprovalSurface,
     CommandPalette,
     CommandSurface,
-    CursorDeclaration,
-    FocusableMixin,
     InfoPanel,
-    InputEvent,
     InputIntent,
-    RenderConstraints,
-    RenderLine,
-    RenderResult,
-    SelectionSurface,
     SelectItem,
     Surface,
     SurfaceHandle,
-    apply_theme_style,
 )
-from loushang.tui.cell_width import truncate_to_width, wrap_cells
 
-ScreenSurfacePurpose = Literal[
-    "info", "model", "command", "settings", "dialog", "approval"
-]
-ScreenSurfacePresentation = Literal["bottom", "bottom-exclusive"]
 SurfaceEventKind = Literal["surface_submit", "surface_close"]
 SurfaceEventSource = Literal["model", "command", "settings", "dialog", "approval"]
-MODEL_SELECTOR_SELECTED_STYLE = {"color": 33, "bold": True}
 
 
 class ScreenCommandCatalog(Protocol):
@@ -73,337 +72,11 @@ class ScreenCommandCatalog(Protocol):
     def commands(self) -> tuple[CommandDef, ...]: ...
 
 
-@dataclass(slots=True)
-class ScreenSurfaceView(FocusableMixin):
-    title: str
-    purpose: ScreenSurfacePurpose
-    content: Any
-    footer: str = "Enter to select - Esc to close"
-    subtitle: str = ""
-    presentation: ScreenSurfacePresentation = "bottom"
-    preferred_height: int | None = None
-    _last_content_start_row: int = field(default=0, init=False, repr=False)
-    _info_scroll_offset: int = field(default=0, init=False, repr=False)
-    _last_info_body_height: int = field(default=0, init=False, repr=False)
-    _last_info_body_line_count: int = field(default=0, init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        FocusableMixin.__init__(self)
-
-    @property
-    def exclusive_bottom(self) -> bool:
-        return self.presentation == "bottom-exclusive"
-
-    def editor_input_target(self) -> object | None:
-        target = getattr(self.content, "editor_input_target", None)
-        return target() if callable(target) else None
-
-    def handle_input(self, event: InputEvent) -> InputIntent | None:
-        if self.purpose == "info":
-            if event.kind == "key" and event.key in {"enter", "space", "escape", "esc"}:
-                return InputIntent(kind="surface_close")
-            if event.kind == "key":
-                return self._handle_info_scroll_input(event.key)
-            return None
-        handler = getattr(self.content, "handle_input", None)
-        if callable(handler):
-            intent = _screen_input_intent_or_none(
-                handler(self._translate_content_input_event(event))
-            )
-            if intent is not None:
-                return intent
-        if event.kind == "key" and event.key in {"escape", "esc"}:
-            return InputIntent(kind="surface_close")
-        return None
-
-    def render(self, constraints: RenderConstraints) -> RenderResult:
-        width = constraints.width
-        lines = [truncate_to_width(self.title, max_width=width)]
-        cursor: CursorDeclaration | None = None
-        if self.subtitle:
-            lines.append(truncate_to_width(self.subtitle, max_width=width))
-        lines.append("")
-        reserved_footer_lines = 2 if self.footer else 0
-        body_constraints = RenderConstraints(
-            width=width,
-            max_height=max(
-                1, constraints.max_height - len(lines) - reserved_footer_lines
-            ),
-        )
-        if isinstance(self.content, InfoPanel):
-            body_lines: list[str] = []
-            for raw_line in self.content.text.splitlines():
-                body_lines.extend(wrap_cells(raw_line, width=width) or [""])
-            self._last_info_body_height = body_constraints.max_height
-            self._last_info_body_line_count = len(body_lines)
-            max_offset = self._max_info_scroll_offset()
-            self._info_scroll_offset = max(0, min(self._info_scroll_offset, max_offset))
-            visible_body_lines = body_lines[
-                self._info_scroll_offset : self._info_scroll_offset
-                + body_constraints.max_height
-            ]
-            body_start_row = len(lines)
-            lines.extend(visible_body_lines)
-            if visible_body_lines:
-                cursor = CursorDeclaration(
-                    row=body_start_row + len(visible_body_lines) - 1, column=0
-                )
-        else:
-            self._last_content_start_row = len(lines)
-            result = self.content.render(body_constraints)
-            lines.extend(line.text for line in result.lines)
-            if result.cursor is not None:
-                cursor_row = self._last_content_start_row + result.cursor.row
-                if cursor_row < constraints.max_height:
-                    cursor = CursorDeclaration(
-                        row=cursor_row, column=result.cursor.column
-                    )
-        footer = self._footer_text()
-        if footer and len(lines) < constraints.max_height:
-            if len(lines) + 1 < constraints.max_height:
-                lines.append("")
-            lines.append(truncate_to_width(footer, max_width=width))
-        return RenderResult.from_lines(
-            [RenderLine(line) for line in lines[: constraints.max_height]],
-            constraints=constraints,
-            cursor=cursor,
-        )
-
-    def _translate_content_input_event(self, event: InputEvent) -> InputEvent:
-        if event.kind != "mouse" or event.mouse_row is None:
-            return event
-        return replace(event, mouse_row=event.mouse_row - self._last_content_start_row)
-
-    def _handle_info_scroll_input(self, key: str) -> InputIntent | None:
-        page = max(1, self._last_info_body_height)
-        if key == "down":
-            return self._scroll_info(1)
-        if key == "up":
-            return self._scroll_info(-1)
-        if key == "pageDown":
-            return self._scroll_info(page)
-        if key == "pageUp":
-            return self._scroll_info(-page)
-        if key == "home":
-            return self._set_info_scroll(0)
-        if key == "end":
-            return self._set_info_scroll(self._max_info_scroll_offset())
-        return None
-
-    def _scroll_info(self, delta: int) -> InputIntent | None:
-        return self._set_info_scroll(self._info_scroll_offset + delta)
-
-    def _set_info_scroll(self, offset: int) -> InputIntent | None:
-        max_offset = self._max_info_scroll_offset()
-        next_offset = max(0, min(offset, max_offset))
-        if next_offset == self._info_scroll_offset:
-            return None
-        self._info_scroll_offset = next_offset
-        return InputIntent(kind="consumed", note="info_scroll")
-
-    def _max_info_scroll_offset(self) -> int:
-        return max(0, self._last_info_body_line_count - self._last_info_body_height)
-
-    def _footer_text(self) -> str:
-        if not self.footer:
-            return ""
-        if self.purpose == "info" and self._max_info_scroll_offset() > 0:
-            return f"Up/Down/Page to scroll - {self.footer}"
-        return self.footer
-
-
 @dataclass(frozen=True, slots=True)
 class SurfaceEvent:
     kind: SurfaceEventKind
     source: SurfaceEventSource | None = None
     payload: Any = None
-
-
-@dataclass(slots=True)
-class ModelSelectorSurface:
-    all_items: tuple[SelectItem, ...]
-    scoped_items: tuple[SelectItem, ...] = ()
-    selected_value: str | None = None
-    max_visible: int = 10
-    _scope: Literal["all", "scoped"] = field(default="all", init=False)
-    _surface: SelectionSurface = field(init=False, repr=False)
-    _filter_text: str = field(default="", init=False, repr=False)
-    _pending_ordinal: str = field(default="", init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        if self.scoped_items:
-            self._scope = "scoped"
-        self._rebuild_surface()
-
-    def focus(self) -> None:
-        self._surface.focus()
-
-    def blur(self) -> None:
-        self._surface.blur()
-
-    def handle_input(self, event: InputEvent) -> InputIntent | None:
-        if event.kind == "text":
-            consumed, quick_select = self._handle_ordinal_text(event.text)
-            if consumed:
-                return quick_select
-        if event.kind == "key" and event.key == "enter" and self._pending_ordinal:
-            return self._select_pending_ordinal()
-        if event.kind == "key" and event.key == "tab" and self.scoped_items:
-            self._set_scope("all" if self._scope == "scoped" else "scoped")
-            return None
-        if event.kind == "key" and event.key == "right" and self.scoped_items:
-            self._set_scope("all")
-            return None
-        if event.kind == "key" and event.key == "left" and self.scoped_items:
-            self._set_scope("scoped")
-            return None
-        if event.kind != "text":
-            self._pending_ordinal = ""
-        intent = self._surface.handle_input(event)
-        self._filter_text = self._surface.filter_text
-        return _screen_input_intent_or_none(intent)
-
-    def render(self, constraints: RenderConstraints) -> RenderResult:
-        if not self.scoped_items:
-            return self._surface.render(constraints)
-        header = [RenderLine(self._scope_line()), RenderLine("")]
-        body_height = constraints.max_height - len(header)
-        if body_height <= 0:
-            return RenderResult.from_lines(
-                header[: constraints.max_height], constraints=constraints
-            )
-        body = self._surface.render(
-            RenderConstraints(
-                width=constraints.width,
-                max_height=body_height,
-                visible_height=constraints.visible_height,
-            )
-        )
-        cursor = (
-            replace(body.cursor, row=body.cursor.row + len(header))
-            if body.cursor is not None
-            else None
-        )
-        return RenderResult.from_lines(
-            [*header, *body.lines], constraints=constraints, cursor=cursor
-        )
-
-    def _rebuild_surface(self) -> None:
-        items = self.scoped_items if self._scope == "scoped" else self.all_items
-        selected_index = _selected_model_item_index(items, self.selected_value)
-        self._surface = SelectionSurface(
-            items,
-            max_visible=self.max_visible,
-            select_kind="select",
-            selected_index=selected_index,
-            empty_text="No matching models",
-            show_scroll_info=False,
-            selected_style=MODEL_SELECTOR_SELECTED_STYLE,
-            enable_search=True,
-            show_search_when_empty=False,
-            filter_mode="contains",
-        )
-        if self._filter_text:
-            self._surface.set_filter(self._filter_text)
-
-    def _set_scope(self, scope: Literal["all", "scoped"]) -> None:
-        if not self.scoped_items:
-            return
-        self._pending_ordinal = ""
-        self._filter_text = self._surface.filter_text
-        self._scope = scope
-        self._rebuild_surface()
-
-    def _scope_line(self) -> str:
-        if self._scope == "scoped":
-            scoped = apply_theme_style("scoped", MODEL_SELECTOR_SELECTED_STYLE)
-            return f"Scope: {scoped} | all"
-        all_models = apply_theme_style("all", MODEL_SELECTOR_SELECTED_STYLE)
-        return f"Scope: {all_models} | scoped"
-
-    def _handle_ordinal_text(self, text: str) -> tuple[bool, InputIntent | None]:
-        if (
-            self._surface.filter_text
-            or not text
-            or any(digit not in "0123456789" for digit in text)
-        ):
-            self._pending_ordinal = ""
-            return False, None
-        consumed = False
-        for digit in text:
-            digit_consumed, intent = self._handle_ordinal_digit(digit)
-            if not digit_consumed:
-                return consumed, None
-            consumed = True
-            if intent is not None:
-                return True, intent
-        return consumed, None
-
-    def _handle_ordinal_digit(self, digit: str) -> tuple[bool, InputIntent | None]:
-        items = self._current_items()
-        if not items:
-            self._pending_ordinal = ""
-            return False, None
-        if not self._pending_ordinal and digit == "0":
-            intent = self._select_ordinal(10)
-            return intent is not None, intent
-
-        candidate = f"{self._pending_ordinal}{digit}"
-        if not self._ordinal_is_possible(candidate, len(items)):
-            consumed = bool(self._pending_ordinal)
-            self._pending_ordinal = ""
-            return consumed, None
-
-        ordinal = int(candidate)
-        if 1 <= ordinal <= len(items) and not self._has_longer_ordinal_match(
-            candidate, len(items)
-        ):
-            self._pending_ordinal = ""
-            return True, self._select_ordinal(ordinal)
-
-        self._pending_ordinal = candidate
-        return True, None
-
-    def _select_pending_ordinal(self) -> InputIntent | None:
-        if not self._pending_ordinal:
-            return None
-        pending = self._pending_ordinal
-        self._pending_ordinal = ""
-        if not self._ordinal_is_possible(pending, len(self._current_items())):
-            return None
-        return self._select_ordinal(int(pending))
-
-    def _select_ordinal(self, ordinal: int) -> InputIntent | None:
-        index = ordinal - 1
-        items = self._current_items()
-        if index < 0 or index >= len(items):
-            return None
-        return InputIntent(kind="select", text=items[index].selected_value)
-
-    def _current_items(self) -> tuple[SelectItem, ...]:
-        return self.scoped_items if self._scope == "scoped" else self.all_items
-
-    @staticmethod
-    def _ordinal_is_possible(prefix: str, item_count: int) -> bool:
-        if not prefix:
-            return False
-        ordinal = int(prefix)
-        return (
-            1 <= ordinal <= item_count
-            or ModelSelectorSurface._has_longer_ordinal_match(prefix, item_count)
-        )
-
-    @staticmethod
-    def _has_longer_ordinal_match(prefix: str, item_count: int) -> bool:
-        if not prefix or prefix.startswith("0"):
-            return False
-        prefix_length = len(prefix)
-        max_length = len(str(item_count))
-        for length in range(prefix_length + 1, max_length + 1):
-            lower = int(f"{prefix}{'0' * (length - prefix_length)}")
-            if lower <= item_count:
-                return True
-        return False
 
 
 @dataclass(slots=True)
@@ -501,6 +174,8 @@ class ScreenSurfaceManager:
             return None
         if event.kind == "surface_close":
             self.close_surface()
+            return None
+        if event.source is None:
             return None
         handler = self._handlers.get(event.source)
         if handler is None:
@@ -912,17 +587,6 @@ def _model_choice_selector_description(
     return " - ".join(parts)
 
 
-def _selected_model_item_index(
-    items: tuple[SelectItem, ...], selected_value: str | None
-) -> int:
-    if selected_value is None:
-        return 0
-    for index, item in enumerate(items):
-        if item.selected_value == selected_value:
-            return index
-    return 0
-
-
 def _recoverable_surface_error(error: Exception) -> str:
     message = str(error).strip() or error.__class__.__name__
     return f"Error: {message}"
@@ -940,19 +604,6 @@ def _session_commands_provider(session: Any) -> Callable[[], Any] | None:
     if not callable(getter):
         return None
     return getter
-
-
-def _screen_input_intent_or_none(result: object) -> InputIntent | None:
-    if isinstance(result, InputIntent):
-        return result
-    kind = getattr(result, "kind", None)
-    if not isinstance(kind, str):
-        return None
-    return InputIntent(
-        kind=kind,
-        text=str(getattr(result, "text", "")),
-        note=str(getattr(result, "note", "")),
-    )
 
 
 __all__ = ["ScreenSurfaceManager", "ScreenSurfaceView"]
