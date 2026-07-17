@@ -5,6 +5,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Protocol
 
+from loushang.harness.resources.activation import SkillActivationRuntime
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.refresh import (
     ResourceRefreshCoordinator,
@@ -13,7 +14,6 @@ from loushang.harness.resources.refresh import (
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
-    SkillDescriptor,
 )
 
 
@@ -39,6 +39,9 @@ class ResourceRefreshController:
     record_runtime_diagnostic: Callable[[ResourceDiagnostic], None]
     sync_extension_diagnostics: Callable[..., None]
     prepare_resource_refresh: Callable[[], None] | None = None
+    skill_activation_runtime: SkillActivationRuntime = field(
+        default_factory=SkillActivationRuntime
+    )
     _coordinator: ResourceRefreshCoordinator[ResourceBundle] = field(init=False)
     _discovery: RuntimeResourceDiscovery[ResourceBundle] = field(init=False)
 
@@ -100,16 +103,9 @@ class ResourceRefreshController:
         settings_manager = self.get_settings_manager()
         if settings_manager is not None:
             disabled_skills = tuple(settings_manager.get_disabled_skills())
-            if disabled_skills:
-                resource_bundle = replace(
-                    resource_bundle,
-                    skills=[
-                        replace(skill, enabled=False)
-                        if _skill_disabled_by_name(skill, disabled_skills)
-                        else skill
-                        for skill in resource_bundle.skills
-                    ],
-                )
+            resource_bundle = self.skill_activation_runtime.apply(
+                resource_bundle, disabled_skills
+            )
         self.set_resource_bundle(resource_bundle)
         self.rebuild_prompt_and_tools_view()
 
@@ -127,17 +123,3 @@ class ResourceRefreshController:
             )
             return
         self.sync_extension_diagnostics(phase="resource_loading")
-
-
-def _skill_disabled_by_name(
-    skill: SkillDescriptor, disabled_skills: tuple[str, ...]
-) -> bool:
-    return any(
-        value in disabled_skills
-        for value in (
-            skill.name,
-            skill.id,
-            skill.canonical_name,
-            str(skill.source_path),
-        )
-    )

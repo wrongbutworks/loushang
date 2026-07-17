@@ -21,6 +21,10 @@ from loushang.ai.api_registry import (
 from loushang.ai.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
 from loushang.ai.model import Model, Provider
 from loushang.ai.types import AssistantMessage, ImagePart
+from loushang.coding.capability_profile import (
+    CodingCapabilityRuntimeBinding,
+    bind_coding_capability_runtime,
+)
 from loushang.coding.compaction import (
     CompactionResult,
     CompactionStatus,
@@ -159,6 +163,14 @@ SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]
 RuntimeEventListener = Callable[[RuntimeEvent[object]], Awaitable[None] | None]
 
 
+async def _run_default_compaction(**kwargs: object) -> object:
+    return await compact(**kwargs)
+
+
+def _prepare_default_compaction(*args: object, **kwargs: object) -> object:
+    return prepare_compaction(*args, **kwargs)
+
+
 class AgentSession:
     def __init__(
         self,
@@ -185,6 +197,7 @@ class AgentSession:
         footer_data_provider: FooterDataProvider | None = None,
         exec_service: ExecService | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
+        capability_runtime: CodingCapabilityRuntimeBinding | None = None,
     ) -> None:
         self.agent = agent
         self._session_default_model = agent.model
@@ -205,6 +218,8 @@ class AgentSession:
         self.diagnostics_service = diagnostics_service
         self._package_materializer = package_materializer
         self._exec_service = exec_service or ExecService()
+        capability_runtime = capability_runtime or bind_coding_capability_runtime()
+        self._capability_runtime = capability_runtime
         self.footer_data_provider = footer_data_provider or FooterDataProvider(
             self.session_manager.get_cwd()
         )
@@ -265,6 +280,8 @@ class AgentSession:
             get_resource_bundle=lambda: self.resource_bundle,
             get_diagnostics_service=lambda: self.diagnostics_service,
             emit_tool_audit_event=self._dispatch_event,
+            resource_activation_runtime=capability_runtime.resource_runtime,
+            prompt_section_composer=capability_runtime.prompt_section_composer,
         )
         self._resource_refresh_controller = ResourceRefreshController(
             get_resource_loader=lambda: self._resource_loader,
@@ -277,6 +294,7 @@ class AgentSession:
             record_runtime_diagnostic=self._record_extension_runtime_diagnostic,
             sync_extension_diagnostics=self._sync_extension_diagnostics,
             prepare_resource_refresh=self._prepare_resource_refresh,
+            skill_activation_runtime=capability_runtime.skill_activation,
         )
         self._resource_watch_controller = ResourceChangeWatcher(
             get_paths=self._resource_watch_paths,
@@ -291,6 +309,20 @@ class AgentSession:
             record_runtime_exception=self._record_runtime_exception,
             sync_extension_diagnostics=self._sync_extension_diagnostics,
         )
+        compaction_kwargs: dict[str, object] = {}
+        runtime_capability = getattr(
+            self.session_manager,
+            "get_runtime_capability",
+            None,
+        )
+        if callable(runtime_capability):
+            runtime = runtime_capability("context.compaction")
+            compact_fn = getattr(runtime, "compact_fn", None)
+            prepare_compaction_fn = getattr(runtime, "prepare_compaction_fn", None)
+            if callable(compact_fn):
+                compaction_kwargs["compact_fn"] = compact_fn
+            if callable(prepare_compaction_fn):
+                compaction_kwargs["prepare_compaction_fn"] = prepare_compaction_fn
         self._compaction_controller = CompactionController(
             agent=self.agent,
             session_manager=self.session_manager,
@@ -299,6 +331,7 @@ class AgentSession:
             dispatch_event=self._dispatch_event,
             record_runtime_exception=self._record_runtime_exception,
             sync_extension_diagnostics=self._sync_extension_diagnostics,
+            **compaction_kwargs,
         )
         self._bash_controller = BashController(
             agent=self.agent,
@@ -345,6 +378,7 @@ class AgentSession:
                 get_extensions=self.list_extensions,
                 login_provider=self._login_from_builtin,
             ),
+            pack_composer=capability_runtime.command_pack_composer,
         )
         self._extension_event_sink = ExtensionEventSink(
             get_extension_runner=lambda: self._extension_runner,
@@ -1338,7 +1372,10 @@ class AgentSession:
             try:
                 await self._host_runtime.dispose()
             finally:
-                self._finalize_after_session_shutdown()
+                try:
+                    await self._dispose_session_runtime_profile()
+                finally:
+                    self._finalize_after_session_shutdown()
 
     async def _dispose_after_session_shutdown(self) -> None:
         self._close_session_approvals()
@@ -1348,7 +1385,22 @@ class AgentSession:
             try:
                 await self.stop_resource_watcher()
             finally:
-                self._finalize_after_session_shutdown()
+                try:
+                    await self._dispose_session_runtime_profile()
+                finally:
+                    self._finalize_after_session_shutdown()
+
+    async def _dispose_session_runtime_profile(self) -> None:
+        try:
+            dispose = getattr(self.session_manager, "dispose_runtime_profile", None)
+            if callable(dispose):
+                result = dispose()
+                if asyncio.iscoroutine(result):
+                    await result
+        finally:
+            if self._capability_runtime is not None:
+                self._capability_runtime.dispose()
+                self._capability_runtime = None
 
     def _finalize_after_session_shutdown(self) -> None:
         self._close_session_approvals()
@@ -1930,8 +1982,6 @@ class AgentSession:
             will_retry=will_retry,
             raise_on_error=raise_on_error,
             custom_instructions=custom_instructions,
-            compact_fn=compact,
-            prepare_compaction_fn=prepare_compaction,
         )
 
     def _record_runtime_exception(self, *, code: str, exc: Exception | str) -> None:
