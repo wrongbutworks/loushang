@@ -73,22 +73,23 @@ Transcript Profile wave supersedes the Coding ownership of common session-entry
 schemas, codecs, and replay projection described here; Product storage-root,
 prompt, artifact, and presentation policy remain Coding-owned.
 
-Coding now uses `ConversationRepository[SessionHeader, SessionEntry]` as its
-session repository. `coding.store.file_codec` retains the Pi-compatible JSONL
-schema and legacy recovery behavior but no longer returns or imports the lower
-level `TranscriptRepository` directly.
+Coding now uses `AgentTranscriptSessionStore` as the single open-session commit
+owner over an injected `ConversationStore`. `coding.store.file_codec` remains
+the Product-owned Native codec and journal factory; file locking, revision CAS,
+and durable append are implemented by the Harness File backend. Successful
+Agent transcript mutations return the record paired with the backend's exact
+`CommitReceipt`; Product event projection does not infer revision from a later
+snapshot.
 
-`SessionManager` delegates active branches, children, tree, fork, lowest common
-ancestor, branch delta, replay, catalog indexing, and generic query execution to
-Harness. Coding retains:
+`SessionManager` is an async Product adapter. It delegates active branches,
+children, tree, fork, lowest common ancestor, branch delta, replay, transcript
+commit, and backend persistence to Harness. Coding retains:
 
-- `SessionHeader` and `SessionEntry` variants;
-- camelCase JSON fields, legacy tags, surrogate/non-finite recovery, and exact
-  JSONL formatting;
+- Native codec composition and exact JSONL formatting;
 - label, cwd, naming, retention, recovery, and session-file policy;
 - `SessionSummary` fields, message text/preview, diagnostics, and relevance
   scoring;
-- Agent-message projection and model/thinking-state interpretation.
+- Product catalog/index/query projection and backend selection.
 
 Coding compaction now maps `SessionEntry` records into
 `ConversationCompactionPlanner`. The former local cut-point, latest-checkpoint,
@@ -102,8 +103,9 @@ artifact projection.
 
 ## Baseline Compatibility Invariants
 
-- Existing Coding JSONL files decode with the same Product codec and remain
-  writable without schema migration.
+- Current Native Coding JSONL files decode with the same Product codec and
+  remain writable without schema migration. Older Loushang and external formats
+  require an explicit importer and are never rewritten by Product load or scan.
 - Harness replay and compaction planning reject missing or future retained-record
   boundaries by default; Coding explicitly selects summary-only recovery for
   historical malformed records.

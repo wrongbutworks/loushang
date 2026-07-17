@@ -226,8 +226,8 @@ def test_create_agent_session_uses_manager_header_as_agent_session_id(tmp_path) 
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
 
     session = create_agent_session(
@@ -252,10 +252,12 @@ def test_create_agent_session_keeps_runtime_approval_resolver(tmp_path) -> None:
     resolver = InteractiveApprovalResolver(
         fallback=HeadlessApprovalResolver(mode="deny")
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path,
-        cwd="/tmp/project",
-        persist=False,
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path,
+            cwd="/tmp/project",
+            persist=False,
+        )
     )
 
     session = create_agent_session(
@@ -281,8 +283,10 @@ def test_create_agent_session_result_returns_sdk_creation_snapshot(tmp_path) -> 
             ControlConfig(package_roots=(str(missing_package_root),))
         )
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     result = create_agent_session_result(
@@ -355,8 +359,10 @@ def test_create_agent_session_from_services_uses_cwd_bound_services(tmp_path) ->
         cwd=project_root,
         global_settings_path=tmp_path / "global" / "settings.json",
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     result = create_agent_session_from_services(
@@ -434,8 +440,10 @@ def test_create_agent_session_from_services_applies_extension_flag_values(
         global_settings_path=tmp_path / "global" / "settings.json",
         extension_flag_values={"plan": True, "request-id": "req-123"},
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     result = create_agent_session_from_services(
@@ -496,8 +504,10 @@ def test_audit_cwd_bound_services_reports_project_settings_mismatch(tmp_path) ->
         project_settings_path=default_project_settings_path(project_a)
     )
     services = create_services(settings_manager=settings_manager)
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_b), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_b), persist=False
+        )
     )
 
     audit = audit_cwd_bound_services(session_manager=manager, services=services)
@@ -516,8 +526,10 @@ def test_audit_cwd_bound_services_accepts_matching_resource_bundle(tmp_path) -> 
     project = tmp_path / "project"
     project.mkdir()
     services = create_services()
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project), persist=False
+        )
     )
 
     audit = audit_cwd_bound_services(
@@ -611,8 +623,10 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
     (project_root / "AGENTS.md").write_text("Use repo conventions.", encoding="utf-8")
 
     services = create_services(system_prompt="Base system prompt.")
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(nested), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(nested), persist=False
+        )
     )
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -652,8 +666,8 @@ def test_create_agent_session_applies_allowed_tool_names_to_default_active_tools
     from loushang.coding.store import SessionManager
     from loushang.coding.tools import ToolRegistry, register_builtin_tools
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -736,8 +750,10 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
     registry = ToolRegistry()
     register_builtin_tools(registry)
     session = create_agent_session(
-        session_manager=SessionManager.new(
-            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+            )
         ),
         services=create_services(
             resource_loader=_Loader(), system_prompt="Base system prompt."
@@ -819,8 +835,10 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
     registry = ToolRegistry()
     register_builtin_tools(registry)
     session = create_agent_session(
-        session_manager=SessionManager.new(
-            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+            )
         ),
         services=create_services(
             resource_loader=_Loader(), system_prompt="Base system prompt."
@@ -898,8 +916,10 @@ def test_create_agent_session_uses_settings_package_roots_for_external_package_p
     services = create_services(
         settings_manager=SettingsManager(global_settings_path=global_settings_path),
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     session = create_agent_session(
@@ -953,8 +973,10 @@ def test_reload_extension_runtime_reloads_settings_resource_roots(tmp_path) -> N
     services = create_services(
         settings_manager=SettingsManager(global_settings_path=global_settings_path)
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
     session = create_agent_session(
         session_manager=manager, services=services, model=_model()
@@ -1022,8 +1044,10 @@ def test_create_agent_session_uses_settings_package_sources_with_filters(
     services = create_services(
         settings_manager=SettingsManager(global_settings_path=global_settings_path)
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     session = create_agent_session(
@@ -1086,8 +1110,10 @@ def test_create_agent_session_uses_settings_plugin_sources_for_external_package_
     services = create_services(
         settings_manager=SettingsManager(project_settings_path=project_settings_path),
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     session = create_agent_session(
@@ -1129,10 +1155,12 @@ def test_create_agent_session_materializes_git_package_sources_by_default(
     remote_repo = tmp_path / "review-pack.git"
     _run_git(["clone", "--bare", str(source_repo), str(remote_repo)], cwd=tmp_path)
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / ".loushang" / "sessions",
-        cwd=str(tmp_path),
-        persist=False,
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / ".loushang" / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
     )
     session = create_agent_session(session_manager=manager, model=_model())
 
@@ -1186,10 +1214,12 @@ def test_create_agent_session_auto_materializes_configured_remote_package_source
     services = create_services(
         settings_manager=SettingsManager(global_settings_path=global_settings_path)
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / ".loushang" / "sessions",
-        cwd=str(project_root),
-        persist=False,
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / ".loushang" / "sessions",
+            cwd=str(project_root),
+            persist=False,
+        )
     )
 
     session = create_agent_session(
@@ -1232,8 +1262,10 @@ def test_create_agent_session_applies_disabled_plugin_sources(tmp_path) -> None:
     services = create_services(
         settings_manager=SettingsManager(project_settings_path=settings_path)
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     session = create_agent_session(
@@ -1266,8 +1298,10 @@ def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
     services = create_services(
         settings_manager=SettingsManager(project_settings_path=settings_path)
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     session = create_agent_session(
@@ -1286,8 +1320,10 @@ def test_create_agent_session_includes_tool_prompt_from_registry(tmp_path) -> No
     from loushang.coding.tools import ToolRegistry, register_builtin_tools
 
     services = create_services(system_prompt="Base system prompt.")
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -1312,8 +1348,10 @@ def test_create_agent_session_synthesizes_definitions_from_legacy_tools(
     from loushang.coding.tools import ToolRegistry, register_builtin_tools
 
     services = create_services(system_prompt="Base system prompt.")
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -1365,8 +1403,10 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
         return AgentToolResult(content=[], details={})
 
     services = create_services(system_prompt="Base system prompt.")
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -1436,8 +1476,10 @@ def test_create_agent_session_marks_failing_builtin_tool_result_as_error(
             )
         )
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -1506,8 +1548,10 @@ def test_create_agent_session_records_auth_resolution_failure_for_default_model(
         ModelSelection(provider="demo", model_id="secured")
     )
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     session = create_agent_session(session_manager=manager, services=services)
 
@@ -1549,10 +1593,12 @@ def test_create_agent_session_uses_saved_default_model_endpoint_when_valid(
     )
     services.settings_manager.set_default_model(saved_default)
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions",
-        cwd=str(tmp_path),
-        persist=False,
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
     )
     session = create_agent_session(session_manager=manager, services=services)
 
@@ -1581,10 +1627,12 @@ def test_create_agent_session_falls_back_when_saved_default_model_is_missing(
     saved_default = ModelSelection(provider="demo", model_id="missing")
     services.settings_manager.set_default_model(saved_default)
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions",
-        cwd=str(tmp_path),
-        persist=False,
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
     )
     session = create_agent_session(session_manager=manager, services=services)
 
@@ -1626,10 +1674,12 @@ def test_create_agent_session_falls_back_when_saved_default_model_is_ambiguous(
     saved_default = ModelSelection(provider="demo", model_id="alpha")
     services.settings_manager.set_default_model(saved_default)
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions",
-        cwd=str(tmp_path),
-        persist=False,
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
     )
     session = create_agent_session(session_manager=manager, services=services)
 
@@ -1669,10 +1719,12 @@ def test_create_agent_session_falls_back_when_saved_default_endpoint_is_unavaila
     )
     services.settings_manager.set_default_model(saved_default)
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions",
-        cwd=str(tmp_path),
-        persist=False,
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions",
+            cwd=str(tmp_path),
+            persist=False,
+        )
     )
     session = create_agent_session(session_manager=manager, services=services)
 
@@ -1756,8 +1808,10 @@ def test_create_agent_session_uses_stored_oauth_credentials_for_auth_bridge(
         ModelSelection(provider="demo", model_id="secured")
     )
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     session = create_agent_session(session_manager=manager, services=services)
 
@@ -1801,8 +1855,10 @@ def test_create_agent_session_marks_failing_mutation_builtin_tool_result_as_erro
             )
         )
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -1850,8 +1906,8 @@ def test_create_agent_session_passes_resource_loader_into_agent_session(
 
     loader = _RecordingLoader()
     services = create_services(resource_loader=loader)
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
 
     session = create_agent_session(
@@ -1903,8 +1959,10 @@ def test_runtime_tool_failures_still_surface_as_tool_result_errors(tmp_path) -> 
             )
         )
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     session = create_agent_session(
         session_manager=manager,
@@ -1939,13 +1997,15 @@ def test_runtime_tool_failures_still_surface_as_tool_result_errors(tmp_path) -> 
     assert diagnostics[0].details["tool_name"] == "runtime_tool"
 
 
-def test_create_agent_session_projects_application_messages_to_model_input(tmp_path) -> None:
+def test_create_agent_session_projects_application_messages_to_model_input(
+    tmp_path,
+) -> None:
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.store import SessionManager
     from loushang.harness.agent_transcript import ApplicationMessage
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     session = create_agent_session(
         session_manager=manager,
@@ -1980,8 +2040,8 @@ def test_create_agent_session_convert_to_llm_blocks_images_when_configured(
             ControlConfig(images=ImageSettings(block_images=True))
         ),
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     session = create_agent_session(
         session_manager=manager,
@@ -2092,8 +2152,10 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
     services = create_services(
         resource_loader=_Loader(), system_prompt="Base system prompt."
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
 
     session = create_agent_session(
@@ -2215,8 +2277,10 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
             return _stream_with_final_message(_assistant_message("done"))
         return _stream_with_final_message(_assistant_tool_call_message())
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     services = create_services(
         resource_loader=_Loader(), system_prompt="Base system prompt."
@@ -2332,8 +2396,10 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
             self._bundle = bundle
             return bundle
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     services = create_services(
         resource_loader=_Loader(), system_prompt="Base system prompt."
@@ -2576,19 +2642,23 @@ def test_create_agent_session_passes_compaction_settings_to_session(
         )
     )
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[
-                TextPart(type="text", text="older context that should be compacted")
-            ],
-            timestamp=0.0,
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[
+                    TextPart(type="text", text="older context that should be compacted")
+                ],
+                timestamp=0.0,
+            )
         )
     )
-    assistant_id = manager.append_message(_assistant_message("recent reply"))
+    assistant_id = asyncio.run(
+        manager.append_message(_assistant_message("recent reply"))
+    )
 
     session = create_agent_session(
         session_manager=manager,
@@ -2625,7 +2695,9 @@ def test_create_agent_session_passes_control_thinking_settings(tmp_path) -> None
             )
         )
     )
-    manager = SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
+    )
 
     session = create_agent_session(
         session_manager=manager, model=_model(), services=services
@@ -2665,7 +2737,9 @@ def test_create_agent_session_applies_enabled_models_as_scoped_models(tmp_path) 
             )
         ),
     )
-    manager = SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
+    )
 
     session = create_agent_session(
         session_manager=manager, model=first, services=services
@@ -2710,8 +2784,10 @@ def test_create_agent_session_records_resource_loading_diagnostics(tmp_path) -> 
             return bundle
 
     services = create_services(resource_loader=_Loader())
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
 
     create_agent_session(
@@ -2748,8 +2824,10 @@ def test_create_agent_session_records_startup_package_root_diagnostics(
     services = create_services(
         settings_manager=SettingsManager(global_settings_path=settings_path)
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     create_agent_session(
@@ -2780,8 +2858,10 @@ def test_create_agent_session_records_executable_source_identity_diagnostic(
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     services = create_services()
 
@@ -2819,8 +2899,10 @@ def test_create_agent_session_records_package_lockfile_diagnostics(tmp_path) -> 
     materializer = PackageMaterializer(
         install_root=tmp_path / "packages", lockfile_path=lockfile
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
     )
     services = create_services()
 
@@ -2870,8 +2952,10 @@ def test_create_agent_session_records_invalid_plugin_source_and_continues(
     services = create_services(
         settings_manager=SettingsManager(global_settings_path=settings_path)
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
 
     session = create_agent_session(

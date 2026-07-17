@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
@@ -42,18 +44,26 @@ def _context_text(messages: object) -> str:
 
 
 def test_build_session_context_uses_selected_native_branch(tmp_path) -> None:
-    manager = SessionManager.new(tmp_path, cwd="/tmp/project", persist=False)
-    root_id = manager.append_message(UserMessage(role="user", content="root", timestamp=1.0))
-    branch_a_id = manager.append_custom_message_entry(
-        custom_type="branch-a",
-        content="A",
-        display=True,
+    manager = asyncio.run(
+        SessionManager.new(tmp_path, cwd="/tmp/project", persist=False)
+    )
+    root_id = asyncio.run(
+        manager.append_message(UserMessage(role="user", content="root", timestamp=1.0))
+    )
+    branch_a_id = asyncio.run(
+        manager.append_custom_message_entry(
+            custom_type="branch-a",
+            content="A",
+            display=True,
+        )
     )
     manager.branch(root_id)
-    manager.append_custom_message_entry(
-        custom_type="branch-b",
-        content="B",
-        display=True,
+    asyncio.run(
+        manager.append_custom_message_entry(
+            custom_type="branch-b",
+            content="B",
+            display=True,
+        )
     )
 
     context = build_session_context(manager.get_entries(), leaf_id=branch_a_id)
@@ -64,18 +74,24 @@ def test_build_session_context_uses_selected_native_branch(tmp_path) -> None:
 
 
 def test_build_session_context_uses_latest_compaction_checkpoint(tmp_path) -> None:
-    manager = SessionManager.new(tmp_path, cwd="/tmp/project", persist=False)
-    first_user_id = manager.append_message(
-        UserMessage(role="user", content="first", timestamp=1.0)
+    manager = asyncio.run(
+        SessionManager.new(tmp_path, cwd="/tmp/project", persist=False)
     )
-    manager.append_message(_assistant("first answer", 2.0))
-    manager.append_compaction("old summary", first_user_id, 100)
-    second_user_id = manager.append_message(
-        UserMessage(role="user", content="second", timestamp=3.0)
+    first_user_id = asyncio.run(
+        manager.append_message(UserMessage(role="user", content="first", timestamp=1.0))
     )
-    manager.append_message(_assistant("second answer", 4.0))
-    manager.append_compaction("new summary", second_user_id, 200)
-    manager.append_message(UserMessage(role="user", content="after", timestamp=5.0))
+    asyncio.run(manager.append_message(_assistant("first answer", 2.0)))
+    asyncio.run(manager.append_compaction("old summary", first_user_id, 100))
+    second_user_id = asyncio.run(
+        manager.append_message(
+            UserMessage(role="user", content="second", timestamp=3.0)
+        )
+    )
+    asyncio.run(manager.append_message(_assistant("second answer", 4.0)))
+    asyncio.run(manager.append_compaction("new summary", second_user_id, 200))
+    asyncio.run(
+        manager.append_message(UserMessage(role="user", content="after", timestamp=5.0))
+    )
 
     context = manager.build_session_context()
     rendered = _context_text(context.messages)
@@ -93,13 +109,15 @@ def test_build_session_context_uses_latest_compaction_checkpoint(tmp_path) -> No
 
 
 def test_build_session_context_preserves_state_across_compaction(tmp_path) -> None:
-    manager = SessionManager.new(tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_thinking_level_change("high")
-    manager.append_model_change("openai", "gpt-5.4")
-    kept_id = manager.append_message(
-        UserMessage(role="user", content="kept", timestamp=1.0)
+    manager = asyncio.run(
+        SessionManager.new(tmp_path, cwd="/tmp/project", persist=False)
     )
-    manager.append_compaction("summary", kept_id, 50)
+    asyncio.run(manager.append_thinking_level_change("high"))
+    asyncio.run(manager.append_model_change("openai", "gpt-5.4"))
+    kept_id = asyncio.run(
+        manager.append_message(UserMessage(role="user", content="kept", timestamp=1.0))
+    )
+    asyncio.run(manager.append_compaction("summary", kept_id, 50))
 
     context = manager.build_session_context()
 
@@ -110,16 +128,26 @@ def test_build_session_context_preserves_state_across_compaction(tmp_path) -> No
 
 
 def test_build_session_context_unknown_or_empty_leaf_is_empty(tmp_path) -> None:
-    manager = SessionManager.new(tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content="root", timestamp=1.0))
+    manager = asyncio.run(
+        SessionManager.new(tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(UserMessage(role="user", content="root", timestamp=1.0))
+    )
 
     assert build_session_context(manager.get_entries(), leaf_id=None).messages == ()
-    assert build_session_context(manager.get_entries(), leaf_id="missing").messages == ()
+    assert (
+        build_session_context(manager.get_entries(), leaf_id="missing").messages == ()
+    )
 
 
 def test_append_compaction_rejects_blank_boundary(tmp_path) -> None:
-    manager = SessionManager.new(tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content="old", timestamp=1.0))
+    manager = asyncio.run(
+        SessionManager.new(tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(UserMessage(role="user", content="old", timestamp=1.0))
+    )
 
     with pytest.raises(ValueError, match="first kept record id"):
-        manager.append_compaction("summary", "", 10)
+        asyncio.run(manager.append_compaction("summary", "", 10))

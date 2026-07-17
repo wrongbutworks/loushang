@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 from loushang.ai.model import Auth, Endpoint, Model, Provider
@@ -31,7 +32,9 @@ def _registry_with_auth_model() -> tuple[AiModelRegistry, Model]:
     return registry, registry.get_model("proxy", "default", "alpha")
 
 
-def test_auth_bridge_controller_wires_agent_api_key_resolver_for_active_model_provider(tmp_path) -> None:
+def test_auth_bridge_controller_wires_agent_api_key_resolver_for_active_model_provider(
+    tmp_path,
+) -> None:
     registry, model = _registry_with_auth_model()
     agent = SimpleNamespace(model=model, get_api_key=None)
     diagnostics_service = DiagnosticsService()
@@ -39,7 +42,9 @@ def test_auth_bridge_controller_wires_agent_api_key_resolver_for_active_model_pr
         agent=agent,
         auth_manager=AuthManager(ai_registry=registry, env={"PROXY_API_KEY": "secret"}),
         diagnostics_service=diagnostics_service,
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
     )
 
     controller.configure_auth_bridge()
@@ -57,7 +62,9 @@ def test_auth_bridge_controller_records_unresolved_model_auth(tmp_path) -> None:
         agent=agent,
         auth_manager=AuthManager(ai_registry=registry, env={}),
         diagnostics_service=diagnostics_service,
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
     )
 
     controller.configure_auth_bridge()
@@ -92,7 +99,9 @@ def test_auth_bridge_controller_records_auth_resolution_failures(tmp_path) -> No
         agent=agent,
         auth_manager=FailingAuthManager(),
         diagnostics_service=diagnostics_service,
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
     )
 
     controller.record_model_auth_resolution(model)

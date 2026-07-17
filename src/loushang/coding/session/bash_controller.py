@@ -77,7 +77,7 @@ class BashController:
             )
             bash_result = _bash_result_from_extension_user_bash_result(event_result)
             if bash_result is not None:
-                self.record_result(
+                await self.record_result(
                     command=command,
                     result=bash_result,
                     exclude_from_context=exclude_from_context,
@@ -159,7 +159,7 @@ class BashController:
         finally:
             self._bash_abort_controller = None
 
-        self.record_result(
+        await self.record_result(
             command=command,
             result=bash_result,
             exclude_from_context=exclude_from_context,
@@ -209,7 +209,7 @@ class BashController:
         if self._bash_abort_controller is not None:
             self._bash_abort_controller.abort()
 
-    def record_result(
+    async def record_result(
         self,
         *,
         command: str,
@@ -217,7 +217,7 @@ class BashController:
         exclude_from_context: bool,
     ) -> None:
         exit_code = result.get("exit_code")
-        self.session_manager.append_message(
+        await self.session_manager.append_message(
             CommandExecutionRecord(
                 command=command,
                 output=str(result.get("output") or ""),
@@ -236,7 +236,7 @@ class BashController:
         session_context = self.session_manager.build_session_context()
         self.agent.state.set_messages(session_context.messages)
 
-    def record_pi_style_result(
+    async def record_pi_style_result(
         self,
         command: str,
         result: dict[str, object],
@@ -244,7 +244,7 @@ class BashController:
     ) -> None:
         options = dict(options or {})
         normalized = normalize_bash_result_from_protocol(result)
-        self.record_result(
+        await self.record_result(
             command=command,
             result=normalized,
             exclude_from_context=bool(

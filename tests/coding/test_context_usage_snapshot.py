@@ -18,10 +18,19 @@ def _model() -> Model:
 
 
 def _usage(total_tokens: int) -> Usage:
-    return Usage(input=total_tokens, output=0, cache_read=0, cache_write=0, total_tokens=total_tokens, cost={})
+    return Usage(
+        input=total_tokens,
+        output=0,
+        cache_read=0,
+        cache_write=0,
+        total_tokens=total_tokens,
+        cost={},
+    )
 
 
-def _assistant(*, total_tokens: int, stop_reason: str = "stop", timestamp: float = 1.0) -> AssistantMessage:
+def _assistant(
+    *, total_tokens: int, stop_reason: str = "stop", timestamp: float = 1.0
+) -> AssistantMessage:
     return AssistantMessage(
         role="assistant",
         content=[TextPart(type="text", text="reply")],
@@ -96,7 +105,9 @@ def test_context_usage_snapshot_consumes_ai_usage_derived_from_raw_parts() -> No
     from loushang.coding.session.context_usage import build_context_usage_snapshot
 
     stream = AssistantMessageEventStream()
-    assembler = RawAssembler(stream=stream, api="test", provider="test", model="test-model")
+    assembler = RawAssembler(
+        stream=stream, api="test", provider="test", model="test-model"
+    )
     assembler.feed({"type": "response_start", "response_id": "resp-1"})
     assembler.feed({"type": "usage_delta", "input": 80, "output": 10, "cache_read": 1})
     assembler.feed({"type": "response_done"})
@@ -112,12 +123,30 @@ def test_context_usage_snapshot_consumes_ai_usage_derived_from_raw_parts() -> No
 def test_context_usage_snapshot_marks_pre_compaction_usage_stale(tmp_path) -> None:
     from loushang.coding.session.context_usage import build_context_usage_snapshot
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="before")], timestamp=0.0))
-    manager.append_message(_assistant(total_tokens=95, timestamp=1.0))
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="before")],
+                timestamp=0.0,
+            )
+        )
+    )
+    asyncio.run(manager.append_message(_assistant(total_tokens=95, timestamp=1.0)))
     first_kept_entry_id = manager.get_entries()[0].record_id
-    manager.append_compaction("summary", first_kept_entry_id, 95)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="after")], timestamp=2.0))
+    asyncio.run(manager.append_compaction("summary", first_kept_entry_id, 95))
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="after")],
+                timestamp=2.0,
+            )
+        )
+    )
 
     snapshot = build_context_usage_snapshot(
         manager.build_session_context().messages,

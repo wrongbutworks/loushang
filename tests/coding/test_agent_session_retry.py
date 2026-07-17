@@ -32,7 +32,9 @@ def _model(*, context_window: int = 128000) -> Model:
     )
 
 
-def _assistant_error_message(error_message: str, *, usage: Usage | None = None) -> AssistantMessage:
+def _assistant_error_message(
+    error_message: str, *, usage: Usage | None = None
+) -> AssistantMessage:
     return AssistantMessage(
         role="assistant",
         content=[TextPart(type="text", text="error")],
@@ -62,17 +64,31 @@ def _assistant_success_message(text: str = "ok") -> AssistantMessage:
     )
 
 
-def test_agent_session_retryable_error_starts_retry_and_removes_error_message(tmp_path, monkeypatch) -> None:
+def test_agent_session_retryable_error_starts_retry_and_removes_error_message(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.control import ControlConfig, RetrySettings, SettingsManager
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
-        settings_manager=SettingsManager(ControlConfig(retry=RetrySettings(enabled=True, max_retries=2, base_delay_ms=1))),
+        settings_manager=SettingsManager(
+            ControlConfig(
+                retry=RetrySettings(enabled=True, max_retries=2, base_delay_ms=1)
+            )
+        ),
     )
 
     events: list[object] = []
@@ -87,13 +103,19 @@ def test_agent_session_retryable_error_starts_retry_and_removes_error_message(tm
     async def _fake_continue_run():
         continued.append("continued")
 
-    monkeypatch.setattr("loushang.coding.session.agent_session._sleep_for_retry", _instant_sleep)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._sleep_for_retry", _instant_sleep
+    )
     monkeypatch.setattr(session, "continue_run", _fake_continue_run)
     session.subscribe(events.append)
 
     async def scenario() -> None:
-        await session._handle_agent_event({"type": "message_end", "message": error_message}, AbortSignal())
-        await session._handle_agent_event({"type": "agent_end", "messages": [error_message]}, AbortSignal())
+        await session._handle_agent_event(
+            {"type": "message_end", "message": error_message}, AbortSignal()
+        )
+        await session._handle_agent_event(
+            {"type": "agent_end", "messages": [error_message]}, AbortSignal()
+        )
         await asyncio.sleep(0)
 
     asyncio.run(scenario())
@@ -110,17 +132,31 @@ def test_agent_session_retryable_error_starts_retry_and_removes_error_message(tm
     }
 
 
-def test_agent_session_retry_success_emits_end_event_and_resolves_waiter(tmp_path, monkeypatch) -> None:
+def test_agent_session_retry_success_emits_end_event_and_resolves_waiter(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.control import ControlConfig, RetrySettings, SettingsManager
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
-        settings_manager=SettingsManager(ControlConfig(retry=RetrySettings(enabled=True, max_retries=2, base_delay_ms=1))),
+        settings_manager=SettingsManager(
+            ControlConfig(
+                retry=RetrySettings(enabled=True, max_retries=2, base_delay_ms=1)
+            )
+        ),
     )
 
     events: list[object] = []
@@ -135,16 +171,26 @@ def test_agent_session_retry_success_emits_end_event_and_resolves_waiter(tmp_pat
     async def _fake_continue_run():
         return None
 
-    monkeypatch.setattr("loushang.coding.session.agent_session._sleep_for_retry", _instant_sleep)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._sleep_for_retry", _instant_sleep
+    )
     monkeypatch.setattr(session, "continue_run", _fake_continue_run)
     session.subscribe(events.append)
 
     async def scenario() -> None:
-        await session._handle_agent_event({"type": "message_end", "message": error_message}, AbortSignal())
-        await session._handle_agent_event({"type": "agent_end", "messages": [error_message]}, AbortSignal())
+        await session._handle_agent_event(
+            {"type": "message_end", "message": error_message}, AbortSignal()
+        )
+        await session._handle_agent_event(
+            {"type": "agent_end", "messages": [error_message]}, AbortSignal()
+        )
         await asyncio.sleep(0)
-        await session._handle_agent_event({"type": "message_end", "message": success_message}, AbortSignal())
-        await session._handle_agent_event({"type": "agent_end", "messages": [success_message]}, AbortSignal())
+        await session._handle_agent_event(
+            {"type": "message_end", "message": success_message}, AbortSignal()
+        )
+        await session._handle_agent_event(
+            {"type": "agent_end", "messages": [success_message]}, AbortSignal()
+        )
         await session.wait_for_retry()
 
     asyncio.run(scenario())
@@ -157,17 +203,31 @@ def test_agent_session_retry_success_emits_end_event_and_resolves_waiter(tmp_pat
     } in events
 
 
-def test_agent_session_retry_preserves_queued_messages_until_retry_continues(tmp_path, monkeypatch) -> None:
+def test_agent_session_retry_preserves_queued_messages_until_retry_continues(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.control import ControlConfig, RetrySettings, SettingsManager
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
-        settings_manager=SettingsManager(ControlConfig(retry=RetrySettings(enabled=True, max_retries=2, base_delay_ms=1))),
+        settings_manager=SettingsManager(
+            ControlConfig(
+                retry=RetrySettings(enabled=True, max_retries=2, base_delay_ms=1)
+            )
+        ),
     )
 
     events: list[object] = []
@@ -180,17 +240,25 @@ def test_agent_session_retry_preserves_queued_messages_until_retry_continues(tmp
         return None
 
     async def _fake_continue_run():
-        continued_states.append((session.get_steering_messages(), session.get_follow_up_messages()))
+        continued_states.append(
+            (session.get_steering_messages(), session.get_follow_up_messages())
+        )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session._sleep_for_retry", _instant_sleep)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._sleep_for_retry", _instant_sleep
+    )
     monkeypatch.setattr(session, "continue_run", _fake_continue_run)
     session.subscribe(events.append)
 
     async def scenario() -> None:
-        await session._handle_agent_event({"type": "message_end", "message": error_message}, AbortSignal())
+        await session._handle_agent_event(
+            {"type": "message_end", "message": error_message}, AbortSignal()
+        )
         session.steer("queued steer")
         session.follow_up("queued follow")
-        await session._handle_agent_event({"type": "agent_end", "messages": [error_message]}, AbortSignal())
+        await session._handle_agent_event(
+            {"type": "agent_end", "messages": [error_message]}, AbortSignal()
+        )
         await asyncio.sleep(0)
 
     asyncio.run(scenario())
@@ -199,20 +267,37 @@ def test_agent_session_retry_preserves_queued_messages_until_retry_continues(tmp
     assert continued_states == [(["queued steer"], ["queued follow"])]
     assert session.get_state().steering == ["queued steer"]
     assert session.get_state().follow_up == ["queued follow"]
-    assert [event["type"] for event in events if event["type"] == "queue_update"] == ["queue_update", "queue_update"]
+    assert [event["type"] for event in events if event["type"] == "queue_update"] == [
+        "queue_update",
+        "queue_update",
+    ]
 
 
-def test_agent_session_abort_retry_ends_retry_with_failure(tmp_path, monkeypatch) -> None:
+def test_agent_session_abort_retry_ends_retry_with_failure(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.control import ControlConfig, RetrySettings, SettingsManager
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
-        settings_manager=SettingsManager(ControlConfig(retry=RetrySettings(enabled=True, max_retries=2, base_delay_ms=1))),
+        settings_manager=SettingsManager(
+            ControlConfig(
+                retry=RetrySettings(enabled=True, max_retries=2, base_delay_ms=1)
+            )
+        ),
     )
 
     events: list[object] = []
@@ -230,14 +315,20 @@ def test_agent_session_abort_retry_ends_retry_with_failure(tmp_path, monkeypatch
     async def _fake_continue_run():
         raise AssertionError("continue_run should not be called after retry abort")
 
-    monkeypatch.setattr("loushang.coding.session.agent_session._sleep_for_retry", _blocking_sleep)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._sleep_for_retry", _blocking_sleep
+    )
     monkeypatch.setattr(session, "continue_run", _fake_continue_run)
     session.subscribe(events.append)
 
     async def scenario() -> None:
-        await session._handle_agent_event({"type": "message_end", "message": error_message}, AbortSignal())
+        await session._handle_agent_event(
+            {"type": "message_end", "message": error_message}, AbortSignal()
+        )
         retry_task = asyncio.create_task(
-            session._handle_agent_event({"type": "agent_end", "messages": [error_message]}, AbortSignal())
+            session._handle_agent_event(
+                {"type": "agent_end", "messages": [error_message]}, AbortSignal()
+            )
         )
         await started.wait()
         session.abort_retry()
@@ -255,18 +346,32 @@ def test_agent_session_abort_retry_ends_retry_with_failure(tmp_path, monkeypatch
     }
 
 
-def test_agent_session_retry_max_retries_emits_final_failure(tmp_path, monkeypatch) -> None:
+def test_agent_session_retry_max_retries_emits_final_failure(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.control import ControlConfig, RetrySettings, SettingsManager
     from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
-        settings_manager=SettingsManager(ControlConfig(retry=RetrySettings(enabled=True, max_retries=1, base_delay_ms=1))),
+        settings_manager=SettingsManager(
+            ControlConfig(
+                retry=RetrySettings(enabled=True, max_retries=1, base_delay_ms=1)
+            )
+        ),
         diagnostics_service=DiagnosticsService(),
     )
 
@@ -281,17 +386,27 @@ def test_agent_session_retry_max_retries_emits_final_failure(tmp_path, monkeypat
     async def _fake_continue_run():
         return None
 
-    monkeypatch.setattr("loushang.coding.session.agent_session._sleep_for_retry", _instant_sleep)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._sleep_for_retry", _instant_sleep
+    )
     monkeypatch.setattr(session, "continue_run", _fake_continue_run)
 
     async def scenario() -> None:
         session.agent.state.messages.append(error_message)
-        await session._handle_agent_event({"type": "message_end", "message": error_message}, AbortSignal())
-        await session._handle_agent_event({"type": "agent_end", "messages": [error_message]}, AbortSignal())
+        await session._handle_agent_event(
+            {"type": "message_end", "message": error_message}, AbortSignal()
+        )
+        await session._handle_agent_event(
+            {"type": "agent_end", "messages": [error_message]}, AbortSignal()
+        )
         await asyncio.sleep(0)
         session.agent.state.messages.append(error_message)
-        await session._handle_agent_event({"type": "message_end", "message": error_message}, AbortSignal())
-        await session._handle_agent_event({"type": "agent_end", "messages": [error_message]}, AbortSignal())
+        await session._handle_agent_event(
+            {"type": "message_end", "message": error_message}, AbortSignal()
+        )
+        await session._handle_agent_event(
+            {"type": "agent_end", "messages": [error_message]}, AbortSignal()
+        )
 
     asyncio.run(scenario())
 
@@ -323,23 +438,37 @@ def test_agent_session_retry_max_retries_emits_final_failure(tmp_path, monkeypat
     }
 
 
-def test_agent_session_records_non_retryable_assistant_error_as_provider_diagnostic(tmp_path) -> None:
+def test_agent_session_records_non_retryable_assistant_error_as_provider_diagnostic(
+    tmp_path,
+) -> None:
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
         diagnostics_service=DiagnosticsService(),
     )
     error_message = _assistant_error_message("provider quota exhausted")
 
     async def scenario() -> None:
-        await session._handle_agent_event({"type": "message_end", "message": error_message}, AbortSignal())
-        await session._handle_agent_event({"type": "agent_end", "messages": [error_message]}, AbortSignal())
+        await session._handle_agent_event(
+            {"type": "message_end", "message": error_message}, AbortSignal()
+        )
+        await session._handle_agent_event(
+            {"type": "agent_end", "messages": [error_message]}, AbortSignal()
+        )
 
     asyncio.run(scenario())
 
@@ -352,17 +481,31 @@ def test_agent_session_records_non_retryable_assistant_error_as_provider_diagnos
     assert report.primary.details["model_id"] == "faux-model"
 
 
-def test_agent_session_overflow_routes_to_compaction_instead_of_retry(tmp_path, monkeypatch) -> None:
+def test_agent_session_overflow_routes_to_compaction_instead_of_retry(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.control import ControlConfig, RetrySettings, SettingsManager
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(context_window=32), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(context_window=32),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
-        settings_manager=SettingsManager(ControlConfig(retry=RetrySettings(enabled=True, max_retries=2, base_delay_ms=1))),
+        settings_manager=SettingsManager(
+            ControlConfig(
+                retry=RetrySettings(enabled=True, max_retries=2, base_delay_ms=1)
+            )
+        ),
     )
 
     events: list[object] = []
@@ -385,8 +528,12 @@ def test_agent_session_overflow_routes_to_compaction_instead_of_retry(tmp_path, 
 
     async def scenario() -> None:
         session.agent.state.messages.append(overflow_message)
-        await session._handle_agent_event({"type": "message_end", "message": overflow_message}, AbortSignal())
-        await session._handle_agent_event({"type": "agent_end", "messages": [overflow_message]}, AbortSignal())
+        await session._handle_agent_event(
+            {"type": "message_end", "message": overflow_message}, AbortSignal()
+        )
+        await session._handle_agent_event(
+            {"type": "agent_end", "messages": [overflow_message]}, AbortSignal()
+        )
 
     asyncio.run(scenario())
 

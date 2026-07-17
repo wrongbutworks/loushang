@@ -9,7 +9,11 @@ from loushang.agent import AbortController, AbortSignal, Agent
 from loushang.ai.types import AssistantMessage
 from loushang.ai.utils import is_context_overflow
 from loushang.coding.control import RetrySettings
-from loushang.coding.event import AgentSessionEvent
+from loushang.harness.events import (
+    RetryCompleted,
+    RetryStarted,
+    SessionRuntimeEventPayload,
+)
 from loushang.harness.host.retry import (
     RetryAttempt,
     RetryCoordinator,
@@ -69,7 +73,7 @@ _RETRYABLE_ERROR_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
 
 
 SettingsProvider = Callable[[], RetrySettings]
-EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
+EventDispatcher = Callable[[SessionRuntimeEventPayload], Awaitable[None]]
 ContinueRun = Callable[[], Awaitable[None]]
 RuntimeExceptionRecorder = Callable[..., None]
 RetrySleeper = Callable[[int, AbortSignal], Awaitable[None]]
@@ -195,36 +199,29 @@ class RetryController:
         )
 
     async def _on_started(self, attempt: RetryAttempt) -> None:
-        await self.dispatch_event(
-            {
-                "type": "auto_retry_start",
-                "attempt": attempt.attempt,
-                "max_attempts": attempt.max_attempts,
-                "delay_ms": attempt.delay_ms,
-                "error_message": attempt.error,
-            }
-        )
+        await self.dispatch_event(RetryStarted(attempt=attempt))
 
     async def _on_finished(self, outcome: RetryOutcome) -> None:
-        final_error = "Retry cancelled" if outcome.cancelled else outcome.error
+        final_error = (
+            ("Retry cancelled" if outcome.cancelled else outcome.error)
+            if not outcome.success
+            else None
+        )
         if final_error is not None:
             self.record_runtime_exception(
                 code="retry_cancelled" if outcome.cancelled else "retry_failed",
                 exc=final_error,
             )
-            event: AgentSessionEvent = {
-                "type": "auto_retry_end",
-                "success": outcome.success,
-                "attempt": outcome.attempt,
-                "final_error": final_error,
-            }
-        else:
-            event = {
-                "type": "auto_retry_end",
-                "success": outcome.success,
-                "attempt": outcome.attempt,
-            }
-        await self.dispatch_event(event)
+        await self.dispatch_event(
+            RetryCompleted(
+                outcome=RetryOutcome(
+                    success=outcome.success,
+                    attempt=outcome.attempt,
+                    error=final_error,
+                    cancelled=outcome.cancelled,
+                )
+            )
+        )
 
     def _remove_failed_assistant(self) -> None:
         if (

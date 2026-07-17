@@ -1,12 +1,30 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 
 import pytest
 
-from loushang.coding.extensions import BeforeAgentStartResult, InputEventResult
-from loushang.coding.prompt import PromptPreflightResult
-from loushang.coding.session.prompt_controller import PromptController
+from loushang.harness.session import PromptController
+
+
+@dataclass(frozen=True)
+class _PreflightResult:
+    text: str
+    consumed: bool = False
+
+
+@dataclass(frozen=True)
+class _BeforeAgentStartResult:
+    system_prompt: str | None = None
+    extra_messages: list[object] | None = None
+
+
+@dataclass(frozen=True)
+class _InputEventResult:
+    action: str
+    text: str | None = None
+    images: object | None = None
 
 
 class State:
@@ -63,9 +81,15 @@ def test_prompt_controller_extension_command_short_circuits_agent_prompt() -> No
             queue_controller=queue,
             get_extension_runner=lambda: None,
             get_cwd=lambda: "/tmp/project",
-            extract_extension_command_invocation=lambda text: ("demo", "args") if text == "/demo args" else None,
-            execute_command_async=lambda name, args: _record_async(calls, ("command", (name, args))),
-            preflight_user_input_async=lambda text, **kwargs: _preflight(text, **kwargs),
+            extract_extension_command_invocation=lambda text: (
+                ("demo", "args") if text == "/demo args" else None
+            ),
+            execute_command_async=lambda name, args: _record_async(
+                calls, ("command", (name, args))
+            ),
+            preflight_user_input_async=lambda text, **kwargs: _preflight(
+                text, **kwargs
+            ),
             before_agent_start_system_prompt_options=lambda: {},
             sync_extension_diagnostics=lambda **kwargs: calls.append(("sync", kwargs)),
             compact_before_prompt_async=_compact_before_prompt,
@@ -98,14 +122,22 @@ def test_prompt_controller_streaming_follow_up_queues_prepared_input() -> None:
             get_extension_runner=lambda: None,
             get_cwd=lambda: "/tmp/project",
             extract_extension_command_invocation=lambda text: None,
-            execute_command_async=lambda name, args: _record_async([], ("command", (name, args))),
-            preflight_user_input_async=lambda text, **kwargs: _preflight(f"prepared:{text}", **kwargs),
+            execute_command_async=lambda name, args: _record_async(
+                [], ("command", (name, args))
+            ),
+            preflight_user_input_async=lambda text, **kwargs: _preflight(
+                f"prepared:{text}", **kwargs
+            ),
             before_agent_start_system_prompt_options=lambda: {},
             sync_extension_diagnostics=lambda **kwargs: None,
             compact_before_prompt_async=_compact_before_prompt,
         )
 
-        await controller.prompt("hello", streaming_behavior="followUp", preflight_result=preflight_results.append)
+        await controller.prompt(
+            "hello",
+            streaming_behavior="followUp",
+            preflight_result=preflight_results.append,
+        )
 
     asyncio.run(scenario())
 
@@ -116,7 +148,9 @@ def test_prompt_controller_streaming_follow_up_queues_prepared_input() -> None:
     assert compact_calls == 0
 
 
-def test_prompt_controller_streaming_steer_queues_prepared_input_without_compaction() -> None:
+def test_prompt_controller_streaming_steer_queues_prepared_input_without_compaction() -> (
+    None
+):
     agent = Agent(streaming=True)
     queue = Queue()
     preflight_results: list[bool] = []
@@ -133,14 +167,22 @@ def test_prompt_controller_streaming_steer_queues_prepared_input_without_compact
             get_extension_runner=lambda: None,
             get_cwd=lambda: "/tmp/project",
             extract_extension_command_invocation=lambda text: None,
-            execute_command_async=lambda name, args: _record_async([], ("command", (name, args))),
-            preflight_user_input_async=lambda text, **kwargs: _preflight(f"prepared:{text}", **kwargs),
+            execute_command_async=lambda name, args: _record_async(
+                [], ("command", (name, args))
+            ),
+            preflight_user_input_async=lambda text, **kwargs: _preflight(
+                f"prepared:{text}", **kwargs
+            ),
             before_agent_start_system_prompt_options=lambda: {},
             sync_extension_diagnostics=lambda **kwargs: None,
             compact_before_prompt_async=_compact_before_prompt,
         )
 
-        await controller.prompt("adjust direction", streaming_behavior="steer", preflight_result=preflight_results.append)
+        await controller.prompt(
+            "adjust direction",
+            streaming_behavior="steer",
+            preflight_result=preflight_results.append,
+        )
 
     asyncio.run(scenario())
 
@@ -169,14 +211,20 @@ def test_prompt_controller_input_handler_consumes_prompt_without_compaction() ->
             get_extension_runner=lambda: runner,
             get_cwd=lambda: "/tmp/project",
             extract_extension_command_invocation=lambda text: None,
-            execute_command_async=lambda name, args: _record_async([], ("command", (name, args))),
-            preflight_user_input_async=lambda text, **kwargs: _preflight(text, **kwargs),
+            execute_command_async=lambda name, args: _record_async(
+                [], ("command", (name, args))
+            ),
+            preflight_user_input_async=lambda text, **kwargs: _preflight(
+                text, **kwargs
+            ),
             before_agent_start_system_prompt_options=lambda: {},
             sync_extension_diagnostics=lambda **kwargs: None,
             compact_before_prompt_async=_compact_before_prompt,
         )
 
-        await controller.prompt("handled locally", source="rpc", preflight_result=preflight_results.append)
+        await controller.prompt(
+            "handled locally", source="rpc", preflight_result=preflight_results.append
+        )
 
     asyncio.run(scenario())
 
@@ -198,9 +246,11 @@ def test_prompt_controller_preflight_consumed_prompt_does_not_compact() -> None:
         nonlocal compact_calls
         compact_calls += 1
 
-    async def _consumed_preflight(text: str, *, allow_extension_commands: bool = True) -> PromptPreflightResult:
+    async def _consumed_preflight(
+        text: str, *, allow_extension_commands: bool = True
+    ) -> _PreflightResult:
         del text, allow_extension_commands
-        return PromptPreflightResult(text="", consumed=True)
+        return _PreflightResult(text="", consumed=True)
 
     async def scenario() -> None:
         controller = PromptController(
@@ -209,14 +259,18 @@ def test_prompt_controller_preflight_consumed_prompt_does_not_compact() -> None:
             get_extension_runner=lambda: None,
             get_cwd=lambda: "/tmp/project",
             extract_extension_command_invocation=lambda text: None,
-            execute_command_async=lambda name, args: _record_async([], ("command", (name, args))),
+            execute_command_async=lambda name, args: _record_async(
+                [], ("command", (name, args))
+            ),
             preflight_user_input_async=_consumed_preflight,
             before_agent_start_system_prompt_options=lambda: {},
             sync_extension_diagnostics=lambda **kwargs: None,
             compact_before_prompt_async=_compact_before_prompt,
         )
 
-        await controller.prompt("/local-command", preflight_result=preflight_results.append)
+        await controller.prompt(
+            "/local-command", preflight_result=preflight_results.append
+        )
 
     asyncio.run(scenario())
 
@@ -248,8 +302,12 @@ def test_prompt_controller_input_transform_still_compacts_before_prompt() -> Non
             get_extension_runner=lambda: runner,
             get_cwd=lambda: "/tmp/project",
             extract_extension_command_invocation=lambda text: None,
-            execute_command_async=lambda name, args: _record_async([], ("command", (name, args))),
-            preflight_user_input_async=lambda text, **kwargs: _preflight(f"prepared:{text}", **kwargs),
+            execute_command_async=lambda name, args: _record_async(
+                [], ("command", (name, args))
+            ),
+            preflight_user_input_async=lambda text, **kwargs: _preflight(
+                f"prepared:{text}", **kwargs
+            ),
             before_agent_start_system_prompt_options=lambda: {},
             sync_extension_diagnostics=lambda **kwargs: None,
             compact_before_prompt_async=_compact_before_prompt,
@@ -262,7 +320,9 @@ def test_prompt_controller_input_transform_still_compacts_before_prompt() -> Non
     assert runner.seen == [("original", "interactive", "/tmp/project")]
     assert calls == ["compact", "prompt"]
     assert len(agent.prompted_messages) == 1
-    assert agent.prompted_messages[0][0].content[0].text == "prepared:transformed:original"
+    assert (
+        agent.prompted_messages[0][0].content[0].text == "prepared:transformed:original"
+    )
 
 
 def test_prompt_controller_compacts_before_new_agent_prompt() -> None:
@@ -285,8 +345,12 @@ def test_prompt_controller_compacts_before_new_agent_prompt() -> None:
             get_extension_runner=lambda: None,
             get_cwd=lambda: "/tmp/project",
             extract_extension_command_invocation=lambda text: None,
-            execute_command_async=lambda name, args: _record_async([], ("command", (name, args))),
-            preflight_user_input_async=lambda text, **kwargs: _preflight(text, **kwargs),
+            execute_command_async=lambda name, args: _record_async(
+                [], ("command", (name, args))
+            ),
+            preflight_user_input_async=lambda text, **kwargs: _preflight(
+                text, **kwargs
+            ),
             before_agent_start_system_prompt_options=lambda: {},
             sync_extension_diagnostics=lambda **kwargs: None,
             compact_before_prompt_async=_compact_before_prompt,
@@ -312,8 +376,12 @@ def test_prompt_controller_rejects_streaming_prompt_without_queue_mode() -> None
             get_extension_runner=lambda: None,
             get_cwd=lambda: "/tmp/project",
             extract_extension_command_invocation=lambda text: None,
-            execute_command_async=lambda name, args: _record_async([], ("command", (name, args))),
-            preflight_user_input_async=lambda text, **kwargs: _preflight(text, **kwargs),
+            execute_command_async=lambda name, args: _record_async(
+                [], ("command", (name, args))
+            ),
+            preflight_user_input_async=lambda text, **kwargs: _preflight(
+                text, **kwargs
+            ),
             before_agent_start_system_prompt_options=lambda: {},
             sync_extension_diagnostics=lambda **kwargs: None,
         )
@@ -326,7 +394,9 @@ def test_prompt_controller_rejects_streaming_prompt_without_queue_mode() -> None
     assert preflight_results == [False]
 
 
-def test_prompt_controller_applies_before_agent_start_result_after_next_turn_messages() -> None:
+def test_prompt_controller_applies_before_agent_start_result_after_next_turn_messages() -> (
+    None
+):
     agent = Agent()
     queue = Queue()
     queue.next_turn_messages.append("next-turn")
@@ -341,8 +411,12 @@ def test_prompt_controller_applies_before_agent_start_result_after_next_turn_mes
             get_extension_runner=lambda: runner,
             get_cwd=lambda: "/tmp/project",
             extract_extension_command_invocation=lambda text: None,
-            execute_command_async=lambda name, args: _record_async(calls, ("command", (name, args))),
-            preflight_user_input_async=lambda text, **kwargs: _preflight(f"prepared:{text}", **kwargs),
+            execute_command_async=lambda name, args: _record_async(
+                calls, ("command", (name, args))
+            ),
+            preflight_user_input_async=lambda text, **kwargs: _preflight(
+                f"prepared:{text}", **kwargs
+            ),
             before_agent_start_system_prompt_options=lambda: {"cwd": "/tmp/project"},
             sync_extension_diagnostics=lambda **kwargs: calls.append(("sync", kwargs)),
         )
@@ -385,10 +459,10 @@ class BeforeStartRunner:
         system_prompt: str,
         system_prompt_options: dict[str, object],
         cwd: str,
-    ) -> BeforeAgentStartResult:
+    ) -> _BeforeAgentStartResult:
         del images
         self.seen.append((prompt, system_prompt, system_prompt_options, cwd))
-        return BeforeAgentStartResult(
+        return _BeforeAgentStartResult(
             system_prompt="extension system",
             extra_messages=[{"customType": "demo_notice", "content": "visible note"}],
         )
@@ -401,10 +475,12 @@ class InputHandledRunner:
     def has_handlers(self, name: str) -> bool:
         return name == "input"
 
-    async def emit_input(self, text: str, images: object | None, *, source: str, cwd: str) -> InputEventResult:
+    async def emit_input(
+        self, text: str, images: object | None, *, source: str, cwd: str
+    ) -> _InputEventResult:
         del images
         self.seen.append((text, source, cwd))
-        return InputEventResult(action="handled")
+        return _InputEventResult(action="handled")
 
 
 class InputTransformRunner:
@@ -414,10 +490,12 @@ class InputTransformRunner:
     def has_handlers(self, name: str) -> bool:
         return name == "input"
 
-    async def emit_input(self, text: str, images: object | None, *, source: str, cwd: str) -> InputEventResult:
+    async def emit_input(
+        self, text: str, images: object | None, *, source: str, cwd: str
+    ) -> _InputEventResult:
         del images
         self.seen.append((text, source, cwd))
-        return InputEventResult(action="transform", text=f"transformed:{text}")
+        return _InputEventResult(action="transform", text=f"transformed:{text}")
 
     async def emit_before_agent_start(
         self,
@@ -432,10 +510,14 @@ class InputTransformRunner:
         return None
 
 
-async def _record_async(calls: list[tuple[str, object]], value: tuple[str, object]) -> None:
+async def _record_async(
+    calls: list[tuple[str, object]], value: tuple[str, object]
+) -> None:
     calls.append(value)
 
 
-async def _preflight(text: str, *, allow_extension_commands: bool = True) -> PromptPreflightResult:
+async def _preflight(
+    text: str, *, allow_extension_commands: bool = True
+) -> _PreflightResult:
     del allow_extension_commands
-    return PromptPreflightResult(text=text)
+    return _PreflightResult(text=text)

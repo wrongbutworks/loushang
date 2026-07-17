@@ -117,27 +117,39 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
     assert offenders == []
 
 
-def test_harness_agent_transcript_has_a_narrow_ai_agent_dependency_allowlist() -> None:
+def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> None:
     harness_root = Path("src/loushang/harness")
-    profile_root = harness_root / "agent_transcript"
-    allowed_profile_prefixes = (
-        "loushang.ai.types",
-        "loushang.ai.json_codec",
-        "loushang.agent.types",
-        "loushang.agent.json_codec",
-    )
+    profile_allowlists = {
+        harness_root / "agent_transcript": (
+            "loushang.ai.types",
+            "loushang.ai.json_codec",
+            "loushang.agent.types",
+            "loushang.agent.json_codec",
+        ),
+        harness_root / "session": (
+            "loushang.ai.types",
+            "loushang.agent",
+        ),
+    }
     offenders: list[str] = []
 
     for path in sorted(harness_root.rglob("*.py")):
-        is_profile = path == profile_root or profile_root in path.parents
+        allowed_prefixes = next(
+            (
+                prefixes
+                for profile_root, prefixes in profile_allowlists.items()
+                if path == profile_root or profile_root in path.parents
+            ),
+            (),
+        )
         for imported in _absolute_imports(path):
             is_ai_import = _matches_any(imported, ("loushang.ai",))
-            is_profile_agent_import = is_profile and _matches_any(
+            is_profile_agent_import = bool(allowed_prefixes) and _matches_any(
                 imported, ("loushang.agent",)
             )
             if not is_ai_import and not is_profile_agent_import:
                 continue
-            if is_profile and _matches_any(imported, allowed_profile_prefixes):
+            if _matches_any(imported, allowed_prefixes):
                 continue
             offenders.append(f"{path.as_posix()} imports {imported}")
 
@@ -159,6 +171,87 @@ def test_neutral_conversation_core_does_not_import_agent_ai_or_products() -> Non
     )
 
     assert _find_forbidden_imports(boundary) == []
+
+
+def test_neutral_storage_and_event_cores_do_not_import_runtime_or_products() -> None:
+    forbidden = (
+        "loushang.agent",
+        "loushang.ai",
+        "loushang.channel",
+        "loushang.coding",
+        "loushang.method",
+        "loushang.tui",
+        "loushang.work",
+    )
+    boundaries = (
+        ImportBoundary(
+            name="storage",
+            root=Path("src/loushang/harness/storage"),
+            forbidden_prefixes=forbidden,
+        ),
+        ImportBoundary(
+            name="events",
+            root=Path("src/loushang/harness/events"),
+            forbidden_prefixes=forbidden,
+        ),
+    )
+
+    assert [
+        offender
+        for boundary in boundaries
+        for offender in _find_forbidden_imports(boundary)
+    ] == []
+
+
+def test_scenario_runtime_is_product_neutral_and_never_executes_shell() -> None:
+    boundary = ImportBoundary(
+        name="scenario",
+        root=Path("src/loushang/harness/scenario"),
+        forbidden_prefixes=(
+            "loushang.agent",
+            "loushang.ai",
+            "loushang.channel",
+            "loushang.coding",
+            "loushang.method",
+            "loushang.tui",
+            "loushang.work",
+        ),
+    )
+
+    assert _find_forbidden_imports(boundary) == []
+    assert all(
+        "subprocess" not in path.read_text(encoding="utf-8")
+        for path in boundary.root.rglob("*.py")
+    )
+
+
+def test_coding_work_projection_subscribes_to_runtime_events() -> None:
+    source = Path("src/loushang/coding/work_shell.py").read_text(encoding="utf-8")
+
+    assert "subscribe_runtime_events" in source
+    assert "self.session.subscribe(listener)" not in source
+
+
+def test_coding_session_uses_harness_runtime_events_as_the_only_internal_stream() -> (
+    None
+):
+    session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
+        encoding="utf-8"
+    )
+    controller_sources = [
+        Path(path).read_text(encoding="utf-8")
+        for path in (
+            "src/loushang/coding/session/compaction_controller.py",
+            "src/loushang/coding/session/retry_controller.py",
+            "src/loushang/coding/session/tree_controller.py",
+        )
+    ]
+
+    assert "SessionEventBus" not in session_source
+    assert "self._event_bus" not in session_source
+    assert not Path("src/loushang/coding/session/session_event_bus.py").exists()
+    assert all("loushang.coding.event" not in source for source in controller_sources)
+    assert "project_runtime_event_to_session_event" in session_source
 
 
 def test_importing_channel_types_does_not_eagerly_load_agent_or_ai() -> None:
@@ -1617,7 +1710,7 @@ def test_harness_host_runtime_boundary_is_documented() -> None:
         "implementation complete for integration into `lane/harness`",
         "`loushang.harness.host.runtime.HostRuntime`",
         "`loushang.harness.host.queue.HostInputQueue`",
-        "`loushang.harness.host.events.OrderedEventBus`",
+        "`loushang.harness.events.OrderedEventBus`",
         "must not implement a second agent loop",
         "Coding maps running, aborting, and disposing",
         "product-neutral reference driver",
@@ -1760,10 +1853,10 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
         Path("src/loushang/coding/session/extension_runtime_controller.py"): {
             "loushang.harness.extensions.lifecycle.ExtensionRuntimeCoordinator",
         },
-        Path("src/loushang/coding/session/prompt_controller.py"): {
+        Path("src/loushang/harness/session/prompt_controller.py"): {
             "loushang.harness.host.turn.TurnOrchestrator",
         },
-        Path("src/loushang/coding/session/queue_controller.py"): {
+        Path("src/loushang/harness/session/queue_controller.py"): {
             "loushang.harness.host.turn.TurnInputQueue",
         },
         Path("src/loushang/coding/session/resource_refresh_controller.py"): {

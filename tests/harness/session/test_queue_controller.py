@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from loushang.agent import Agent
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.session.queue_controller import QueueController
+from loushang.harness.session import QueueController
 
 
 def _assistant_message() -> AssistantMessage:
@@ -15,7 +15,9 @@ def _assistant_message() -> AssistantMessage:
         provider="faux",
         model="faux-model",
         response_id=None,
-        usage=Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}),
+        usage=Usage(
+            input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+        ),
         stop_reason="stop",
         error_message=None,
         timestamp=0.0,
@@ -86,7 +88,9 @@ def test_queue_controller_consumes_visible_queue_when_user_message_starts() -> N
     controller.follow_up("later")
 
     consumed = controller.mark_message_consumed(
-        UserMessage(role="user", content=[TextPart(type="text", text="first")], timestamp=0.0)
+        UserMessage(
+            role="user", content=[TextPart(type="text", text="first")], timestamp=0.0
+        )
     )
 
     assert consumed is True
@@ -107,7 +111,9 @@ def test_queue_controller_consumes_one_matching_duplicate_at_a_time() -> None:
     controller.steer("same")
 
     consumed = controller.mark_message_consumed(
-        UserMessage(role="user", content=[TextPart(type="text", text="same")], timestamp=0.0)
+        UserMessage(
+            role="user", content=[TextPart(type="text", text="same")], timestamp=0.0
+        )
     )
 
     assert consumed is True
@@ -133,7 +139,9 @@ def test_queue_controller_consumes_duplicate_by_message_identity_before_text() -
     assert first_id != second_id
 
 
-def test_queue_controller_leaves_visible_queue_when_started_message_does_not_match() -> None:
+def test_queue_controller_leaves_visible_queue_when_started_message_does_not_match() -> (
+    None
+):
     agent = Agent()
     controller = QueueController(
         agent=agent,
@@ -144,7 +152,11 @@ def test_queue_controller_leaves_visible_queue_when_started_message_does_not_mat
     controller.steer("queued")
 
     consumed = controller.mark_message_consumed(
-        UserMessage(role="user", content=[TextPart(type="text", text="different")], timestamp=0.0)
+        UserMessage(
+            role="user",
+            content=[TextPart(type="text", text="different")],
+            timestamp=0.0,
+        )
     )
 
     assert consumed is False
@@ -152,13 +164,15 @@ def test_queue_controller_leaves_visible_queue_when_started_message_does_not_mat
 
 
 def test_queue_controller_debug_events_for_queue_consume_and_clear(monkeypatch) -> None:
-    from loushang.coding.session import queue_controller as queue_module
+    from loushang.harness.session import queue_controller as queue_module
 
     events: list[tuple[str, str, dict[str, object]]] = []
     monkeypatch.setattr(
         queue_module,
         "log",
-        SimpleNamespace(debug_event=lambda scope, name, **data: events.append((scope, name, data))),
+        SimpleNamespace(
+            debug_event=lambda scope, name, **data: events.append((scope, name, data))
+        ),
     )
     agent = Agent()
     controller = QueueController(
@@ -174,6 +188,17 @@ def test_queue_controller_debug_events_for_queue_consume_and_clear(monkeypatch) 
     controller.follow_up("later")
     controller.clear_queue()
 
-    assert ("agent", "queue.message_queued", {"id": queued_id, "kind": "steering", "text_len": 5}) in events
-    assert ("agent", "queue.message_consumed", {"id": queued_id, "kind": "steering", "text_len": 5}) in events
-    assert any(name == "queue.cleared" and data["steering"] == 0 and data["follow_up"] == 1 for _scope, name, data in events)
+    assert (
+        "agent",
+        "queue.message_queued",
+        {"id": queued_id, "kind": "steering", "text_len": 5},
+    ) in events
+    assert (
+        "agent",
+        "queue.message_consumed",
+        {"id": queued_id, "kind": "steering", "text_len": 5},
+    ) in events
+    assert any(
+        name == "queue.cleared" and data["steering"] == 0 and data["follow_up"] == 1
+        for _scope, name, data in events
+    )

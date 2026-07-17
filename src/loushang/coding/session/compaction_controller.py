@@ -18,12 +18,6 @@ from loushang.coding.compaction import (
     compact as run_compaction,
 )
 from loushang.coding.control import CompactionSettings
-from loushang.coding.event import AgentSessionEvent
-from loushang.coding.event.types import (
-    CompactionEndEvent,
-    CompactionReason,
-    CompactionStartEvent,
-)
 from loushang.coding.extensions import ExtensionRunner, SessionBeforeCompactEvent
 from loushang.coding.session.context_usage import (
     build_context_usage_snapshot,
@@ -34,8 +28,14 @@ from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import CONTEXT_COMPACTION_CHECKPOINT_KIND
 from loushang.harness.context.compaction import CompactionCoordinator
 from loushang.harness.conversation import ConversationRecord
+from loushang.harness.events import (
+    CompactionReason,
+    ContextCompactionCompleted,
+    ContextCompactionStarted,
+    SessionRuntimeEventPayload,
+)
 
-EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
+EventDispatcher = Callable[[SessionRuntimeEventPayload], Awaitable[None]]
 ExtensionRunnerProvider = Callable[[], ExtensionRunner | None]
 SettingsProvider = Callable[[], CompactionSettings]
 RuntimeExceptionRecorder = Callable[..., None]
@@ -110,20 +110,19 @@ class CompactionController:
                     "Try reducing context or switching to a larger-context model."
                 )
                 await self.dispatch_event(
-                    {
-                        "type": "compaction_end",
-                        "reason": "overflow",
-                        "result": None,
-                        "aborted": False,
-                        "will_retry": True,
-                        "error_message": message,
-                        "usage_before": _snapshot_payload(
+                    ContextCompactionCompleted(
+                        reason="overflow",
+                        result=None,
+                        aborted=False,
+                        will_retry=True,
+                        error_message=message,
+                        usage_before=_snapshot_payload(
                             self._build_usage_snapshot(settings)
                         ),
-                        "usage_after": _snapshot_payload(
+                        usage_after=_snapshot_payload(
                             self._build_usage_snapshot(settings)
                         ),
-                    }
+                    )
                 )
                 return None
             self._overflow_recovery_attempted = True
@@ -173,11 +172,10 @@ class CompactionController:
     ) -> CompactionResult | None:
         settings = self.get_settings()
         usage_before = _snapshot_payload(self._build_usage_snapshot(settings))
-        start_event: CompactionStartEvent = {
-            "type": "compaction_start",
-            "reason": cast(CompactionReason, reason),
-            "usage": usage_before,
-        }
+        start_event = ContextCompactionStarted(
+            reason=cast(CompactionReason, reason),
+            usage=usage_before,
+        )
         await self.dispatch_event(start_event)
         try:
             result = await self._lifecycle.run(
@@ -194,46 +192,38 @@ class CompactionController:
             aborted = _is_aborted_compaction_error(exc)
             if not aborted:
                 self.record_runtime_exception(code="compaction_failed", exc=exc)
-            event: CompactionEndEvent
             if aborted:
-                event = {
-                    "type": "compaction_end",
-                    "reason": cast(CompactionReason, reason),
-                    "result": None,
-                    "aborted": True,
-                    "will_retry": will_retry,
-                    "usage_before": usage_before,
-                    "usage_after": _snapshot_payload(
-                        self._build_usage_snapshot(settings)
-                    ),
-                }
+                event = ContextCompactionCompleted(
+                    reason=cast(CompactionReason, reason),
+                    result=None,
+                    aborted=True,
+                    will_retry=will_retry,
+                    usage_before=usage_before,
+                    usage_after=_snapshot_payload(self._build_usage_snapshot(settings)),
+                )
             else:
-                event = {
-                    "type": "compaction_end",
-                    "reason": cast(CompactionReason, reason),
-                    "result": None,
-                    "aborted": False,
-                    "will_retry": will_retry,
-                    "usage_before": usage_before,
-                    "usage_after": _snapshot_payload(
-                        self._build_usage_snapshot(settings)
-                    ),
-                    "error_message": f"Compaction failed: {exc}",
-                }
+                event = ContextCompactionCompleted(
+                    reason=cast(CompactionReason, reason),
+                    result=None,
+                    aborted=False,
+                    will_retry=will_retry,
+                    usage_before=usage_before,
+                    usage_after=_snapshot_payload(self._build_usage_snapshot(settings)),
+                    error_message=f"Compaction failed: {exc}",
+                )
             await self.dispatch_event(event)
             if raise_on_error:
                 raise
             return None
 
-        end_event: CompactionEndEvent = {
-            "type": "compaction_end",
-            "reason": cast(CompactionReason, reason),
-            "result": asdict(result),
-            "aborted": False,
-            "will_retry": will_retry,
-            "usage_before": usage_before,
-            "usage_after": _snapshot_payload(self._build_usage_snapshot(settings)),
-        }
+        end_event = ContextCompactionCompleted(
+            reason=cast(CompactionReason, reason),
+            result=asdict(result),
+            aborted=False,
+            will_retry=will_retry,
+            usage_before=usage_before,
+            usage_after=_snapshot_payload(self._build_usage_snapshot(settings)),
+        )
         await self.dispatch_event(end_event)
         return result
 
@@ -288,7 +278,7 @@ class CompactionController:
             result = await compact_fn(**compact_kwargs)
 
         result = _with_preparation_details(result, preparation)
-        self.session_manager.append_compaction(
+        await self.session_manager.append_compaction(
             result.summary,
             result.first_kept_entry_id,
             result.tokens_before,

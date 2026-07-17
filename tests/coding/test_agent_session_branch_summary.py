@@ -58,11 +58,25 @@ def test_navigate_tree_is_noop_when_target_is_current_leaf(tmp_path) -> None:
     from loushang.coding.session import AgentSession, TreeNavigationResult
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="root")], timestamp=0.0))
-    leaf_id = manager.append_message(_assistant_text_message("reply"))
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user", content=[TextPart(type="text", text="root")], timestamp=0.0
+            )
+        )
+    )
+    leaf_id = asyncio.run(manager.append_message(_assistant_text_message("reply")))
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
     )
 
@@ -77,20 +91,46 @@ def test_navigate_tree_to_message_switches_leaf_and_rebuilds_context(tmp_path) -
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="root")], timestamp=0.0))
-    assistant1_id = manager.append_message(_assistant_text_message("reply 1"))
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="follow up")], timestamp=0.0))
-    manager.append_message(_assistant_text_message("reply 2"))
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user", content=[TextPart(type="text", text="root")], timestamp=0.0
+            )
+        )
+    )
+    assistant1_id = asyncio.run(
+        manager.append_message(_assistant_text_message("reply 1"))
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="follow up")],
+                timestamp=0.0,
+            )
+        )
+    )
+    asyncio.run(manager.append_message(_assistant_text_message("reply 2")))
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
     )
 
     asyncio.run(session.navigate_tree(assistant1_id))
 
     assert session.session_manager.get_leaf_id() == assistant1_id
-    assert [getattr(message, "role", None) for message in session.agent.state.messages] == ["user", "assistant"]
+    assert [
+        getattr(message, "role", None) for message in session.agent.state.messages
+    ] == ["user", "assistant"]
     assert session.agent.state.messages[1].content[0].text == "reply 1"
 
 
@@ -118,23 +158,31 @@ def test_navigate_tree_restores_target_branch_model_and_thinking(tmp_path) -> No
                 second_model.id: second_model,
             }[selection.model_id]
 
-    manager = SessionManager.new(
-        session_dir=tmp_path,
-        cwd="/tmp/project",
-        persist=False,
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path,
+            cwd="/tmp/project",
+            persist=False,
+        )
     )
-    root_id = manager.append_message(
-        UserMessage(role="user", content="root", timestamp=0.0)
+    root_id = asyncio.run(
+        manager.append_message(UserMessage(role="user", content="root", timestamp=0.0))
     )
-    manager.append_thinking_level_change("low")
-    manager.append_model_change("faux", first_model.id)
-    first_branch_leaf = manager.append_message(
-        _assistant_text_message("first", model_id=first_model.id)
+    asyncio.run(manager.append_thinking_level_change("low"))
+    asyncio.run(manager.append_model_change("faux", first_model.id))
+    first_branch_leaf = asyncio.run(
+        manager.append_message(
+            _assistant_text_message("first", model_id=first_model.id)
+        )
     )
     manager.branch(root_id)
-    manager.append_thinking_level_change("high")
-    manager.append_model_change("faux", second_model.id)
-    manager.append_message(_assistant_text_message("second", model_id=second_model.id))
+    asyncio.run(manager.append_thinking_level_change("high"))
+    asyncio.run(manager.append_model_change("faux", second_model.id))
+    asyncio.run(
+        manager.append_message(
+            _assistant_text_message("second", model_id=second_model.id)
+        )
+    )
     session = AgentSession(
         agent=Agent(
             initial_state={
@@ -161,15 +209,37 @@ def test_navigate_tree_to_user_message_returns_editor_text(tmp_path) -> None:
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="root")], timestamp=0.0))
-    assistant1_id = manager.append_message(_assistant_text_message("reply 1"))
-    user2_id = manager.append_message(
-        UserMessage(role="user", content=[TextPart(type="text", text="draft follow up")], timestamp=0.0)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
-    manager.append_message(_assistant_text_message("reply 2"))
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user", content=[TextPart(type="text", text="root")], timestamp=0.0
+            )
+        )
+    )
+    assistant1_id = asyncio.run(
+        manager.append_message(_assistant_text_message("reply 1"))
+    )
+    user2_id = asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="draft follow up")],
+                timestamp=0.0,
+            )
+        )
+    )
+    asyncio.run(manager.append_message(_assistant_text_message("reply 2")))
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
     )
 
@@ -178,7 +248,9 @@ def test_navigate_tree_to_user_message_returns_editor_text(tmp_path) -> None:
     assert result.cancelled is False
     assert result.editor_text == "draft follow up"
     assert session.session_manager.get_leaf_id() == assistant1_id
-    assert [getattr(message, "role", None) for message in session.agent.state.messages] == ["user", "assistant"]
+    assert [
+        getattr(message, "role", None) for message in session.agent.state.messages
+    ] == ["user", "assistant"]
 
 
 def test_navigate_tree_raises_for_unknown_target(tmp_path) -> None:
@@ -186,9 +258,17 @@ def test_navigate_tree_raises_for_unknown_target(tmp_path) -> None:
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
     )
 
@@ -206,11 +286,31 @@ def test_navigate_tree_respects_extension_before_tree_cancellation(tmp_path) -> 
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="root")], timestamp=0.0))
-    assistant1_id = manager.append_message(_assistant_text_message("reply 1"))
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="follow up")], timestamp=0.0))
-    old_leaf_id = manager.append_message(_assistant_text_message("reply 2"))
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user", content=[TextPart(type="text", text="root")], timestamp=0.0
+            )
+        )
+    )
+    assistant1_id = asyncio.run(
+        manager.append_message(_assistant_text_message("reply 1"))
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="follow up")],
+                timestamp=0.0,
+            )
+        )
+    )
+    old_leaf_id = asyncio.run(
+        manager.append_message(_assistant_text_message("reply 2"))
+    )
     events: list[object] = []
 
     def _before_tree(event, ctx):
@@ -221,7 +321,13 @@ def test_navigate_tree_respects_extension_before_tree_cancellation(tmp_path) -> 
         return SessionActionDecision(cancel=True)
 
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
         extension_runner=ExtensionRunner(
             [
@@ -245,19 +351,47 @@ def test_navigate_tree_respects_extension_before_tree_cancellation(tmp_path) -> 
     assert events == []
 
 
-def test_navigate_tree_with_summary_appends_branch_summary_and_emits_events(tmp_path, monkeypatch) -> None:
+def test_navigate_tree_with_summary_appends_branch_summary_and_emits_events(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import Agent
     from loushang.coding.compaction import BranchSummaryDetails, BranchSummaryResult
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="root")], timestamp=0.0))
-    assistant1_id = manager.append_message(_assistant_text_message("reply 1"))
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="follow up")], timestamp=0.0))
-    old_leaf_id = manager.append_message(_assistant_text_message("reply 2"))
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user", content=[TextPart(type="text", text="root")], timestamp=0.0
+            )
+        )
+    )
+    assistant1_id = asyncio.run(
+        manager.append_message(_assistant_text_message("reply 1"))
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="follow up")],
+                timestamp=0.0,
+            )
+        )
+    )
+    old_leaf_id = asyncio.run(
+        manager.append_message(_assistant_text_message("reply 2"))
+    )
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
     )
 
@@ -293,7 +427,9 @@ def test_navigate_tree_with_summary_appends_branch_summary_and_emits_events(tmp_
         "readFiles": ["README.md"],
         "modifiedFiles": ["src/app.py"],
     }
-    assert [getattr(message, "role", None) for message in session.agent.state.messages] == [
+    assert [
+        getattr(message, "role", None) for message in session.agent.state.messages
+    ] == [
         "user",
         "assistant",
         "user",
@@ -315,7 +451,9 @@ def test_navigate_tree_with_summary_appends_branch_summary_and_emits_events(tmp_
     }
 
 
-def test_navigate_tree_uses_extension_before_tree_summary_override(tmp_path, monkeypatch) -> None:
+def test_navigate_tree_uses_extension_before_tree_summary_override(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import Agent
     from loushang.coding.compaction import BranchSummaryResult
     from loushang.coding.extensions import (
@@ -326,16 +464,40 @@ def test_navigate_tree_uses_extension_before_tree_summary_override(tmp_path, mon
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="root")], timestamp=0.0))
-    assistant1_id = manager.append_message(_assistant_text_message("reply 1"))
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="follow up")], timestamp=0.0))
-    manager.append_message(_assistant_text_message("reply 2"))
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user", content=[TextPart(type="text", text="root")], timestamp=0.0
+            )
+        )
+    )
+    assistant1_id = asyncio.run(
+        manager.append_message(_assistant_text_message("reply 1"))
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="follow up")],
+                timestamp=0.0,
+            )
+        )
+    )
+    asyncio.run(manager.append_message(_assistant_text_message("reply 2")))
     old_leaf_id = manager.get_leaf_id()
     assert old_leaf_id is not None
 
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
         extension_runner=ExtensionRunner(
             [
@@ -345,7 +507,10 @@ def test_navigate_tree_uses_extension_before_tree_summary_override(tmp_path, mon
                     hooks={
                         "session_before_tree": [
                             lambda event, ctx: SessionBeforeTreeResult(
-                                summary=BranchSummaryResult(summary="extension summary", details={"source": "tree"}),
+                                summary=BranchSummaryResult(
+                                    summary="extension summary",
+                                    details={"source": "tree"},
+                                ),
                                 custom_instructions="from-extension",
                                 replace_instructions=True,
                                 label="from-extension",
@@ -364,31 +529,36 @@ def test_navigate_tree_uses_extension_before_tree_summary_override(tmp_path, mon
         generate_called = True
         del entries_or_messages
         del kwargs
-        raise AssertionError("generate_branch_summary should not be called when extension provides summary")
+        raise AssertionError(
+            "generate_branch_summary should not be called when extension provides summary"
+        )
 
     monkeypatch.setattr(
         "loushang.coding.session.agent_session.generate_branch_summary",
         _fake_generate,
     )
 
-    result = asyncio.run(session.navigate_tree(assistant1_id, summarize=True, custom_instructions="original"))
+    result = asyncio.run(
+        session.navigate_tree(
+            assistant1_id, summarize=True, custom_instructions="original"
+        )
+    )
 
     assert result.cancelled is False
     assert result.aborted is False
     assert generate_called is False
     assert result.summary_entry_id is not None
     summary_entry_id = result.summary_entry_id
-    assert (
-        session.session_manager.get_leaf_id()
-        == manager.get_entries()[-1].record_id
-    )
+    assert session.session_manager.get_leaf_id() == manager.get_entries()[-1].record_id
     summary_entry = session.session_manager.get_entry(summary_entry_id)
     assert summary_entry is not None
     assert summary_entry.kind == "context.branch_summary"
     assert summary_entry.payload.summary == "extension summary"
     assert summary_entry.payload.from_hook is True
     assert session.session_manager.get_label(summary_entry_id) == "from-extension"
-    assert [getattr(message, "role", None) for message in session.agent.state.messages] == [
+    assert [
+        getattr(message, "role", None) for message in session.agent.state.messages
+    ] == [
         "user",
         "assistant",
         "user",
@@ -396,19 +566,47 @@ def test_navigate_tree_uses_extension_before_tree_summary_override(tmp_path, mon
     assert manager.get_entries()[-1].record_id != summary_entry_id
 
 
-def test_abort_branch_summary_cancels_inflight_navigation(tmp_path, monkeypatch) -> None:
+def test_abort_branch_summary_cancels_inflight_navigation(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import Agent
     from loushang.coding.compaction import BranchSummaryResult
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="root")], timestamp=0.0))
-    assistant1_id = manager.append_message(_assistant_text_message("reply 1"))
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="follow up")], timestamp=0.0))
-    old_leaf_id = manager.append_message(_assistant_text_message("reply 2"))
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user", content=[TextPart(type="text", text="root")], timestamp=0.0
+            )
+        )
+    )
+    assistant1_id = asyncio.run(
+        manager.append_message(_assistant_text_message("reply 1"))
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="follow up")],
+                timestamp=0.0,
+            )
+        )
+    )
+    old_leaf_id = asyncio.run(
+        manager.append_message(_assistant_text_message("reply 2"))
+    )
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
     )
 
@@ -452,19 +650,45 @@ def test_abort_branch_summary_cancels_inflight_navigation(tmp_path, monkeypatch)
     }
 
 
-def test_navigate_tree_records_branch_summary_failure_in_diagnostics(tmp_path, monkeypatch) -> None:
+def test_navigate_tree_records_branch_summary_failure_in_diagnostics(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.agent import Agent
     from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="root")], timestamp=0.0))
-    assistant1_id = manager.append_message(_assistant_text_message("reply 1"))
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="follow up")], timestamp=0.0))
-    manager.append_message(_assistant_text_message("reply 2"))
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user", content=[TextPart(type="text", text="root")], timestamp=0.0
+            )
+        )
+    )
+    assistant1_id = asyncio.run(
+        manager.append_message(_assistant_text_message("reply 1"))
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="follow up")],
+                timestamp=0.0,
+            )
+        )
+    )
+    asyncio.run(manager.append_message(_assistant_text_message("reply 2")))
     session = AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
         diagnostics_service=DiagnosticsService(),
     )

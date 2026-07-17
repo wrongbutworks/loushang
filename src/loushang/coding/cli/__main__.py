@@ -1600,7 +1600,9 @@ async def _apply_model_and_thinking_overrides(
                     f"but {warning}\n"
                 )
         if args.thinking is not None:
-            session.set_thinking_level(args.thinking)
+            thinking_result = session.set_thinking_level(args.thinking)
+            if inspect.isawaitable(thinking_result):
+                await thinking_result
     except (RuntimeError, ValueError) as error:
         stderr.write(f"Error: {_format_cli_error(error)}\n")
         return 1

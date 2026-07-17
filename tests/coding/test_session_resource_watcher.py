@@ -9,7 +9,9 @@ from loushang.coding.session.resource_watcher import ResourceChangeWatcher
 from loushang.coding.store import SessionManager
 
 
-def test_resource_change_watcher_establishes_baseline_then_reports_changes(tmp_path) -> None:
+def test_resource_change_watcher_establishes_baseline_then_reports_changes(
+    tmp_path,
+) -> None:
     watched = tmp_path / "prompts"
     watched.mkdir()
     prompt = watched / "review.md"
@@ -29,7 +31,9 @@ def test_resource_change_watcher_establishes_baseline_then_reports_changes(tmp_p
     assert calls == ["reload"]
 
 
-def test_agent_session_resource_watch_poll_uses_resource_refresh_pipeline(tmp_path) -> None:
+def test_agent_session_resource_watch_poll_uses_resource_refresh_pipeline(
+    tmp_path,
+) -> None:
     project = tmp_path / "project"
     prompts = project / "prompts"
     prompts.mkdir(parents=True)
@@ -39,7 +43,11 @@ def test_agent_session_resource_watch_poll_uses_resource_refresh_pipeline(tmp_pa
     bundle = loader.discover_resources(project)
     session = AgentSession(
         agent=Agent(initial_state={"system_prompt": "Base"}),
-        session_manager=SessionManager.new(session_dir=tmp_path / "sessions", cwd=str(project), persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path / "sessions", cwd=str(project), persist=False
+            )
+        ),
         resource_loader=loader,
         resource_bundle=bundle,
         base_prompt="Base",
@@ -58,7 +66,11 @@ def test_agent_session_dispose_stops_resource_watcher(tmp_path) -> None:
     project.mkdir()
     session = AgentSession(
         agent=Agent(initial_state={"system_prompt": "Base"}),
-        session_manager=SessionManager.new(session_dir=tmp_path / "sessions", cwd=str(project), persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path / "sessions", cwd=str(project), persist=False
+            )
+        ),
         resource_loader=DefaultResourceLoader(),
         base_prompt="Base",
     )

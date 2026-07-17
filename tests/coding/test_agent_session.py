@@ -31,14 +31,16 @@ def test_agent_session_restores_persisted_context_on_init(tmp_path) -> None:
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="hi")],
-            timestamp=0.0,
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="hi")],
+                timestamp=0.0,
+            )
         )
     )
 
@@ -108,10 +110,10 @@ def test_agent_session_composes_existing_transform_with_extension_context_withou
 
     project_dir = tmp_path / "project"
     project_dir.mkdir()
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd=str(project_dir), persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd=str(project_dir), persist=False)
     )
-    manager.append_message(_user_message("persisted"))
+    asyncio.run(manager.append_message(_user_message("persisted")))
     agent = Agent(transform_context=_existing_transform)
     session = AgentSession(
         agent=agent,
@@ -173,8 +175,8 @@ def test_agent_session_binds_extension_runtime_state_context_methods(tmp_path) -
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         extension_runner=runner,
     )
@@ -262,7 +264,7 @@ def test_agent_session_prompt_persists_messages_and_forwards_events(tmp_path) ->
 
     async def scenario() -> None:
         agent = Agent(stream_fn=stream_fn)
-        manager = SessionManager.new(
+        manager = await SessionManager.new(
             session_dir=tmp_path, cwd="/tmp/project", persist=False
         )
         session = AgentSession(agent=agent, session_manager=manager)
@@ -332,7 +334,7 @@ def test_agent_session_abort_mid_stream_cleans_run_state_and_keeps_queued_messag
     async def scenario() -> AgentSession:
         session = AgentSession(
             agent=Agent(stream_fn=stream_fn),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path, cwd="/tmp/project", persist=False
             ),
         )
@@ -376,7 +378,7 @@ def test_agent_session_prompt_reports_preflight_before_stream_finishes(
         agent = Agent(stream_fn=stream_fn)
         session = AgentSession(
             agent=agent,
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path, cwd="/tmp/project", persist=False
             ),
         )
@@ -423,7 +425,7 @@ def test_agent_session_prompt_expands_preflight_references_and_records_unresolve
         return _stream_with_final_message(_assistant_text_message("hello"))
 
     async def scenario() -> None:
-        manager = SessionManager.new(
+        manager = await SessionManager.new(
             session_dir=tmp_path, cwd="/tmp/project", persist=False
         )
         diagnostics = DiagnosticsService()
@@ -501,7 +503,7 @@ def test_agent_session_slash_prefix_deploy_consumes_extension_command_without_pr
     async def scenario() -> None:
         session = AgentSession(
             agent=Agent(stream_fn=stream_fn),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path, cwd="/tmp/project", persist=False
             ),
             extension_runner=ExtensionRunner(
@@ -558,7 +560,7 @@ def test_agent_session_input_hook_transforms_before_prompt_preflight(tmp_path) -
     async def scenario() -> None:
         session = AgentSession(
             agent=Agent(stream_fn=stream_fn),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path, cwd="/tmp/project", persist=False
             ),
             resource_bundle=ResourceBundle(
@@ -621,7 +623,7 @@ def test_agent_session_input_hook_can_handle_prompt_without_model_call(
     async def scenario() -> None:
         session = AgentSession(
             agent=Agent(stream_fn=stream_fn),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path, cwd="/tmp/project", persist=False
             ),
             extension_runner=ExtensionRunner(
@@ -667,7 +669,7 @@ def test_agent_session_extension_command_runs_before_input_hook(tmp_path) -> Non
     async def scenario() -> None:
         session = AgentSession(
             agent=Agent(),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path, cwd="/tmp/project", persist=False
             ),
             extension_runner=ExtensionRunner(
@@ -725,7 +727,7 @@ def test_agent_session_input_hook_transform_to_extension_command_is_plain_prompt
     async def scenario() -> None:
         session = AgentSession(
             agent=Agent(stream_fn=stream_fn),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path, cwd="/tmp/project", persist=False
             ),
             extension_runner=ExtensionRunner(
@@ -782,7 +784,7 @@ def test_agent_session_forwards_agent_lifecycle_events_to_extensions(tmp_path) -
     async def scenario() -> None:
         session = AgentSession(
             agent=Agent(),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path, cwd="/tmp/project", persist=False
             ),
             extension_runner=ExtensionRunner(
@@ -865,7 +867,7 @@ def test_agent_session_forwards_message_and_tool_execution_events_to_extensions(
     async def scenario() -> None:
         session = AgentSession(
             agent=Agent(),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path, cwd="/tmp/project", persist=False
             ),
             extension_runner=ExtensionRunner(
@@ -919,7 +921,7 @@ def test_agent_session_records_tool_execution_error_diagnostic_with_correlation(
     from loushang.coding.store import SessionManager
 
     async def scenario() -> DiagnosticsService:
-        manager = SessionManager.new(
+        manager = await SessionManager.new(
             session_dir=tmp_path, cwd="/tmp/project", persist=False
         )
         diagnostics = DiagnosticsService()
@@ -995,7 +997,7 @@ def test_agent_session_applies_before_agent_start_result(tmp_path) -> None:
                 stream_fn=stream_fn,
                 initial_state={"system_prompt": "Base system prompt"},
             ),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path, cwd="/tmp/project", persist=False
             ),
             extension_runner=ExtensionRunner(
@@ -1117,7 +1119,7 @@ def test_agent_session_extension_hook_ordering_spans_provider_tool_and_agent_end
                     "tools": [FinishingTool()],
                 },
             ),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path, cwd="/tmp/project", persist=False
             ),
             extension_runner=ExtensionRunner(
@@ -1168,7 +1170,7 @@ def test_agent_session_execute_bash_uses_extension_user_bash_result(tmp_path) ->
     async def scenario() -> dict[str, object]:
         session = AgentSession(
             agent=Agent(),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path, cwd="/tmp/project", persist=False
             ),
             extension_runner=ExtensionRunner(
@@ -1232,7 +1234,7 @@ def test_agent_session_execute_bash_uses_extension_user_bash_operations(
         registry = register_builtin_tools(ToolRegistry())
         session = AgentSession(
             agent=Agent(),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path, cwd="/tmp/project", persist=False
             ),
             extension_runner=ExtensionRunner(
@@ -1287,8 +1289,8 @@ def test_agent_session_steer_rejects_extension_command_without_executing(
 
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         extension_runner=ExtensionRunner(
             [
@@ -1336,8 +1338,8 @@ def test_agent_session_follow_up_rejects_extension_command_without_executing(
 
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         extension_runner=ExtensionRunner(
             [
@@ -1383,8 +1385,8 @@ def test_agent_session_get_commands_aggregates_extension_prompt_and_skill_source
     async def _handler(args: str, ctx):
         del args, ctx
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     session = AgentSession(
         agent=Agent(),
@@ -1483,8 +1485,8 @@ def test_agent_session_list_commands_hides_disabled_skills_but_keeps_explicit_on
 
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         resource_bundle=ResourceBundle(
             cwd=Path("/tmp/project"),
@@ -1534,7 +1536,7 @@ def test_agent_session_execute_command_async_dispatches_extension_command(
         calls.append((args, ctx.cwd, type(ctx).__name__))
 
     async def scenario() -> None:
-        manager = SessionManager.new(
+        manager = await SessionManager.new(
             session_dir=tmp_path, cwd="/tmp/project", persist=False
         )
         session = AgentSession(
@@ -1613,7 +1615,7 @@ def test_agent_session_extension_command_context_exec_command_uses_exec_service(
         seen.append((result, updates))
 
     async def scenario() -> None:
-        manager = SessionManager.new(
+        manager = await SessionManager.new(
             session_dir=tmp_path, cwd="/tmp/project", persist=False
         )
         session = AgentSession(
@@ -1673,8 +1675,8 @@ def test_agent_session_execute_command_async_expands_prompt_and_skill_commands(
 
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         resource_bundle=ResourceBundle(
             cwd=Path("/tmp/project"),
@@ -1743,8 +1745,8 @@ def test_agent_session_execute_command_async_prefers_extension_over_prompt(
 
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         resource_bundle=ResourceBundle(
             cwd=Path("/tmp/project"),
@@ -1797,7 +1799,7 @@ def test_agent_session_returns_command_argument_completions(tmp_path) -> None:
     async def scenario() -> None:
         session = AgentSession(
             agent=Agent(),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path, cwd="/tmp/project", persist=False
             ),
             extension_runner=ExtensionRunner(
@@ -1866,7 +1868,7 @@ def test_agent_session_extension_command_context_wait_for_idle_and_reload(
         )
         session = AgentSession(
             agent=Agent(),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path, cwd="/tmp/project", persist=False
             ),
             extension_runner=runner,
@@ -1904,12 +1906,12 @@ def test_agent_session_extension_command_context_navigate_tree(tmp_path) -> None
         events.append((event.oldLeafId, event.newLeafId, event.summaryEntry))
 
     async def scenario() -> None:
-        manager = SessionManager.new(
+        manager = await SessionManager.new(
             session_dir=tmp_path, cwd="/tmp/project", persist=False
         )
-        manager.append_message(_user_message("first"))
-        target_id = manager.append_message(_assistant_text_message("assistant"))
-        manager.append_message(_user_message("second"))
+        await manager.append_message(_user_message("first"))
+        target_id = await manager.append_message(_assistant_text_message("assistant"))
+        await manager.append_message(_user_message("second"))
         old_leaf_id = manager.get_leaf_id()
         session = AgentSession(
             agent=Agent(),
@@ -1964,7 +1966,7 @@ def test_agent_session_execute_command_async_records_errors(tmp_path) -> None:
         raise RuntimeError("boom")
 
     async def scenario() -> None:
-        manager = SessionManager.new(
+        manager = await SessionManager.new(
             session_dir=tmp_path, cwd="/tmp/project", persist=False
         )
         diagnostics_service = DiagnosticsService()
@@ -2016,8 +2018,8 @@ def test_agent_session_execute_command_async_returns_none_for_unknown_command(
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     diagnostics_service = DiagnosticsService()
     session = AgentSession(
@@ -2049,8 +2051,8 @@ def test_agent_session_execute_command_async_keeps_resource_diagnostic_for_unres
     diagnostics_service = DiagnosticsService()
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         diagnostics_service=diagnostics_service,
         resource_bundle=ResourceBundle(cwd=Path("/tmp/project")),
@@ -2079,8 +2081,8 @@ def test_agent_session_get_commands_includes_all_extension_commands(tmp_path) ->
     async def _handler(args: str, ctx):
         del args, ctx
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     session = AgentSession(
         agent=Agent(),
@@ -2120,22 +2122,24 @@ def test_agent_session_lists_user_messages_for_forking(tmp_path) -> None:
     from loushang.coding.store import SessionManager
     from loushang.harness.conversation import CommandExecutionRecord
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
-    first_id = manager.append_message(_user_message("first"))
-    manager.append_message(_assistant_text_message("assistant"))
-    manager.append_message(
-        CommandExecutionRecord(
-            command="printf hi",
-            output="hi\n",
-            exit_code=0,
-            cancelled=False,
-            truncated=False,
-            full_output_path=None,
+    first_id = asyncio.run(manager.append_message(_user_message("first")))
+    asyncio.run(manager.append_message(_assistant_text_message("assistant")))
+    asyncio.run(
+        manager.append_message(
+            CommandExecutionRecord(
+                command="printf hi",
+                output="hi\n",
+                exit_code=0,
+                cancelled=False,
+                truncated=False,
+                full_output_path=None,
+            )
         )
     )
-    second_id = manager.append_message(_user_message("second"))
+    second_id = asyncio.run(manager.append_message(_user_message("second")))
 
     session = AgentSession(agent=Agent(), session_manager=manager)
 
@@ -2156,8 +2160,8 @@ def test_agent_session_exposes_pi_style_last_assistant_text_alias(tmp_path) -> N
 
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
     )
     session.agent.state.set_messages(
@@ -2175,8 +2179,8 @@ def test_agent_session_exposes_recent_assistant_texts_newest_first(tmp_path) -> 
 
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
     )
     session.agent.state.set_messages(
@@ -2196,12 +2200,14 @@ def test_agent_session_exposes_pi_style_state_property_aliases(tmp_path) -> None
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=True)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=True)
+    )
     session = AgentSession(
         agent=Agent(initial_state={"model": _model()}), session_manager=manager
     )
-    session.set_session_name("Demo")
-    session.set_thinking_level("high")
+    asyncio.run(session.set_session_name("Demo"))
+    asyncio.run(session.set_thinking_level("high"))
     session.set_steering_mode("all")
     session.set_follow_up_mode("one-at-a-time")
 
@@ -2235,7 +2241,7 @@ def test_agent_session_steer_then_continue_persists_follow_on_turn(tmp_path) -> 
 
     async def scenario() -> None:
         agent = Agent(stream_fn=stream_fn)
-        manager = SessionManager.new(
+        manager = await SessionManager.new(
             session_dir=tmp_path, cwd="/tmp/project", persist=False
         )
         session = AgentSession(agent=agent, session_manager=manager)
@@ -2270,8 +2276,8 @@ def test_agent_session_exposes_pi_style_queue_accessors_and_clear_queue(
 
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
     )
     events: list[tuple[list[str], list[str]]] = []
@@ -2313,8 +2319,8 @@ def test_agent_session_removes_visible_queue_when_queued_user_message_starts(
 
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
     )
     events: list[tuple[list[str], list[str]]] = []
@@ -2352,8 +2358,8 @@ def test_agent_session_follow_up_and_state_snapshot(tmp_path) -> None:
     agent = Agent(
         initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     session = AgentSession(agent=agent, session_manager=manager)
 
@@ -2382,8 +2388,8 @@ def test_agent_session_set_model_and_thinking_level_persist_to_store(tmp_path) -
     agent = Agent(
         initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
     )
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     session = AgentSession(agent=agent, session_manager=manager)
 
@@ -2401,7 +2407,7 @@ def test_agent_session_set_model_and_thinking_level_persist_to_store(tmp_path) -
     )
 
     asyncio.run(session.set_model(next_model))
-    session.set_thinking_level("high")
+    asyncio.run(session.set_thinking_level("high"))
 
     assert session.get_model_selection() == ModelSelection(
         provider="alt", model_id="alt-model"
@@ -2445,8 +2451,8 @@ def test_agent_session_cycles_model_and_thinking_level(tmp_path) -> None:
         agent=Agent(
             initial_state={"system_prompt": "", "model": first, "thinking_level": "low"}
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         model_registry=ModelRegistry(ai_registry=ai_registry),
     )
@@ -2457,7 +2463,7 @@ def test_agent_session_cycles_model_and_thinking_level(tmp_path) -> None:
     assert session.get_model_selection() == ModelSelection(
         provider="alt", model_id="alt-model"
     )
-    assert session.cycle_thinking_level() == "medium"
+    assert asyncio.run(session.cycle_thinking_level()) == "medium"
     assert session.get_state().thinking_level == "medium"
 
 
@@ -2499,8 +2505,8 @@ def test_agent_session_emits_model_select_event_for_async_model_control(
         agent=Agent(
             initial_state={"system_prompt": "", "model": first, "thinking_level": "low"}
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         model_registry=ModelRegistry(ai_registry=ai_registry),
         extension_runner=ExtensionRunner(
@@ -2552,8 +2558,8 @@ def test_agent_session_exposes_pi_style_model_and_session_mutators(tmp_path) -> 
         agent=Agent(
             initial_state={"system_prompt": "", "model": first, "thinking_level": "low"}
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         model_registry=ModelRegistry(ai_registry=ai_registry),
     )
@@ -2570,11 +2576,11 @@ def test_agent_session_exposes_pi_style_model_and_session_mutators(tmp_path) -> 
         provider="faux", model_id="faux-model"
     )
 
-    session.setThinkingLevel("high")
+    asyncio.run(session.setThinkingLevel("high"))
     assert session.thinkingLevel == "high"
-    assert session.cycleThinkingLevel() == "xhigh"
+    assert asyncio.run(session.cycleThinkingLevel()) == "xhigh"
 
-    session.setSessionName("SDK Demo")
+    asyncio.run(session.setSessionName("SDK Demo"))
     assert session.getSessionName() == "SDK Demo"
 
 
@@ -2634,8 +2640,8 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
                 "thinking_level": "low",
             }
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         model_registry=model_registry,
         extension_runner=ExtensionRunner([api.build_loaded_extension()]),
@@ -2725,8 +2731,10 @@ def test_agent_session_rejects_pi_style_extension_provider_config(tmp_path) -> N
                     "thinking_level": "low",
                 }
             ),
-            session_manager=SessionManager.new(
-                session_dir=tmp_path, cwd="/tmp/project", persist=False
+            session_manager=asyncio.run(
+                SessionManager.new(
+                    session_dir=tmp_path, cwd="/tmp/project", persist=False
+                )
             ),
             model_registry=ModelRegistry(ai_registry=ai_registry),
             diagnostics_service=diagnostics_service,
@@ -2831,8 +2839,8 @@ def test_agent_session_exposes_pi_style_scoped_models_and_resources(tmp_path) ->
         agent=Agent(
             initial_state={"system_prompt": "", "model": first, "thinking_level": "low"}
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         model_registry=ModelRegistry(ai_registry=ai_registry),
         resource_loader=loader,
@@ -2870,11 +2878,11 @@ def test_agent_session_exposes_pi_style_thinking_and_context_queries(tmp_path) -
                 "thinking_level": "low",
             }
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
     )
-    session.session_manager.append_message(_user_message("hello"))
+    asyncio.run(session.session_manager.append_message(_user_message("hello")))
 
     assert session.supportsThinking() is True
     assert session.supports_thinking() is True
@@ -2896,7 +2904,7 @@ def test_agent_session_exposes_pi_style_thinking_and_context_queries(tmp_path) -
         "high",
         "xhigh",
     ]
-    assert session.cycle_thinking_level() == "medium"
+    assert asyncio.run(session.cycle_thinking_level()) == "medium"
     assert session.get_context_usage()["messageCount"] == 1
 
     non_reasoning = Model(
@@ -2919,7 +2927,7 @@ def test_agent_session_exposes_pi_style_thinking_and_context_queries(tmp_path) -
     assert session.supports_xhigh_thinking() is False
     assert session.getAvailableThinkingLevels() == ["off"]
     assert session.get_available_thinking_levels() == ["off"]
-    assert session.cycle_thinking_level() is None
+    assert asyncio.run(session.cycle_thinking_level()) is None
     assert session.thinkingLevel == "off"
 
 
@@ -2938,8 +2946,8 @@ def test_agent_session_exposes_pi_style_runtime_facades(tmp_path) -> None:
                 "thinking_level": "low",
             }
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         settings_manager=settings,
     )
@@ -2954,8 +2962,12 @@ def test_agent_session_exposes_pi_style_runtime_facades(tmp_path) -> None:
     session.abort_branch_summary()
     assert session.isBashRunning is False
     assert session.hasPendingBashMessages is False
-    session.recordBashResult(
-        "echo hi", {"output": "hi\n", "exitCode": 0}, {"excludeFromContext": True}
+    asyncio.run(
+        session.recordBashResult(
+            "echo hi",
+            {"output": "hi\n", "exitCode": 0},
+            {"excludeFromContext": True},
+        )
     )
     assert session.get_session_context().messages == ()
     assert session.session_manager.get_entries()[-1].kind == "command.execution"
@@ -2971,8 +2983,8 @@ def test_agent_session_persists_queue_modes_to_settings(tmp_path) -> None:
     settings = SettingsManager(global_settings_path=settings_path)
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         settings_manager=settings,
     )
@@ -2997,8 +3009,8 @@ def test_agent_session_binds_extensions_before_session_start(tmp_path) -> None:
         del event
         seen.append((ctx.cwd, tuple(ctx.get_active_tool_names())))
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     session = AgentSession(
         agent=Agent(
@@ -3044,8 +3056,8 @@ def test_agent_session_extension_status_updates_footer_data_provider(tmp_path) -
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         extension_runner=ExtensionRunner(
             [
@@ -3108,8 +3120,8 @@ def test_agent_session_footer_data_provider_tracks_available_provider_count(
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         model_registry=model_registry,
         extension_runner=ExtensionRunner([api.build_loaded_extension()]),
@@ -3152,8 +3164,8 @@ def test_agent_session_exposes_available_model_details_for_metadata_consumers(
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         model_registry=ModelRegistry(ai_registry=ai_registry),
     )
@@ -3181,8 +3193,8 @@ def test_agent_session_disposes_footer_data_provider(tmp_path) -> None:
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
     )
     changes: list[str | None] = []
@@ -3225,7 +3237,7 @@ def test_agent_session_disposal_paths_complete_pending_approvals(tmp_path) -> No
                     "thinking_level": "off",
                 }
             ),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path / dispose_method,
                 cwd="/tmp/project",
                 persist=False,
@@ -3274,7 +3286,7 @@ def test_agent_session_disposal_closes_approval_before_waiting_for_host(
                     "thinking_level": "off",
                 }
             ),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path / f"host-{dispose_method}",
                 cwd="/tmp/project",
                 persist=False,
@@ -3326,7 +3338,7 @@ def test_agent_session_presenter_detach_denies_pending_approvals(tmp_path) -> No
                     "thinking_level": "off",
                 }
             ),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path,
                 cwd="/tmp/project",
                 persist=False,
@@ -3375,7 +3387,7 @@ def test_agent_session_presenter_rebind_reopens_active_approval_generation(
                     "thinking_level": "off",
                 }
             ),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path,
                 cwd="/tmp/project",
                 persist=False,
@@ -3437,7 +3449,7 @@ def test_agent_session_disposal_finalizes_when_host_dispose_fails(tmp_path) -> N
                     "thinking_level": "off",
                 }
             ),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path / dispose_method,
                 cwd="/tmp/project",
                 persist=False,
@@ -3471,8 +3483,8 @@ def test_agent_session_extension_runtime_actions_update_session_store(tmp_path) 
 
     async def _before(event, ctx):
         del event
-        entry_id = ctx.sessionManager.append_message(_user_message("root"))
-        ctx.appendEntry("demo_state", {"enabled": True})
+        entry_id = await ctx.sessionManager.append_message(_user_message("root"))
+        await ctx.appendEntry("demo_state", {"enabled": True})
         await ctx.sendMessage(
             {
                 "customType": "demo_notice",
@@ -3481,8 +3493,8 @@ def test_agent_session_extension_runtime_actions_update_session_store(tmp_path) 
                 "details": {"source": "extension"},
             }
         )
-        ctx.setSessionName("Demo Session")
-        ctx.setLabel(entry_id, "Root")
+        await ctx.setSessionName("Demo Session")
+        await ctx.setLabel(entry_id, "Root")
         seen.append(
             (
                 ctx.getSessionName(),
@@ -3492,8 +3504,8 @@ def test_agent_session_extension_runtime_actions_update_session_store(tmp_path) 
             )
         )
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     session = AgentSession(
         agent=Agent(
@@ -3578,7 +3590,7 @@ def test_agent_session_extension_send_user_message_triggers_turn_without_command
         return "nested"
 
     async def scenario() -> None:
-        manager = SessionManager.new(
+        manager = await SessionManager.new(
             session_dir=tmp_path, cwd="/tmp/project", persist=False
         )
         session = AgentSession(
@@ -3640,7 +3652,7 @@ def test_agent_session_extension_send_user_message_queues_while_streaming(
         await ctx.sendUserMessage("queued follow", {"deliverAs": "followUp"})
 
     async def scenario() -> None:
-        manager = SessionManager.new(
+        manager = await SessionManager.new(
             session_dir=tmp_path, cwd="/tmp/project", persist=False
         )
         agent = Agent()
@@ -3699,7 +3711,7 @@ def test_agent_session_send_message_next_turn_is_appended_after_user_message(
         )
 
     async def scenario() -> None:
-        manager = SessionManager.new(
+        manager = await SessionManager.new(
             session_dir=tmp_path, cwd="/tmp/project", persist=False
         )
         session = AgentSession(
@@ -3752,8 +3764,8 @@ def test_agent_session_send_custom_message_public_api_persists_and_emits_events(
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
     )
     events: list[tuple[str, str]] = []
@@ -3810,7 +3822,7 @@ def test_agent_session_send_user_message_public_api_triggers_turn_without_comman
     async def scenario() -> None:
         session = AgentSession(
             agent=Agent(stream_fn=stream_fn),
-            session_manager=SessionManager.new(
+            session_manager=await SessionManager.new(
                 session_dir=tmp_path, cwd="/tmp/project", persist=False
             ),
             extension_runner=ExtensionRunner(
@@ -3886,8 +3898,8 @@ def test_agent_session_reload_extensions_refreshes_resources_before_session_star
             reload_calls.append(str(cwd))
             return ResourceBundle(cwd=Path(cwd), prompt_fragments=["reloaded prompt"])
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     session = AgentSession(
         agent=Agent(
@@ -3956,8 +3968,8 @@ def test_agent_session_set_active_tools_emits_session_refresh(tmp_path) -> None:
     def _session_refresh(event, ctx):
         seen.append((event.reason, tuple(ctx.get_active_tool_names())))
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     registry = ToolRegistry()
     registry.register_tool(read_file)
@@ -4015,8 +4027,8 @@ def test_agent_session_refresh_does_not_reemit_session_start(tmp_path) -> None:
         del ctx
         refresh_events.append(event.reason)
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     registry = ToolRegistry()
     registry.register_tool(read_file)
@@ -4071,8 +4083,8 @@ def test_agent_session_set_extension_ui_context_rebinds_context_without_lifecycl
     def _session_refresh(event, ctx):
         refresh_events.append((event.reason, ctx.hasUI))
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     runner = ExtensionRunner(
         [
@@ -4141,8 +4153,8 @@ def test_agent_session_dispose_invalidates_extension_contexts_after_shutdown_hoo
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         extension_runner=runner,
     )
@@ -4178,8 +4190,8 @@ def test_agent_session_dispose_invalidates_extension_contexts_when_shutdown_emit
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         extension_runner=runner,
     )
@@ -4224,8 +4236,8 @@ def test_agent_session_set_model_emits_session_refresh(tmp_path) -> None:
     def _session_refresh(event, ctx):
         seen.append((event.reason, ctx.get_model_selection()))
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     session = AgentSession(
         agent=Agent(
@@ -4279,8 +4291,8 @@ def test_agent_session_invalid_extension_refresh_model_change_keeps_top_level_mo
         del event
         await ctx.set_model(object())
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     diagnostics = DiagnosticsService()
     session = AgentSession(
@@ -4349,8 +4361,8 @@ def test_extension_session_refresh_actions_do_not_recursively_emit_refresh(
         refresh_reasons.append(event.reason)
         await ctx.set_active_tools(["read_file", "grep_file"])
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     registry = ToolRegistry()
     registry.register_tool(read_file)
@@ -4411,8 +4423,8 @@ def test_agent_session_extension_can_request_resource_refresh(tmp_path) -> None:
         requested.append(ctx.cwd)
 
     loader = DefaultResourceLoader()
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     session = AgentSession(
         agent=Agent(),
@@ -4451,8 +4463,8 @@ def test_agent_session_extension_request_resource_refresh_is_nonfatal_without_lo
         ctx.request_resource_refresh()
         requested.append(ctx.cwd)
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     session = AgentSession(
         agent=Agent(
@@ -4508,8 +4520,8 @@ def test_agent_session_resource_refresh_rebuilds_prompt_and_tools_without_emitti
         def reload_resources(self, cwd):
             return ResourceBundle(cwd=Path(cwd), prompt_fragments=["reloaded prompt"])
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     registry = ToolRegistry()
     registry.register_tool(read_file)
@@ -4561,8 +4573,8 @@ def test_agent_session_records_reload_failures_as_diagnostics(tmp_path) -> None:
             del cwd
             raise RuntimeError("reload boom")
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     diagnostics = DiagnosticsService()
     session = AgentSession(
@@ -4640,8 +4652,8 @@ def test_agent_session_records_bind_failures_as_diagnostics(tmp_path) -> None:
             ]
         )
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     diagnostics = DiagnosticsService()
     session = AgentSession(
@@ -4685,13 +4697,17 @@ def test_agent_session_exposes_session_metadata_and_messages(tmp_path) -> None:
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=True)
-    manager.append_session_info(" Demo Session ")
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="hi")],
-            timestamp=0.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=True)
+    )
+    asyncio.run(manager.append_session_info(" Demo Session "))
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="hi")],
+                timestamp=0.0,
+            )
         )
     )
     session = AgentSession(
@@ -4718,53 +4734,59 @@ def test_agent_session_exposes_context_usage_and_stats(tmp_path) -> None:
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="hi")],
-            timestamp=0.0,
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="hi")],
+                timestamp=0.0,
+            )
         )
     )
-    manager.append_message(
-        AssistantMessage(
-            role="assistant",
-            content=[
-                TextPart(type="text", text="reading"),
-                ToolCall(
-                    type="toolCall",
-                    id="tool-1",
-                    name="read",
-                    arguments={"path": "README.md"},
+    asyncio.run(
+        manager.append_message(
+            AssistantMessage(
+                role="assistant",
+                content=[
+                    TextPart(type="text", text="reading"),
+                    ToolCall(
+                        type="toolCall",
+                        id="tool-1",
+                        name="read",
+                        arguments={"path": "README.md"},
+                    ),
+                ],
+                api="anthropic-messages",
+                provider="faux",
+                model="faux-model",
+                response_id=None,
+                usage=Usage(
+                    input=2,
+                    output=3,
+                    cache_read=5,
+                    cache_write=7,
+                    total_tokens=17,
+                    cost={"total": 0.25},
                 ),
-            ],
-            api="anthropic-messages",
-            provider="faux",
-            model="faux-model",
-            response_id=None,
-            usage=Usage(
-                input=2,
-                output=3,
-                cache_read=5,
-                cache_write=7,
-                total_tokens=17,
-                cost={"total": 0.25},
-            ),
-            stop_reason="toolUse",
-            error_message=None,
-            timestamp=1.0,
+                stop_reason="toolUse",
+                error_message=None,
+                timestamp=1.0,
+            )
         )
     )
-    manager.append_message(
-        ToolResultMessage(
-            role="toolResult",
-            tool_call_id="tool-1",
-            tool_name="read",
-            content=[TextPart(type="text", text="ok")],
-            is_error=False,
-            timestamp=2.0,
+    asyncio.run(
+        manager.append_message(
+            ToolResultMessage(
+                role="toolResult",
+                tool_call_id="tool-1",
+                tool_name="read",
+                content=[TextPart(type="text", text="ok")],
+                is_error=False,
+                timestamp=2.0,
+            )
         )
     )
     session = AgentSession(
@@ -4827,8 +4849,8 @@ def test_agent_session_exposes_session_state_runtime_queue(tmp_path) -> None:
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
     )
 
@@ -4871,14 +4893,14 @@ def test_agent_session_set_session_name_emits_session_info_changed(tmp_path) -> 
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
     )
     events: list[object] = []
     session.subscribe(events.append)
 
-    session.set_session_name("Demo")
+    asyncio.run(session.set_session_name("Demo"))
 
     assert session.session_name == "Demo"
     assert events == [{"type": "session_info_changed", "name": "Demo"}]
@@ -4899,8 +4921,8 @@ def test_agent_session_exposes_session_scoped_diagnostics(tmp_path) -> None:
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         diagnostics_service=diagnostics,
     )
@@ -4947,8 +4969,8 @@ def test_agent_session_get_packages_projects_materializer_state(tmp_path) -> Non
     materializer.prepare_remote_source(source)
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
         ),
         settings_manager=settings,
         package_materializer=materializer,
@@ -4997,8 +5019,8 @@ def test_agent_session_records_remote_package_manifest_diagnostics(tmp_path) -> 
     asyncio.run(materializer.materialize_remote_source(source))
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
         ),
         settings_manager=settings,
         package_materializer=materializer,
@@ -5029,8 +5051,8 @@ def test_agent_session_records_package_catalog_diagnostics(tmp_path) -> None:
     diagnostics = DiagnosticsService()
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
         ),
         settings_manager=SettingsManager(ControlConfig()),
         diagnostics_service=diagnostics,
@@ -5062,8 +5084,8 @@ def test_agent_session_materialize_package_returns_policy_denied_record(
     materializer = PackageMaterializer(install_root=tmp_path / "packages")
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
         ),
         settings_manager=settings,
         package_materializer=materializer,
@@ -5106,8 +5128,8 @@ def test_agent_session_updates_and_removes_materialized_packages(tmp_path) -> No
     )
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
         ),
         settings_manager=settings,
         package_materializer=materializer,
@@ -5157,8 +5179,8 @@ def test_agent_session_installs_and_uninstalls_package_with_settings(tmp_path) -
     )
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
         ),
         settings_manager=settings,
         package_materializer=materializer,
@@ -5198,8 +5220,8 @@ def test_agent_session_installs_and_uninstalls_local_package_with_settings(
     materializer = PackageMaterializer(install_root=tmp_path / "packages")
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
         ),
         settings_manager=settings,
         package_materializer=materializer,
@@ -5247,8 +5269,8 @@ def test_agent_session_install_package_does_not_persist_failed_materialization(
     )
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
         ),
         settings_manager=settings,
         package_materializer=materializer,
@@ -5297,8 +5319,8 @@ def test_agent_session_install_package_refreshes_resources_for_current_session(
     )
     session = AgentSession(
         agent=Agent(initial_state={"system_prompt": "Base"}),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
         ),
         settings_manager=settings,
         resource_loader=DefaultResourceLoader(),
@@ -5342,8 +5364,8 @@ def test_agent_session_emits_package_progress_events(tmp_path) -> None:
     )
     session = AgentSession(
         agent=Agent(initial_state={"system_prompt": "Base"}),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
         ),
         settings_manager=settings,
         package_materializer=materializer,
@@ -5394,8 +5416,8 @@ def test_agent_session_updates_all_packages_and_checks_updates(tmp_path) -> None
     settings = SettingsManager(ControlConfig(plugin_sources=(source,)))
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
         ),
         settings_manager=settings,
         package_materializer=materializer,
@@ -5445,8 +5467,8 @@ def test_agent_session_updates_and_checks_configured_package_sources(tmp_path) -
     )
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
         ),
         settings_manager=settings,
         package_materializer=materializer,
@@ -5506,8 +5528,10 @@ def test_agent_session_update_packages_dedupes_configured_sources_by_identity(
     )
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path / "project"), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path, cwd=str(tmp_path / "project"), persist=False
+            )
         ),
         settings_manager=settings,
         package_materializer=materializer,
@@ -5543,8 +5567,10 @@ def test_agent_session_package_projection_dedupes_pinned_versions_by_package_ide
 
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path / "project"), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path, cwd=str(tmp_path / "project"), persist=False
+            )
         ),
         settings_manager=SettingsManager(
             global_settings_path=global_settings, project_settings_path=project_settings
@@ -5591,8 +5617,10 @@ def test_agent_session_configures_package_roots_from_all_settings_scopes(
     loader = DefaultResourceLoader()
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path / "project"), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path, cwd=str(tmp_path / "project"), persist=False
+            )
         ),
         settings_manager=settings,
         resource_loader=loader,
@@ -5638,8 +5666,10 @@ def test_agent_session_configures_same_relative_package_roots_from_distinct_scop
     loader = DefaultResourceLoader()
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path / "project"), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path, cwd=str(tmp_path / "project"), persist=False
+            )
         ),
         settings_manager=settings,
         resource_loader=loader,
@@ -5688,8 +5718,8 @@ def test_agent_session_records_package_update_check_failures(tmp_path) -> None:
     asyncio.run(materializer.materialize_remote_source(source))
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
         ),
         settings_manager=SettingsManager(
             ControlConfig(package_sources=(PackageSourceConfig(source=source),))
@@ -5728,8 +5758,8 @@ def test_agent_session_records_package_version_conflict_diagnostics(tmp_path) ->
     diagnostics = DiagnosticsService()
     session = AgentSession(
         agent=Agent(),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd=str(tmp_path), persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
         ),
         settings_manager=SettingsManager(
             ControlConfig(plugin_sources=(str(first), str(second)))
@@ -5757,14 +5787,16 @@ def test_agent_session_exposes_jsonl_and_html_export_methods(tmp_path) -> None:
 
     project_dir = tmp_path / "project"
     project_dir.mkdir()
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd=str(project_dir), persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd=str(project_dir), persist=False)
     )
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="hi")],
-            timestamp=0.0,
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="hi")],
+                timestamp=0.0,
+            )
         )
     )
     session = AgentSession(
@@ -5820,8 +5852,8 @@ def test_agent_session_exposes_diagnostics_views(tmp_path) -> None:
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(
-            session_dir=tmp_path, cwd="/tmp/project", persist=False
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
         diagnostics_service=diagnostics_service,
     )
@@ -5876,8 +5908,8 @@ def test_agent_session_set_model_records_auth_resolution_failures(tmp_path) -> N
         )
     )
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     diagnostics_service = DiagnosticsService()
     session = AgentSession(
@@ -5922,7 +5954,7 @@ def test_agent_session_serializes_async_queue_updates_for_steer(tmp_path) -> Non
 
     async def scenario() -> None:
         agent = Agent(stream_fn=stream_fn)
-        manager = SessionManager.new(
+        manager = await SessionManager.new(
             session_dir=tmp_path, cwd="/tmp/project", persist=False
         )
         session = AgentSession(agent=agent, session_manager=manager)
@@ -5963,7 +5995,7 @@ def test_agent_session_serializes_async_queue_updates_for_follow_up(tmp_path) ->
 
     async def scenario() -> None:
         agent = Agent(stream_fn=stream_fn)
-        manager = SessionManager.new(
+        manager = await SessionManager.new(
             session_dir=tmp_path, cwd="/tmp/project", persist=False
         )
         session = AgentSession(agent=agent, session_manager=manager)

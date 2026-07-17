@@ -6,7 +6,9 @@ from datetime import UTC, datetime
 from typing import Protocol
 from uuid import uuid4
 
+from loushang.coding.event import project_runtime_event_to_session_event
 from loushang.harness.agent_transcript import create_agent_transcript_message_codec
+from loushang.harness.events import RuntimeEvent
 from loushang.work.event_log import EventLogBackend, EventLogEntry
 from loushang.work.projection import (
     WorkEventProjectionContext,
@@ -14,13 +16,15 @@ from loushang.work.projection import (
 )
 from loushang.work.types import WorkEvent, WorkOperation, WorkRun
 
-SessionEventListener = Callable[[Mapping[str, object]], Awaitable[None] | None]
+RuntimeEventListener = Callable[[RuntimeEvent[object]], Awaitable[None] | None]
 _MESSAGE_CODEC = create_agent_transcript_message_codec()
 serialize_agent_message = _MESSAGE_CODEC.serialize
 
 
 class PromptSession(Protocol):
-    def subscribe(self, listener: SessionEventListener) -> Callable[[], None]: ...
+    def subscribe_runtime_events(
+        self, listener: RuntimeEventListener
+    ) -> Callable[[], None]: ...
 
     def prompt(
         self, text: str, *, images: Sequence[object] | None = None
@@ -137,8 +141,11 @@ class CodingWorkShell:
                 ),
             )
 
-        async def listener(event: Mapping[str, object]) -> None:
+        async def listener(event: RuntimeEvent[object]) -> None:
             nonlocal sequence
+            projected = project_runtime_event_to_session_event(event)
+            if projected is None:
+                return
             sequence += 1
             context = WorkEventProjectionContext(
                 run_id=run_id,
@@ -148,14 +155,15 @@ class CodingWorkShell:
                 sequence=sequence,
                 created_at=self.clock(),
                 event_id_prefix=f"{run_id}-event",
+                source_event_ref=event.event_id,
                 message_serializer=serialize_agent_message,
             )
             for work_event in project_agent_event_to_work_events(
-                event, context=context
+                projected, context=context
             ):
                 self._append_event(work_event)
 
-        unsubscribe = self.session.subscribe(listener)
+        unsubscribe = self.session.subscribe_runtime_events(listener)
         try:
             if images is None:
                 await self.session.prompt(text)

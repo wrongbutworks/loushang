@@ -10,15 +10,17 @@ from loushang.ai.types import TextPart
 from loushang.coding.session.extension_message_controller import (
     ExtensionMessageController,
 )
-from loushang.coding.session.queue_controller import QueueController
 from loushang.coding.store import SessionManager
+from loushang.harness.session import QueueController
 
 
 def _preflight(text: str):
     return SimpleNamespace(consumed=False, text=text)
 
 
-def _queue_controller(agent: Agent, queue_updates: list[tuple[list[str], list[str]]]) -> QueueController:
+def _queue_controller(
+    agent: Agent, queue_updates: list[tuple[list[str], list[str]]]
+) -> QueueController:
     controller = QueueController(
         agent=agent,
         preflight_user_input=_preflight,
@@ -30,17 +32,21 @@ def _queue_controller(agent: Agent, queue_updates: list[tuple[list[str], list[st
     return controller
 
 
-def test_extension_message_controller_persists_custom_message_and_emits_events(tmp_path) -> None:
+def test_extension_message_controller_persists_custom_message_and_emits_events(
+    tmp_path,
+) -> None:
     agent = Agent()
     queue_updates: list[tuple[list[str], list[str]]] = []
     events: list[tuple[str, str]] = []
 
-    async def _dispatch(event):
+    async def _dispatch(event, **_kwargs):
         events.append((event["type"], event["message"].custom_type))
 
     controller = ExtensionMessageController(
         agent=agent,
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         queue_controller=_queue_controller(agent, queue_updates),
         dispatch_event=_dispatch,
     )
@@ -62,36 +68,54 @@ def test_extension_message_controller_persists_custom_message_and_emits_events(t
     assert queue_updates == []
 
 
-def test_extension_message_controller_queues_streaming_messages_by_deliver_as(tmp_path) -> None:
+def test_extension_message_controller_queues_streaming_messages_by_deliver_as(
+    tmp_path,
+) -> None:
     agent = Agent()
     agent.state.is_streaming = True
     queue_updates: list[tuple[list[str], list[str]]] = []
     controller = ExtensionMessageController(
         agent=agent,
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         queue_controller=_queue_controller(agent, queue_updates),
         dispatch_event=lambda event: None,
     )
 
-    asyncio.run(controller.send_message({"customType": "note", "content": "custom follow"}, {"deliverAs": "followUp"}))
+    asyncio.run(
+        controller.send_message(
+            {"customType": "note", "content": "custom follow"},
+            {"deliverAs": "followUp"},
+        )
+    )
     asyncio.run(controller.send_user_message("queued steer", {"deliverAs": "steer"}))
 
     assert controller.has_pending_messages() is True
     assert controller.queue_controller.get_steering_messages() == ["queued steer"]
     assert controller.queue_controller.get_follow_up_messages() == ["custom follow"]
-    assert queue_updates == [([], ["custom follow"]), (["queued steer"], ["custom follow"])]
+    assert queue_updates == [
+        ([], ["custom follow"]),
+        (["queued steer"], ["custom follow"]),
+    ]
 
 
-def test_extension_message_controller_validates_streaming_user_message_deliver_as(tmp_path) -> None:
+def test_extension_message_controller_validates_streaming_user_message_deliver_as(
+    tmp_path,
+) -> None:
     agent = Agent()
     agent.state.is_streaming = True
     queue_updates: list[tuple[list[str], list[str]]] = []
     controller = ExtensionMessageController(
         agent=agent,
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         queue_controller=_queue_controller(agent, queue_updates),
         dispatch_event=lambda event: None,
     )
 
     with pytest.raises(RuntimeError, match="Specify deliverAs"):
-        asyncio.run(controller.send_user_message([TextPart(type="text", text="queued")]))
+        asyncio.run(
+            controller.send_user_message([TextPart(type="text", text="queued")])
+        )

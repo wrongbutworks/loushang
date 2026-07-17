@@ -7,12 +7,11 @@ from uuid import uuid4
 
 from loushang.agent import Agent
 from loushang.ai.types import ImagePart
-from loushang.coding.event import AgentSessionEvent
-from loushang.coding.session.queue_controller import QueueController
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import ApplicationMessage
+from loushang.harness.session import QueueController
 
-EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
+EventDispatcher = Callable[..., Awaitable[None]]
 RunPrompt = Callable[[object, list[ImagePart] | None], Awaitable[None]]
 
 
@@ -72,11 +71,14 @@ class ExtensionMessageController:
         if trigger_turn:
             await self._send_message_async(app_message)
             return
-        self.session_manager.append_message(app_message)
+        record_id = await self.session_manager.append_message(app_message)
         session_context = self.session_manager.build_session_context()
         self.agent.state.set_messages(session_context.messages)
         await self.dispatch_event({"type": "message_start", "message": app_message})
-        await self.dispatch_event({"type": "message_end", "message": app_message})
+        await self.dispatch_event(
+            {"type": "message_end", "message": app_message},
+            source_record_id=record_id,
+        )
 
     async def send_user_message(
         self, content: object, options: object | None = None

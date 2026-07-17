@@ -1107,12 +1107,14 @@ class RpcMode(ModeAdapter):
             data=state,
         )
 
-    def _handle_set_thinking_level_command(
+    async def _handle_set_thinking_level_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         level = self._require_string(payload, "level")
         try:
-            self.session.set_thinking_level(level)
+            result = self.session.set_thinking_level(level)
+            if inspect.isawaitable(result):
+                await result
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -1122,12 +1124,13 @@ class RpcMode(ModeAdapter):
             return
         self._write_response_success(id=command_id, command="set_thinking_level")
 
-    def _handle_cycle_thinking_level_command(
+    async def _handle_cycle_thinking_level_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         del payload
         try:
-            next_level = self.session.cycle_thinking_level()
+            result = self.session.cycle_thinking_level()
+            next_level = await result if inspect.isawaitable(result) else result
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -1214,7 +1217,7 @@ class RpcMode(ModeAdapter):
             data=serialized,
         )
 
-    def _handle_set_session_name_command(
+    async def _handle_set_session_name_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         name = self._require_string(payload, "name").strip()
@@ -1226,7 +1229,9 @@ class RpcMode(ModeAdapter):
             )
             return
         try:
-            self.session.set_session_name(name)
+            result = self.session.set_session_name(name)
+            if inspect.isawaitable(result):
+                await result
         except Exception as error:
             self._write_response_error(
                 id=command_id,
