@@ -35,3 +35,8 @@ Target source entrypoints remain:
 Harness conversation contracts into reusable TUI interaction. Product adapters
 such as `loushang.coding.ui` provide Coding-specific state, event projection,
 commands, policy, and runtime assembly.
+
+For status presentation, `loushang.tui` owns the generic status-bar widget and
+its layout, styling, invalidation, and rendering mechanics. A shared Harness
+status profile belongs to `loushang.harnesstui`; products populate that profile
+and retain their own status policy.

@@ -159,15 +159,26 @@ def test_tui_and_harness_do_not_import_harnesstui() -> None:
     assert offenders == []
 
 
-def test_harnesstui_reader_slice_boundary_is_documented() -> None:
+def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     path = Path("docs/internals/architecture/harnesstui/README.md")
     text = path.read_text(encoding="utf-8")
 
     assert "`loushang.coding.ui` -> `loushang.harnesstui`" in text
-    assert "`loushang.tui`" in text
-    assert "`loushang.harness`" in text
-    assert "session lifecycle" in text
-    assert "render hot path" in text
+    assert "`loushang.harnesstui.conversation.reader`" in text
+    assert "`loushang.harnesstui.conversation.source`" in text
+    assert "`loushang.harnesstui.conversation.tool_transcript`" in text
+    assert "`loushang.harnesstui.status.line`" in text
+
+
+def test_harnesstui_tool_and_status_entrypoints_exist() -> None:
+    paths = (
+        Path("src/loushang/harnesstui/conversation/tool_transcript.py"),
+        Path("src/loushang/harnesstui/status/line.py"),
+    )
+
+    missing = [path.as_posix() for path in paths if not path.is_file()]
+
+    assert missing == []
 
 
 def test_importing_channel_types_does_not_eagerly_load_agent_or_ai() -> None:
