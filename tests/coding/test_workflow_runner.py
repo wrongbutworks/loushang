@@ -56,7 +56,9 @@ def test_run_workflow_executes_steps_and_asserts_outputs(tmp_path) -> None:
     assert all(check.ok for check in result.step_results[0].checks)
 
 
-def test_run_workflow_reports_failed_expectation_without_stopping_later_steps(tmp_path) -> None:
+def test_run_workflow_reports_failed_expectation_without_stopping_later_steps(
+    tmp_path,
+) -> None:
     from loushang.coding.workflow import (
         PromptStep,
         StepExpectation,
@@ -113,7 +115,9 @@ def test_run_workflow_times_out_prompt_and_aborts_adapter(tmp_path) -> None:
         name="timeout",
         steps=(
             PromptStep(prompt="slow", timeout_s=0.01),
-            PromptStep(prompt="after", expect=StepExpectation(assistant_contains=("after",))),
+            PromptStep(
+                prompt="after", expect=StepExpectation(assistant_contains=("after",))
+            ),
         ),
     )
 
@@ -137,7 +141,9 @@ def test_run_workflow_emits_step_start_progress(tmp_path) -> None:
             workflow,
             adapter=adapter,
             cwd=tmp_path,
-            on_step_start=lambda index, total, step: events.append((index, total, step.prompt)),
+            on_step_start=lambda index, total, step: events.append(
+                (index, total, step.prompt)
+            ),
         )
     )
 
@@ -172,7 +178,9 @@ def test_agent_session_adapter_supports_hold_actions_and_abort(tmp_path) -> None
             self._listeners.append(listener)
             return lambda: self._listeners.remove(listener)
 
-        async def prompt(self, text: str, *, streaming_behavior: str | None = None) -> None:
+        async def prompt(
+            self, text: str, *, streaming_behavior: str | None = None
+        ) -> None:
             if streaming_behavior == "steer":
                 self.steering.append(text)
                 return
@@ -217,7 +225,9 @@ def test_agent_session_adapter_supports_hold_actions_and_abort(tmp_path) -> None
             FollowUpStep(text="later"),
             AbortStep(),
             WaitForStep(event="run.aborted"),
-            ExpectStep(expect=WorkflowExpectation(queue={"steering": (), "follow_up": ()})),
+            ExpectStep(
+                expect=WorkflowExpectation(queue={"steering": (), "follow_up": ()})
+            ),
         ),
     )
 
@@ -304,7 +314,9 @@ def test_agent_session_adapter_exposes_public_fact_snapshots(tmp_path) -> None:
     ]
 
 
-def test_agent_session_adapter_does_not_duplicate_assistant_message_events(tmp_path) -> None:
+def test_agent_session_adapter_does_not_duplicate_assistant_message_events(
+    tmp_path,
+) -> None:
     from loushang.coding.workflow import (
         AgentSessionWorkflowAdapter,
         PromptStep,

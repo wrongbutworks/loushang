@@ -461,7 +461,8 @@ No Coding runtime behavior changes in this commit.
 - add one scoped publisher per session/host stream as the only event id,
   sequence, and timestamp allocator;
 - move the generic ordered bus implementation from `harness.host`;
-- adapt Host and Coding session streams without moving their payload types;
+- adapt Host and Coding session streams, then move common Session payload types
+  in the follow-up Session Runtime Events migration;
 - preserve raw Agent, Extension, Work, and Product event contracts;
 - add per-stream order and listener-failure tests.
 
@@ -475,6 +476,8 @@ No Coding runtime behavior changes in this commit.
 - retain Product-only projection code under `coding.event`;
 - retain `AgentSessionEvent` only as the Coding UI/RPC/extension projection
   input; common runtime and Work observers subscribe to `RuntimeEvent`.
+- remove the second Coding event bus; the accepted Product subscription installs
+  a projection listener on the same ordered Runtime stream.
 
 Store async correctness is already complete in Commit 2; this commit does not
 defer or repeat that mutation cutover.

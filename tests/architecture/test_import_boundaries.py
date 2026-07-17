@@ -191,11 +191,55 @@ def test_neutral_storage_and_event_cores_do_not_import_runtime_or_products() -> 
     ] == []
 
 
+def test_scenario_runtime_is_product_neutral_and_never_executes_shell() -> None:
+    boundary = ImportBoundary(
+        name="scenario",
+        root=Path("src/loushang/harness/scenario"),
+        forbidden_prefixes=(
+            "loushang.agent",
+            "loushang.ai",
+            "loushang.channel",
+            "loushang.coding",
+            "loushang.method",
+            "loushang.tui",
+            "loushang.work",
+        ),
+    )
+
+    assert _find_forbidden_imports(boundary) == []
+    assert all(
+        "subprocess" not in path.read_text(encoding="utf-8")
+        for path in boundary.root.rglob("*.py")
+    )
+
+
 def test_coding_work_projection_subscribes_to_runtime_events() -> None:
     source = Path("src/loushang/coding/work_shell.py").read_text(encoding="utf-8")
 
     assert "subscribe_runtime_events" in source
     assert "self.session.subscribe(listener)" not in source
+
+
+def test_coding_session_uses_harness_runtime_events_as_the_only_internal_stream() -> (
+    None
+):
+    session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
+        encoding="utf-8"
+    )
+    controller_sources = [
+        Path(path).read_text(encoding="utf-8")
+        for path in (
+            "src/loushang/coding/session/compaction_controller.py",
+            "src/loushang/coding/session/retry_controller.py",
+            "src/loushang/coding/session/tree_controller.py",
+        )
+    ]
+
+    assert "SessionEventBus" not in session_source
+    assert "self._event_bus" not in session_source
+    assert not Path("src/loushang/coding/session/session_event_bus.py").exists()
+    assert all("loushang.coding.event" not in source for source in controller_sources)
+    assert "project_runtime_event_to_session_event" in session_source
 
 
 def test_importing_channel_types_does_not_eagerly_load_agent_or_ai() -> None:

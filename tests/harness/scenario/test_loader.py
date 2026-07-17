@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 def test_load_workflow_from_yaml(tmp_path) -> None:
-    from loushang.coding.workflow import load_workflow
+    from loushang.harness.scenario import load_workflow
 
     workflow_file = tmp_path / "bmi.workflow.yaml"
     workflow_file.write_text(
@@ -44,7 +44,7 @@ steps:
 
 
 def test_load_workflow_from_json(tmp_path) -> None:
-    from loushang.coding.workflow import load_workflow
+    from loushang.harness.scenario import load_workflow
 
     workflow_file = tmp_path / "workflow.json"
     workflow_file.write_text(
@@ -72,7 +72,7 @@ def test_load_workflow_from_json(tmp_path) -> None:
 
 
 def test_load_action_workflow_from_yaml(tmp_path) -> None:
-    from loushang.coding.workflow import load_workflow
+    from loushang.harness.scenario import load_workflow
 
     workflow_file = tmp_path / "abort.workflow.yaml"
     workflow_file.write_text(
@@ -147,7 +147,7 @@ steps:
 
 
 def test_builtin_workflow_scenarios_load() -> None:
-    from loushang.coding.workflow import load_workflow
+    from loushang.harness.scenario import load_workflow
 
     paths = sorted(Path("scenarios/coding/workflows").glob("*.workflow.yaml"))
 

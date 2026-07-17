@@ -112,6 +112,8 @@ def test_coding_work_shell_wraps_prompt_and_logs_operation_run_and_projected_eve
         assert entries[2].payload["delivery_hint"] == "coalesce"
         assert entries[3].payload["delivery_hint"] == "coalesce"
         assert entries[4].payload["delivery_hint"] == "immediate"
+        assert entries[2].payload["source_event_ref"] == "event-1"
+        assert entries[3].payload["source_event_ref"] == "event-2"
 
     asyncio.run(scenario())
 

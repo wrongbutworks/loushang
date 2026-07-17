@@ -100,6 +100,77 @@ async def test_session_publishes_receipt_backed_events_for_every_new_commit(
 
 
 @_async_test
+async def test_session_uses_one_runtime_stream_with_product_projection(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.harness.events import ConversationMetadataChanged
+
+    runtime = create_agent_session_runtime(
+        session_dir=tmp_path,
+        model=_model(),
+        persist=False,
+    )
+    session = await runtime.create_session(cwd=str(tmp_path))
+    runtime_events = []
+    product_events = []
+    session.subscribe_runtime_events(runtime_events.append)
+    session.subscribe(product_events.append)
+
+    await session.set_session_name("Demo")
+
+    assert [event.kind for event in runtime_events] == [
+        "transcript.record_committed",
+        "session.session_info_changed",
+    ]
+    assert [event.sequence for event in runtime_events] == [1, 2]
+    assert runtime_events[0].source_record_id == runtime_events[1].source_record_id
+    assert isinstance(runtime_events[1].payload, ConversationMetadataChanged)
+    assert product_events == [{"type": "session_info_changed", "name": "Demo"}]
+
+
+@_async_test
+async def test_session_normalizes_tool_policy_audit_into_runtime_stream(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.harness.events import ToolPolicyAuditEvent
+
+    runtime = create_agent_session_runtime(
+        session_dir=tmp_path,
+        model=_model(),
+        persist=False,
+    )
+    session = await runtime.create_session(cwd=str(tmp_path))
+    runtime_events = []
+    product_events = []
+    session.subscribe_runtime_events(runtime_events.append)
+    session.subscribe(product_events.append)
+
+    await session._dispatch_event(
+        {
+            "type": "tool_policy_evaluated",
+            "tool_name": "write",
+            "decision": "allow",
+        }
+    )
+
+    assert len(runtime_events) == 1
+    assert runtime_events[0].kind == "session.tool_policy_evaluated"
+    assert runtime_events[0].payload == ToolPolicyAuditEvent(
+        "tool_policy_evaluated",
+        {"tool_name": "write", "decision": "allow"},
+    )
+    assert product_events == [
+        {
+            "type": "tool_policy_evaluated",
+            "tool_name": "write",
+            "decision": "allow",
+        }
+    ]
+
+
+@_async_test
 async def test_runtime_listener_failure_does_not_duplicate_agent_message(
     tmp_path,
 ) -> None:

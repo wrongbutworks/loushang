@@ -35,7 +35,10 @@ from loushang.coding.control import (
     RetrySettings,
     SettingsManager,
 )
-from loushang.coding.event import AgentSessionEvent
+from loushang.coding.event import (
+    AgentSessionEvent,
+    project_runtime_event_to_session_event,
+)
 from loushang.coding.extensions import (
     ExtensionRunner,
     ReplacedSessionContext,
@@ -93,7 +96,6 @@ from loushang.coding.session.resource_watcher import ResourceChangeWatcher
 from loushang.coding.session.retry_controller import RetryController
 from loushang.coding.session.selection_controller import SelectionController
 from loushang.coding.session.session_diagnostics_bridge import SessionDiagnosticsBridge
-from loushang.coding.session.session_event_bus import SessionEventBus
 from loushang.coding.session.session_settings_controller import (
     SessionSettingsController,
 )
@@ -119,10 +121,17 @@ from loushang.harness.diagnostics.types import (
     ErrorReport,
 )
 from loushang.harness.events import (
+    ConversationMetadataChanged,
     OrderedEventBus,
+    PackageProgressChanged,
+    QueueChanged,
     RuntimeEvent,
     RuntimeEventPublisher,
+    SessionRuntimeEventPayload,
+    ToolPolicyAuditEvent,
+    ToolPolicyAuditEventType,
     TranscriptRecordCommitted,
+    session_runtime_event_kind,
 )
 from loushang.harness.host.runtime import HostRuntime
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
@@ -195,7 +204,6 @@ class AgentSession:
         self._base_prompt = (
             base_prompt if base_prompt is not None else self.agent.system_prompt
         )
-        self._event_bus = SessionEventBus()
         self._runtime_event_bus = OrderedEventBus[RuntimeEvent[object]](
             async_listener_error=(
                 "Async runtime event listeners require a running event loop."
@@ -859,7 +867,13 @@ class AgentSession:
         return self._resource_loader
 
     def subscribe(self, listener: SessionEventListener) -> Callable[[], None]:
-        return self._event_bus.subscribe(listener)
+        def project(event: RuntimeEvent[object]) -> Awaitable[None] | None:
+            projected = project_runtime_event_to_session_event(event)
+            if projected is None:
+                return None
+            return listener(projected)
+
+        return self._runtime_event_bus.subscribe(project)
 
     def subscribe_runtime_events(
         self,
@@ -1052,11 +1066,10 @@ class AgentSession:
 
     async def set_session_name(self, name: str | None) -> None:
         record_id = await self.session_manager.append_session_info(name)
-        event: AgentSessionEvent = {
-            "type": "session_info_changed",
-            "name": self.session_name,
-        }
-        await self._dispatch_event(event, source_record_id=record_id)
+        await self._dispatch_event(
+            ConversationMetadataChanged(name=self.session_name),
+            source_record_id=record_id,
+        )
 
     async def setSessionName(self, name: str | None) -> None:
         await self.set_session_name(name)
@@ -1333,7 +1346,6 @@ class AgentSession:
             )
         self._unsubscribe_agent()
         self.session_manager.set_commit_observer(None)
-        self._event_bus.clear()
         self._runtime_event_bus.clear()
         self.footer_data_provider.dispose()
 
@@ -1740,11 +1752,7 @@ class AgentSession:
         await self._extension_event_sink.emit_agent_event(event)
 
     def _emit_queue_update(self) -> None:
-        event: AgentSessionEvent = {
-            "type": "queue_update",
-            "steering": self._queue_controller.get_steering_messages(),
-            "follow_up": self._queue_controller.get_follow_up_messages(),
-        }
+        event = QueueChanged(snapshot=self._queue_controller.get_queue_snapshot())
         try:
             self._schedule_event_dispatch(event)
         except RuntimeError:
@@ -1756,16 +1764,15 @@ class AgentSession:
         self._package_materializer.set_progress_callback(self._emit_package_progress)
 
     def _emit_package_progress(self, progress: PackageProgressEvent) -> None:
-        event: AgentSessionEvent = {
-            "type": "package_progress",
-            "progress_type": progress.type,
-            "action": progress.action,
-            "source": progress.source,
-            "message": progress.message,
-            "target_path": str(progress.target_path)
-            if progress.target_path is not None
-            else None,
-        }
+        event = PackageProgressChanged(
+            progress_type=progress.type,
+            action=progress.action,
+            source=progress.source,
+            message=progress.message,
+            target_path=(
+                str(progress.target_path) if progress.target_path is not None else None
+            ),
+        )
         try:
             self._schedule_event_dispatch(event)
         except RuntimeError:
@@ -1773,17 +1780,17 @@ class AgentSession:
 
     async def _dispatch_event(
         self,
-        event: AgentSessionEvent,
+        event: AgentEvent | SessionRuntimeEventPayload | Mapping[str, object],
         *,
         source_record_id: str | None = None,
     ) -> None:
+        kind, payload = _normalize_runtime_event(event)
         await self._runtime_event_publisher.publish(
-            _runtime_event_kind(event),
-            event,
+            kind,
+            payload,
             session_id=self.session_manager.get_header().conversation_id,
             source_record_id=source_record_id,
         )
-        await self._event_bus.dispatch(event)
 
     def _schedule_transcript_commit(self, result: CommitResult) -> None:
         receipt = result.receipt
@@ -1802,21 +1809,21 @@ class AgentSession:
             source_record_id=result.record_id,
         )
 
-    def _schedule_event_dispatch(self, event: AgentSessionEvent) -> asyncio.Task[None]:
-        self._runtime_event_publisher.schedule(
+    def _schedule_event_dispatch(
+        self, event: SessionRuntimeEventPayload
+    ) -> asyncio.Task[None]:
+        return self._runtime_event_publisher.schedule(
             _runtime_event_kind(event),
             event,
             session_id=self.session_manager.get_header().conversation_id,
         )
-        return self._event_bus.schedule(event)
 
-    def _dispatch_event_without_loop(self, event: AgentSessionEvent) -> None:
+    def _dispatch_event_without_loop(self, event: SessionRuntimeEventPayload) -> None:
         self._runtime_event_publisher.publish_without_loop(
             _runtime_event_kind(event),
             event,
             session_id=self.session_manager.get_header().conversation_id,
         )
-        self._event_bus.dispatch_without_loop(event)
 
     # Internal compatibility shims for controller-owned state.
 
@@ -1997,12 +2004,32 @@ _AGENT_EVENT_TYPES = {
     "tool_execution_update",
     "tool_execution_end",
 }
+_TOOL_POLICY_AUDIT_EVENT_TYPES = {
+    "tool_policy_evaluated",
+    "tool_approval_requested",
+    "tool_approval_resolved",
+}
 
 
-def _runtime_event_kind(event: AgentSessionEvent) -> str:
-    event_type = event["type"]
-    namespace = "agent" if event_type in _AGENT_EVENT_TYPES else "session"
-    return f"{namespace}.{event_type}"
+def _normalize_runtime_event(
+    event: AgentEvent | SessionRuntimeEventPayload | Mapping[str, object],
+) -> tuple[str, object]:
+    if isinstance(event, Mapping):
+        event_type = event.get("type")
+        if isinstance(event_type, str) and event_type in _AGENT_EVENT_TYPES:
+            return f"agent.{event_type}", event
+        if isinstance(event_type, str) and event_type in _TOOL_POLICY_AUDIT_EVENT_TYPES:
+            payload = ToolPolicyAuditEvent(
+                event_type=cast(ToolPolicyAuditEventType, event_type),
+                details={key: value for key, value in event.items() if key != "type"},
+            )
+            return session_runtime_event_kind(payload), payload
+        raise TypeError("Runtime event mapping has an unsupported type")
+    return session_runtime_event_kind(event), event
+
+
+def _runtime_event_kind(event: SessionRuntimeEventPayload) -> str:
+    return session_runtime_event_kind(event)
 
 
 def _normalize_extension_exec_command(

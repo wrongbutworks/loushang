@@ -11,9 +11,7 @@ from loushang.coding.session.queue_controller import (
 from loushang.coding.session.queue_controller import (
     QueueSnapshot as CodingQueueSnapshot,
 )
-from loushang.coding.session.session_event_bus import SessionEventBus
 from loushang.coding.store import SessionManager
-from loushang.harness.host.events import OrderedEventBus
 from loushang.harness.host.queue import HostInputQueue
 from loushang.harness.host.runtime import HostRuntime
 from loushang.harness.host.types import (
@@ -30,7 +28,7 @@ def test_coding_host_records_share_harness_identity() -> None:
     assert CodingQueuedMessageSnapshot is QueuedMessageSnapshot
 
 
-def test_coding_queue_and_event_adapters_use_harness_mechanisms() -> None:
+def test_coding_queue_adapter_uses_harness_mechanism() -> None:
     from loushang.coding.session.queue_controller import QueueController
 
     controller = QueueController(
@@ -41,7 +39,6 @@ def test_coding_queue_and_event_adapters_use_harness_mechanisms() -> None:
     )
 
     assert isinstance(controller._queue, HostInputQueue)
-    assert isinstance(SessionEventBus(), OrderedEventBus)
 
 
 def test_agent_session_coordinates_public_lifecycle_through_host_runtime(

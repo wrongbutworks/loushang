@@ -131,24 +131,33 @@ def test_compaction_controller_appends_compaction_and_rebuilds_agent_context(
         "assistant",
     ]
     assert controller.is_compacting is False
-    assert events[0]["type"] == "compaction_start"
-    assert events[0]["reason"] == "manual"
-    assert events[0]["usage"]["compact_percent"] == 80
-    assert events[0]["usage"]["reserve_tokens"] == 8192
-    assert events[0]["usage"]["keep_recent_tokens"] == 1
-    assert events[0]["usage"]["threshold_reason"] == "compact_percent"
+    from loushang.harness.events import (
+        ContextCompactionCompleted,
+        ContextCompactionStarted,
+    )
 
-    assert events[-1]["type"] == "compaction_end"
-    assert events[-1]["reason"] == "manual"
-    assert events[-1]["result"] == {
+    started = events[0]
+    completed = events[-1]
+    assert isinstance(started, ContextCompactionStarted)
+    assert started.usage is not None
+    assert started.reason == "manual"
+    assert started.usage["compact_percent"] == 80
+    assert started.usage["reserve_tokens"] == 8192
+    assert started.usage["keep_recent_tokens"] == 1
+    assert started.usage["threshold_reason"] == "compact_percent"
+
+    assert isinstance(completed, ContextCompactionCompleted)
+    assert completed.reason == "manual"
+    assert completed.result == {
         "summary": "controller summary",
         "first_kept_entry_id": assistant_id,
         "tokens_before": result.tokens_before,
         "details": compaction_entry.payload.details,
     }
-    assert events[-1]["aborted"] is False
-    assert events[-1]["will_retry"] is False
-    assert events[-1]["usage_before"] == events[0]["usage"]
-    assert events[-1]["usage_after"]["tokens"] is None
-    assert events[-1]["usage_after"]["percent"] is None
-    assert events[-1]["usage_after"]["stale_after_compaction"] is True
+    assert completed.aborted is False
+    assert completed.will_retry is False
+    assert completed.usage_before == started.usage
+    assert completed.usage_after is not None
+    assert completed.usage_after["tokens"] is None
+    assert completed.usage_after["percent"] is None
+    assert completed.usage_after["stale_after_compaction"] is True

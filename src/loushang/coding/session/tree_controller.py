@@ -11,7 +11,6 @@ from loushang.coding.compaction import (
     collect_entries_for_branch_summary,
     generate_branch_summary,
 )
-from loushang.coding.event import AgentSessionEvent
 from loushang.coding.extensions import ExtensionRunner, SessionBeforeTreeEvent
 from loushang.coding.session.types import TreeNavigationResult
 from loushang.coding.store import SessionManager
@@ -21,13 +20,18 @@ from loushang.harness.agent_transcript import (
     AgentTranscriptContext,
     ApplicationMessage,
 )
+from loushang.harness.events import (
+    BranchSummaryCompleted,
+    BranchSummaryStarted,
+    SessionRuntimeEventPayload,
+)
 from loushang.harness.runtime import (
     NavigationFailure,
     NavigationTransactionCoordinator,
 )
 from loushang.protocol import JSONValue, require_json_value
 
-EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
+EventDispatcher = Callable[[SessionRuntimeEventPayload], Awaitable[None]]
 RuntimeExceptionRecorder = Callable[..., None]
 ExtensionDiagnosticsSync = Callable[..., None]
 BranchSummaryGenerator = Callable[..., Awaitable[BranchSummaryResult]]
@@ -188,12 +192,11 @@ class TreeController:
 
     async def _start_summary_navigation(self, plan: _SummaryNavigationPlan) -> None:
         await self.dispatch_event(
-            {
-                "type": "branch_summary_start",
-                "target_id": plan.target_id,
-                "old_leaf_id": plan.old_leaf_id,
-                "summarize": True,
-            }
+            BranchSummaryStarted(
+                target_id=plan.target_id,
+                old_leaf_id=plan.old_leaf_id,
+                summarize=True,
+            )
         )
 
     async def _commit_summary_navigation(
@@ -271,19 +274,18 @@ class TreeController:
         result: TreeNavigationResult,
     ) -> None:
         await self.dispatch_event(
-            {
-                "type": "branch_summary_end",
-                "target_id": plan.target_id,
-                "old_leaf_id": plan.old_leaf_id,
-                "new_leaf_id": (
+            BranchSummaryCompleted(
+                target_id=plan.target_id,
+                old_leaf_id=plan.old_leaf_id,
+                new_leaf_id=(
                     plan.old_leaf_id
                     if result.aborted
                     else self.session_manager.get_leaf_id()
                 ),
-                "summary_entry_id": result.summary_entry_id,
-                "cancelled": result.cancelled,
-                "aborted": result.aborted,
-            }
+                summary_record_id=result.summary_entry_id,
+                cancelled=result.cancelled,
+                aborted=result.aborted,
+            )
         )
 
     async def _fail_summary_navigation(
@@ -292,16 +294,15 @@ class TreeController:
     ) -> None:
         self.record_runtime_exception(code="branch_summary_failed", exc=failure.error)
         await self.dispatch_event(
-            {
-                "type": "branch_summary_end",
-                "target_id": failure.plan.target_id,
-                "old_leaf_id": failure.plan.old_leaf_id,
-                "new_leaf_id": failure.plan.old_leaf_id,
-                "summary_entry_id": None,
-                "cancelled": False,
-                "aborted": False,
-                "error_message": str(failure.error),
-            }
+            BranchSummaryCompleted(
+                target_id=failure.plan.target_id,
+                old_leaf_id=failure.plan.old_leaf_id,
+                new_leaf_id=failure.plan.old_leaf_id,
+                summary_record_id=None,
+                cancelled=False,
+                aborted=False,
+                error_message=str(failure.error),
+            )
         )
 
     def _apply_navigation_leaf(self, new_leaf_id: str | None) -> None:

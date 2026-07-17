@@ -1281,7 +1281,7 @@ async def _dispose_session_only(session: AgentSession) -> None:
         unsubscribe = getattr(session, "_unsubscribe_agent", None)
         if callable(unsubscribe):
             unsubscribe()
-        event_bus = getattr(session, "_event_bus", None)
+        event_bus = getattr(session, "_runtime_event_bus", None)
         clear_event_bus = getattr(event_bus, "clear", None)
         if callable(clear_event_bus):
             clear_event_bus()

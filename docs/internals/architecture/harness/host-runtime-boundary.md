@@ -103,9 +103,10 @@ callback.
 - synchronous dispatch when no event loop is available.
 
 The bus is generic over its event payload. `RuntimeEventPublisher` owns one
-stream's event id, timestamp, and monotonic sequence. Coding continues to own
-`AgentSessionEvent` as a Product projection input, UI interpretation, and
-extension event mapping; common observers subscribe to `RuntimeEvent`.
+stream's event id, timestamp, and monotonic sequence. Harness owns common
+Session runtime payloads; Coding continues to own `AgentSessionEvent` only as a
+Product projection, UI interpretation, and extension event mapping. Common
+observers subscribe to `RuntimeEvent`.
 Transcript commit observations are scheduled from exact Store receipts after
 durable success, so Product projection failure cannot roll back or repeat the
 append.
@@ -117,9 +118,9 @@ Coding adopts the Host Runtime core as follows:
 - `coding.session.types.RunState` re-exports the Harness-owned record;
 - `coding.session.queue_controller.QueueController` delegates ledger state and
   snapshots to `HostInputQueue` while keeping preflight, AI message creation,
-  Agent delivery, logs, and queue-update events;
-- `coding.session.session_event_bus.SessionEventBus` specializes
-  `OrderedEventBus` while preserving its accepted no-loop error text;
+  Agent delivery, and logs;
+- `AgentSession` owns one scoped Runtime publisher and ordered bus; its Product
+  subscription API is a projection adapter on that same stream;
 - `AgentSession` delegates prompt/continue lifecycle, abort, idle waiting, and
   disposal state to `HostRuntime`;
 - Coding prompt, queue, retry, and compaction controllers supply Product
@@ -136,7 +137,7 @@ import path, not Coding-owned identity.
 This migration does not move or redesign:
 
 - input text/image conversion, preflight, slash parsing, or command handlers;
-- `AgentSessionEvent` or product event projection;
+- Product event dictionaries, wire fields, or presentation projection;
 - prompts, skills, tools, active-tool policy, or product defaults;
 - retry classification/defaults, compaction trigger policy, summarization
   prompts/model calls, or context salience; Harness owns only the injected

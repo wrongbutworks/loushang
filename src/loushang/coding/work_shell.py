@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 from uuid import uuid4
 
+from loushang.coding.event import project_runtime_event_to_session_event
 from loushang.harness.agent_transcript import create_agent_transcript_message_codec
 from loushang.harness.events import RuntimeEvent
 from loushang.work.event_log import EventLogBackend, EventLogEntry
@@ -142,7 +143,8 @@ class CodingWorkShell:
 
         async def listener(event: RuntimeEvent[object]) -> None:
             nonlocal sequence
-            if not isinstance(event.payload, Mapping):
+            projected = project_runtime_event_to_session_event(event)
+            if projected is None:
                 return
             sequence += 1
             context = WorkEventProjectionContext(
@@ -153,10 +155,11 @@ class CodingWorkShell:
                 sequence=sequence,
                 created_at=self.clock(),
                 event_id_prefix=f"{run_id}-event",
+                source_event_ref=event.event_id,
                 message_serializer=serialize_agent_message,
             )
             for work_event in project_agent_event_to_work_events(
-                event.payload, context=context
+                projected, context=context
             ):
                 self._append_event(work_event)
 

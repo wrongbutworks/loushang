@@ -4,14 +4,14 @@ import asyncio
 
 
 def test_fake_backend_aborts_active_run_and_recovers_next_prompt(tmp_path) -> None:
-    from loushang.coding.workflow import (
+    from loushang.harness.scenario import (
         AbortStep,
         PromptStep,
         WaitForStep,
         Workflow,
         run_workflow,
     )
-    from loushang.coding.workflow.fake_runtime import FakeWorkflowAdapter
+    from loushang.harness.scenario.fake_runtime import FakeWorkflowAdapter
 
     adapter = FakeWorkflowAdapter()
     workflow = Workflow(
@@ -47,7 +47,7 @@ def test_fake_backend_aborts_active_run_and_recovers_next_prompt(tmp_path) -> No
 
 
 def test_fake_backend_records_steer_and_follow_up_queues(tmp_path) -> None:
-    from loushang.coding.workflow import (
+    from loushang.harness.scenario import (
         FollowUpStep,
         PromptStep,
         SteerStep,
@@ -55,7 +55,7 @@ def test_fake_backend_records_steer_and_follow_up_queues(tmp_path) -> None:
         Workflow,
         run_workflow,
     )
-    from loushang.coding.workflow.fake_runtime import FakeWorkflowAdapter
+    from loushang.harness.scenario.fake_runtime import FakeWorkflowAdapter
 
     adapter = FakeWorkflowAdapter()
     workflow = Workflow(
@@ -82,9 +82,9 @@ def test_fake_backend_records_steer_and_follow_up_queues(tmp_path) -> None:
 
 
 def test_wait_step_sleeps_for_duration(monkeypatch, tmp_path) -> None:
-    from loushang.coding.workflow import WaitStep, Workflow, run_workflow
-    from loushang.coding.workflow import runner as runner_module
-    from loushang.coding.workflow.fake_runtime import FakeWorkflowAdapter
+    from loushang.harness.scenario import WaitStep, Workflow, run_workflow
+    from loushang.harness.scenario import runner as runner_module
+    from loushang.harness.scenario.fake_runtime import FakeWorkflowAdapter
 
     sleeps: list[float] = []
 
@@ -99,7 +99,9 @@ def test_wait_step_sleeps_for_duration(monkeypatch, tmp_path) -> None:
         steps=(WaitStep(duration_s=0.25),),
     )
 
-    result = asyncio.run(run_workflow(workflow, adapter=FakeWorkflowAdapter(), cwd=tmp_path))
+    result = asyncio.run(
+        run_workflow(workflow, adapter=FakeWorkflowAdapter(), cwd=tmp_path)
+    )
 
     assert result.ok is True
     assert sleeps == [0.25]
@@ -107,7 +109,7 @@ def test_wait_step_sleeps_for_duration(monkeypatch, tmp_path) -> None:
 
 
 def test_expect_step_checks_events_absence_and_queue_state(tmp_path) -> None:
-    from loushang.coding.workflow import (
+    from loushang.harness.scenario import (
         AbortStep,
         EventPattern,
         ExpectStep,
@@ -116,7 +118,7 @@ def test_expect_step_checks_events_absence_and_queue_state(tmp_path) -> None:
         WorkflowExpectation,
         run_workflow,
     )
-    from loushang.coding.workflow.fake_runtime import FakeWorkflowAdapter
+    from loushang.harness.scenario.fake_runtime import FakeWorkflowAdapter
 
     adapter = FakeWorkflowAdapter()
     workflow = Workflow(
@@ -129,7 +131,9 @@ def test_expect_step_checks_events_absence_and_queue_state(tmp_path) -> None:
             ExpectStep(
                 expect=WorkflowExpectation(
                     events=(EventPattern(event="assistant.message", contains="你好"),),
-                    not_events=(EventPattern(event="assistant.message", contains="old task"),),
+                    not_events=(
+                        EventPattern(event="assistant.message", contains="old task"),
+                    ),
                     queue={"steering": (), "follow_up": ()},
                 )
             ),
@@ -144,7 +148,7 @@ def test_expect_step_checks_events_absence_and_queue_state(tmp_path) -> None:
 
 
 def test_expect_step_checks_session_state_snapshot(tmp_path) -> None:
-    from loushang.coding.workflow import (
+    from loushang.harness.scenario import (
         ExpectStep,
         FollowUpStep,
         PromptStep,
@@ -154,7 +158,7 @@ def test_expect_step_checks_session_state_snapshot(tmp_path) -> None:
         WorkflowExpectation,
         run_workflow,
     )
-    from loushang.coding.workflow.fake_runtime import FakeWorkflowAdapter
+    from loushang.harness.scenario.fake_runtime import FakeWorkflowAdapter
 
     adapter = FakeWorkflowAdapter()
     workflow = Workflow(
@@ -192,14 +196,14 @@ def test_expect_step_checks_session_state_snapshot(tmp_path) -> None:
 
 
 def test_expect_step_checks_session_stats_and_context_usage_snapshots(tmp_path) -> None:
-    from loushang.coding.workflow import (
+    from loushang.harness.scenario import (
         ExpectStep,
         PromptStep,
         Workflow,
         WorkflowExpectation,
         run_workflow,
     )
-    from loushang.coding.workflow.fake_runtime import FakeWorkflowAdapter
+    from loushang.harness.scenario.fake_runtime import FakeWorkflowAdapter
 
     adapter = FakeWorkflowAdapter()
     workflow = Workflow(
@@ -238,14 +242,14 @@ def test_expect_step_checks_session_stats_and_context_usage_snapshots(tmp_path) 
 
 
 def test_expect_step_reports_missing_event(tmp_path) -> None:
-    from loushang.coding.workflow import (
+    from loushang.harness.scenario import (
         EventPattern,
         ExpectStep,
         Workflow,
         WorkflowExpectation,
         run_workflow,
     )
-    from loushang.coding.workflow.fake_runtime import FakeWorkflowAdapter
+    from loushang.harness.scenario.fake_runtime import FakeWorkflowAdapter
 
     adapter = FakeWorkflowAdapter()
     workflow = Workflow(
