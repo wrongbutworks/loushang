@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 import loushang.tui.transcript as transcript_module
 from loushang.tui import (
     AssistantMessageRecord,
@@ -19,6 +21,8 @@ from loushang.tui import (
     render_transcript_records,
     strip_control_sequences,
 )
+
+pytestmark = pytest.mark.tui_render_contract
 
 
 def rendered_text(view: TranscriptView, *, width: int = 60, height: int = 20) -> tuple[str, ...]:

@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from typing import Any
 
+import pytest
+
 import loushang.tui.markdown.renderer as markdown_renderer_module
 from loushang.tui import (
     CellDimensions,
@@ -188,6 +190,7 @@ def test_markdown_renderer_reuses_themed_instance_cache_until_theme_changes(monk
     assert calls == [29, 29]
 
 
+@pytest.mark.tui_render_contract
 def test_markdown_renderer_keeps_themed_instance_cache_bounded_to_current_render_key() -> None:
     renderer = MarkdownRenderer("one **two**", theme=ThemeResolver(defaults={"markdown.strong": {"bold": True}}))
 
@@ -197,6 +200,7 @@ def test_markdown_renderer_keeps_themed_instance_cache_bounded_to_current_render
     assert len(renderer._render_cache) == 1
 
 
+@pytest.mark.tui_render_contract
 def test_markdown_renderer_reuses_shared_cache_for_stable_streaming_blocks() -> None:
     cache = markdown_renderer_module.MarkdownRenderCache()
     highlighter = FakeCodeHighlighter()

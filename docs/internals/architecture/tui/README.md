@@ -27,7 +27,16 @@ the target core runtime strategy for this branch.
 Target source entrypoints remain:
 
 - `src/loushang/tui/`
+- `src/loushang/harnesstui/`
 - `src/loushang/coding/ui/`
 
-`loushang.tui` is the generic terminal UI framework. `loushang.coding.ui` adapts
-coding product state, events, and commands into the generic TUI.
+`loushang.tui` is the generic terminal UI framework. The
+[`loushang.harnesstui`](../harnesstui/README.md) composition layer adapts neutral
+Harness conversation contracts into reusable TUI interaction. Product adapters
+such as `loushang.coding.ui` provide Coding-specific state, event projection,
+commands, policy, and runtime assembly.
+
+For status presentation, `loushang.tui` owns the generic status-bar widget and
+its layout, styling, invalidation, and rendering mechanics. A shared Harness
+status profile belongs to `loushang.harnesstui`; products populate that profile
+and retain their own status policy.

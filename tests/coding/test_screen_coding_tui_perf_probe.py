@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from loushang.coding.ui.perf_probe import (
     build_synthetic_long_transcript_records,
     characterize_long_transcript_rendering,
@@ -8,6 +10,7 @@ from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.tui import RenderLoop
 
 
+@pytest.mark.tui_render_contract
 def test_long_transcript_probe_shows_render_loop_plans_beyond_visible_height() -> None:
     records = build_synthetic_long_transcript_records(turns=180, tail_tool_output_lines=2400)
     app = ScreenCodingTuiApp(

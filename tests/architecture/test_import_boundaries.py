@@ -158,6 +158,24 @@ def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> 
     assert offenders == []
 
 
+def test_harnesstui_does_not_import_product_or_model_layers() -> None:
+    offenders = _find_forbidden_imports(
+        ImportBoundary(
+            name="harnesstui",
+            root=Path("src/loushang/harnesstui"),
+            forbidden_prefixes=(
+                "loushang.agent",
+                "loushang.ai",
+                "loushang.ai.provider",
+                "loushang.ai.providers",
+                "loushang.coding",
+            ),
+        )
+    )
+
+    assert offenders == []
+
+
 def test_neutral_conversation_core_does_not_import_agent_ai_or_products() -> None:
     boundary = ImportBoundary(
         name="conversation",
@@ -264,6 +282,51 @@ def test_extension_message_controller_is_a_product_api_adapter() -> None:
     assert "ApplicationInputRuntime" in source
     assert "SessionManager" not in source
     assert "append_message(" not in source
+
+
+def test_tui_and_harness_do_not_import_harnesstui() -> None:
+    boundaries = (
+        ImportBoundary(
+            name="tui",
+            root=Path("src/loushang/tui"),
+            forbidden_prefixes=("loushang.harnesstui",),
+        ),
+        ImportBoundary(
+            name="harness",
+            root=Path("src/loushang/harness"),
+            forbidden_prefixes=("loushang.harnesstui",),
+        ),
+    )
+
+    offenders = [
+        offender
+        for boundary in boundaries
+        for offender in _find_forbidden_imports(boundary)
+    ]
+
+    assert offenders == []
+
+
+def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
+    path = Path("docs/internals/architecture/harnesstui/README.md")
+    text = path.read_text(encoding="utf-8")
+
+    assert "`loushang.coding.ui` -> `loushang.harnesstui`" in text
+    assert "`loushang.harnesstui.conversation.reader`" in text
+    assert "`loushang.harnesstui.conversation.source`" in text
+    assert "`loushang.harnesstui.conversation.tool_transcript`" in text
+    assert "`loushang.harnesstui.status.line`" in text
+
+
+def test_harnesstui_tool_and_status_entrypoints_exist() -> None:
+    paths = (
+        Path("src/loushang/harnesstui/conversation/tool_transcript.py"),
+        Path("src/loushang/harnesstui/status/line.py"),
+    )
+
+    missing = [path.as_posix() for path in paths if not path.is_file()]
+
+    assert missing == []
 
 
 def test_importing_channel_types_does_not_eagerly_load_agent_or_ai() -> None:

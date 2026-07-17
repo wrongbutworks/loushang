@@ -15,7 +15,7 @@ from loushang.coding.ui.settings_common import (
     row_for_key,
     settings_header,
 )
-from loushang.coding.ui.status_line import (
+from loushang.harnesstui.status.line import (
     StatusLinePreviewSnapshot,
     StatusLineSettings,
     status_line_fields,
