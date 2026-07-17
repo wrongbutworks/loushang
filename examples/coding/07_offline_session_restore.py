@@ -115,7 +115,7 @@ async def main() -> None:
         print("=== Offline Session Restore Roundtrip ===")
         print(f"Session dir: {session_dir}")
         print(f"Session file: {session_file}")
-        print(f"Session id: {session.session_manager.get_header().id}")
+        print(f"Session id: {session.session_manager.get_header().conversation_id}")
         print()
         print("Messages after first prompt:")
         _print_messages(session)

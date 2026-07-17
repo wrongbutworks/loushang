@@ -29,10 +29,10 @@
 - `loushang.ontology`
 - `loushang.protocol`
 
-`loushang.channel` 已有最小协议类型包，用于承载 `WorkOperation` /
-`WorkEvent` 边界消息。现有 RPC/JSONL 能力仍先作为
-`loushang.coding.mode.RpcMode` 的 transitional surface 存在；后续 channel
-层成熟后再上提为 `loushang.channel.rpc_jsonl` 等 adapter。
+`loushang.channel` 提供承载 `WorkOperation` / `WorkEvent` 的边界协议，及
+`rpc_jsonl` 的 JSONL framing、request correlation、accepted ACK 和 event
+delivery。现有 `loushang.coding.mode.RpcMode` 仍是 Coding-local transitional
+surface；它的命令表和 UI payload 不属于 Channel。
 
 当前仓库结构应按已落地包理解：
 
@@ -89,7 +89,8 @@ CLI / TUI
   log 与 plan/step projection
 - `loushang.tui` 提供通用 terminal-native UI primitives，`loushang.coding.ui`
   将 coding session 状态适配到 TUI
-- `loushang.channel` 提供最小边界协议类型；具体 transport adapter 仍是后续工作
+- `loushang.channel` 提供 Work boundary protocol 和窄 JSONL framing adapter；
+  capability negotiation 与 interaction request/response 仍是后续工作
 
 其中：
 
@@ -121,6 +122,6 @@ CLI / TUI
 下一步建议继续完善：
 
 1. `loushang.work` 与 method plan/step failure projection 的硬化
-2. `loushang.channel.rpc_jsonl` adapter 草案和 operation/event delivery 行为
+2. channel capability negotiation and interaction request/response contracts
 3. TUI method status layer 与 `WorkEvent` / `WorkPlanRun` projection
 4. public CLI reference 对 method/work/package surface 的补齐

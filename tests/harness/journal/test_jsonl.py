@@ -145,6 +145,40 @@ def test_skip_invalid_records_and_partial_tail_reports_provenance(
     assert all(diagnostic.source_path == path for diagnostic in snapshot.diagnostics)
 
 
+def test_repair_partial_tail_atomically_removes_only_incomplete_line(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.journal import (
+        PROCESS_LOCAL_JOURNAL,
+        JournalLoadPolicy,
+        JsonlJournal,
+    )
+
+    path = tmp_path / "records.jsonl"
+    complete = '{"recordId":"one","text":"ok"}\n'
+    path.write_text(complete + '{"recordId":', encoding="utf-8")
+    journal = JsonlJournal(
+        path,
+        record_codec=_RecordCodec(),
+        durability=PROCESS_LOCAL_JOURNAL,
+        load_policy=JournalLoadPolicy(partial_tail="repair"),
+    )
+
+    snapshot = journal.load()
+    journal.append(_Record("two", "after repair"))
+    reloaded = journal.load()
+
+    assert snapshot.records == (_Record("one", "ok"),)
+    assert [diagnostic.code for diagnostic in snapshot.diagnostics] == [
+        "partial_journal_tail"
+    ]
+    assert path.read_text(encoding="utf-8").startswith(complete)
+    assert reloaded.records == (
+        _Record("one", "ok"),
+        _Record("two", "after repair"),
+    )
+
+
 def test_strict_load_raises_typed_file_error(tmp_path: Path) -> None:
     import pytest
 

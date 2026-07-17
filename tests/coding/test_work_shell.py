@@ -4,15 +4,24 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
+from loushang.harness.events import RuntimeEvent
+
 
 class FakePromptSession:
-    def __init__(self, events: list[dict[str, object]], *, error: Exception | None = None) -> None:
+    def __init__(
+        self, events: list[dict[str, object]], *, error: Exception | None = None
+    ) -> None:
         self.events = events
         self.error = error
         self.prompts: list[str] = []
-        self.listeners: list[Callable[[dict[str, object]], Awaitable[None] | None]] = []
+        self.listeners: list[
+            Callable[[RuntimeEvent[object]], Awaitable[None] | None]
+        ] = []
 
-    def subscribe(self, listener: Callable[[dict[str, object]], Awaitable[None] | None]) -> Callable[[], None]:
+    def subscribe_runtime_events(
+        self,
+        listener: Callable[[RuntimeEvent[object]], Awaitable[None] | None],
+    ) -> Callable[[], None]:
         self.listeners.append(listener)
 
         def unsubscribe() -> None:
@@ -25,14 +34,24 @@ class FakePromptSession:
         self.prompts.append(text)
         if self.error is not None:
             raise self.error
-        for event in self.events:
+        for sequence, payload in enumerate(self.events, start=1):
+            event = RuntimeEvent(
+                event_id=f"event-{sequence}",
+                kind=f"agent.{payload['type']}",
+                stream_id="session:test",
+                sequence=sequence,
+                occurred_at=datetime(2026, 6, 1, tzinfo=UTC),
+                payload=payload,
+            )
             for listener in list(self.listeners):
                 result = listener(event)
                 if result is not None:
                     await result
 
 
-def test_coding_work_shell_wraps_prompt_and_logs_operation_run_and_projected_events() -> None:
+def test_coding_work_shell_wraps_prompt_and_logs_operation_run_and_projected_events() -> (
+    None
+):
     from loushang.coding.work_shell import CodingWorkShell
     from loushang.work import InMemoryEventLogBackend
 
@@ -72,7 +91,13 @@ def test_coding_work_shell_wraps_prompt_and_logs_operation_run_and_projected_eve
         assert len(session.listeners) == 0
 
         entries = event_log.query(run_id="run-1")
-        assert [entry.entry_type for entry in entries] == ["operation", "event", "event", "event", "event"]
+        assert [entry.entry_type for entry in entries] == [
+            "operation",
+            "event",
+            "event",
+            "event",
+            "event",
+        ]
         assert entries[0].payload == {
             "kind": "SubmitCodingTurn",
             "domain": "coding",
@@ -87,22 +112,25 @@ def test_coding_work_shell_wraps_prompt_and_logs_operation_run_and_projected_eve
         assert entries[2].payload["delivery_hint"] == "coalesce"
         assert entries[3].payload["delivery_hint"] == "coalesce"
         assert entries[4].payload["delivery_hint"] == "immediate"
+        assert entries[2].payload["source_event_ref"] == "event-1"
+        assert entries[3].payload["source_event_ref"] == "event-2"
 
     asyncio.run(scenario())
 
 
 def test_coding_work_shell_projects_custom_messages_with_product_codec() -> None:
-    from loushang.coding.message import create_custom_message
     from loushang.coding.work_shell import CodingWorkShell
+    from loushang.harness.agent_transcript import ApplicationMessage
     from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
-        message = create_custom_message(
+        message = ApplicationMessage(
+            application_message_id="application-1",
             custom_type="review-note",
             content="check this",
             display=True,
             details={"severity": "warning"},
-            timestamp="2026-06-01T10:30:00+00:00",
+            timestamp=1_780_309_800.0,
         )
         event_log = InMemoryEventLogBackend()
         shell = CodingWorkShell(
@@ -122,13 +150,16 @@ def test_coding_work_shell_projects_custom_messages_with_product_codec() -> None
 
         projected = event_log.query(run_id="run-1")[2]
         assert projected.payload["payload"]["message"] == {
-            "role": "custom",
+            "role": "application",
+            "applicationMessageId": "application-1",
             "customType": "review-note",
-                "content": "check this",
-                "display": True,
-                "details": {"severity": "warning"},
-                "timestamp": message.timestamp,
-            }
+            "content": "check this",
+            "display": True,
+            "details": {"severity": "warning"},
+            "timestamp": message.timestamp,
+            "origin": "application",
+            "deliveryMode": "direct",
+        }
 
     asyncio.run(scenario())
 
@@ -211,7 +242,9 @@ def test_coding_work_shell_jsonl_log_can_replay_persisted_turn(tmp_path) -> None
     from loushang.coding.work_shell import CodingWorkShell
     from loushang.work import JsonlEventLogBackend
 
-    usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    usage = Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
     assistant = AssistantMessage(
         role="assistant",
         content=[TextPart(type="text", text="done")],
@@ -430,7 +463,9 @@ def test_coding_work_shell_can_suppress_plan_boundaries_for_middle_step() -> Non
     asyncio.run(scenario())
 
 
-def test_coding_work_shell_records_plan_failure_even_when_plan_boundaries_are_suppressed() -> None:
+def test_coding_work_shell_records_plan_failure_even_when_plan_boundaries_are_suppressed() -> (
+    None
+):
     from loushang.coding.work_shell import CodingWorkShell
     from loushang.work import InMemoryEventLogBackend
 
@@ -487,7 +522,10 @@ def test_coding_work_shell_records_step_and_plan_failures_before_run_failure() -
             event_log=event_log,
             clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
         )
-        plan_facts = {"plan_id": "plan:method:task:review", "method_id": "method:task:review"}
+        plan_facts = {
+            "plan_id": "plan:method:task:review",
+            "method_id": "method:task:review",
+        }
         step_facts = {"step_id": "inspect", "step_index": 0}
 
         try:

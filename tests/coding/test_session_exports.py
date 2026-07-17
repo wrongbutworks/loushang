@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from loushang.agent import Agent
@@ -18,50 +19,67 @@ from loushang.coding.store.file_codec import load_session_file
 from loushang.coding.tools import ToolDefinition, ToolRegistry
 
 
-def _build_export_session(tmp_path, *, tool_registry: ToolRegistry | None = None) -> AgentSession:
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="hello export")],
-            timestamp=0.0,
+def _build_export_session(
+    tmp_path, *, tool_registry: ToolRegistry | None = None
+) -> AgentSession:
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="hello export")],
+                timestamp=0.0,
+            )
         )
     )
-    manager.append_message(
-        AssistantMessage(
-            role="assistant",
-            content=[
-                TextPart(type="text", text="Calling read"),
-                ToolCall(type="toolCall", id="call-1", name="read", arguments={"path": "README.md"}),
-            ],
-            api="anthropic-messages",
-            provider="faux",
-            model="faux-model",
-            response_id=None,
-            usage=Usage(
-                input=10,
-                output=20,
-                cache_read=0,
-                cache_write=0,
-                total_tokens=30,
-                cost={},
-            ),
-            stop_reason="toolUse",
-            error_message=None,
-            timestamp=1.0,
+    asyncio.run(
+        manager.append_message(
+            AssistantMessage(
+                role="assistant",
+                content=[
+                    TextPart(type="text", text="Calling read"),
+                    ToolCall(
+                        type="toolCall",
+                        id="call-1",
+                        name="read",
+                        arguments={"path": "README.md"},
+                    ),
+                ],
+                api="anthropic-messages",
+                provider="faux",
+                model="faux-model",
+                response_id=None,
+                usage=Usage(
+                    input=10,
+                    output=20,
+                    cache_read=0,
+                    cache_write=0,
+                    total_tokens=30,
+                    cost={},
+                ),
+                stop_reason="toolUse",
+                error_message=None,
+                timestamp=1.0,
+            )
         )
     )
-    manager.append_message(
-        ToolResultMessage(
-            role="toolResult",
-            tool_call_id="call-1",
-            tool_name="read",
-            content=[TextPart(type="text", text="README content")],
-            is_error=False,
-            timestamp=2.0,
+    asyncio.run(
+        manager.append_message(
+            ToolResultMessage(
+                role="toolResult",
+                tool_call_id="call-1",
+                tool_name="read",
+                content=[TextPart(type="text", text="README content")],
+                is_error=False,
+                timestamp=2.0,
+            )
         )
     )
-    return AgentSession(agent=Agent(), session_manager=manager, tool_registry=tool_registry)
+    return AgentSession(
+        agent=Agent(), session_manager=manager, tool_registry=tool_registry
+    )
 
 
 def test_export_session_to_jsonl_writes_branch_entries_and_header(tmp_path) -> None:
@@ -73,7 +91,7 @@ def test_export_session_to_jsonl_writes_branch_entries_and_header(tmp_path) -> N
 
     assert output.endswith(".jsonl")
     header, entries = load_session_file(tmp_path / "out.jsonl")
-    assert header.id == session.session_id
+    assert header.conversation_id == session.session_id
     assert len(entries) == len(session.session_manager.get_branch())
 
 
@@ -94,7 +112,11 @@ def test_export_session_to_jsonl_defaults_to_generated_filename(tmp_path) -> Non
 
     cwd = tmp_path / "project"
     cwd.mkdir()
-    manager = SessionManager.new(session_dir=tmp_path / "sessions", cwd=str(cwd), persist=False)
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(cwd), persist=False
+        )
+    )
     session = AgentSession(agent=Agent(), session_manager=manager)
 
     output = export_session_to_jsonl(session)
@@ -110,19 +132,54 @@ def test_export_session_to_jsonl_rechains_current_branch_parent_ids(tmp_path) ->
 
     from loushang.coding.session.export_jsonl import export_session_to_jsonl
 
-    manager = SessionManager.new(session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False)
-    first_id = manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="root")], timestamp=0.0))
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="discarded")], timestamp=1.0))
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
+        )
+    )
+    first_id = asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user", content=[TextPart(type="text", text="root")], timestamp=0.0
+            )
+        )
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="discarded")],
+                timestamp=1.0,
+            )
+        )
+    )
     manager.branch(first_id)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="kept")], timestamp=2.0))
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user", content=[TextPart(type="text", text="kept")], timestamp=2.0
+            )
+        )
+    )
     session = AgentSession(agent=Agent(), session_manager=manager)
 
-    output = export_session_to_jsonl(session, output_path=str(tmp_path / "branch.jsonl"))
-    lines = [json.loads(line) for line in Path(output).read_text(encoding="utf-8").splitlines()]
+    output = export_session_to_jsonl(
+        session, output_path=str(tmp_path / "branch.jsonl")
+    )
+    lines = [
+        json.loads(line)
+        for line in Path(output).read_text(encoding="utf-8").splitlines()
+    ]
     entries = lines[1:]
 
-    assert [entry["message"]["content"][0]["text"] for entry in entries] == ["root", "kept"]
-    assert [entry["parentId"] for entry in entries] == [None, entries[0]["id"]]
+    assert [entry["payload"]["content"][0]["text"] for entry in entries] == [
+        "root",
+        "kept",
+    ]
+    assert [entry["parentId"] for entry in entries] == [
+        None,
+        entries[0]["recordId"],
+    ]
 
 
 def test_render_transcript_uses_stable_message_ids() -> None:
@@ -130,8 +187,16 @@ def test_render_transcript_uses_stable_message_ids() -> None:
 
     html = render_transcript(
         [
-            UserMessage(role="user", content=[TextPart(type="text", text="first")], timestamp=0.0),
-            UserMessage(role="user", content=[TextPart(type="text", text="second")], timestamp=1.0),
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="first")],
+                timestamp=0.0,
+            ),
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="second")],
+                timestamp=1.0,
+            ),
         ]
     )
 
@@ -139,7 +204,9 @@ def test_render_transcript_uses_stable_message_ids() -> None:
     assert 'id="message-2"' in html
 
 
-def test_render_transcript_renders_markdown_code_fences_with_syntax_highlighting() -> None:
+def test_render_transcript_renders_markdown_code_fences_with_syntax_highlighting() -> (
+    None
+):
     from loushang.coding.session.export_html.tool_renderer import render_transcript
 
     html = render_transcript(
@@ -156,7 +223,14 @@ def test_render_transcript_renders_markdown_code_fences_with_syntax_highlighting
                 provider="faux",
                 model="faux-model",
                 response_id=None,
-                usage=Usage(input=1, output=1, cache_read=0, cache_write=0, total_tokens=2, cost={}),
+                usage=Usage(
+                    input=1,
+                    output=1,
+                    cache_read=0,
+                    cache_write=0,
+                    total_tokens=2,
+                    cost={},
+                ),
                 stop_reason="end_turn",
                 error_message=None,
                 timestamp=1.0,
@@ -216,7 +290,9 @@ def test_export_session_to_html_script_loads_embedded_session_data(tmp_path) -> 
     assert "transcript-count" in html
 
 
-def test_export_session_to_html_tool_results_include_presentation_notices(tmp_path) -> None:
+def test_export_session_to_html_tool_results_include_presentation_notices(
+    tmp_path,
+) -> None:
     from loushang.coding.session.export_html.tool_renderer import render_tool_sections
 
     html = render_tool_sections(
@@ -272,7 +348,7 @@ def test_export_session_to_html_uses_tool_renderers(tmp_path) -> None:
         return {
             "html": (
                 f'<span class="custom-call">{args["path"]} '
-                f'{theme["accent"]} {context.tool_call_id} {context.cwd}</span>'
+                f"{theme['accent']} {context.tool_call_id} {context.cwd}</span>"
             )
         }
 
@@ -280,7 +356,7 @@ def test_export_session_to_html_uses_tool_renderers(tmp_path) -> None:
         del theme
         return {
             "text": (
-                f'rendered {context.args["path"]} '
+                f"rendered {context.args['path']} "
                 f"expanded={options.expanded} error={context.is_error} "
                 f"text={result.content[0].text}"
             )
@@ -292,7 +368,11 @@ def test_export_session_to_html_uses_tool_renderers(tmp_path) -> None:
             name="read",
             label="Read",
             description="Read files",
-            parameters={"type": "object", "properties": {}, "additionalProperties": False},
+            parameters={
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
             execute=execute,
             render_call=render_call,
             render_result=render_result,
@@ -382,13 +462,25 @@ def test_render_tool_sections_uses_shared_renderer_runtime_state() -> None:
             AssistantMessage(
                 role="assistant",
                 content=[
-                    ToolCall(type="toolCall", id="call-1", name="read", arguments={"path": "README.md"}),
+                    ToolCall(
+                        type="toolCall",
+                        id="call-1",
+                        name="read",
+                        arguments={"path": "README.md"},
+                    ),
                 ],
                 api="anthropic-messages",
                 provider="faux",
                 model="faux-model",
                 response_id=None,
-                usage=Usage(input=1, output=1, cache_read=0, cache_write=0, total_tokens=2, cost={}),
+                usage=Usage(
+                    input=1,
+                    output=1,
+                    cache_read=0,
+                    cache_write=0,
+                    total_tokens=2,
+                    cost={},
+                ),
                 stop_reason="toolUse",
                 error_message=None,
                 timestamp=1.0,
@@ -418,45 +510,94 @@ def test_export_session_to_html_embeds_entry_tree_and_summary_entries(tmp_path) 
 
     from loushang.coding.session.export_html import export_session_to_html
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    first_id = manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="root")], timestamp=0.0))
-    manager.append_message(
-        AssistantMessage(
-            role="assistant",
-            content=[TextPart(type="text", text="main branch")],
-            api="anthropic-messages",
-            provider="faux",
-            model="faux-model",
-            response_id=None,
-            usage=Usage(input=1, output=1, cache_read=0, cache_write=0, total_tokens=2, cost={}),
-            stop_reason="end_turn",
-            error_message=None,
-            timestamp=1.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    first_id = asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user", content=[TextPart(type="text", text="root")], timestamp=0.0
+            )
+        )
+    )
+    asyncio.run(
+        manager.append_message(
+            AssistantMessage(
+                role="assistant",
+                content=[TextPart(type="text", text="main branch")],
+                api="anthropic-messages",
+                provider="faux",
+                model="faux-model",
+                response_id=None,
+                usage=Usage(
+                    input=1,
+                    output=1,
+                    cache_read=0,
+                    cache_write=0,
+                    total_tokens=2,
+                    cost={},
+                ),
+                stop_reason="end_turn",
+                error_message=None,
+                timestamp=1.0,
+            )
         )
     )
     manager.branch(first_id)
-    summary_id = manager.branch_with_summary(first_id, "branch summary text")
-    manager.append_compaction(summary="compact summary text", first_kept_entry_id=first_id, tokens_before=1234)
-    manager.append_label(summary_id, "summary label")
+    summary_id = asyncio.run(
+        manager.branch_with_summary(first_id, "branch summary text")
+    )
+    asyncio.run(
+        manager.append_compaction(
+            summary="compact summary text",
+            first_kept_entry_id=first_id,
+            tokens_before=1234,
+        )
+    )
+    asyncio.run(manager.append_label(summary_id, "summary label"))
     session = AgentSession(agent=Agent(), session_manager=manager)
 
     output = export_session_to_html(session, output_path=str(tmp_path / "session.html"))
     html = Path(output).read_text(encoding="utf-8")
 
-    encoded = re.search(r'<script id="session-data" type="application/json">([^<]+)</script>', html)
+    encoded = re.search(
+        r'<script id="session-data" type="application/json">([^<]+)</script>', html
+    )
     assert encoded is not None
     data = json.loads(base64.b64decode(encoded.group(1)).decode("utf-8"))
     assert data["leafId"] == manager.get_leaf_id()
-    assert [entry["type"] for entry in data["entries"]] == ["message", "message", "branch_summary", "compaction", "label"]
+    assert [entry["type"] for entry in data["entries"]] == ["record"] * 5
+    assert [entry["kind"] for entry in data["entries"]] == [
+        "agent.message",
+        "agent.message",
+        "context.branch_summary",
+        "context.compaction_checkpoint",
+        "record.annotation_patch",
+    ]
     assert data["tree"]["entryCount"] == 5
     assert data["tree"]["leafId"] == manager.get_leaf_id()
     assert "Session Tree" in html
     assert "branch summary text" in html
     assert "compact summary text" in html
     assert "summary label" in html
+    assert "main branch" not in html
 
 
-def test_export_session_to_html_embeds_system_prompt_and_tool_definitions(tmp_path) -> None:
+def test_product_transcript_dispositions_cover_every_standard_kind() -> None:
+    from loushang.coding.session.export_html.tool_renderer import (
+        HTML_TRANSCRIPT_DISPOSITIONS,
+    )
+    from loushang.coding.ui.session_history import TUI_TRANSCRIPT_DISPOSITIONS
+    from loushang.harness.agent_transcript import STANDARD_AGENT_TRANSCRIPT_KINDS
+
+    expected = set(STANDARD_AGENT_TRANSCRIPT_KINDS)
+    assert set(HTML_TRANSCRIPT_DISPOSITIONS) == expected
+    assert set(TUI_TRANSCRIPT_DISPOSITIONS) == expected
+
+
+def test_export_session_to_html_embeds_system_prompt_and_tool_definitions(
+    tmp_path,
+) -> None:
     import base64
     import json
     import re
@@ -466,7 +607,9 @@ def test_export_session_to_html_embeds_system_prompt_and_tool_definitions(tmp_pa
     async def execute_probe(tool_call_id, params, signal, on_update):
         return AgentToolResult(content=[TextPart(type="text", text="ok")])
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     registry = ToolRegistry()
     registry.register_tool(
         ToolDefinition(
@@ -493,7 +636,9 @@ def test_export_session_to_html_embeds_system_prompt_and_tool_definitions(tmp_pa
     output = export_session_to_html(session, output_path=str(tmp_path / "session.html"))
     html = Path(output).read_text(encoding="utf-8")
 
-    encoded = re.search(r'<script id="session-data" type="application/json">([^<]+)</script>', html)
+    encoded = re.search(
+        r'<script id="session-data" type="application/json">([^<]+)</script>', html
+    )
     assert encoded is not None
     data = json.loads(base64.b64decode(encoded.group(1)).decode("utf-8"))
     assert data["systemPrompt"] == session.agent.system_prompt
@@ -529,8 +674,12 @@ def test_export_session_to_html_uses_custom_renderer_and_theme(tmp_path) -> None
             "className": "custom rendered-card-shell",
         }
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_custom_message_entry("demo.card", "custom payload", True)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_custom_message_entry("demo.card", "custom payload", True)
+    )
     session = AgentSession(
         agent=Agent(),
         session_manager=manager,

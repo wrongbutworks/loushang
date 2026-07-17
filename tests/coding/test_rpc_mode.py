@@ -29,7 +29,6 @@ from loushang.coding.loader import (
     ResourceBundle,
     SkillDescriptor,
 )
-from loushang.coding.message import SessionMessageEntry
 from loushang.coding.session.types import (
     AgentSessionState,
     CommandSourceInfo,
@@ -38,6 +37,8 @@ from loushang.coding.session.types import (
 )
 from loushang.coding.store import SessionQuery
 from loushang.coding.types import ModelSelection
+from loushang.harness.agent_transcript import AGENT_MESSAGE_KIND
+from loushang.harness.conversation import ConversationRecord
 
 
 def _assistant_message(text: str) -> AssistantMessage:
@@ -48,7 +49,9 @@ def _assistant_message(text: str) -> AssistantMessage:
         provider="faux",
         model="faux-model",
         response_id=None,
-        usage=Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}),
+        usage=Usage(
+            input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+        ),
         stop_reason="stop",
         error_message=None,
         timestamp=0.0,
@@ -63,19 +66,38 @@ def _user_message(text: str) -> UserMessage:
     )
 
 
+def _message_record(record_id: str, message: UserMessage) -> ConversationRecord[object]:
+    return ConversationRecord(
+        record_id=record_id,
+        parent_id=None,
+        kind=AGENT_MESSAGE_KIND,
+        payload_version=1,
+        created_at="2026-05-21T00:00:00Z",
+        payload=message,
+    )
+
+
 def _parse_jsonl(stream: StringIO) -> list[dict[str, object]]:
     return [json.loads(line) for line in stream.getvalue().splitlines() if line.strip()]
 
 
 def _command_descriptor(item: dict[str, object]) -> SessionCommandDescriptor:
     source_info = item.get("source_info")
-    path = source_info.get("path", "") if isinstance(source_info, dict) else item.get("path", "")
+    path = (
+        source_info.get("path", "")
+        if isinstance(source_info, dict)
+        else item.get("path", "")
+    )
     path_text = str(path)
     return SessionCommandDescriptor(
         name=item.get("name") if isinstance(item.get("name"), str) else "",
-        description=item.get("description") if isinstance(item.get("description"), str) else None,
+        description=item.get("description")
+        if isinstance(item.get("description"), str)
+        else None,
         source=item.get("source") if isinstance(item.get("source"), str) else "",
-        source_info=CommandSourceInfo(path=path_text, base_dir=str(Path(path_text).parent) if path_text else None),
+        source_info=CommandSourceInfo(
+            path=path_text, base_dir=str(Path(path_text).parent) if path_text else None
+        ),
     )
 
 
@@ -102,7 +124,7 @@ class FakeSessionManager:
     def set_entry(self, entry_id: str, entry: object) -> None:
         self._entries_by_id[entry_id] = entry
 
-    def append_session_info(self, name: str | None) -> str:
+    async def append_session_info(self, name: str | None) -> str:
         self.session_info_calls.append(name)
         self._owner.session_name = name
         return "session-info-1"
@@ -221,7 +243,7 @@ class FakeSession:
         return self._state.model_selection
 
     def get_session_context(self):
-        return SimpleNamespace(messages=list(self._messages))
+        return SimpleNamespace(messages=tuple(self._messages))
 
     async def prompt(self, user_input: str, images=None, **kwargs) -> None:
         self.prompt_calls.append((user_input, images))
@@ -230,7 +252,11 @@ class FakeSession:
         if callable(preflight_result):
             preflight_result(True)
         streaming_behavior = kwargs.get("streaming_behavior")
-        if self._state.run.status == "running" and streaming_behavior in {"steer", "followUp", "follow_up"}:
+        if self._state.run.status == "running" and streaming_behavior in {
+            "steer",
+            "followUp",
+            "follow_up",
+        }:
             if streaming_behavior == "steer":
                 self.steer(user_input, images=images)
             else:
@@ -256,7 +282,9 @@ class FakeSession:
 
     def follow_up(self, user_input: str, images=None) -> None:
         self.follow_up_calls.append((user_input, images))
-        self._state = replace(self._state, follow_up=[*self._state.follow_up, user_input])
+        self._state = replace(
+            self._state, follow_up=[*self._state.follow_up, user_input]
+        )
 
     def abort(self) -> None:
         self.abort_calls += 1
@@ -306,9 +334,9 @@ class FakeSession:
         self.set_follow_up_mode_calls.append(mode)
         self.agent.follow_up_mode = mode
 
-    def set_session_name(self, name: str | None) -> None:
+    async def set_session_name(self, name: str | None) -> None:
         self.set_session_name_calls.append(name)
-        self.session_manager.append_session_info(name)
+        await self.session_manager.append_session_info(name)
 
     def get_available_models(self) -> list[ModelSelection]:
         return self.model_registry.list_models()
@@ -316,14 +344,32 @@ class FakeSession:
     def list_commands(self) -> list[object]:
         if self.command_entries:
             return [
-                command if isinstance(command, SessionCommandDescriptor) else _command_descriptor(command)
+                command
+                if isinstance(command, SessionCommandDescriptor)
+                else _command_descriptor(command)
                 for command in self.command_entries
             ]
         commands: list[SessionCommandDescriptor] = []
         for prompt in self.resource_bundle.prompts:
-            commands.append(_command_descriptor({"name": f"/{prompt.name}", "source": "prompt", "path": str(prompt.source_path)}))
+            commands.append(
+                _command_descriptor(
+                    {
+                        "name": f"/{prompt.name}",
+                        "source": "prompt",
+                        "path": str(prompt.source_path),
+                    }
+                )
+            )
         for skill in self.resource_bundle.skills:
-            commands.append(_command_descriptor({"name": f"/skill:{skill.name}", "source": "skill", "path": str(skill.source_path)}))
+            commands.append(
+                _command_descriptor(
+                    {
+                        "name": f"/skill:{skill.name}",
+                        "source": "skill",
+                        "path": str(skill.source_path),
+                    }
+                )
+            )
         return commands
 
     def get_last_diagnostics(self, limit: int = 50) -> list[DiagnosticRecord]:
@@ -337,7 +383,11 @@ class FakeSession:
 
     @property
     def auto_compaction_enabled(self) -> bool:
-        return True if not self.set_auto_compaction_calls else self.set_auto_compaction_calls[-1]
+        return (
+            True
+            if not self.set_auto_compaction_calls
+            else self.set_auto_compaction_calls[-1]
+        )
 
     def set_auto_compaction_enabled(self, enabled: bool) -> None:
         self.set_auto_compaction_calls.append(enabled)
@@ -433,32 +483,46 @@ class FakeSession:
         for message in reversed(self._messages):
             if getattr(message, "role", None) != "assistant":
                 continue
-            return "".join(block.text for block in message.content if getattr(block, "type", None) == "text")
+            return "".join(
+                block.text
+                for block in message.content
+                if getattr(block, "type", None) == "text"
+            )
         return None
 
     def get_user_messages_for_forking(self) -> list[dict[str, str]]:
-        return [{"entry_id": item["entry_id"], "text": item["text"]} for item in self.user_messages_for_forking]
+        return [
+            {"entry_id": item["entry_id"], "text": item["text"]}
+            for item in self.user_messages_for_forking
+        ]
 
     def get_entry_text(self, entry_id: str) -> str | None:
         entry = self.session_manager.get_entry(entry_id)
         if entry is None:
             return None
-        message = getattr(entry, "message", None)
-        content = getattr(message, "content", getattr(entry, "content", None))
+        content = getattr(getattr(entry, "payload", None), "content", None)
         if isinstance(content, str):
             return content or None
         if isinstance(content, list):
-            text = "".join(block.text for block in content if getattr(block, "type", None) == "text")
+            text = "".join(
+                block.text
+                for block in content
+                if getattr(block, "type", None) == "text"
+            )
             return text or None
         return None
 
-    def get_packages(self, *, catalog_path: str | None = None) -> list[dict[str, object]]:
+    def get_packages(
+        self, *, catalog_path: str | None = None
+    ) -> list[dict[str, object]]:
         del catalog_path
         return list(self.packages)
 
 
 class FakeRuntime:
-    def __init__(self, session: FakeSession, session_summaries: list[object] | None = None) -> None:
+    def __init__(
+        self, session: FakeSession, session_summaries: list[object] | None = None
+    ) -> None:
         self._current_session = session
         self.new_session_calls: list[dict[str, object]] = []
         self.switch_session_calls: list[object] = []
@@ -518,7 +582,11 @@ class FakeRuntime:
 
     async def fork_session_with_result(self, entry_id: str, *, position: str = "at"):
         self.fork_session_with_result_calls.append((entry_id, position))
-        selected_text = self._current_session.get_entry_text(entry_id) if position == "before" else None
+        selected_text = (
+            self._current_session.get_entry_text(entry_id)
+            if position == "before"
+            else None
+        )
         session = await self.fork_session(entry_id)
         return session, selected_text
 
@@ -536,7 +604,9 @@ class FakeRuntime:
         self.find_session_summaries_calls.append(query)
         return self._find_session_summaries(query)
 
-    def find_all_session_summaries(self, query: SessionQuery | None = None) -> list[object]:
+    def find_all_session_summaries(
+        self, query: SessionQuery | None = None
+    ) -> list[object]:
         self.find_all_session_summaries_calls.append(query)
         return self._find_session_summaries(query)
 
@@ -556,24 +626,36 @@ class FakeRuntime:
         self.list_all_indexed_session_summaries_calls += 1
         return list(self.session_summaries)
 
-    def find_indexed_session_summaries(self, query: SessionQuery | None = None) -> list[object]:
+    def find_indexed_session_summaries(
+        self, query: SessionQuery | None = None
+    ) -> list[object]:
         self.find_indexed_session_summaries_calls.append(query)
         return self._find_session_summaries(query)
 
-    def find_all_indexed_session_summaries(self, query: SessionQuery | None = None) -> list[object]:
+    def find_all_indexed_session_summaries(
+        self, query: SessionQuery | None = None
+    ) -> list[object]:
         self.find_all_indexed_session_summaries_calls.append(query)
         return self._find_session_summaries(query)
 
-    def _find_session_summaries(self, query: SessionQuery | None = None) -> list[object]:
+    def _find_session_summaries(
+        self, query: SessionQuery | None = None
+    ) -> list[object]:
         if query is None:
             return list(self.session_summaries)
 
         def matches(summary: object) -> bool:
             if query.cwd is not None and getattr(summary, "cwd", None) != query.cwd:
                 return False
-            if query.name is not None and query.name.lower() not in str(getattr(summary, "name", "")).lower():
+            if (
+                query.name is not None
+                and query.name.lower() not in str(getattr(summary, "name", "")).lower()
+            ):
                 return False
-            if query.parent_session is not None and getattr(summary, "parent_session", None) != query.parent_session:
+            if (
+                query.parent_session is not None
+                and getattr(summary, "parent_session", None) != query.parent_session
+            ):
                 return False
             if query.text is not None:
                 haystack = " ".join(
@@ -592,27 +674,52 @@ class FakeRuntime:
         filtered = [summary for summary in self.session_summaries if matches(summary)]
         return filtered[: query.limit] if query.limit is not None else filtered
 
-    def get_diagnostics(self, query: DiagnosticsQuery | None = None) -> list[DiagnosticRecord]:
+    def get_diagnostics(
+        self, query: DiagnosticsQuery | None = None
+    ) -> list[DiagnosticRecord]:
         self.get_diagnostics_calls.append(query)
-        return self._filter_diagnostics(query, records=list(self.diagnostics or self._current_session.diagnostics))
+        return self._filter_diagnostics(
+            query, records=list(self.diagnostics or self._current_session.diagnostics)
+        )
 
-    def get_session_diagnostics(self, query: DiagnosticsQuery | None = None) -> list[DiagnosticRecord]:
+    def get_session_diagnostics(
+        self, query: DiagnosticsQuery | None = None
+    ) -> list[DiagnosticRecord]:
         self.get_session_diagnostics_calls.append(query)
         records = list(self.diagnostics or self._current_session.diagnostics)
-        records = [record for record in records if record.session_id == self._current_session.session_id]
+        records = [
+            record
+            for record in records
+            if record.session_id == self._current_session.session_id
+        ]
         return self._filter_diagnostics(query, records=records)
 
-    def get_diagnostics_summary(self, query: DiagnosticsQuery | None = None) -> DiagnosticSummary:
+    def get_diagnostics_summary(
+        self, query: DiagnosticsQuery | None = None
+    ) -> DiagnosticSummary:
         self.get_diagnostics_summary_calls.append(query)
-        return _diagnostics_summary(self._filter_diagnostics(query, records=list(self.diagnostics or self._current_session.diagnostics)))
+        return _diagnostics_summary(
+            self._filter_diagnostics(
+                query,
+                records=list(self.diagnostics or self._current_session.diagnostics),
+            )
+        )
 
-    def get_session_diagnostics_summary(self, query: DiagnosticsQuery | None = None) -> DiagnosticSummary:
+    def get_session_diagnostics_summary(
+        self, query: DiagnosticsQuery | None = None
+    ) -> DiagnosticSummary:
         self.get_session_diagnostics_summary_calls.append(query)
         records = list(self.diagnostics or self._current_session.diagnostics)
-        records = [record for record in records if record.session_id == self._current_session.session_id]
+        records = [
+            record
+            for record in records
+            if record.session_id == self._current_session.session_id
+        ]
         return _diagnostics_summary(self._filter_diagnostics(query, records=records))
 
-    def get_packages(self, *, catalog_path: str | None = None) -> list[dict[str, object]]:
+    def get_packages(
+        self, *, catalog_path: str | None = None
+    ) -> list[dict[str, object]]:
         self.get_packages_calls.append(catalog_path)
         return self._current_session.get_packages(catalog_path=catalog_path)
 
@@ -705,16 +812,22 @@ class FakeRuntime:
         if query.level is not None:
             records = [record for record in records if record.type == query.level]
         if query.session_id is not None:
-            records = [record for record in records if record.session_id == query.session_id]
+            records = [
+                record for record in records if record.session_id == query.session_id
+            ]
         if query.entry_id is not None:
-            records = [record for record in records if record.entry_id == query.entry_id]
+            records = [
+                record for record in records if record.entry_id == query.entry_id
+            ]
         if query.code is not None:
             records = [record for record in records if record.code == query.code]
         return records[-query.limit :] if query.limit is not None else records
 
 
 def _diagnostics_summary(records: list[DiagnosticRecord]) -> DiagnosticSummary:
-    latest_error = next((record for record in reversed(records) if record.type == "error"), None)
+    latest_error = next(
+        (record for record in reversed(records) if record.type == "error"), None
+    )
     by_code: dict[str, int] = {}
     by_source: dict[str, int] = {}
     by_phase: dict[str, int] = {}
@@ -725,9 +838,21 @@ def _diagnostics_summary(records: list[DiagnosticRecord]) -> DiagnosticSummary:
         by_phase[record.phase] = by_phase.get(record.phase, 0) + count
     return DiagnosticSummary(
         total_count=sum(by_code.values()),
-        error_count=sum(max(record.occurrence_count, 1) for record in records if record.type == "error"),
-        warning_count=sum(max(record.occurrence_count, 1) for record in records if record.type == "warning"),
-        info_count=sum(max(record.occurrence_count, 1) for record in records if record.type == "info"),
+        error_count=sum(
+            max(record.occurrence_count, 1)
+            for record in records
+            if record.type == "error"
+        ),
+        warning_count=sum(
+            max(record.occurrence_count, 1)
+            for record in records
+            if record.type == "warning"
+        ),
+        info_count=sum(
+            max(record.occurrence_count, 1)
+            for record in records
+            if record.type == "info"
+        ),
         by_code=by_code,
         by_source=by_source,
         by_phase=by_phase,
@@ -744,7 +869,9 @@ def test_rpc_mode_runs_prompt_command_and_streams_events() -> None:
         event_message=_assistant_message("done"),
     )
     runtime = FakeRuntime(session)
-    stdin = StringIO(json.dumps({"id": "c1", "type": "prompt", "message": "hello"}) + "\n")
+    stdin = StringIO(
+        json.dumps({"id": "c1", "type": "prompt", "message": "hello"}) + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -758,7 +885,12 @@ def test_rpc_mode_runs_prompt_command_and_streams_events() -> None:
     asyncio.run(scenario())
 
     lines = _parse_jsonl(stdout)
-    assert lines[0] == {"id": "c1", "type": "response", "command": "prompt", "success": True}
+    assert lines[0] == {
+        "id": "c1",
+        "type": "response",
+        "command": "prompt",
+        "success": True,
+    }
     assert lines[1]["type"] == "message_end"
     assert lines[1]["message"]["role"] == "assistant"
     assert lines[1]["message"]["content"][0]["text"] == "done"
@@ -818,7 +950,9 @@ def test_rpc_mode_can_include_rendered_tool_event_payloads() -> None:
 
     def render_result(result, options, theme, context):
         del theme
-        return {"text": f"{context.state['command']} {result.content[0].text} partial={options.isPartial}"}
+        return {
+            "text": f"{context.state['command']} {result.content[0].text} partial={options.isPartial}"
+        }
 
     definition = ToolDefinition(
         name="bash",
@@ -838,7 +972,13 @@ def test_rpc_mode_can_include_rendered_tool_event_payloads() -> None:
     runtime = FakeRuntime(session)
     stdout = StringIO()
 
-    RpcMode(runtime=runtime, stdin=StringIO(), stdout=stdout, event_view="tools", render_tool_events=True)
+    RpcMode(
+        runtime=runtime,
+        stdin=StringIO(),
+        stdout=stdout,
+        event_view="tools",
+        render_tool_events=True,
+    )
     for listener in list(session.listeners):
         listener(
             {
@@ -854,7 +994,9 @@ def test_rpc_mode_can_include_rendered_tool_event_payloads() -> None:
                 "tool_call_id": "tc1",
                 "tool_name": "bash",
                 "args": {"command": "echo hi"},
-                "partial_result": AgentToolResult(content=[TextPart(type="text", text="running")], details={}),
+                "partial_result": AgentToolResult(
+                    content=[TextPart(type="text", text="running")], details={}
+                ),
             }
         )
 
@@ -1103,7 +1245,9 @@ def test_rpc_mode_list_sessions_supports_query_filters() -> None:
             limit=1,
         )
     ]
-    assert [item["sessionId"] for item in response["data"]["sessions"]] == ["session-beta"]
+    assert [item["sessionId"] for item in response["data"]["sessions"]] == [
+        "session-beta"
+    ]
 
 
 def test_rpc_mode_list_sessions_supports_all_sessions() -> None:
@@ -1151,7 +1295,9 @@ def test_rpc_mode_list_sessions_supports_all_sessions() -> None:
     response = _parse_jsonl(stdout)[0]
     assert runtime.find_all_session_summaries_calls == [SessionQuery(text="lookup")]
     assert runtime.find_session_summaries_calls == []
-    assert [item["sessionId"] for item in response["data"]["sessions"]] == ["session-global"]
+    assert [item["sessionId"] for item in response["data"]["sessions"]] == [
+        "session-global"
+    ]
 
 
 def test_rpc_mode_list_sessions_can_use_indexed_summaries() -> None:
@@ -1199,7 +1345,9 @@ def test_rpc_mode_list_sessions_can_use_indexed_summaries() -> None:
     response = _parse_jsonl(stdout)[0]
     assert runtime.find_indexed_session_summaries_calls == [SessionQuery(text="lookup")]
     assert runtime.find_session_summaries_calls == []
-    assert [item["sessionId"] for item in response["data"]["sessions"]] == ["session-indexed"]
+    assert [item["sessionId"] for item in response["data"]["sessions"]] == [
+        "session-indexed"
+    ]
 
 
 def test_rpc_mode_list_sessions_refresh_index_uses_indexed_all_session_query() -> None:
@@ -1228,7 +1376,9 @@ def test_rpc_mode_list_sessions_refresh_index_uses_indexed_all_session_query() -
     asyncio.run(scenario())
 
     assert runtime.refresh_all_session_indexes_calls == 1
-    assert runtime.find_all_indexed_session_summaries_calls == [SessionQuery(text="global")]
+    assert runtime.find_all_indexed_session_summaries_calls == [
+        SessionQuery(text="global")
+    ]
     assert runtime.find_all_session_summaries_calls == []
 
 
@@ -1237,7 +1387,9 @@ def test_rpc_mode_list_sessions_rejects_invalid_limit() -> None:
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
-    stdin = StringIO(json.dumps({"id": "sessions", "type": "list_sessions", "limit": -1}) + "\n")
+    stdin = StringIO(
+        json.dumps({"id": "sessions", "type": "list_sessions", "limit": -1}) + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -1400,7 +1552,9 @@ def test_rpc_mode_get_state_tolerates_broken_model_selection() -> None:
 
     class BrokenSelectionSession(FakeSession):
         def get_state(self):
-            return SimpleNamespace(model_selection=object(), run=SimpleNamespace(status="running"))
+            return SimpleNamespace(
+                model_selection=object(), run=SimpleNamespace(status="running")
+            )
 
     session = BrokenSelectionSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
@@ -1445,7 +1599,9 @@ def test_rpc_mode_get_state_tolerates_broken_model_projection() -> None:
             return SimpleNamespace(messages=[])
 
         def get_state(self):
-            return SimpleNamespace(model_selection=None, run=SimpleNamespace(status="idle"))
+            return SimpleNamespace(
+                model_selection=None, run=SimpleNamespace(status="idle")
+            )
 
     session = BrokenModelSession()
     runtime = FakeRuntime(session)
@@ -1537,7 +1693,9 @@ def test_rpc_mode_get_state_model_omits_partial_unknown_cost() -> None:
             )
         },
     )
-    asyncio.run(session.set_model(ModelSelection(provider="openrouter", model_id="auto")))
+    asyncio.run(
+        session.set_model(ModelSelection(provider="openrouter", model_id="auto"))
+    )
     runtime = FakeRuntime(session)
     stdin = StringIO(json.dumps({"id": "state", "type": "get_state"}) + "\n")
     stdout = StringIO()
@@ -1569,12 +1727,18 @@ def test_rpc_mode_model_cost_omits_invalid_numeric_values(value: float) -> None:
 @pytest.mark.parametrize(
     ("command", "payload", "runtime_attr"),
     [
-        ("new_session", {"cwd": "/tmp/project-b", "parentSession": "parent-1"}, "new_session_calls"),
+        (
+            "new_session",
+            {"cwd": "/tmp/project-b", "parentSession": "parent-1"},
+            "new_session_calls",
+        ),
         ("switch_session", {"sessionId": "session-b"}, "switch_session_calls"),
         ("fork", {"entryId": "entry-42"}, "fork_session_calls"),
     ],
 )
-def test_rpc_mode_rebinds_runtime_sessions(command: str, payload: dict[str, object], runtime_attr: str) -> None:
+def test_rpc_mode_rebinds_runtime_sessions(
+    command: str, payload: dict[str, object], runtime_attr: str
+) -> None:
     from loushang.coding.mode import run_rpc_mode
 
     current = FakeSession(session_id="session-a", cwd="/tmp/project-a")
@@ -1614,7 +1778,12 @@ def test_rpc_mode_rebinds_runtime_sessions(command: str, payload: dict[str, obje
         assert lifecycle["data"]["text"] is None
     else:
         assert lifecycle["data"] == {"cancelled": False}
-    assert lines[1] == {"id": "prompt", "type": "response", "command": "prompt", "success": True}
+    assert lines[1] == {
+        "id": "prompt",
+        "type": "response",
+        "command": "prompt",
+        "success": True,
+    }
     assert lines[2]["type"] == "message_end"
 
 
@@ -1625,7 +1794,12 @@ def test_rpc_mode_switch_session_accepts_session_path_alias() -> None:
     next_session = FakeSession(session_id="session-b", cwd="/tmp/project-b")
     runtime = FakeRuntime(current)
     runtime.queue_next_session(next_session)
-    stdin = StringIO(json.dumps({"id": "switch", "type": "switch_session", "sessionPath": "/tmp/s-b.jsonl"}) + "\n")
+    stdin = StringIO(
+        json.dumps(
+            {"id": "switch", "type": "switch_session", "sessionPath": "/tmp/s-b.jsonl"}
+        )
+        + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -1644,18 +1818,14 @@ def test_rpc_mode_fork_response_includes_selected_user_text() -> None:
     current = FakeSession(session_id="session-a", cwd="/tmp/project-a")
     current.session_manager.set_entry(
         "entry-42",
-        SessionMessageEntry(
-            type="message",
-            id="entry-42",
-            parent_id=None,
-            timestamp="2026-05-21T00:00:00Z",
-            message=_user_message("selected text"),
-        ),
+        _message_record("entry-42", _user_message("selected text")),
     )
     next_session = FakeSession(session_id="session-b", cwd="/tmp/project-b")
     runtime = FakeRuntime(current)
     runtime.queue_next_session(next_session)
-    stdin = StringIO(json.dumps({"id": "fork", "type": "fork", "entryId": "entry-42"}) + "\n")
+    stdin = StringIO(
+        json.dumps({"id": "fork", "type": "fork", "entryId": "entry-42"}) + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -1664,7 +1834,10 @@ def test_rpc_mode_fork_response_includes_selected_user_text() -> None:
 
     asyncio.run(scenario())
 
-    assert _parse_jsonl(stdout)[0]["data"] == {"cancelled": False, "text": "selected text"}
+    assert _parse_jsonl(stdout)[0]["data"] == {
+        "cancelled": False,
+        "text": "selected text",
+    }
     assert runtime.fork_session_with_result_calls == [("entry-42", "before")]
 
 
@@ -1674,18 +1847,17 @@ def test_rpc_mode_fork_accepts_at_position() -> None:
     current = FakeSession(session_id="session-a", cwd="/tmp/project-a")
     current.session_manager.set_entry(
         "entry-42",
-        SessionMessageEntry(
-            type="message",
-            id="entry-42",
-            parent_id=None,
-            timestamp="2026-05-21T00:00:00Z",
-            message=_user_message("selected text"),
-        ),
+        _message_record("entry-42", _user_message("selected text")),
     )
     next_session = FakeSession(session_id="session-b", cwd="/tmp/project-b")
     runtime = FakeRuntime(current)
     runtime.queue_next_session(next_session)
-    stdin = StringIO(json.dumps({"id": "fork", "type": "fork", "entryId": "entry-42", "position": "at"}) + "\n")
+    stdin = StringIO(
+        json.dumps(
+            {"id": "fork", "type": "fork", "entryId": "entry-42", "position": "at"}
+        )
+        + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -1701,7 +1873,11 @@ def test_rpc_mode_fork_accepts_at_position() -> None:
 @pytest.mark.parametrize(
     ("command", "payload", "runtime_attr"),
     [
-        ("new_session", {"cwd": "/tmp/project-b", "parentSession": "parent-1"}, "new_session_calls"),
+        (
+            "new_session",
+            {"cwd": "/tmp/project-b", "parentSession": "parent-1"},
+            "new_session_calls",
+        ),
         ("switch_session", {"sessionPath": "/tmp/s-b.jsonl"}, "switch_session_calls"),
         ("fork", {"entryId": "leaf-1"}, "fork_session_calls"),
         ("clone", {}, "fork_session_calls"),
@@ -1724,10 +1900,16 @@ def test_rpc_mode_lifecycle_commands_do_not_wait_for_active_prompt(
 
     async def scenario() -> None:
         mode = RpcMode(runtime=runtime, stdin=StringIO(), stdout=stdout)
-        await mode.submit_input(json.dumps({"id": "p1", "type": "prompt", "message": "start"}))
+        await mode.submit_input(
+            json.dumps({"id": "p1", "type": "prompt", "message": "start"})
+        )
         await current._prompt_started.wait()
-        await mode.submit_input(json.dumps({"id": "lifecycle", "type": command, **payload}))
-        await mode.submit_input(json.dumps({"id": "p2", "type": "prompt", "message": "after switch"}))
+        await mode.submit_input(
+            json.dumps({"id": "lifecycle", "type": command, **payload})
+        )
+        await mode.submit_input(
+            json.dumps({"id": "p2", "type": "prompt", "message": "after switch"})
+        )
         current._prompt_release.set()
         await mode._drain_background_tasks()
 
@@ -1759,7 +1941,9 @@ def test_rpc_mode_compact_command_does_not_wait_for_active_prompt() -> None:
 
     async def scenario() -> None:
         mode = RpcMode(runtime=runtime, stdin=StringIO(), stdout=stdout)
-        await mode.submit_input(json.dumps({"id": "p1", "type": "prompt", "message": "start"}))
+        await mode.submit_input(
+            json.dumps({"id": "p1", "type": "prompt", "message": "start"})
+        )
         await session._prompt_started.wait()
         await mode.submit_input(json.dumps({"id": "compact", "type": "compact"}))
         session._prompt_release.set()
@@ -1768,7 +1952,9 @@ def test_rpc_mode_compact_command_does_not_wait_for_active_prompt() -> None:
     asyncio.run(scenario())
 
     assert session.compact_calls == [None]
-    compact_response = next(line for line in _parse_jsonl(stdout) if line.get("id") == "compact")
+    compact_response = next(
+        line for line in _parse_jsonl(stdout) if line.get("id") == "compact"
+    )
     assert compact_response["type"] == "response"
     assert compact_response["command"] == "compact"
     assert compact_response["success"] is True
@@ -1786,7 +1972,9 @@ def test_rpc_mode_prompt_streaming_behavior_uses_prompt_pipeline_while_active() 
 
     async def scenario() -> None:
         mode = RpcMode(runtime=runtime, stdin=StringIO(), stdout=stdout)
-        await mode.submit_input(json.dumps({"id": "p1", "type": "prompt", "message": "hello"}))
+        await mode.submit_input(
+            json.dumps({"id": "p1", "type": "prompt", "message": "hello"})
+        )
         await session._prompt_started.wait()
         await mode.submit_input(
             json.dumps(
@@ -1828,7 +2016,9 @@ def test_rpc_mode_prompt_returns_after_preflight_before_prompt_finishes() -> Non
 
     async def scenario() -> None:
         mode = RpcMode(runtime=runtime, stdin=StringIO(), stdout=stdout)
-        await mode.submit_input(json.dumps({"id": "p1", "type": "prompt", "message": "hello"}))
+        await mode.submit_input(
+            json.dumps({"id": "p1", "type": "prompt", "message": "hello"})
+        )
         await session._prompt_started.wait()
         await asyncio.sleep(0)
         assert _parse_jsonl(stdout) == [
@@ -1878,10 +2068,25 @@ def test_rpc_mode_applies_control_commands_to_active_session() -> None:
         "\n".join(
             [
                 json.dumps({"id": "steer", "type": "steer", "message": "watch this"}),
-                json.dumps({"id": "follow", "type": "follow_up", "message": "continue"}),
+                json.dumps(
+                    {"id": "follow", "type": "follow_up", "message": "continue"}
+                ),
                 json.dumps({"id": "abort", "type": "abort"}),
-                json.dumps({"id": "model", "type": "set_model", "provider": "faux", "modelId": "beta"}),
-                json.dumps({"id": "tools", "type": "set_active_tools", "toolNames": ["bash", "read"]}),
+                json.dumps(
+                    {
+                        "id": "model",
+                        "type": "set_model",
+                        "provider": "faux",
+                        "modelId": "beta",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "id": "tools",
+                        "type": "set_active_tools",
+                        "toolNames": ["bash", "read"],
+                    }
+                ),
             ]
         )
         + "\n"
@@ -1933,9 +2138,21 @@ def test_rpc_mode_set_model_rejects_models_outside_available_list() -> None:
     from loushang.coding.mode import RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
-    session.model_registry = FakeModelRegistry([ModelSelection(provider="faux", model_id="alpha")])
+    session.model_registry = FakeModelRegistry(
+        [ModelSelection(provider="faux", model_id="alpha")]
+    )
     runtime = FakeRuntime(session)
-    stdin = StringIO(json.dumps({"id": "model", "type": "set_model", "provider": "faux", "modelId": "missing"}) + "\n")
+    stdin = StringIO(
+        json.dumps(
+            {
+                "id": "model",
+                "type": "set_model",
+                "provider": "faux",
+                "modelId": "missing",
+            }
+        )
+        + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -1966,8 +2183,22 @@ def test_rpc_mode_passes_images_to_steer_and_follow_up_commands() -> None:
     stdin = StringIO(
         "\n".join(
             [
-                json.dumps({"id": "steer", "type": "steer", "message": "watch", "images": [image]}),
-                json.dumps({"id": "follow", "type": "follow_up", "message": "later", "images": [image]}),
+                json.dumps(
+                    {
+                        "id": "steer",
+                        "type": "steer",
+                        "message": "watch",
+                        "images": [image],
+                    }
+                ),
+                json.dumps(
+                    {
+                        "id": "follow",
+                        "type": "follow_up",
+                        "message": "later",
+                        "images": [image],
+                    }
+                ),
             ]
         )
         + "\n"
@@ -1992,19 +2223,31 @@ def test_rpc_mode_passes_images_to_steer_and_follow_up_commands() -> None:
 def test_rpc_mode_supports_thinking_stats_retry_compact_and_export_commands() -> None:
     from loushang.coding.mode import RpcMode
 
-    session = FakeSession(session_id="session-a", session_name="Alpha", cwd="/tmp/project")
+    session = FakeSession(
+        session_id="session-a", session_name="Alpha", cwd="/tmp/project"
+    )
     asyncio.run(session.set_active_tools(["bash"]))
     asyncio.run(session.set_model(ModelSelection(provider="faux", model_id="alpha")))
     runtime = FakeRuntime(session)
     stdin = StringIO(
         "\n".join(
             [
-                json.dumps({"id": "think", "type": "set_thinking_level", "level": "high"}),
+                json.dumps(
+                    {"id": "think", "type": "set_thinking_level", "level": "high"}
+                ),
                 json.dumps({"id": "stats", "type": "get_session_stats"}),
-                json.dumps({"id": "retry-on", "type": "set_auto_retry", "enabled": False}),
+                json.dumps(
+                    {"id": "retry-on", "type": "set_auto_retry", "enabled": False}
+                ),
                 json.dumps({"id": "retry-off", "type": "abort_retry"}),
                 json.dumps({"id": "compact", "type": "compact"}),
-                json.dumps({"id": "export", "type": "export_html", "outputPath": "/tmp/exported.html"}),
+                json.dumps(
+                    {
+                        "id": "export",
+                        "type": "export_html",
+                        "outputPath": "/tmp/exported.html",
+                    }
+                ),
             ]
         )
         + "\n"
@@ -2035,11 +2278,24 @@ def test_rpc_mode_supports_thinking_stats_retry_compact_and_export_commands() ->
 
     assert lines[1]["command"] == "get_session_stats"
     assert lines[1]["data"]["sessionId"] == "session-a"
-    assert lines[1]["data"]["lastModelSelection"] == {"provider": "faux", "modelId": "alpha"}
+    assert lines[1]["data"]["lastModelSelection"] == {
+        "provider": "faux",
+        "modelId": "alpha",
+    }
     assert lines[1]["data"]["contextUsage"]["estimatedContextTokens"] == 123
 
-    assert lines[2] == {"id": "retry-on", "type": "response", "command": "set_auto_retry", "success": True}
-    assert lines[3] == {"id": "retry-off", "type": "response", "command": "abort_retry", "success": True}
+    assert lines[2] == {
+        "id": "retry-on",
+        "type": "response",
+        "command": "set_auto_retry",
+        "success": True,
+    }
+    assert lines[3] == {
+        "id": "retry-off",
+        "type": "response",
+        "command": "abort_retry",
+        "success": True,
+    }
 
     assert lines[4]["command"] == "compact"
     assert lines[4]["data"] == {
@@ -2066,8 +2322,20 @@ def test_rpc_mode_passes_custom_instructions_to_compact_command() -> None:
     stdin = StringIO(
         "\n".join(
             [
-                json.dumps({"id": "camel", "type": "compact", "customInstructions": "keep API details"}),
-                json.dumps({"id": "snake", "type": "compact", "custom_instructions": "keep tests"}),
+                json.dumps(
+                    {
+                        "id": "camel",
+                        "type": "compact",
+                        "customInstructions": "keep API details",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "id": "snake",
+                        "type": "compact",
+                        "custom_instructions": "keep tests",
+                    }
+                ),
             ]
         )
         + "\n"
@@ -2166,10 +2434,16 @@ def test_rpc_mode_supports_queue_model_name_and_command_queries() -> None:
     stdin = StringIO(
         "\n".join(
             [
-                json.dumps({"id": "steering-mode", "type": "set_steering_mode", "mode": "all"}),
-                json.dumps({"id": "follow-mode", "type": "set_follow_up_mode", "mode": "all"}),
+                json.dumps(
+                    {"id": "steering-mode", "type": "set_steering_mode", "mode": "all"}
+                ),
+                json.dumps(
+                    {"id": "follow-mode", "type": "set_follow_up_mode", "mode": "all"}
+                ),
                 json.dumps({"id": "models", "type": "get_available_models"}),
-                json.dumps({"id": "rename", "type": "set_session_name", "name": "Renamed"}),
+                json.dumps(
+                    {"id": "rename", "type": "set_session_name", "name": "Renamed"}
+                ),
                 json.dumps({"id": "last", "type": "get_last_assistant_text"}),
                 json.dumps({"id": "commands", "type": "get_commands"}),
             ]
@@ -2305,7 +2579,9 @@ def test_rpc_mode_set_session_name_trims_and_rejects_blank_names() -> None:
         "\n".join(
             [
                 json.dumps({"id": "blank", "type": "set_session_name", "name": "   "}),
-                json.dumps({"id": "trimmed", "type": "set_session_name", "name": "  Renamed  "}),
+                json.dumps(
+                    {"id": "trimmed", "type": "set_session_name", "name": "  Renamed  "}
+                ),
             ]
         )
         + "\n"
@@ -2458,7 +2734,9 @@ def test_rpc_mode_get_diagnostics_and_last_error_report() -> None:
     stdin = StringIO(
         "\n".join(
             [
-                json.dumps({"id": "diagnostics", "type": "get_diagnostics", "limit": 1}),
+                json.dumps(
+                    {"id": "diagnostics", "type": "get_diagnostics", "limit": 1}
+                ),
                 json.dumps({"id": "report", "type": "get_last_error_report"}),
             ]
         )
@@ -2556,7 +2834,12 @@ def test_rpc_mode_materialize_package_uses_runtime_facade() -> None:
     source = "https://packages.example.invalid/review-pack.git"
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
-    stdin = StringIO(json.dumps({"id": "materialize", "type": "materialize_package", "source": source}) + "\n")
+    stdin = StringIO(
+        json.dumps(
+            {"id": "materialize", "type": "materialize_package", "source": source}
+        )
+        + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -2591,7 +2874,9 @@ def test_rpc_mode_update_package_uses_runtime_facade() -> None:
     source = "https://packages.example.invalid/review-pack.git"
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
-    stdin = StringIO(json.dumps({"id": "update", "type": "update_package", "source": source}) + "\n")
+    stdin = StringIO(
+        json.dumps({"id": "update", "type": "update_package", "source": source}) + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -2626,7 +2911,9 @@ def test_rpc_mode_remove_package_uses_runtime_facade() -> None:
     source = "https://packages.example.invalid/review-pack.git"
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
-    stdin = StringIO(json.dumps({"id": "remove", "type": "remove_package", "source": source}) + "\n")
+    stdin = StringIO(
+        json.dumps({"id": "remove", "type": "remove_package", "source": source}) + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -2673,7 +2960,12 @@ def test_rpc_mode_package_lifecycle_failed_record_returns_error() -> None:
         }
 
     runtime.materialize_package = failed_materialize  # type: ignore[method-assign]
-    stdin = StringIO(json.dumps({"id": "materialize", "type": "materialize_package", "source": source}) + "\n")
+    stdin = StringIO(
+        json.dumps(
+            {"id": "materialize", "type": "materialize_package", "source": source}
+        )
+        + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -2709,10 +3001,14 @@ def test_rpc_mode_high_level_package_manager_commands_use_runtime_facade() -> No
     stdin = StringIO(
         "\n".join(
             [
-                json.dumps({"id": "install", "type": "install_package", "source": source}),
+                json.dumps(
+                    {"id": "install", "type": "install_package", "source": source}
+                ),
                 json.dumps({"id": "check", "type": "check_package_updates"}),
                 json.dumps({"id": "update-all", "type": "update_packages"}),
-                json.dumps({"id": "uninstall", "type": "uninstall_package", "source": source}),
+                json.dumps(
+                    {"id": "uninstall", "type": "uninstall_package", "source": source}
+                ),
             ]
         )
         + "\n"
@@ -2806,7 +3102,9 @@ def test_rpc_mode_get_diagnostics_supports_query_filters() -> None:
         )
     ]
     response = _parse_jsonl(stdout)[0]
-    assert [record["code"] for record in response["data"]["diagnostics"]] == ["assistant_response_error"]
+    assert [record["code"] for record in response["data"]["diagnostics"]] == [
+        "assistant_response_error"
+    ]
 
 
 def test_rpc_mode_get_session_diagnostics_uses_session_scoped_runtime_query() -> None:
@@ -2872,7 +3170,9 @@ def test_rpc_mode_get_session_diagnostics_uses_session_scoped_runtime_query() ->
     assert runtime.get_diagnostics_calls == []
     response = _parse_jsonl(stdout)[0]
     assert response["command"] == "get_session_diagnostics"
-    assert [record["code"] for record in response["data"]["diagnostics"]] == ["current_session_error"]
+    assert [record["code"] for record in response["data"]["diagnostics"]] == [
+        "current_session_error"
+    ]
 
 
 def test_rpc_mode_get_diagnostics_summary_projects_counts() -> None:
@@ -2906,8 +3206,16 @@ def test_rpc_mode_get_diagnostics_summary_projects_counts() -> None:
     stdin = StringIO(
         "\n".join(
             [
-                json.dumps({"id": "summary", "type": "get_diagnostics_summary", "sessionId": "session-a"}),
-                json.dumps({"id": "session-summary", "type": "get_session_diagnostics_summary"}),
+                json.dumps(
+                    {
+                        "id": "summary",
+                        "type": "get_diagnostics_summary",
+                        "sessionId": "session-a",
+                    }
+                ),
+                json.dumps(
+                    {"id": "session-summary", "type": "get_session_diagnostics_summary"}
+                ),
             ]
         )
         + "\n"
@@ -2922,7 +3230,9 @@ def test_rpc_mode_get_diagnostics_summary_projects_counts() -> None:
     asyncio.run(scenario())
 
     lines = _parse_jsonl(stdout)
-    assert runtime.get_diagnostics_summary_calls == [DiagnosticsQuery(session_id="session-a")]
+    assert runtime.get_diagnostics_summary_calls == [
+        DiagnosticsQuery(session_id="session-a")
+    ]
     assert runtime.get_session_diagnostics_summary_calls == [DiagnosticsQuery()]
     assert lines[0]["command"] == "get_diagnostics_summary"
     summary = lines[0]["data"]["summary"]
@@ -2940,7 +3250,9 @@ def test_rpc_mode_get_diagnostics_rejects_invalid_limit() -> None:
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
-    stdin = StringIO(json.dumps({"id": "diagnostics", "type": "get_diagnostics", "limit": 0}) + "\n")
+    stdin = StringIO(
+        json.dumps({"id": "diagnostics", "type": "get_diagnostics", "limit": 0}) + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -2968,15 +3280,15 @@ def test_rpc_mode_get_commands_prefers_session_command_descriptors() -> None:
         def list_commands(self):
             return [
                 SessionCommandDescriptor(
-                        name="deploy",
-                        description="Deploy the project",
-                        source="extension",
-                        source_info=CommandSourceInfo(
-                            path="/tmp/project/extensions/deploy.py",
-                            base_dir="/tmp/project/extensions",
-                        ),
-                    )
-                ]
+                    name="deploy",
+                    description="Deploy the project",
+                    source="extension",
+                    source_info=CommandSourceInfo(
+                        path="/tmp/project/extensions/deploy.py",
+                        base_dir="/tmp/project/extensions",
+                    ),
+                )
+            ]
 
     session = DescriptorSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
@@ -3025,20 +3337,27 @@ def test_rpc_mode_get_commands_projects_session_command_descriptors() -> None:
             name="deploy",
             description="Deploy the project",
             source="extension",
-            source_info=CommandSourceInfo(path="/tmp/project/extensions/deploy-ext.py", base_dir="/tmp/project/extensions"),
+            source_info=CommandSourceInfo(
+                path="/tmp/project/extensions/deploy-ext.py",
+                base_dir="/tmp/project/extensions",
+            ),
         ),
         SessionCommandDescriptor(
             name="plan",
             description="Plan the work.",
             source="prompt",
-            source_info=CommandSourceInfo(path="/tmp/project/prompts/plan.md", base_dir="/tmp/project/prompts"),
+            source_info=CommandSourceInfo(
+                path="/tmp/project/prompts/plan.md", base_dir="/tmp/project/prompts"
+            ),
             argument_hint="[topic]",
         ),
         SessionCommandDescriptor(
             name="legacy",
             description=None,
             source="skill",
-            source_info=CommandSourceInfo(path="/tmp/project/skills/legacy.md", base_dir="/tmp/project/skills"),
+            source_info=CommandSourceInfo(
+                path="/tmp/project/skills/legacy.md", base_dir="/tmp/project/skills"
+            ),
         ),
         SessionCommandDescriptor(
             name="metadata",
@@ -3118,11 +3437,15 @@ def test_rpc_mode_get_commands_projects_session_command_descriptors() -> None:
     ]
 
 
-def test_rpc_mode_get_command_completions_returns_command_and_argument_suggestions() -> None:
+def test_rpc_mode_get_command_completions_returns_command_and_argument_suggestions() -> (
+    None
+):
     from loushang.coding.mode import RpcMode
 
     class CompletionSession(FakeSession):
-        async def get_command_argument_completions(self, invocation_name: str, prefix: str) -> list[object]:
+        async def get_command_argument_completions(
+            self, invocation_name: str, prefix: str
+        ) -> list[object]:
             assert (invocation_name, prefix) == ("deploy", "pr")
             return [{"value": "prod", "label": "Production"}]
 
@@ -3145,7 +3468,9 @@ def test_rpc_mode_get_command_completions_returns_command_and_argument_suggestio
     stdin = StringIO(
         "\n".join(
             [
-                json.dumps({"id": "names", "type": "get_command_completions", "prefix": "/dep"}),
+                json.dumps(
+                    {"id": "names", "type": "get_command_completions", "prefix": "/dep"}
+                ),
                 json.dumps(
                     {
                         "id": "args",
@@ -3236,7 +3561,9 @@ def test_rpc_mode_get_available_models_returns_error_on_invalid_payload() -> Non
 
     session = InvalidModelSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
-    stdin = StringIO(json.dumps({"id": "models", "type": "get_available_models"}) + "\n")
+    stdin = StringIO(
+        json.dumps({"id": "models", "type": "get_available_models"}) + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -3297,7 +3624,14 @@ def test_rpc_mode_get_available_models_skips_invalid_model_entries() -> None:
     stderr = StringIO()
 
     async def scenario() -> None:
-        mode = RpcMode(runtime=runtime, stdin=StringIO(json.dumps({"id": "models", "type": "get_available_models"}) + "\n"), stdout=stdout, stderr=stderr)
+        mode = RpcMode(
+            runtime=runtime,
+            stdin=StringIO(
+                json.dumps({"id": "models", "type": "get_available_models"}) + "\n"
+            ),
+            stdout=stdout,
+            stderr=stderr,
+        )
         exit_code = await mode.run()
         assert exit_code == 0
 
@@ -3373,7 +3707,12 @@ def test_rpc_mode_get_commands_skips_entries_without_valid_names() -> None:
         {"name": "", "description": "Missing name"},
         {"description": "No name"},
         {"name": 123, "description": "Invalid name"},
-        {"name": "plan", "description": "Another good command", "source": "prompt", "source_info": {"path": "/tmp/project/prompts/plan.md"}},
+        {
+            "name": "plan",
+            "description": "Another good command",
+            "source": "prompt",
+            "source_info": {"path": "/tmp/project/prompts/plan.md"},
+        },
     ]
     runtime = FakeRuntime(session)
     stdin = StringIO(json.dumps({"id": "commands", "type": "get_commands"}) + "\n")
@@ -3453,7 +3792,9 @@ def test_rpc_mode_get_messages_returns_error_when_session_context_is_invalid() -
     from loushang.coding.mode import RpcMode
 
     class BrokenMessageGetterSession(FakeSession):
-        def get_session_context(self):  # pragma: no cover - defensive path exercised by test
+        def get_session_context(
+            self,
+        ):  # pragma: no cover - defensive path exercised by test
             return object()
 
     session = BrokenMessageGetterSession(session_id="session-a", cwd="/tmp/project")
@@ -3651,7 +3992,12 @@ def test_rpc_mode_set_model_reports_model_registry_errors() -> None:
 
     session = BrokenModelSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
-    stdin = StringIO(json.dumps({"id": "model", "type": "set_model", "provider": "faux", "modelId": "alpha"}) + "\n")
+    stdin = StringIO(
+        json.dumps(
+            {"id": "model", "type": "set_model", "provider": "faux", "modelId": "alpha"}
+        )
+        + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -3681,7 +4027,12 @@ def test_rpc_mode_set_model_reports_invalid_model_registry_response_type() -> No
 
     session = InvalidTypeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
-    stdin = StringIO(json.dumps({"id": "model", "type": "set_model", "provider": "faux", "modelId": "alpha"}) + "\n")
+    stdin = StringIO(
+        json.dumps(
+            {"id": "model", "type": "set_model", "provider": "faux", "modelId": "alpha"}
+        )
+        + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -3712,7 +4063,10 @@ def test_rpc_mode_set_active_tools_reports_setter_errors() -> None:
 
     session = BrokenToolsSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
-    stdin = StringIO(json.dumps({"id": "tools", "type": "set_active_tools", "toolNames": ["bash"]}) + "\n")
+    stdin = StringIO(
+        json.dumps({"id": "tools", "type": "set_active_tools", "toolNames": ["bash"]})
+        + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -3773,7 +4127,9 @@ def test_rpc_mode_get_fork_messages_returns_error_when_payload_invalid() -> None
 
     session = InvalidForkMessagesSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
-    stdin = StringIO(json.dumps({"id": "fork-messages", "type": "get_fork_messages"}) + "\n")
+    stdin = StringIO(
+        json.dumps({"id": "fork-messages", "type": "get_fork_messages"}) + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -3803,7 +4159,9 @@ def test_rpc_mode_get_last_assistant_text_handles_extraction_errors() -> None:
 
     session = BrokenLastAssistantTextSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
-    stdin = StringIO(json.dumps({"id": "last", "type": "get_last_assistant_text"}) + "\n")
+    stdin = StringIO(
+        json.dumps({"id": "last", "type": "get_last_assistant_text"}) + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -3836,7 +4194,9 @@ def test_rpc_mode_get_last_assistant_text_accepts_pi_style_session_method() -> N
 
     session = PiStyleLastAssistantSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
-    stdin = StringIO(json.dumps({"id": "last", "type": "get_last_assistant_text"}) + "\n")
+    stdin = StringIO(
+        json.dumps({"id": "last", "type": "get_last_assistant_text"}) + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -3859,7 +4219,13 @@ def test_rpc_mode_supports_cycle_thinking_and_auto_compaction_commands() -> None
         "\n".join(
             [
                 json.dumps({"id": "cycle", "type": "cycle_thinking_level"}),
-                json.dumps({"id": "compact-setting", "type": "set_auto_compaction", "enabled": False}),
+                json.dumps(
+                    {
+                        "id": "compact-setting",
+                        "type": "set_auto_compaction",
+                        "enabled": False,
+                    }
+                ),
             ]
         )
         + "\n"
@@ -4054,7 +4420,9 @@ def test_rpc_mode_supports_bash_command() -> None:
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
-    stdin = StringIO(json.dumps({"id": "bash", "type": "bash", "command": "printf hi"}) + "\n")
+    stdin = StringIO(
+        json.dumps({"id": "bash", "type": "bash", "command": "printf hi"}) + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -4202,7 +4570,9 @@ def test_rpc_mode_get_fork_messages_accepts_pi_style_session_method() -> None:
 
     session = PiStyleForkSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
-    stdin = StringIO(json.dumps({"id": "fork-messages", "type": "get_fork_messages"}) + "\n")
+    stdin = StringIO(
+        json.dumps({"id": "fork-messages", "type": "get_fork_messages"}) + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -4212,14 +4582,18 @@ def test_rpc_mode_get_fork_messages_accepts_pi_style_session_method() -> None:
 
     asyncio.run(scenario())
 
-    assert _parse_jsonl(stdout)[0]["data"] == {"messages": [{"entryId": "u1", "text": "first"}]}
+    assert _parse_jsonl(stdout)[0]["data"] == {
+        "messages": [{"entryId": "u1", "text": "first"}]
+    }
 
 
 def test_rpc_mode_reports_invalid_json_and_unsupported_commands() -> None:
     from loushang.coding.mode import run_rpc_mode
 
     runtime = FakeRuntime(FakeSession(session_id="session-a", cwd="/tmp/project"))
-    stdin = StringIO("{invalid json}\n" + json.dumps({"id": "oops", "type": "unknown"}) + "\n")
+    stdin = StringIO(
+        "{invalid json}\n" + json.dumps({"id": "oops", "type": "unknown"}) + "\n"
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -4271,7 +4645,11 @@ def test_rpc_mode_rejects_non_finite_input_numbers() -> None:
     responses = _parse_jsonl(stdout)
     assert session.bash_calls == []
     assert session.prompt_calls == []
-    assert [response["command"] for response in responses[:3]] == ["parse", "parse", "parse"]
+    assert [response["command"] for response in responses[:3]] == [
+        "parse",
+        "parse",
+        "parse",
+    ]
     assert [response["error"] for response in responses[:3]] == [
         "Failed to parse command: invalid JSON numeric constant: NaN",
         "Failed to parse command: invalid JSON numeric constant: Infinity",
@@ -4306,7 +4684,11 @@ def test_rpc_mode_jsonl_framing_preserves_unicode_line_separators() -> None:
     runtime = FakeRuntime(session)
     name = "alpha\u2028beta\u2029gamma"
     stdin = StringIO(
-        json.dumps({"id": "rename", "type": "set_session_name", "name": name}, ensure_ascii=False) + "\n"
+        json.dumps(
+            {"id": "rename", "type": "set_session_name", "name": name},
+            ensure_ascii=False,
+        )
+        + "\n"
     )
     stdout = StringIO()
 
@@ -4318,7 +4700,12 @@ def test_rpc_mode_jsonl_framing_preserves_unicode_line_separators() -> None:
 
     assert session.set_session_name_calls == [name]
     assert _parse_jsonl(stdout) == [
-        {"id": "rename", "type": "response", "command": "set_session_name", "success": True}
+        {
+            "id": "rename",
+            "type": "response",
+            "command": "set_session_name",
+            "success": True,
+        }
     ]
 
 
@@ -4342,8 +4729,18 @@ def test_rpc_mode_jsonl_framing_accepts_crlf_and_final_line_without_lf() -> None
 
     assert session.set_session_name_calls == ["one", "two"]
     assert _parse_jsonl(stdout) == [
-        {"id": "first", "type": "response", "command": "set_session_name", "success": True},
-        {"id": "second", "type": "response", "command": "set_session_name", "success": True},
+        {
+            "id": "first",
+            "type": "response",
+            "command": "set_session_name",
+            "success": True,
+        },
+        {
+            "id": "second",
+            "type": "response",
+            "command": "set_session_name",
+            "success": True,
+        },
     ]
 
 
@@ -4354,7 +4751,9 @@ def test_rpc_mode_ignores_unmatched_extension_ui_responses() -> None:
     stdin = StringIO(
         "\n".join(
             [
-                json.dumps({"id": "ui-1", "type": "extension_ui_response", "value": "ignored"}),
+                json.dumps(
+                    {"id": "ui-1", "type": "extension_ui_response", "value": "ignored"}
+                ),
                 json.dumps({"id": "state", "type": "get_state"}),
             ]
         )
@@ -4385,10 +4784,18 @@ def test_rpc_mode_extension_ui_context_emits_side_effect_requests() -> None:
     mode.extension_ui_context.set_status("deploy", "running")
     mode.extension_ui_context.set_title("Deploying")
     mode.extension_ui_context.set_editor_text("next prompt")
-    mode.extension_ui_context.set_widget("summary", ["line 1", "line 2"], placement="belowEditor")
+    mode.extension_ui_context.set_widget(
+        "summary", ["line 1", "line 2"], placement="belowEditor"
+    )
 
     lines = _parse_jsonl(stdout)
-    assert [line["method"] for line in lines] == ["notify", "setStatus", "setTitle", "set_editor_text", "setWidget"]
+    assert [line["method"] for line in lines] == [
+        "notify",
+        "setStatus",
+        "setTitle",
+        "set_editor_text",
+        "setWidget",
+    ]
     assert lines[0]["message"] == "Build finished"
     assert lines[0]["notifyType"] == "info"
     assert lines[1]["statusKey"] == "deploy"
@@ -4456,20 +4863,28 @@ def test_rpc_mode_extension_ui_context_resolves_dialog_responses() -> None:
 
     async def scenario() -> None:
         mode = RpcMode(runtime=runtime, stdin=StringIO(""), stdout=stdout)
-        task = asyncio.create_task(mode.extension_ui_context.select("Choose target", ["dev", "prod"]))
+        task = asyncio.create_task(
+            mode.extension_ui_context.select("Choose target", ["dev", "prod"])
+        )
         await asyncio.sleep(0)
         request = _parse_jsonl(stdout)[0]
         assert request["type"] == "extension_ui_request"
         assert request["method"] == "select"
         assert request["title"] == "Choose target"
         assert request["options"] == ["dev", "prod"]
-        await mode._handle_line(json.dumps({"type": "extension_ui_response", "id": request["id"], "value": "prod"}))
+        await mode._handle_line(
+            json.dumps(
+                {"type": "extension_ui_response", "id": request["id"], "value": "prod"}
+            )
+        )
         assert await asyncio.wait_for(task, timeout=0.5) == "prod"
 
     asyncio.run(scenario())
 
 
-def test_rpc_mode_extension_ui_context_resolves_confirm_input_and_editor_responses() -> None:
+def test_rpc_mode_extension_ui_context_resolves_confirm_input_and_editor_responses() -> (
+    None
+):
     from loushang.coding.mode import RpcMode
 
     runtime = FakeRuntime(FakeSession(session_id="session-a", cwd="/tmp/project"))
@@ -4477,18 +4892,52 @@ def test_rpc_mode_extension_ui_context_resolves_confirm_input_and_editor_respons
 
     async def scenario() -> None:
         mode = RpcMode(runtime=runtime, stdin=StringIO(""), stdout=stdout)
-        confirm_task = asyncio.create_task(mode.extension_ui_context.confirm("Deploy?", "Ship to prod?"))
-        input_task = asyncio.create_task(mode.extension_ui_context.input("Branch", "main"))
-        editor_task = asyncio.create_task(mode.extension_ui_context.editor("Edit prompt", "draft"))
+        confirm_task = asyncio.create_task(
+            mode.extension_ui_context.confirm("Deploy?", "Ship to prod?")
+        )
+        input_task = asyncio.create_task(
+            mode.extension_ui_context.input("Branch", "main")
+        )
+        editor_task = asyncio.create_task(
+            mode.extension_ui_context.editor("Edit prompt", "draft")
+        )
         await asyncio.sleep(0)
         requests = _parse_jsonl(stdout)
-        assert [request["method"] for request in requests] == ["confirm", "input", "editor"]
+        assert [request["method"] for request in requests] == [
+            "confirm",
+            "input",
+            "editor",
+        ]
         assert requests[0]["message"] == "Ship to prod?"
         assert requests[1]["placeholder"] == "main"
         assert requests[2]["prefill"] == "draft"
-        await mode._handle_line(json.dumps({"type": "extension_ui_response", "id": requests[0]["id"], "confirmed": True}))
-        await mode._handle_line(json.dumps({"type": "extension_ui_response", "id": requests[1]["id"], "value": "feature"}))
-        await mode._handle_line(json.dumps({"type": "extension_ui_response", "id": requests[2]["id"], "value": "edited"}))
+        await mode._handle_line(
+            json.dumps(
+                {
+                    "type": "extension_ui_response",
+                    "id": requests[0]["id"],
+                    "confirmed": True,
+                }
+            )
+        )
+        await mode._handle_line(
+            json.dumps(
+                {
+                    "type": "extension_ui_response",
+                    "id": requests[1]["id"],
+                    "value": "feature",
+                }
+            )
+        )
+        await mode._handle_line(
+            json.dumps(
+                {
+                    "type": "extension_ui_response",
+                    "id": requests[2]["id"],
+                    "value": "edited",
+                }
+            )
+        )
         assert await asyncio.wait_for(confirm_task, timeout=0.5) is True
         assert await asyncio.wait_for(input_task, timeout=0.5) == "feature"
         assert await asyncio.wait_for(editor_task, timeout=0.5) == "edited"
@@ -4519,12 +4968,16 @@ def test_rpc_mode_binds_extension_context_ui_methods_to_rpc_requests(tmp_path) -
                     id="tiny",
                     provider="faux",
                     endpoint="test",
-                    capabilities=Capabilities(input=("text",), context_window=10_000, max_tokens=1024),
+                    capabilities=Capabilities(
+                        input=("text",), context_window=10_000, max_tokens=1024
+                    ),
                 ),
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         extension_runner=extension_runner,
     )
     runtime = FakeRuntime(session)
@@ -4537,17 +4990,25 @@ def test_rpc_mode_binds_extension_context_ui_methods_to_rpc_requests(tmp_path) -
     context.set_status("phase", "prompt")
 
     requests = _parse_jsonl(stdout)
-    assert [request["method"] for request in requests] == ["notify", "setTitle", "setStatus"]
+    assert [request["method"] for request in requests] == [
+        "notify",
+        "setTitle",
+        "setStatus",
+    ]
 
 
-def test_rpc_mode_extension_context_supports_pi_style_camel_case_ui_methods(tmp_path) -> None:
+def test_rpc_mode_extension_context_supports_pi_style_camel_case_ui_methods(
+    tmp_path,
+) -> None:
     from loushang.agent import Agent
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    extension_runner = ExtensionRunner([LoadedExtension(name="rpc-ui", source_path=Path("/tmp/rpc_ui.py"))])
+    extension_runner = ExtensionRunner(
+        [LoadedExtension(name="rpc-ui", source_path=Path("/tmp/rpc_ui.py"))]
+    )
     session = AgentSession(
         agent=Agent(
             initial_state={
@@ -4556,12 +5017,16 @@ def test_rpc_mode_extension_context_supports_pi_style_camel_case_ui_methods(tmp_
                     id="tiny",
                     provider="faux",
                     endpoint="test",
-                    capabilities=Capabilities(input=("text",), context_window=10_000, max_tokens=1024),
+                    capabilities=Capabilities(
+                        input=("text",), context_window=10_000, max_tokens=1024
+                    ),
                 ),
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         extension_runner=extension_runner,
     )
     runtime = FakeRuntime(session)
@@ -4575,7 +5040,12 @@ def test_rpc_mode_extension_context_supports_pi_style_camel_case_ui_methods(tmp_
     context.setWidget("summary", ["line"], placement="belowEditor")
 
     requests = _parse_jsonl(stdout)
-    assert [request["method"] for request in requests] == ["setStatus", "setTitle", "set_editor_text", "setWidget"]
+    assert [request["method"] for request in requests] == [
+        "setStatus",
+        "setTitle",
+        "set_editor_text",
+        "setWidget",
+    ]
 
 
 def test_rpc_mode_extension_context_supports_pi_style_ui_namespace(tmp_path) -> None:
@@ -4585,7 +5055,9 @@ def test_rpc_mode_extension_context_supports_pi_style_ui_namespace(tmp_path) -> 
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    extension_runner = ExtensionRunner([LoadedExtension(name="rpc-ui", source_path=Path("/tmp/rpc_ui.py"))])
+    extension_runner = ExtensionRunner(
+        [LoadedExtension(name="rpc-ui", source_path=Path("/tmp/rpc_ui.py"))]
+    )
     session = AgentSession(
         agent=Agent(
             initial_state={
@@ -4594,12 +5066,16 @@ def test_rpc_mode_extension_context_supports_pi_style_ui_namespace(tmp_path) -> 
                     id="tiny",
                     provider="faux",
                     endpoint="test",
-                    capabilities=Capabilities(input=("text",), context_window=10_000, max_tokens=1024),
+                    capabilities=Capabilities(
+                        input=("text",), context_window=10_000, max_tokens=1024
+                    ),
                 ),
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         extension_runner=extension_runner,
     )
     runtime = FakeRuntime(session)
@@ -4613,17 +5089,25 @@ def test_rpc_mode_extension_context_supports_pi_style_ui_namespace(tmp_path) -> 
     context.ui.setEditorText("next prompt")
 
     requests = _parse_jsonl(stdout)
-    assert [request["method"] for request in requests] == ["setStatus", "setTitle", "set_editor_text"]
+    assert [request["method"] for request in requests] == [
+        "setStatus",
+        "setTitle",
+        "set_editor_text",
+    ]
 
 
-def test_rpc_mode_extension_context_records_pi_style_headless_ui_methods(tmp_path) -> None:
+def test_rpc_mode_extension_context_records_pi_style_headless_ui_methods(
+    tmp_path,
+) -> None:
     from loushang.agent import Agent
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
-    extension_runner = ExtensionRunner([LoadedExtension(name="rpc-ui", source_path=Path("/tmp/rpc_ui.py"))])
+    extension_runner = ExtensionRunner(
+        [LoadedExtension(name="rpc-ui", source_path=Path("/tmp/rpc_ui.py"))]
+    )
     session = AgentSession(
         agent=Agent(
             initial_state={
@@ -4632,12 +5116,16 @@ def test_rpc_mode_extension_context_records_pi_style_headless_ui_methods(tmp_pat
                     id="tiny",
                     provider="faux",
                     endpoint="test",
-                    capabilities=Capabilities(input=("text",), context_window=10_000, max_tokens=1024),
+                    capabilities=Capabilities(
+                        input=("text",), context_window=10_000, max_tokens=1024
+                    ),
                 ),
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         extension_runner=extension_runner,
     )
     runtime = FakeRuntime(session)
@@ -4660,7 +5148,10 @@ def test_rpc_mode_extension_context_records_pi_style_headless_ui_methods(tmp_pat
     unsubscribe()
     assert ui.getAllThemes() == []
     assert ui.getTheme("dark") is None
-    assert ui.setTheme("dark") == {"success": False, "error": "Theme switching not supported in RPC mode"}
+    assert ui.setTheme("dark") == {
+        "success": False,
+        "error": "Theme switching not supported in RPC mode",
+    }
     assert ui.getToolsExpanded() is True
     assert _parse_jsonl(stdout) == []
 
@@ -4673,15 +5164,26 @@ def test_rpc_mode_extension_ui_dialog_timeout_returns_default_values() -> None:
 
     async def scenario() -> None:
         mode = RpcMode(runtime=runtime, stdin=StringIO(""), stdout=stdout)
-        assert await mode.extension_ui_context.select("Target", ["dev"], timeout=0.01) is None
-        assert await mode.extension_ui_context.confirm("Confirm", "Proceed?", timeout=0.01) is False
+        assert (
+            await mode.extension_ui_context.select("Target", ["dev"], timeout=0.01)
+            is None
+        )
+        assert (
+            await mode.extension_ui_context.confirm("Confirm", "Proceed?", timeout=0.01)
+            is False
+        )
         assert await mode.extension_ui_context.input("Input", timeout=0.01) is None
         assert await mode.extension_ui_context.editor("Edit", timeout=0.01) is None
 
     asyncio.run(scenario())
 
     requests = _parse_jsonl(stdout)
-    assert [request["method"] for request in requests] == ["select", "confirm", "input", "editor"]
+    assert [request["method"] for request in requests] == [
+        "select",
+        "confirm",
+        "input",
+        "editor",
+    ]
     assert all(request["timeout"] == 0.01 for request in requests)
 
 
@@ -4693,16 +5195,31 @@ def test_rpc_mode_extension_ui_late_response_after_timeout_is_ignored() -> None:
 
     async def scenario() -> None:
         mode = RpcMode(runtime=runtime, stdin=StringIO(""), stdout=stdout)
-        assert await mode.extension_ui_context.select("Target", ["dev"], timeout=0.01) is None
+        assert (
+            await mode.extension_ui_context.select("Target", ["dev"], timeout=0.01)
+            is None
+        )
         expired_request = _parse_jsonl(stdout)[0]
         await mode._handle_line(
-            json.dumps({"type": "extension_ui_response", "id": expired_request["id"], "value": "dev"})
+            json.dumps(
+                {
+                    "type": "extension_ui_response",
+                    "id": expired_request["id"],
+                    "value": "dev",
+                }
+            )
         )
         task = asyncio.create_task(mode.extension_ui_context.select("Target", ["prod"]))
         await asyncio.sleep(0)
         active_request = _parse_jsonl(stdout)[1]
         await mode._handle_line(
-            json.dumps({"type": "extension_ui_response", "id": active_request["id"], "value": "prod"})
+            json.dumps(
+                {
+                    "type": "extension_ui_response",
+                    "id": active_request["id"],
+                    "value": "prod",
+                }
+            )
         )
         assert await asyncio.wait_for(task, timeout=0.5) == "prod"
 
@@ -4717,12 +5234,24 @@ def test_rpc_mode_extension_ui_dialog_cancelled_responses_return_defaults() -> N
 
     async def scenario() -> None:
         mode = RpcMode(runtime=runtime, stdin=StringIO(""), stdout=stdout)
-        select_task = asyncio.create_task(mode.extension_ui_context.select("Target", ["dev"]))
-        confirm_task = asyncio.create_task(mode.extension_ui_context.confirm("Confirm", "Proceed?"))
+        select_task = asyncio.create_task(
+            mode.extension_ui_context.select("Target", ["dev"])
+        )
+        confirm_task = asyncio.create_task(
+            mode.extension_ui_context.confirm("Confirm", "Proceed?")
+        )
         await asyncio.sleep(0)
         requests = _parse_jsonl(stdout)
         for request in requests:
-            await mode._handle_line(json.dumps({"type": "extension_ui_response", "id": request["id"], "cancelled": True}))
+            await mode._handle_line(
+                json.dumps(
+                    {
+                        "type": "extension_ui_response",
+                        "id": request["id"],
+                        "cancelled": True,
+                    }
+                )
+            )
         assert await asyncio.wait_for(select_task, timeout=0.5) is None
         assert await asyncio.wait_for(confirm_task, timeout=0.5) is False
 
@@ -4736,7 +5265,11 @@ def test_rpc_mode_write_json_line_rejects_circular_payloads() -> None:
     stdout = StringIO()
     mode = RpcMode(runtime=runtime, stdin=StringIO(""), stdout=stdout)
 
-    payload: dict[str, object] = {"type": "response", "command": "probe", "success": True}
+    payload: dict[str, object] = {
+        "type": "response",
+        "command": "probe",
+        "success": True,
+    }
     payload["data"] = payload
 
     mode._write_json_line(payload)
@@ -4763,9 +5296,17 @@ def test_rpc_mode_write_json_line_preserves_command_on_fallback() -> None:
     stdout = StringIO()
     mode = RpcMode(runtime=runtime, stdin=StringIO(""), stdout=stdout)
 
-    mode._write_json_line({"type": "response", "id": "id-1", "command": "probe", "data": BadSlots()})
+    mode._write_json_line(
+        {"type": "response", "id": "id-1", "command": "probe", "data": BadSlots()}
+    )
     assert _parse_jsonl(stdout) == [
-        {"type": "response", "command": "probe", "success": False, "error": "Failed to serialize RPC output.", "id": "id-1"},
+        {
+            "type": "response",
+            "command": "probe",
+            "success": False,
+            "error": "Failed to serialize RPC output.",
+            "id": "id-1",
+        },
     ]
 
 
@@ -4819,7 +5360,9 @@ def test_rpc_mode_write_json_line_flushes_output() -> None:
     mode._write_json_line({"type": "response", "command": "probe", "success": True})
 
     assert stdout.flush_calls == 1
-    assert _parse_jsonl(stdout) == [{"type": "response", "command": "probe", "success": True}]
+    assert _parse_jsonl(stdout) == [
+        {"type": "response", "command": "probe", "success": True}
+    ]
 
 
 def test_rpc_mode_rebinds_extension_ui_context_after_session_switch(tmp_path) -> None:
@@ -4838,23 +5381,36 @@ def test_rpc_mode_rebinds_extension_ui_context_after_session_switch(tmp_path) ->
                         id="tiny",
                         provider="faux",
                         endpoint="test",
-                        capabilities=Capabilities(input=("text",), context_window=10_000, max_tokens=1024),
+                        capabilities=Capabilities(
+                            input=("text",), context_window=10_000, max_tokens=1024
+                        ),
                     ),
                     "thinking_level": "off",
                 }
             ),
-            session_manager=SessionManager.new(session_dir=tmp_path / session_id, cwd="/tmp/project", persist=False),
+            session_manager=asyncio.run(
+                SessionManager.new(
+                    session_dir=tmp_path / session_id, cwd="/tmp/project", persist=False
+                )
+            ),
             extension_runner=extension_runner,
         )
 
-    first_runner = ExtensionRunner([LoadedExtension(name="first", source_path=Path("/tmp/first.py"))])
-    second_runner = ExtensionRunner([LoadedExtension(name="second", source_path=Path("/tmp/second.py"))])
+    first_runner = ExtensionRunner(
+        [LoadedExtension(name="first", source_path=Path("/tmp/first.py"))]
+    )
+    second_runner = ExtensionRunner(
+        [LoadedExtension(name="second", source_path=Path("/tmp/second.py"))]
+    )
     current = _session("a", first_runner)
     next_session = _session("b", second_runner)
     runtime = FakeRuntime(current)
     runtime.queue_next_session(next_session)
     stdout = StringIO()
-    stdin = StringIO(json.dumps({"id": "switch", "type": "switch_session", "sessionId": "session-b"}) + "\n")
+    stdin = StringIO(
+        json.dumps({"id": "switch", "type": "switch_session", "sessionId": "session-b"})
+        + "\n"
+    )
 
     async def scenario() -> None:
         mode = RpcMode(runtime=runtime, stdin=stdin, stdout=stdout)
@@ -4863,8 +5419,12 @@ def test_rpc_mode_rebinds_extension_ui_context_after_session_switch(tmp_path) ->
 
     asyncio.run(scenario())
 
-    second_runner.create_command_context(fallback_cwd="/tmp/project").notify("Rebound", "info")
-    requests = [line for line in _parse_jsonl(stdout) if line["type"] == "extension_ui_request"]
+    second_runner.create_command_context(fallback_cwd="/tmp/project").notify(
+        "Rebound", "info"
+    )
+    requests = [
+        line for line in _parse_jsonl(stdout) if line["type"] == "extension_ui_request"
+    ]
     assert len(requests) == 1
     assert requests[0]["message"] == "Rebound"
 
@@ -4897,12 +5457,16 @@ def test_rpc_mode_emits_extension_error_for_hook_failures(tmp_path) -> None:
                     id="tiny",
                     provider="faux",
                     endpoint="test",
-                    capabilities=Capabilities(input=("text",), context_window=10_000, max_tokens=1024),
+                    capabilities=Capabilities(
+                        input=("text",), context_window=10_000, max_tokens=1024
+                    ),
                 ),
                 "thinking_level": "off",
             }
         ),
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         extension_runner=extension_runner,
     )
     runtime = FakeRuntime(session)

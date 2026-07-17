@@ -43,6 +43,9 @@ class ConversationRepository(Generic[H, R]):
         journal: JsonlJournal[H, R] | None = None,
         mode: BranchMode = "strict",
         leaf_id: str | None = None,
+        diagnostics: Sequence[JournalDiagnostic] = (),
+        source_path: Path | None = None,
+        writable: bool = True,
     ) -> ConversationRepository[H, R]:
         return cls(
             TranscriptRepository.create(
@@ -53,6 +56,9 @@ class ConversationRepository(Generic[H, R]):
                 journal=journal,
                 mode=mode,
                 leaf_id=leaf_id,
+                diagnostics=diagnostics,
+                source_path=source_path,
+                writable=writable,
             ),
             record_id=record_id,
             parent_id=parent_id,

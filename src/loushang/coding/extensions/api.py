@@ -27,10 +27,10 @@ class ExtensionAPI(ExtensionContributionAPI):
         super().bind_runtime_state(runtime_state)
         self._flush_pending_provider_actions()
 
-    def append_entry(self, custom_type: str, data: object | None = None) -> None:
+    async def append_entry(self, custom_type: str, data: object | None = None) -> None:
         callback = getattr(self._runtime_bindings(), "append_entry", None)
         if callable(callback):
-            callback(custom_type, data)
+            await callback(custom_type, data)
 
     async def send_message(
         self, message: object, options: object | None = None
@@ -58,25 +58,25 @@ class ExtensionAPI(ExtensionContributionAPI):
             return value
         return "off"
 
-    def set_thinking_level(self, level: ThinkingLevel) -> None:
+    async def set_thinking_level(self, level: ThinkingLevel) -> None:
         callback = getattr(self._runtime_bindings(), "set_thinking_level", None)
         if callable(callback):
-            callback(level)
+            await callback(level)
 
-    def set_session_name(self, name: str | None) -> None:
+    async def set_session_name(self, name: str | None) -> None:
         callback = getattr(self._runtime_bindings(), "set_session_name", None)
         if callable(callback):
-            callback(name)
+            await callback(name)
 
     def get_session_name(self) -> str | None:
         callback = getattr(self._runtime_bindings(), "get_session_name", None)
         value = callback() if callable(callback) else None
         return value if isinstance(value, str) else None
 
-    def set_label(self, entry_id: str, label: str | None) -> None:
+    async def set_label(self, entry_id: str, label: str | None) -> None:
         callback = getattr(self._runtime_bindings(), "set_label", None)
         if callable(callback):
-            callback(entry_id, label)
+            await callback(entry_id, label)
 
     def register_provider(self, name: str, config: object) -> None:
         if not self._apply_provider_action("register", name, config):

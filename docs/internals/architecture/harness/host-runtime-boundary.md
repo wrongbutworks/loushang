@@ -4,8 +4,9 @@
 
 Status: implementation complete for integration into `lane/harness`.
 
-This document defines the product-neutral host lifecycle, input-queue ledger,
-and ordered event-dispatch mechanisms owned by `loushang.harness.host`.
+This document defines the product-neutral host lifecycle and input-queue ledger
+owned by `loushang.harness.host`, composed with ordered event-dispatch
+mechanisms from `loushang.harness.events`.
 Coding remains responsible for Product input semantics, session persistence,
 controller policy and adapters, commands, resource activation, extension
 policy, and presentation. Reusable controller state machines are defined by
@@ -93,7 +94,7 @@ callback.
 
 ## Ordered Events
 
-`loushang.harness.host.events.OrderedEventBus` owns:
+`loushang.harness.events.OrderedEventBus` owns:
 
 - subscription and unsubscription;
 - sync or async listeners;
@@ -101,37 +102,43 @@ callback.
 - direct dispatch and drain behavior;
 - synchronous dispatch when no event loop is available.
 
-The bus is generic over its event payload. Coding continues to own
-`AgentSessionEvent`, event projection, UI interpretation, and extension event
-mapping.
+The bus is generic over its event payload. `RuntimeEventPublisher` owns one
+stream's event id, timestamp, and monotonic sequence. Harness owns common
+Session runtime payloads; Coding continues to own `AgentSessionEvent` only as a
+Product projection, UI interpretation, and extension event mapping. Common
+observers subscribe to `RuntimeEvent`.
+Transcript commit observations are scheduled from exact Store receipts after
+durable success, so Product projection failure cannot roll back or repeat the
+append.
 
 ## Coding Adapter
 
 Coding adopts the Host Runtime core as follows:
 
 - `coding.session.types.RunState` re-exports the Harness-owned record;
-- `coding.session.queue_controller.QueueController` delegates ledger state and
-  snapshots to `HostInputQueue` while keeping preflight, AI message creation,
-  Agent delivery, logs, and queue-update events;
-- `coding.session.session_event_bus.SessionEventBus` specializes
-  `OrderedEventBus` while preserving its accepted no-loop error text;
+- `harness.session.QueueController` owns visible queue coordination over
+  `HostInputQueue`; Coding injects preflight, extension-command rejection,
+  queue-update projection, and its concrete Agent delivery;
+- `AgentSession` owns one scoped Runtime publisher and ordered bus; its Product
+  subscription API is a projection adapter on that same stream;
 - `AgentSession` delegates prompt/continue lifecycle, abort, idle waiting, and
   disposal state to `HostRuntime`;
-- Coding prompt, queue, retry, and compaction controllers supply Product
-  callbacks to Harness turn and lifecycle coordinators;
+- `harness.session.PromptController` and `AgentEventRouter` order generic turn
+  and Agent-event coordination; Coding supplies Product callbacks for prompt
+  content, extensions, retry, compaction, diagnostics, and transcript access;
 - resource and extension controllers supply Product discovery, event,
   diagnostic, and binding callbacks to Harness lifecycle coordinators.
 
-Accepted Coding imports and public behavior remain available. Harness-owned
-records keep their Harness `__module__`; compatibility paths preserve the
-import path, not Coding-owned identity.
+Accepted Coding facade behavior remains available. Harness-owned records keep
+their Harness `__module__`; a compatibility path is retained only where a
+Product-facing import remains part of the accepted API.
 
 ## Product-Owned Behavior
 
 This migration does not move or redesign:
 
 - input text/image conversion, preflight, slash parsing, or command handlers;
-- `AgentSessionEvent` or product event projection;
+- Product event dictionaries, wire fields, or presentation projection;
 - prompts, skills, tools, active-tool policy, or product defaults;
 - retry classification/defaults, compaction trigger policy, summarization
   prompts/model calls, or context salience; Harness owns only the injected

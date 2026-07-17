@@ -35,7 +35,10 @@ from loushang.coding.control import (
     RetrySettings,
     SettingsManager,
 )
-from loushang.coding.event import AgentSessionEvent
+from loushang.coding.event import (
+    AgentSessionEvent,
+    project_runtime_event_to_session_event,
+)
 from loushang.coding.extensions import (
     ExtensionRunner,
     ReplacedSessionContext,
@@ -43,14 +46,12 @@ from loushang.coding.extensions import (
     SessionStartEvent,
 )
 from loushang.coding.loader import DefaultResourceLoader
-from loushang.coding.message import SessionContext
 from loushang.coding.package.materializer import (
     PackageMaterializer,
     PackageProgressEvent,
 )
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
 from loushang.coding.policy import InteractiveApprovalResolver
-from loushang.coding.session.agent_event_router import AgentEventRouter
 from loushang.coding.session.auth_bridge_controller import AuthBridgeController
 from loushang.coding.session.auth_commands import (
     SessionOAuthLoginCallbacks,
@@ -85,8 +86,6 @@ from loushang.coding.session.extension_runtime_controller import (
     ExtensionRuntimeController,
 )
 from loushang.coding.session.package_controller import PackageController
-from loushang.coding.session.prompt_controller import PromptController
-from loushang.coding.session.queue_controller import QueueController
 from loushang.coding.session.resource_refresh_controller import (
     ResourceRefreshController,
 )
@@ -94,7 +93,6 @@ from loushang.coding.session.resource_watcher import ResourceChangeWatcher
 from loushang.coding.session.retry_controller import RetryController
 from loushang.coding.session.selection_controller import SelectionController
 from loushang.coding.session.session_diagnostics_bridge import SessionDiagnosticsBridge
-from loushang.coding.session.session_event_bus import SessionEventBus
 from loushang.coding.session.session_settings_controller import (
     SessionSettingsController,
 )
@@ -111,6 +109,11 @@ from loushang.coding.session.types import (
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager, SessionRecord
 from loushang.coding.tools import ToolRegistry
+from loushang.harness.agent_transcript import (
+    AgentTranscriptContext,
+    ApplicationMessage,
+    CommitResult,
+)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import (
     DiagnosticRecord,
@@ -118,11 +121,30 @@ from loushang.harness.diagnostics.types import (
     DiagnosticSummary,
     ErrorReport,
 )
+from loushang.harness.events import (
+    ConversationMetadataChanged,
+    OrderedEventBus,
+    PackageProgressChanged,
+    QueueChanged,
+    RuntimeEvent,
+    RuntimeEventPublisher,
+    SessionRuntimeEventPayload,
+    ToolPolicyAuditEvent,
+    ToolPolicyAuditEventType,
+    TranscriptRecordCommitted,
+    session_runtime_event_kind,
+)
 from loushang.harness.host.runtime import HostRuntime
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
+)
+from loushang.harness.session import (
+    AgentEventRouter,
+    ApplicationInputRuntime,
+    PromptController,
+    QueueController,
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import (
@@ -134,6 +156,7 @@ from loushang.harness.workspace.exec import (
 )
 
 SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]
+RuntimeEventListener = Callable[[RuntimeEvent[object]], Awaitable[None] | None]
 
 
 class AgentSession:
@@ -164,6 +187,7 @@ class AgentSession:
         approval_resolver: InteractiveApprovalResolver | None = None,
     ) -> None:
         self.agent = agent
+        self._session_default_model = agent.model
         self.session_manager = session_manager
         self._settings_controller = SessionSettingsController(settings_manager)
         self.model_registry = model_registry
@@ -187,7 +211,17 @@ class AgentSession:
         self._base_prompt = (
             base_prompt if base_prompt is not None else self.agent.system_prompt
         )
-        self._event_bus = SessionEventBus()
+        self._runtime_event_bus = OrderedEventBus[RuntimeEvent[object]](
+            async_listener_error=(
+                "Async runtime event listeners require a running event loop."
+            )
+        )
+        session_id = self.session_manager.get_header().conversation_id
+        self._runtime_event_publisher = RuntimeEventPublisher[object](
+            stream_id=f"session:{session_id}",
+            bus=self._runtime_event_bus,
+        )
+        self.session_manager.set_commit_observer(self._schedule_transcript_commit)
         self._host_runtime: HostRuntime[None] = HostRuntime(
             abort_driver=self.agent.abort,
             wait_for_idle_driver=self.agent.wait_for_idle,
@@ -253,6 +287,7 @@ class AgentSession:
             session_manager=self.session_manager,
             extension_runner=self._extension_runner,
             dispatch_event=self._dispatch_event,
+            apply_session_context=self._apply_agent_transcript_context,
             record_runtime_exception=self._record_runtime_exception,
             sync_extension_diagnostics=self._sync_extension_diagnostics,
         )
@@ -330,11 +365,16 @@ class AgentSession:
             sleep_for_retry=lambda delay_ms, signal: _sleep_for_retry(delay_ms, signal),
             wait_for_idle=self.wait_for_idle,
         )
+        self._application_input_runtime = ApplicationInputRuntime(
+            commit_application_message=self.session_manager.commit_application_message,
+            queue=self._queue_controller,
+            project_direct=self._project_direct_application_message,
+            run_trigger_turn=lambda message: self._run_agent_prompt(message),
+        )
         self._extension_message_controller = ExtensionMessageController(
             agent=self.agent,
-            session_manager=self.session_manager,
             queue_controller=self._queue_controller,
-            dispatch_event=self._dispatch_event,
+            application_inputs=self._application_input_runtime,
             run_prompt=self._run_agent_prompt,
         )
         self._extension_provider_controller = ExtensionProviderController(
@@ -355,13 +395,13 @@ class AgentSession:
             set_active_tools=self._set_active_tools_from_extension,
             set_model=self._set_model_from_extension,
             register_tool=self._register_extension_runtime_tool,
-            append_entry=self.session_manager.append_custom_entry,
+            append_entry=self._append_extension_entry,
             send_message=self._extension_message_controller.send_message,
             send_user_message=self._extension_message_controller.send_user_message,
             get_signal=lambda: self.agent.signal,
             set_session_name=self.set_session_name,
             get_session_name=lambda: self.session_name,
-            set_label=self.session_manager.append_label,
+            set_label=self._set_extension_label,
             list_commands=self.list_commands,
             request_resource_refresh=self._request_resource_refresh,
             shutdown=self.abort,
@@ -460,21 +500,7 @@ class AgentSession:
         )
         self._unsubscribe_agent = self.agent.subscribe(self._handle_agent_event)
         session_context = self.session_manager.build_session_context()
-        self.agent.state.set_messages(session_context.messages)
-        if self.session_manager.get_entries():
-            self.agent.thinking_level = session_context.thinking_level
-        if session_context.model is not None:
-            selection = ModelSelection(
-                provider=session_context.model["provider"],
-                model_id=session_context.model["model_id"],
-                endpoint_id=session_context.model.get("endpoint_id"),
-            )
-            if (
-                self.get_model_selection() != selection
-                and self.model_registry is not None
-            ):
-                with suppress(KeyError, ValueError):
-                    self.agent.model = self.model_registry.build_model(selection)
+        self._apply_agent_transcript_context(session_context)
         if self._tool_registry is not None:
             initial_active_tool_names = (
                 list(active_tool_names)
@@ -492,13 +518,32 @@ class AgentSession:
 
     # Public facade: state, commands, diagnostics, packages, and exports.
 
+    def _apply_agent_transcript_context(
+        self,
+        session_context: AgentTranscriptContext,
+    ) -> None:
+        self.agent.state.set_messages(session_context.messages)
+        if self.session_manager.get_entries():
+            self.agent.thinking_level = session_context.thinking_level
+
+        resolved_model = self._session_default_model
+        if session_context.model is not None and self.model_registry is not None:
+            selection = ModelSelection(
+                provider=session_context.model["provider"],
+                model_id=session_context.model["model_id"],
+                endpoint_id=session_context.model.get("endpoint_id"),
+            )
+            with suppress(KeyError, ValueError):
+                resolved_model = self.model_registry.build_model(selection)
+        self.agent.model = resolved_model
+
     def get_state(self) -> AgentSessionState:
         return self._view_controller.get_state(
             steering=self._queue_controller.get_steering_messages(),
             follow_up=self._queue_controller.get_follow_up_messages(),
         )
 
-    def get_session_context(self) -> SessionContext:
+    def get_session_context(self) -> AgentTranscriptContext:
         return self.session_manager.build_session_context()
 
     def get_session_record(self) -> SessionRecord:
@@ -834,7 +879,19 @@ class AgentSession:
         return self._resource_loader
 
     def subscribe(self, listener: SessionEventListener) -> Callable[[], None]:
-        return self._event_bus.subscribe(listener)
+        def project(event: RuntimeEvent[object]) -> Awaitable[None] | None:
+            projected = project_runtime_event_to_session_event(event)
+            if projected is None:
+                return None
+            return listener(projected)
+
+        return self._runtime_event_bus.subscribe(project)
+
+    def subscribe_runtime_events(
+        self,
+        listener: RuntimeEventListener,
+    ) -> Callable[[], None]:
+        return self._runtime_event_bus.subscribe(listener)
 
     # Run entrypoint.
 
@@ -946,17 +1003,17 @@ class AgentSession:
     ) -> ModelSelection | None:
         return self._selection_controller.model_selection_from_scoped_model(scoped)
 
-    def set_thinking_level(self, level: ThinkingLevel) -> None:
-        self._selection_controller.set_thinking_level(level)
+    async def set_thinking_level(self, level: ThinkingLevel) -> None:
+        await self._selection_controller.set_thinking_level(level)
 
-    def setThinkingLevel(self, level: ThinkingLevel) -> None:
-        self.set_thinking_level(level)
+    async def setThinkingLevel(self, level: ThinkingLevel) -> None:
+        await self.set_thinking_level(level)
 
-    def cycle_thinking_level(self) -> ThinkingLevel | None:
-        return self._selection_controller.cycle_thinking_level()
+    async def cycle_thinking_level(self) -> ThinkingLevel | None:
+        return await self._selection_controller.cycle_thinking_level()
 
-    def cycleThinkingLevel(self) -> ThinkingLevel | None:
-        return self.cycle_thinking_level()
+    async def cycleThinkingLevel(self) -> ThinkingLevel | None:
+        return await self.cycle_thinking_level()
 
     def supports_thinking(self) -> bool:
         return self._selection_controller.supports_thinking()
@@ -1019,19 +1076,15 @@ class AgentSession:
             return []
         return registry.ai_registry.list_models()
 
-    def set_session_name(self, name: str | None) -> None:
-        self.session_manager.append_session_info(name)
-        event: AgentSessionEvent = {
-            "type": "session_info_changed",
-            "name": self.session_name,
-        }
-        try:
-            self._schedule_event_dispatch(event)
-        except RuntimeError:
-            self._dispatch_event_without_loop(event)
+    async def set_session_name(self, name: str | None) -> None:
+        record_id = await self.session_manager.append_session_info(name)
+        await self._dispatch_event(
+            ConversationMetadataChanged(name=self.session_name),
+            source_record_id=record_id,
+        )
 
-    def setSessionName(self, name: str | None) -> None:
-        self.set_session_name(name)
+    async def setSessionName(self, name: str | None) -> None:
+        await self.set_session_name(name)
 
     def getSessionName(self) -> str | None:
         return self.session_name
@@ -1091,13 +1144,13 @@ class AgentSession:
             command, on_chunk=on_chunk, options=options
         )
 
-    def recordBashResult(
+    async def recordBashResult(
         self,
         command: str,
         result: dict[str, object],
         options: dict[str, object] | None = None,
     ) -> None:
-        self._bash_controller.record_pi_style_result(command, result, options)
+        await self._bash_controller.record_pi_style_result(command, result, options)
 
     def abortBash(self) -> None:
         self.abort_bash()
@@ -1304,7 +1357,8 @@ class AgentSession:
                 "Extension context is stale after session replacement or shutdown."
             )
         self._unsubscribe_agent()
-        self._event_bus.clear()
+        self.session_manager.set_commit_observer(None)
+        self._runtime_event_bus.clear()
         self.footer_data_provider.dispose()
 
     def _stage_session_approvals(self) -> None:
@@ -1496,6 +1550,14 @@ class AgentSession:
 
     async def _set_model_from_extension(self, selection: ModelSelection) -> None:
         await self._selection_controller.set_model_from_extension(selection)
+
+    async def _append_extension_entry(
+        self, custom_type: str, data: object | None = None
+    ) -> None:
+        await self.session_manager.append_custom_entry(custom_type, data)
+
+    async def _set_extension_label(self, target_id: str, label: str | None) -> None:
+        await self.session_manager.append_label(target_id, label)
 
     def _request_resource_refresh(self) -> None:
         self._resource_refresh_controller.request_resource_refresh()
@@ -1698,15 +1760,25 @@ class AgentSession:
 
         await self._host_runtime.run(operation)
 
+    async def _project_direct_application_message(
+        self,
+        message: ApplicationMessage,
+        record_id: str,
+    ) -> None:
+        self._apply_agent_transcript_context(
+            self.session_manager.build_session_context()
+        )
+        await self._dispatch_event({"type": "message_start", "message": message})
+        await self._dispatch_event(
+            {"type": "message_end", "message": message},
+            source_record_id=record_id,
+        )
+
     async def _emit_extension_agent_event(self, event: AgentEvent) -> None:
         await self._extension_event_sink.emit_agent_event(event)
 
     def _emit_queue_update(self) -> None:
-        event: AgentSessionEvent = {
-            "type": "queue_update",
-            "steering": self._queue_controller.get_steering_messages(),
-            "follow_up": self._queue_controller.get_follow_up_messages(),
-        }
+        event = QueueChanged(snapshot=self._queue_controller.get_queue_snapshot())
         try:
             self._schedule_event_dispatch(event)
         except RuntimeError:
@@ -1718,29 +1790,66 @@ class AgentSession:
         self._package_materializer.set_progress_callback(self._emit_package_progress)
 
     def _emit_package_progress(self, progress: PackageProgressEvent) -> None:
-        event: AgentSessionEvent = {
-            "type": "package_progress",
-            "progress_type": progress.type,
-            "action": progress.action,
-            "source": progress.source,
-            "message": progress.message,
-            "target_path": str(progress.target_path)
-            if progress.target_path is not None
-            else None,
-        }
+        event = PackageProgressChanged(
+            progress_type=progress.type,
+            action=progress.action,
+            source=progress.source,
+            message=progress.message,
+            target_path=(
+                str(progress.target_path) if progress.target_path is not None else None
+            ),
+        )
         try:
             self._schedule_event_dispatch(event)
         except RuntimeError:
             self._dispatch_event_without_loop(event)
 
-    async def _dispatch_event(self, event: AgentSessionEvent) -> None:
-        await self._event_bus.dispatch(event)
+    async def _dispatch_event(
+        self,
+        event: AgentEvent | SessionRuntimeEventPayload | Mapping[str, object],
+        *,
+        source_record_id: str | None = None,
+    ) -> None:
+        kind, payload = _normalize_runtime_event(event)
+        await self._runtime_event_publisher.publish(
+            kind,
+            payload,
+            session_id=self.session_manager.get_header().conversation_id,
+            source_record_id=source_record_id,
+        )
 
-    def _schedule_event_dispatch(self, event: AgentSessionEvent) -> asyncio.Task[None]:
-        return self._event_bus.schedule(event)
+    def _schedule_transcript_commit(self, result: CommitResult) -> None:
+        receipt = result.receipt
+        if result.disposition != "committed" or receipt is None:
+            return
+        conversation_id = self.session_manager.get_header().conversation_id
+        self._runtime_event_publisher.schedule(
+            "transcript.record_committed",
+            TranscriptRecordCommitted(
+                conversation_id=conversation_id,
+                record_id=result.record_id,
+                revision=receipt.revision,
+                committed_at=receipt.committed_at,
+            ),
+            session_id=conversation_id,
+            source_record_id=result.record_id,
+        )
 
-    def _dispatch_event_without_loop(self, event: AgentSessionEvent) -> None:
-        self._event_bus.dispatch_without_loop(event)
+    def _schedule_event_dispatch(
+        self, event: SessionRuntimeEventPayload
+    ) -> asyncio.Task[None]:
+        return self._runtime_event_publisher.schedule(
+            _runtime_event_kind(event),
+            event,
+            session_id=self.session_manager.get_header().conversation_id,
+        )
+
+    def _dispatch_event_without_loop(self, event: SessionRuntimeEventPayload) -> None:
+        self._runtime_event_publisher.publish_without_loop(
+            _runtime_event_kind(event),
+            event,
+            session_id=self.session_manager.get_header().conversation_id,
+        )
 
     # Internal compatibility shims for controller-owned state.
 
@@ -1882,14 +1991,14 @@ class AgentSession:
     def _sync_extension_diagnostics(self, *, phase: str) -> None:
         self._diagnostics_bridge.sync_extension_diagnostics(phase=phase)
 
-    def _record_bash_execution(
+    async def _record_bash_execution(
         self,
         *,
         command: str,
         result: dict[str, object],
         exclude_from_context: bool,
     ) -> None:
-        self._bash_controller.record_result(
+        await self._bash_controller.record_result(
             command=command,
             result=result,
             exclude_from_context=exclude_from_context,
@@ -1907,6 +2016,46 @@ async def _sleep_for_retry(delay_ms: int, signal: AbortSignal) -> None:
         remaining -= interval
     if signal.aborted:
         raise asyncio.CancelledError
+
+
+_AGENT_EVENT_TYPES = {
+    "agent_start",
+    "agent_end",
+    "turn_start",
+    "turn_end",
+    "message_start",
+    "message_update",
+    "message_end",
+    "tool_execution_start",
+    "tool_execution_update",
+    "tool_execution_end",
+}
+_TOOL_POLICY_AUDIT_EVENT_TYPES = {
+    "tool_policy_evaluated",
+    "tool_approval_requested",
+    "tool_approval_resolved",
+}
+
+
+def _normalize_runtime_event(
+    event: AgentEvent | SessionRuntimeEventPayload | Mapping[str, object],
+) -> tuple[str, object]:
+    if isinstance(event, Mapping):
+        event_type = event.get("type")
+        if isinstance(event_type, str) and event_type in _AGENT_EVENT_TYPES:
+            return f"agent.{event_type}", event
+        if isinstance(event_type, str) and event_type in _TOOL_POLICY_AUDIT_EVENT_TYPES:
+            payload = ToolPolicyAuditEvent(
+                event_type=cast(ToolPolicyAuditEventType, event_type),
+                details={key: value for key, value in event.items() if key != "type"},
+            )
+            return session_runtime_event_kind(payload), payload
+        raise TypeError("Runtime event mapping has an unsupported type")
+    return session_runtime_event_kind(event), event
+
+
+def _runtime_event_kind(event: SessionRuntimeEventPayload) -> str:
+    return session_runtime_event_kind(event)
 
 
 def _normalize_extension_exec_command(

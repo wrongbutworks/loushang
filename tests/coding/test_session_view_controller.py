@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from loushang.agent import Agent
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import (
@@ -10,9 +12,9 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from loushang.coding.message import BashExecutionMessage
 from loushang.coding.session.types import ModelSelection, RunState
 from loushang.coding.store import SessionManager
+from loushang.harness.conversation import CommandExecutionRecord
 
 
 def _model() -> Model:
@@ -42,15 +44,24 @@ def _usage(total_tokens: int = 17) -> Usage:
 
 
 def _user_message(text: str) -> UserMessage:
-    return UserMessage(role="user", content=[TextPart(type="text", text=text)], timestamp=0.0)
+    return UserMessage(
+        role="user", content=[TextPart(type="text", text=text)], timestamp=0.0
+    )
 
 
-def _assistant_message(text: str = "answer", *, total_tokens: int = 17, stop_reason: str = "toolUse") -> AssistantMessage:
+def _assistant_message(
+    text: str = "answer", *, total_tokens: int = 17, stop_reason: str = "toolUse"
+) -> AssistantMessage:
     return AssistantMessage(
         role="assistant",
         content=[
             TextPart(type="text", text=text),
-            ToolCall(type="toolCall", id="tool-1", name="read", arguments={"path": "README.md"}),
+            ToolCall(
+                type="toolCall",
+                id="tool-1",
+                name="read",
+                arguments={"path": "README.md"},
+            ),
         ],
         api="anthropic-messages",
         provider="faux",
@@ -66,7 +77,14 @@ def _assistant_message(text: str = "answer", *, total_tokens: int = 17, stop_rea
 def _tool_only_assistant_message() -> AssistantMessage:
     return AssistantMessage(
         role="assistant",
-        content=[ToolCall(type="toolCall", id="tool-1", name="read", arguments={"path": "README.md"})],
+        content=[
+            ToolCall(
+                type="toolCall",
+                id="tool-1",
+                name="read",
+                arguments={"path": "README.md"},
+            )
+        ],
         api="anthropic-messages",
         provider="faux",
         model="faux-model",
@@ -81,20 +99,26 @@ def _tool_only_assistant_message() -> AssistantMessage:
 def test_session_view_controller_builds_usage_and_pi_stats(tmp_path) -> None:
     from loushang.coding.session.session_view_controller import SessionViewController
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(_user_message("hello"))
-    manager.append_message(_assistant_message())
-    manager.append_message(
-        ToolResultMessage(
-            role="toolResult",
-            tool_call_id="tool-1",
-            tool_name="read",
-            content=[TextPart(type="text", text="ok")],
-            is_error=False,
-            timestamp=2.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(manager.append_message(_user_message("hello")))
+    asyncio.run(manager.append_message(_assistant_message()))
+    asyncio.run(
+        manager.append_message(
+            ToolResultMessage(
+                role="toolResult",
+                tool_call_id="tool-1",
+                tool_name="read",
+                content=[TextPart(type="text", text="ok")],
+                is_error=False,
+                timestamp=2.0,
+            )
         )
     )
-    agent = Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"})
+    agent = Agent(
+        initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
+    )
     agent.state.set_messages(manager.build_session_context().messages)
     controller = SessionViewController(
         agent=agent,
@@ -103,7 +127,9 @@ def test_session_view_controller_builds_usage_and_pi_stats(tmp_path) -> None:
         is_retrying=lambda: True,
         is_compacting=lambda: False,
         get_last_diagnostics=lambda limit=50: [],
-        get_model_selection=lambda: ModelSelection(provider="faux", model_id="faux-model"),
+        get_model_selection=lambda: ModelSelection(
+            provider="faux", model_id="faux-model"
+        ),
     )
 
     usage = controller.get_context_usage()
@@ -121,7 +147,9 @@ def test_session_view_controller_builds_usage_and_pi_stats(tmp_path) -> None:
     assert stats.session_id == manager.get_session_record().session_id
     assert stats.active_tool_count == 2
     assert stats.is_retrying is True
-    assert stats.last_model_selection == ModelSelection(provider="faux", model_id="faux-model")
+    assert stats.last_model_selection == ModelSelection(
+        provider="faux", model_id="faux-model"
+    )
     pi_stats = controller.get_pi_style_stats()
     pi_usage = pi_stats["contextUsage"]
     assert pi_stats | {"contextUsage": None} == {
@@ -152,32 +180,45 @@ def test_session_view_controller_builds_usage_and_pi_stats(tmp_path) -> None:
     assert "message_count" not in pi_usage
 
 
-def test_session_view_controller_reports_unknown_current_context_after_compaction(tmp_path) -> None:
+def test_session_view_controller_reports_unknown_current_context_after_compaction(
+    tmp_path,
+) -> None:
     from loushang.coding.session.session_view_controller import SessionViewController
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(_user_message("first"))
-    manager.append_message(_assistant_message("before", total_tokens=180))
-    kept_user_id = manager.append_message(_user_message("second"))
-    manager.append_message(_assistant_message("kept stale", total_tokens=195))
-    compaction_id = manager.append_compaction(
-        "summary",
-        kept_user_id,
-        195,
-        details={
-            "compactionPlan": {
-                "firstKeptEntryId": kept_user_id,
-                "summarizedEntryIds": [manager.get_entries()[0].id, manager.get_entries()[1].id],
-                "turnPrefixEntryIds": [],
-                "keptEntryIds": [kept_user_id, manager.get_entries()[3].id],
-                "isSplitTurn": False,
-                "tokensBefore": 195,
-                "keepRecentTokens": 32,
-            }
-        },
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
-    manager.append_message(_user_message("third"))
-    agent = Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"})
+    asyncio.run(manager.append_message(_user_message("first")))
+    asyncio.run(manager.append_message(_assistant_message("before", total_tokens=180)))
+    kept_user_id = asyncio.run(manager.append_message(_user_message("second")))
+    asyncio.run(
+        manager.append_message(_assistant_message("kept stale", total_tokens=195))
+    )
+    compaction_id = asyncio.run(
+        manager.append_compaction(
+            "summary",
+            kept_user_id,
+            195,
+            details={
+                "compactionPlan": {
+                    "firstKeptEntryId": kept_user_id,
+                    "summarizedEntryIds": [
+                        manager.get_entries()[0].record_id,
+                        manager.get_entries()[1].record_id,
+                    ],
+                    "turnPrefixEntryIds": [],
+                    "keptEntryIds": [kept_user_id, manager.get_entries()[3].record_id],
+                    "isSplitTurn": False,
+                    "tokensBefore": 195,
+                    "keepRecentTokens": 32,
+                }
+            },
+        )
+    )
+    asyncio.run(manager.append_message(_user_message("third")))
+    agent = Agent(
+        initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
+    )
     agent.state.set_messages(manager.build_session_context().messages)
     controller = SessionViewController(
         agent=agent,
@@ -205,9 +246,12 @@ def test_session_view_controller_reports_unknown_current_context_after_compactio
         "fromHook": None,
         "plan": {
             "firstKeptEntryId": kept_user_id,
-            "summarizedEntryIds": [manager.get_entries()[0].id, manager.get_entries()[1].id],
+            "summarizedEntryIds": [
+                manager.get_entries()[0].record_id,
+                manager.get_entries()[1].record_id,
+            ],
             "turnPrefixEntryIds": [],
-            "keptEntryIds": [kept_user_id, manager.get_entries()[3].id],
+            "keptEntryIds": [kept_user_id, manager.get_entries()[3].record_id],
             "isSplitTurn": False,
             "tokensBefore": 195,
             "keepRecentTokens": 32,
@@ -215,18 +259,26 @@ def test_session_view_controller_reports_unknown_current_context_after_compactio
     }
 
 
-def test_session_view_controller_uses_post_compaction_usage_for_current_context(tmp_path) -> None:
+def test_session_view_controller_uses_post_compaction_usage_for_current_context(
+    tmp_path,
+) -> None:
     from loushang.coding.session.session_view_controller import SessionViewController
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(_user_message("first"))
-    manager.append_message(_assistant_message("before", total_tokens=180))
-    kept_user_id = manager.append_message(_user_message("second"))
-    manager.append_message(_assistant_message("kept stale", total_tokens=195))
-    manager.append_compaction("summary", kept_user_id, 195)
-    manager.append_message(_user_message("third"))
-    manager.append_message(_assistant_message("after", total_tokens=25))
-    agent = Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"})
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(manager.append_message(_user_message("first")))
+    asyncio.run(manager.append_message(_assistant_message("before", total_tokens=180)))
+    kept_user_id = asyncio.run(manager.append_message(_user_message("second")))
+    asyncio.run(
+        manager.append_message(_assistant_message("kept stale", total_tokens=195))
+    )
+    asyncio.run(manager.append_compaction("summary", kept_user_id, 195))
+    asyncio.run(manager.append_message(_user_message("third")))
+    asyncio.run(manager.append_message(_assistant_message("after", total_tokens=25)))
+    agent = Agent(
+        initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
+    )
     agent.state.set_messages(manager.build_session_context().messages)
     controller = SessionViewController(
         agent=agent,
@@ -246,26 +298,32 @@ def test_session_view_controller_uses_post_compaction_usage_for_current_context(
     assert usage.percent == (25 / 128000) * 100
 
 
-def test_session_view_controller_reads_forking_entries_and_last_assistant_text(tmp_path) -> None:
+def test_session_view_controller_reads_forking_entries_and_last_assistant_text(
+    tmp_path,
+) -> None:
     from loushang.coding.session.session_view_controller import SessionViewController
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    first_id = manager.append_message(_user_message("first"))
-    manager.append_message(_assistant_message("assistant"))
-    manager.append_message(
-        BashExecutionMessage(
-            role="bashExecution",
-            command="printf hi",
-            output="hi\n",
-            exit_code=0,
-            cancelled=False,
-            truncated=False,
-            full_output_path=None,
-            timestamp=0.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    first_id = asyncio.run(manager.append_message(_user_message("first")))
+    asyncio.run(manager.append_message(_assistant_message("assistant")))
+    asyncio.run(
+        manager.append_message(
+            CommandExecutionRecord(
+                command="printf hi",
+                output="hi\n",
+                exit_code=0,
+                cancelled=False,
+                truncated=False,
+                full_output_path=None,
+            )
         )
     )
-    second_id = manager.append_message(_user_message("second"))
-    agent = Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"})
+    second_id = asyncio.run(manager.append_message(_user_message("second")))
+    agent = Agent(
+        initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
+    )
     agent.state.set_messages(manager.build_session_context().messages)
     controller = SessionViewController(
         agent=agent,
@@ -289,15 +347,21 @@ def test_session_view_controller_reads_forking_entries_and_last_assistant_text(t
     assert controller.get_last_assistant_text() == "assistant"
 
 
-def test_session_view_controller_returns_recent_assistant_texts_newest_first(tmp_path) -> None:
+def test_session_view_controller_returns_recent_assistant_texts_newest_first(
+    tmp_path,
+) -> None:
     from loushang.coding.session.session_view_controller import SessionViewController
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(_assistant_message("first"))
-    manager.append_message(_assistant_message(""))
-    manager.append_message(_tool_only_assistant_message())
-    manager.append_message(_assistant_message("second"))
-    agent = Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"})
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(manager.append_message(_assistant_message("first")))
+    asyncio.run(manager.append_message(_assistant_message("")))
+    asyncio.run(manager.append_message(_tool_only_assistant_message()))
+    asyncio.run(manager.append_message(_assistant_message("second")))
+    agent = Agent(
+        initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
+    )
     agent.state.set_messages(manager.build_session_context().messages)
     controller = SessionViewController(
         agent=agent,
@@ -316,15 +380,21 @@ def test_session_view_controller_returns_recent_assistant_texts_newest_first(tmp
 def test_session_view_controller_builds_state_snapshot(tmp_path) -> None:
     from loushang.coding.session.session_view_controller import SessionViewController
 
-    agent = Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "high"})
+    agent = Agent(
+        initial_state={"system_prompt": "", "model": _model(), "thinking_level": "high"}
+    )
     controller = SessionViewController(
         agent=agent,
-        session_manager=SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
         get_active_tool_names=lambda: ["read"],
         is_retrying=lambda: True,
         is_compacting=lambda: False,
         get_last_diagnostics=lambda limit=50: [],
-        get_model_selection=lambda: ModelSelection(provider="faux", model_id="faux-model"),
+        get_model_selection=lambda: ModelSelection(
+            provider="faux", model_id="faux-model"
+        ),
     )
 
     state = controller.get_state(steering=["steer"], follow_up=["follow"])

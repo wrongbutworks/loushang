@@ -5,7 +5,9 @@ import json
 from loushang.coding.workflow.schema import WorkflowResult
 
 
-def format_workflow_report(result: WorkflowResult, *, include_header: bool = True) -> str:
+def format_workflow_report(
+    result: WorkflowResult, *, include_header: bool = True
+) -> str:
     lines = [f"workflow: {result.name}"] if include_header else []
     for step in result.step_results:
         status = "PASS" if step.ok else "FAIL"

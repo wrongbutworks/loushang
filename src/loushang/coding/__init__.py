@@ -76,7 +76,6 @@ from loushang.coding.loader import (
     ResourceSnapshot,
     ThemeDescriptor,
 )
-from loushang.coding.message import SessionContext, SessionEntry, SessionHeader
 from loushang.coding.mode import (
     ModeAction,
     ModeActionType,
@@ -433,9 +432,6 @@ __all__ = [
     "codingToolNames",
     "ThemeDescriptor",
     "TreeNavigationResult",
-    "SessionContext",
-    "SessionEntry",
-    "SessionHeader",
     "SessionMetadata",
     "SessionQuery",
     "SessionRecord",

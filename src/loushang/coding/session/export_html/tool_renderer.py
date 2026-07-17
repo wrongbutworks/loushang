@@ -13,23 +13,60 @@ from loushang.ai.types import (
     ToolResultMessage,
     UserMessage,
 )
-from loushang.coding.message import LabelEntry, SessionEntry
-from loushang.coding.message.custom_messages import (
-    BranchSummaryMessage,
-    CompactionSummaryMessage,
-    CustomMessage,
+from loushang.harness.agent_transcript import (
+    AGENT_MESSAGE_KIND,
+    APPLICATION_MESSAGE_KIND,
+    COMMAND_EXECUTION_KIND,
+    CONTEXT_BRANCH_SUMMARY_KIND,
+    CONTEXT_COMPACTION_CHECKPOINT_KIND,
+    CONVERSATION_METADATA_PATCH_KIND,
+    EXTENSION_DATA_KIND,
+    MODEL_SELECTION_KIND,
+    RECORD_ANNOTATION_PATCH_KIND,
+    STANDARD_AGENT_TRANSCRIPT_KINDS,
+    THINKING_SELECTION_KIND,
+    AgentTranscriptRecord,
+    ApplicationMessage,
+    BranchContextSummary,
+    ContextCompactionCheckpoint,
+    RecordAnnotationPatch,
 )
+from loushang.harness.conversation import CommandExecutionRecord, ConversationRecord
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.harness.tools.workspace.presentation import render_tool_result_text
 
 from .ansi import render_ansi_pre
 from .markdown import render_markdown
 
+HTML_TRANSCRIPT_DISPOSITIONS = {
+    AGENT_MESSAGE_KIND: "render",
+    THINKING_SELECTION_KIND: "state-only",
+    MODEL_SELECTION_KIND: "state-only",
+    COMMAND_EXECUTION_KIND: "render",
+    CONTEXT_COMPACTION_CHECKPOINT_KIND: "render",
+    CONTEXT_BRANCH_SUMMARY_KIND: "render",
+    APPLICATION_MESSAGE_KIND: "render",
+    EXTENSION_DATA_KIND: "hidden",
+    RECORD_ANNOTATION_PATCH_KIND: "tree-only",
+    CONVERSATION_METADATA_PATCH_KIND: "metadata-only",
+}
+if set(HTML_TRANSCRIPT_DISPOSITIONS) != set(STANDARD_AGENT_TRANSCRIPT_KINDS):
+    raise RuntimeError("HTML transcript dispositions must cover every standard kind")
 
-def render_transcript(messages: list[object], *, custom_renderer=None, theme: dict[str, str] | None = None) -> str:
+
+def render_transcript(
+    messages: list[object], *, custom_renderer=None, theme: dict[str, str] | None = None
+) -> str:
     items: list[str] = []
     for index, message in enumerate(messages, start=1):
-        items.append(_render_message(message, custom_renderer=custom_renderer, theme=theme or {}, message_id=f"message-{index}"))
+        rendered = _render_message(
+            message,
+            custom_renderer=custom_renderer,
+            theme=theme or {},
+            message_id=f"message-{index}",
+        )
+        if rendered is not None:
+            items.append(rendered)
     return "\n".join(items)
 
 
@@ -61,7 +98,9 @@ def render_tool_sections(
                             "<strong>"
                             + html.escape(block.name)
                             + "</strong><pre>"
-                            + html.escape(json.dumps(block.arguments, indent=2, sort_keys=True))
+                            + html.escape(
+                                json.dumps(block.arguments, indent=2, sort_keys=True)
+                            )
                             + "</pre>"
                         )
                     )
@@ -78,13 +117,17 @@ def render_tool_sections(
                 message,
             )
             if rendered is None:
-                text = render_tool_result_text(message.content, message.details, preserve_ansi=True)
+                text = render_tool_result_text(
+                    message.content, message.details, preserve_ansi=True
+                )
                 rendered = (
                     "<strong>"
                     + html.escape(message.tool_name)
                     + "</strong>"
                     + (
-                        " <span class=\"tool-status\">" + html.escape(", ".join(result_flags)) + "</span>"
+                        ' <span class="tool-status">'
+                        + html.escape(", ".join(result_flags))
+                        + "</span>"
                         if result_flags
                         else ""
                     )
@@ -179,13 +222,14 @@ def _render_tool_result_with_renderer(
         if collapsed is None and expanded is None:
             return None
         if expanded is None or expanded == collapsed:
-            return _rendered_result_container(collapsed or "", expanded=False, status=status)
+            return _rendered_result_container(
+                collapsed or "", expanded=False, status=status
+            )
         if collapsed is None:
             return _rendered_result_container(expanded, expanded=True, status=status)
-        return (
-            _rendered_result_container(collapsed, expanded=False, status=status)
-            + _rendered_result_container(expanded, expanded=True, status=status)
-        )
+        return _rendered_result_container(
+            collapsed, expanded=False, status=status
+        ) + _rendered_result_container(expanded, expanded=True, status=status)
     except Exception:
         return None
 
@@ -227,24 +271,32 @@ def _rendered_tool_result_status(message: ToolResultMessage) -> str:
     return "ok"
 
 
-def render_entry_tree(entries: list[SessionEntry], *, leaf_id: str | None) -> str:
+def render_entry_tree(
+    entries: list[AgentTranscriptRecord], *, leaf_id: str | None
+) -> str:
     if not entries:
         return "<p>No entries</p>"
     label_by_target = {
-        entry.target_id: entry.label
+        entry.payload.target_record_id: entry.payload.value
         for entry in entries
-        if isinstance(entry, LabelEntry) and entry.label is not None
+        if entry.kind == RECORD_ANNOTATION_PATCH_KIND
+        and isinstance(entry.payload, RecordAnnotationPatch)
+        and entry.payload.namespace == "display.label"
+        and entry.payload.operation == "set"
+        and isinstance(entry.payload.value, str)
     }
     rows = []
     for entry in entries:
-        label = label_by_target.get(entry.id)
-        label_html = f' <span class="entry-label">{html.escape(label)}</span>' if label else ""
-        active = " active" if entry.id == leaf_id else ""
+        label = label_by_target.get(entry.record_id)
+        label_html = (
+            f' <span class="entry-label">{html.escape(label)}</span>' if label else ""
+        )
+        active = " active" if entry.record_id == leaf_id else ""
         rows.append(
-            f'<li id="entry-{html.escape(entry.id)}" class="tree-entry{active}">'
-            f'<a href="#entry-{html.escape(entry.id)}">'
-            f'<code>{html.escape(entry.type)}</code> '
-            f'<span class="entry-id">{html.escape(entry.id)}</span>'
+            f'<li id="entry-{html.escape(entry.record_id)}" class="tree-entry{active}">'
+            f'<a href="#entry-{html.escape(entry.record_id)}">'
+            f"<code>{html.escape(entry.kind)}</code> "
+            f'<span class="entry-id">{html.escape(entry.record_id)}</span>'
             "</a>"
             f"{label_html}"
             "</li>"
@@ -252,10 +304,71 @@ def render_entry_tree(entries: list[SessionEntry], *, leaf_id: str | None) -> st
     return "<ul>" + "".join(rows) + "</ul>"
 
 
-def _render_message(message: object, *, custom_renderer=None, theme: dict[str, str], message_id: str | None = None) -> str:
+def _render_message(
+    message: object,
+    *,
+    custom_renderer=None,
+    theme: dict[str, str],
+    message_id: str | None = None,
+) -> str | None:
+    if isinstance(message, ConversationRecord):
+        disposition = HTML_TRANSCRIPT_DISPOSITIONS.get(message.kind)
+        if disposition is not None and disposition != "render":
+            return None
+        if message.kind == AGENT_MESSAGE_KIND:
+            return _render_message(
+                message.payload,
+                custom_renderer=custom_renderer,
+                theme=theme,
+                message_id=message.record_id,
+            )
+        if message.kind == COMMAND_EXECUTION_KIND and isinstance(
+            message.payload, CommandExecutionRecord
+        ):
+            command = message.payload
+            body = command.output or "(no output)"
+            return _wrap(
+                "command-execution",
+                f"Command: {command.command}",
+                body,
+                message_id=message.record_id,
+                body_format="ansi",
+            )
+        if message.kind == CONTEXT_BRANCH_SUMMARY_KIND and isinstance(
+            message.payload, BranchContextSummary
+        ):
+            return _wrap(
+                "branch-summary",
+                "Branch Summary",
+                message.payload.summary,
+                message_id=message.record_id,
+            )
+        if message.kind == CONTEXT_COMPACTION_CHECKPOINT_KIND and isinstance(
+            message.payload, ContextCompactionCheckpoint
+        ):
+            return _wrap(
+                "compaction-summary",
+                f"Compaction Summary: {message.payload.tokens_before} tokens",
+                message.payload.summary,
+                message_id=message.record_id,
+            )
+        if message.kind == APPLICATION_MESSAGE_KIND and isinstance(
+            message.payload, ApplicationMessage
+        ):
+            return _render_message(
+                message.payload,
+                custom_renderer=custom_renderer,
+                theme=theme,
+                message_id=message.record_id,
+            )
+        return None
     if isinstance(message, UserMessage):
-        body = message.content if isinstance(message.content, str) else "\n".join(
-            block.text for block in message.content if isinstance(block, TextPart)
+        body = (
+            message.content
+            if isinstance(message.content, str)
+            else "\n".join(
+                block.text for block in message.content if isinstance(block, TextPart)
+            )
         )
         return _wrap("user", "User", body, message_id=message_id)
 
@@ -265,33 +378,45 @@ def _render_message(message: object, *, custom_renderer=None, theme: dict[str, s
             if isinstance(block, TextPart):
                 parts.append(block.text)
             elif isinstance(block, ToolCall):
-                parts.append(f"[tool call] {block.name} {json.dumps(block.arguments, sort_keys=True)}")
+                parts.append(
+                    f"[tool call] {block.name} {json.dumps(block.arguments, sort_keys=True)}"
+                )
         return _wrap("assistant", "Assistant", "\n".join(parts), message_id=message_id)
 
     if isinstance(message, ToolResultMessage):
-        body = render_tool_result_text(message.content, message.details, preserve_ansi=True)
-        return _wrap("tool-result", f"Tool Result: {message.tool_name}", body, message_id=message_id, body_format="ansi")
+        body = render_tool_result_text(
+            message.content, message.details, preserve_ansi=True
+        )
+        return _wrap(
+            "tool-result",
+            f"Tool Result: {message.tool_name}",
+            body,
+            message_id=message_id,
+            body_format="ansi",
+        )
 
-    if isinstance(message, BranchSummaryMessage):
-        return _wrap("branch-summary", "Branch Summary", message.summary, message_id=message_id)
-
-    if isinstance(message, CompactionSummaryMessage):
-        return _wrap("compaction-summary", f"Compaction Summary: {message.tokens_before} tokens", message.summary, message_id=message_id)
-
-    if isinstance(message, CustomMessage):
-        rendered = _render_custom_message_with_renderer(message, custom_renderer=custom_renderer, theme=theme, message_id=message_id)
+    if isinstance(message, ApplicationMessage):
+        rendered = _render_custom_message_with_renderer(
+            message, custom_renderer=custom_renderer, theme=theme, message_id=message_id
+        )
         if rendered is not None:
             return rendered
-        body = message.content if isinstance(message.content, str) else "\n".join(
-            block.text for block in message.content if isinstance(block, TextPart)
+        body = (
+            message.content
+            if isinstance(message.content, str)
+            else "\n".join(
+                block.text for block in message.content if isinstance(block, TextPart)
+            )
         )
-        return _wrap("custom", f"Custom: {message.custom_type}", body, message_id=message_id)
+        return _wrap(
+            "custom", f"Custom: {message.custom_type}", body, message_id=message_id
+        )
 
     return _wrap("unknown", "Unknown", repr(message), message_id=message_id)
 
 
 def _render_custom_message_with_renderer(
-    message: CustomMessage,
+    message: ApplicationMessage,
     *,
     custom_renderer,
     theme: dict[str, str],
@@ -305,17 +430,30 @@ def _render_custom_message_with_renderer(
     try:
         rendered = renderer(message, {"format": "html_export"}, theme)
     except Exception as exc:
-        return _wrap("custom-render-error", f"Custom Renderer Error: {message.custom_type}", str(exc), message_id=message_id)
+        return _wrap(
+            "custom-render-error",
+            f"Custom Renderer Error: {message.custom_type}",
+            str(exc),
+            message_id=message_id,
+        )
     if isinstance(rendered, str):
-        return _wrap_html("custom rendered", rendered, message.custom_type, message_id=message_id)
+        return _wrap_html(
+            "custom rendered", rendered, message.custom_type, message_id=message_id
+        )
     if isinstance(rendered, dict):
         html_output = rendered.get("html")
         if isinstance(html_output, str):
-            css_class = rendered.get("className", rendered.get("class_name", "custom rendered"))
-            return _wrap_html(str(css_class), html_output, message.custom_type, message_id=message_id)
+            css_class = rendered.get(
+                "className", rendered.get("class_name", "custom rendered")
+            )
+            return _wrap_html(
+                str(css_class), html_output, message.custom_type, message_id=message_id
+            )
         text = rendered.get("text")
         title = rendered.get("title", f"Custom: {message.custom_type}")
-        css_class = rendered.get("className", rendered.get("class_name", "custom rendered"))
+        css_class = rendered.get(
+            "className", rendered.get("class_name", "custom rendered")
+        )
         if isinstance(text, str):
             return _wrap(str(css_class), str(title), text, message_id=message_id)
     return None
@@ -331,7 +469,9 @@ def _wrap(
 ) -> str:
     search_text = " ".join((title, _searchable_body_text(body))).lower()
     resolved_message_id = message_id or _stable_message_id(css_class, title, body)
-    body_html = render_ansi_pre(body) if body_format == "ansi" else render_markdown(body)
+    body_html = (
+        render_ansi_pre(body) if body_format == "ansi" else render_markdown(body)
+    )
     return (
         f'<article id="{html.escape(resolved_message_id)}" class="message {css_class}" data-message-type="{html.escape(css_class)}" '
         f'data-search="{html.escape(search_text)}">'
@@ -341,19 +481,23 @@ def _wrap(
     )
 
 
-def _wrap_html(css_class: str, body_html: str, custom_type: str, *, message_id: str | None = None) -> str:
+def _wrap_html(
+    css_class: str, body_html: str, custom_type: str, *, message_id: str | None = None
+) -> str:
     search_text = html.escape(custom_type.lower())
-    resolved_message_id = message_id or _stable_message_id(css_class, custom_type, body_html)
+    resolved_message_id = message_id or _stable_message_id(
+        css_class, custom_type, body_html
+    )
     return (
         f'<article id="{html.escape(resolved_message_id)}" class="message {html.escape(css_class)}" data-message-type="custom" '
-        f'data-search="{search_text}">'
-        + body_html
-        + "</article>"
+        f'data-search="{search_text}">' + body_html + "</article>"
     )
 
 
 def _stable_message_id(css_class: str, title: str, body: str) -> str:
-    digest = hashlib.sha1(f"{css_class}\0{title}\0{body}".encode("utf-8")).hexdigest()[:12]
+    digest = hashlib.sha1(f"{css_class}\0{title}\0{body}".encode("utf-8")).hexdigest()[
+        :12
+    ]
     return f"message-{digest}"
 
 

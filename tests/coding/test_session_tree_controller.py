@@ -47,19 +47,39 @@ def _assistant_text_message(text: str) -> AssistantMessage:
     )
 
 
-def test_tree_controller_navigates_to_user_message_parent_and_returns_editor_text(tmp_path) -> None:
+def test_tree_controller_navigates_to_user_message_parent_and_returns_editor_text(
+    tmp_path,
+) -> None:
     from loushang.agent import Agent
     from loushang.coding.session.tree_controller import TreeController
     from loushang.coding.store import SessionManager
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="root")], timestamp=0.0))
-    assistant1_id = manager.append_message(_assistant_text_message("reply 1"))
-    user2_id = manager.append_message(
-        UserMessage(role="user", content=[TextPart(type="text", text="draft follow up")], timestamp=0.0)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
-    manager.append_message(_assistant_text_message("reply 2"))
-    agent = Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"})
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user", content=[TextPart(type="text", text="root")], timestamp=0.0
+            )
+        )
+    )
+    assistant1_id = asyncio.run(
+        manager.append_message(_assistant_text_message("reply 1"))
+    )
+    user2_id = asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="draft follow up")],
+                timestamp=0.0,
+            )
+        )
+    )
+    asyncio.run(manager.append_message(_assistant_text_message("reply 2")))
+    agent = Agent(
+        initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
+    )
     agent.state.set_messages(manager.build_session_context().messages)
     events: list[object] = []
 
@@ -77,5 +97,8 @@ def test_tree_controller_navigates_to_user_message_parent_and_returns_editor_tex
     assert result.cancelled is False
     assert result.editor_text == "draft follow up"
     assert manager.get_leaf_id() == assistant1_id
-    assert [getattr(message, "role", None) for message in agent.state.messages] == ["user", "assistant"]
+    assert [getattr(message, "role", None) for message in agent.state.messages] == [
+        "user",
+        "assistant",
+    ]
     assert events == []

@@ -22,13 +22,13 @@ class ExtensionRuntimeBindingFactory:
     set_active_tools: Callable[[list[str]], Awaitable[None]]
     set_model: Callable[[ModelSelection], Awaitable[None]]
     register_tool: Callable[[object, object | None], None]
-    append_entry: Callable[[str, object | None], None]
+    append_entry: Callable[[str, object | None], Awaitable[None]]
     send_message: Callable[[object, object | None], Awaitable[None]]
     send_user_message: Callable[[object, object | None], Awaitable[None]]
     get_signal: Callable[[], object | None]
-    set_session_name: Callable[[str | None], None]
+    set_session_name: Callable[[str | None], Awaitable[None]]
     get_session_name: Callable[[], str | None]
-    set_label: Callable[[str, str | None], None]
+    set_label: Callable[[str, str | None], Awaitable[None]]
     list_commands: Callable[[], list[SessionCommandDescriptor]]
     request_resource_refresh: Callable[[], None]
     shutdown: Callable[[], None]
@@ -38,7 +38,7 @@ class ExtensionRuntimeBindingFactory:
     has_pending_messages: Callable[[], bool]
     get_context_usage: Callable[[], object | None]
     get_thinking_level: Callable[[], ThinkingLevel]
-    set_thinking_level: Callable[[ThinkingLevel], None]
+    set_thinking_level: Callable[[ThinkingLevel], Awaitable[None]]
     register_provider: Callable[[str, object], None] | None
     unregister_provider: Callable[[str], None] | None
     set_extension_status: Callable[[str, str | None], None]
@@ -85,7 +85,9 @@ class ExtensionRuntimeBindingFactory:
             abort=self.abort,
             is_idle=self.is_idle,
             has_pending_messages=self.has_pending_messages,
-            get_context_usage=lambda: serialize_context_usage_payload(self.get_context_usage()),
+            get_context_usage=lambda: serialize_context_usage_payload(
+                self.get_context_usage()
+            ),
             get_thinking_level=self.get_thinking_level,
             set_thinking_level=self.set_thinking_level,
             register_provider=self.register_provider,
@@ -102,5 +104,7 @@ class ExtensionRuntimeBindingFactory:
             switch_session=self.switch_session,
             exec_command=self.exec_command,
             ui_context=ui_context,
-            on_error=extension_error_handler if callable(extension_error_handler) else None,
+            on_error=extension_error_handler
+            if callable(extension_error_handler)
+            else None,
         )

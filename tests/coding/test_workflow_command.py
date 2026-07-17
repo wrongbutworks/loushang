@@ -9,7 +9,9 @@ def test_prompt_steps_command_prints_progress_before_waiting(tmp_path) -> None:
     from loushang.coding.workflow import run_prompt_steps_workflow
 
     workflow_file = tmp_path / "workflow.json"
-    workflow_file.write_text('{"name": "smoke", "steps": [{"prompt": "hello"}]}', encoding="utf-8")
+    workflow_file.write_text(
+        '{"name": "smoke", "steps": [{"prompt": "hello"}]}', encoding="utf-8"
+    )
 
     class FakeSession:
         async def prompt(self, prompt: str) -> None:
@@ -41,7 +43,9 @@ def test_prompt_steps_command_handles_cancelled_prompt_cleanly(tmp_path) -> None
     from loushang.coding.workflow import run_prompt_steps_workflow
 
     workflow_file = tmp_path / "workflow.json"
-    workflow_file.write_text('{"name": "cancel", "steps": [{"prompt": "hello"}]}', encoding="utf-8")
+    workflow_file.write_text(
+        '{"name": "cancel", "steps": [{"prompt": "hello"}]}', encoding="utf-8"
+    )
 
     class FakeSession:
         def __init__(self) -> None:
@@ -76,7 +80,9 @@ def test_prompt_steps_command_handles_cancelled_prompt_cleanly(tmp_path) -> None
     assert abort_calls == 1
 
 
-def test_prompt_steps_command_runs_fake_workflow_without_session_prompt(tmp_path) -> None:
+def test_prompt_steps_command_runs_fake_workflow_without_session_prompt(
+    tmp_path,
+) -> None:
     from loushang.coding.workflow import run_prompt_steps_workflow
 
     workflow_file = tmp_path / "workflow.yaml"
@@ -214,6 +220,9 @@ steps:
     assert payload["workflows"][0]["events"][1]["type"] == "assistant.message"
     assert payload["workflows"][0]["events"][1]["text"] == "你好"
     assert payload["workflows"][0]["steps"][0]["prompt"] == "你好"
-    assert payload["workflows"][0]["steps"][1]["checks"][0]["label"] == "event exists assistant.message"
+    assert (
+        payload["workflows"][0]["steps"][1]["checks"][0]["label"]
+        == "event exists assistant.message"
+    )
     assert "workflow: one" not in stdout_text
     assert stderr_text == ""

@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from loushang.agent.json_codec import serialize_tool_result
+from loushang.ai.json_codec import serialize_assistant_message_event
 from loushang.coding.event.types import AgentSessionEvent
-from loushang.coding.message.json_codec import (
-    serialize_agent_message,
-    serialize_assistant_message_event,
-    serialize_tool_result,
-)
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
+from loushang.harness.agent_transcript import create_agent_transcript_message_codec
 from loushang.protocol import require_json_value
+
+_MESSAGE_CODEC = create_agent_transcript_message_codec()
+serialize_agent_message = _MESSAGE_CODEC.serialize
 
 
 def serialize_session_event(event: AgentSessionEvent) -> dict[str, Any]:
@@ -20,24 +21,36 @@ def serialize_session_event(event: AgentSessionEvent) -> dict[str, Any]:
     if event_type == "agent_end":
         return {
             "type": event_type,
-            "messages": [serialize_agent_message(message) for message in event["messages"]],
+            "messages": [
+                serialize_agent_message(message) for message in event["messages"]
+            ],
         }
     if event_type == "turn_end":
         return {
             "type": event_type,
             "message": serialize_agent_message(event["message"]),
-            "toolResults": [serialize_agent_message(message) for message in event["tool_results"]],
+            "toolResults": [
+                serialize_agent_message(message) for message in event["tool_results"]
+            ],
         }
     if event_type == "message_start":
-        return {"type": event_type, "message": serialize_agent_message(event["message"])}
+        return {
+            "type": event_type,
+            "message": serialize_agent_message(event["message"]),
+        }
     if event_type == "message_update":
         return {
             "type": event_type,
             "message": serialize_agent_message(event["message"]),
-            "assistantMessageEvent": serialize_assistant_message_event(event["assistant_message_event"]),
+            "assistantMessageEvent": serialize_assistant_message_event(
+                event["assistant_message_event"]
+            ),
         }
     if event_type == "message_end":
-        return {"type": event_type, "message": serialize_agent_message(event["message"])}
+        return {
+            "type": event_type,
+            "message": serialize_agent_message(event["message"]),
+        }
     if event_type == "tool_execution_start":
         return {
             "type": event_type,
@@ -89,9 +102,13 @@ def serialize_session_event(event: AgentSessionEvent) -> dict[str, Any]:
             "willRetry": event["will_retry"],
         }
         if "usage_before" in event:
-            payload["usageBefore"] = serialize_context_usage_payload(event["usage_before"])
+            payload["usageBefore"] = serialize_context_usage_payload(
+                event["usage_before"]
+            )
         if "usage_after" in event:
-            payload["usageAfter"] = serialize_context_usage_payload(event["usage_after"])
+            payload["usageAfter"] = serialize_context_usage_payload(
+                event["usage_after"]
+            )
         if "error_message" in event:
             payload["errorMessage"] = event["error_message"]
         return payload

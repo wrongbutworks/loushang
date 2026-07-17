@@ -22,7 +22,6 @@ from loushang.coding.control.settings_store import (
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.extensions.types import SessionStartEvent
 from loushang.coding.loader import DefaultResourceLoader
-from loushang.coding.message import convert_to_llm
 from loushang.coding.package import GitPackageMaterializerBackend, PackageMaterializer
 from loushang.coding.package.source_manager import (
     PackageSourceResolver,
@@ -36,6 +35,7 @@ from loushang.coding.source_info import executable_source_identity
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
 from loushang.coding.types import ModelSelection
+from loushang.harness.agent_transcript import context_item_to_model_message
 from loushang.harness.config import (
     ConfigActivationRuntime,
     ConfigActivationStep,
@@ -100,7 +100,7 @@ class _SessionConfigurationState:
 
     @property
     def session_id(self) -> str:
-        return self.session_manager.get_header().id
+        return self.session_manager.get_header().conversation_id
 
 
 @dataclass(frozen=True)
@@ -326,7 +326,7 @@ def create_agent_session(
     resolved_thinking = (
         settings.thinking_level if thinking_level is None else thinking_level
     )
-    session_id = session_manager.get_header().id
+    session_id = session_manager.get_header().conversation_id
     configuration = _activate_session_configuration(
         settings=settings,
         services=services,
@@ -1203,7 +1203,11 @@ def _is_extension_tool_contribution(contribution: ToolContribution) -> bool:
 
 def _convert_to_llm_with_block_images(settings_manager: SettingsManager):
     def _convert(messages) -> list[Message]:
-        converted = convert_to_llm(messages)
+        converted = [
+            projected
+            for message in messages
+            if (projected := context_item_to_model_message(message)) is not None
+        ]
         if not settings_manager.get_block_images():
             return converted
         return [_replace_images_with_placeholder(message) for message in converted]
@@ -1347,7 +1351,7 @@ def _run_bootstrap_startup_checks(
 
     diagnostics_service.run_startup_checks(
         checks,
-        session_id=session_manager.get_header().id,
+        session_id=session_manager.get_header().conversation_id,
     )
 
 

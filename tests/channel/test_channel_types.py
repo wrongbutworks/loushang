@@ -6,16 +6,28 @@ from datetime import UTC, datetime
 import pytest
 
 
-def test_channel_public_api_exposes_minimal_boundary_surface() -> None:
+def test_channel_public_api_exposes_boundary_and_jsonl_surfaces() -> None:
     import loushang.channel as channel
 
     assert set(channel.__all__) == {
+        "ChannelError",
         "ChannelEndpoint",
         "ChannelEnvelope",
         "ChannelEnvelopeKind",
+        "ChannelEventDelivery",
+        "ChannelJsonProjectionError",
+        "ChannelOperationAccepted",
+        "ChannelOperationRequest",
         "ChannelPayload",
+        "ChannelRpcFrame",
+        "ChannelRpcFrameKind",
         "channel_envelope_from_json",
         "channel_envelope_to_json",
+        "decode_rpc_jsonl_frame",
+        "encode_rpc_jsonl_frame",
+        "project_channel_value",
+        "rpc_jsonl_frame_from_json",
+        "rpc_jsonl_frame_to_json",
     }
 
 

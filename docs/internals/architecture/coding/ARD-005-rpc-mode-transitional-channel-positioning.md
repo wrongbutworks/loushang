@@ -168,7 +168,7 @@ ChannelInbound
 
 ## Follow-up
 
-- [ ] 在 `loushang.channel` 设计文档中纳入 `rpc_jsonl` adapter 的接口草案
+- [x] `loushang.channel.rpc_jsonl` 已实现 JSONL framing、request correlation、accepted ACK 和 WorkEvent delivery；不包含 dispatcher 或旧 RpcMode command mapping
 - [ ] 定义旧 RpcMode command 到 future `WorkOperation`、work query、host/session operation 的分类矩阵
 - [ ] 定义 `ChannelInteractionRequest/Response` 与 `ChannelCapability` 的关系
 - [ ] 评估当前 `RpcMode` 的测试覆盖率，确保冻结期间 regression 可控

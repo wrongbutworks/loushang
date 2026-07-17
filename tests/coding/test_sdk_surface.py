@@ -253,10 +253,12 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
     import_dir.mkdir()
 
     services = coding.create_services()
-    session_manager = coding.SessionManager.new(
-        session_dir=tmp_path / "direct-sessions",
-        cwd=str(project_root),
-        persist=True,
+    session_manager = asyncio.run(
+        coding.SessionManager.new(
+            session_dir=tmp_path / "direct-sessions",
+            cwd=str(project_root),
+            persist=True,
+        )
     )
     result = coding.create_agent_session_result(
         session_manager=session_manager,
@@ -306,23 +308,25 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
         persist=True,
     )
     created = asyncio.run(runtime.create_session(cwd=str(project_root)))
-    created.session_manager.append_message(_user_message("runtime root"))
-    fork_entry = created.session_manager.get_entries()[0].id
+    asyncio.run(created.session_manager.append_message(_user_message("runtime root")))
+    fork_entry = created.session_manager.get_entries()[0].record_id
     forked = asyncio.run(runtime.fork_session(fork_entry))
 
-    imported_manager = coding.SessionManager.new(
-        session_dir=import_dir,
-        cwd=str(project_root),
-        persist=True,
+    imported_manager = asyncio.run(
+        coding.SessionManager.new(
+            session_dir=import_dir,
+            cwd=str(project_root),
+            persist=True,
+        )
     )
-    imported_manager.append_message(_user_message("imported"))
+    asyncio.run(imported_manager.append_message(_user_message("imported")))
     imported_file = imported_manager.session_file
     assert imported_file is not None
 
     import_result = asyncio.run(runtime.importFromJsonl(str(imported_file)))
     imported = runtime.get_current_session()
 
-    assert forked.session_manager.get_header().parent_session == str(
+    assert forked.session_manager.get_header().metadata.get("parentSession") == str(
         created.session_manager.session_file
     )
     assert import_result == {"cancelled": False}

@@ -36,15 +36,20 @@ class AuthBridgeController:
         except Exception as exc:
             self.record_model_auth_resolution_failure(model, exc)
             return
-        if not resolution.auth_required or resolution.satisfied or self.diagnostics_service is None:
+        if (
+            not resolution.auth_required
+            or resolution.satisfied
+            or self.diagnostics_service is None
+        ):
             return
         self.diagnostics_service.capture_failure(
             code="model_auth_unresolved",
-            error=resolution.message or f"Missing auth for model '{resolution.provider}:{resolution.model_id}'.",
+            error=resolution.message
+            or f"Missing auth for model '{resolution.provider}:{resolution.model_id}'.",
             phase="runtime",
             source="model",
             level="warning",
-            session_id=self.session_manager.get_header().id,
+            session_id=self.session_manager.get_header().conversation_id,
             entry_id=self.session_manager.get_leaf_id(),
             details={
                 "provider": resolution.provider,
@@ -55,7 +60,9 @@ class AuthBridgeController:
             },
         )
 
-    def record_model_auth_resolution_failure(self, model: Model, exc: Exception) -> None:
+    def record_model_auth_resolution_failure(
+        self, model: Model, exc: Exception
+    ) -> None:
         if self.diagnostics_service is None:
             return
         self.diagnostics_service.capture_failure(
@@ -64,7 +71,7 @@ class AuthBridgeController:
             phase="runtime",
             source="model",
             level="error",
-            session_id=self.session_manager.get_header().id,
+            session_id=self.session_manager.get_header().conversation_id,
             entry_id=self.session_manager.get_leaf_id(),
             details={
                 "provider": model.provider_id,

@@ -11,21 +11,31 @@ from loushang.coding.compaction import (
     collect_entries_for_branch_summary,
     generate_branch_summary,
 )
-from loushang.coding.event import AgentSessionEvent
 from loushang.coding.extensions import ExtensionRunner, SessionBeforeTreeEvent
-from loushang.coding.message import CustomMessageEntry, SessionMessageEntry
 from loushang.coding.session.types import TreeNavigationResult
 from loushang.coding.store import SessionManager
+from loushang.harness.agent_transcript import (
+    AGENT_MESSAGE_KIND,
+    APPLICATION_MESSAGE_KIND,
+    AgentTranscriptContext,
+    ApplicationMessage,
+)
+from loushang.harness.events import (
+    BranchSummaryCompleted,
+    BranchSummaryStarted,
+    SessionRuntimeEventPayload,
+)
 from loushang.harness.runtime import (
     NavigationFailure,
     NavigationTransactionCoordinator,
 )
 from loushang.protocol import JSONValue, require_json_value
 
-EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
+EventDispatcher = Callable[[SessionRuntimeEventPayload], Awaitable[None]]
 RuntimeExceptionRecorder = Callable[..., None]
 ExtensionDiagnosticsSync = Callable[..., None]
 BranchSummaryGenerator = Callable[..., Awaitable[BranchSummaryResult]]
+SessionContextApplier = Callable[[AgentTranscriptContext], None]
 
 
 def _noop_record_runtime_exception(*, code: str, exc: Exception | str) -> None:
@@ -54,6 +64,7 @@ class TreeController:
     agent: Agent
     session_manager: SessionManager
     dispatch_event: EventDispatcher
+    apply_session_context: SessionContextApplier | None = None
     extension_runner: ExtensionRunner | None = None
     record_runtime_exception: RuntimeExceptionRecorder = _noop_record_runtime_exception
     sync_extension_diagnostics: ExtensionDiagnosticsSync = (
@@ -95,14 +106,16 @@ class TreeController:
             raise ValueError(f"Entry {target_id} not found")
 
         editor_text: str | None = None
-        if isinstance(target_entry, SessionMessageEntry) and isinstance(
-            target_entry.message, UserMessage
+        if target_entry.kind == AGENT_MESSAGE_KIND and isinstance(
+            target_entry.payload, UserMessage
         ):
             new_leaf_id = target_entry.parent_id
-            editor_text = _extract_user_message_text(target_entry.message)
-        elif isinstance(target_entry, CustomMessageEntry):
+            editor_text = _extract_user_message_text(target_entry.payload)
+        elif target_entry.kind == APPLICATION_MESSAGE_KIND and isinstance(
+            target_entry.payload, ApplicationMessage
+        ):
             new_leaf_id = target_entry.parent_id
-            editor_text = _extract_custom_message_text(target_entry)
+            editor_text = _extract_custom_message_text(target_entry.payload)
         else:
             new_leaf_id = target_id
 
@@ -179,12 +192,11 @@ class TreeController:
 
     async def _start_summary_navigation(self, plan: _SummaryNavigationPlan) -> None:
         await self.dispatch_event(
-            {
-                "type": "branch_summary_start",
-                "target_id": plan.target_id,
-                "old_leaf_id": plan.old_leaf_id,
-                "summarize": True,
-            }
+            BranchSummaryStarted(
+                target_id=plan.target_id,
+                old_leaf_id=plan.old_leaf_id,
+                summarize=True,
+            )
         )
 
     async def _commit_summary_navigation(
@@ -195,7 +207,7 @@ class TreeController:
         summary_result = plan.hook_summary
         summary_entry_id: str | None = None
         if summary_result is not None:
-            summary_entry_id = self._append_branch_summary(
+            summary_entry_id = await self._append_branch_summary(
                 plan,
                 summary_result,
                 from_hook=True,
@@ -220,7 +232,7 @@ class TreeController:
             if summary_result.error:
                 raise RuntimeError(summary_result.error)
             if summary_result.summary:
-                summary_entry_id = self._append_branch_summary(
+                summary_entry_id = await self._append_branch_summary(
                     plan,
                     summary_result,
                     from_hook=False,
@@ -229,7 +241,7 @@ class TreeController:
         if summary_entry_id is None:
             self._apply_navigation_leaf(plan.new_leaf_id)
             if plan.label:
-                self.session_manager.append_label(plan.target_id, plan.label)
+                await self.session_manager.append_label(plan.target_id, plan.label)
         self._rebuild_agent_context()
         return TreeNavigationResult(
             cancelled=False,
@@ -237,7 +249,7 @@ class TreeController:
             summary_entry_id=summary_entry_id,
         )
 
-    def _append_branch_summary(
+    async def _append_branch_summary(
         self,
         plan: _SummaryNavigationPlan,
         summary: BranchSummaryResult,
@@ -246,14 +258,14 @@ class TreeController:
     ) -> str:
         if summary.summary is None:
             raise RuntimeError("Branch summary did not include summary text")
-        entry_id = self.session_manager.branch_with_summary(
+        entry_id = await self.session_manager.branch_with_summary(
             plan.new_leaf_id,
             summary.summary,
             details=_project_branch_summary_details(summary.details),
             from_hook=from_hook,
         )
         if plan.label:
-            self.session_manager.append_label(entry_id, plan.label)
+            await self.session_manager.append_label(entry_id, plan.label)
         return entry_id
 
     async def _finish_summary_navigation(
@@ -262,19 +274,18 @@ class TreeController:
         result: TreeNavigationResult,
     ) -> None:
         await self.dispatch_event(
-            {
-                "type": "branch_summary_end",
-                "target_id": plan.target_id,
-                "old_leaf_id": plan.old_leaf_id,
-                "new_leaf_id": (
+            BranchSummaryCompleted(
+                target_id=plan.target_id,
+                old_leaf_id=plan.old_leaf_id,
+                new_leaf_id=(
                     plan.old_leaf_id
                     if result.aborted
                     else self.session_manager.get_leaf_id()
                 ),
-                "summary_entry_id": result.summary_entry_id,
-                "cancelled": result.cancelled,
-                "aborted": result.aborted,
-            }
+                summary_record_id=result.summary_entry_id,
+                cancelled=result.cancelled,
+                aborted=result.aborted,
+            )
         )
 
     async def _fail_summary_navigation(
@@ -283,16 +294,15 @@ class TreeController:
     ) -> None:
         self.record_runtime_exception(code="branch_summary_failed", exc=failure.error)
         await self.dispatch_event(
-            {
-                "type": "branch_summary_end",
-                "target_id": failure.plan.target_id,
-                "old_leaf_id": failure.plan.old_leaf_id,
-                "new_leaf_id": failure.plan.old_leaf_id,
-                "summary_entry_id": None,
-                "cancelled": False,
-                "aborted": False,
-                "error_message": str(failure.error),
-            }
+            BranchSummaryCompleted(
+                target_id=failure.plan.target_id,
+                old_leaf_id=failure.plan.old_leaf_id,
+                new_leaf_id=failure.plan.old_leaf_id,
+                summary_record_id=None,
+                cancelled=False,
+                aborted=False,
+                error_message=str(failure.error),
+            )
         )
 
     def _apply_navigation_leaf(self, new_leaf_id: str | None) -> None:
@@ -303,6 +313,9 @@ class TreeController:
 
     def _rebuild_agent_context(self) -> None:
         session_context = self.session_manager.build_session_context()
+        if self.apply_session_context is not None:
+            self.apply_session_context(session_context)
+            return
         self.agent.state.set_messages(session_context.messages)
 
 
@@ -314,10 +327,12 @@ def _extract_user_message_text(message: UserMessage) -> str:
     )
 
 
-def _extract_custom_message_text(entry: CustomMessageEntry) -> str:
-    if isinstance(entry.content, str):
-        return entry.content
-    return "".join(block.text for block in entry.content if isinstance(block, TextPart))
+def _extract_custom_message_text(message: ApplicationMessage) -> str:
+    if isinstance(message.content, str):
+        return message.content
+    return "".join(
+        block.text for block in message.content if isinstance(block, TextPart)
+    )
 
 
 def _project_branch_summary_details(details: object | None) -> JSONValue:

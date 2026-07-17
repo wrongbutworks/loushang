@@ -6,11 +6,6 @@ from dataclasses import dataclass
 from loushang.agent import Agent
 from loushang.ai.types import AssistantMessage, ToolCall, ToolResultMessage, UserMessage
 from loushang.coding.compaction import estimate_context_tokens
-from loushang.coding.message import (
-    CompactionEntry,
-    CustomMessageEntry,
-    SessionMessageEntry,
-)
 from loushang.coding.session.context_usage import build_context_usage_snapshot
 from loushang.coding.session.types import (
     AgentSessionState,
@@ -20,6 +15,13 @@ from loushang.coding.session.types import (
 )
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager
+from loushang.harness.agent_transcript import (
+    AGENT_MESSAGE_KIND,
+    APPLICATION_MESSAGE_KIND,
+    CONTEXT_COMPACTION_CHECKPOINT_KIND,
+    ApplicationMessage,
+    ContextCompactionCheckpoint,
+)
 from loushang.harness.host.types import RunState
 
 
@@ -37,7 +39,9 @@ class SessionViewController:
     get_compaction_compact_percent: Callable[[], float] = lambda: 100.0
     get_compaction_keep_recent_tokens: Callable[[], int | None] = lambda: None
 
-    def get_state(self, *, steering: list[str], follow_up: list[str]) -> AgentSessionState:
+    def get_state(
+        self, *, steering: list[str], follow_up: list[str]
+    ) -> AgentSessionState:
         is_running = (
             self.is_host_running()
             if self.is_host_running is not None
@@ -68,13 +72,17 @@ class SessionViewController:
         for message in messages:
             if isinstance(message, AssistantMessage):
                 assistant_message_count += 1
-                tool_call_count += sum(1 for block in message.content if isinstance(block, ToolCall))
+                tool_call_count += sum(
+                    1 for block in message.content if isinstance(block, ToolCall)
+                )
             elif isinstance(message, UserMessage):
                 user_message_count += 1
             elif isinstance(message, ToolResultMessage):
                 tool_result_count += 1
 
-        estimated_context_tokens = estimate_context_tokens(messages).tokens if messages else 0
+        estimated_context_tokens = (
+            estimate_context_tokens(messages).tokens if messages else 0
+        )
         snapshot = build_context_usage_snapshot(
             messages,
             branch_entries,
@@ -89,9 +97,13 @@ class SessionViewController:
             user_message_count=user_message_count,
             tool_call_count=tool_call_count,
             tool_result_count=tool_result_count,
-            custom_message_count=sum(1 for entry in entries if isinstance(entry, CustomMessageEntry)),
+            custom_message_count=sum(
+                1 for entry in entries if entry.kind == APPLICATION_MESSAGE_KIND
+            ),
             estimated_context_tokens=estimated_context_tokens,
-            has_compaction=any(isinstance(entry, CompactionEntry) for entry in entries),
+            has_compaction=any(
+                entry.kind == CONTEXT_COMPACTION_CHECKPOINT_KIND for entry in entries
+            ),
             branch_depth=len(branch_entries),
             leaf_entry_id=self.session_manager.get_leaf_id(),
             tokens=snapshot.tokens,
@@ -119,8 +131,12 @@ class SessionViewController:
             session_id=record.session_id,
             session_name=record.metadata.name,
             entry_count=len(entries),
-            message_count=context_usage.message_count if context_usage is not None else 0,
-            custom_message_count=sum(1 for entry in entries if isinstance(entry, CustomMessageEntry)),
+            message_count=context_usage.message_count
+            if context_usage is not None
+            else 0,
+            custom_message_count=sum(
+                1 for entry in entries if entry.kind == APPLICATION_MESSAGE_KIND
+            ),
             active_tool_count=len(self.get_active_tool_names()),
             is_retrying=self.is_retrying(),
             is_compacting=self.is_compacting(),
@@ -149,7 +165,11 @@ class SessionViewController:
                 assistant_messages += 1
                 content = getattr(message, "content", [])
                 if isinstance(content, list):
-                    tool_calls += sum(1 for block in content if getattr(block, "type", None) == "toolCall")
+                    tool_calls += sum(
+                        1
+                        for block in content
+                        if getattr(block, "type", None) == "toolCall"
+                    )
                 usage = getattr(message, "usage", None)
                 if usage is not None:
                     total_input += int(getattr(usage, "input", 0) or 0)
@@ -158,7 +178,16 @@ class SessionViewController:
                     total_cache_write += int(getattr(usage, "cache_write", 0) or 0)
                     cost = getattr(usage, "cost", {})
                     if isinstance(cost, dict):
-                        total_cost += float(cost.get("total", sum(value for value in cost.values() if isinstance(value, int | float))))
+                        total_cost += float(
+                            cost.get(
+                                "total",
+                                sum(
+                                    value
+                                    for value in cost.values()
+                                    if isinstance(value, int | float)
+                                ),
+                            )
+                        )
             elif role == "toolResult":
                 tool_results += 1
         session_file = self.session_manager.get_session_file()
@@ -175,24 +204,29 @@ class SessionViewController:
                 "output": total_output,
                 "cacheRead": total_cache_read,
                 "cacheWrite": total_cache_write,
-                "total": total_input + total_output + total_cache_read + total_cache_write,
+                "total": total_input
+                + total_output
+                + total_cache_read
+                + total_cache_write,
             },
             "cost": total_cost,
             "contextUsage": serialize_context_usage_payload(self.get_context_usage()),
-            "latestCompaction": _latest_compaction_payload(self.session_manager.get_branch()),
+            "latestCompaction": _latest_compaction_payload(
+                self.session_manager.get_branch()
+            ),
         }
 
     def get_user_messages_for_forking(self) -> list[dict[str, str]]:
         messages: list[dict[str, str]] = []
         for entry in self.session_manager.get_entries():
-            if not isinstance(entry, SessionMessageEntry):
+            if entry.kind != AGENT_MESSAGE_KIND:
                 continue
-            if not isinstance(entry.message, UserMessage):
+            if not isinstance(entry.payload, UserMessage):
                 continue
-            text = _extract_user_message_text(entry.message)
+            text = _extract_user_message_text(entry.payload)
             if not text:
                 continue
-            messages.append({"entry_id": entry.id, "text": text})
+            messages.append({"entry_id": entry.record_id, "text": text})
         return messages
 
     def get_pi_style_user_messages_for_forking(self) -> list[dict[str, str]]:
@@ -205,16 +239,22 @@ class SessionViewController:
         entry = self.session_manager.get_entry(entry_id)
         if entry is None:
             return None
-        if isinstance(entry, SessionMessageEntry) and isinstance(entry.message, UserMessage):
-            return _extract_user_message_text(entry.message) or None
-        message = getattr(entry, "message", None)
-        if isinstance(message, UserMessage):
-            return _extract_user_message_text(message) or None
-        content = getattr(entry, "content", None)
+        if entry.kind == AGENT_MESSAGE_KIND and isinstance(entry.payload, UserMessage):
+            return _extract_user_message_text(entry.payload) or None
+        content = (
+            entry.payload.content
+            if entry.kind == APPLICATION_MESSAGE_KIND
+            and isinstance(entry.payload, ApplicationMessage)
+            else None
+        )
         if isinstance(content, str):
             return content or None
         if isinstance(content, list):
-            text = "".join(block.text for block in content if getattr(block, "type", None) == "text")
+            text = "".join(
+                block.text
+                for block in content
+                if getattr(block, "type", None) == "text"
+            )
             return text or None
         return None
 
@@ -251,22 +291,29 @@ def _extract_assistant_message_text(message: AssistantMessage) -> str | None:
     if isinstance(content, str):
         return content if content.strip() else None
     if isinstance(content, list):
-        text = "".join(block.text for block in content if getattr(block, "type", None) == "text")
+        text = "".join(
+            block.text for block in content if getattr(block, "type", None) == "text"
+        )
         return text if text.strip() else None
     return None
 
 
 def _latest_compaction_payload(entries: list[object]) -> dict[str, object] | None:
     for entry in reversed(entries):
-        if not isinstance(entry, CompactionEntry):
+        if (
+            not hasattr(entry, "kind")
+            or entry.kind != CONTEXT_COMPACTION_CHECKPOINT_KIND
+            or not isinstance(entry.payload, ContextCompactionCheckpoint)
+        ):
             continue
-        details = entry.details if isinstance(entry.details, Mapping) else {}
+        checkpoint = entry.payload
+        details = checkpoint.details if isinstance(checkpoint.details, Mapping) else {}
         plan = details.get("compactionPlan")
         return {
-            "entryId": entry.id,
-            "firstKeptEntryId": entry.first_kept_entry_id,
-            "tokensBefore": entry.tokens_before,
-            "fromHook": entry.from_hook,
+            "entryId": entry.record_id,
+            "firstKeptEntryId": checkpoint.first_kept_record_id,
+            "tokensBefore": checkpoint.tokens_before,
+            "fromHook": checkpoint.from_hook,
             "plan": dict(plan) if isinstance(plan, Mapping) else None,
         }
     return None
@@ -275,4 +322,8 @@ def _latest_compaction_payload(entries: list[object]) -> dict[str, object] | Non
 def _extract_user_message_text(message: UserMessage) -> str:
     if isinstance(message.content, str):
         return message.content
-    return "".join(block.text for block in message.content if getattr(block, "type", None) == "text")
+    return "".join(
+        block.text
+        for block in message.content
+        if getattr(block, "type", None) == "text"
+    )

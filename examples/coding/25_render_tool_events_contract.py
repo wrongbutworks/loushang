@@ -15,11 +15,11 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from loushang.agent.types import AgentToolResult  # noqa: E402
-from loushang.ai.types import TextPart  # noqa: E402
-from loushang.coding.message import SessionHeader  # noqa: E402
-from loushang.coding.mode import PrintMode  # noqa: E402
-from loushang.coding.tools import ToolDefinition  # noqa: E402
+from loushang.agent.types import AgentToolResult
+from loushang.ai.types import TextPart
+from loushang.coding.mode import PrintMode
+from loushang.coding.tools import ToolDefinition
+from loushang.harness.conversation import ConversationHeader
 
 
 async def _execute(
@@ -81,14 +81,12 @@ class FakeSessionManager:
     def __init__(self, cwd: Path) -> None:
         self._cwd = cwd
 
-    def get_header(self) -> SessionHeader:
-        return SessionHeader(
-            type="session",
-            version=3,
-            id="render-tool-events-contract",
-            timestamp="2026-05-09T00:00:00.000Z",
-            cwd=str(self._cwd),
-            parent_session=None,
+    def get_header(self) -> ConversationHeader:
+        return ConversationHeader(
+            conversation_id="render-tool-events-contract",
+            version=1,
+            created_at="2026-05-09T00:00:00.000Z",
+            metadata={"cwd": str(self._cwd)},
         )
 
     def get_cwd(self) -> str:

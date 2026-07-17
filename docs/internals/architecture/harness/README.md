@@ -67,10 +67,35 @@ planning, work event persistence, or AI provider behavior.
   adapters, scoped change records, injected value resolution, and activation
   DAG ownership while preserving Product fields, defaults, paths, effects,
   diagnostics, model/auth behavior, and credentials.
+- [Product Runtime Injection Architecture](product-runtime-injection/README.md)
+  records proposed requirements and the component directory for Product,
+  OEM, and extension selection of runtime capabilities. Detailed component
+  binding contracts are written before their corresponding migration waves;
+  this directory does not claim that a new injection runtime is implemented.
 - [Conversation Runtime Core Boundary](conversation-runtime-core-boundary.md)
   defines shared conversation records and ports, repository/catalog/replay,
   branch delta, command execution records, and turn-aware compaction planning
-  while preserving Product schemas, codecs, prompts, and storage policy.
+  while preserving Product prompts, domain payloads, and storage policy.
+- [Agent Transcript Profile Boundary](agent-transcript-profile-boundary.md)
+  defines the optional common Agent/AI transcript schema and codec profile,
+  opaque preservation, Native v3 migration, idempotent application-message
+  commit, Product extension points, and its narrow AI/Agent import allowlist.
+- [Store And Runtime Event Protocol Migration](store-event-protocol-migration.md)
+  records the implemented protocol-based Store cutover, Memory/File reference
+  adapters, Agent transcript persistence facade, common runtime-event envelope,
+  commit/publication ordering, and the deliberately deferred SQL, Redis,
+  outbox, and extension-provider work.
+- [Session Runtime Events Boundary](session-runtime-events-boundary.md) defines
+  common queue, compaction, retry, branch, metadata, package-progress, and
+  transcript-commit facts, the single ordered Session stream, and Product event
+  projection ownership.
+- [Application Input Runtime Boundary](application-input-runtime-boundary.md)
+  defines common direct and queued ApplicationMessage delivery, one durable
+  commit owner, direct projection retry semantics, and Product Extension/API
+  adapter ownership.
+- [Scenario Runtime Boundary](scenario-runtime-boundary.md) defines reusable
+  scripted interaction scenarios, parser and runner ownership, injected command
+  assertions, RuntimeEvent observation, and Coding's local execution adapter.
 - [Product Runtime Core Boundary](product-runtime-core-boundary.md) defines
   shared runtime bindings and contexts, session-transition ownership,
   coalesced scheduling, AI/Agent data-contract placement, and the irreducible
@@ -120,7 +145,13 @@ Accepted decisions that govern this directory:
 ## Boundary Summary
 
 Harness may depend on stable `loushang.agent` primitives and the existing agent
-loop. `loushang.agent` must not depend on harness.
+loop. `loushang.agent` must not depend on harness. The neutral
+`loushang.harness.conversation` core imports neither Agent nor AI. The optional
+`loushang.harness.agent_transcript` and the optional
+`loushang.harness.session` profile have narrow, separately tested Agent/AI data
+dependencies. The exact allowlists are recorded in the
+[Agent Transcript Profile Boundary](agent-transcript-profile-boundary.md) and
+[Session Runtime Core](product-runtime-injection/components/session-runtime-core.md).
 
 Harness must not import:
 
@@ -132,7 +163,8 @@ Harness must not import:
 - `loushang.method`
 - `loushang.work`
 - `loushang.tui`
-- `loushang.ai`
+- `loushang.ai`, except the explicitly allowlisted data and codec modules used
+  by optional Agent transcript and Session profiles
 
 If a harness contract needs to refer to method, work, channel, UI, or product
 state, it should carry opaque ids, neutral metadata, or protocol-shaped values.

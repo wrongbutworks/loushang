@@ -1,17 +1,21 @@
+"""Coding-owned event dictionaries projected from the runtime event stream."""
+
 from __future__ import annotations
 
 from typing import Literal, NotRequired, TypeAlias, TypedDict
 
 from loushang.agent import AgentEvent
+from loushang.harness.events import (
+    CompactionReason,
+    PackageProgressAction,
+    PackageProgressType,
+)
 
 
 class QueueUpdateEvent(TypedDict):
     type: Literal["queue_update"]
     steering: list[str]
     follow_up: list[str]
-
-
-CompactionReason: TypeAlias = Literal["manual", "threshold", "overflow"]
 
 
 class CompactionStartEvent(TypedDict):
@@ -71,11 +75,33 @@ class SessionInfoChangedEvent(TypedDict):
 
 class PackageProgressSessionEvent(TypedDict):
     type: Literal["package_progress"]
-    progress_type: Literal["start", "progress", "complete", "error"]
-    action: Literal["install", "update", "remove", "check", "resolve"]
+    progress_type: PackageProgressType
+    action: PackageProgressAction
     source: str
     message: str | None
     target_path: str | None
+
+
+class ToolPolicyAuditSessionEvent(TypedDict):
+    type: Literal[
+        "tool_policy_evaluated",
+        "tool_approval_requested",
+        "tool_approval_resolved",
+    ]
+    tool_name: NotRequired[str]
+    tool_call_id: NotRequired[str]
+    action_id: NotRequired[str]
+    cwd: NotRequired[str]
+    policy_disposition: NotRequired[str]
+    policy_code: NotRequired[str]
+    policy_reason: NotRequired[str]
+    approval_required: NotRequired[bool]
+    approval_decision: NotRequired[str]
+    approval_reason: NotRequired[str]
+    argument_keys: NotRequired[list[str]]
+    path: NotRequired[str]
+    file_path: NotRequired[str]
+    command: NotRequired[str | tuple[str, ...]]
 
 
 AgentSessionEvent: TypeAlias = (
@@ -89,4 +115,5 @@ AgentSessionEvent: TypeAlias = (
     | BranchSummaryEndEvent
     | SessionInfoChangedEvent
     | PackageProgressSessionEvent
+    | ToolPolicyAuditSessionEvent
 )

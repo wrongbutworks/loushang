@@ -7,7 +7,9 @@ Status: implementation complete for integration into `lane/harness`.
 This capability owns the product-neutral mechanics behind durable, branching
 agent conversations. It lets Coding, Research, Design, PPT, Cowork, and OEM
 products share one repository, replay, catalog, and compaction-planning core
-without sharing a transcript schema, prompt, model, or artifact vocabulary.
+without forcing every Product to share a transcript profile, prompt, model, or
+artifact vocabulary. Agent-backed Products may select the follow-on common
+[Agent Transcript Profile](agent-transcript-profile-boundary.md).
 
 ## Ownership
 
@@ -39,14 +41,18 @@ without sharing a transcript schema, prompt, model, or artifact vocabulary.
   kept visible record;
 - separate per-record cut estimation and aggregate context-token estimation.
 
-These packages must not import Coding, AI messages, model/provider code,
-Product stores, Method, Work, TUI, or channel implementations.
+These neutral conversation packages must not import Coding, Agent, AI messages,
+model/provider code, Product stores, Method, Work, TUI, or channel
+implementations. The optional `loushang.harness.agent_transcript` package is a
+separate profile with a narrow data/codec allowlist; it does not weaken this
+core boundary.
 
 ## Product Ports
 
 A Product supplies the semantics that cannot be inferred by Harness:
 
-- concrete header and record schemas plus their historical wire codecs;
+- domain-specific record payloads and codecs not supplied by a selected common
+  profile;
 - record id, parent id, visibility, role, and token-estimation functions;
 - checkpoint recognition and summary-item projection;
 - product state initialization and reduction;
@@ -56,27 +62,34 @@ A Product supplies the semantics that cannot be inferred by Harness:
   content serialization, and artifact extraction;
 - command-record projection into its Agent message and UI/event protocols.
 
-The split is deliberately asymmetric: Harness owns the control mechanics;
-Products name and interpret the data.
+The split is deliberately asymmetric: the neutral core owns control mechanics,
+the optional Agent profile owns common Agent transcript meanings, and Products
+name and interpret only their domain data and policy.
 
-## Coding Adoption
+## Coding Adoption Baseline
 
-Coding now uses `ConversationRepository[SessionHeader, SessionEntry]` as its
-session repository. `coding.store.file_codec` retains the Pi-compatible JSONL
-schema and legacy recovery behavior but no longer returns or imports the lower
-level `TranscriptRepository` directly.
+The following records the baseline delivered by this core. The later Agent
+Transcript Profile wave supersedes the Coding ownership of common session-entry
+schemas, codecs, and replay projection described here; Product storage-root,
+prompt, artifact, and presentation policy remain Coding-owned.
 
-`SessionManager` delegates active branches, children, tree, fork, lowest common
-ancestor, branch delta, replay, catalog indexing, and generic query execution to
-Harness. Coding retains:
+Coding now uses `AgentTranscriptSessionStore` as the single open-session commit
+owner over an injected `ConversationStore`. `coding.store.file_codec` remains
+the Product-owned Native codec and journal factory; file locking, revision CAS,
+and durable append are implemented by the Harness File backend. Successful
+Agent transcript mutations return the record paired with the backend's exact
+`CommitReceipt`; Product event projection does not infer revision from a later
+snapshot.
 
-- `SessionHeader` and `SessionEntry` variants;
-- camelCase JSON fields, legacy tags, surrogate/non-finite recovery, and exact
-  JSONL formatting;
+`SessionManager` is an async Product adapter. It delegates active branches,
+children, tree, fork, lowest common ancestor, branch delta, replay, transcript
+commit, and backend persistence to Harness. Coding retains:
+
+- Native codec composition and exact JSONL formatting;
 - label, cwd, naming, retention, recovery, and session-file policy;
 - `SessionSummary` fields, message text/preview, diagnostics, and relevance
   scoring;
-- Agent-message projection and model/thinking-state interpretation.
+- Product catalog/index/query projection and backend selection.
 
 Coding compaction now maps `SessionEntry` records into
 `ConversationCompactionPlanner`. The former local cut-point, latest-checkpoint,
@@ -88,10 +101,11 @@ artifact projection.
 `BashExecutionMessage` specializes `CommandExecutionRecord`; the historical
 `bashExecution` role and JSON fields remain Coding-owned.
 
-## Compatibility Invariants
+## Baseline Compatibility Invariants
 
-- Existing Coding JSONL files decode with the same Product codec and remain
-  writable without schema migration.
+- Current Native Coding JSONL files decode with the same Product codec and
+  remain writable without schema migration. Older Loushang and external formats
+  require an explicit importer and are never rewritten by Product load or scan.
 - Harness replay and compaction planning reject missing or future retained-record
   boundaries by default; Coding explicitly selects summary-only recovery for
   historical malformed records.
@@ -127,9 +141,11 @@ new symbols from becoming accidental top-level Harness exports.
 
 This capability does not:
 
-- define a universal Product transcript schema or force Products to use the
-  neutral default envelope;
-- serialize `AgentMessage` or own AI message codecs;
+- define a universal domain transcript schema or force non-Agent Products to
+  use the optional Agent profile;
+- serialize `AgentMessage` inside the neutral conversation core; the optional
+  Agent transcript profile owns that common capability under its exact import
+  allowlist;
 - choose a model, resolve credentials, or call a provider;
 - define compaction prompt text, salience policy, memory policy, or artifact
   meaning;
@@ -137,6 +153,7 @@ This capability does not:
 - replace Product controllers, commands, event protocols, UI, or host lifecycle;
 - migrate shell selection, execution lifecycle, hooks, or approval policy.
 
-The next host/session wave may compose this conversation core with
-`loushang.harness.host` and `loushang.harness.runtime`; it must not pull the
-Product-owned semantics above into Harness.
+The Agent Transcript Profile composes this core with common Agent transcript
+semantics without moving Product prompts, artifacts, storage policy, commands,
+or UI into Harness. See
+[Agent Transcript Profile Boundary](agent-transcript-profile-boundary.md).

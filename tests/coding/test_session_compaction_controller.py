@@ -47,17 +47,29 @@ def _assistant_text_message(text: str) -> AssistantMessage:
     )
 
 
-def test_compaction_controller_appends_compaction_and_rebuilds_agent_context(tmp_path) -> None:
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="older context that should be compacted")],
-            timestamp=0.0,
+def test_compaction_controller_appends_compaction_and_rebuilds_agent_context(
+    tmp_path,
+) -> None:
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[
+                    TextPart(type="text", text="older context that should be compacted")
+                ],
+                timestamp=0.0,
+            )
         )
     )
-    assistant_id = manager.append_message(_assistant_text_message("recent reply"))
-    agent = Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"})
+    assistant_id = asyncio.run(
+        manager.append_message(_assistant_text_message("recent reply"))
+    )
+    agent = Agent(
+        initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
+    )
     agent.state.set_messages(manager.build_session_context().messages)
     events: list[object] = []
 
@@ -87,41 +99,65 @@ def test_compaction_controller_appends_compaction_and_rebuilds_agent_context(tmp
         dispatch_event=_dispatch_event,
     )
 
-    result = asyncio.run(controller.compact(reason="manual", will_retry=False, compact_fn=_fake_compact))
+    result = asyncio.run(
+        controller.compact(reason="manual", will_retry=False, compact_fn=_fake_compact)
+    )
 
     assert result.summary == "controller summary"
-    assert [entry.type for entry in manager.get_entries()] == ["message", "message", "compaction"]
+    assert [entry.kind for entry in manager.get_entries()] == [
+        "agent.message",
+        "agent.message",
+        "context.compaction_checkpoint",
+    ]
     compaction_entry = manager.get_entries()[-1]
-    assert isinstance(compaction_entry.details, dict)
-    assert compaction_entry.details["compactionPlan"]["firstKeptEntryId"] == assistant_id
-    assert compaction_entry.details["compactionPlan"]["summarizedEntryIds"] == []
-    assert compaction_entry.details["compactionPlan"]["turnPrefixEntryIds"] == [manager.get_entries()[0].id]
-    assert compaction_entry.details["compactionPlan"]["keptEntryIds"] == [assistant_id]
-    assert compaction_entry.details["compactionPlan"]["isSplitTurn"] is True
-    assert compaction_entry.details["compactionPlan"]["keepRecentTokens"] == 1
+    assert isinstance(compaction_entry.payload.details, dict)
+    assert (
+        compaction_entry.payload.details["compactionPlan"]["firstKeptEntryId"]
+        == assistant_id
+    )
+    assert (
+        compaction_entry.payload.details["compactionPlan"]["summarizedEntryIds"] == []
+    )
+    assert compaction_entry.payload.details["compactionPlan"]["turnPrefixEntryIds"] == [
+        manager.get_entries()[0].record_id
+    ]
+    assert compaction_entry.payload.details["compactionPlan"]["keptEntryIds"] == [
+        assistant_id
+    ]
+    assert compaction_entry.payload.details["compactionPlan"]["isSplitTurn"] is True
+    assert compaction_entry.payload.details["compactionPlan"]["keepRecentTokens"] == 1
     assert [getattr(message, "role", None) for message in agent.state.messages] == [
-        "compactionSummary",
+        "user",
         "assistant",
     ]
     assert controller.is_compacting is False
-    assert events[0]["type"] == "compaction_start"
-    assert events[0]["reason"] == "manual"
-    assert events[0]["usage"]["compact_percent"] == 80
-    assert events[0]["usage"]["reserve_tokens"] == 8192
-    assert events[0]["usage"]["keep_recent_tokens"] == 1
-    assert events[0]["usage"]["threshold_reason"] == "compact_percent"
+    from loushang.harness.events import (
+        ContextCompactionCompleted,
+        ContextCompactionStarted,
+    )
 
-    assert events[-1]["type"] == "compaction_end"
-    assert events[-1]["reason"] == "manual"
-    assert events[-1]["result"] == {
+    started = events[0]
+    completed = events[-1]
+    assert isinstance(started, ContextCompactionStarted)
+    assert started.usage is not None
+    assert started.reason == "manual"
+    assert started.usage["compact_percent"] == 80
+    assert started.usage["reserve_tokens"] == 8192
+    assert started.usage["keep_recent_tokens"] == 1
+    assert started.usage["threshold_reason"] == "compact_percent"
+
+    assert isinstance(completed, ContextCompactionCompleted)
+    assert completed.reason == "manual"
+    assert completed.result == {
         "summary": "controller summary",
         "first_kept_entry_id": assistant_id,
         "tokens_before": result.tokens_before,
-        "details": compaction_entry.details,
+        "details": compaction_entry.payload.details,
     }
-    assert events[-1]["aborted"] is False
-    assert events[-1]["will_retry"] is False
-    assert events[-1]["usage_before"] == events[0]["usage"]
-    assert events[-1]["usage_after"]["tokens"] is None
-    assert events[-1]["usage_after"]["percent"] is None
-    assert events[-1]["usage_after"]["stale_after_compaction"] is True
+    assert completed.aborted is False
+    assert completed.will_retry is False
+    assert completed.usage_before == started.usage
+    assert completed.usage_after is not None
+    assert completed.usage_after["tokens"] is None
+    assert completed.usage_after["percent"] is None
+    assert completed.usage_after["stale_after_compaction"] is True

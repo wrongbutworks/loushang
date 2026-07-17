@@ -4,12 +4,10 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
 from loushang.agent.types import AgentToolResult
+from loushang.ai.json_codec import serialize_assistant_message_event
 from loushang.coding.event.serialization import serialize_session_event
 from loushang.coding.event.types import AgentSessionEvent
-from loushang.coding.message.json_codec import (
-    serialize_agent_message,
-    serialize_assistant_message_event,
-)
+from loushang.harness.agent_transcript import create_agent_transcript_message_codec
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.harness.tools.core import ToolRenderOutput
 from loushang.harness.tools.workspace.protocol import project_tool_details_for_protocol
@@ -24,6 +22,8 @@ SUPPORTED_JSON_EVENT_VIEWS: tuple[JsonEventView, ...] = (
     "tools",
     "final",
 )
+_MESSAGE_CODEC = create_agent_transcript_message_codec()
+serialize_agent_message = _MESSAGE_CODEC.serialize
 
 _EVENT_SELECTOR_ALIASES: dict[str, tuple[str, ...]] = {
     "assistant": ("assistant_*",),
