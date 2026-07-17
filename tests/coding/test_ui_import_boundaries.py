@@ -56,6 +56,19 @@ else:
     assert result.returncode == 0, result.stderr
 
 
+def test_conversation_raw_event_dispatch_stays_in_coding_adapter() -> None:
+    adapter = Path(
+        "src/loushang/coding/ui/conversation_event_adapter.py"
+    ).read_text(encoding="utf-8")
+    assert 'event.get("type")' in adapter
+
+    for path in (
+        Path("src/loushang/coding/ui/plain_events.py"),
+        Path("src/loushang/coding/ui/screen_events.py"),
+    ):
+        assert 'event.get("type")' not in path.read_text(encoding="utf-8")
+
+
 def test_old_coding_ui_app_module_is_removed() -> None:
     result = _run_python_import_boundary_check(
         """

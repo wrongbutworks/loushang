@@ -19,6 +19,8 @@ This layer owns reusable Harness-oriented terminal interaction, including:
 
 - adapting neutral conversation snapshots and actions to TUI records and
   surfaces;
+- coordinating product-neutral conversation projection state such as tool
+  timing and duplicate-result suppression;
 - neutral tool-result views, transcript blocks, and deterministic presentation
   projection;
 - shared Harness status profiles that product shells can populate and present;
@@ -81,3 +83,43 @@ reach into those mechanics or introduce a second status-bar runtime.
 
 These explicit module paths are the stable imports for this slice. The package
 initializers do not need to provide convenience re-exports.
+
+## Conversation Event Projection
+
+`loushang.harnesstui.conversation.projection` owns the reusable state machine
+that projects neutral conversation facts into a `ConversationProjectionTarget`.
+It coordinates run starts, queue snapshots, assistant streaming, tool-call
+snapshots and elapsed time, duplicate tool results, and duplicate assistant
+errors. Its inputs are strings, timestamps, neutral tool views, and other
+presentation-ready values; raw Agent/Coding event dictionaries and AI message
+objects are not part of this contract.
+
+Product adapters keep ownership of raw event interpretation. In Coding,
+`loushang.coding.ui.conversation_event_adapter` reads product event shapes,
+extracts message and compaction values, applies Coding cancellation policy,
+and converts tool events through the Coding tool adapter before invoking the
+neutral projector. Plain and Screen implementations remain product targets:
+they decide how a projected fact mutates their renderer or screen app and keep
+their product-specific status copy.
+
+Surface-interest checks happen in the Coding adapter before queue reads, text
+joins, or tool rendering. This preserves Plain and Screen's distinct event
+interests and prevents ignored or duplicate events from mutating the product
+tool-render runtime. The neutral projector exposes only cheap state probes and
+a tool-finish context for this purpose; Coding event dictionaries still never
+cross the package boundary. Tool elapsed time brackets result adaptation and
+neutral projection, while each target keeps its prior cleanup behavior if
+projection fails.
+
+Assistant text deltas form a strict pass-through hot path. The Coding adapter
+must call `ConversationProjector.assistant_delta` directly, and that method
+must call the target directly without constructing an intermediate event,
+action list, tuple, mapping, generator, or concatenated buffer. Render caching,
+segmentation, invalidation, frame composition, and terminal writes remain in
+`loushang.tui` and the product renderer; this projection layer does not replace
+or bypass the frozen TUI render-performance contract. A marked Coding adapter
+test exercises the complete adapter-to-projector-to-target delta path, so the
+existing `make test-tui-render-contract` gate covers this new boundary.
+
+The explicit module path above is the stable import for this capability. The
+package initializer does not provide a convenience re-export.

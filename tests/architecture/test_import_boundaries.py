@@ -314,12 +314,14 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.coding.ui` -> `loushang.harnesstui`" in text
     assert "`loushang.harnesstui.conversation.reader`" in text
     assert "`loushang.harnesstui.conversation.source`" in text
+    assert "`loushang.harnesstui.conversation.projection`" in text
     assert "`loushang.harnesstui.conversation.tool_transcript`" in text
     assert "`loushang.harnesstui.status.line`" in text
 
 
-def test_harnesstui_tool_and_status_entrypoints_exist() -> None:
+def test_harnesstui_capability_entrypoints_exist() -> None:
     paths = (
+        Path("src/loushang/harnesstui/conversation/projection.py"),
         Path("src/loushang/harnesstui/conversation/tool_transcript.py"),
         Path("src/loushang/harnesstui/status/line.py"),
     )
