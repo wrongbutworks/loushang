@@ -39,9 +39,13 @@ product-event interpretation, commands, policy, branding, and runtime assembly.
 
 ## First Slice: Conversation Reader
 
-The first migration slice is deliberately narrow: the reusable transcript
-source protocol and modal conversation reader move here while Coding-specific
-session-backed source adapters remain in `loushang.coding.ui`.
+The reusable transcript source protocol, record-composition helpers, and modal
+conversation reader live here while Coding-specific Session- and ScreenState-
+backed source adapters remain in `loushang.coding.ui`. Record composition may
+merge history with a live window, preserve presentation-only decorations,
+deduplicate the projected history suffix shared with the active-window prefix,
+and select recent assistant text, but it only operates on product-supplied
+`DisplayRecord` values.
 
 This slice does not own session lifecycle, persistence, runtime orchestration,
 or raw Agent/Coding event projection. It does not enter the render hot path.
@@ -83,10 +87,12 @@ values and decides when those values change. This capability is not the generic
 styling primitives, invalidation, and frame rendering. Harnesstui must not
 reach into those mechanics or introduce a second status-bar runtime.
 
-`loushang.harnesstui.status.snapshot` owns the neutral status facts populated by
-a product status provider. `loushang.harnesstui.status.plain` owns the compact,
-line-oriented toolbar projection over presentation-ready status values. Coding
-continues to own live Session reads, settings persistence, and provider update
+`loushang.harnesstui.status.snapshot` owns the neutral status facts.
+`loushang.harnesstui.status.provider` owns the callback-fed status profile and
+product-neutral status-line setting transitions.
+`loushang.harnesstui.status.plain` owns the compact, line-oriented toolbar
+projection over presentation-ready status values. Coding continues to own live
+Session reads, SettingsManager adaptation and persistence, and provider update
 timing; its former status and toolbar imports are direct compatibility aliases.
 
 These explicit module paths are the stable imports for this slice. The package
