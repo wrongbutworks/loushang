@@ -8,11 +8,29 @@ from uuid import uuid4
 
 from loushang.agent import AgentMessage
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
+from loushang.coding.capability_profile import (
+    coding_capability_snapshot_metadata,
+    resolve_coding_capability_profile,
+    validate_coding_capability_snapshot,
+)
+from loushang.coding.runtime_profile import (
+    CodingRuntimeSessionBinding,
+    CodingRuntimeSessionContext,
+    bind_coding_runtime,
+    coding_runtime_snapshot_metadata,
+    resolve_coding_runtime_profile,
+    selected_store,
+    selected_transcript_profile,
+    validate_coding_runtime_snapshot,
+)
 from loushang.coding.store.backend import (
     CodingSessionFileLayout,
     create_coding_file_store,
 )
-from loushang.coding.store.file_codec import load_session_repository
+from loushang.coding.store.file_codec import (
+    load_current_session_header,
+    load_session_repository,
+)
 from loushang.coding.store.types import (
     SessionMetadata,
     SessionQuery,
@@ -55,10 +73,10 @@ from loushang.harness.journal import (
     JsonProjectionIndex,
     ProjectionIndexSnapshot,
 )
+from loushang.harness.runtime import ResolvedRuntimeProfile
 from loushang.harness.storage import (
     ConversationKey,
     ConversationStore,
-    MemoryConversationStore,
     StoreNotFoundError,
 )
 from loushang.observability import get_log
@@ -85,10 +103,16 @@ def _new_header(
     cwd: str,
     parent_conversation_id: str | None = None,
     parent_session: str | None = None,
+    runtime_profile_metadata: dict[str, object] | None = None,
+    capability_profile_metadata: dict[str, object] | None = None,
 ) -> ConversationHeader:
     metadata: dict[str, object] = {"cwd": str(cwd)}
     if parent_session is not None:
         metadata["parentSession"] = parent_session
+    if runtime_profile_metadata is not None:
+        metadata.update(runtime_profile_metadata)
+    if capability_profile_metadata is not None:
+        metadata.update(capability_profile_metadata)
     return ConversationHeader(
         conversation_id=conversation_id,
         version=CURRENT_SESSION_VERSION,
@@ -528,37 +552,38 @@ def _session_catalog(
     )
 
 
-def _new_session_backend(
+async def _new_session_backend(
     *,
     session_dir: Path,
     header: ConversationHeader,
     persist: bool,
     session_file: Path | None = None,
+    runtime_profile: ResolvedRuntimeProfile | None = None,
 ) -> tuple[
+    CodingRuntimeSessionBinding,
     ConversationStore[ConversationHeader, AgentTranscriptRecord],
     ConversationKey,
     Path | None,
+    AgentTranscriptProfile,
 ]:
-    if not persist:
-        backend: ConversationStore[ConversationHeader, AgentTranscriptRecord] = (
-            MemoryConversationStore(record_id=lambda record: record.record_id)
-        )
-        return (
-            backend,
-            ConversationKey(
-                namespace="coding.memory",
-                conversation_id=header.conversation_id,
-            ),
-            None,
-        )
-
-    layout = CodingSessionFileLayout(session_dir)
-    key = layout.key(header.conversation_id)
-    if session_file is None:
+    if persist and session_file is None:
         file_timestamp = header.created_at.replace(":", "-").replace(".", "-")
         session_file = session_dir / f"{file_timestamp}_{header.conversation_id}.jsonl"
-    layout.bind_create_path(key, session_file)
-    return create_coding_file_store(layout), key, session_file
+    profile = runtime_profile or resolve_coding_runtime_profile(persist=persist)
+    context = CodingRuntimeSessionContext(
+        session_dir=session_dir,
+        header=header,
+        persist=persist,
+        session_file=session_file,
+    )
+    binding = await bind_coding_runtime(profile=profile, context=context)
+    return (
+        binding,
+        selected_store(binding),
+        context.conversation_key,
+        session_file,
+        selected_transcript_profile(binding),
+    )
 
 
 class SessionManager:
@@ -569,6 +594,7 @@ class SessionManager:
         cwd: str,
         persist: bool,
         transcript: AgentTranscriptSessionStore,
+        runtime_binding: CodingRuntimeSessionBinding,
         session_file: Path | None = None,
         labels_by_target_id: dict[str, str] | None = None,
         label_timestamps_by_target_id: dict[str, str] | None = None,
@@ -577,6 +603,7 @@ class SessionManager:
         self.cwd = cwd
         self.persist = persist
         self._transcript = transcript
+        self._runtime_binding = runtime_binding
         self.session_file = session_file
         self.labels_by_target_id = dict(labels_by_target_id or {})
         self.label_timestamps_by_target_id = dict(label_timestamps_by_target_id or {})
@@ -615,6 +642,16 @@ class SessionManager:
         return self._transcript.header
 
     @property
+    def runtime_profile(self) -> ResolvedRuntimeProfile:
+        return self._runtime_binding.profile
+
+    def get_runtime_capability(self, slot: str) -> object | tuple[object, ...]:
+        return self._runtime_binding.value(slot)
+
+    async def dispose_runtime_profile(self) -> None:
+        await self._runtime_binding.dispose()
+
+    @property
     def entries(self) -> list[AgentTranscriptRecord]:
         return list(self._transcript.records)
 
@@ -644,57 +681,107 @@ class SessionManager:
     ) -> SessionManager:
         resolved_session_id = _resolve_session_id(session_id)
         normalized_cwd = str(cwd)
+        runtime_profile = resolve_coding_runtime_profile(persist=persist)
+        capability_profile = resolve_coding_capability_profile()
         header = _new_header(
             conversation_id=resolved_session_id,
             cwd=normalized_cwd,
             parent_session=parent_session,
+            runtime_profile_metadata=coding_runtime_snapshot_metadata(runtime_profile),
+            capability_profile_metadata=coding_capability_snapshot_metadata(
+                capability_profile
+            ),
         )
-        backend, key, session_file = _new_session_backend(
+        (
+            runtime_binding,
+            backend,
+            key,
+            session_file,
+            transcript_profile,
+        ) = await _new_session_backend(
             session_dir=Path(session_dir),
             header=header,
             persist=persist,
+            runtime_profile=runtime_profile,
         )
-        transcript = await AgentTranscriptSessionStore.create(
-            backend,
-            key,
-            header,
-            id_factory=_generate_id,
-        )
+        try:
+            transcript = await AgentTranscriptSessionStore.create(
+                backend,
+                key,
+                header,
+                id_factory=_generate_id,
+                profile=transcript_profile,
+            )
+        except Exception:
+            await runtime_binding.dispose()
+            raise
         return cls(
             session_dir=Path(session_dir),
             cwd=normalized_cwd,
             persist=persist,
             transcript=transcript,
+            runtime_binding=runtime_binding,
             session_file=session_file,
         )
 
     @classmethod
     async def load(cls, session_file: Path, persist: bool = True) -> SessionManager:
         path = Path(session_file).expanduser().resolve(strict=False)
-        layout = CodingSessionFileLayout(path.parent)
-        key = layout.bind_existing_path(path)
-        source_backend = create_coding_file_store(layout)
-        if persist:
-            backend: ConversationStore[ConversationHeader, AgentTranscriptRecord] = (
-                source_backend
+        header = load_current_session_header(path)
+        snapshot = validate_coding_runtime_snapshot(header)
+        capability_snapshot = validate_coding_capability_snapshot(header)
+        runtime_profile = resolve_coding_runtime_profile(persist=persist)
+        capability_profile = resolve_coding_capability_profile()
+        if persist and snapshot is not None and snapshot != runtime_profile.snapshot():
+            raise ValueError(
+                "Coding cannot resume a session with an unsupported runtime profile"
             )
-            transcript = await AgentTranscriptSessionStore.load(
-                backend,
-                key,
-                id_factory=_generate_id,
+        if (
+            persist
+            and capability_snapshot is not None
+            and capability_snapshot != capability_profile.snapshot()
+        ):
+            raise ValueError(
+                "Coding cannot resume a session with an unsupported capability profile"
             )
-        else:
-            source_snapshot = await source_backend.load(key)
-            backend = MemoryConversationStore(
-                record_id=lambda record: record.record_id,
-            )
-            transcript = await AgentTranscriptSessionStore.create(
-                backend,
-                key,
-                source_snapshot.header,
-                records=source_snapshot.records,
-                id_factory=_generate_id,
-            )
+        (
+            runtime_binding,
+            backend,
+            key,
+            _,
+            transcript_profile,
+        ) = await _new_session_backend(
+            session_dir=path.parent,
+            header=header,
+            persist=persist,
+            session_file=path,
+            runtime_profile=runtime_profile,
+        )
+        try:
+            if persist:
+                transcript = await AgentTranscriptSessionStore.load(
+                    backend,
+                    key,
+                    id_factory=_generate_id,
+                    profile=transcript_profile,
+                )
+            else:
+                layout = CodingSessionFileLayout(path.parent)
+                layout.bind_existing_path(path)
+                source_backend = create_coding_file_store(layout)
+                source_key = layout.key(header.conversation_id)
+                source_snapshot = await source_backend.load(source_key)
+                transcript = await AgentTranscriptSessionStore.create(
+                    backend,
+                    key,
+                    source_snapshot.header,
+                    records=source_snapshot.records,
+                    id_factory=_generate_id,
+                    profile=transcript_profile,
+                )
+        except Exception:
+            await runtime_binding.dispose()
+            raise
         header = transcript.header
         entries = list(transcript.records)
         labels_by_target_id, label_timestamps_by_target_id = _build_label_indexes(
@@ -705,6 +792,7 @@ class SessionManager:
             cwd=_header_cwd(header),
             persist=persist,
             transcript=transcript,
+            runtime_binding=runtime_binding,
             session_file=path,
             labels_by_target_id=labels_by_target_id,
             label_timestamps_by_target_id=label_timestamps_by_target_id,
@@ -762,26 +850,46 @@ class SessionManager:
         persist: bool = True,
     ) -> SessionManager:
         source = await cls.load(Path(source_file), persist=False)
+        source_header = source.header
+        source_entries = source.get_entries()
+        await source.dispose_runtime_profile()
+        runtime_profile = resolve_coding_runtime_profile(persist=persist)
+        capability_profile = resolve_coding_capability_profile()
         header = _new_header(
             conversation_id=_generate_id(),
             cwd=str(target_cwd),
-            parent_conversation_id=source.header.conversation_id,
+            parent_conversation_id=source_header.conversation_id,
             parent_session=str(Path(source_file)),
+            runtime_profile_metadata=coding_runtime_snapshot_metadata(runtime_profile),
+            capability_profile_metadata=coding_capability_snapshot_metadata(
+                capability_profile
+            ),
         )
         target_dir = Path(session_dir)
-        source_entries = source.get_entries()
-        backend, key, session_file = _new_session_backend(
+        (
+            runtime_binding,
+            backend,
+            key,
+            session_file,
+            transcript_profile,
+        ) = await _new_session_backend(
             session_dir=target_dir,
             header=header,
             persist=persist,
+            runtime_profile=runtime_profile,
         )
-        transcript = await AgentTranscriptSessionStore.create(
-            backend,
-            key,
-            header,
-            records=source_entries,
-            id_factory=_generate_id,
-        )
+        try:
+            transcript = await AgentTranscriptSessionStore.create(
+                backend,
+                key,
+                header,
+                records=source_entries,
+                id_factory=_generate_id,
+                profile=transcript_profile,
+            )
+        except Exception:
+            await runtime_binding.dispose()
+            raise
         labels_by_target_id, label_timestamps_by_target_id = _build_label_indexes(
             source_entries
         )
@@ -790,6 +898,7 @@ class SessionManager:
             cwd=str(target_cwd),
             persist=persist,
             transcript=transcript,
+            runtime_binding=runtime_binding,
             session_file=session_file,
             labels_by_target_id=labels_by_target_id,
             label_timestamps_by_target_id=label_timestamps_by_target_id,
@@ -1088,27 +1197,46 @@ class SessionManager:
             cwd=self.cwd,
             parent_conversation_id=self.header.conversation_id,
             parent_session=parent_session,
+            runtime_profile_metadata=coding_runtime_snapshot_metadata(
+                self.runtime_profile
+            ),
+            capability_profile_metadata=coding_capability_snapshot_metadata(
+                resolve_coding_capability_profile()
+            ),
         )
 
-        backend, key, session_file = _new_session_backend(
+        (
+            runtime_binding,
+            backend,
+            key,
+            session_file,
+            transcript_profile,
+        ) = await _new_session_backend(
             session_dir=self.session_dir,
             header=header,
             persist=self.persist,
+            runtime_profile=self.runtime_profile,
         )
-        transcript = await AgentTranscriptSessionStore.create(
-            backend,
-            key,
-            header,
-            records=branch_entries,
-            leaf_id=leaf_id,
-            id_factory=_generate_id,
-        )
+        try:
+            transcript = await AgentTranscriptSessionStore.create(
+                backend,
+                key,
+                header,
+                records=branch_entries,
+                leaf_id=leaf_id,
+                id_factory=_generate_id,
+                profile=transcript_profile,
+            )
+        except Exception:
+            await runtime_binding.dispose()
+            raise
 
         return SessionManager(
             session_dir=self.session_dir,
             cwd=self.cwd,
             persist=self.persist,
             transcript=transcript,
+            runtime_binding=runtime_binding,
             session_file=session_file,
             labels_by_target_id=labels_by_target_id,
             label_timestamps_by_target_id=label_timestamps_by_target_id,

@@ -66,6 +66,8 @@ class CompactionController:
     sync_extension_diagnostics: ExtensionDiagnosticsSync = (
         _noop_sync_extension_diagnostics
     )
+    compact_fn: CompactionFunction = run_compaction
+    prepare_compaction_fn: PrepareCompactionFunction = prepare_compaction
 
     _lifecycle: CompactionCoordinator[CompactionResult] = field(
         default_factory=CompactionCoordinator,
@@ -167,8 +169,8 @@ class CompactionController:
         will_retry: bool,
         raise_on_error: bool = True,
         custom_instructions: str | None = None,
-        compact_fn: CompactionFunction = run_compaction,
-        prepare_compaction_fn: PrepareCompactionFunction = prepare_compaction,
+        compact_fn: CompactionFunction | None = None,
+        prepare_compaction_fn: PrepareCompactionFunction | None = None,
     ) -> CompactionResult | None:
         settings = self.get_settings()
         usage_before = _snapshot_payload(self._build_usage_snapshot(settings))
@@ -182,8 +184,10 @@ class CompactionController:
                 lambda: self._execute_compaction(
                     reason=reason,
                     custom_instructions=custom_instructions,
-                    compact_fn=compact_fn,
-                    prepare_compaction_fn=prepare_compaction_fn,
+                    compact_fn=compact_fn or self.compact_fn,
+                    prepare_compaction_fn=(
+                        prepare_compaction_fn or self.prepare_compaction_fn
+                    ),
                     settings=settings,
                 ),
                 reason=reason,

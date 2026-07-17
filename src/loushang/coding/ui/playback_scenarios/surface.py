@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.playback import (
@@ -14,8 +15,10 @@ from loushang.coding.ui.playback_fakes import (
 )
 from loushang.coding.ui.playback_scenarios.budgets import INTERACTION_FRAME_BUDGET
 from loushang.coding.ui.playback_suite import ScreenPlaybackScenarioSpec
-from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager, ScreenSurfaceView
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.tui import DialogSurface, SelectionSurface, SelectItem
 
 
@@ -297,10 +300,10 @@ def _run_mouse_select_active_surface() -> ScreenTuiInputPlaybackResult:
 
 
 def _surface_manager(
-    app: object,
+    app: ScreenCodingTuiApp,
     *,
     session: object | None = None,
-    on_approval: Callable[[dict[str, object]], object] | None = None,
+    on_approval: Callable[[dict[str, Any]], Awaitable[bool | None]] | None = None,
 ) -> ScreenSurfaceManager:
     return ScreenSurfaceManager(
         app=app,

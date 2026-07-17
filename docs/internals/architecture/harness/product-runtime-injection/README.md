@@ -30,14 +30,15 @@ Harness defaults
 
 | Document | Role | Status |
 | --- | --- | --- |
-| [00 Requirements](00-requirements.md) | Product-facing requirements, constraints, non-goals, and acceptance criteria. | Proposed |
-| [01 Component Inventory](01-component-inventory.md) | Index of runtime-injection components, their owners, dependencies, and migration relationship. | Proposed |
-| [Component Design Directory](components/README.md) | One detailed binding contract for each capability component. | Planned |
+| [00 Requirements](00-requirements.md) | Product-facing requirements, constraints, non-goals, and acceptance criteria. | Core accepted |
+| [01 Component Inventory](01-component-inventory.md) | Index of runtime-injection components, their owners, dependencies, and migration relationship. | Core implemented |
+| [Component Design Directory](components/README.md) | One detailed binding contract for each capability component. | Runtime profile implemented |
 
 Detailed component documents are added immediately before their corresponding
-implementation wave. They use the common template named in the component
-inventory so that Store, Memory, Compaction, Tool Pack, and other components
-do not repeat generic resolution rules.
+implementation wave. The implemented
+[runtime-profile design](components/runtime-profile-resolution.md) supplies
+generic resolution and lifecycle rules so Store, Memory, Compaction, Tool Pack,
+and other components do not repeat them.
 
 ## Scope
 
@@ -57,6 +58,9 @@ The current Coding-to-Harness work has already moved many mechanisms without a
 single dynamic composition contract: storage protocols, transcript profiles,
 context packing and compaction coordination, capabilities, resources,
 extensions, policy/approval, runtime bindings, and ordered runtime events.
+Coding now uses the runtime-profile core for its current store, transcript, and
+compaction selections; other Products and injectable capability families remain
+future adoption waves.
 
 This directory is the design gate for the next ownership waves. It does not
 reopen completed boundaries. Instead, it specifies how Products, OEMs, and

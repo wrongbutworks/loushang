@@ -2,8 +2,10 @@
 
 ## Status
 
-Directory reserved for detailed, capability-specific binding contracts.
-No component implementation is implied by the presence of this directory.
+Directory for detailed, capability-specific binding contracts. Runtime-profile
+resolution and capability-composition admission are implemented. Product
+adoption remains incremental; other filenames remain planning placeholders
+until their adoption wave.
 
 ## Authoring Rule
 
@@ -15,11 +17,14 @@ Every component document follows the template in
 [the component inventory](../01-component-inventory.md#common-detailed-design-template)
 and links back to the requirements it satisfies.
 
+## Implemented Design
+
+- [Runtime Profile Resolution And Binding](runtime-profile-resolution.md)
+- [Capability Composition Binding](capability-composition-binding.md)
+
 ## Planned Documents
 
 ```text
-runtime-profile-resolution.md
-runtime-binding-lifecycle.md
 session-runtime-core.md
 conversation-store-binding.md
 transcript-profile-binding.md

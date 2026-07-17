@@ -7,8 +7,18 @@ from types import SimpleNamespace
 from loushang.ai import Model
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager, ScreenSurfaceView
+from loushang.coding.ui.screen_surfaces import (
+    ModelSelectorSurface,
+    ScreenSurfaceManager,
+    ScreenSurfaceView,
+)
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+from loushang.harnesstui.selection.model import (
+    ModelSelectorSurface as SharedModelSelectorSurface,
+)
+from loushang.harnesstui.surface.view import (
+    ScreenSurfaceView as SharedScreenSurfaceView,
+)
 from loushang.tui import (
     ApprovalSurface,
     CursorDeclaration,
@@ -53,6 +63,11 @@ class _TallContent:
             [RenderLine(f"line {index}") for index in range(constraints.max_height)],
             constraints=constraints,
         )
+
+
+def test_screen_surface_compatibility_exports_keep_object_identity() -> None:
+    assert ScreenSurfaceView is SharedScreenSurfaceView
+    assert ModelSelectorSurface is SharedModelSelectorSurface
 
 
 def test_screen_surface_view_delegates_editor_input_target() -> None:

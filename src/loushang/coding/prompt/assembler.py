@@ -8,12 +8,11 @@ from loushang.agent.types import AgentTool
 from loushang.coding.prompt.types import PromptAssembly
 from loushang.harness.capabilities.prompt import (
     PromptSection,
-    compose_prompt_sections,
+    PromptSectionComposer,
 )
+from loushang.harness.resources.activation import ResourceActivation
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.tools.core import ToolDefinition
-
-_CONTEXT_PROMPT_KINDS = {"agents_md", "claude_md"}
 
 DEFAULT_SYSTEM_PROMPT = """\
 You are an expert coding assistant operating inside loushang, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
@@ -87,17 +86,8 @@ def _format_tool_prompt_guidelines(guidelines: tuple[str, ...]) -> list[str]:
     return lines
 
 
-def _build_skill_prompt(resource_bundle: ResourceBundle | None) -> str:
-    if resource_bundle is None or not resource_bundle.skills:
-        return ""
-    visible_skills = [
-        skill
-        for skill in resource_bundle.skills
-        if skill.enabled
-        and not skill.disable_model_invocation
-        and isinstance(skill.description, str)
-        and skill.description.strip()
-    ]
+def _build_skill_prompt(resource_activation: ResourceActivation) -> str:
+    visible_skills = resource_activation.model_visible_skills()
     if not visible_skills:
         return ""
     lines = [
@@ -124,17 +114,8 @@ def _build_skill_prompt(resource_bundle: ResourceBundle | None) -> str:
     return "\n".join(lines)
 
 
-def _build_project_context_prompt(resource_bundle: ResourceBundle | None) -> str:
-    if resource_bundle is None:
-        return ""
-    descriptors = [
-        descriptor
-        for descriptor in resource_bundle.prompt_descriptors
-        if getattr(descriptor, "prompt_kind", None) in _CONTEXT_PROMPT_KINDS
-        and getattr(descriptor, "enabled", True)
-        and isinstance(getattr(descriptor, "text", None), str)
-        and descriptor.text.strip()
-    ]
+def _build_project_context_prompt(resource_activation: ResourceActivation) -> str:
+    descriptors = resource_activation.context_prompts()
     if not descriptors:
         return ""
     lines = [
@@ -157,36 +138,9 @@ def _build_project_context_prompt(resource_bundle: ResourceBundle | None) -> str
 
 
 def _iter_non_context_prompt_fragments(
-    resource_bundle: ResourceBundle | None,
+    resource_activation: ResourceActivation,
 ) -> list[str]:
-    if resource_bundle is None:
-        return []
-    if resource_bundle.prompt_descriptors:
-        fragments: list[str] = []
-        seen: set[tuple[str, str]] = set()
-        for descriptor in resource_bundle.prompt_descriptors:
-            if getattr(descriptor, "prompt_kind", None) in _CONTEXT_PROMPT_KINDS:
-                continue
-            if not getattr(descriptor, "enabled", True):
-                continue
-            text = (
-                descriptor.text.strip()
-                if isinstance(getattr(descriptor, "text", None), str)
-                else ""
-            )
-            if not text:
-                continue
-            key = (descriptor.source_path.as_posix(), text)
-            if key in seen:
-                continue
-            seen.add(key)
-            fragments.append(text)
-        return fragments
-    return [
-        fragment.strip()
-        for fragment in resource_bundle.prompt_fragments
-        if isinstance(fragment, str) and fragment.strip()
-    ]
+    return list(resource_activation.prompt_fragments())
 
 
 def _build_runtime_footer(resource_bundle: ResourceBundle | None) -> str:
@@ -203,6 +157,8 @@ def assemble_prompt(
     tool_definitions: list[ToolDefinition] | None = None,
     tools: list[AgentTool[Any]] | None = None,
     tool_prompt: str | None = None,
+    resource_activation: ResourceActivation | None = None,
+    prompt_section_composer: PromptSectionComposer | None = None,
 ) -> PromptAssembly:
     sections: list[PromptSection] = []
     resource_fragments: list[str] = []
@@ -212,8 +168,9 @@ def assemble_prompt(
         else DEFAULT_SYSTEM_PROMPT
     )
     sections.append(PromptSection("base", effective_base, kind="base"))
+    activation = resource_activation or ResourceActivation(resource_bundle)
     if resource_bundle is not None:
-        project_context_prompt = _build_project_context_prompt(resource_bundle)
+        project_context_prompt = _build_project_context_prompt(activation)
         if project_context_prompt:
             sections.append(
                 PromptSection(
@@ -224,7 +181,7 @@ def assemble_prompt(
             )
             resource_fragments.append(project_context_prompt)
         for index, cleaned_fragment in enumerate(
-            _iter_non_context_prompt_fragments(resource_bundle)
+            _iter_non_context_prompt_fragments(activation)
         ):
             sections.append(
                 PromptSection(
@@ -234,7 +191,7 @@ def assemble_prompt(
                 )
             )
             resource_fragments.append(cleaned_fragment)
-    skill_prompt = _build_skill_prompt(resource_bundle)
+    skill_prompt = _build_skill_prompt(activation)
     if skill_prompt:
         sections.append(PromptSection("available-skills", skill_prompt, kind="skill"))
         resource_fragments.append(skill_prompt)
@@ -254,7 +211,7 @@ def assemble_prompt(
     runtime_footer = _build_runtime_footer(resource_bundle)
     if runtime_footer:
         sections.append(PromptSection("runtime-footer", runtime_footer, kind="runtime"))
-    prepared = compose_prompt_sections(sections)
+    prepared = (prompt_section_composer or PromptSectionComposer()).compose(sections)
     return PromptAssembly(
         system_prompt=prepared.text,
         tool_prompt=cleaned_tool_prompt,

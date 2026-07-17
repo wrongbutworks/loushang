@@ -10,12 +10,11 @@ from loushang.harness.capabilities.prompt import (
     append_prompt_arguments,
     expand_prompt_template,
 )
+from loushang.harness.resources.activation import ResourceActivation
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.frontmatter import strip_frontmatter
 from loushang.harness.resources.types import (
-    PromptFragmentDescriptor,
     ResourceBundle,
-    SkillDescriptor,
 )
 
 
@@ -78,7 +77,7 @@ def _preflight_resource_input(
 
     if command_name.startswith("skill:"):
         skill_name = command_name.removeprefix("skill:")
-        skill = _find_skill(skill_name, resource_bundle)
+        skill = ResourceActivation(resource_bundle).find_skill(skill_name)
         if skill is None:
             return PromptPreflightResult(
                 text=original_text,
@@ -101,7 +100,7 @@ def _preflight_resource_input(
         )
         return PromptPreflightResult(text=append_prompt_arguments(skill_block, args))
 
-    prompt = _find_prompt(command_name, resource_bundle)
+    prompt = ResourceActivation(resource_bundle).find_prompt(command_name)
     if prompt is None:
         return PromptPreflightResult(
             text=original_text,
@@ -122,30 +121,6 @@ def _preflight_resource_input(
             expander=template_expander,
         )
     )
-
-
-def _find_prompt(
-    name: str, resource_bundle: ResourceBundle | None
-) -> PromptFragmentDescriptor | None:
-    if resource_bundle is None:
-        return None
-    for prompt in resource_bundle.prompts:
-        if prompt.name == name or prompt.canonical_name == name or prompt.id == name:
-            return prompt
-    return None
-
-
-def _find_skill(
-    name: str, resource_bundle: ResourceBundle | None
-) -> SkillDescriptor | None:
-    if resource_bundle is None:
-        return None
-    for skill in resource_bundle.skills:
-        if not skill.enabled:
-            continue
-        if skill.name == name or skill.canonical_name == name or skill.id == name:
-            return skill
-    return None
 
 
 __all__ = [

@@ -40,14 +40,68 @@ class ToolTranscriptProjector:
             max_body_lines=self.max_body_lines,
         )
 
+    @property
+    def neutral_projector(self) -> NeutralToolTranscriptProjector:
+        """Return the product-neutral projector used by this Coding adapter."""
+
+        return self._projector
+
+    def call_id(self, event: Mapping[str, Any]) -> str:
+        """Read a tool-call id without invoking presentation renderers."""
+
+        return _tool_call_id(event)
+
+    def message_id(self, message: object) -> str:
+        """Read a tool-result message id without adapting its result body."""
+
+        value = getattr(message, "tool_call_id", None)
+        return value if isinstance(value, str) and value else ""
+
+    def call_view(self, event: Mapping[str, Any]) -> ToolCallView:
+        """Adapt a raw Coding tool-call event to a neutral view."""
+
+        return ToolCallView(
+            tool_call_id=self.call_id(event),
+            tool_name=_tool_name(event),
+            args=event.get("args"),
+            rendered_text=self._render_event_text(event, expanded=False),
+        )
+
     def remember_call(self, event: Mapping[str, Any]) -> ToolCallSnapshot:
-        return self._projector.remember_call(
-            ToolCallView(
-                tool_call_id=_tool_call_id(event),
-                tool_name=_tool_name(event),
-                args=event.get("args"),
-                rendered_text=self._render_event_text(event, expanded=False),
+        return self._projector.remember_call(self.call_view(event))
+
+    def result_view(
+        self,
+        event: Mapping[str, Any],
+        snapshot: ToolCallSnapshot | None = None,
+        *,
+        tool_call_id: str | None = None,
+    ) -> ToolResultView:
+        """Adapt a raw Coding tool-result event to a neutral view."""
+
+        result = _event_result(event)
+        status = _result_status(event, result=result)
+        event_tool_name = _tool_name(event)
+        policy_tool_name = (
+            snapshot.tool_name if snapshot is not None else event_tool_name
+        )
+        result_text = ""
+        if _should_show_body(policy_tool_name, status):
+            result_text = _fallback_result_text(
+                result,
+                max_lines=self.max_body_lines,
             )
+        return ToolResultView(
+            tool_call_id=(
+                self.call_id(event) if tool_call_id is None else tool_call_id
+            ),
+            tool_name=event_tool_name,
+            status=status,
+            args=event.get("args"),
+            result_text=result_text,
+            rendered_text=self._render_event_text(event, expanded=False),
+            details=_transcript_result_details(result),
+            error_summary=_tool_error_summary(result),
         )
 
     def project_result(
@@ -55,32 +109,16 @@ class ToolTranscriptProjector:
         event: Mapping[str, Any],
         snapshot: ToolCallSnapshot | None = None,
     ) -> ToolTranscriptBlock:
-        result = _event_result(event)
-        status = _result_status(event, result=result)
-        tool_name = snapshot.tool_name if snapshot is not None else _tool_name(event)
-        result_text = ""
-        if _should_show_body(tool_name, status):
-            result_text = _fallback_result_text(
-                result,
-                max_lines=self.max_body_lines,
-            )
         return self._projector.project_result(
-            ToolResultView(
-                tool_call_id=_tool_call_id(event),
-                tool_name=_tool_name(event),
-                status=status,
-                args=event.get("args"),
-                result_text=result_text,
-                rendered_text=self._render_event_text(event, expanded=False),
-                details=_transcript_result_details(result),
-                error_summary=_tool_error_summary(result),
-            ),
-            snapshot,
+            self.result_view(event, snapshot=snapshot), snapshot
         )
 
-    def project_tool_result_message(self, message: object) -> ToolTranscriptBlock:
+    def tool_result_message_view(self, message: object) -> ToolResultView:
+        """Adapt a raw Coding tool-result message to a neutral view."""
+
         tool_name = str(getattr(message, "tool_name", "tool"))
-        tool_call_id = str(getattr(message, "tool_call_id", tool_name))
+        raw_tool_call_id = self.message_id(message)
+        tool_call_id = raw_tool_call_id or tool_name
         event = {
             "type": "tool_execution_end",
             "tool_call_id": tool_call_id,
@@ -92,7 +130,10 @@ class ToolTranscriptProjector:
             ),
             "is_error": bool(getattr(message, "is_error", False)),
         }
-        return self.project_result(event)
+        return self.result_view(event, tool_call_id=tool_call_id)
+
+    def project_tool_result_message(self, message: object) -> ToolTranscriptBlock:
+        return self._projector.project_result(self.tool_result_message_view(message))
 
     def _render_event_text(
         self,

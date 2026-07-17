@@ -314,14 +314,26 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.coding.ui` -> `loushang.harnesstui`" in text
     assert "`loushang.harnesstui.conversation.reader`" in text
     assert "`loushang.harnesstui.conversation.source`" in text
+    assert "`loushang.harnesstui.conversation.projection`" in text
     assert "`loushang.harnesstui.conversation.tool_transcript`" in text
+    assert "`loushang.harnesstui.selection.model`" in text
+    assert "`loushang.harnesstui.settings.page`" in text
+    assert "`loushang.harnesstui.status.settings`" in text
     assert "`loushang.harnesstui.status.line`" in text
+    assert "`loushang.harnesstui.surface.view`" in text
+    assert "`loushang.tui.settings`" in text
 
 
-def test_harnesstui_tool_and_status_entrypoints_exist() -> None:
+def test_harnesstui_capability_entrypoints_exist() -> None:
     paths = (
+        Path("src/loushang/harnesstui/conversation/projection.py"),
         Path("src/loushang/harnesstui/conversation/tool_transcript.py"),
+        Path("src/loushang/harnesstui/selection/model.py"),
+        Path("src/loushang/harnesstui/settings/page.py"),
         Path("src/loushang/harnesstui/status/line.py"),
+        Path("src/loushang/harnesstui/status/settings.py"),
+        Path("src/loushang/harnesstui/surface/view.py"),
+        Path("src/loushang/tui/settings.py"),
     )
 
     missing = [path.as_posix() for path in paths if not path.is_file()]
@@ -2052,7 +2064,7 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
         },
         Path("src/loushang/coding/prompt/assembler.py"): {
             "loushang.harness.capabilities.prompt.PromptSection",
-            "loushang.harness.capabilities.prompt.compose_prompt_sections",
+            "loushang.harness.capabilities.prompt.PromptSectionComposer",
         },
         Path("src/loushang/coding/session/command_controller.py"): {
             "loushang.harness.capabilities.commands.dispatch_command_async",

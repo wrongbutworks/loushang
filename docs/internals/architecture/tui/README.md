@@ -40,3 +40,8 @@ For status presentation, `loushang.tui` owns the generic status-bar widget and
 its layout, styling, invalidation, and rendering mechanics. A shared Harness
 status profile belongs to `loushang.harnesstui`; products populate that profile
 and retain their own status policy.
+
+Generic settings rows, themes, formatting, and input helpers live in
+`loushang.tui.settings`. Reusable Harness-oriented settings pages, model
+selection, and surface framing live one layer outward in `loushang.harnesstui`.
+Product shells remain responsible for supplying values and applying decisions.

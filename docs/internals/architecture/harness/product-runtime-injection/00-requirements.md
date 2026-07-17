@@ -2,9 +2,9 @@
 
 ## Status
 
-Proposed. These requirements constrain later component designs and
-implementation waves. They intentionally do not prescribe Python class names,
-module paths, or a dependency-injection container.
+The runtime-profile core is implemented; capability-specific designs remain
+proposed until their Product adoption wave. These requirements intentionally do
+not prescribe a dependency-injection container.
 
 ## Problem Statement
 

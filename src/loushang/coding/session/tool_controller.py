@@ -9,11 +9,13 @@ from loushang.agent.types import AgentTool, ensure_agent_tool, is_agent_tool_lik
 from loushang.coding.prompt import assemble_prompt
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
+from loushang.harness.capabilities.prompt import PromptSectionComposer
 from loushang.harness.capabilities.tools import (
     ToolActivationChange,
     ToolActivationCoordinator,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.resources.activation import ResourceActivationRuntime
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.tools.contribution import (
     ToolContribution,
@@ -66,6 +68,12 @@ class ToolController:
     emit_tool_audit_event: Callable[[dict[str, object]], Awaitable[None]] | None = None
     default_activate_new_tools: bool = False
     show_empty_tool_prompt: bool = False
+    resource_activation_runtime: ResourceActivationRuntime = field(
+        default_factory=ResourceActivationRuntime
+    )
+    prompt_section_composer: PromptSectionComposer = field(
+        default_factory=PromptSectionComposer
+    )
     _activation: ToolActivationCoordinator[ToolDefinition] = field(
         init=False,
         repr=False,
@@ -222,6 +230,10 @@ class ToolController:
             resource_bundle=self.get_resource_bundle(),
             tool_definitions=active_definitions,
             tool_prompt=tool_prompt,
+            resource_activation=self.resource_activation_runtime.activate(
+                self.get_resource_bundle()
+            ),
+            prompt_section_composer=self.prompt_section_composer,
         )
         self.agent.system_prompt = prompt_assembly.system_prompt
 
