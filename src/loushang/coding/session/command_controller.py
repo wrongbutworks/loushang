@@ -34,6 +34,10 @@ from loushang.harness.capabilities.commands import (
     normalize_command_name,
     split_slash_command,
 )
+from loushang.harness.capabilities.packs import (
+    CapabilityPack,
+    compose_capability_packs,
+)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.frontmatter import strip_frontmatter
@@ -54,13 +58,15 @@ class CommandController:
     builtin_backend: BuiltinCommandBackend | None = None
 
     def list_commands(self) -> list[SessionCommandDescriptor]:
-        commands: list[SessionCommandDescriptor] = []
+        builtin_commands: list[SessionCommandDescriptor] = []
         if self.builtin_backend is not None:
-            commands.extend(list_builtin_command_descriptors())
+            builtin_commands.extend(list_builtin_command_descriptors())
+
+        extension_commands: list[SessionCommandDescriptor] = []
         extension_runner = self.get_extension_runner()
         if extension_runner is not None:
             for command in extension_runner.get_registered_commands():
-                commands.append(
+                extension_commands.append(
                     SessionCommandDescriptor(
                         name=command.invocation_name,
                         description=command.description,
@@ -74,10 +80,12 @@ class CommandController:
                         else None,
                     )
                 )
+
+        resource_commands: list[SessionCommandDescriptor] = []
         resource_bundle = self.get_resource_bundle()
         if resource_bundle is not None:
             for prompt in resource_bundle.prompts:
-                commands.append(
+                resource_commands.append(
                     SessionCommandDescriptor(
                         name=prompt.name,
                         description=_command_description_from_prompt(prompt),
@@ -91,7 +99,7 @@ class CommandController:
             for skill in resource_bundle.skills:
                 if not skill.enabled:
                     continue
-                commands.append(
+                resource_commands.append(
                     SessionCommandDescriptor(
                         name=f"skill:{skill.name}",
                         description=_command_description_from_skill(skill),
@@ -101,7 +109,30 @@ class CommandController:
                         ),
                     )
                 )
-        return commands
+        return list(
+            compose_capability_packs(
+                (
+                    CapabilityPack(
+                        pack_id="coding.builtin-commands",
+                        source="product",
+                        priority=300,
+                        items=tuple(builtin_commands),
+                    ),
+                    CapabilityPack(
+                        pack_id="coding.extension-commands",
+                        source="extension",
+                        priority=200,
+                        items=tuple(extension_commands),
+                    ),
+                    CapabilityPack(
+                        pack_id="coding.resource-commands",
+                        source="product",
+                        priority=100,
+                        items=tuple(resource_commands),
+                    ),
+                )
+            ).items
+        )
 
     async def execute_command_async(
         self, invocation_name: str, args: str
@@ -114,11 +145,40 @@ class CommandController:
         )
         outcome = await dispatch_command_async(
             invocation,
-            (
-                CommandHandlerBinding("extension", self._dispatch_extension_command),
-                CommandHandlerBinding("builtin", self._dispatch_builtin_command),
-                CommandHandlerBinding("resource", self._dispatch_resource_command),
-            ),
+            compose_capability_packs(
+                (
+                    CapabilityPack(
+                        pack_id="coding.extension-command-handler",
+                        source="extension",
+                        priority=300,
+                        items=(
+                            CommandHandlerBinding(
+                                "extension", self._dispatch_extension_command
+                            ),
+                        ),
+                    ),
+                    CapabilityPack(
+                        pack_id="coding.builtin-command-handler",
+                        source="product",
+                        priority=200,
+                        items=(
+                            CommandHandlerBinding(
+                                "builtin", self._dispatch_builtin_command
+                            ),
+                        ),
+                    ),
+                    CapabilityPack(
+                        pack_id="coding.resource-command-handler",
+                        source="product",
+                        priority=100,
+                        items=(
+                            CommandHandlerBinding(
+                                "resource", self._dispatch_resource_command
+                            ),
+                        ),
+                    ),
+                )
+            ).items,
         )
         return outcome.result if outcome.handled else None
 

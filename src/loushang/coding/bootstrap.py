@@ -36,6 +36,10 @@ from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
 from loushang.coding.types import ModelSelection
 from loushang.harness.agent_transcript import context_item_to_model_message
+from loushang.harness.capabilities.packs import (
+    CapabilityPack,
+    compose_capability_packs,
+)
 from loushang.harness.config import (
     ConfigActivationRuntime,
     ConfigActivationStep,
@@ -1142,10 +1146,21 @@ def _resolve_extension_tool_contributions(
     tool_registry: ToolRegistry,
 ) -> ToolResolutionResult:
     return resolve_tool_contributions(
-        (
-            *tool_registry.list_contributions(),
-            *_extension_tool_contributions(extension_runner),
-        ),
+        compose_capability_packs(
+            (
+                CapabilityPack(
+                    pack_id="coding.registry",
+                    source="product",
+                    priority=100,
+                    items=tool_registry.list_contributions(),
+                ),
+                CapabilityPack(
+                    pack_id="coding.extensions",
+                    source="extension",
+                    items=_extension_tool_contributions(extension_runner),
+                ),
+            )
+        ).items,
         fail_on_errors=False,
     )
 

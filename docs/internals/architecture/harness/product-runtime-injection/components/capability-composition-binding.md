@@ -48,6 +48,28 @@ structured diagnostic and never reaches the binder. Admission is an
 allow-list: it is not extension discovery, dynamic import, or a global service
 locator.
 
+## Pack Composition
+
+After admission, `CapabilityPack` flattens live Product values in descending
+priority and stable input order, retaining a provenance trace for each active
+pack. It does not resolve duplicate tool or command names; the existing tool
+contribution resolver and command catalog retain those capability-specific
+conflict rules.
+
+Coding's first adoption uses this mechanism for two compatibility-preserving
+orders:
+
+- registered Coding tools before extension tool contributions, so the existing
+  registry remains authoritative on duplicate tool names;
+- extension command handler, built-in command handler, then resource command
+  handler; the command list continues to display built-ins, extensions, then
+  resource commands.
+
+The first adoption moves resource activation and pack ordering only. It does
+not yet expose OEM or extension profile selections through Coding settings or
+persist a capability-composition snapshot. Those are the next binding step,
+after each selectable implementation has a real factory and resume contract.
+
 ## Durable And Refresh Rules
 
 The resolved profile snapshot records implementation ID, version, JSON
@@ -72,9 +94,9 @@ Coding retains:
 - extension API compatibility mapping and user-facing diagnostics;
 - model/auth policy, TUI/RPC presentation, and code artifact semantics.
 
-The next adoption commits wire Coding's existing resource bootstrap through
-this contract. They must not move model/auth execution, terminal/UI behavior,
-or arbitrary extension code into Harness.
+Coding's first adoption routes its resource activation and tool/command pack
+ordering through this contract. The next binding step must not move model/auth
+execution, terminal/UI behavior, or arbitrary extension code into Harness.
 
 ## Verification
 

@@ -33,12 +33,12 @@ rules.
 | Memory | `harness.context` | ordered-many | Planned | context items, packing, salience foundations |
 | Context compaction | `harness.context` | one planner plus ordered boundary/projector contributors | Planned | coordinator, strategies, turn-aware planning |
 | Artifact store | focused Harness artifact contract or Work owner | typed single or per-kind | Deferred | Product/Work artifact semantics remain unresolved |
-| Prompt | `harness.capabilities.prompt` | ordered-many | Admission foundation implemented | section composition and templates |
-| Skill | `harness.resources` plus Product selection | ordered-many | Admission foundation implemented | descriptor, discovery, resource overlay |
+| Prompt | `harness.capabilities.prompt` | ordered-many | Activation adopted by Coding | section composition and templates |
+| Skill | `harness.resources` plus Product selection | ordered-many | Activation adopted by Coding | descriptor, discovery, resource overlay |
 | Method | Method owner plus Product selection | ordered-many | Deferred | Method registry/contract remains outside this wave |
 | Resource roots and packages | `harness.resources` | ordered-many | Planned | discovery, merge, materialization, reload |
-| Tool pack | `harness.capabilities.tools` / `harness.tools` | ordered-many | Admission foundation implemented | activation, contributions, workspace packs |
-| Command pack | `harness.capabilities.commands` | ordered-many | Admission foundation implemented | catalog, conflict resolution, dispatch |
+| Tool pack | `harness.capabilities.tools` / `harness.tools` | ordered-many | Pack ordering adopted by Coding | activation, contributions, workspace packs |
+| Command pack | `harness.capabilities.commands` | ordered-many | Pack ordering adopted by Coding | catalog, conflict resolution, dispatch |
 | Model and auth selection | AI/Agent data owner plus Product policy | single or ordered policy chain | Deferred | model/auth remain outside current Harness ownership |
 | Policy and approval | `harness.policy` / `harness.approval` | chain and exclusive replacement | Planned | control-plane routing and approval broker |
 | Presentation and theme | presentation/channel owner | ordered-many, channel-local | Deferred | neutral presentation records and TUI theme primitives |
@@ -63,9 +63,11 @@ than the order in which current Coding files happen to appear.
 
 The active runtime-profile foundation provides deterministic selection and
 binding mechanics, but it does not reinterpret accepted RuntimeEvent, Store,
-or Transcript contracts. A capability adoption must still name its Product
-plan, factory boundary, durable snapshot, and compatibility probe before it
-changes runtime wiring.
+or Transcript contracts. The first capability wave adopts neutral resource
+activation and pack ordering without making a new selection durable. A later
+binding adoption must name its Product plan, factory boundary, durable
+snapshot, and compatibility probe before it makes a capability selectable at
+runtime.
 
 ## Relationship To Coding Session Reduction
 
