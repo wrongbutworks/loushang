@@ -42,6 +42,7 @@ from loushang.harness.config import (
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticRecord, StartupCheckResult
+from loushang.harness.resources.activation import apply_disabled_skills
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.layout import resolve_user_resource_roots
 from loushang.harness.resources.packages.roots import resolve_package_resource_roots
@@ -608,7 +609,7 @@ def _activate_resources(
     bundle = state.services.resource_loader.discover_resources(
         state.session_manager.get_cwd()
     )
-    bundle = _apply_disabled_skills(bundle, state.settings.disabled_skills)
+    bundle = apply_disabled_skills(bundle, state.settings.disabled_skills)
     _record_resource_diagnostics(
         diagnostics_service=state.services.diagnostics_service,
         diagnostics=bundle.diagnostics,
@@ -638,7 +639,7 @@ def _activate_extensions(
         session_id=state.session_id,
     )
     bundle = runner.discover_resources(bundle)
-    bundle = _apply_disabled_skills(bundle, state.settings.disabled_skills)
+    bundle = apply_disabled_skills(bundle, state.settings.disabled_skills)
     _record_resource_diagnostics(
         diagnostics_service=state.services.diagnostics_service,
         diagnostics=runner.get_diagnostics(),
@@ -1238,24 +1239,6 @@ def _replace_images_with_placeholder(message: Message) -> Message:
     if filtered == content:
         return message
     return replace(message, content=filtered)
-
-
-def _apply_disabled_skills(
-    resource_bundle: ResourceBundle,
-    disabled_skills: tuple[str, ...],
-) -> ResourceBundle:
-    if not disabled_skills:
-        return resource_bundle
-    disabled = {value for value in disabled_skills if value}
-    if not disabled:
-        return resource_bundle
-    return replace(
-        resource_bundle,
-        skills=[
-            replace(skill, enabled=False) if _skill_disabled(skill, disabled) else skill
-            for skill in resource_bundle.skills
-        ],
-    )
 
 
 def _record_package_lockfile_diagnostics(
