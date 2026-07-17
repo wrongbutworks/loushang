@@ -15,6 +15,9 @@ The component has three composable mechanisms:
   pre-run compaction, and Agent start hooks.
 - `AgentEventRouter` orders transcript commit, runtime publication, extension
   observation, retry, and post-turn compaction checks.
+- `ApplicationInputRuntime` routes standard application input through direct,
+  trigger-turn, next-turn, steering, and follow-up delivery while one injected
+  committer owns durable application-message records.
 
 ## Product Binding Contract
 
@@ -29,6 +32,7 @@ Harness owns only the ordering contract:
 input interception -> preflight -> queue or pre-run -> agent start
 agent message end -> transcript append -> runtime observation -> product observers
 agent end -> diagnostics -> retry decision -> compaction check
+direct application input -> commit -> context refresh -> Product projection
 ```
 
 An append failure stops later observation. A repeat after an observer failure
@@ -60,5 +64,7 @@ separate transcript-commit capability.
 ## Non-goals
 
 This component does not define Product prompt content, extension APIs,
-ApplicationMessage delivery semantics, retry/compaction policy, command
-execution, store selection, persistent events, or presentation projections.
+retry/compaction policy, command execution, store selection, persistent events,
+or presentation projections. Its ApplicationMessage contract is deliberately
+limited to in-process commit and direct-projection idempotence; it does not
+claim queue or cross-process exactly-once delivery.

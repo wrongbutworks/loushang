@@ -157,8 +157,9 @@ record meaning from a projected pseudo-Agent message.
 An application message carries a stable `application_message_id`, distinct from
 the durable `record_id`. A single `TranscriptCommitter` owns persistence for
 direct application messages and messages that pass through trigger-turn,
-next-turn, steering, or follow-up paths. Controllers, queues, and the Agent
-event router do not append those records independently.
+next-turn, steering, or follow-up paths.
+`harness.session.ApplicationInputRuntime` owns the delivery split; controllers,
+queues, and the Agent event router do not append those records independently.
 
 Within one process and session lifecycle:
 

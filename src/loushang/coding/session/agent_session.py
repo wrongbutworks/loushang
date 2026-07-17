@@ -109,7 +109,11 @@ from loushang.coding.session.types import (
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager, SessionRecord
 from loushang.coding.tools import ToolRegistry
-from loushang.harness.agent_transcript import AgentTranscriptContext, CommitResult
+from loushang.harness.agent_transcript import (
+    AgentTranscriptContext,
+    ApplicationMessage,
+    CommitResult,
+)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import (
     DiagnosticRecord,
@@ -138,6 +142,7 @@ from loushang.harness.resources.types import (
 )
 from loushang.harness.session import (
     AgentEventRouter,
+    ApplicationInputRuntime,
     PromptController,
     QueueController,
 )
@@ -360,11 +365,16 @@ class AgentSession:
             sleep_for_retry=lambda delay_ms, signal: _sleep_for_retry(delay_ms, signal),
             wait_for_idle=self.wait_for_idle,
         )
+        self._application_input_runtime = ApplicationInputRuntime(
+            commit_application_message=self.session_manager.commit_application_message,
+            queue=self._queue_controller,
+            project_direct=self._project_direct_application_message,
+            run_trigger_turn=lambda message: self._run_agent_prompt(message),
+        )
         self._extension_message_controller = ExtensionMessageController(
             agent=self.agent,
-            session_manager=self.session_manager,
             queue_controller=self._queue_controller,
-            dispatch_event=self._dispatch_event,
+            application_inputs=self._application_input_runtime,
             run_prompt=self._run_agent_prompt,
         )
         self._extension_provider_controller = ExtensionProviderController(
@@ -1749,6 +1759,20 @@ class AgentSession:
                 await self.agent.prompt(normalized_prompt, images=images)
 
         await self._host_runtime.run(operation)
+
+    async def _project_direct_application_message(
+        self,
+        message: ApplicationMessage,
+        record_id: str,
+    ) -> None:
+        self._apply_agent_transcript_context(
+            self.session_manager.build_session_context()
+        )
+        await self._dispatch_event({"type": "message_start", "message": message})
+        await self._dispatch_event(
+            {"type": "message_end", "message": message},
+            source_record_id=record_id,
+        )
 
     async def _emit_extension_agent_event(self, event: AgentEvent) -> None:
         await self._extension_event_sink.emit_agent_event(event)

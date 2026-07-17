@@ -103,7 +103,9 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
             root=Path("src/loushang/channel"),
             forbidden_prefixes=(
                 "loushang.agent",
+                "loushang.ai",
                 "loushang.coding",
+                "loushang.harness",
                 "loushang.method",
                 "loushang.tui",
             ),
@@ -254,6 +256,16 @@ def test_coding_session_uses_harness_runtime_events_as_the_only_internal_stream(
     assert "project_runtime_event_to_session_event" in session_source
 
 
+def test_extension_message_controller_is_a_product_api_adapter() -> None:
+    source = Path(
+        "src/loushang/coding/session/extension_message_controller.py"
+    ).read_text(encoding="utf-8")
+
+    assert "ApplicationInputRuntime" in source
+    assert "SessionManager" not in source
+    assert "append_message(" not in source
+
+
 def test_importing_channel_types_does_not_eagerly_load_agent_or_ai() -> None:
     script = """
 import importlib
@@ -268,6 +280,38 @@ forbidden = sorted(
     or name == "loushang.ai"
     or name.startswith("loushang.ai.")
     or name == "loushang.work.projection"
+)
+assert forbidden == [], forbidden
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_importing_channel_public_api_does_not_eagerly_load_runtime_or_products() -> (
+    None
+):
+    script = """
+import importlib
+import sys
+
+importlib.import_module("loushang.channel")
+forbidden = sorted(
+    name
+    for name in sys.modules
+    if name == "loushang.agent"
+    or name.startswith("loushang.agent.")
+    or name == "loushang.ai"
+    or name.startswith("loushang.ai.")
+    or name == "loushang.coding"
+    or name.startswith("loushang.coding.")
+    or name == "loushang.harness"
+    or name.startswith("loushang.harness.")
 )
 assert forbidden == [], forbidden
 """

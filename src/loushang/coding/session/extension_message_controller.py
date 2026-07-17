@@ -7,20 +7,17 @@ from uuid import uuid4
 
 from loushang.agent import Agent
 from loushang.ai.types import ImagePart
-from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import ApplicationMessage
-from loushang.harness.session import QueueController
+from loushang.harness.session import ApplicationInputRuntime, QueueController
 
-EventDispatcher = Callable[..., Awaitable[None]]
 RunPrompt = Callable[[object, list[ImagePart] | None], Awaitable[None]]
 
 
 @dataclass
 class ExtensionMessageController:
     agent: Agent
-    session_manager: SessionManager
     queue_controller: QueueController
-    dispatch_event: EventDispatcher
+    application_inputs: ApplicationInputRuntime
     run_prompt: RunPrompt | None = None
 
     async def send_message(
@@ -55,30 +52,7 @@ class ExtensionMessageController:
             origin="extension",
             delivery_mode=delivery_mode,
         )
-        if deliver_as in {"nextTurn", "next_turn"}:
-            self.queue_controller.append_next_turn_message(app_message)
-            return
-        if self.agent.is_streaming:
-            if deliver_as == "followUp" or deliver_as == "follow_up":
-                self.queue_controller.queue_follow_up_message(
-                    _custom_message_text(app_message), app_message
-                )
-            else:
-                self.queue_controller.queue_steering_message(
-                    _custom_message_text(app_message), app_message
-                )
-            return
-        if trigger_turn:
-            await self._send_message_async(app_message)
-            return
-        record_id = await self.session_manager.append_message(app_message)
-        session_context = self.session_manager.build_session_context()
-        self.agent.state.set_messages(session_context.messages)
-        await self.dispatch_event({"type": "message_start", "message": app_message})
-        await self.dispatch_event(
-            {"type": "message_end", "message": app_message},
-            source_record_id=record_id,
-        )
+        await self.application_inputs.deliver(app_message)
 
     async def send_user_message(
         self, content: object, options: object | None = None
@@ -99,10 +73,7 @@ class ExtensionMessageController:
         await self._run_prompt(text, images=images)
 
     def has_pending_messages(self) -> bool:
-        return self.queue_controller.has_pending_messages()
-
-    async def _send_message_async(self, app_message) -> None:
-        await self._run_prompt(app_message)
+        return self.application_inputs.has_pending_messages()
 
     async def _run_prompt(
         self,
@@ -150,28 +121,6 @@ def _content_part_text(part: object) -> str | None:
         return value if isinstance(value, str) else None
     value = getattr(part, "text", None)
     return value if isinstance(value, str) else None
-
-
-def _custom_message_text(message: object) -> str:
-    content = getattr(message, "content", "")
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        text_parts: list[str] = []
-        has_non_text = False
-        for part in content:
-            part_type = _content_part_type(part)
-            if part_type == "text":
-                text = _content_part_text(part)
-                if text:
-                    text_parts.append(text)
-            else:
-                has_non_text = True
-        if text_parts:
-            return "\n".join(text_parts)
-        if has_non_text:
-            return "[image]"
-    return str(content)
 
 
 def _delivery_mode(*, deliver_as: object, trigger_turn: bool, streaming: bool):
