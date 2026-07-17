@@ -3,12 +3,16 @@ from __future__ import annotations
 from loushang.harnesstui.settings.page import ConfigSettingsPage
 from loushang.tui import InputEvent, InputIntent, RenderConstraints
 from loushang.tui.cell_width import strip_control_sequences
-from loushang.tui.settings import ConfigRow
+from loushang.tui.settings import ConfigRow, SettingsListPage
 
 
 def _lines(page: ConfigSettingsPage, *, height: int = 12) -> tuple[str, ...]:
     result = page.render(RenderConstraints(width=72, max_height=height))
     return tuple(strip_control_sequences(line.text) for line in result.lines)
+
+
+def test_config_settings_page_is_tui_settings_list_page_compatibility_alias() -> None:
+    assert ConfigSettingsPage is SettingsListPage
 
 
 def test_config_settings_page_renders_and_filters_rows() -> None:

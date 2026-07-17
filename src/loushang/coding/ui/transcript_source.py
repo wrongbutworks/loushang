@@ -1,19 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
 from loushang.coding.ui.screen_state import ScreenCodingTuiState
 from loushang.coding.ui.session_history import session_history_records
-from loushang.harnesstui.conversation.source import TranscriptSnapshot, TranscriptSource
-from loushang.tui.transcript import (
-    AssistantMessageRecord,
-    ContextCompactionRecord,
-    DisplayRecord,
-    ToolExecutionRecord,
-    UserPromptRecord,
+from loushang.harnesstui.conversation.source import (
+    TranscriptSnapshot,
+    TranscriptSource,
+    merge_history_and_active_records,
+    recent_assistant_texts,
 )
+from loushang.tui.transcript import DisplayRecord
 
 
 # Transcript reader sources intentionally separate three data shapes:
@@ -33,7 +31,7 @@ class ActiveWindowTranscriptSource:
         )
 
     def recent_assistant_texts(self) -> tuple[str, ...]:
-        return _recent_assistant_texts(_active_window_records(self.state))
+        return recent_assistant_texts(_active_window_records(self.state))
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +53,9 @@ class SessionTranscriptSource:
         source_label = self.source_label
         if self.active_window_state is not None:
             active_records = _active_window_records(self.active_window_state)
-            merged_records = _merge_active_window_records(session_records, active_records)
+            merged_records = merge_history_and_active_records(
+                session_records, active_records
+            )
             if merged_records != session_records:
                 records = merged_records
                 complete = False
@@ -68,17 +68,7 @@ class SessionTranscriptSource:
         )
 
     def recent_assistant_texts(self) -> tuple[str, ...]:
-        return _recent_assistant_texts(self.snapshot().records)
-
-
-def _recent_assistant_texts(records: Iterable[DisplayRecord]) -> tuple[str, ...]:
-    texts: list[str] = []
-    for record in reversed(tuple(records)):
-        if not isinstance(record, AssistantMessageRecord):
-            continue
-        if record.text.strip():
-            texts.append(record.text)
-    return tuple(texts)
+        return recent_assistant_texts(self.snapshot().records)
 
 
 def _active_window_records(state: ScreenCodingTuiState) -> tuple[DisplayRecord, ...]:
@@ -87,40 +77,6 @@ def _active_window_records(state: ScreenCodingTuiState) -> tuple[DisplayRecord, 
     if assistant_draft is not None:
         return (*records, assistant_draft)
     return records
-
-
-def _merge_active_window_records(
-    session_records: tuple[DisplayRecord, ...],
-    active_records: tuple[DisplayRecord, ...],
-) -> tuple[DisplayRecord, ...]:
-    if not active_records:
-        return session_records
-    overlap = _decorated_suffix_prefix_overlap(session_records, active_records)
-    if overlap is None:
-        return (*session_records, *active_records)
-    session_start, active_start = overlap
-    return (*session_records[:session_start], *active_records[active_start:])
-
-
-def _decorated_suffix_prefix_overlap(
-    left: tuple[DisplayRecord, ...],
-    right: tuple[DisplayRecord, ...],
-) -> tuple[int, int] | None:
-    right_history_records = tuple(
-        (index, record) for index, record in enumerate(right) if _history_projected_record(record)
-    )
-    max_overlap = min(len(left), len(right_history_records))
-    for overlap_count in range(max_overlap, 0, -1):
-        right_prefix = tuple(record for _, record in right_history_records[:overlap_count])
-        if left[-overlap_count:] == right_prefix:
-            return len(left) - overlap_count, 0
-    return None
-
-
-def _history_projected_record(record: DisplayRecord) -> bool:
-    if isinstance(record, AssistantMessageRecord):
-        return record.stable
-    return isinstance(record, (UserPromptRecord, ToolExecutionRecord, ContextCompactionRecord))
 
 
 __all__ = [

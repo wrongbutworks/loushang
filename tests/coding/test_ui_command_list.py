@@ -38,6 +38,13 @@ class _BuiltinSession:
         return list_builtin_command_descriptors()
 
 
+def test_command_list_keeps_completion_item_compatibility_alias() -> None:
+    from loushang.coding.ui.command_list import CompletionItem as CodingCompletionItem
+    from loushang.tui import CompletionItem
+
+    assert CodingCompletionItem is CompletionItem
+
+
 def test_format_session_commands_lists_sorted_commands() -> None:
     from loushang.coding.ui.command_list import format_session_commands
 

@@ -1,124 +1,80 @@
 from __future__ import annotations
 
+from loushang.coding.control import StatusLineControlSettings
+from loushang.harnesstui.status.line import (
+    StatusLineSettings,
+    status_line_settings_to_patch,
+)
 
-def test_status_provider_tracks_statusline_visibility() -> None:
-    from loushang.coding.ui.status_line import StatusLineSettings
+
+class _SettingsManager:
+    def __init__(self, settings: object) -> None:
+        self.settings = settings
+        self.saved: list[tuple[dict[str, object], str]] = []
+
+    def get_statusline_settings(self) -> object:
+        return self.settings
+
+    def set_statusline_settings(self, patch: dict[str, object], *, scope: str) -> None:
+        self.saved.append((patch, scope))
+
+
+def test_status_provider_compatibility_export_is_identical() -> None:
     from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+    from loushang.harnesstui.status.provider import StatusProvider
 
-    saved: list[StatusLineSettings] = []
-    provider = CodingTuiStatusProvider(
-        model_label=None,
-        cwd="/repo",
-        branch=None,
-        session_label=lambda: None,
-        thinking_level=lambda: None,
-        running=lambda: False,
-        statusline_settings=StatusLineSettings(enabled=False, style="muted"),
-        on_statusline_settings_changed=saved.append,
+    assert CodingTuiStatusProvider is StatusProvider
+
+
+def test_status_snapshot_compatibility_export_is_identical() -> None:
+    from loushang.coding.ui.status_provider import (
+        StatusSnapshot as CodingStatusSnapshot,
+    )
+    from loushang.harnesstui.status.snapshot import StatusSnapshot
+
+    assert CodingStatusSnapshot is StatusSnapshot
+
+
+def test_statusline_settings_adapter_reads_settings_manager() -> None:
+    from loushang.coding.ui.status_provider import (
+        statusline_settings_from_settings_manager,
     )
 
-    assert provider.is_visible() is False
-    assert provider.statusline_settings() == StatusLineSettings(enabled=False, style="muted")
-    assert provider.set_visible(True) == "Status line: on"
-    assert provider.is_visible() is True
-    assert provider.statusline_settings().enabled is True
-    assert provider.set_visible(None) == "Status line: on"
-    assert saved == [StatusLineSettings(enabled=True, style="muted")]
-
-
-def test_status_provider_applies_full_statusline_settings() -> None:
-    from loushang.coding.ui.status_line import StatusLineSettings
-    from loushang.coding.ui.status_provider import CodingTuiStatusProvider
-
-    saved: list[StatusLineSettings] = []
-    provider = CodingTuiStatusProvider(
-        model_label=None,
-        cwd="/repo",
-        branch=None,
-        session_label=lambda: None,
-        thinking_level=lambda: None,
-        running=lambda: False,
-        on_statusline_settings_changed=saved.append,
+    control_settings = StatusLineControlSettings(
+        enabled=False,
+        queue="true",
+        separator="dot",
+        style="muted",
     )
-    settings = StatusLineSettings(enabled=False, queue="true", message="false", separator="dot", style="muted")
+    manager = _SettingsManager(control_settings)
 
-    assert provider.apply_statusline_settings(settings) == "Status line: off"
+    assert statusline_settings_from_settings_manager(manager) == StatusLineSettings(
+        enabled=False,
+        queue="true",
+        separator="dot",
+        style="muted",
+    )
+    assert statusline_settings_from_settings_manager(None) is None
+    assert statusline_settings_from_settings_manager(object()) is None
 
-    assert provider.statusline_settings() == settings
-    assert provider.is_visible() is False
-    assert saved == [settings]
 
-
-def test_status_provider_applies_individual_statusline_settings() -> None:
-    from loushang.coding.ui.status_line import StatusLineSettings
-    from loushang.coding.ui.status_provider import CodingTuiStatusProvider
-
-    saved: list[StatusLineSettings] = []
-    provider = CodingTuiStatusProvider(
-        model_label=None,
-        cwd="/repo",
-        branch=None,
-        session_label=lambda: None,
-        thinking_level=lambda: None,
-        running=lambda: False,
-        on_statusline_settings_changed=saved.append,
+def test_statusline_settings_adapter_persists_patch_in_requested_scope() -> None:
+    from loushang.coding.ui.status_provider import (
+        statusline_settings_persistence_callback,
     )
 
-    assert provider.apply_statusline_setting("statusline.enabled", "false") == "Status line: off"
-    assert provider.apply_statusline_setting("statusline.field.queue", "true") == "Status line queue: true"
-    assert provider.apply_statusline_setting("statusline.separator", "dot") == "Status line separator: dot"
-    assert provider.apply_statusline_setting("statusline.style", "plain") == "Status line style: plain"
+    settings = StatusLineSettings(enabled=False, queue="true", style="plain")
+    manager = _SettingsManager(StatusLineSettings())
 
-    settings = provider.statusline_settings()
-    assert settings.enabled is False
-    assert settings.queue == "true"
-    assert settings.separator == "dot"
-    assert settings.style == "plain"
-    assert saved == [
-        StatusLineSettings(enabled=False),
-        StatusLineSettings(enabled=False, queue="true"),
-        StatusLineSettings(enabled=False, queue="true", separator="dot"),
-        StatusLineSettings(enabled=False, queue="true", separator="dot", style="plain"),
-    ]
+    callback = statusline_settings_persistence_callback(manager, scope="workspace")
 
+    assert callback is not None
+    callback(settings)
+    assert manager.saved == [(status_line_settings_to_patch(settings), "workspace")]
 
-def test_status_provider_rejects_invalid_statusline_setting_values() -> None:
-    from loushang.coding.ui.status_line import StatusLineSettings
-    from loushang.coding.ui.status_provider import CodingTuiStatusProvider
-
-    saved: list[StatusLineSettings] = []
-    provider = CodingTuiStatusProvider(
-        model_label=None,
-        cwd="/repo",
-        branch=None,
-        session_label=lambda: None,
-        thinking_level=lambda: None,
-        running=lambda: False,
-        on_statusline_settings_changed=saved.append,
-    )
-
-    assert provider.apply_statusline_setting("statusline.field.queue", "maybe") == "Invalid status line queue value."
-    assert provider.apply_statusline_setting("statusline.separator", "slash") == "Invalid status line separator value."
-    assert provider.apply_statusline_setting("statusline.unknown", "true") == "Unknown status line setting: statusline.unknown"
-    assert provider.statusline_settings().queue == "auto"
-    assert provider.statusline_settings().separator == "pipe"
-    assert saved == []
-
-
-def test_status_provider_formats_plain_settings_summary_without_legacy_tui_models() -> None:
-    from loushang.coding.ui.status_provider import CodingTuiStatusProvider
-
-    provider = CodingTuiStatusProvider(
-        model_label="moonshot/kimi",
-        cwd="/repo",
-        branch="main",
-        session_label=lambda: "abc",
-        thinking_level=lambda: "high",
-        running=lambda: False,
-    )
-
-    assert provider.settings_summary_text() == "Settings\nStatus line: true"
-    assert not hasattr(provider, "legacy_settings_list")
-    assert not hasattr(provider, "legacy_settings_text")
-    provider.set_visible(False)
-    assert provider.settings_summary_text() == "Settings\nStatus line: false"
+    default_callback = statusline_settings_persistence_callback(manager)
+    assert default_callback is not None
+    default_callback(settings)
+    assert manager.saved[-1] == (status_line_settings_to_patch(settings), "global")
+    assert statusline_settings_persistence_callback(None) is None
+    assert statusline_settings_persistence_callback(object()) is None

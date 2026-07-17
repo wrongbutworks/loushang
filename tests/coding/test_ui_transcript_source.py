@@ -147,6 +147,35 @@ def test_session_transcript_source_merges_live_active_window_records() -> None:
     )
 
 
+def test_session_transcript_source_keeps_complete_metadata_for_identical_window() -> None:
+    session = _Session(
+        messages=[
+            UserMessage(role="user", content=[TextPart(type="text", text="full question")], timestamp=1.0),
+            _assistant_message("full answer", timestamp=2.0),
+        ]
+    )
+    state = ScreenCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state.replace_transcript_window(
+        (
+            UserPromptRecord("full question"),
+            AssistantMessageRecord("full answer", stable=True),
+        )
+    )
+
+    snapshot = SessionTranscriptSource(
+        session,
+        source_label="Session history",
+        active_window_state=state,
+    ).snapshot()
+
+    assert snapshot.complete is True
+    assert snapshot.source_label == "Session history"
+    assert snapshot.records == (
+        UserPromptRecord("full question"),
+        AssistantMessageRecord("full answer", stable=True),
+    )
+
+
 def test_session_transcript_source_deduplicates_decorated_active_window_history() -> None:
     session = _Session(
         messages=[
