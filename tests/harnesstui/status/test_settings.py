@@ -52,3 +52,55 @@ def test_statusline_page_keeps_preview_layout() -> None:
 
     assert "Preview" in [line.text for line in result.lines]
     assert any("model" in line.text and "repo" in line.text for line in result.lines)
+
+
+def test_statusline_page_keeps_compact_height_and_cursor_contract() -> None:
+    page = shared_settings.StatusLineSettingsPage(
+        statusline_settings=StatusLineSettings(),
+        statusline_preview=lambda: StatusLinePreviewSnapshot(
+            model_label=None,
+            cwd="/workspace",
+            branch=None,
+            session_label=None,
+            running=False,
+        ),
+    )
+    page.focus()
+
+    compact = page.render(RenderConstraints(width=60, max_height=6))
+    expanded = page.render(RenderConstraints(width=60, max_height=7))
+    compact_lines = tuple(line.text for line in compact.lines)
+    expanded_lines = tuple(line.text for line in expanded.lines)
+
+    assert not any("Setting" in line and "Value" in line for line in compact_lines)
+    assert "Preview" not in compact_lines
+    assert any("Setting" in line and "Value" in line for line in expanded_lines)
+    assert "Preview" in expanded_lines
+    assert compact.cursor is not None and compact.cursor.row == 1
+    assert expanded.cursor is not None and expanded.cursor.row == 1
+
+
+def test_statusline_page_updates_composed_rows_without_replacing_public_list() -> None:
+    page = shared_settings.StatusLineSettingsPage(
+        statusline_settings=StatusLineSettings(),
+        statusline_preview=lambda: StatusLinePreviewSnapshot(
+            model_label=None,
+            cwd="/workspace",
+            branch=None,
+            session_label=None,
+            running=False,
+        ),
+    )
+    public_list = page.settings
+    page.focus()
+    page.settings.focus_list()
+
+    page.set_statusline_settings(
+        StatusLineSettings(enabled=False),
+        preserve_active_key="statusline.enabled",
+    )
+
+    assert page.settings is public_list
+    assert page.settings.active_item is not None
+    assert page.settings.active_item.key == "statusline.enabled"
+    assert page.settings.active_item.value == "false"

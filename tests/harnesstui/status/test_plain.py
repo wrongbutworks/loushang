@@ -1,21 +1,12 @@
 from __future__ import annotations
 
-
-def test_plain_toolbar_compatibility_exports_are_identical() -> None:
-    from loushang.coding.ui import plain_toolbar as coding_plain_toolbar
-    from loushang.harnesstui.status import plain as shared_plain_toolbar
-
-    assert coding_plain_toolbar.__all__ == shared_plain_toolbar.__all__
-    for name in shared_plain_toolbar.__all__:
-        assert getattr(coding_plain_toolbar, name) is getattr(shared_plain_toolbar, name)
+from loushang.harnesstui.status.plain import (
+    PlainToolbarSnapshot,
+    render_plain_toolbar,
+)
 
 
 def test_render_plain_toolbar_omits_empty_fields() -> None:
-    from loushang.coding.ui.plain_toolbar import (
-        PlainToolbarSnapshot,
-        render_plain_toolbar,
-    )
-
     snapshot = PlainToolbarSnapshot(
         model="moonshot/kimi-for-coding",
         cwd="/repo",
@@ -32,11 +23,6 @@ def test_render_plain_toolbar_omits_empty_fields() -> None:
 
 
 def test_render_plain_toolbar_can_return_single_fixed_width_line() -> None:
-    from loushang.coding.ui.plain_toolbar import (
-        PlainToolbarSnapshot,
-        render_plain_toolbar,
-    )
-
     snapshot = PlainToolbarSnapshot(
         model="moonshot/kimi-for-coding",
         cwd="/a/very/long/repository/path",

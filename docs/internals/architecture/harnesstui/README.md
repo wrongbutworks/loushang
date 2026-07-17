@@ -83,6 +83,12 @@ values and decides when those values change. This capability is not the generic
 styling primitives, invalidation, and frame rendering. Harnesstui must not
 reach into those mechanics or introduce a second status-bar runtime.
 
+`loushang.harnesstui.status.snapshot` owns the neutral status facts populated by
+a product status provider. `loushang.harnesstui.status.plain` owns the compact,
+line-oriented toolbar projection over presentation-ready status values. Coding
+continues to own live Session reads, settings persistence, and provider update
+timing; its former status and toolbar imports are direct compatibility aliases.
+
 These explicit module paths are the stable imports for this slice. The package
 initializers do not need to provide convenience re-exports.
 
@@ -130,26 +136,65 @@ package initializer does not provide a convenience re-export.
 
 Generic settings vocabulary belongs to the terminal framework.
 `loushang.tui.settings` owns `ConfigRow`, the shared settings theme, value
-formatting, row lookup, and input helpers. It has no Harness or product
-dependency and can be used by any terminal application.
+formatting, row lookup, input helpers, and the reusable `SettingsListPage`.
+It has no Harness or product dependency and can be used by any terminal
+application.
 
 Harnesstui owns the reusable interaction assembled from those generic widgets:
 
-- `loushang.harnesstui.settings.page` owns `ConfigSettingsPage`;
+- `loushang.harnesstui.settings.page` provides the compatibility name
+  `ConfigSettingsPage` for the generic TUI settings list;
+- `loushang.harnesstui.settings.dashboard` owns the tabbed settings shell,
+  static information pages, focus/footer interaction, and neutral status and
+  usage view-models;
+- `loushang.harnesstui.settings.model` owns model-settings interaction over
+  product-supplied neutral choices;
 - `loushang.harnesstui.status.settings` owns status-line settings rows, preview,
   and interaction over the neutral status profile;
 - `loushang.harnesstui.surface.view` owns the framed bottom-surface view and its
   information-panel scrolling behavior;
+- `loushang.harnesstui.surface.factory` owns pure information and command
+  surface builders over presentation-ready text and neutral `SelectItem`
+  values;
 - `loushang.harnesstui.selection.model` owns scoped/all model selection over
-  product-supplied `SelectItem` values.
+  product-supplied `SelectItem` values;
+- `loushang.harnesstui.selection.catalog` owns the opaque `ModelChoice` and its
+  text, completion, palette, matching, settings-list, and selector-row
+  projections;
+- `loushang.harnesstui.commands.presentation` owns duck-typed command text,
+  completion, palette, matching, display ordering, and selector-row
+  projection.
 
 These modules own interaction mechanics, layout, existing copy, and visual
 behavior, but not product data or decisions. Coding continues to own settings
-manager persistence, model discovery and selection, status providers, command
-and approval routing, surface lifecycle, and construction of the neutral rows
-and selection items. Generic `Surface`, `SurfaceHost`, `SelectionSurface`, and
-`SearchableList` mechanics remain in `loushang.tui`.
+manager persistence, model and command discovery, model application, command
+catalog and slash-command policy, status-provider updates, approval routing,
+surface lifecycle, and adaptation of product data into neutral labels and
+choices. Generic
+`Surface`, `SurfaceHost`, `SelectionSurface`, and `SearchableList` mechanics
+remain in `loushang.tui`.
+
+The model settings page emits the shared UI intent
+`InputIntent(kind="setting", text="model.current", note=<choice value>)`.
+Products decide how that opaque choice value is resolved, applied, and
+persisted; Harnesstui never calls a Session or settings manager.
 
 Compatibility modules in `loushang.coding.ui` re-export the moved class objects
 without subclassing or wrapping them. The explicit module paths above are the
 stable imports; package initializers do not add convenience re-exports.
+
+## Quality Gate
+
+Run `make check-harnesstui` for the product-neutral composition boundary. The
+gate lints and type-checks Harnesstui, its shared TUI settings vocabulary, and
+the explicit Coding adapters, then runs Harnesstui, import-boundary, and direct
+Coding integration tests. Marked render-contract cases are excluded from this
+behavior gate and remain owned by the independent render-performance job.
+Known dynamic dataclass-replacement typing limitations are suppressed only at
+the exact expressions involved; the enclosing adapters remain under the normal
+mypy gate so new diagnostics are enforced.
+
+The deterministic render-performance contract remains a separate gate. Run
+`make test-tui-render-contract` independently when changing render-path code or
+moving a marked contract test; `check-harnesstui` does not change or duplicate
+its thresholds.
