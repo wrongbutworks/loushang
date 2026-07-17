@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from loushang.coding.ui.status_line import StatusLineSettings
+from loushang.harnesstui.status.line import StatusLineSettings
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     DisplayRecord,

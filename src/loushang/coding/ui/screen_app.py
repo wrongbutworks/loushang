@@ -8,13 +8,6 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from loushang.coding.ui.screen_state import ScreenCodingTuiState, ScreenTranscriptWindow
-from loushang.coding.ui.status_line import (
-    StatusLinePreviewSnapshot,
-    StatusLineSettings,
-    status_line_fields,
-    status_line_separator,
-    status_line_style_mode,
-)
 from loushang.coding.ui.transcript_source import ActiveWindowTranscriptSource
 from loushang.coding.ui.transcript_style import apply_coding_transcript_style
 from loushang.harness.tools.workspace.output_preview import (
@@ -25,6 +18,13 @@ from loushang.harness.tools.workspace.output_preview import (
 )
 from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
 from loushang.harnesstui.conversation.source import TranscriptSource
+from loushang.harnesstui.status.line import (
+    StatusLinePreviewSnapshot,
+    StatusLineSettings,
+    status_line_fields,
+    status_line_separator,
+    status_line_style_mode,
+)
 from loushang.tui import (
     BottomFrame,
     Composer,

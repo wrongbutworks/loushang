@@ -19,6 +19,9 @@ This layer owns reusable Harness-oriented terminal interaction, including:
 
 - adapting neutral conversation snapshots and actions to TUI records and
   surfaces;
+- neutral tool-result views, transcript blocks, and deterministic presentation
+  projection;
+- shared Harness status profiles that product shells can populate and present;
 - reusable conversation reading, pending/working presentation, and input
   coordination;
 - UI-side approval presentation and decision routing after the neutral Harness
@@ -49,3 +52,32 @@ The stable imports introduced by this slice are the explicit module paths
 `loushang.harnesstui.conversation.reader` and
 `loushang.harnesstui.conversation.source`. The conversation package does not
 yet expose a broader convenience API.
+
+## Tool Transcript and Status Profile
+
+This migration slice adds two reusable presentation capabilities without
+moving product event interpretation into this package.
+
+`loushang.harnesstui.conversation.tool_transcript` owns the neutral tool-result
+view and the display contracts used to project tool activity into conversation
+records. Its inputs describe presentation-ready facts rather than Agent or
+provider objects. Deterministic transcript status, block construction, and
+record projection belong here because they are reusable across Harness-backed
+terminal products.
+
+`loushang.coding.ui` remains responsible for adapting raw `AgentToolResult`
+instances and runtime events into that neutral view. It also retains product
+policy: which events are visible, product-specific labels and commands,
+redaction, and any decision that requires Coding runtime state. This keeps the
+dependency pointing from Coding into Harnesstui and prevents Agent event types
+from becoming presentation contracts.
+
+`loushang.harnesstui.status.line` owns a shared Harness status profile and its
+product-neutral presentation rules. A product shell supplies the profile's
+values and decides when those values change. This capability is not the generic
+`loushang.tui` status-bar mechanism: TUI continues to own the widget, layout,
+styling primitives, invalidation, and frame rendering. Harnesstui must not
+reach into those mechanics or introduce a second status-bar runtime.
+
+These explicit module paths are the stable imports for this slice. The package
+initializers do not need to provide convenience re-exports.

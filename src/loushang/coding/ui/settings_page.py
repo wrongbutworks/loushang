@@ -25,11 +25,11 @@ from loushang.coding.ui.settings_config import (
     manager_bool_config,
 )
 from loushang.coding.ui.settings_status_line import StatusLineSettingsPage
-from loushang.coding.ui.status_line import (
+from loushang.coding.ui.status_provider import CodingTuiStatusProvider, StatusSnapshot
+from loushang.harnesstui.status.line import (
     StatusLinePreviewSnapshot,
     StatusLineSettings,
 )
-from loushang.coding.ui.status_provider import CodingTuiStatusProvider, StatusSnapshot
 from loushang.tui import (
     CursorDeclaration,
     InputEvent,

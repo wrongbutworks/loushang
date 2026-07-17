@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
-from loushang.coding.ui.status_line import (
+from loushang.harnesstui.status.line import (
     StatusLineSettings,
     status_line_settings_from_control,
     status_line_settings_to_patch,
