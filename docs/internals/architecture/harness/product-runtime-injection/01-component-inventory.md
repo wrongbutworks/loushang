@@ -2,8 +2,9 @@
 
 ## Status
 
-Proposed design index. This is a directory of future binding components, not a
-claim that every component or contribution surface is implemented.
+The runtime-profile and binding-lifecycle foundation is implemented. This
+remains a directory of capability-specific future binding components, not a
+claim that every contribution surface is implemented.
 
 ## Common Detailed-Design Template
 
@@ -25,8 +26,8 @@ rules.
 
 | Component | Intended Harness owner | Slot shape | Initial detailed-design status | Current foundation |
 | --- | --- | --- | --- | --- |
-| Runtime profile resolution | `harness.runtime` / `harness.config` | profile root | Planned | layered config, activation DAG, runtime bindings |
-| Binding lifecycle | `harness.runtime` / `harness.host` | lifecycle coordinator | Planned | binding leases, transitions, host lifecycle |
+| Runtime profile resolution | `harness.runtime` | profile root | Implemented; Coding adopted | `ProductRuntimePlan`, deterministic resolver, JSON snapshot, diagnostics |
+| Binding lifecycle | `harness.runtime` | lifecycle coordinator | Implemented; Coding adopted | explicit factory registry/binder, sealed/turn refresh, generation leases |
 | Conversation store | `harness.storage` | single, session-sealed | Planned | `ConversationStore`, Memory/File adapters |
 | Transcript profile | `harness.agent_transcript` | single, session-sealed | Planned | common Agent profile, codec registry, commit service |
 | Memory | `harness.context` | ordered-many | Planned | context items, packing, salience foundations |
@@ -51,7 +52,7 @@ than the order in which current Coding files happen to appear.
 
 | Migration wave | Components prepared by this design | Current Coding migration relationship | Required design gate before code |
 | --- | --- | --- | --- |
-| 0. Design baseline | requirements, profile resolution, lifecycle inventory | Current `harness/session-runtime-events` work continues unchanged. | Accept this directory; no runtime API claim. |
+| 0. Runtime profile foundation | requirements, profile resolution, binding lifecycle | `harness.runtime.profile` supplies the common contract; `coding.runtime_profile` is the first Product plan for store, transcript, and compaction defaults. | `runtime-profile-resolution.md` and contract tests. |
 | 1. Session coordination | binding lifecycle, prompt, tool/command contribution hooks | Reduce `coding.session` event, prompt, and queue coordination to Product adapters over Harness runtime/host mechanisms. | Runtime profile resolution and binding lifecycle designs. |
 | 2. Transcript and durable store | conversation store, transcript profile | Extend existing direct Store injection to declared profile selection; preserve sealed session semantics. | Conversation store and transcript profile binding designs. |
 | 3. Context runtime | memory and context compaction | Replace Coding-only selection/default wiring with Product-selected planners, reducers, and projectors. | Memory and compaction binding designs. |
@@ -60,12 +61,11 @@ than the order in which current Coding files happen to appear.
 
 ## Current-Branch Boundary
 
-The active `harness/session-runtime-events` branch provides ordered RuntimeEvent
-facts and the Scenario runtime provides a product-neutral consumer contract.
-They are prerequisites for observability and testing, but they are not a
-runtime profile resolver. No component in this inventory may reinterpret or
-replace the accepted RuntimeEvent or Store contracts without an explicit
-follow-up design.
+The active runtime-profile foundation provides deterministic selection and
+binding mechanics, but it does not reinterpret accepted RuntimeEvent, Store,
+or Transcript contracts. A capability adoption must still name its Product
+plan, factory boundary, durable snapshot, and compatibility probe before it
+changes runtime wiring.
 
 ## Relationship To Coding Session Reduction
 

@@ -32,13 +32,17 @@ sufficient.
 ## Product Runtime Injection Planning
 
 The current ownership inventory remains authoritative for what has migrated
-and what still belongs to Coding. The proposed
+and what still belongs to Coding. The implemented
 [Product Runtime Injection Architecture](product-runtime-injection/README.md)
-defines the next-level composition requirements: how Products select shared
-capabilities, how OEM and extension contributions are controlled, and which
-capability binding design must be accepted before a corresponding migration
-wave changes runtime wiring. It does not change the classification of an entry
-until implementation and validation land.
+now provides a Product-neutral runtime-profile resolver, strict snapshot,
+factory registry, session sealing, and turn-boundary rebinding. Coding now
+adopts a product-owned plan for its existing file/memory store, current Agent
+transcript profile, and default compaction behavior. `SessionManager` binds
+those factories for create/load/fork and persists the resolved snapshot; Coding
+does not recreate selection or lifecycle mechanics. Coding still owns the
+`persist` decision, file layout, compaction prompt/model behavior, and all
+future OEM/extension admission policy. The implementation does not change the
+classification of unrelated entries.
 
 ## Current Package Inventory
 
@@ -78,7 +82,7 @@ until implementation and validation land.
 | `coding.mode` | Keep product | Transitional print/RPC mode adapters stay coding until channel is implemented. RPC now uses an explicit transport projection for known dataclasses, paths, mappings, lists, and tuples while rejecting cycles, sets, arbitrary objects, `__dict__` discovery, non-finite floats, and `repr()` fallback. |
 | `coding.cli` | Keep product | Product CLI. It may expose harness-backed behavior but remains coding-owned. |
 | `coding.message` | Migrated and removed | `harness.conversation` owns the neutral envelope, repository, replay, and opaque-record behavior. The optional `harness.agent_transcript` profile owns standard Agent transcript payloads, codecs, state/context projection, the pure record factory, idempotent application-message commit, and an explicit Session v3 external importer. Native Product load accepts only the current format. Coding keeps only product presentation and orchestration policy. |
-| `coding.store` | Product adapter | `ConversationStore`, revision/CAS semantics, Memory/File backends, and the open Agent transcript service live in Harness. Coding's async `SessionManager` composes those owners and keeps the Native codec/journal factory, session directory and filename layout, Product summary/search/index fields, naming, retention, recovery, backend selection, and CLI/UI policy. Database/Redis providers and journal-offset projection checkpoints remain deferred. |
+| `coding.store` | Product adapter | `ConversationStore`, revision/CAS semantics, Memory/File backends, and the open Agent transcript service live in Harness. Coding's `ProductRuntimePlan` now binds its file/memory store and transcript profile selections for every create/load/fork, while `SessionManager` keeps the Native codec/journal factory, session directory and filename layout, Product summary/search/index fields, naming, retention, recovery, the `persist` choice, and CLI/UI policy. Database/Redis providers and journal-offset projection checkpoints remain deferred. |
 | `coding.control` | Product adapter | Transactional ordered layers and persistence, `ConfigFieldSpec` / `SchemaConfigCodec`, scoped revisions and `ConfigChange` records, subscriptions, issue collection, injected-runner value resolution, and the explicit activation DAG live in `loushang.harness.config`. Coding keeps `ControlConfig`, fields, defaults, validation, paths, removed-setting compatibility, convenience APIs, diagnostic wording, effect selection/order/callbacks, provider registration, credential handling, model/auth interpretation, persisted selection policy, commands, and UI. Harness neither executes shell commands nor stores credentials; `ModelRegistry` and `AuthManager` do not move. |
 | `coding.package`, `coding.plugin`, `coding.resources`, `coding.skill` | Split candidate | Package source/manifest/materialization, standard roots/layout, registry/resolver, discovery, and skill-loading mechanisms now live under `loushang.harness.resources`. Coding keeps built-in content registration, compatibility convention activation, additional roots, trust/approval policy, settings/CLI projection, and compatibility facades. |
 | `coding.workflow` | Compatibility shim / Product adapter | `loushang.harness.scenario` owns workflow schema, parser, runner, cancellation, waiting, event patterns, result values, fake adapter, read-only file assertions, and the injected command-runner protocol. Coding keeps CLI/reporting, model readiness, scenario activation, legacy local-shell execution policy, and compatibility exports. |
