@@ -115,6 +115,13 @@ class _AmbiguousDuplicateEndpointSession(_DuplicateEndpointSession):
             detail.preferred_endpoint = False
 
 
+def test_model_choice_is_the_shared_harnesstui_view_model() -> None:
+    from loushang.coding.ui.model_list import ModelChoice as CodingModelChoice
+    from loushang.harnesstui.selection.catalog import ModelChoice
+
+    assert CodingModelChoice is ModelChoice
+
+
 def test_format_available_models_marks_current_model() -> None:
     from loushang.coding.ui.model_list import format_available_models
 

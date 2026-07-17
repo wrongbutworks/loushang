@@ -71,12 +71,24 @@ def test_conversation_raw_event_dispatch_stays_in_coding_adapter() -> None:
 
 def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
     moved_definitions = {
+        Path("src/loushang/coding/ui/model_list.py"): ("class ModelChoice",),
         Path("src/loushang/coding/ui/settings_common.py"): ("class ConfigRow",),
         Path("src/loushang/coding/ui/settings_config.py"): (
             "class ConfigSettingsPage",
         ),
+        Path("src/loushang/coding/ui/settings_page.py"): (
+            "class ModelPage",
+            "class StaticLinesPage",
+        ),
         Path("src/loushang/coding/ui/settings_status_line.py"): (
             "class StatusLineSettingsPage",
+        ),
+        Path("src/loushang/coding/ui/plain_toolbar.py"): (
+            "class PlainToolbarSnapshot",
+            "def render_plain_toolbar",
+        ),
+        Path("src/loushang/coding/ui/status_provider.py"): (
+            "class StatusSnapshot",
         ),
         Path("src/loushang/coding/ui/screen_surfaces.py"): (
             "class ModelSelectorSurface",

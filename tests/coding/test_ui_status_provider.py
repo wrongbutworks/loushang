@@ -1,6 +1,45 @@
 from __future__ import annotations
 
 
+def test_status_snapshot_compatibility_export_is_identical() -> None:
+    from loushang.coding.ui.status_provider import (
+        StatusSnapshot as CodingStatusSnapshot,
+    )
+    from loushang.harnesstui.status.snapshot import StatusSnapshot
+
+    assert CodingStatusSnapshot is StatusSnapshot
+
+
+def test_status_provider_returns_shared_snapshot() -> None:
+    from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+    from loushang.harnesstui.status.line import StatusLineSettings
+    from loushang.harnesstui.status.snapshot import StatusSnapshot
+
+    provider = CodingTuiStatusProvider(
+        model_label="moonshot/kimi-for-coding",
+        cwd="/repo",
+        branch="main",
+        session_label=lambda: "abcd",
+        thinking_level=lambda: "high",
+        running=lambda: True,
+        statusline_settings=StatusLineSettings(enabled=False),
+    )
+
+    snapshot = provider.snapshot()
+
+    assert type(snapshot) is StatusSnapshot
+    assert snapshot == StatusSnapshot(
+        model_label="moonshot/kimi-for-coding",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        thinking_level="high",
+        running=True,
+        statusline_visible=False,
+        statusline_settings=StatusLineSettings(enabled=False),
+    )
+
+
 def test_status_provider_tracks_statusline_visibility() -> None:
     from loushang.coding.ui.status_line import StatusLineSettings
     from loushang.coding.ui.status_provider import CodingTuiStatusProvider

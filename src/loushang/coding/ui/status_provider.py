@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from typing import cast
 
 from loushang.harnesstui.status.line import (
@@ -12,18 +12,7 @@ from loushang.harnesstui.status.line import (
     status_line_settings_from_control,
     status_line_settings_to_patch,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class StatusSnapshot:
-    model_label: str | None
-    cwd: str
-    branch: str | None
-    session_label: str | None
-    thinking_level: str | None
-    running: bool
-    statusline_visible: bool
-    statusline_settings: StatusLineSettings = field(default_factory=StatusLineSettings)
+from loushang.harnesstui.status.snapshot import StatusSnapshot as StatusSnapshot
 
 
 class CodingTuiStatusProvider:

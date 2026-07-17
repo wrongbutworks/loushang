@@ -316,10 +316,16 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.conversation.source`" in text
     assert "`loushang.harnesstui.conversation.projection`" in text
     assert "`loushang.harnesstui.conversation.tool_transcript`" in text
+    assert "`loushang.harnesstui.commands.presentation`" in text
+    assert "`loushang.harnesstui.selection.catalog`" in text
     assert "`loushang.harnesstui.selection.model`" in text
+    assert "`loushang.harnesstui.settings.dashboard`" in text
+    assert "`loushang.harnesstui.settings.model`" in text
     assert "`loushang.harnesstui.settings.page`" in text
     assert "`loushang.harnesstui.status.settings`" in text
     assert "`loushang.harnesstui.status.line`" in text
+    assert "`loushang.harnesstui.status.plain`" in text
+    assert "`loushang.harnesstui.status.snapshot`" in text
     assert "`loushang.harnesstui.surface.view`" in text
     assert "`loushang.tui.settings`" in text
 
@@ -328,10 +334,16 @@ def test_harnesstui_capability_entrypoints_exist() -> None:
     paths = (
         Path("src/loushang/harnesstui/conversation/projection.py"),
         Path("src/loushang/harnesstui/conversation/tool_transcript.py"),
+        Path("src/loushang/harnesstui/commands/presentation.py"),
+        Path("src/loushang/harnesstui/selection/catalog.py"),
         Path("src/loushang/harnesstui/selection/model.py"),
+        Path("src/loushang/harnesstui/settings/dashboard.py"),
+        Path("src/loushang/harnesstui/settings/model.py"),
         Path("src/loushang/harnesstui/settings/page.py"),
         Path("src/loushang/harnesstui/status/line.py"),
+        Path("src/loushang/harnesstui/status/plain.py"),
         Path("src/loushang/harnesstui/status/settings.py"),
+        Path("src/loushang/harnesstui/status/snapshot.py"),
         Path("src/loushang/harnesstui/surface/view.py"),
         Path("src/loushang/tui/settings.py"),
     )

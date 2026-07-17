@@ -21,8 +21,14 @@ HARNESSTUI_SHARED_SOURCES := \
 	src/loushang/tui/settings.py \
 	src/loushang/harnesstui
 HARNESSTUI_CODING_ADAPTERS := \
+	src/loushang/coding/ui/command_list.py \
+	src/loushang/coding/ui/completion.py \
 	src/loushang/coding/ui/conversation_event_adapter.py \
+	src/loushang/coding/ui/model_list.py \
+	src/loushang/coding/ui/plain_app.py \
 	src/loushang/coding/ui/plain_events.py \
+	src/loushang/coding/ui/plain_renderer.py \
+	src/loushang/coding/ui/plain_toolbar.py \
 	src/loushang/coding/ui/playback_scenarios/surface.py \
 	src/loushang/coding/ui/screen_app.py \
 	src/loushang/coding/ui/screen_events.py \
@@ -39,6 +45,7 @@ HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/ui/transcript_source.py
 HARNESSTUI_TEST_PATHS := \
 	tests/harnesstui \
+	tests/tui/test_import_boundaries.py \
 	tests/tui/test_settings.py \
 	tests/architecture/test_import_boundaries.py \
 	tests/coding/test_ui_import_boundaries.py \
@@ -51,7 +58,12 @@ HARNESSTUI_TEST_PATHS := \
 	tests/coding/test_screen_settings_page.py \
 	tests/coding/test_screen_tui_transcript_reader.py \
 	tests/coding/test_tool_transcript_blocks.py \
+	tests/coding/test_ui_command_list.py \
+	tests/coding/test_ui_completion.py \
 	tests/coding/test_ui_conversation_event_adapter.py \
+	tests/coding/test_ui_model_list.py \
+	tests/coding/test_ui_plain_app.py \
+	tests/coding/test_ui_plain_toolbar.py \
 	tests/coding/test_ui_plain_renderer.py \
 	tests/coding/test_ui_status_line.py \
 	tests/coding/test_ui_status_provider.py \
