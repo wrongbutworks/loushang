@@ -17,6 +17,7 @@ from loushang.tui.markdown.renderer import (
     DiffBlock,
     MarkdownRenderCache,
     MarkdownRenderer,
+    MarkdownSegmentedRenderResult,
 )
 from loushang.tui.theme import TerminalCapabilities, ThemeResolver
 
@@ -200,6 +201,7 @@ class TranscriptView:
     capabilities: TerminalCapabilities | None = None
     code_highlighter: CodeHighlighterLike | None = None
     markdown_cache: MarkdownRenderCache | None = None
+    markdown_streaming_key: object | None = None
     _render_cache_key: tuple[object, ...] | None = field(
         default=None,
         init=False,
@@ -256,6 +258,7 @@ class TranscriptView:
                     capabilities=self.capabilities,
                     code_highlighter=self.code_highlighter,
                     markdown_cache=self.markdown_cache,
+                    markdown_streaming_key=self.markdown_streaming_key,
                 )
             )
 
@@ -272,6 +275,7 @@ class TranscriptView:
                 capabilities=self.capabilities,
                 code_highlighter=self.code_highlighter,
                 markdown_cache=self.markdown_cache,
+                markdown_streaming_key=None,
             )
         )
         self._record_line_cache[key] = rendered
@@ -289,6 +293,7 @@ def render_transcript_records(
     capabilities: TerminalCapabilities | None = None,
     code_highlighter: CodeHighlighterLike | None = None,
     markdown_cache: MarkdownRenderCache | None = None,
+    markdown_streaming_key: object | None = None,
 ) -> tuple[RenderLine, ...]:
     view = TranscriptView(
         records,
@@ -298,6 +303,7 @@ def render_transcript_records(
         capabilities=capabilities,
         code_highlighter=code_highlighter,
         markdown_cache=markdown_cache,
+        markdown_streaming_key=markdown_streaming_key,
     )
     rendered = view.render(RenderConstraints(width=width, max_height=max_height))
     return rendered.lines
@@ -316,6 +322,7 @@ def _render_record(
     capabilities: TerminalCapabilities | None = None,
     code_highlighter: CodeHighlighterLike | None = None,
     markdown_cache: MarkdownRenderCache | None = None,
+    markdown_streaming_key: object | None = None,
 ) -> list[str]:
     target_width = autowrap_safe_width(width)
     if isinstance(record, UserPromptRecord):
@@ -332,6 +339,7 @@ def _render_record(
                     capabilities=capabilities,
                     code_highlighter=code_highlighter,
                     markdown_cache=markdown_cache,
+                    markdown_streaming_key=markdown_streaming_key,
                 ),
                 width=target_width,
             )
@@ -464,6 +472,7 @@ def _render_markdown_content(
     capabilities: TerminalCapabilities | None,
     code_highlighter: CodeHighlighterLike | None,
     markdown_cache: MarkdownRenderCache | None = None,
+    markdown_streaming_key: object | None = None,
 ) -> tuple[str, ...]:
     rendered = MarkdownRenderer(
         text,
@@ -471,8 +480,51 @@ def _render_markdown_content(
         capabilities=capabilities,
         code_highlighter=code_highlighter,
         render_cache=markdown_cache,
+        streaming_key=markdown_streaming_key,
     ).render(_inner_constraints(width))
     return tuple(line.text for line in rendered.lines)
+
+
+def _render_streaming_assistant_markdown_segments(
+    text: str,
+    *,
+    width: int,
+    theme: ThemeResolver | None,
+    capabilities: TerminalCapabilities | None,
+    code_highlighter: CodeHighlighterLike | None,
+    markdown_cache: MarkdownRenderCache,
+    markdown_streaming_key: object,
+) -> MarkdownSegmentedRenderResult | None:
+    if theme is None:
+        return None
+    target_width = autowrap_safe_width(width)
+    return MarkdownRenderer(
+        text,
+        theme=theme,
+        capabilities=capabilities,
+        code_highlighter=code_highlighter,
+        render_cache=markdown_cache,
+        streaming_key=markdown_streaming_key,
+    ).render_streaming_segments(
+        _inner_constraints(target_width - visible_width("* "))
+    )
+
+
+def _prefix_streaming_assistant_segment(
+    lines: tuple[str, ...],
+    *,
+    width: int,
+    use_first_prefix: bool,
+) -> tuple[str, ...]:
+    target_width = autowrap_safe_width(width)
+    return tuple(
+        _prefixed_rendered_lines(
+            "* " if use_first_prefix else "  ",
+            "  ",
+            lines,
+            width=target_width,
+        )
+    )
 
 
 def _inner_constraints(width: int) -> RenderConstraints:

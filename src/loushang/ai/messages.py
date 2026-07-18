@@ -230,6 +230,7 @@ def _tool_result_message_from_dict(message: dict[str, Any]) -> ToolResultMessage
         is_error=_strict_aliased_bool(message, "is_error", "isError"),
         timestamp=_float_or_default(message.get("timestamp")),
         details=message.get("details"),
+        terminate=message.get("terminate", False) is True,
     )
 
 

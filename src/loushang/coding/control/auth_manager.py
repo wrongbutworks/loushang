@@ -2,32 +2,12 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass, field
 
-from loushang.ai.auth import (
-    ApiKeyAuth,
-    OAuthBearerAuth,
-    OAuthReauthenticationRequiredError,
-)
-from loushang.ai.auth.support import resolve_explicit_auth
-from loushang.ai.auth.types import OAuthCredentials
+from loushang.ai.auth.support import resolve_auth_material
+from loushang.ai.auth.types import AuthResolution, OAuthCredentials
 from loushang.ai.model import Model
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.model.registry import get_default_model_registry
-
-
-@dataclass(frozen=True)
-class AuthResolution:
-    provider: str
-    model_id: str
-    endpoint_id: str
-    auth_required: bool
-    satisfied: bool
-    api_key: str | None = None
-    api_key_env: str | None = None
-    source: str | None = None
-    message: str | None = None
-    headers: dict[str, str] = field(default_factory=dict)
 
 
 class AuthManager:
@@ -37,9 +17,7 @@ class AuthManager:
         ai_registry: AiModelRegistry | None = None,
         env: Mapping[str, str] | None = None,
     ) -> None:
-        self._ai_registry = (
-            ai_registry if ai_registry is not None else get_default_model_registry()
-        )
+        self._ai_registry = ai_registry if ai_registry is not None else get_default_model_registry()
         self._env = dict(env) if env is not None else None
 
     @property
@@ -94,11 +72,7 @@ class AuthManager:
                         api_key=oauth_api_key,
                         api_key_env=getattr(auth_config, "api_key_env", None),
                         source="stored_oauth",
-                        headers=resolve_explicit_auth(
-                            OAuthBearerAuth(oauth_api_key),
-                            declaration_hint=auth_config,
-                            env=env,
-                        ).headers,
+                        headers=resolve_auth_material(bearer_token=oauth_api_key).headers,
                     )
 
         api_key_env = _primary_api_key_env(auth_config)
@@ -113,11 +87,7 @@ class AuthManager:
                 api_key=api_key,
                 api_key_env=api_key_env,
                 source="env",
-                headers=resolve_explicit_auth(
-                    ApiKeyAuth(api_key),
-                    declaration_hint=auth_config,
-                    env=env,
-                ).headers,
+                headers=resolve_auth_material(api_key=api_key, config=auth_config, env=dict(env)).headers,
             )
 
         if not auth_required:
@@ -164,8 +134,6 @@ class AuthManager:
                 model_id=model_id,
                 persist_refresh=False,
             )
-        except OAuthReauthenticationRequiredError:
-            raise
         except Exception:
             return None
         api_key = result.get("apiKey") if isinstance(result, Mapping) else None
@@ -216,12 +184,12 @@ def _api_key_env_names(auth_config) -> tuple[str, ...]:
     if auth_config is None:
         return ()
     names: list[str] = []
-    api_key_env = getattr(auth_config, "api_key_env", None)
-    if isinstance(api_key_env, str) and api_key_env:
-        names.append(api_key_env)
     for name in tuple(getattr(auth_config, "api_key_envs", ()) or ()):
         if isinstance(name, str) and name:
             names.append(name)
+    api_key_env = getattr(auth_config, "api_key_env", None)
+    if isinstance(api_key_env, str) and api_key_env:
+        names.append(api_key_env)
     return tuple(dict.fromkeys(names))
 
 

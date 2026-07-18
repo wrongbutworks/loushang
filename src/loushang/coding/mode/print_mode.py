@@ -3,7 +3,8 @@ from __future__ import annotations
 import inspect
 import json
 import sys
-from typing import Any, Literal, Mapping, Sequence, TextIO
+from collections.abc import Mapping, Sequence
+from typing import Any, Literal, TextIO
 
 from loushang.coding.event import (
     SUPPORTED_JSON_EVENT_VIEWS,
@@ -12,11 +13,18 @@ from loushang.coding.event import (
     project_session_event,
     should_emit_projected_event,
 )
-from loushang.coding.message.json_codec import serialize_session_header
 from loushang.coding.mode.base import ModeAdapter, ModeState
-from loushang.coding.tools import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.coding.work_shell import CodingWorkShell
+from loushang.harness.conversation import NativeConversationHeaderCodec
+from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.protocol import require_json_value
 from loushang.work import EventLogBackend
+
+_HEADER_CODEC = NativeConversationHeaderCodec()
+
+
+def serialize_session_header(header) -> dict[str, object]:
+    return dict(_HEADER_CODEC.encode_header(header))
 
 
 class PrintMode(ModeAdapter):
@@ -52,7 +60,9 @@ class PrintMode(ModeAdapter):
             if event_select:
                 raise ValueError("event_select is only supported for json output mode")
             if render_tool_events:
-                raise ValueError("render_tool_events is only supported for json output mode")
+                raise ValueError(
+                    "render_tool_events is only supported for json output mode"
+                )
         elif event_view not in SUPPORTED_JSON_EVENT_VIEWS:
             raise ValueError(f"unsupported json event view: {event_view}")
         self.runtime = runtime
@@ -161,14 +171,16 @@ class PrintMode(ModeAdapter):
                 user_input,
                 images=images,
                 emit_plan_start=self.emit_plan_start,
-                emit_plan_completion=self.emit_plan_completion and not follow_up_messages,
+                emit_plan_completion=self.emit_plan_completion
+                and not follow_up_messages,
             )
             await self.session.wait_for_idle()
             for follow_up_index, message in enumerate(follow_up_messages):
                 await self._prompt_session(
                     message,
                     emit_plan_start=False,
-                    emit_plan_completion=self.emit_plan_completion and follow_up_index == len(follow_up_messages) - 1,
+                    emit_plan_completion=self.emit_plan_completion
+                    and follow_up_index == len(follow_up_messages) - 1,
                 )
                 await self.session.wait_for_idle()
             assistant_failure = _last_assistant_failure_message(self.session)
@@ -209,7 +221,10 @@ class PrintMode(ModeAdapter):
         self.stdout.write(rendered + "\n")
 
     def _write_json_line(self, payload: object) -> None:
-        self.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        projected = require_json_value(payload, name="print_json_event")
+        self.stdout.write(
+            json.dumps(projected, ensure_ascii=False, allow_nan=False) + "\n"
+        )
 
     def _configure_tool_rendering(self, session: Any) -> None:
         if not self.render_tool_events:
@@ -243,13 +258,16 @@ class PrintMode(ModeAdapter):
         text_parts = [
             part.text
             for part in content
-            if getattr(part, "type", None) == "text" and isinstance(getattr(part, "text", None), str)
+            if getattr(part, "type", None) == "text"
+            and isinstance(getattr(part, "text", None), str)
         ]
         if not text_parts:
             return None
         return "\n".join(text_parts)
 
-    def _render_tool_event_line(self, event: dict[str, object], *, phase: str) -> str | None:
+    def _render_tool_event_line(
+        self, event: dict[str, object], *, phase: str
+    ) -> str | None:
         tool_name = event.get("tool_name")
         tool_call_id = event.get("tool_call_id")
         if not isinstance(tool_name, str):
@@ -315,7 +333,9 @@ def _serialize_print_mode_state(session: Any) -> ModeState:
     steering = _safe_list(getattr(state, "steering", None))
     follow_up = _safe_list(getattr(state, "follow_up", None))
     thinking = getattr(state, "thinking_level", "off") if state is not None else "off"
-    is_compacting = bool(_safe_getattr(state, "is_compacting", False) if state is not None else False)
+    is_compacting = bool(
+        _safe_getattr(state, "is_compacting", False) if state is not None else False
+    )
     run_status = _safe_getattr(_safe_getattr(state, "run", None), "status", "idle")
 
     model = _serialize_model_snapshot(session, state)
@@ -327,7 +347,9 @@ def _serialize_print_mode_state(session: Any) -> ModeState:
         "isCompacting": is_compacting,
         "steeringMode": _queue_mode(session, "steering_mode"),
         "followUpMode": _queue_mode(session, "follow_up_mode"),
-        "autoCompactionEnabled": bool(_safe_getattr(session, "auto_compaction_enabled", False)),
+        "autoCompactionEnabled": bool(
+            _safe_getattr(session, "auto_compaction_enabled", False)
+        ),
         "messageCount": _count_messages(session),
         "pendingMessageCount": len(steering) + len(follow_up),
     }
@@ -342,11 +364,19 @@ def _last_assistant_failure_message(session: Any) -> str | None:
     for message in reversed(_session_messages(session)):
         if _safe_getattr(message, "role", None) != "assistant":
             continue
-        stop_reason = _safe_getattr(message, "stop_reason", _safe_getattr(message, "stopReason", None))
+        stop_reason = _safe_getattr(
+            message, "stop_reason", _safe_getattr(message, "stopReason", None)
+        )
         if stop_reason not in {"error", "aborted"}:
             return None
-        error_message = _safe_getattr(message, "error_message", _safe_getattr(message, "errorMessage", None))
-        return error_message if isinstance(error_message, str) and error_message else f"Request {stop_reason}"
+        error_message = _safe_getattr(
+            message, "error_message", _safe_getattr(message, "errorMessage", None)
+        )
+        return (
+            error_message
+            if isinstance(error_message, str) and error_message
+            else f"Request {stop_reason}"
+        )
     return None
 
 
@@ -358,38 +388,54 @@ def _session_messages(session: Any) -> list[object]:
         except Exception:
             context = None
         messages = _safe_getattr(context, "messages", None)
-        if isinstance(messages, list):
+        if isinstance(messages, list | tuple):
             return list(messages)
     messages = _safe_getattr(session, "messages", None)
-    if isinstance(messages, list):
+    if isinstance(messages, list | tuple):
         return list(messages)
     agent_state = _safe_getattr(_safe_getattr(session, "agent", None), "state", None)
     messages = _safe_getattr(agent_state, "messages", None)
-    if isinstance(messages, list):
+    if isinstance(messages, list | tuple):
         return list(messages)
     return []
 
 
 def _serialize_model_snapshot(session: Any, state: Any) -> dict[str, object] | None:
-    model = _safe_getattr(_safe_getattr(_safe_getattr(session, "agent", None), "state", None), "model", None)
+    model = _safe_getattr(
+        _safe_getattr(_safe_getattr(session, "agent", None), "state", None),
+        "model",
+        None,
+    )
     if model is not None:
-        provider = _safe_getattr(model, "provider_id", None) or _safe_getattr(model, "provider", None)
+        provider = _safe_getattr(model, "provider_id", None) or _safe_getattr(
+            model, "provider", None
+        )
         model_id = _safe_getattr(model, "id", None)
-        if isinstance(provider, str) and isinstance(model_id, str) and provider and model_id:
-            if not _is_unknown_model(provider, model_id):
-                name = _safe_getattr(model, "name", model_id)
-                return {
-                    "provider": provider,
-                    "id": model_id,
-                    "name": name if isinstance(name, str) and name else str(model_id),
-                }
+        if (
+            isinstance(provider, str)
+            and isinstance(model_id, str)
+            and provider
+            and model_id
+            and not _is_unknown_model(provider, model_id)
+        ):
+            name = _safe_getattr(model, "name", model_id)
+            return {
+                "provider": provider,
+                "id": model_id,
+                "name": name if isinstance(name, str) and name else str(model_id),
+            }
 
     model_selection = _safe_getattr(state, "model_selection", None)
     provider = _safe_getattr(model_selection, "provider", None)
     model_id = _safe_getattr(model_selection, "model_id", None)
-    if isinstance(provider, str) and isinstance(model_id, str) and provider and model_id:
-        if not _is_unknown_model(provider, model_id):
-            return {"provider": provider, "id": model_id, "name": model_id}
+    if (
+        isinstance(provider, str)
+        and isinstance(model_id, str)
+        and provider
+        and model_id
+        and not _is_unknown_model(provider, model_id)
+    ):
+        return {"provider": provider, "id": model_id, "name": model_id}
     return None
 
 
@@ -402,10 +448,10 @@ def _count_messages(session: Any) -> int:
             context = None
         else:
             messages = _safe_getattr(context, "messages", None)
-            if isinstance(messages, list):
+            if isinstance(messages, list | tuple):
                 return len(messages)
     messages = _safe_getattr(session, "messages", None)
-    if isinstance(messages, list):
+    if isinstance(messages, list | tuple):
         return len(messages)
     return 0
 
@@ -450,7 +496,7 @@ def _work_session_id(session: Any) -> str:
             header = get_header()
         except Exception:
             header = None
-        header_id = _safe_getattr(header, "id", None)
+        header_id = _safe_getattr(header, "conversation_id", None)
         if isinstance(header_id, str) and header_id:
             return header_id
     return "session"
@@ -513,7 +559,9 @@ async def run_print_mode(
     )
 
 
-async def _prompt_session(session: Any, user_input: str, *, images: list[object] | None = None) -> None:
+async def _prompt_session(
+    session: Any, user_input: str, *, images: list[object] | None = None
+) -> None:
     if images is None:
         await session.prompt(user_input)
         return

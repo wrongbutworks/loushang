@@ -66,11 +66,19 @@ class FakeSession:
 
     def export_to_html(self, output_path: str | None = None) -> str:
         self.set_export_calls.append(output_path)
-        return output_path if output_path is not None else str(self.session_file.with_suffix(".html"))
+        return (
+            output_path
+            if output_path is not None
+            else str(self.session_file.with_suffix(".html"))
+        )
 
     def export_to_jsonl(self, output_path: str | None = None) -> str:
         self.set_jsonl_export_calls.append(output_path)
-        return output_path if output_path is not None else str(self.session_file.with_name(f"{self.session_id}-export.jsonl"))
+        return (
+            output_path
+            if output_path is not None
+            else str(self.session_file.with_name(f"{self.session_id}-export.jsonl"))
+        )
 
     def get_available_models(self):
         self.get_available_models_calls += 1
@@ -98,39 +106,85 @@ class FakeSession:
 
     async def materialize_package(self, source: str) -> dict[str, object]:
         self.materialize_package_calls.append(source)
-        return {"source": source, "name": "review-pack", "lifecycle": "installed", "targetPath": "/tmp/packages/review-pack"}
+        return {
+            "source": source,
+            "name": "review-pack",
+            "lifecycle": "installed",
+            "targetPath": "/tmp/packages/review-pack",
+        }
 
     def get_packages(self, *, catalog_path: str | None = None):
         del catalog_path
         return list(self.packages_payload)
 
-    async def install_package(self, source: str, *, scope: str = "project") -> dict[str, object]:
+    async def install_package(
+        self, source: str, *, scope: str = "project"
+    ) -> dict[str, object]:
         self.install_package_calls.append((source, scope))
-        return {"source": source, "name": "review-pack", "lifecycle": "installed", "targetPath": "/tmp/packages/review-pack"}
+        return {
+            "source": source,
+            "name": "review-pack",
+            "lifecycle": "installed",
+            "targetPath": "/tmp/packages/review-pack",
+        }
 
     async def update_package(self, source: str) -> dict[str, object]:
         self.update_package_calls.append(source)
-        return {"source": source, "name": "review-pack", "lifecycle": "installed", "targetPath": "/tmp/packages/review-pack"}
+        return {
+            "source": source,
+            "name": "review-pack",
+            "lifecycle": "installed",
+            "targetPath": "/tmp/packages/review-pack",
+        }
 
     async def update_packages(self) -> list[dict[str, object]]:
         self.update_packages_calls += 1
-        return [{"source": "all", "name": "all", "lifecycle": "installed", "targetPath": "/tmp/packages"}]
+        return [
+            {
+                "source": "all",
+                "name": "all",
+                "lifecycle": "installed",
+                "targetPath": "/tmp/packages",
+            }
+        ]
 
     async def check_package_updates(self) -> list[dict[str, object]]:
         self.check_package_updates_calls += 1
-        return [{"source": "all", "name": "review-pack", "currentCommit": "a", "availableCommit": "b", "pinned": False}]
+        return [
+            {
+                "source": "all",
+                "name": "review-pack",
+                "currentCommit": "a",
+                "availableCommit": "b",
+                "pinned": False,
+            }
+        ]
 
     def remove_package(self, source: str) -> dict[str, object]:
         self.remove_package_calls.append(source)
-        return {"source": source, "name": "review-pack", "lifecycle": "remote_registered", "targetPath": "/tmp/packages/review-pack"}
+        return {
+            "source": source,
+            "name": "review-pack",
+            "lifecycle": "remote_registered",
+            "targetPath": "/tmp/packages/review-pack",
+        }
 
-    def uninstall_package(self, source: str, *, scope: str = "project") -> dict[str, object]:
+    def uninstall_package(
+        self, source: str, *, scope: str = "project"
+    ) -> dict[str, object]:
         self.uninstall_package_calls.append((source, scope))
-        return {"source": source, "name": "review-pack", "lifecycle": "remote_registered", "targetPath": "/tmp/packages/review-pack"}
+        return {
+            "source": source,
+            "name": "review-pack",
+            "lifecycle": "remote_registered",
+            "targetPath": "/tmp/packages/review-pack",
+        }
 
 
 class FakeRuntime:
-    def __init__(self, session: FakeSession, records: list[object] | None = None) -> None:
+    def __init__(
+        self, session: FakeSession, records: list[object] | None = None
+    ) -> None:
         self._current_session = session
         self.new_session_calls: list[str] = []
         self.restore_session_calls: list[str] = []
@@ -431,7 +485,9 @@ def _fake_services(
         method=method_settings,
     )
     settings_manager = SimpleNamespace(get_settings=lambda: settings)
-    return SimpleNamespace(settings_manager=settings_manager, diagnostics_service=object())
+    return SimpleNamespace(
+        settings_manager=settings_manager, diagnostics_service=object()
+    )
 
 
 def _write_review_method(project_root: Path) -> None:
@@ -603,12 +659,16 @@ def test_parse_args_accepts_method_visibility_flags_and_subcommands() -> None:
     assert args.list_methods is True
     assert args.list_methods_format == "json"
 
-    show_args = parse_args(["method", "show", "method:task:review", "--show-method-format", "json"])
+    show_args = parse_args(
+        ["method", "show", "method:task:review", "--show-method-format", "json"]
+    )
 
     assert show_args.show_method == "method:task:review"
     assert show_args.show_method_format == "json"
 
-    plan_show_args = parse_args(["method", "plan", "show", "review", "--format", "json"])
+    plan_show_args = parse_args(
+        ["method", "plan", "show", "review", "--format", "json"]
+    )
 
     assert plan_show_args.show_method_plan == "review"
     assert plan_show_args.show_method_plan_format == "json"
@@ -841,7 +901,9 @@ def test_parse_args_rewrites_diag_export_subcommand() -> None:
     assert args.messages == ()
 
 
-def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(tmp_path) -> None:
+def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
+    tmp_path,
+) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
     from loushang.coding.tools import ToolRegistry, register_builtin_tools
@@ -859,7 +921,10 @@ def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(tmp_path
     session = asyncio.run(runtime.create_session(cwd=str(tmp_path)))
 
     assert session.get_active_tool_names() == ["read", "grep"]
-    assert [definition.name for definition in session.get_all_tools()] == ["read", "grep"]
+    assert [definition.name for definition in session.get_all_tools()] == [
+        "read",
+        "grep",
+    ]
 
 
 def test_default_runtime_builder_maps_no_tools_to_empty_allowed_tools(tmp_path) -> None:
@@ -929,12 +994,16 @@ def test_default_runtime_builder_applies_resource_and_prompt_options(tmp_path) -
 
     session = asyncio.run(runtime.create_session(cwd=str(project_root)))
 
-    assert session.agent.system_prompt.startswith("System from file\n\nAppend from file\n\nInline append")
+    assert session.agent.system_prompt.startswith(
+        "System from file\n\nAppend from file\n\nInline append"
+    )
     assert "Project guidance" not in session.agent.system_prompt
     assert [skill.name for skill in session.resource_bundle.skills] == ["review"]
 
 
-def test_default_runtime_builder_rebuilds_project_bound_services_for_session_cwd(tmp_path) -> None:
+def test_default_runtime_builder_rebuilds_project_bound_services_for_session_cwd(
+    tmp_path,
+) -> None:
     from loushang.coding.cli.__main__ import (
         build_default_services,
         default_runtime_builder,
@@ -967,7 +1036,9 @@ def test_default_runtime_builder_rebuilds_project_bound_services_for_session_cwd
     assert "Project B guidance" in second.agent.system_prompt
 
 
-def test_cwd_bound_services_factory_uses_sdk_services_creation(tmp_path, monkeypatch) -> None:
+def test_cwd_bound_services_factory_uses_sdk_services_creation(
+    tmp_path, monkeypatch
+) -> None:
     import loushang.coding.cli.__main__ as cli_main
     from loushang.coding.bootstrap import create_services
 
@@ -987,9 +1058,16 @@ def test_cwd_bound_services_factory_uses_sdk_services_creation(tmp_path, monkeyp
         calls.append(kwargs)
         return SimpleNamespace(services=created_services)
 
-    monkeypatch.setattr(cli_main, "create_agent_session_services", fake_create_agent_session_services, raising=False)
+    monkeypatch.setattr(
+        cli_main,
+        "create_agent_session_services",
+        fake_create_agent_session_services,
+        raising=False,
+    )
 
-    factory = cli_main._cwd_bound_services_factory(base_services, resource_loader_options)
+    factory = cli_main._cwd_bound_services_factory(
+        base_services, resource_loader_options
+    )
 
     assert factory is not None
     assert factory(str(project_b)) is created_services
@@ -1001,7 +1079,9 @@ def test_cwd_bound_services_factory_uses_sdk_services_creation(tmp_path, monkeyp
     ]
 
 
-def test_run_cli_sets_offline_environment_before_building_runtime(tmp_path, monkeypatch) -> None:
+def test_run_cli_sets_offline_environment_before_building_runtime(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     monkeypatch.delenv("LOUSHANG_OFFLINE", raising=False)
@@ -1045,7 +1125,79 @@ def test_run_cli_sets_offline_environment_before_building_runtime(tmp_path, monk
     assert captured_args[0].no_skills is True
 
 
-def test_cli_builtin_tool_registry_uses_settings_external_tool_policy(monkeypatch) -> None:
+def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.coding.cli import __main__ as cli_main
+    from loushang.coding.policy import InteractiveApprovalResolver
+    from loushang.coding.tools import ToolRegistry
+
+    captured: dict[str, object] = {}
+    runtime = FakeRuntime(FakeSession("unused"))
+
+    def build_registry(**kwargs):
+        captured["tool_resolver"] = kwargs["approval_resolver"]
+        return ToolRegistry()
+
+    def runtime_builder(**kwargs):
+        captured["runtime_resolver"] = kwargs["approval_resolver"]
+        return runtime
+
+    monkeypatch.setattr(cli_main, "build_builtin_tool_registry", build_registry)
+
+    exit_code = asyncio.run(
+        cli_main.run_cli(
+            ["--list-sessions"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=runtime_builder,
+        )
+    )
+
+    assert exit_code == 0
+    assert isinstance(captured["tool_resolver"], InteractiveApprovalResolver)
+    assert captured["runtime_resolver"] is captured["tool_resolver"]
+
+
+def test_run_cli_keeps_legacy_fixed_runtime_builder_signature(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    captured: dict[str, object] = {}
+    runtime = FakeRuntime(FakeSession("unused"))
+
+    def runtime_builder(*, args, cwd, session_dir, services, tool_registry):
+        captured.update(
+            args=args,
+            cwd=cwd,
+            session_dir=session_dir,
+            services=services,
+            tool_registry=tool_registry,
+        )
+        return runtime
+
+    exit_code = asyncio.run(
+        run_cli(
+            ["--list-sessions"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=runtime_builder,
+        )
+    )
+
+    assert exit_code == 0
+    assert captured["cwd"] == tmp_path.resolve()
+
+
+def test_cli_builtin_tool_registry_uses_settings_external_tool_policy(
+    monkeypatch,
+) -> None:
     from loushang.coding.cli import __main__ as cli_main
     from loushang.coding.control import ControlConfig, SettingsManager, ToolSettings
 
@@ -1056,14 +1208,18 @@ def test_cli_builtin_tool_registry_uses_settings_external_tool_policy(monkeypatc
         return registry
 
     monkeypatch.setattr(cli_main, "register_builtin_tools", fake_register_builtin_tools)
-    manager = SettingsManager(ControlConfig(tools=ToolSettings(external_tool_policy="required")))
+    manager = SettingsManager(
+        ControlConfig(tools=ToolSettings(external_tool_policy="required"))
+    )
 
     cli_main.build_builtin_tool_registry(settings_manager=manager)
 
     assert captured["external_tool_policy"] == "required"
 
 
-def test_cli_builtin_tool_registry_binds_headless_policy_from_settings(tmp_path) -> None:
+def test_cli_builtin_tool_registry_binds_headless_policy_from_settings(
+    tmp_path,
+) -> None:
     from loushang.coding.cli import __main__ as cli_main
     from loushang.coding.control import ControlConfig, SettingsManager, ToolSettings
     from loushang.coding.tools import ToolContext
@@ -1079,10 +1235,16 @@ def test_cli_builtin_tool_registry_binds_headless_policy_from_settings(tmp_path)
             )
         )
     )
-    allow_registry = cli_main.build_builtin_tool_registry(settings_manager=allow_manager)
-    allow_tool = allow_registry.materialize_tool("write", context_provider=context_provider)
+    allow_registry = cli_main.build_builtin_tool_registry(
+        settings_manager=allow_manager
+    )
+    allow_tool = allow_registry.materialize_tool(
+        "write", context_provider=context_provider
+    )
 
-    asyncio.run(allow_tool.execute("call-allow", {"path": "allowed.txt", "content": "ok"}))
+    asyncio.run(
+        allow_tool.execute("call-allow", {"path": "allowed.txt", "content": "ok"})
+    )
 
     deny_manager = SettingsManager(
         ControlConfig(
@@ -1094,10 +1256,14 @@ def test_cli_builtin_tool_registry_binds_headless_policy_from_settings(tmp_path)
         )
     )
     deny_registry = cli_main.build_builtin_tool_registry(settings_manager=deny_manager)
-    deny_tool = deny_registry.materialize_tool("write", context_provider=context_provider)
+    deny_tool = deny_registry.materialize_tool(
+        "write", context_provider=context_provider
+    )
 
     with pytest.raises(PermissionError, match="headless policy denied"):
-        asyncio.run(deny_tool.execute("call-deny", {"path": "denied.txt", "content": "blocked"}))
+        asyncio.run(
+            deny_tool.execute("call-deny", {"path": "denied.txt", "content": "blocked"})
+        )
 
     assert (tmp_path / "allowed.txt").read_text(encoding="utf-8") == "ok"
     assert not (tmp_path / "denied.txt").exists()
@@ -1178,7 +1344,9 @@ def test_parse_args_supports_command_dispatch_flags() -> None:
     assert args.messages == ("hello",)
 
 
-def test_parse_args_maps_pi_style_package_subcommands_to_package_manager_commands() -> None:
+def test_parse_args_maps_pi_style_package_subcommands_to_package_manager_commands() -> (
+    None
+):
     from loushang.coding.cli.args import parse_args
 
     install = parse_args(["install", "plugins/debug-pack"])
@@ -1215,7 +1383,9 @@ def test_parse_args_supports_explicit_package_lifecycle_flags() -> None:
         ]
     )
 
-    assert args.materialize_packages == ("https://packages.example.invalid/review-pack.git",)
+    assert args.materialize_packages == (
+        "https://packages.example.invalid/review-pack.git",
+    )
     assert args.update_packages == ("https://packages.example.invalid/review-pack.git",)
     assert args.remove_packages == ("https://packages.example.invalid/review-pack.git",)
 
@@ -1259,7 +1429,59 @@ def test_run_cli_prints_help_and_exits_before_runtime(tmp_path) -> None:
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("argv", (["--mode", "json", "--help"], ["--mode", "print", "--help"]))
+def test_run_cli_help_supports_builder_with_required_approval_resolver(
+    tmp_path,
+) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    session = FakeSession("help-session")
+    session.extension_runner = SimpleNamespace(
+        get_flags=lambda: [
+            SimpleNamespace(
+                name="review-mode",
+                type="boolean",
+                description="Require review",
+                default=False,
+            )
+        ]
+    )
+    runtime = FakeRuntime(session)
+    captured: list[object] = []
+
+    def runtime_builder(
+        *,
+        args,
+        cwd,
+        session_dir,
+        services,
+        tool_registry,
+        approval_resolver,
+    ):
+        del args, cwd, session_dir, services, tool_registry
+        captured.append(approval_resolver)
+        return runtime
+
+    stdout = StringIO()
+    exit_code = asyncio.run(
+        run_cli(
+            ["--help"],
+            stdin=StringIO(),
+            stdout=stdout,
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=runtime_builder,
+        )
+    )
+
+    assert exit_code == 0
+    assert captured == [None]
+    assert "--review-mode [boolean]" in stdout.getvalue()
+
+
+@pytest.mark.parametrize(
+    "argv", (["--mode", "json", "--help"], ["--mode", "print", "--help"])
+)
 def test_run_cli_routes_non_interactive_help_to_stderr(argv, tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
@@ -1282,7 +1504,9 @@ def test_run_cli_routes_non_interactive_help_to_stderr(argv, tmp_path) -> None:
     asyncio.run(scenario())
 
 
-def test_run_cli_routes_non_interactive_help_startup_stdout_to_stderr(tmp_path, monkeypatch) -> None:
+def test_run_cli_routes_non_interactive_help_startup_stdout_to_stderr(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     runtime = FakeRuntime(FakeSession("session-1"))
@@ -1314,7 +1538,9 @@ def test_run_cli_routes_non_interactive_help_startup_stdout_to_stderr(tmp_path, 
     asyncio.run(scenario())
 
 
-def test_run_cli_routes_machine_readable_command_startup_stdout_to_stderr(tmp_path, monkeypatch) -> None:
+def test_run_cli_routes_machine_readable_command_startup_stdout_to_stderr(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     runtime = FakeRuntime(FakeSession("session-1"), records=[])
@@ -1345,7 +1571,9 @@ def test_run_cli_routes_machine_readable_command_startup_stdout_to_stderr(tmp_pa
     asyncio.run(scenario())
 
 
-def test_run_cli_routes_print_mode_runtime_stdout_chatter_to_stderr(tmp_path, monkeypatch) -> None:
+def test_run_cli_routes_print_mode_runtime_stdout_chatter_to_stderr(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     runtime = FakeRuntime(FakeSession("session-1"))
@@ -1381,7 +1609,9 @@ def test_run_cli_routes_print_mode_runtime_stdout_chatter_to_stderr(tmp_path, mo
     asyncio.run(scenario())
 
 
-def test_run_cli_routes_machine_readable_command_runtime_stdout_chatter_to_stderr(tmp_path, monkeypatch) -> None:
+def test_run_cli_routes_machine_readable_command_runtime_stdout_chatter_to_stderr(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     class ChatteringRuntime(FakeRuntime):
@@ -1434,7 +1664,9 @@ def test_run_cli_prints_version_and_exits_before_runtime(tmp_path) -> None:
     asyncio.run(scenario())
 
 
-def test_run_cli_prints_source_info_and_exits_before_runtime(tmp_path, monkeypatch) -> None:
+def test_run_cli_prints_source_info_and_exits_before_runtime(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     bin_dir = tmp_path / "bin"
@@ -1498,7 +1730,9 @@ def test_run_cli_prints_source_info_as_json(tmp_path, monkeypatch) -> None:
     active.write_text("#!/bin/sh\n", encoding="utf-8")
     active.chmod(0o755)
     monkeypatch.setenv("PATH", str(bin_dir))
-    monkeypatch.setattr(sys, "argv", ["loushang", "--source-info", "--source-info-format", "json"])
+    monkeypatch.setattr(
+        sys, "argv", ["loushang", "--source-info", "--source-info-format", "json"]
+    )
 
     stdout = StringIO()
     stderr = StringIO()
@@ -1674,7 +1908,9 @@ def test_run_cli_diag_export_exits_before_runtime_creation(tmp_path) -> None:
 
     session_dir = tmp_path / "sessions"
     session_dir.mkdir()
-    (session_dir / "latest.jsonl").write_text('{"type":"user","text":"hello"}\n', encoding="utf-8")
+    (session_dir / "latest.jsonl").write_text(
+        '{"type":"user","text":"hello"}\n', encoding="utf-8"
+    )
     debug_file = tmp_path / "debug.log"
     debug_file.write_text("debug line\n", encoding="utf-8")
     output = tmp_path / "diag.zip"
@@ -1850,6 +2086,7 @@ def test_run_cli_reports_export_method_not_available(tmp_path) -> None:
             runtime_builder=lambda **kwargs: runtime,
         )
         assert exit_code == 1
+
     asyncio.run(scenario())
 
     assert "jsonl export is not available." in stderr.getvalue()
@@ -2099,7 +2336,9 @@ def test_run_cli_list_sessions_supports_no_diagnostics_filter(tmp_path) -> None:
     assert stderr.getvalue() == ""
 
 
-def test_run_cli_list_sessions_supports_all_sessions_with_query_filters(tmp_path) -> None:
+def test_run_cli_list_sessions_supports_all_sessions_with_query_filters(
+    tmp_path,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.store import SessionQuery
 
@@ -2172,7 +2411,14 @@ def test_run_cli_list_sessions_can_use_session_index(tmp_path) -> None:
 
     async def scenario() -> None:
         exit_code = await run_cli(
-            ["--list-sessions", "--session-index", "--session-query", "indexed", "--list-sessions-format", "json"],
+            [
+                "--list-sessions",
+                "--session-index",
+                "--session-query",
+                "indexed",
+                "--list-sessions-format",
+                "json",
+            ],
             stdin=StringIO(""),
             stdout=stdout,
             stderr=stderr,
@@ -2184,7 +2430,9 @@ def test_run_cli_list_sessions_can_use_session_index(tmp_path) -> None:
 
     asyncio.run(scenario())
 
-    assert runtime.find_indexed_session_summaries_calls == [SessionQuery(text="indexed")]
+    assert runtime.find_indexed_session_summaries_calls == [
+        SessionQuery(text="indexed")
+    ]
     assert runtime.find_session_summaries_calls == []
     assert json.loads(stdout.getvalue())[0]["session_id"] == "session-indexed"
     assert stderr.getvalue() == ""
@@ -2200,7 +2448,13 @@ def test_run_cli_list_sessions_can_refresh_all_session_indexes(tmp_path) -> None
 
     async def scenario() -> None:
         exit_code = await run_cli(
-            ["--list-sessions", "--all-sessions", "--refresh-session-index", "--session-query", "global"],
+            [
+                "--list-sessions",
+                "--all-sessions",
+                "--refresh-session-index",
+                "--session-query",
+                "global",
+            ],
             stdin=StringIO(""),
             stdout=stdout,
             stderr=stderr,
@@ -2213,7 +2467,9 @@ def test_run_cli_list_sessions_can_refresh_all_session_indexes(tmp_path) -> None
     asyncio.run(scenario())
 
     assert runtime.refresh_all_session_indexes_calls == 1
-    assert runtime.find_all_indexed_session_summaries_calls == [SessionQuery(text="global")]
+    assert runtime.find_all_indexed_session_summaries_calls == [
+        SessionQuery(text="global")
+    ]
     assert runtime.find_all_session_summaries_calls == []
     assert stderr.getvalue() == ""
 
@@ -2402,7 +2658,9 @@ def test_run_cli_reports_list_sessions_invalid_payload(tmp_path) -> None:
     assert "session listing returned an invalid response." in stderr.getvalue()
 
 
-def test_run_cli_skips_session_records_that_fail_normalization(tmp_path, monkeypatch) -> None:
+def test_run_cli_skips_session_records_that_fail_normalization(
+    tmp_path, monkeypatch
+) -> None:
     from loushang.coding.cli import __main__ as cli_main
     from loushang.coding.cli.__main__ import run_cli
 
@@ -2426,7 +2684,9 @@ def test_run_cli_skips_session_records_that_fail_normalization(tmp_path, monkeyp
             raise RuntimeError("broken record")
         return original(record)
 
-    monkeypatch.setattr(cli_main, "_normalize_session_record", _broken_normalize_session_record)
+    monkeypatch.setattr(
+        cli_main, "_normalize_session_record", _broken_normalize_session_record
+    )
 
     runtime = FakeRuntime(FakeSession("unused"), records=["broken", valid_record])
     stdout = StringIO()
@@ -2522,7 +2782,9 @@ def test_run_cli_reports_list_sessions_with_unprintable_fields(tmp_path) -> None
     assert stderr.getvalue() == ""
 
 
-def test_run_cli_dispatches_print_mode_with_restored_session_and_model_override(tmp_path) -> None:
+def test_run_cli_dispatches_print_mode_with_restored_session_and_model_override(
+    tmp_path,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.types import ModelSelection
 
@@ -2560,7 +2822,9 @@ def test_run_cli_dispatches_print_mode_with_restored_session_and_model_override(
     asyncio.run(scenario())
 
     assert runtime.restore_session_calls == ["session-1"]
-    assert runtime.get_current_session().set_model_calls == [ModelSelection(provider="faux", model_id="beta")]
+    assert runtime.get_current_session().set_model_calls == [
+        ModelSelection(provider="faux", model_id="beta")
+    ]
     assert print_runner.calls[0]["user_input"] == "hello world"
     assert print_runner.calls[0]["follow_up_messages"] == ()
     assert print_runner.calls[0]["output_mode"] == "json"
@@ -2602,7 +2866,43 @@ def test_run_cli_accepts_explicit_endpoint_model_override(tmp_path) -> None:
     ]
 
 
-def test_run_cli_accepts_explicit_endpoint_model_override_with_colon_endpoint(tmp_path) -> None:
+def test_apply_model_override_persists_global_default_with_endpoint() -> None:
+    from loushang.coding.cli.__main__ import _apply_model_and_thinking_overrides
+    from loushang.coding.types import ModelSelection
+
+    session = FakeSession("session-1")
+    settings_calls: list[tuple[ModelSelection | None, str]] = []
+    settings_manager = SimpleNamespace(
+        set_default_model=lambda selection, *, scope="session": settings_calls.append(
+            (selection, scope)
+        )
+    )
+    args = SimpleNamespace(provider=None, model="faux:responses:beta", thinking=None)
+    stderr = StringIO()
+
+    result = asyncio.run(
+        _apply_model_and_thinking_overrides(
+            args,
+            session,
+            stderr,
+            settings_manager=settings_manager,
+        )
+    )
+
+    selection = ModelSelection(
+        provider="faux",
+        endpoint_id="responses",
+        model_id="beta",
+    )
+    assert result is None
+    assert stderr.getvalue() == ""
+    assert session.set_model_calls == [selection]
+    assert settings_calls == [(selection, "global")]
+
+
+def test_run_cli_accepts_explicit_endpoint_model_override_with_colon_endpoint(
+    tmp_path,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.types import ModelSelection
 
@@ -2807,7 +3107,9 @@ def test_run_cli_dash_p_uses_method_default_from_settings(tmp_path) -> None:
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(
-                method_settings=MethodSettings(mode="explicit", selected_method="review"),
+                method_settings=MethodSettings(
+                    mode="explicit", selected_method="review"
+                ),
             ),
             runtime_builder=lambda **kwargs: runtime,
             prompt_runner=prompt_runner,
@@ -2822,7 +3124,9 @@ def test_run_cli_dash_p_uses_method_default_from_settings(tmp_path) -> None:
     assert call["prompt"].endswith("User request:\n\ncheck src/app.py")
 
 
-def test_run_cli_dash_p_method_flag_overrides_method_default_from_settings(tmp_path) -> None:
+def test_run_cli_dash_p_method_flag_overrides_method_default_from_settings(
+    tmp_path,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.control import MethodSettings
 
@@ -2839,7 +3143,9 @@ def test_run_cli_dash_p_method_flag_overrides_method_default_from_settings(tmp_p
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(
-                method_settings=MethodSettings(mode="explicit", selected_method="review"),
+                method_settings=MethodSettings(
+                    mode="explicit", selected_method="review"
+                ),
             ),
             runtime_builder=lambda **kwargs: runtime,
             prompt_runner=prompt_runner,
@@ -2854,7 +3160,9 @@ def test_run_cli_dash_p_method_flag_overrides_method_default_from_settings(tmp_p
     assert "Use concise review guidance." not in call["prompt"]
 
 
-def test_run_cli_dash_p_no_method_overrides_method_default_from_settings(tmp_path) -> None:
+def test_run_cli_dash_p_no_method_overrides_method_default_from_settings(
+    tmp_path,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.control import MethodSettings
 
@@ -2870,7 +3178,9 @@ def test_run_cli_dash_p_no_method_overrides_method_default_from_settings(tmp_pat
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(
-                method_settings=MethodSettings(mode="explicit", selected_method="review"),
+                method_settings=MethodSettings(
+                    mode="explicit", selected_method="review"
+                ),
             ),
             runtime_builder=lambda **kwargs: runtime,
             prompt_runner=prompt_runner,
@@ -2964,7 +3274,9 @@ def test_run_cli_dash_p_with_missing_method_reports_error(tmp_path) -> None:
 
     assert prompt_runner.calls == []
     assert "method not found: missing" in stderr.getvalue()
-    assert "Run 'loushang method list' to inspect available methods." in stderr.getvalue()
+    assert (
+        "Run 'loushang method list' to inspect available methods." in stderr.getvalue()
+    )
 
 
 def test_run_cli_dash_p_with_missing_method_default_reports_error(tmp_path) -> None:
@@ -2983,7 +3295,9 @@ def test_run_cli_dash_p_with_missing_method_default_reports_error(tmp_path) -> N
             stderr=stderr,
             cwd=tmp_path,
             services=_fake_services(
-                method_settings=MethodSettings(mode="explicit", selected_method="missing"),
+                method_settings=MethodSettings(
+                    mode="explicit", selected_method="missing"
+                ),
             ),
             runtime_builder=lambda **kwargs: runtime,
             prompt_runner=prompt_runner,
@@ -2994,10 +3308,14 @@ def test_run_cli_dash_p_with_missing_method_default_reports_error(tmp_path) -> N
 
     assert prompt_runner.calls == []
     assert "method not found: missing" in stderr.getvalue()
-    assert "Run 'loushang method list' to inspect available methods." in stderr.getvalue()
+    assert (
+        "Run 'loushang method list' to inspect available methods." in stderr.getvalue()
+    )
 
 
-def test_run_cli_dash_p_with_unsupported_method_default_mode_reports_error(tmp_path) -> None:
+def test_run_cli_dash_p_with_unsupported_method_default_mode_reports_error(
+    tmp_path,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.control import MethodSettings
 
@@ -3227,7 +3545,9 @@ steps:
     assert stderr.getvalue() == ""
 
 
-def test_run_cli_fake_prompt_steps_json_mode_outputs_json_without_runtime(tmp_path) -> None:
+def test_run_cli_fake_prompt_steps_json_mode_outputs_json_without_runtime(
+    tmp_path,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     workflows_dir = tmp_path / "workflows"
@@ -3387,7 +3707,9 @@ def test_run_cli_mode_print_with_fixed_method_executes_each_step(tmp_path) -> No
     assert second_call["step_facts"]["step_index"] == 1
     assert second_call["emit_plan_start"] is False
     assert second_call["emit_plan_completion"] is True
-    assert "Run focused tests or explain why they cannot run." in second_call["user_input"]
+    assert (
+        "Run focused tests or explain why they cannot run." in second_call["user_input"]
+    )
     assert second_call["user_input"].endswith("User request:\n\ncheck src/app.py")
     assert second_call["output_mode"] == "text"
 
@@ -3408,7 +3730,9 @@ def test_run_cli_mode_print_uses_method_default_from_settings(tmp_path) -> None:
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(
-                method_settings=MethodSettings(mode="explicit", selected_method="review"),
+                method_settings=MethodSettings(
+                    mode="explicit", selected_method="review"
+                ),
             ),
             runtime_builder=lambda **kwargs: runtime,
             print_runner=print_runner,
@@ -3551,7 +3875,10 @@ def test_run_cli_passes_at_image_to_initial_prompt(tmp_path) -> None:
     assert len(images) == 1
     assert images[0].mime_type == "image/png"
     assert images[0].data == base64.b64encode(image_bytes).decode("ascii")
-    assert f'<file name="{image_path.resolve()}"></file>' in print_runner.calls[0]["user_input"]
+    assert (
+        f'<file name="{image_path.resolve()}"></file>'
+        in print_runner.calls[0]["user_input"]
+    )
 
 
 def test_run_cli_resizes_large_at_image_and_adds_dimension_note(tmp_path) -> None:
@@ -3591,7 +3918,10 @@ def test_run_cli_resizes_large_at_image_and_adds_dimension_note(tmp_path) -> Non
     assert images[0].data != base64.b64encode(original_bytes).decode("ascii")
     user_input = print_runner.calls[0]["user_input"]
     assert isinstance(user_input, str)
-    assert f'<file name="{image_path.resolve()}">[Image: original 2100x10, displayed at ' in user_input
+    assert (
+        f'<file name="{image_path.resolve()}">[Image: original 2100x10, displayed at '
+        in user_input
+    )
     assert "Multiply coordinates" in user_input
 
 
@@ -3760,7 +4090,9 @@ def test_run_cli_dispatches_continue_by_restoring_latest_session(tmp_path) -> No
 
 
 @pytest.mark.parametrize("resume_flag", ["--continue", "--resume"])
-def test_run_cli_dispatches_restore_by_latest_session_for_resume_mode(tmp_path, resume_flag) -> None:
+def test_run_cli_dispatches_restore_by_latest_session_for_resume_mode(
+    tmp_path, resume_flag
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     latest = Path(tmp_path / ".loushang" / "sessions" / "latest.jsonl")
@@ -3777,7 +4109,9 @@ def test_run_cli_dispatches_restore_by_latest_session_for_resume_mode(tmp_path, 
 
     async def scenario() -> None:
         exit_code = await run_cli(
-            [resume_flag, "hello"] if resume_flag == "--continue" else [resume_flag, "--message", "hello"],
+            [resume_flag, "hello"]
+            if resume_flag == "--continue"
+            else [resume_flag, "--message", "hello"],
             stdin=StringIO(""),
             stdout=StringIO(),
             stderr=StringIO(),
@@ -3849,7 +4183,9 @@ def test_run_cli_reports_continue_without_existing_sessions(tmp_path) -> None:
 
 
 @pytest.mark.parametrize("resume_flag", ["--continue", "--resume"])
-def test_run_cli_reports_restore_errors_when_list_sessions_fails(tmp_path, resume_flag) -> None:
+def test_run_cli_reports_restore_errors_when_list_sessions_fails(
+    tmp_path, resume_flag
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     class BrokenListSessionsRuntime(FakeRuntime):
@@ -3861,7 +4197,9 @@ def test_run_cli_reports_restore_errors_when_list_sessions_fails(tmp_path, resum
 
     async def scenario() -> None:
         exit_code = await run_cli(
-            [resume_flag, "hello"] if resume_flag == "--continue" else [resume_flag, "--message", "hello"],
+            [resume_flag, "hello"]
+            if resume_flag == "--continue"
+            else [resume_flag, "--message", "hello"],
             stdin=StringIO(""),
             stdout=StringIO(),
             stderr=stderr,
@@ -3878,7 +4216,9 @@ def test_run_cli_reports_restore_errors_when_list_sessions_fails(tmp_path, resum
 
 
 @pytest.mark.parametrize("resume_flag", ["--continue", "--resume"])
-def test_run_cli_reports_restore_invalid_list_sessions_payload(tmp_path, resume_flag) -> None:
+def test_run_cli_reports_restore_invalid_list_sessions_payload(
+    tmp_path, resume_flag
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     class BrokenListSessionsRuntime(FakeRuntime):
@@ -3890,7 +4230,9 @@ def test_run_cli_reports_restore_invalid_list_sessions_payload(tmp_path, resume_
 
     async def scenario() -> None:
         exit_code = await run_cli(
-            [resume_flag, "hello"] if resume_flag == "--continue" else [resume_flag, "--message", "hello"],
+            [resume_flag, "hello"]
+            if resume_flag == "--continue"
+            else [resume_flag, "--message", "hello"],
             stdin=StringIO(""),
             stdout=StringIO(),
             stderr=stderr,
@@ -4080,7 +4422,9 @@ def test_run_cli_default_path_uses_unified_mode_runner(tmp_path) -> None:
     assert mode_runner.calls[0]["user_input"] == "hello"
 
 
-def test_run_cli_default_path_with_method_prepares_prompt_and_method_id(tmp_path) -> None:
+def test_run_cli_default_path_with_method_prepares_prompt_and_method_id(
+    tmp_path,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     _write_review_method(tmp_path)
@@ -4149,11 +4493,15 @@ def test_run_cli_default_path_with_fixed_method_executes_each_step(tmp_path) -> 
     assert second_call["step_index"] == 1
     assert second_call["emit_plan_start"] is False
     assert second_call["emit_plan_completion"] is True
-    assert "Run focused tests or explain why they cannot run." in second_call["user_input"]
+    assert (
+        "Run focused tests or explain why they cannot run." in second_call["user_input"]
+    )
     assert second_call["user_input"].endswith("User request:\n\ncheck src/app.py")
 
 
-def test_run_cli_default_path_passes_work_log_backend_to_unified_mode_runner(tmp_path) -> None:
+def test_run_cli_default_path_passes_work_log_backend_to_unified_mode_runner(
+    tmp_path,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.work import JsonlEventLogBackend
 
@@ -4258,7 +4606,9 @@ def test_run_cli_work_log_inspect_text_includes_method_id(tmp_path) -> None:
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(),
-            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("runtime should not start")
+            ),
         )
         assert exit_code == 0
 
@@ -4266,8 +4616,30 @@ def test_run_cli_work_log_inspect_text_includes_method_id(tmp_path) -> None:
 
     assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
         _WORK_LOG_INSPECT_COLUMNS,
-        ["1", "SubmitCodingTurn", "run-1", "session-1", "", "method:task:review", "", "", "", ""],
-        ["2", "WorkRunStarted", "run-1", "session-1", "immediate", "method:task:review", "", "", "", ""],
+        [
+            "1",
+            "SubmitCodingTurn",
+            "run-1",
+            "session-1",
+            "",
+            "method:task:review",
+            "",
+            "",
+            "",
+            "",
+        ],
+        [
+            "2",
+            "WorkRunStarted",
+            "run-1",
+            "session-1",
+            "immediate",
+            "method:task:review",
+            "",
+            "",
+            "",
+            "",
+        ],
     ]
 
 
@@ -4298,7 +4670,9 @@ def test_run_cli_work_log_inspect_text_includes_plan_step_metadata(tmp_path) -> 
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(),
-            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("runtime should not start")
+            ),
         )
         assert exit_code == 0
 
@@ -4321,7 +4695,9 @@ def test_run_cli_work_log_inspect_text_includes_plan_step_metadata(tmp_path) -> 
     ]
 
 
-def test_run_cli_work_log_inspect_plans_outputs_plan_summary_without_runtime(tmp_path) -> None:
+def test_run_cli_work_log_inspect_plans_outputs_plan_summary_without_runtime(
+    tmp_path,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.work import JsonlEventLogBackend
 
@@ -4355,17 +4731,67 @@ def test_run_cli_work_log_inspect_plans_outputs_plan_summary_without_runtime(tmp
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(),
-            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("runtime should not start")
+            ),
         )
         assert exit_code == 0
 
     asyncio.run(scenario())
 
     assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
-        ["type", "index", "id", "status", "run_id", "method_id", "completed_steps", "failed_steps", "current_step", "title", "deviation"],
-        ["plan", "", "plan:method:task:review", "completed", "", "method:task:review", "2/2", "0", "verify", "", ""],
-        ["step", "1", "inspect", "completed", "run-inspect", "method:task:review", "", "", "", "Inspect current changes", ""],
-        ["step", "2", "verify", "completed", "run-verify", "method:task:review", "", "", "", "Run focused checks", ""],
+        [
+            "type",
+            "index",
+            "id",
+            "status",
+            "run_id",
+            "method_id",
+            "completed_steps",
+            "failed_steps",
+            "current_step",
+            "title",
+            "deviation",
+        ],
+        [
+            "plan",
+            "",
+            "plan:method:task:review",
+            "completed",
+            "",
+            "method:task:review",
+            "2/2",
+            "0",
+            "verify",
+            "",
+            "",
+        ],
+        [
+            "step",
+            "1",
+            "inspect",
+            "completed",
+            "run-inspect",
+            "method:task:review",
+            "",
+            "",
+            "",
+            "Inspect current changes",
+            "",
+        ],
+        [
+            "step",
+            "2",
+            "verify",
+            "completed",
+            "run-verify",
+            "method:task:review",
+            "",
+            "",
+            "",
+            "Run focused checks",
+            "",
+        ],
     ]
 
 
@@ -4414,16 +4840,54 @@ def test_run_cli_work_log_inspect_plans_respects_run_filter(tmp_path) -> None:
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(),
-            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("runtime should not start")
+            ),
         )
         assert exit_code == 0
 
     asyncio.run(scenario())
 
     assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
-        ["type", "index", "id", "status", "run_id", "method_id", "completed_steps", "failed_steps", "current_step", "title", "deviation"],
-        ["plan", "", "plan:method:task:review", "running", "", "method:task:review", "0/1", "1", "verify", "", ""],
-        ["step", "2", "verify", "failed", "run-verify", "method:task:review", "", "", "", "Run focused checks", ""],
+        [
+            "type",
+            "index",
+            "id",
+            "status",
+            "run_id",
+            "method_id",
+            "completed_steps",
+            "failed_steps",
+            "current_step",
+            "title",
+            "deviation",
+        ],
+        [
+            "plan",
+            "",
+            "plan:method:task:review",
+            "running",
+            "",
+            "method:task:review",
+            "0/1",
+            "1",
+            "verify",
+            "",
+            "",
+        ],
+        [
+            "step",
+            "2",
+            "verify",
+            "failed",
+            "run-verify",
+            "method:task:review",
+            "",
+            "",
+            "",
+            "Run focused checks",
+            "",
+        ],
     ]
 
 
@@ -4460,15 +4924,41 @@ def test_run_cli_work_log_inspect_plans_shows_step_deviation(tmp_path) -> None:
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(),
-            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("runtime should not start")
+            ),
         )
         assert exit_code == 0
 
     asyncio.run(scenario())
 
     assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
-        ["type", "index", "id", "status", "run_id", "method_id", "completed_steps", "failed_steps", "current_step", "title", "deviation"],
-        ["plan", "", "plan:method:task:review", "running", "", "method:task:review", "1/1", "0", "inspect", "", ""],
+        [
+            "type",
+            "index",
+            "id",
+            "status",
+            "run_id",
+            "method_id",
+            "completed_steps",
+            "failed_steps",
+            "current_step",
+            "title",
+            "deviation",
+        ],
+        [
+            "plan",
+            "",
+            "plan:method:task:review",
+            "running",
+            "",
+            "method:task:review",
+            "1/1",
+            "0",
+            "inspect",
+            "",
+            "",
+        ],
         [
             "step",
             "1",
@@ -4485,7 +4975,9 @@ def test_run_cli_work_log_inspect_plans_shows_step_deviation(tmp_path) -> None:
     ]
 
 
-def test_run_cli_work_log_inspect_plans_projects_full_log_not_tail_limit(tmp_path) -> None:
+def test_run_cli_work_log_inspect_plans_projects_full_log_not_tail_limit(
+    tmp_path,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.work import JsonlEventLogBackend
 
@@ -4518,15 +5010,41 @@ def test_run_cli_work_log_inspect_plans_projects_full_log_not_tail_limit(tmp_pat
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(),
-            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("runtime should not start")
+            ),
         )
         assert exit_code == 0
 
     asyncio.run(scenario())
 
     assert [line.split("\t") for line in stdout.getvalue().splitlines()][1:] == [
-        ["plan", "", "plan:method:task:review", "completed", "", "method:task:review", "1/1", "0", "inspect", "", ""],
-        ["step", "1", "inspect", "completed", "run-inspect", "method:task:review", "", "", "", "Inspect current changes", ""],
+        [
+            "plan",
+            "",
+            "plan:method:task:review",
+            "completed",
+            "",
+            "method:task:review",
+            "1/1",
+            "0",
+            "inspect",
+            "",
+            "",
+        ],
+        [
+            "step",
+            "1",
+            "inspect",
+            "completed",
+            "run-inspect",
+            "method:task:review",
+            "",
+            "",
+            "",
+            "Inspect current changes",
+            "",
+        ],
     ]
 
 
@@ -4565,13 +5083,20 @@ def test_run_cli_work_log_inspect_plans_json_outputs_plan_projection(tmp_path) -
 
     async def scenario() -> None:
         exit_code = await run_cli(
-            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "plans-json"],
+            [
+                "--work-log-inspect",
+                str(log_path),
+                "--work-log-inspect-format",
+                "plans-json",
+            ],
             stdin=StringIO(),
             stdout=stdout,
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(),
-            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("runtime should not start")
+            ),
         )
         assert exit_code == 0
 
@@ -4593,7 +5118,9 @@ def test_run_cli_work_log_inspect_plans_json_outputs_plan_projection(tmp_path) -
         "level": "reasoned",
         "requires_reason": True,
     }
-    assert payload[0]["steps"][0]["metadata"]["audit_policy"] == {"record": ["status", "reason"]}
+    assert payload[0]["steps"][0]["metadata"]["audit_policy"] == {
+        "record": ["status", "reason"]
+    }
     assert payload[0]["metadata"]["plan_facts"] == plan_facts
     assert payload[0]["steps"][0]["metadata"]["step_facts"] == step_facts
 
@@ -4625,13 +5152,20 @@ def test_run_cli_work_log_inspect_plans_json_includes_step_deviation(tmp_path) -
 
     async def scenario() -> None:
         exit_code = await run_cli(
-            ["--work-log-inspect", str(log_path), "--work-log-inspect-format", "plans-json"],
+            [
+                "--work-log-inspect",
+                str(log_path),
+                "--work-log-inspect-format",
+                "plans-json",
+            ],
             stdin=StringIO(),
             stdout=stdout,
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(),
-            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("runtime should not start")
+            ),
         )
         assert exit_code == 0
 
@@ -4697,7 +5231,9 @@ def test_run_cli_work_log_inspect_outputs_json_without_runtime(tmp_path) -> None
     ]
 
 
-def test_run_cli_work_log_inspect_json_includes_method_id_when_present(tmp_path) -> None:
+def test_run_cli_work_log_inspect_json_includes_method_id_when_present(
+    tmp_path,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.work import JsonlEventLogBackend
 
@@ -4720,7 +5256,9 @@ def test_run_cli_work_log_inspect_json_includes_method_id_when_present(tmp_path)
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(),
-            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("runtime should not start")
+            ),
         )
         assert exit_code == 0
 
@@ -4756,7 +5294,9 @@ def test_run_cli_work_log_inspect_json_includes_plan_step_metadata(tmp_path) -> 
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(),
-            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("runtime should not start")
+            ),
         )
         assert exit_code == 0
 
@@ -4770,7 +5310,9 @@ def test_run_cli_work_log_inspect_json_includes_plan_step_metadata(tmp_path) -> 
     assert summary["step_title"] == "Inspect current changes"
 
 
-def test_run_cli_work_log_inspect_json_includes_tool_approval_audit_metadata(tmp_path) -> None:
+def test_run_cli_work_log_inspect_json_includes_tool_approval_audit_metadata(
+    tmp_path,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.work import JsonlEventLogBackend
 
@@ -4802,7 +5344,9 @@ def test_run_cli_work_log_inspect_json_includes_tool_approval_audit_metadata(tmp
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(),
-            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("runtime should not start")
+            ),
         )
         assert exit_code == 0
 
@@ -4825,8 +5369,16 @@ def test_run_cli_work_log_inspect_filters_by_run(tmp_path) -> None:
 
     log_path = tmp_path / "events.jsonl"
     event_log = JsonlEventLogBackend(log_path)
-    _append_work_log_inspect_entry(event_log, sequence=1, kind="ContentDelta", run_id="run-1")
-    _append_work_log_inspect_entry(event_log, sequence=2, kind="ApprovalRequested", run_id="run-2", delivery_hint="immediate")
+    _append_work_log_inspect_entry(
+        event_log, sequence=1, kind="ContentDelta", run_id="run-1"
+    )
+    _append_work_log_inspect_entry(
+        event_log,
+        sequence=2,
+        kind="ApprovalRequested",
+        run_id="run-2",
+        delivery_hint="immediate",
+    )
     stdout = StringIO()
 
     async def scenario() -> None:
@@ -4837,7 +5389,9 @@ def test_run_cli_work_log_inspect_filters_by_run(tmp_path) -> None:
             stderr=StringIO(),
             cwd=tmp_path,
             services=_fake_services(),
-            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(AssertionError("runtime should not start")),
+            runtime_builder=lambda **kwargs: (_ for _ in ()).throw(
+                AssertionError("runtime should not start")
+            ),
         )
         assert exit_code == 0
 
@@ -4845,7 +5399,18 @@ def test_run_cli_work_log_inspect_filters_by_run(tmp_path) -> None:
 
     assert [line.split("\t") for line in stdout.getvalue().splitlines()] == [
         _WORK_LOG_INSPECT_COLUMNS,
-        ["2", "ApprovalRequested", "run-2", "session-1", "immediate", "", "", "", "", ""],
+        [
+            "2",
+            "ApprovalRequested",
+            "run-2",
+            "session-1",
+            "immediate",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
     ]
 
 
@@ -4879,9 +5444,18 @@ def test_run_cli_default_rpc_path_uses_unified_mode_runner(tmp_path) -> None:
 @pytest.mark.parametrize(
     ("argv", "message"),
     [
-        (["--tui", "--work-log", "events.jsonl"], "--work-log is not supported in TUI mode"),
-        (["--mode", "rpc", "--work-log", "events.jsonl"], "--work-log is not supported in RPC mode"),
-        (["--work-log", "events.jsonl", "--prompt-steps", "workflow.json"], "--work-log is not supported with --prompt-steps"),
+        (
+            ["--tui", "--work-log", "events.jsonl"],
+            "--work-log is not supported in TUI mode",
+        ),
+        (
+            ["--mode", "rpc", "--work-log", "events.jsonl"],
+            "--work-log is not supported in RPC mode",
+        ),
+        (
+            ["--work-log", "events.jsonl", "--prompt-steps", "workflow.json"],
+            "--work-log is not supported with --prompt-steps",
+        ),
     ],
 )
 def test_run_cli_rejects_work_log_on_unsupported_paths(tmp_path, argv, message) -> None:
@@ -4918,7 +5492,9 @@ def test_run_cli_rejects_work_log_on_unsupported_paths(tmp_path, argv, message) 
         (["--method", "review", "--tui"], TtyStringIO(""), TtyStringIO()),
     ],
 )
-def test_run_cli_rejects_method_on_unsupported_interactive_paths(tmp_path, argv, stdin, stdout) -> None:
+def test_run_cli_rejects_method_on_unsupported_interactive_paths(
+    tmp_path, argv, stdin, stdout
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     _write_review_method(tmp_path)
@@ -5023,7 +5599,9 @@ def test_run_cli_defaults_to_tui_for_interactive_bare_startup(tmp_path) -> None:
         (["--continue"], "/tmp/latest-session.jsonl"),
     ],
 )
-def test_run_cli_defaults_to_tui_for_interactive_resume_flows(tmp_path, argv, expected_restore) -> None:
+def test_run_cli_defaults_to_tui_for_interactive_resume_flows(
+    tmp_path, argv, expected_restore
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     latest_session = SimpleNamespace(session_file=Path("/tmp/latest-session.jsonl"))
@@ -5073,7 +5651,9 @@ def test_run_cli_no_tui_keeps_interactive_bare_startup_in_text_mode(tmp_path) ->
     assert "prompt is required" in stderr.getvalue()
 
 
-def test_run_cli_keeps_interactive_positional_prompt_out_of_default_tui(tmp_path) -> None:
+def test_run_cli_keeps_interactive_positional_prompt_out_of_default_tui(
+    tmp_path,
+) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     runtime = FakeRuntime(FakeSession("session-1"))
@@ -5287,9 +5867,21 @@ def test_run_cli_lists_models_and_returns_early(tmp_path) -> None:
         def get_available_models(self):
             self.get_available_models_calls += 1
             return [
-                type("ModelSelection", (), {"provider": "anthropic", "model_id": "claude-3-opus"}),
-                type("ModelSelection", (), {"provider": "google", "model_id": "gemini-2.0"}),
-                type("ModelSelection", (), {"provider": "anthropic", "model_id": "claude-3-haiku"}),
+                type(
+                    "ModelSelection",
+                    (),
+                    {"provider": "anthropic", "model_id": "claude-3-opus"},
+                ),
+                type(
+                    "ModelSelection",
+                    (),
+                    {"provider": "google", "model_id": "gemini-2.0"},
+                ),
+                type(
+                    "ModelSelection",
+                    (),
+                    {"provider": "anthropic", "model_id": "claude-3-haiku"},
+                ),
             ]
 
     runtime = FakeRuntime(ModelSession("session-1"))
@@ -5299,13 +5891,15 @@ def test_run_cli_lists_models_and_returns_early(tmp_path) -> None:
 
     async def scenario() -> None:
         exit_code = await run_cli(
-                ["--list-models", "anthropic"],
+            ["--list-models", "anthropic"],
             stdin=StringIO(""),
             stdout=stdout,
             stderr=stderr,
             cwd=tmp_path,
             services=_fake_services(),
-            runtime_builder=lambda **kwargs: runtime_args.append(kwargs["args"]) or runtime,
+            runtime_builder=lambda **kwargs: (
+                runtime_args.append(kwargs["args"]) or runtime
+            ),
             print_runner=FakeRunner(),
         )
         assert exit_code == 0
@@ -5325,9 +5919,21 @@ def test_run_cli_lists_models_as_json(tmp_path) -> None:
         def get_available_models(self):
             self.get_available_models_calls += 1
             return [
-                type("ModelSelection", (), {"provider": "anthropic", "model_id": "claude-3-opus"}),
-                type("ModelSelection", (), {"provider": "google", "model_id": "gemini-2.0"}),
-                type("ModelSelection", (), {"provider": "anthropic", "model_id": "claude-3-haiku"}),
+                type(
+                    "ModelSelection",
+                    (),
+                    {"provider": "anthropic", "model_id": "claude-3-opus"},
+                ),
+                type(
+                    "ModelSelection",
+                    (),
+                    {"provider": "google", "model_id": "gemini-2.0"},
+                ),
+                type(
+                    "ModelSelection",
+                    (),
+                    {"provider": "anthropic", "model_id": "claude-3-haiku"},
+                ),
             ]
 
     runtime = FakeRuntime(ModelSession("session-1"))
@@ -5375,13 +5981,23 @@ def test_run_cli_lists_model_metadata_when_session_exposes_details(tmp_path) -> 
                     id="claude-3-opus",
                     provider="anthropic",
                     endpoint="anthropic-messages",
-                    capabilities=Capabilities(reasoning=True, input=("text", "image"), context_window=200000, max_tokens=8192),
+                    capabilities=Capabilities(
+                        reasoning=True,
+                        input=("text", "image"),
+                        context_window=200000,
+                        max_tokens=8192,
+                    ),
                 ),
                 Model(
                     id="gpt-5-mini",
                     provider="openai",
                     endpoint="responses",
-                    capabilities=Capabilities(reasoning=False, input=("text",), context_window=128000, max_tokens=4096),
+                    capabilities=Capabilities(
+                        reasoning=False,
+                        input=("text",),
+                        context_window=128000,
+                        max_tokens=4096,
+                    ),
                 ),
             ]
 
@@ -5421,7 +6037,12 @@ def test_run_cli_lists_model_metadata_as_json(tmp_path) -> None:
                     id="kimi-k2.5",
                     provider="moonshot",
                     endpoint="anthropic-messages",
-                    capabilities=Capabilities(reasoning=True, input=("text",), context_window=256000, max_tokens=16384),
+                    capabilities=Capabilities(
+                        reasoning=True,
+                        input=("text",),
+                        context_window=256000,
+                        max_tokens=16384,
+                    ),
                 )
             ]
 
@@ -5462,8 +6083,16 @@ def test_run_cli_lists_models_deduplicates_provider_model_pairs(tmp_path) -> Non
         def get_available_models(self):
             self.get_available_models_calls += 1
             return [
-                type("ModelSelection", (), {"provider": "moonshot", "model_id": "kimi-k2.5"}),
-                type("ModelSelection", (), {"provider": "moonshot", "model_id": "kimi-k2.5"}),
+                type(
+                    "ModelSelection",
+                    (),
+                    {"provider": "moonshot", "model_id": "kimi-k2.5"},
+                ),
+                type(
+                    "ModelSelection",
+                    (),
+                    {"provider": "moonshot", "model_id": "kimi-k2.5"},
+                ),
                 type("ModelSelection", (), {"provider": "openai", "model_id": "gpt-5"}),
             ]
 
@@ -5651,6 +6280,7 @@ def test_run_cli_list_models_query_ignores_raising_model_attributes(tmp_path) ->
             runtime_builder=lambda **kwargs: runtime,
         )
         assert exit_code == 0
+
     asyncio.run(scenario())
 
     assert stdout.getvalue() == "openai/gpt-5\n"
@@ -5738,7 +6368,9 @@ def test_run_cli_lists_commands_and_returns_early(tmp_path) -> None:
             stderr=stderr,
             cwd=tmp_path,
             services=_fake_services(),
-            runtime_builder=lambda **kwargs: runtime_args.append(kwargs["args"]) or runtime,
+            runtime_builder=lambda **kwargs: (
+                runtime_args.append(kwargs["args"]) or runtime
+            ),
         )
         assert exit_code == 0
 
@@ -5996,14 +6628,19 @@ def test_run_cli_lists_diagnostics_as_tsv_and_returns_early(tmp_path) -> None:
             stderr=stderr,
             cwd=tmp_path,
             services=_fake_services(),
-            runtime_builder=lambda **kwargs: runtime_args.append(kwargs["args"]) or runtime,
+            runtime_builder=lambda **kwargs: (
+                runtime_args.append(kwargs["args"]) or runtime
+            ),
         )
         assert exit_code == 0
 
     asyncio.run(scenario())
 
     assert runtime_args[0].no_session is True
-    assert stdout.getvalue() == "error\truntime\tprovider\tassistant_response_error\t3\tprovider failed\n"
+    assert (
+        stdout.getvalue()
+        == "error\truntime\tprovider\tassistant_response_error\t3\tprovider failed\n"
+    )
     assert stderr.getvalue() == ""
 
 
@@ -6089,11 +6726,7 @@ def test_run_cli_lists_project_skill_provenance_as_json(tmp_path) -> None:
     skill_dir = tmp_path / "skills" / "debug"
     skill_dir.mkdir(parents=True)
     (skill_dir / "SKILL.md").write_text(
-        "---\n"
-        "name: debug\n"
-        "description: Debug failures.\n"
-        "---\n\n"
-        "Debug body.",
+        "---\nname: debug\ndescription: Debug failures.\n---\n\nDebug body.",
         encoding="utf-8",
     )
     loader = DefaultResourceLoader()
@@ -6177,7 +6810,9 @@ def test_run_cli_lists_methods_as_json(tmp_path) -> None:
         "Review the diff carefully.",
         encoding="utf-8",
     )
-    (tmp_path / "methods" / "METHOD.md").write_text("Future method manifest.", encoding="utf-8")
+    (tmp_path / "methods" / "METHOD.md").write_text(
+        "Future method manifest.", encoding="utf-8"
+    )
     session = FakeSession("session-1")
     runtime = FakeRuntime(session)
     stdout = StringIO()
@@ -6394,7 +7029,7 @@ def test_run_cli_shows_fixed_method_plan_as_json(tmp_path) -> None:
 
     async def scenario() -> None:
         exit_code = await run_cli(
-                ["method", "plan", "show", "review", "--format", "json"],
+            ["method", "plan", "show", "review", "--format", "json"],
             stdin=StringIO(""),
             stdout=stdout,
             stderr=stderr,
@@ -6415,15 +7050,23 @@ def test_run_cli_shows_fixed_method_plan_as_json(tmp_path) -> None:
     assert payload["plan"]["mode"] == "fixed"
     assert payload["plan"]["metadata"]["step_count"] == 2
     assert [step["id"] for step in payload["steps"]] == ["inspect", "verify"]
-    assert [step["title"] for step in payload["steps"]] == ["Inspect current changes", "Run focused checks"]
+    assert [step["title"] for step in payload["steps"]] == [
+        "Inspect current changes",
+        "Run focused checks",
+    ]
     first_projection = payload["steps"][0]["projection"]
     second_projection = payload["steps"][1]["projection"]
-    assert first_projection["step_guidance"] == "Read changed files and summarize intent."
+    assert (
+        first_projection["step_guidance"] == "Read changed files and summarize intent."
+    )
     assert first_projection["step_index"] == 0
     assert first_projection["step_count"] == 2
     assert first_projection["meta_role"] == "VALIDATOR"
     assert "Step inspect - Inspect current changes" in first_projection["content"]
-    assert second_projection["step_guidance"] == "Run focused tests or explain why they cannot run."
+    assert (
+        second_projection["step_guidance"]
+        == "Run focused tests or explain why they cannot run."
+    )
     assert second_projection["step_index"] == 1
     assert second_projection["step_count"] == 2
     assert "Step verify - Run focused checks" in second_projection["content"]
@@ -6570,7 +7213,9 @@ def test_run_cli_lists_disabled_plugins_as_tsv(tmp_path) -> None:
 
     plugin_root = tmp_path / "plugins" / "debug-pack"
     plugin_root.mkdir(parents=True)
-    (plugin_root / "plugin.json").write_text(json.dumps({"name": "debug-pack"}), encoding="utf-8")
+    (plugin_root / "plugin.json").write_text(
+        json.dumps({"name": "debug-pack"}), encoding="utf-8"
+    )
     settings_path = tmp_path / ".loushang" / "settings.json"
     settings_path.parent.mkdir()
     settings_path.write_text(
@@ -6585,7 +7230,9 @@ def test_run_cli_lists_disabled_plugins_as_tsv(tmp_path) -> None:
     runtime = FakeRuntime(FakeSession("session-1"))
     stdout = StringIO()
     stderr = StringIO()
-    services = create_services(settings_manager=SettingsManager(project_settings_path=settings_path))
+    services = create_services(
+        settings_manager=SettingsManager(project_settings_path=settings_path)
+    )
 
     async def scenario() -> None:
         exit_code = await run_cli(
@@ -6611,8 +7258,12 @@ def test_run_cli_lists_package_roots_and_plugin_packages_as_json(tmp_path) -> No
     package_root = tmp_path / "packages" / "review-pack"
     (package_root / "prompts").mkdir(parents=True)
     (package_root / "skills" / "review").mkdir(parents=True)
-    (package_root / "prompts" / "review.md").write_text("Package prompt", encoding="utf-8")
-    (package_root / "skills" / "review" / "SKILL.md").write_text("Package skill", encoding="utf-8")
+    (package_root / "prompts" / "review.md").write_text(
+        "Package prompt", encoding="utf-8"
+    )
+    (package_root / "skills" / "review" / "SKILL.md").write_text(
+        "Package skill", encoding="utf-8"
+    )
     plugin_root = tmp_path / "plugins" / "debug-pack"
     plugin_package_root = plugin_root / "resources"
     (plugin_package_root / "themes").mkdir(parents=True)
@@ -6692,10 +7343,19 @@ def test_run_cli_lists_package_scopes_from_settings_layers(tmp_path) -> None:
     project_package_root = tmp_path / "project-package"
     global_plugin_root = tmp_path / "global" / "plugin"
     project_plugin_root = tmp_path / "project-plugin"
-    for root in (global_package_root, project_package_root, global_plugin_root, project_plugin_root):
+    for root in (
+        global_package_root,
+        project_package_root,
+        global_plugin_root,
+        project_plugin_root,
+    ):
         root.mkdir(parents=True)
-    (global_plugin_root / "plugin.json").write_text(json.dumps({"name": "global-plugin"}), encoding="utf-8")
-    (project_plugin_root / "plugin.json").write_text(json.dumps({"name": "project-plugin"}), encoding="utf-8")
+    (global_plugin_root / "plugin.json").write_text(
+        json.dumps({"name": "global-plugin"}), encoding="utf-8"
+    )
+    (project_plugin_root / "plugin.json").write_text(
+        json.dumps({"name": "project-plugin"}), encoding="utf-8"
+    )
     global_settings_path = tmp_path / "global-settings.json"
     project_settings_path = tmp_path / ".loushang" / "settings.json"
     project_settings_path.parent.mkdir()
@@ -6742,7 +7402,9 @@ def test_run_cli_lists_package_scopes_from_settings_layers(tmp_path) -> None:
     asyncio.run(scenario())
 
     packages = json.loads(stdout.getvalue())
-    assert [(package["name"], package["kind"], package["scope"]) for package in packages] == [
+    assert [
+        (package["name"], package["kind"], package["scope"]) for package in packages
+    ] == [
         ("package", "package_root", "user"),
         ("project-package", "package_root", "project"),
         ("global-plugin", "plugin", "user"),
@@ -6759,7 +7421,9 @@ def test_run_cli_reports_settings_load_warnings_for_package_listing(tmp_path) ->
     project_settings_path = tmp_path / ".loushang" / "settings.json"
     project_settings_path.parent.mkdir()
     project_settings_path.write_text("{not-json", encoding="utf-8")
-    services = create_services(settings_manager=SettingsManager(project_settings_path=project_settings_path))
+    services = create_services(
+        settings_manager=SettingsManager(project_settings_path=project_settings_path)
+    )
     runtime = FakeRuntime(FakeSession("session-1"))
     stdout = StringIO()
     stderr = StringIO()
@@ -6783,7 +7447,9 @@ def test_run_cli_reports_settings_load_warnings_for_package_listing(tmp_path) ->
     assert "Expecting property name" in stderr.getvalue()
 
 
-def test_run_cli_reports_settings_load_warnings_once_for_plugin_toggles(tmp_path) -> None:
+def test_run_cli_reports_settings_load_warnings_once_for_plugin_toggles(
+    tmp_path,
+) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.control import SettingsManager
@@ -6791,7 +7457,9 @@ def test_run_cli_reports_settings_load_warnings_once_for_plugin_toggles(tmp_path
     project_settings_path = tmp_path / ".loushang" / "settings.json"
     project_settings_path.parent.mkdir()
     project_settings_path.write_text("{not-json", encoding="utf-8")
-    services = create_services(settings_manager=SettingsManager(project_settings_path=project_settings_path))
+    services = create_services(
+        settings_manager=SettingsManager(project_settings_path=project_settings_path)
+    )
     stdout = StringIO()
     stderr = StringIO()
 
@@ -6809,7 +7477,10 @@ def test_run_cli_reports_settings_load_warnings_once_for_plugin_toggles(tmp_path
 
     asyncio.run(scenario())
 
-    assert stdout.getvalue() == "added plugin source\tplugins/debug-pack\ndisabled plugin\tlegacy\n"
+    assert (
+        stdout.getvalue()
+        == "added plugin source\tplugins/debug-pack\ndisabled plugin\tlegacy\n"
+    )
     assert stderr.getvalue().count("Warning (package command, project settings):") == 1
 
 
@@ -6818,7 +7489,11 @@ def test_run_cli_remove_missing_plugin_source_returns_stable_error(tmp_path) -> 
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.control import SettingsManager
 
-    services = create_services(settings_manager=SettingsManager(project_settings_path=tmp_path / ".loushang" / "settings.json"))
+    services = create_services(
+        settings_manager=SettingsManager(
+            project_settings_path=tmp_path / ".loushang" / "settings.json"
+        )
+    )
     stdout = StringIO()
     stderr = StringIO()
 
@@ -6837,7 +7512,10 @@ def test_run_cli_remove_missing_plugin_source_returns_stable_error(tmp_path) -> 
     asyncio.run(scenario())
 
     assert stdout.getvalue() == ""
-    assert stderr.getvalue() == "Error: no matching plugin source found: plugins/missing-pack\n"
+    assert (
+        stderr.getvalue()
+        == "Error: no matching plugin source found: plugins/missing-pack\n"
+    )
 
 
 def test_run_cli_add_duplicate_plugin_source_returns_stable_error(tmp_path) -> None:
@@ -6851,7 +7529,9 @@ def test_run_cli_add_duplicate_plugin_source_returns_stable_error(tmp_path) -> N
         json.dumps({"plugin_sources": ["plugins/debug-pack"]}),
         encoding="utf-8",
     )
-    services = create_services(settings_manager=SettingsManager(project_settings_path=project_settings_path))
+    services = create_services(
+        settings_manager=SettingsManager(project_settings_path=project_settings_path)
+    )
     stdout = StringIO()
     stderr = StringIO()
 
@@ -6870,16 +7550,22 @@ def test_run_cli_add_duplicate_plugin_source_returns_stable_error(tmp_path) -> N
     asyncio.run(scenario())
 
     assert stdout.getvalue() == ""
-    assert stderr.getvalue() == "Error: plugin source already exists: plugins/debug-pack\n"
+    assert (
+        stderr.getvalue() == "Error: plugin source already exists: plugins/debug-pack\n"
+    )
 
 
-def test_run_cli_adds_https_remote_plugin_source_without_resolving_local_path(tmp_path) -> None:
+def test_run_cli_adds_https_remote_plugin_source_without_resolving_local_path(
+    tmp_path,
+) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.control import SettingsManager
 
     project_settings_path = tmp_path / ".loushang" / "settings.json"
-    services = create_services(settings_manager=SettingsManager(project_settings_path=project_settings_path))
+    services = create_services(
+        settings_manager=SettingsManager(project_settings_path=project_settings_path)
+    )
     stdout = StringIO()
     stderr = StringIO()
 
@@ -6914,7 +7600,11 @@ def test_run_cli_rejects_insecure_remote_plugin_source(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
     from loushang.coding.control import SettingsManager
 
-    services = create_services(settings_manager=SettingsManager(project_settings_path=tmp_path / ".loushang" / "settings.json"))
+    services = create_services(
+        settings_manager=SettingsManager(
+            project_settings_path=tmp_path / ".loushang" / "settings.json"
+        )
+    )
     diagnostics = services.diagnostics_service
     stdout = StringIO()
     stderr = StringIO()
@@ -6980,9 +7670,33 @@ def test_run_cli_runs_explicit_package_lifecycle_commands(tmp_path) -> None:
     assert session.update_package_calls == [source]
     assert session.remove_package_calls == [source]
     assert [json.loads(line) for line in stdout.getvalue().splitlines()] == [
-        {"command": "materialize_package", "record": {"source": source, "name": "review-pack", "lifecycle": "installed", "targetPath": "/tmp/packages/review-pack"}},
-        {"command": "update_package", "record": {"source": source, "name": "review-pack", "lifecycle": "installed", "targetPath": "/tmp/packages/review-pack"}},
-        {"command": "remove_package", "record": {"source": source, "name": "review-pack", "lifecycle": "remote_registered", "targetPath": "/tmp/packages/review-pack"}},
+        {
+            "command": "materialize_package",
+            "record": {
+                "source": source,
+                "name": "review-pack",
+                "lifecycle": "installed",
+                "targetPath": "/tmp/packages/review-pack",
+            },
+        },
+        {
+            "command": "update_package",
+            "record": {
+                "source": source,
+                "name": "review-pack",
+                "lifecycle": "installed",
+                "targetPath": "/tmp/packages/review-pack",
+            },
+        },
+        {
+            "command": "remove_package",
+            "record": {
+                "source": source,
+                "name": "review-pack",
+                "lifecycle": "remote_registered",
+                "targetPath": "/tmp/packages/review-pack",
+            },
+        },
     ]
     assert stderr.getvalue() == ""
 
@@ -7210,8 +7924,12 @@ def test_run_cli_marks_package_version_conflicts_in_json(tmp_path) -> None:
     second_plugin = tmp_path / "plugins" / "debug-pack-b"
     first_plugin.mkdir(parents=True)
     second_plugin.mkdir(parents=True)
-    (first_plugin / "plugin.json").write_text(json.dumps({"name": "debug-pack", "version": "1.0.0"}), encoding="utf-8")
-    (second_plugin / "plugin.json").write_text(json.dumps({"name": "debug-pack", "version": "2.0.0"}), encoding="utf-8")
+    (first_plugin / "plugin.json").write_text(
+        json.dumps({"name": "debug-pack", "version": "1.0.0"}), encoding="utf-8"
+    )
+    (second_plugin / "plugin.json").write_text(
+        json.dumps({"name": "debug-pack", "version": "2.0.0"}), encoding="utf-8"
+    )
     runtime = FakeRuntime(FakeSession("session-1"))
     stdout = StringIO()
     stderr = StringIO()
@@ -7223,7 +7941,9 @@ def test_run_cli_marks_package_version_conflicts_in_json(tmp_path) -> None:
             stdout=stdout,
             stderr=stderr,
             cwd=tmp_path,
-            services=_fake_services(plugin_sources=(str(first_plugin), str(second_plugin))),
+            services=_fake_services(
+                plugin_sources=(str(first_plugin), str(second_plugin))
+            ),
             runtime_builder=lambda **kwargs: runtime,
         )
         assert exit_code == 0
@@ -7262,7 +7982,13 @@ def test_run_cli_lists_offline_package_catalog_entries(tmp_path) -> None:
 
     async def scenario() -> None:
         exit_code = await run_cli(
-            ["--list-packages", "--list-packages-format", "json", "--package-catalog", str(catalog_path)],
+            [
+                "--list-packages",
+                "--list-packages-format",
+                "json",
+                "--package-catalog",
+                str(catalog_path),
+            ],
             stdin=StringIO(""),
             stdout=stdout,
             stderr=stderr,
@@ -7348,10 +8074,14 @@ def test_run_cli_lists_remote_plugin_source_lifecycle_state(tmp_path) -> None:
     project_settings_path = tmp_path / ".loushang" / "settings.json"
     project_settings_path.parent.mkdir()
     project_settings_path.write_text(
-        json.dumps({"plugin_sources": ["https://packages.example.invalid/review-pack.git"]}),
+        json.dumps(
+            {"plugin_sources": ["https://packages.example.invalid/review-pack.git"]}
+        ),
         encoding="utf-8",
     )
-    services = create_services(settings_manager=SettingsManager(project_settings_path=project_settings_path))
+    services = create_services(
+        settings_manager=SettingsManager(project_settings_path=project_settings_path)
+    )
     runtime = FakeRuntime(FakeSession("session-1"))
     stdout = StringIO()
     stderr = StringIO()
@@ -7701,7 +8431,9 @@ def test_run_cli_executes_command_and_prints_output(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     session = FakeSession("session-1")
-    session.set_execute_command_result(type("Execution", (), {"result": {"status": "ok"}})())
+    session.set_execute_command_result(
+        type("Execution", (), {"result": {"status": "ok"}})()
+    )
     runtime = FakeRuntime(session)
     stdout = StringIO()
     stderr = StringIO()
@@ -7721,7 +8453,7 @@ def test_run_cli_executes_command_and_prints_output(tmp_path) -> None:
     asyncio.run(scenario())
 
     assert session.execute_command_calls == [("deploy", "now")]
-    assert stdout.getvalue() == "{\"status\": \"ok\"}\n"
+    assert stdout.getvalue() == '{"status": "ok"}\n'
     assert stderr.getvalue() == ""
 
 
@@ -7729,7 +8461,9 @@ def test_run_cli_executes_command_with_json_result_envelope(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     session = FakeSession("session-1")
-    session.set_execute_command_result(type("Execution", (), {"result": {"status": "ok"}})())
+    session.set_execute_command_result(
+        type("Execution", (), {"result": {"status": "ok"}})()
+    )
     runtime = FakeRuntime(session)
     stdout = StringIO()
     stderr = StringIO()
@@ -7846,7 +8580,11 @@ def test_run_cli_prints_non_jsonifiable_command_result(tmp_path) -> None:
     asyncio.run(scenario())
 
     assert stdout.getvalue().strip().startswith("{")
-    assert "1" in stdout.getvalue() and "2" in stdout.getvalue() and "3" in stdout.getvalue()
+    assert (
+        "1" in stdout.getvalue()
+        and "2" in stdout.getvalue()
+        and "3" in stdout.getvalue()
+    )
     assert "Error" not in stderr.getvalue()
 
 
@@ -8014,7 +8752,9 @@ def test_run_cli_reports_fork_errors(tmp_path, resume_flag) -> None:
         if resume_flag == "--session":
             args = ["--session", "session-1", *args]
         else:
-            runtime.session_records = [SimpleNamespace(session_file=Path(f"/tmp/{resume_flag}-session.jsonl"))]
+            runtime.session_records = [
+                SimpleNamespace(session_file=Path(f"/tmp/{resume_flag}-session.jsonl"))
+            ]
             runtime.restore_session_calls = []
             args = [resume_flag, *args]
 

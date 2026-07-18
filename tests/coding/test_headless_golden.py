@@ -23,7 +23,9 @@ def _model() -> Model:
 
 
 def _usage() -> Usage:
-    return Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    return Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
 
 
 def _stream_with_message(message: AssistantMessage) -> AssistantMessageEventStream:
@@ -74,7 +76,9 @@ def _assistant_text_message(text: str) -> AssistantMessage:
     )
 
 
-def test_headless_public_api_golden_allows_policy_approved_write_and_records_session(tmp_path) -> None:
+def test_headless_public_api_golden_allows_policy_approved_write_and_records_session(
+    tmp_path,
+) -> None:
     from loushang.coding import (
         ControlConfig,
         SessionManager,
@@ -103,12 +107,17 @@ def test_headless_public_api_golden_allows_policy_approved_write_and_records_ses
 
     async def stream_fn(model, context, options=None):
         del model, options
-        if any(getattr(message, "role", None) == "toolResult" for message in context.messages):
+        if any(
+            getattr(message, "role", None) == "toolResult"
+            for message in context.messages
+        ):
             return _stream_with_message(_assistant_text_message("wrote golden.txt"))
         return _stream_with_message(_assistant_tool_call_message())
 
     async def scenario() -> list[str]:
-        manager = SessionManager.new(session_dir=tmp_path / "sessions", cwd=str(project), persist=True)
+        manager = await SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project), persist=True
+        )
         session = create_agent_session(
             session_manager=manager,
             model=_model(),

@@ -46,7 +46,9 @@ def build_synthetic_long_transcript_records(
                 name=f"read /repo/file_{index}.py",
                 state="completed",
                 elapsed_seconds=0.01,
-                output=_tool_output_text(index, tail_tool_output_lines if index == turns else 12),
+                output=_tool_output_text(
+                    index, tail_tool_output_lines if index == turns else 12
+                ),
                 command=f"read /repo/file_{index}.py",
             )
         )
@@ -63,7 +65,9 @@ def characterize_long_transcript_rendering(
     render_loop: RenderLoop | None = None,
     commit_plan: bool = False,
 ) -> LongTranscriptRenderMetrics:
-    constraints = RenderConstraints(width=width, max_height=height, visible_height=height)
+    constraints = RenderConstraints(
+        width=width, max_height=height, visible_height=height
+    )
     if composer_text:
         app.composer.set_text(composer_text)
 
@@ -89,14 +93,16 @@ def characterize_long_transcript_rendering(
     )
 
 
-def load_session_history_records(
+async def load_session_history_records(
     session_file: str | Path,
     *,
     tool_definition_resolver: Any | None = None,
 ) -> tuple[DisplayRecord, ...]:
-    manager = SessionManager.load(Path(session_file).expanduser().resolve())
+    manager = await SessionManager.load(Path(session_file).expanduser().resolve())
     session = _HistorySession(manager)
-    return session_history_records(session, tool_definition_resolver=tool_definition_resolver)
+    return session_history_records(
+        session, tool_definition_resolver=tool_definition_resolver
+    )
 
 
 class _HistorySession:

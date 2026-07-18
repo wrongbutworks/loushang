@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import loushang.tui.render_loop as render_loop_module
 from loushang.observability import configure_debug_logging, reset_observability
 from loushang.tui import (
     CURSOR_MARKER,
@@ -23,7 +24,14 @@ from loushang.tui import (
     delete_kitty_image,
     wrap_tmux_passthrough,
 )
+from loushang.tui.core import (
+    RenderLineSegment,
+    RenderLineSegmentLike,
+    SegmentedRenderLines,
+)
 from loushang.tui.render_loop import DEFAULT_STRATEGY_ORDER, RenderPlanStrategyKind
+
+pytestmark = pytest.mark.tui_render_contract
 
 
 class StaticRoot:
@@ -32,6 +40,42 @@ class StaticRoot:
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         return RenderResult.from_lines([RenderLine(line) for line in self.lines], constraints=constraints)
+
+
+class SegmentedRoot:
+    def __init__(
+        self,
+        segments: tuple[RenderLineSegmentLike, ...],
+        *,
+        cursor: CursorDeclaration | None = None,
+    ) -> None:
+        self.segments = segments
+        self.cursor = cursor
+
+    def render(self, constraints: RenderConstraints) -> RenderResult:
+        del constraints
+        return RenderResult(
+            lines=SegmentedRenderLines.from_segments(self.segments),
+            cursor=self.cursor,
+        )
+
+
+class FlatFrameRoot:
+    def __init__(
+        self,
+        lines: tuple[str, ...],
+        *,
+        cursor: CursorDeclaration | None = None,
+    ) -> None:
+        self.lines = lines
+        self.cursor = cursor
+
+    def render(self, constraints: RenderConstraints) -> RenderResult:
+        return RenderResult.from_lines(
+            tuple(RenderLine(line) for line in self.lines),
+            constraints=constraints,
+            cursor=self.cursor,
+        )
 
 
 class TextRoot:
@@ -54,6 +98,313 @@ class RecordingDebugSink:
 
     def write_debug_event(self, record) -> None:
         self.events.append(record)
+
+
+def _render_segment(
+    *lines: str,
+    identity: object | None = None,
+    revision: object = 0,
+) -> RenderLineSegment:
+    return RenderLineSegment(
+        tuple(RenderLine(line) for line in lines),
+        identity=identity if identity is not None else object(),
+        revision=revision,
+    )
+
+
+def test_segmented_render_skips_11748_committed_rows_on_bottom_frame_update(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    committed = _render_segment(
+        *(f"history {index}" for index in range(11_748)),
+        identity="committed",
+        revision=1,
+    )
+    bottom_identity = object()
+    root = SegmentedRoot(
+        (committed, _render_segment("Working (1s)", identity=bottom_identity, revision=1))
+    )
+    loop = RenderLoop(root)
+    size = TerminalSize(columns=80, rows=24)
+    first = loop.plan(size)
+    loop.commit(first, size=size)
+
+    compared_tail_sizes: list[tuple[int, int]] = []
+    original_changed_range = render_loop_module._changed_line_range_flat
+
+    def record_changed_range_sizes(
+        previous_lines: tuple[str, ...],
+        current_lines: tuple[str, ...],
+    ) -> tuple[int, int] | None:
+        compared_tail_sizes.append((len(previous_lines), len(current_lines)))
+        return original_changed_range(previous_lines, current_lines)
+
+    monkeypatch.setattr(
+        render_loop_module,
+        "_changed_line_range_flat",
+        record_changed_range_sizes,
+    )
+    root.segments = (
+        committed,
+        _render_segment("Working (2s)", identity=bottom_identity, revision=2),
+    )
+
+    tick = loop.plan(size)
+
+    assert tick.changed_line_range == (11_748, 11_748)
+    assert compared_tail_sizes == [(1, 1)]
+    assert tick.reused_render_segment_count == 1
+    assert tick.materialized_logical_line_count == 1
+    assert tick.flattened_logical_line_count == 0
+
+    loop.commit(tick, size=size)
+    compared_tail_sizes.clear()
+
+    no_op = loop.plan(size)
+
+    assert no_op.operation_class == "noop"
+    assert no_op.operations == ()
+    assert compared_tail_sizes == []
+    assert no_op.reused_render_segment_count == 2
+    assert no_op.materialized_logical_line_count == 0
+    assert no_op.flattened_logical_line_count == 0
+
+
+def test_segment_cache_retains_only_the_latest_segmented_frame() -> None:
+    committed = _render_segment("history", identity="committed", revision=1)
+    root = SegmentedRoot((committed,))
+    loop = RenderLoop(root)
+    size = TerminalSize(columns=80, rows=24)
+    latest_draft: RenderLineSegment | None = None
+
+    for revision in range(600):
+        draft_line_count = revision // 100 + 1
+        latest_draft = _render_segment(
+            *(f"draft revision {revision} line {line}" for line in range(draft_line_count)),
+            revision=revision,
+        )
+        root.segments = (committed, latest_draft)
+        frame = loop.plan(size)
+        loop.commit(frame, size=size)
+
+        assert len(loop._finalized_segment_cache) == 2
+        assert sum(
+            len(segment.raw_lines)
+            for segment in loop._finalized_segment_cache.values()
+        ) == draft_line_count + 1
+
+    assert latest_draft is not None
+    assert set(loop._finalized_segment_cache) == {
+        (committed.identity_key, committed.revision),
+        (latest_draft.identity_key, latest_draft.revision),
+    }
+
+    no_op = loop.plan(size)
+
+    assert no_op.reused_render_segment_count == 2
+    assert no_op.materialized_logical_line_count == 0
+
+    root.segments = (committed,)
+    completed = loop.plan(size)
+
+    assert tuple(completed.current_logical_lines) == ("history",)
+    assert set(loop._finalized_segment_cache) == {
+        (committed.identity_key, committed.revision)
+    }
+
+
+def test_segment_cache_retains_every_segment_in_the_latest_frame() -> None:
+    stable = tuple(
+        _render_segment(
+            f"stable group {index}",
+            identity=("stable-group", index),
+            revision=1,
+        )
+        for index in range(600)
+    )
+    frontier_identity = object()
+    root = SegmentedRoot(
+        (*stable, _render_segment("frontier one", identity=frontier_identity, revision=1))
+    )
+    loop = RenderLoop(root)
+    size = TerminalSize(columns=80, rows=24)
+    first = loop.plan(size)
+    loop.commit(first, size=size)
+
+    assert len(loop._finalized_segment_cache) == 601
+
+    root.segments = (
+        *stable,
+        _render_segment("frontier two", identity=frontier_identity, revision=2),
+    )
+    changed = loop.plan(size)
+
+    assert changed.reused_render_segment_count == 600
+    assert changed.materialized_logical_line_count == 1
+    loop.commit(changed, size=size)
+
+    no_op = loop.plan(size)
+
+    assert no_op.reused_render_segment_count == 601
+    assert no_op.materialized_logical_line_count == 0
+
+
+def test_segment_cache_replacement_is_atomic_when_finalization_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = SegmentedRoot((_render_segment("old", revision=1),))
+    loop = RenderLoop(root)
+    size = TerminalSize(columns=80, rows=24)
+    loop.plan(size)
+    previous_cache = loop._finalized_segment_cache
+    previous_cache_items = tuple(previous_cache.items())
+    root.segments = (
+        _render_segment("new one", revision=2),
+        _render_segment("new two", revision=2),
+    )
+    original_finalize = render_loop_module._finalize_render_segment
+    finalize_calls = 0
+
+    def fail_second_segment(segment: RenderLineSegmentLike):
+        nonlocal finalize_calls
+        finalize_calls += 1
+        if finalize_calls == 2:
+            raise RuntimeError("finalization failed")
+        return original_finalize(segment)
+
+    monkeypatch.setattr(
+        render_loop_module,
+        "_finalize_render_segment",
+        fail_second_segment,
+    )
+
+    with pytest.raises(RuntimeError, match="finalization failed"):
+        loop.plan(size)
+
+    assert loop._finalized_segment_cache is previous_cache
+    assert tuple(loop._finalized_segment_cache.items()) == previous_cache_items
+
+
+def test_segment_cache_sweeps_changed_views_without_changing_flat_output() -> None:
+    base = _render_segment(
+        "zero",
+        "one",
+        "two",
+        "three",
+        identity="shared",
+        revision=1,
+    )
+    first_view = SegmentedRenderLines.from_segments((base,))[0:2]
+    second_view = SegmentedRenderLines.from_segments((base,))[1:3]
+    root = SegmentedRoot(first_view.segments)
+    flat_root = FlatFrameRoot(("zero", "one"))
+    loop = RenderLoop(root)
+    flat_loop = RenderLoop(flat_root)
+    size = TerminalSize(columns=80, rows=24)
+    first = loop.plan(size)
+    flat_first = flat_loop.plan(size)
+    loop.commit(first, size=size)
+    flat_loop.commit(flat_first, size=size)
+    first_key = (
+        first_view.segments[0].identity_key,
+        first_view.segments[0].revision,
+    )
+
+    root.segments = second_view.segments
+    flat_root.lines = ("one", "two")
+    changed = loop.plan(size)
+    flat_changed = flat_loop.plan(size)
+    second_key = (
+        second_view.segments[0].identity_key,
+        second_view.segments[0].revision,
+    )
+
+    assert tuple(changed.current_logical_lines) == tuple(flat_changed.current_logical_lines)
+    assert changed.changed_line_range == flat_changed.changed_line_range
+    assert changed.operation_class == flat_changed.operation_class
+    assert changed.operations == flat_changed.operations
+    assert first_key not in loop._finalized_segment_cache
+    assert set(loop._finalized_segment_cache) == {second_key}
+    loop.commit(changed, size=size)
+
+    no_op = loop.plan(size)
+
+    assert no_op.reused_render_segment_count == 1
+    assert no_op.materialized_logical_line_count == 0
+
+
+def test_failed_segmented_flush_reuses_cache_without_advancing_baseline() -> None:
+    identity = object()
+    root = SegmentedRoot(
+        (_render_segment("first", identity=identity, revision=1),)
+    )
+    port = FakeTerminalPort(size=TerminalSize(columns=20, rows=5))
+    loop = RenderLoop(root)
+    runtime = TuiRuntime(render_loop=loop, terminal=port)
+    runtime.render_now()
+    committed_revision = loop.committed_frame_revision
+    root.segments = (
+        _render_segment("second", identity=identity, revision=2),
+    )
+    port.fail_next_flush(RuntimeError("write failed"))
+
+    with pytest.raises(RuntimeError, match="write failed"):
+        runtime.render_now()
+
+    assert loop.committed_frame_revision == committed_revision
+
+    retried = runtime.render_now()
+
+    assert retried.diagnostics.reused_render_segment_count == 1
+    assert retried.diagnostics.materialized_logical_line_count == 0
+    assert tuple(retried.diagnostics.previous_rendered_lines) == ("first",)
+    assert tuple(retried.diagnostics.current_logical_lines) == ("second",)
+    assert retried.diagnostics.base_frame_revision == committed_revision
+
+
+def test_segmented_row_shift_matches_flat_planner_and_repaints_shifted_image() -> None:
+    image_line = "\x1b_Gi=123;AAAA\x1b\\"
+    committed = _render_segment("history one", "history two", identity="history")
+    bottom = _render_segment(image_line, identity="bottom-image")
+    segmented_root = SegmentedRoot(
+        (committed, _render_segment("draft", identity="draft", revision=1), bottom),
+        cursor=CursorDeclaration(row=3, column=0),
+    )
+    flat_root = FlatFrameRoot(
+        ("history one", "history two", "draft", image_line),
+        cursor=CursorDeclaration(row=3, column=0),
+    )
+    segmented_loop = RenderLoop(segmented_root)
+    flat_loop = RenderLoop(flat_root)
+    size = TerminalSize(columns=80, rows=8)
+    segmented_first = segmented_loop.plan(size)
+    flat_first = flat_loop.plan(size)
+    segmented_loop.commit(segmented_first, size=size)
+    flat_loop.commit(flat_first, size=size)
+
+    segmented_root.segments = (
+        committed,
+        _render_segment("draft", "extra", identity="draft", revision=2),
+        bottom,
+    )
+    segmented_root.cursor = CursorDeclaration(row=4, column=0)
+    flat_root.lines = ("history one", "history two", "draft", "extra", image_line)
+    flat_root.cursor = CursorDeclaration(row=4, column=0)
+
+    segmented = segmented_loop.plan(size)
+    flat = flat_loop.plan(size)
+
+    assert tuple(segmented.current_logical_lines) == tuple(flat.current_logical_lines)
+    assert segmented.changed_line_range == flat.changed_line_range == (3, 4)
+    assert segmented.operation_class == flat.operation_class
+    assert segmented.operations == flat.operations
+    assert segmented.viewport_top == flat.viewport_top
+    assert segmented.logical_cursor_row == flat.logical_cursor_row
+    assert delete_kitty_image(123) in tuple(
+        operation.text
+        for operation in segmented.operations
+        if operation.kind == "write"
+    )
 
 
 def test_first_render_flushes_full_logical_lines_without_clearing_scrollback() -> None:
@@ -828,17 +1179,32 @@ def test_failed_runtime_flush_does_not_advance_render_loop_snapshot() -> None:
     render_loop = RenderLoop(root)
     runtime = TuiRuntime(render_loop=render_loop, terminal=port)
     runtime.render_now()
+    committed_revision = render_loop.committed_frame_revision
     root.lines = ("second",)
     port.fail_next_flush(RuntimeError("write failed"))
 
     with pytest.raises(RuntimeError, match="write failed"):
         runtime.render_now()
 
+    assert render_loop.committed_frame_revision == committed_revision
     root.lines = ("third",)
     step = runtime.render_now()
 
     assert step.diagnostics.previous_rendered_lines == ("first",)
     assert step.diagnostics.changed_line_range == (0, 0)
+    assert step.diagnostics.base_frame_revision == committed_revision
+
+
+def test_render_loop_rejects_plan_from_a_stale_committed_frame() -> None:
+    loop = RenderLoop(StaticRoot(("line",)))
+    size = TerminalSize(columns=20, rows=5)
+    first = loop.plan(size)
+    stale = loop.plan(size)
+
+    loop.commit(first, size=size)
+
+    with pytest.raises(RuntimeError, match="base revision"):
+        loop.commit(stale, size=size)
 
 
 def test_process_terminal_port_writes_serialized_frame_to_output() -> None:

@@ -4,7 +4,7 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.diagnostics.types import (
+from loushang.harness.diagnostics.types import (
     DiagnosticRecord,
     DiagnosticSummary,
     ErrorReport,

@@ -8,6 +8,13 @@ from loushang.coding.ui.transcript_source import (
     ActiveWindowTranscriptSource,
     SessionTranscriptSource,
 )
+from loushang.coding.ui.transcript_source import (
+    TranscriptSnapshot as CodingTranscriptSnapshot,
+)
+from loushang.coding.ui.transcript_source import (
+    TranscriptSource as CodingTranscriptSource,
+)
+from loushang.harnesstui.conversation.source import TranscriptSnapshot, TranscriptSource
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     ToolExecutionRecord,
@@ -19,6 +26,11 @@ from loushang.tui.transcript import (
 @dataclass(slots=True)
 class _Session:
     messages: list[object]
+
+
+def test_coding_transcript_contracts_are_harnesstui_compatibility_aliases() -> None:
+    assert CodingTranscriptSnapshot is TranscriptSnapshot
+    assert CodingTranscriptSource is TranscriptSource
 
 
 def test_active_window_transcript_source_returns_snapshot_metadata() -> None:
@@ -132,6 +144,35 @@ def test_session_transcript_source_merges_live_active_window_records() -> None:
         UserPromptRecord("full question"),
         AssistantMessageRecord("full answer", stable=True),
         ToolExecutionRecord(name="bash run-tests", state="running", elapsed_seconds=0.1, output="live output"),
+    )
+
+
+def test_session_transcript_source_keeps_complete_metadata_for_identical_window() -> None:
+    session = _Session(
+        messages=[
+            UserMessage(role="user", content=[TextPart(type="text", text="full question")], timestamp=1.0),
+            _assistant_message("full answer", timestamp=2.0),
+        ]
+    )
+    state = ScreenCodingTuiState(model_label="model", cwd="/tmp/project", branch=None, session_label=None)
+    state.replace_transcript_window(
+        (
+            UserPromptRecord("full question"),
+            AssistantMessageRecord("full answer", stable=True),
+        )
+    )
+
+    snapshot = SessionTranscriptSource(
+        session,
+        source_label="Session history",
+        active_window_state=state,
+    ).snapshot()
+
+    assert snapshot.complete is True
+    assert snapshot.source_label == "Session history"
+    assert snapshot.records == (
+        UserPromptRecord("full question"),
+        AssistantMessageRecord("full answer", stable=True),
     )
 
 

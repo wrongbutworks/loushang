@@ -554,7 +554,7 @@ def test_default_resource_loader_applies_skill_ignore_files(tmp_path) -> None:
 def test_default_resource_loader_prefers_project_local_prompt_when_built_in_candidate_collides(
     tmp_path, monkeypatch
 ) -> None:
-    import loushang.coding.loader.default_resource_loader as loader_module
+    import loushang.harness.resources.loader as loader_module
     from loushang.coding.loader import DefaultResourceLoader, PromptFragmentDescriptor
 
     project_root = tmp_path / "project"
@@ -574,7 +574,7 @@ def test_default_resource_loader_prefers_project_local_prompt_when_built_in_cand
         source="package_resource",
     )
 
-    monkeypatch.setattr(loader_module, "_discover_built_in_prompts", lambda: ([built_in_prompt], []))
+    monkeypatch.setattr(loader_module, "_discover_built_in_prompts", lambda _package, *, source_root_order: ([built_in_prompt], []))
 
     loader = DefaultResourceLoader()
     bundle = loader.discover_resources(project_root)
@@ -729,7 +729,7 @@ def test_default_resource_loader_returns_empty_bundle_when_no_agents_md_exists(t
 
 
 def test_prompt_same_precedence_collision_disables_only_that_prompt_identity(tmp_path, monkeypatch) -> None:
-    import loushang.coding.loader.default_resource_loader as loader_module
+    import loushang.harness.resources.loader as loader_module
     from loushang.coding.loader import DefaultResourceLoader, PromptFragmentDescriptor
 
     root = tmp_path / "project"
@@ -751,7 +751,7 @@ def test_prompt_same_precedence_collision_disables_only_that_prompt_identity(tmp
         canonical_name="repo.md",
     )
 
-    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda: loader_module._SourceDiscovery())
+    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda _packages: loader_module._SourceDiscovery())
     monkeypatch.setattr(
         loader_module,
         "_discover_project_resources",
@@ -768,7 +768,7 @@ def test_prompt_same_precedence_collision_disables_only_that_prompt_identity(tmp
 
 
 def test_skill_same_precedence_collision_disables_only_that_skill_identity(tmp_path, monkeypatch) -> None:
-    import loushang.coding.loader.default_resource_loader as loader_module
+    import loushang.harness.resources.loader as loader_module
     from loushang.coding.loader import DefaultResourceLoader, SkillDescriptor
 
     root = tmp_path / "project"
@@ -789,7 +789,7 @@ def test_skill_same_precedence_collision_disables_only_that_skill_identity(tmp_p
         canonical_name="review/SKILL.md",
     )
 
-    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda: loader_module._SourceDiscovery())
+    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda _packages: loader_module._SourceDiscovery())
     monkeypatch.setattr(
         loader_module,
         "_discover_project_resources",
@@ -810,7 +810,7 @@ def test_skill_same_precedence_collision_disables_only_that_skill_identity(tmp_p
 
 
 def test_theme_same_precedence_collision_keeps_first_winner_and_records_loser(tmp_path, monkeypatch) -> None:
-    import loushang.coding.loader.default_resource_loader as loader_module
+    import loushang.harness.resources.loader as loader_module
     from loushang.coding.loader import DefaultResourceLoader, ThemeDescriptor
 
     root = tmp_path / "project"
@@ -819,7 +819,7 @@ def test_theme_same_precedence_collision_keeps_first_winner_and_records_loser(tm
     theme_a = ThemeDescriptor(name="clean", source_path=root / "themes" / "a.json", canonical_name="clean")
     theme_b = ThemeDescriptor(name="clean", source_path=root / "themes" / "b.json", canonical_name="clean")
 
-    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda: loader_module._SourceDiscovery())
+    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda _packages: loader_module._SourceDiscovery())
     monkeypatch.setattr(
         loader_module,
         "_discover_project_resources",
@@ -836,7 +836,7 @@ def test_theme_same_precedence_collision_keeps_first_winner_and_records_loser(tm
 
 
 def test_theme_discovery_skips_non_json_entries_and_records_diagnostic(tmp_path, monkeypatch) -> None:
-    import loushang.coding.loader.default_resource_loader as loader_module
+    import loushang.harness.resources.loader as loader_module
     from loushang.coding.loader import DefaultResourceLoader
 
     root = tmp_path / "project"
@@ -845,7 +845,7 @@ def test_theme_discovery_skips_non_json_entries_and_records_diagnostic(tmp_path,
     (themes_dir / "clean.json").write_text("{}", encoding="utf-8")
     (themes_dir / "README.md").write_text("not a theme", encoding="utf-8")
 
-    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda: loader_module._SourceDiscovery())
+    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda _packages: loader_module._SourceDiscovery())
 
     loader = DefaultResourceLoader()
     loader.discover_resources(root)
@@ -858,7 +858,7 @@ def test_theme_discovery_skips_non_json_entries_and_records_diagnostic(tmp_path,
 
 
 def test_theme_discovery_reports_invalid_json_theme_diagnostic(tmp_path, monkeypatch) -> None:
-    import loushang.coding.loader.default_resource_loader as loader_module
+    import loushang.harness.resources.loader as loader_module
     from loushang.coding.loader import DefaultResourceLoader
 
     root = tmp_path / "project"
@@ -867,7 +867,7 @@ def test_theme_discovery_reports_invalid_json_theme_diagnostic(tmp_path, monkeyp
     (themes_dir / "clean.json").write_text('{"colors": {}}', encoding="utf-8")
     (themes_dir / "broken.json").write_text("{not json", encoding="utf-8")
 
-    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda: loader_module._SourceDiscovery())
+    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda _packages: loader_module._SourceDiscovery())
 
     loader = DefaultResourceLoader()
     loader.discover_resources(root)
@@ -880,7 +880,7 @@ def test_theme_discovery_reports_invalid_json_theme_diagnostic(tmp_path, monkeyp
 
 
 def test_theme_discovery_reports_non_object_theme_schema_diagnostic(tmp_path, monkeypatch) -> None:
-    import loushang.coding.loader.default_resource_loader as loader_module
+    import loushang.harness.resources.loader as loader_module
     from loushang.coding.loader import DefaultResourceLoader
 
     root = tmp_path / "project"
@@ -889,7 +889,7 @@ def test_theme_discovery_reports_non_object_theme_schema_diagnostic(tmp_path, mo
     (themes_dir / "clean.json").write_text('{"colors": {}}', encoding="utf-8")
     (themes_dir / "array.json").write_text("[]", encoding="utf-8")
 
-    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda: loader_module._SourceDiscovery())
+    monkeypatch.setattr(loader_module, "_discover_built_in_resources", lambda _packages: loader_module._SourceDiscovery())
 
     loader = DefaultResourceLoader()
     loader.discover_resources(root)
@@ -902,7 +902,7 @@ def test_theme_discovery_reports_non_object_theme_schema_diagnostic(tmp_path, mo
 
 
 def test_extension_same_name_candidates_remain_active_after_precedence_sort(tmp_path, monkeypatch) -> None:
-    import loushang.coding.loader.default_resource_loader as loader_module
+    import loushang.harness.resources.loader as loader_module
     from loushang.coding.loader import DefaultResourceLoader, ExtensionDescriptor
 
     root = tmp_path / "project"
@@ -929,7 +929,7 @@ def test_extension_same_name_candidates_remain_active_after_precedence_sort(tmp_
     monkeypatch.setattr(
         loader_module,
         "_discover_built_in_resources",
-        lambda: loader_module._SourceDiscovery(extensions=[built_in_ext]),
+        lambda _packages: loader_module._SourceDiscovery(extensions=[built_in_ext]),
     )
     monkeypatch.setattr(
         loader_module,
@@ -968,7 +968,7 @@ def test_agents_md_stays_outside_named_prompt_collision_model(tmp_path) -> None:
 
 
 def test_project_local_precedes_external_package_and_built_in() -> None:
-    from loushang.coding.loader.default_resource_loader import _source_precedence_rank
+    from loushang.harness.resources.loader import _source_precedence_rank
 
     assert _source_precedence_rank("project_local") < _source_precedence_rank("external_package")
     assert _source_precedence_rank("external_package") < _source_precedence_rank("built_in")
@@ -976,7 +976,7 @@ def test_project_local_precedes_external_package_and_built_in() -> None:
 
 def test_same_tier_candidates_are_sorted_by_source_root_order_then_canonical_path() -> None:
     from loushang.coding.loader import PromptFragmentDescriptor
-    from loushang.coding.loader.default_resource_loader import _candidate_sort_key
+    from loushang.harness.resources.loader import _candidate_sort_key
 
     a = PromptFragmentDescriptor(
         name="repo",

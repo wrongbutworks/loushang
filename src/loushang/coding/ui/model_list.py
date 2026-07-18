@@ -5,26 +5,28 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from loushang.coding.model_selection import (
+    apply_model_selection,
+    persistence_warning_message,
+)
 from loushang.coding.ui.model import (
     iter_available_model_selections,
     model_label_from_selection,
 )
-from loushang.tui import CommandPalette, CompletionItem, CompletionProvider
+from loushang.harnesstui.selection.catalog import (
+    ModelChoice,
+    current_model_choice_first,
+    dedupe_preferred_model_choices,
+    filter_model_choices,
+    format_model_choices,
+    matching_model_choices,
+    model_choice_display_label,
+    model_choice_value,
+    model_completion_provider,
+)
+from loushang.tui import CommandPalette, CompletionProvider
 
 ModelPaletteChooser = Callable[[CommandPalette], Awaitable[str | None] | str | None]
-
-
-@dataclass(frozen=True)
-class ModelChoice:
-    label: str
-    value: str
-    selection: object
-    endpoint_id: str = ""
-    region: str = ""
-    lane: str = ""
-    api: str = ""
-    preferred_endpoint: bool = False
-    description: str = ""
 
 
 @dataclass(frozen=True)
@@ -37,50 +39,49 @@ async def format_available_models(session: Any, *, query: str = "") -> str:
     choices = await available_model_choices(session)
     stripped_query = query.strip()
     if stripped_query:
-        needle = stripped_query.lower()
-        choices = [choice for choice in choices if _choice_matches_text(choice, needle)]
+        choices = filter_model_choices(choices, stripped_query)
     current_value = await current_model_choice_value(session, choices=choices)
-
-    if not choices:
-        if stripped_query:
-            return f"No models match: {stripped_query}"
-        return "No models available."
-
-    lines = ["Available models:"]
-    for choice in choices:
-        is_current = choice.value == current_value
-        marker = "*" if is_current else " "
-        suffix = " (current)" if is_current else ""
-        lines.append(f"{marker} {_choice_display_label(choice)}{suffix}")
-    return "\n".join(lines)
+    return format_model_choices(choices, query=query, current_value=current_value)
 
 
 async def available_model_completion_provider(session: Any) -> CompletionProvider:
-    items: list[CompletionItem] = []
     choices = await available_model_choices(session)
     current_value = await current_model_choice_value(session, choices=choices)
-    for choice in choices:
-        description = _choice_description(choice, current_value=current_value)
-        items.append(CompletionItem(value=choice.value, label=choice.label, description=description))
-    return CompletionProvider(tuple(items))
+    return model_completion_provider(choices, current_value=current_value)
 
 
-async def available_model_palette(session: Any, *, title: str = "Models") -> CommandPalette:
+async def available_model_palette(
+    session: Any, *, title: str = "Models"
+) -> CommandPalette:
     provider = await available_model_completion_provider(session)
     return CommandPalette.from_completion_provider(provider, title=title)
 
 
-async def select_available_model(session: Any, *, query: str = "", choose: ModelPaletteChooser | None = None) -> str:
+async def select_available_model(
+    session: Any,
+    *,
+    query: str = "",
+    choose: ModelPaletteChooser | None = None,
+    settings_manager: object | None = None,
+) -> str:
     stripped_query = query.strip()
     if not stripped_query:
         if choose is not None:
-            selected = await _maybe_await(choose(await available_model_palette(session, title="Models")))
+            selected = await _maybe_await(
+                choose(await available_model_palette(session, title="Models"))
+            )
             if selected is None:
                 return "Model selection cancelled."
-            return await select_available_model(session, query=selected)
+            return await select_available_model(
+                session,
+                query=selected,
+                settings_manager=settings_manager,
+            )
         return await format_available_models(session)
 
-    matches = _matching_model_choices(await available_model_choices(session), stripped_query)
+    matches = matching_model_choices(
+        await available_model_choices(session), stripped_query
+    )
     if not matches:
         return f"No models match: {stripped_query}"
     if len(matches) != 1:
@@ -92,7 +93,7 @@ async def select_available_model(session: Any, *, query: str = "", choose: Model
         return "\n".join(
             [
                 "Multiple models match:",
-                *(f"  {_choice_display_label(choice)}" for choice in matches),
+                *(f"  {model_choice_display_label(choice)}" for choice in matches),
                 hint,
             ]
         )
@@ -101,15 +102,26 @@ async def select_available_model(session: Any, *, query: str = "", choose: Model
     setter = getattr(session, "set_model", None)
     if not callable(setter):
         return "Model selection is not available."
-    await _maybe_await(setter(choice.selection))
-    return f"Model set: {_choice_display_label(choice)}"
+    result = await apply_model_selection(
+        session,
+        choice.selection,
+        settings_manager=settings_manager,
+    )
+    message = f"Model set: {model_choice_display_label(choice)}"
+    if warning := persistence_warning_message(result):
+        return f"{message}, but {warning}"
+    return message
 
 
 async def available_model_choices(session: Any) -> list[ModelChoice]:
     current_identity = await _current_model_identity(session)
-    detail_choices = _model_choices_from_details(await _available_model_details(session))
-    current_detail_value = _selected_current_choice_value(detail_choices, current_identity)
-    detail_choices = _dedupe_preferred_detail_choices(
+    detail_choices = _model_choices_from_details(
+        await _available_model_details(session)
+    )
+    current_detail_value = _selected_current_choice_value(
+        detail_choices, current_identity
+    )
+    detail_choices = dedupe_preferred_model_choices(
         detail_choices,
         current_value=current_detail_value,
     )
@@ -126,22 +138,31 @@ async def available_model_choices(session: Any) -> list[ModelChoice]:
             *(
                 choice
                 for choice in selection_choices
-                if choice.label not in detail_labels and choice.value not in detail_values
+                if choice.label not in detail_labels
+                and choice.value not in detail_values
             ),
         ]
-        return _current_choice_first(
+        return current_model_choice_first(
             choices,
             current_value=_selected_current_choice_value(choices, current_identity),
         )
-    return _current_choice_first(
+    return current_model_choice_first(
         selection_choices,
-        current_value=_selected_current_choice_value(selection_choices, current_identity),
+        current_value=_selected_current_choice_value(
+            selection_choices, current_identity
+        ),
     )
 
 
-async def current_model_choice_value(session: Any, *, choices: list[ModelChoice] | None = None) -> str | None:
-    model_choices = choices if choices is not None else await available_model_choices(session)
-    return _selected_current_choice_value(model_choices, await _current_model_identity(session))
+async def current_model_choice_value(
+    session: Any, *, choices: list[ModelChoice] | None = None
+) -> str | None:
+    model_choices = (
+        choices if choices is not None else await available_model_choices(session)
+    )
+    return _selected_current_choice_value(
+        model_choices, await _current_model_identity(session)
+    )
 
 
 async def model_detail_descriptions_by_label(session: Any) -> dict[str, str]:
@@ -160,18 +181,10 @@ async def model_detail_descriptions_by_label(session: Any) -> dict[str, str]:
     return descriptions
 
 
-def _matching_model_choices(choices: list[ModelChoice], query: str) -> list[ModelChoice]:
-    needle = query.lower()
-    exact_value = [choice for choice in choices if choice.value.lower() == needle]
-    if exact_value:
-        return exact_value
-    labelled = [choice for choice in choices if _choice_matches_text(choice, needle)]
-    exact_label = [choice for choice in labelled if choice.label.lower() == needle]
-    return exact_label or labelled
-
-
 async def _current_model_identity(session: Any) -> _CurrentModelIdentity:
-    agent_model_identity = _model_identity_from_value(getattr(getattr(session, "agent", None), "model", None))
+    agent_model_identity = _model_identity_from_value(
+        getattr(getattr(session, "agent", None), "model", None)
+    )
     if agent_model_identity.value is not None:
         return agent_model_identity
     getter = getattr(session, "get_model_selection", None)
@@ -187,7 +200,12 @@ def _model_identity_from_value(selection: object | None) -> _CurrentModelIdentit
     endpoint_id = _string_attr(selection, "endpoint_id", "endpoint", "endpointId")
     model_id = _string_attr(selection, "id", "model_id", "modelId")
     value = (
-        _model_choice_value(provider=provider, endpoint_id=endpoint_id, model_id=model_id, fallback=label or "")
+        model_choice_value(
+            provider=provider,
+            endpoint_id=endpoint_id,
+            model_id=model_id,
+            fallback=label or "",
+        )
         if provider and endpoint_id and model_id
         else None
     )
@@ -207,15 +225,6 @@ def _selected_current_choice_value(
             if choice.label == current_identity.label:
                 return choice.value
     return None
-
-
-def _current_choice_first(choices: list[ModelChoice], *, current_value: str | None) -> list[ModelChoice]:
-    if current_value is None:
-        return choices
-    current = [choice for choice in choices if choice.value == current_value]
-    if not current:
-        return choices
-    return [*current, *(choice for choice in choices if choice.value != current_value)]
 
 
 async def _available_model_details(session: Any) -> list[object]:
@@ -238,7 +247,12 @@ def _model_choices_from_details(details: list[object]) -> list[ModelChoice]:
         provider = _string_attr(detail, "provider_id", "provider", "providerId")
         endpoint_id = _string_attr(detail, "endpoint_id", "endpoint", "endpointId")
         model_id = _string_attr(detail, "id", "model_id", "modelId")
-        value = _model_choice_value(provider=provider, endpoint_id=endpoint_id, model_id=model_id, fallback=label)
+        value = model_choice_value(
+            provider=provider,
+            endpoint_id=endpoint_id,
+            model_id=model_id,
+            fallback=label,
+        )
         if value in seen:
             continue
         seen.add(value)
@@ -263,83 +277,12 @@ def _model_choices_from_details(details: list[object]) -> list[ModelChoice]:
     return choices
 
 
-def _dedupe_preferred_detail_choices(
-    choices: list[ModelChoice],
-    *,
-    current_value: str | None,
-) -> list[ModelChoice]:
-    by_label: dict[str, list[ModelChoice]] = {}
-    for choice in choices:
-        by_label.setdefault(choice.label, []).append(choice)
-
-    result: list[ModelChoice] = []
-    for choice in choices:
-        group = by_label[choice.label]
-        if len(group) == 1:
-            result.append(choice)
-            continue
-        preferred = [item for item in group if item.preferred_endpoint]
-        if len(preferred) != 1:
-            result.append(choice)
-            continue
-        keep_values = {preferred[0].value}
-        if current_value in {item.value for item in group}:
-            keep_values.add(str(current_value))
-        if choice.value in keep_values:
-            result.append(choice)
-    return result
-
-
-def _model_choice_value(
-    *,
-    provider: str | None,
-    endpoint_id: str | None,
-    model_id: str | None,
-    fallback: str,
-) -> str:
-    if provider and endpoint_id and model_id:
-        return f"{provider}:{endpoint_id}:{model_id}"
-    return fallback
-
-
 def _bool_attr(value: object, *names: str) -> bool:
     for name in names:
         attr = getattr(value, name, None)
         if isinstance(attr, bool):
             return attr
     return False
-
-
-def _choice_matches_text(choice: ModelChoice, needle: str) -> bool:
-    return (
-        needle in choice.label.lower()
-        or needle in choice.value.lower()
-        or bool(choice.endpoint_id and needle in choice.endpoint_id.lower())
-        or bool(choice.description and needle in choice.description.lower())
-    )
-
-
-def _choice_description(choice: ModelChoice, *, current_value: str | None) -> str:
-    parts: list[str] = []
-    if choice.value == current_value:
-        parts.append("current")
-    if choice.endpoint_id:
-        parts.append(f"endpoint: {choice.endpoint_id}")
-    if choice.region:
-        parts.append(f"region: {choice.region}")
-    if choice.lane:
-        parts.append(f"lane: {choice.lane}")
-    if choice.api:
-        parts.append(f"protocol: {choice.api}")
-    if choice.description:
-        parts.append(choice.description)
-    return " - ".join(parts)
-
-
-def _choice_display_label(choice: ModelChoice) -> str:
-    if choice.endpoint_id:
-        return f"{choice.label} (endpoint: {choice.endpoint_id})"
-    return choice.label
 
 
 def _string_attr(item: object, *names: str) -> str | None:

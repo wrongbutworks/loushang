@@ -5,11 +5,7 @@ from typing import Literal
 
 from loushang.coding.commands import CommandSourceInfo, SessionCommandDescriptor
 from loushang.coding.types import ModelSelection
-
-
-@dataclass(frozen=True)
-class RunState:
-    status: Literal["idle", "running"]
+from loushang.harness.host.types import RunState as RunState
 
 
 @dataclass(frozen=True)

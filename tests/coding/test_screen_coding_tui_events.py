@@ -49,6 +49,24 @@ def test_screen_event_projector_streams_assistant_to_draft_then_commits_once() -
     ]
 
 
+def test_screen_event_projector_requires_assistant_message_for_delta() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_events import ScreenCodingEventProjector
+
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
+    projector = ScreenCodingEventProjector(app)
+
+    projector.handle({"type": "message_start", "message": _assistant()})
+    projector.handle(
+        {
+            "type": "message_update",
+            "assistant_message_event": {"type": "text_delta", "delta": "ignored"},
+        }
+    )
+
+    assert app.state.assistant_draft is None
+
+
 def test_screen_event_projector_renders_assistant_error_from_agent_end() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_events import ScreenCodingEventProjector
@@ -64,6 +82,46 @@ def test_screen_event_projector_renders_assistant_error_from_agent_end() -> None
     )
 
     assert app.state.records == [ErrorRecord("provider failure")]
+
+
+def test_screen_event_projector_commits_error_message_and_deduplicates_error() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_events import ScreenCodingEventProjector
+
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
+    projector = ScreenCodingEventProjector(app)
+    message = _assistant(
+        "partial answer",
+        stop_reason="error",
+        error_message="provider failure",
+    )
+
+    projector.handle({"type": "message_start", "message": message})
+    projector.handle({"type": "message_end", "message": message})
+    projector.handle({"type": "agent_end", "messages": [message]})
+
+    assert app.state.records == [
+        AssistantMessageRecord("partial answer"),
+        ErrorRecord("provider failure"),
+    ]
+
+
+def test_screen_event_projector_commits_intentional_abort_without_error_record() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_events import ScreenCodingEventProjector
+
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
+    projector = ScreenCodingEventProjector(app)
+    message = _assistant(
+        "partial answer",
+        stop_reason="aborted",
+        error_message="Request aborted by user",
+    )
+
+    projector.handle({"type": "message_start", "message": message})
+    projector.handle({"type": "message_end", "message": message})
+
+    assert app.state.records == [AssistantMessageRecord("partial answer")]
 
 
 def test_screen_event_projector_renders_user_message_and_skips_optimistic_echo() -> None:
@@ -142,6 +200,91 @@ def test_screen_event_projector_updates_tool_record_in_place() -> None:
     assert isinstance(record, ToolExecutionRecord)
     assert record.state == "completed"
     assert record.name == "read README.md"
+
+
+def test_screen_event_projector_preserves_tool_elapsed_clock_boundaries() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_events import ScreenCodingEventProjector
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=lambda: 1.0,
+    )
+    clock = iter((10.0, 11.0, 15.0)).__next__
+    projector = ScreenCodingEventProjector(app, now=clock)
+    result: AgentToolResult[dict[str, object]] = AgentToolResult(
+        content=[TextPart(type="text", text="ok")],
+        details={},
+    )
+
+    projector.handle(
+        {
+            "type": "tool_execution_start",
+            "tool_call_id": "tc1",
+            "tool_name": "read",
+        }
+    )
+    projector.handle(
+        {
+            "type": "tool_execution_end",
+            "tool_call_id": "tc1",
+            "tool_name": "read",
+            "result": result,
+            "is_error": False,
+        }
+    )
+
+    record = app.state.records[0]
+    assert isinstance(record, ToolExecutionRecord)
+    assert record.elapsed_seconds == 5.0
+
+
+def test_screen_agent_start_does_not_read_clock_while_run_is_active() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_events import ScreenCodingEventProjector
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=lambda: 1.0,
+    )
+    app.begin_run(started_at=1.0)
+    clock_calls = 0
+
+    def clock() -> float:
+        nonlocal clock_calls
+        clock_calls += 1
+        return 2.0
+
+    ScreenCodingEventProjector(app, now=clock).handle({"type": "agent_start"})
+
+    assert clock_calls == 0
+
+
+def test_screen_event_projector_recovers_tool_update_without_start() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_events import ScreenCodingEventProjector
+
+    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 5.0)
+    projector = ScreenCodingEventProjector(app, now=lambda: 5.0)
+
+    projector.handle(
+        {
+            "type": "tool_execution_update",
+            "tool_call_id": "tc1",
+            "tool_name": "read",
+            "args": {"path": "README.md"},
+        }
+    )
+
+    assert len(app.state.records) == 1
+    assert isinstance(app.state.records[0], ToolExecutionRecord)
+    assert app.state.records[0].state == "running"
 
 
 def test_screen_event_projector_syncs_pending_queues() -> None:

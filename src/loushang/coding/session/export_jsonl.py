@@ -12,15 +12,29 @@ if TYPE_CHECKING:
 
 
 def export_session_to_jsonl(session: AgentSession, output_path: str | None = None) -> str:
-    path = Path(output_path) if output_path is not None else _default_export_path(session)
+    path = (
+        Path(output_path)
+        if output_path is not None
+        else _default_export_path(session)
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
-    write_session_file(path, session.session_manager.header, _linearize_branch(session.session_manager.get_branch()))
+    write_session_file(
+        path,
+        session.session_manager.header,
+        _linearize_branch(session.session_manager.get_branch()),
+    )
     return str(path)
 
 
 def _default_export_path(session: AgentSession) -> Path:
     cwd = Path(session.session_manager.get_cwd()).expanduser().resolve()
-    timestamp = datetime.now(UTC).isoformat().replace("+00:00", "Z").replace(":", "-").replace(".", "-")
+    timestamp = (
+        datetime.now(UTC)
+        .isoformat()
+        .replace("+00:00", "Z")
+        .replace(":", "-")
+        .replace(".", "-")
+    )
     return cwd / f"session-{timestamp}.jsonl"
 
 
@@ -29,5 +43,5 @@ def _linearize_branch(entries):
     previous_id: str | None = None
     for entry in entries:
         linear_entries.append(replace(entry, parent_id=previous_id))
-        previous_id = entry.id
+        previous_id = entry.record_id
     return linear_entries

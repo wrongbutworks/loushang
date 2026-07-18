@@ -1,60 +1,92 @@
 from __future__ import annotations
 
-import json
 import re
-from dataclasses import dataclass, field, replace
+from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from time import time_ns
 from uuid import uuid4
 
 from loushang.agent import AgentMessage
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
-from loushang.coding.message import (
-    BranchSummaryEntry,
-    BranchSummaryMessage,
-    CompactionEntry,
-    CompactionSummaryMessage,
-    CustomEntry,
-    CustomMessageEntry,
-    LabelEntry,
-    ModelChangeEntry,
-    SessionContext,
-    SessionEntry,
-    SessionHeader,
-    SessionInfoEntry,
-    SessionMessageEntry,
-    SessionTreeNode,
-    ThinkingLevelChangeEntry,
-    create_branch_summary_message,
-    create_compaction_summary_message,
-    create_custom_message,
+from loushang.coding.capability_profile import (
+    coding_capability_snapshot_metadata,
+    resolve_coding_capability_profile,
+    validate_coding_capability_snapshot,
+)
+from loushang.coding.runtime_profile import (
+    CodingRuntimeSessionBinding,
+    CodingRuntimeSessionContext,
+    bind_coding_runtime,
+    coding_runtime_snapshot_metadata,
+    resolve_coding_runtime_profile,
+    selected_store,
+    selected_transcript_profile,
+    validate_coding_runtime_snapshot,
+)
+from loushang.coding.store.backend import (
+    CodingSessionFileLayout,
+    create_coding_file_store,
 )
 from loushang.coding.store.file_codec import (
-    SessionFileError,
-    append_session_entry,
-    load_session_file,
-    write_session_file,
+    load_current_session_header,
+    load_session_repository,
 )
 from loushang.coding.store.types import (
     SessionMetadata,
     SessionQuery,
     SessionRecord,
     SessionSummary,
+    SessionTreeNode,
+)
+from loushang.harness.agent_transcript import (
+    AGENT_MESSAGE_KIND,
+    EXTENSION_DATA_KIND,
+    RECORD_ANNOTATION_PATCH_KIND,
+    AgentTranscriptCommit,
+    AgentTranscriptContext,
+    AgentTranscriptProfile,
+    AgentTranscriptRecord,
+    AgentTranscriptSessionStore,
+    ApplicationMessage,
+    BranchContextSummary,
+    CommitResult,
+    ContextCompactionCheckpoint,
+    ConversationMetadataPatch,
+    ExtensionData,
+    ModelSelectionSnapshot,
+    RecordAnnotationPatch,
+    ThinkingSelectionSnapshot,
+    TranscriptCommitter,
+)
+from loushang.harness.conversation import (
+    BranchDelta,
+    CommandExecutionRecord,
+    ConversationCatalog,
+    ConversationHeader,
+    ConversationRepository,
+    ConversationTreeNode,
+    FunctionalConversationProjector,
+    ProjectionQuery,
+)
+from loushang.harness.journal import (
+    FunctionalProjectionCodec,
+    JsonProjectionIndex,
+    ProjectionIndexSnapshot,
+)
+from loushang.harness.runtime import ResolvedRuntimeProfile
+from loushang.harness.storage import (
+    ConversationKey,
+    ConversationStore,
+    StoreNotFoundError,
 )
 from loushang.observability import get_log
+from loushang.protocol import require_json_value
 
-CURRENT_SESSION_VERSION = 3
+CURRENT_SESSION_VERSION = 1
 _LEAF_UNSET = object()
 _SESSION_INDEX_VERSION = 1
 _SESSION_INDEX_FILENAME = ".session-index.json"
 log = get_log(__name__).bind(component="SessionManager")
-
-
-@dataclass(frozen=True)
-class _LoadedSessionIndex:
-    summaries: list[SessionSummary]
-    stale: bool = False
 
 
 def _now_iso() -> str:
@@ -63,6 +95,41 @@ def _now_iso() -> str:
 
 def _generate_id() -> str:
     return uuid4().hex[:8]
+
+
+def _new_header(
+    *,
+    conversation_id: str,
+    cwd: str,
+    parent_conversation_id: str | None = None,
+    parent_session: str | None = None,
+    runtime_profile_metadata: dict[str, object] | None = None,
+    capability_profile_metadata: dict[str, object] | None = None,
+) -> ConversationHeader:
+    metadata: dict[str, object] = {"cwd": str(cwd)}
+    if parent_session is not None:
+        metadata["parentSession"] = parent_session
+    if runtime_profile_metadata is not None:
+        metadata.update(runtime_profile_metadata)
+    if capability_profile_metadata is not None:
+        metadata.update(capability_profile_metadata)
+    return ConversationHeader(
+        conversation_id=conversation_id,
+        version=CURRENT_SESSION_VERSION,
+        created_at=_now_iso(),
+        parent_conversation_id=parent_conversation_id,
+        metadata=metadata,
+    )
+
+
+def _header_cwd(header: ConversationHeader) -> str:
+    cwd = header.metadata.get("cwd")
+    return cwd if isinstance(cwd, str) else ""
+
+
+def _header_parent_session(header: ConversationHeader) -> str | None:
+    parent = header.metadata.get("parentSession")
+    return parent if isinstance(parent, str) else None
 
 
 def _resolve_session_id(session_id: str | None) -> str:
@@ -89,42 +156,35 @@ def _normalize_session_name(name: str | None) -> str | None:
     return normalized or None
 
 
-def _build_label_indexes(entries: list[SessionEntry]) -> tuple[dict[str, str], dict[str, str]]:
+def _build_label_indexes(
+    entries: list[AgentTranscriptRecord],
+) -> tuple[dict[str, str], dict[str, str]]:
     labels_by_target_id: dict[str, str] = {}
     label_timestamps_by_target_id: dict[str, str] = {}
     for entry in entries:
-        if not isinstance(entry, LabelEntry):
+        patch = entry.payload
+        if entry.kind != RECORD_ANNOTATION_PATCH_KIND or not isinstance(
+            patch, RecordAnnotationPatch
+        ):
             continue
-        if entry.label:
-            labels_by_target_id[entry.target_id] = entry.label
-            label_timestamps_by_target_id[entry.target_id] = entry.timestamp
+        if patch.namespace != "display.label":
+            continue
+        if patch.operation == "set" and isinstance(patch.value, str):
+            labels_by_target_id[patch.target_record_id] = patch.value
+            label_timestamps_by_target_id[patch.target_record_id] = entry.created_at
         else:
-            labels_by_target_id.pop(entry.target_id, None)
-            label_timestamps_by_target_id.pop(entry.target_id, None)
+            labels_by_target_id.pop(patch.target_record_id, None)
+            label_timestamps_by_target_id.pop(patch.target_record_id, None)
     return labels_by_target_id, label_timestamps_by_target_id
 
 
-def _append_visible_message(messages: list[AgentMessage], entry: SessionEntry) -> None:
-    if isinstance(entry, SessionMessageEntry):
-        messages.append(entry.message)
-    elif isinstance(entry, CustomMessageEntry):
-        messages.append(
-            create_custom_message(
-                custom_type=entry.custom_type,
-                content=entry.content,
-                display=entry.display,
-                details=entry.details,
-                timestamp=entry.timestamp,
-            )
-        )
-    elif isinstance(entry, BranchSummaryEntry):
-        messages.append(
-            create_branch_summary_message(
-                summary=entry.summary,
-                from_id=entry.from_id,
-                timestamp=entry.timestamp,
-            )
-        )
+_AGENT_TRANSCRIPT_PROFILE = AgentTranscriptProfile.default()
+
+
+def _replay_session(
+    entries: Sequence[AgentTranscriptRecord],
+) -> AgentTranscriptContext:
+    return _AGENT_TRANSCRIPT_PROFILE.replay(entries)
 
 
 def _message_preview(message: AgentMessage) -> str | None:
@@ -138,10 +198,10 @@ def _message_preview(message: AgentMessage) -> str | None:
             text = ""
         normalized = " ".join(text.split())
         return normalized[:160] if normalized else None
-    if isinstance(message, CompactionSummaryMessage):
-        return " ".join(message.summary.split())[:160]
-    if isinstance(message, BranchSummaryMessage):
-        return " ".join(message.summary.split())[:160]
+    if isinstance(message, ApplicationMessage):
+        content = message.content
+        if isinstance(content, str):
+            return " ".join(content.split())[:160] or None
     return None
 
 
@@ -183,30 +243,39 @@ def _normalize_unix_timestamp_seconds(timestamp: float) -> float:
     return timestamp
 
 
-def _last_activity_timestamp(entries: list[SessionEntry], header: SessionHeader) -> str:
+def _last_activity_timestamp(
+    entries: list[AgentTranscriptRecord], header: ConversationHeader
+) -> str:
     last_message_timestamp: float | None = None
     last_entry_timestamp: str | None = None
     for entry in entries:
-        if not isinstance(entry, SessionMessageEntry):
+        if entry.kind != AGENT_MESSAGE_KIND:
             continue
-        message = entry.message
+        message = entry.payload
         if not isinstance(message, UserMessage | AssistantMessage):
             continue
         timestamp = getattr(message, "timestamp", None)
         if isinstance(timestamp, int | float) and timestamp > 0:
-            last_message_timestamp = max(last_message_timestamp or 0, _normalize_unix_timestamp_seconds(float(timestamp)))
+            last_message_timestamp = max(
+                last_message_timestamp or 0,
+                _normalize_unix_timestamp_seconds(float(timestamp)),
+            )
             continue
-        last_entry_timestamp = entry.timestamp
+        last_entry_timestamp = entry.created_at
     if last_message_timestamp is not None:
         return _iso_from_unix_seconds(last_message_timestamp)
-    return last_entry_timestamp or header.timestamp
+    return last_entry_timestamp or header.created_at
 
 
-def _diagnostic_index(entries: list[SessionEntry]) -> tuple[int, str | None, str | None]:
-    diagnostic_entries: list[CustomEntry] = [
-        entry
+def _diagnostic_index(
+    entries: list[AgentTranscriptRecord],
+) -> tuple[int, str | None, str | None]:
+    diagnostic_entries = [
+        entry.payload
         for entry in entries
-        if isinstance(entry, CustomEntry) and entry.custom_type in {"diagnostic", "diagnostics"}
+        if entry.kind == EXTENSION_DATA_KIND
+        and isinstance(entry.payload, ExtensionData)
+        and entry.payload.extension_type in {"diagnostic", "diagnostics"}
     ]
     if not diagnostic_entries:
         return 0, None, None
@@ -327,91 +396,282 @@ def _summary_from_index_item(item: object) -> SessionSummary | None:
     )
 
 
-def build_session_context(
-    entries: list[SessionEntry],
-    leaf_id: str | None | object = _LEAF_UNSET,
-    by_id: dict[str, SessionEntry] | None = None,
-) -> SessionContext:
-    if by_id is None:
-        by_id = {entry.id: entry for entry in entries}
+def _decode_summary_index_item(item: object) -> SessionSummary:
+    summary = _summary_from_index_item(item)
+    if summary is None:
+        raise ValueError("session index summary is invalid")
+    return summary
 
-    if leaf_id is _LEAF_UNSET:
-        leaf = entries[-1] if entries else None
-    elif leaf_id is None:
-        return SessionContext()
-    else:
-        leaf = by_id.get(leaf_id)
 
-    if leaf is None:
-        return SessionContext()
-
-    path: list[SessionEntry] = []
-    current: SessionEntry | None = leaf
-    while current is not None:
-        path.insert(0, current)
-        current = by_id.get(current.parent_id) if current.parent_id is not None else None
-
-    thinking_level = "off"
-    model: dict[str, str] | None = None
-    compaction: CompactionEntry | None = None
-
-    for entry in path:
-        if isinstance(entry, ThinkingLevelChangeEntry):
-            thinking_level = entry.thinking_level
-        elif isinstance(entry, ModelChangeEntry):
-            model = {"provider": entry.provider, "model_id": entry.model_id}
-            if entry.endpoint_id:
-                model["endpoint_id"] = entry.endpoint_id
-        elif isinstance(entry, SessionMessageEntry) and isinstance(entry.message, AssistantMessage):
-            model = {"provider": entry.message.provider, "model_id": entry.message.model}
-        elif isinstance(entry, CompactionEntry):
-            compaction = entry
-
-    messages: list[AgentMessage] = []
-
-    if compaction is None:
-        for entry in path:
-            _append_visible_message(messages, entry)
-        return SessionContext(messages=messages, thinking_level=thinking_level, model=model)
-
-    messages.append(
-        create_compaction_summary_message(
-            summary=compaction.summary,
-            tokens_before=compaction.tokens_before,
-            timestamp=compaction.timestamp,
-        )
+def _session_projection_index(
+    session_dir: Path,
+) -> JsonProjectionIndex[SessionSummary]:
+    return JsonProjectionIndex(
+        _session_index_path(session_dir),
+        version=_SESSION_INDEX_VERSION,
+        items_key="summaries",
+        codec=FunctionalProjectionCodec(
+            encoder=_summary_to_index_item,
+            decoder=_decode_summary_index_item,
+        ),
+        is_current=_indexed_session_file_exists,
+        sort_key=lambda summary: summary.updated_at,
+        reverse=True,
+        generated_at=_now_iso,
     )
 
-    compaction_index = next(i for i, entry in enumerate(path) if entry.id == compaction.id)
 
-    found_first_kept = False
-    for entry in path[:compaction_index]:
-        if entry.id == compaction.first_kept_entry_id:
-            found_first_kept = True
-        if found_first_kept:
-            _append_visible_message(messages, entry)
+def build_session_context(
+    entries: list[AgentTranscriptRecord],
+    leaf_id: str | None | object = _LEAF_UNSET,
+    by_id: dict[str, AgentTranscriptRecord] | None = None,
+) -> AgentTranscriptContext:
+    del by_id
+    resolved_leaf_id: str | None
 
-    for entry in path[compaction_index + 1 :]:
-        _append_visible_message(messages, entry)
+    if leaf_id is _LEAF_UNSET:
+        resolved_leaf_id = entries[-1].record_id if entries else None
+    elif leaf_id is None:
+        return _AGENT_TRANSCRIPT_PROFILE.replay(())
+    else:
+        resolved_leaf_id = leaf_id if isinstance(leaf_id, str) else None
 
-    return SessionContext(messages=messages, thinking_level=thinking_level, model=model)
+    if resolved_leaf_id is None:
+        return _AGENT_TRANSCRIPT_PROFILE.replay(())
+    conversation = ConversationRepository.create(
+        header=None,
+        records=entries,
+        record_id=lambda entry: entry.record_id,
+        parent_id=lambda entry: entry.parent_id,
+        mode="compatible",
+    )
+    if conversation.get(resolved_leaf_id) is None:
+        return _AGENT_TRANSCRIPT_PROFILE.replay(())
+    conversation.branch(resolved_leaf_id)
+    return _replay_session(conversation.active_records())
 
 
-@dataclass
+def _load_session_metadata(
+    header: ConversationHeader,
+    entries: Sequence[AgentTranscriptRecord],
+) -> SessionMetadata:
+    state = _AGENT_TRANSCRIPT_PROFILE.replay(entries).state
+    name = _normalize_session_name(state.conversation_metadata.get("name"))
+    entry_list = list(entries)
+    return SessionMetadata(
+        created_at=header.created_at,
+        updated_at=_last_activity_timestamp(entry_list, header),
+        name=name,
+    )
+
+
+def _project_session_summary(
+    header: ConversationHeader,
+    records: Sequence[AgentTranscriptRecord],
+    leaf_id: str | None,
+    source_path: Path | None,
+) -> SessionSummary:
+    entries = list(records)
+    metadata = _load_session_metadata(header, entries)
+    context = build_session_context(entries, leaf_id)
+    last_message_preview = next(
+        (
+            preview
+            for message in reversed(context.messages)
+            if (preview := _message_preview(message))
+        ),
+        None,
+    )
+    message_texts = [
+        text for message in context.messages if (text := _message_text(message))
+    ]
+    first_message = next(
+        (
+            text
+            for message in context.messages
+            if isinstance(message, UserMessage) and (text := _message_text(message))
+        ),
+        "(no messages)",
+    )
+    diagnostic_count, last_diagnostic_code, last_diagnostic_level = _diagnostic_index(
+        entries
+    )
+    return SessionSummary(
+        session_id=header.conversation_id,
+        cwd=_header_cwd(header),
+        session_file=source_path,
+        parent_session=_header_parent_session(header),
+        leaf_id=leaf_id,
+        created_at=metadata.created_at,
+        updated_at=metadata.updated_at,
+        name=metadata.name,
+        message_count=len(context.messages),
+        entry_count=len(entries),
+        first_message=first_message,
+        all_messages_text=" ".join(message_texts),
+        last_message_preview=last_message_preview,
+        model=context.model,
+        has_diagnostics=diagnostic_count > 0,
+        diagnostic_count=diagnostic_count,
+        last_diagnostic_code=last_diagnostic_code,
+        last_diagnostic_level=last_diagnostic_level,
+    )
+
+
+_SESSION_SUMMARY_PROJECTOR = FunctionalConversationProjector(_project_session_summary)
+
+
+def _discover_session_repositories(
+    session_dir: Path,
+) -> Iterable[ConversationRepository[ConversationHeader, AgentTranscriptRecord]]:
+    if not session_dir.exists():
+        return
+    for session_file in session_dir.glob("*.jsonl"):
+        if session_file.name.endswith("-export.jsonl"):
+            continue
+        try:
+            yield load_session_repository(
+                session_file,
+                writable=False,
+                persist=False,
+            )
+        except Exception:
+            continue
+
+
+def _session_catalog(
+    session_dir: Path,
+    *,
+    indexed: bool,
+) -> ConversationCatalog[ConversationHeader, AgentTranscriptRecord, SessionSummary]:
+    return ConversationCatalog(
+        discover=lambda: _discover_session_repositories(session_dir),
+        projector=_SESSION_SUMMARY_PROJECTOR,
+        index=_session_projection_index(session_dir) if indexed else None,
+        skip_projection_errors=True,
+    )
+
+
+async def _new_session_backend(
+    *,
+    session_dir: Path,
+    header: ConversationHeader,
+    persist: bool,
+    session_file: Path | None = None,
+    runtime_profile: ResolvedRuntimeProfile | None = None,
+) -> tuple[
+    CodingRuntimeSessionBinding,
+    ConversationStore[ConversationHeader, AgentTranscriptRecord],
+    ConversationKey,
+    Path | None,
+    AgentTranscriptProfile,
+]:
+    if persist and session_file is None:
+        file_timestamp = header.created_at.replace(":", "-").replace(".", "-")
+        session_file = session_dir / f"{file_timestamp}_{header.conversation_id}.jsonl"
+    profile = runtime_profile or resolve_coding_runtime_profile(persist=persist)
+    context = CodingRuntimeSessionContext(
+        session_dir=session_dir,
+        header=header,
+        persist=persist,
+        session_file=session_file,
+    )
+    binding = await bind_coding_runtime(profile=profile, context=context)
+    return (
+        binding,
+        selected_store(binding),
+        context.conversation_key,
+        session_file,
+        selected_transcript_profile(binding),
+    )
+
+
 class SessionManager:
-    session_dir: Path
-    cwd: str
-    persist: bool
-    header: SessionHeader
-    entries: list[SessionEntry]
-    by_id: dict[str, SessionEntry]
-    leaf_id: str | None
-    session_file: Path | None = None
-    labels_by_target_id: dict[str, str] = field(default_factory=dict)
-    label_timestamps_by_target_id: dict[str, str] = field(default_factory=dict)
+    def __init__(
+        self,
+        *,
+        session_dir: Path,
+        cwd: str,
+        persist: bool,
+        transcript: AgentTranscriptSessionStore,
+        runtime_binding: CodingRuntimeSessionBinding,
+        session_file: Path | None = None,
+        labels_by_target_id: dict[str, str] | None = None,
+        label_timestamps_by_target_id: dict[str, str] | None = None,
+    ) -> None:
+        self.session_dir = session_dir
+        self.cwd = cwd
+        self.persist = persist
+        self._transcript = transcript
+        self._runtime_binding = runtime_binding
+        self.session_file = session_file
+        self.labels_by_target_id = dict(labels_by_target_id or {})
+        self.label_timestamps_by_target_id = dict(label_timestamps_by_target_id or {})
+        self._committer = TranscriptCommitter(transcript)
+        self._commit_observer: Callable[[CommitResult], None] | None = None
+
+    def set_commit_observer(
+        self,
+        observer: Callable[[CommitResult], None] | None,
+    ) -> None:
+        """Observe newly durable commits without participating in commit success."""
+
+        self._commit_observer = observer
+
+    def _complete_commit(self, commit: AgentTranscriptCommit) -> str:
+        result = CommitResult(
+            record_id=commit.record.record_id,
+            disposition="committed",
+            receipt=commit.receipt,
+        )
+        self._notify_commit(result)
+        return result.record_id
+
+    def _complete_application_commit(self, result: CommitResult) -> str:
+        if result.disposition == "committed":
+            self._notify_commit(result)
+        return result.record_id
+
+    def _notify_commit(self, result: CommitResult) -> None:
+        observer = self._commit_observer
+        if observer is not None:
+            observer(result)
+
+    @property
+    def header(self) -> ConversationHeader:
+        return self._transcript.header
+
+    @property
+    def runtime_profile(self) -> ResolvedRuntimeProfile:
+        return self._runtime_binding.profile
+
+    def get_runtime_capability(self, slot: str) -> object | tuple[object, ...]:
+        return self._runtime_binding.value(slot)
+
+    async def dispose_runtime_profile(self) -> None:
+        await self._runtime_binding.dispose()
+
+    @property
+    def entries(self) -> list[AgentTranscriptRecord]:
+        return list(self._transcript.records)
+
+    @property
+    def by_id(self) -> dict[str, AgentTranscriptRecord]:
+        return {entry.record_id: entry for entry in self._transcript.records}
+
+    @property
+    def leaf_id(self) -> str | None:
+        return self._transcript.leaf_id
+
+    @leaf_id.setter
+    def leaf_id(self, value: str | None) -> None:
+        if value is None:
+            self._transcript.reset_branch()
+        else:
+            self._transcript.branch(value)
 
     @classmethod
-    def new(
+    async def new(
         cls,
         session_dir: Path,
         cwd: str,
@@ -420,52 +680,126 @@ class SessionManager:
         session_id: str | None = None,
     ) -> SessionManager:
         resolved_session_id = _resolve_session_id(session_id)
-        header = SessionHeader(
-            type="session",
-            version=CURRENT_SESSION_VERSION,
-            id=resolved_session_id,
-            timestamp=_now_iso(),
-            cwd=cwd,
+        normalized_cwd = str(cwd)
+        runtime_profile = resolve_coding_runtime_profile(persist=persist)
+        capability_profile = resolve_coding_capability_profile()
+        header = _new_header(
+            conversation_id=resolved_session_id,
+            cwd=normalized_cwd,
             parent_session=parent_session,
+            runtime_profile_metadata=coding_runtime_snapshot_metadata(runtime_profile),
+            capability_profile_metadata=coding_capability_snapshot_metadata(
+                capability_profile
+            ),
         )
-        session_file: Path | None = None
-        if persist:
-            session_dir.mkdir(parents=True, exist_ok=True)
-            file_timestamp = header.timestamp.replace(":", "-").replace(".", "-")
-            session_file = session_dir / f"{file_timestamp}_{header.id}.jsonl"
-            write_session_file(session_file, header, [])
-        return cls(
-            session_dir=session_dir,
-            cwd=cwd,
-            persist=persist,
+        (
+            runtime_binding,
+            backend,
+            key,
+            session_file,
+            transcript_profile,
+        ) = await _new_session_backend(
+            session_dir=Path(session_dir),
             header=header,
-            entries=[],
-            by_id={},
-            leaf_id=None,
+            persist=persist,
+            runtime_profile=runtime_profile,
+        )
+        try:
+            transcript = await AgentTranscriptSessionStore.create(
+                backend,
+                key,
+                header,
+                id_factory=_generate_id,
+                profile=transcript_profile,
+            )
+        except Exception:
+            await runtime_binding.dispose()
+            raise
+        return cls(
+            session_dir=Path(session_dir),
+            cwd=normalized_cwd,
+            persist=persist,
+            transcript=transcript,
+            runtime_binding=runtime_binding,
             session_file=session_file,
         )
 
     @classmethod
-    def load(cls, session_file: Path, persist: bool = True) -> SessionManager:
-        header, entries = load_session_file(session_file)
-        by_id = {entry.id: entry for entry in entries}
-        leaf_id = entries[-1].id if entries else None
-        labels_by_target_id, label_timestamps_by_target_id = _build_label_indexes(entries)
-        return cls(
-            session_dir=session_file.parent,
-            cwd=header.cwd,
-            persist=persist,
+    async def load(cls, session_file: Path, persist: bool = True) -> SessionManager:
+        path = Path(session_file).expanduser().resolve(strict=False)
+        header = load_current_session_header(path)
+        snapshot = validate_coding_runtime_snapshot(header)
+        capability_snapshot = validate_coding_capability_snapshot(header)
+        runtime_profile = resolve_coding_runtime_profile(persist=persist)
+        capability_profile = resolve_coding_capability_profile()
+        if persist and snapshot is not None and snapshot != runtime_profile.snapshot():
+            raise ValueError(
+                "Coding cannot resume a session with an unsupported runtime profile"
+            )
+        if (
+            persist
+            and capability_snapshot is not None
+            and capability_snapshot != capability_profile.snapshot()
+        ):
+            raise ValueError(
+                "Coding cannot resume a session with an unsupported capability profile"
+            )
+        (
+            runtime_binding,
+            backend,
+            key,
+            _,
+            transcript_profile,
+        ) = await _new_session_backend(
+            session_dir=path.parent,
             header=header,
-            entries=list(entries),
-            by_id=by_id,
-            leaf_id=leaf_id,
-            session_file=session_file,
+            persist=persist,
+            session_file=path,
+            runtime_profile=runtime_profile,
+        )
+        try:
+            if persist:
+                transcript = await AgentTranscriptSessionStore.load(
+                    backend,
+                    key,
+                    id_factory=_generate_id,
+                    profile=transcript_profile,
+                )
+            else:
+                layout = CodingSessionFileLayout(path.parent)
+                layout.bind_existing_path(path)
+                source_backend = create_coding_file_store(layout)
+                source_key = layout.key(header.conversation_id)
+                source_snapshot = await source_backend.load(source_key)
+                transcript = await AgentTranscriptSessionStore.create(
+                    backend,
+                    key,
+                    source_snapshot.header,
+                    records=source_snapshot.records,
+                    id_factory=_generate_id,
+                    profile=transcript_profile,
+                )
+        except Exception:
+            await runtime_binding.dispose()
+            raise
+        header = transcript.header
+        entries = list(transcript.records)
+        labels_by_target_id, label_timestamps_by_target_id = _build_label_indexes(
+            entries
+        )
+        return cls(
+            session_dir=path.parent,
+            cwd=_header_cwd(header),
+            persist=persist,
+            transcript=transcript,
+            runtime_binding=runtime_binding,
+            session_file=path,
             labels_by_target_id=labels_by_target_id,
             label_timestamps_by_target_id=label_timestamps_by_target_id,
         )
 
     @classmethod
-    def open(
+    async def open(
         cls,
         session_file: str | Path,
         session_dir: str | Path | None = None,
@@ -473,122 +807,120 @@ class SessionManager:
         persist: bool = True,
     ) -> SessionManager:
         path = Path(session_file)
-        try:
-            manager = cls.load(path, persist=persist)
-        except SessionFileError:
-            manager = cls._recover_session_file(
-                path,
-                session_dir=Path(session_dir) if session_dir is not None else None,
-                cwd_override=cwd_override,
-                persist=persist,
-            )
+        manager = await cls.load(path, persist=persist)
         if session_dir is not None:
             manager.session_dir = Path(session_dir)
         if cwd_override is not None:
             cwd = str(cwd_override)
             manager.cwd = cwd
-            manager.header = replace(manager.header, cwd=cwd)
         return manager
 
     @classmethod
-    def _recover_session_file(
-        cls,
-        session_file: Path,
-        *,
-        session_dir: Path | None,
-        cwd_override: str | Path | None,
-        persist: bool,
+    async def continue_recent(
+        cls, session_dir: str | Path, cwd: str | Path, persist: bool = True
     ) -> SessionManager:
-        cwd = str(cwd_override) if cwd_override is not None else str(Path.cwd().resolve())
-        header = SessionHeader(
-            type="session",
-            version=CURRENT_SESSION_VERSION,
-            id=_generate_id(),
-            timestamp=_now_iso(),
-            cwd=cwd,
-            parent_session=None,
-        )
-        if persist:
-            write_session_file(session_file, header, [])
-        return cls(
-            session_dir=session_dir or session_file.parent,
-            cwd=cwd,
-            persist=persist,
-            header=header,
-            entries=[],
-            by_id={},
-            leaf_id=None,
-            session_file=session_file,
-        )
-
-    @classmethod
-    def continue_recent(cls, session_dir: str | Path, cwd: str | Path, persist: bool = True) -> SessionManager:
         summaries = cls.list_summaries(Path(session_dir))
         for summary in summaries:
             if summary.session_file is None:
                 continue
-            return cls.open(summary.session_file, session_dir=session_dir, cwd_override=cwd, persist=persist)
-        return cls.new(session_dir=Path(session_dir), cwd=str(cwd), persist=persist)
+            return await cls.open(
+                summary.session_file,
+                session_dir=session_dir,
+                cwd_override=cwd,
+                persist=persist,
+            )
+        return await cls.new(
+            session_dir=Path(session_dir), cwd=str(cwd), persist=persist
+        )
 
     @classmethod
-    def in_memory(cls, cwd: str | Path = ".", session_id: str | None = None) -> SessionManager:
-        return cls.new(session_dir=Path(), cwd=str(cwd), persist=False, session_id=session_id)
+    async def in_memory(
+        cls, cwd: str | Path = ".", session_id: str | None = None
+    ) -> SessionManager:
+        return await cls.new(
+            session_dir=Path(), cwd=str(cwd), persist=False, session_id=session_id
+        )
 
     @classmethod
-    def fork_from(
+    async def fork_from(
         cls,
         source_file: str | Path,
         target_cwd: str | Path,
         session_dir: str | Path,
         persist: bool = True,
     ) -> SessionManager:
-        source = cls.load(Path(source_file), persist=False)
-        header = SessionHeader(
-            type="session",
-            version=CURRENT_SESSION_VERSION,
-            id=_generate_id(),
-            timestamp=_now_iso(),
+        source = await cls.load(Path(source_file), persist=False)
+        source_header = source.header
+        source_entries = source.get_entries()
+        await source.dispose_runtime_profile()
+        runtime_profile = resolve_coding_runtime_profile(persist=persist)
+        capability_profile = resolve_coding_capability_profile()
+        header = _new_header(
+            conversation_id=_generate_id(),
             cwd=str(target_cwd),
+            parent_conversation_id=source_header.conversation_id,
             parent_session=str(Path(source_file)),
+            runtime_profile_metadata=coding_runtime_snapshot_metadata(runtime_profile),
+            capability_profile_metadata=coding_capability_snapshot_metadata(
+                capability_profile
+            ),
         )
         target_dir = Path(session_dir)
-        session_file: Path | None = None
-        if persist:
-            target_dir.mkdir(parents=True, exist_ok=True)
-            file_timestamp = header.timestamp.replace(":", "-").replace(".", "-")
-            session_file = target_dir / f"{file_timestamp}_{header.id}.jsonl"
-            write_session_file(session_file, header, source.entries)
-        labels_by_target_id, label_timestamps_by_target_id = _build_label_indexes(source.entries)
+        (
+            runtime_binding,
+            backend,
+            key,
+            session_file,
+            transcript_profile,
+        ) = await _new_session_backend(
+            session_dir=target_dir,
+            header=header,
+            persist=persist,
+            runtime_profile=runtime_profile,
+        )
+        try:
+            transcript = await AgentTranscriptSessionStore.create(
+                backend,
+                key,
+                header,
+                records=source_entries,
+                id_factory=_generate_id,
+                profile=transcript_profile,
+            )
+        except Exception:
+            await runtime_binding.dispose()
+            raise
+        labels_by_target_id, label_timestamps_by_target_id = _build_label_indexes(
+            source_entries
+        )
         return cls(
             session_dir=target_dir,
             cwd=str(target_cwd),
             persist=persist,
-            header=header,
-            entries=list(source.entries),
-            by_id={entry.id: entry for entry in source.entries},
-            leaf_id=source.entries[-1].id if source.entries else None,
+            transcript=transcript,
+            runtime_binding=runtime_binding,
             session_file=session_file,
             labels_by_target_id=labels_by_target_id,
             label_timestamps_by_target_id=label_timestamps_by_target_id,
         )
 
-    def get_header(self) -> SessionHeader:
+    def get_header(self) -> ConversationHeader:
         return self.header
 
     def get_leaf_id(self) -> str | None:
         return self.leaf_id
 
-    def get_entry(self, entry_id: str) -> SessionEntry | None:
-        return self.by_id.get(entry_id)
+    def get_entry(self, entry_id: str) -> AgentTranscriptRecord | None:
+        return self._transcript.get(entry_id)
 
-    def get_leaf_entry(self) -> SessionEntry | None:
-        return self.by_id.get(self.leaf_id) if self.leaf_id is not None else None
+    def get_leaf_entry(self) -> AgentTranscriptRecord | None:
+        return self._transcript.leaf()
 
-    def get_entries(self) -> list[SessionEntry]:
+    def get_entries(self) -> list[AgentTranscriptRecord]:
         return list(self.entries)
 
-    def get_children(self, parent_id: str) -> list[SessionEntry]:
-        return [entry for entry in self.entries if entry.parent_id == parent_id]
+    def get_children(self, parent_id: str) -> list[AgentTranscriptRecord]:
+        return list(self._transcript.children(parent_id))
 
     def get_label(self, entry_id: str) -> str | None:
         return self.labels_by_target_id.get(entry_id)
@@ -606,200 +938,157 @@ class SessionManager:
         return self.persist and self.session_file is not None
 
     def load_metadata(self) -> SessionMetadata:
-        name: str | None = None
-        for entry in self.entries:
-            if isinstance(entry, SessionInfoEntry):
-                name = _normalize_session_name(entry.name)
-        return SessionMetadata(
-            created_at=self.header.timestamp,
-            updated_at=_last_activity_timestamp(self.entries, self.header),
-            name=name,
-        )
+        return _load_session_metadata(self.header, self.entries)
 
     def get_session_record(self) -> SessionRecord:
         return SessionRecord(
-            session_id=self.header.id,
+            session_id=self.header.conversation_id,
             cwd=self.cwd,
             session_file=self.session_file,
-            parent_session=self.header.parent_session,
+            parent_session=_header_parent_session(self.header),
             leaf_id=self.leaf_id,
             metadata=self.load_metadata(),
         )
 
     def get_session_summary(self) -> SessionSummary:
-        metadata = self.load_metadata()
-        context = self.build_session_context()
-        last_message_preview = next(
-            (preview for message in reversed(context.messages) if (preview := _message_preview(message))),
-            None,
-        )
-        message_texts = [text for message in context.messages if (text := _message_text(message))]
-        first_message = next(
-            (text for message in context.messages if isinstance(message, UserMessage) and (text := _message_text(message))),
-            "(no messages)",
-        )
-        diagnostic_count, last_diagnostic_code, last_diagnostic_level = _diagnostic_index(self.entries)
-        return SessionSummary(
-            session_id=self.header.id,
-            cwd=self.cwd,
-            session_file=self.session_file,
-            parent_session=self.header.parent_session,
-            leaf_id=self.leaf_id,
-            created_at=metadata.created_at,
-            updated_at=metadata.updated_at,
-            name=metadata.name,
-            message_count=len(context.messages),
-            entry_count=len(self.entries),
-            first_message=first_message,
-            all_messages_text=" ".join(message_texts),
-            last_message_preview=last_message_preview,
-            model=context.model,
-            has_diagnostics=diagnostic_count > 0,
-            diagnostic_count=diagnostic_count,
-            last_diagnostic_code=last_diagnostic_code,
-            last_diagnostic_level=last_diagnostic_level,
+        return _project_session_summary(
+            self.header,
+            self.entries,
+            self.leaf_id,
+            self.session_file,
         )
 
-    def get_branch(self, leaf_id: str | None | object = _LEAF_UNSET) -> list[SessionEntry]:
+    def get_branch(
+        self, leaf_id: str | None | object = _LEAF_UNSET
+    ) -> list[AgentTranscriptRecord]:
         if leaf_id is _LEAF_UNSET:
-            current_id = self.leaf_id
-        else:
-            current_id = leaf_id
-
-        if current_id is None:
+            return list(self._transcript.active_path())
+        if not isinstance(leaf_id, str):
             return []
+        if self._transcript.get(leaf_id) is None:
+            raise ValueError(f"Entry {leaf_id} not found")
+        return list(self._transcript.records_to(leaf_id))
 
-        leaf = self.by_id.get(current_id)
-        if leaf is None:
-            raise ValueError(f"Entry {current_id} not found")
-
-        branch: list[SessionEntry] = []
-        current: SessionEntry | None = leaf
-        while current is not None:
-            branch.insert(0, current)
-            current = self.by_id.get(current.parent_id) if current.parent_id is not None else None
-        return branch
+    def get_branch_delta(
+        self,
+        from_id: str,
+        target_id: str,
+    ) -> BranchDelta[AgentTranscriptRecord]:
+        return self._transcript.branch_delta(from_id, target_id)
 
     def branch(self, branch_from_id: str) -> None:
-        if branch_from_id not in self.by_id:
+        if self._transcript.get(branch_from_id) is None:
             raise ValueError(f"Entry {branch_from_id} not found")
-        self.leaf_id = branch_from_id
+        self._transcript.branch(branch_from_id)
 
     def reset_leaf(self) -> None:
-        self.leaf_id = None
+        self._transcript.reset_branch()
 
-    def branch_with_summary(
+    async def branch_with_summary(
         self,
         branch_from_id: str | None,
         summary: str,
         details: object | None = None,
         from_hook: bool | None = None,
     ) -> str:
-        if branch_from_id is not None and branch_from_id not in self.by_id:
+        if branch_from_id is not None and self._transcript.get(branch_from_id) is None:
             raise ValueError(f"Entry {branch_from_id} not found")
+        details = require_json_value(details, name="branch_summary.details")
+        previous_leaf_id = self.leaf_id
         self.leaf_id = branch_from_id
-        return self.append_entry(
-            BranchSummaryEntry(
-                type="branch_summary",
-                id=_generate_id(),
-                parent_id=branch_from_id,
-                timestamp=_now_iso(),
-                from_id=branch_from_id or "root",
-                summary=summary,
-                details=details,
-                from_hook=from_hook,
+        try:
+            commit = await self._transcript.append_branch_summary(
+                BranchContextSummary(
+                    from_record_id=branch_from_id or "root",
+                    summary=summary,
+                    details=details,
+                    from_hook=from_hook,
+                )
             )
-        )
+            return self._complete_commit(commit)
+        except Exception:
+            self.leaf_id = previous_leaf_id
+            raise
 
-    def get_tree(self) -> list[SessionTreeNode]:
-        node_by_id = {
-            entry.id: SessionTreeNode(
-                entry=entry,
-                children=[],
-                label=self.labels_by_target_id.get(entry.id),
-                label_timestamp=self.label_timestamps_by_target_id.get(entry.id),
+    def get_tree(self) -> list[SessionTreeNode[AgentTranscriptRecord]]:
+        def build_node(
+            node: ConversationTreeNode[AgentTranscriptRecord],
+        ) -> SessionTreeNode[AgentTranscriptRecord]:
+            entry = node.record
+            return SessionTreeNode(
+                record=entry,
+                children=tuple(build_node(child) for child in node.children),
+                label=self.labels_by_target_id.get(entry.record_id),
+                label_timestamp=self.label_timestamps_by_target_id.get(entry.record_id),
             )
-            for entry in self.entries
-        }
-        roots: list[SessionTreeNode] = []
 
-        for entry in self.entries:
-            node = node_by_id[entry.id]
-            if entry.parent_id is None or entry.parent_id == entry.id:
-                roots.append(node)
-                continue
-            parent = node_by_id.get(entry.parent_id)
-            if parent is None:
-                roots.append(node)
-                continue
-            parent.children.append(node)
+        return [build_node(node) for node in self._transcript.tree()]
 
-        return roots
-
-    def _record_label_entry(self, entry: LabelEntry) -> None:
-        if entry.label:
-            self.labels_by_target_id[entry.target_id] = entry.label
-            self.label_timestamps_by_target_id[entry.target_id] = entry.timestamp
+    def _record_label_entry(self, entry: AgentTranscriptRecord) -> None:
+        patch = entry.payload
+        if not isinstance(patch, RecordAnnotationPatch):
             return
-        self.labels_by_target_id.pop(entry.target_id, None)
-        self.label_timestamps_by_target_id.pop(entry.target_id, None)
+        if patch.operation == "set" and isinstance(patch.value, str):
+            self.labels_by_target_id[patch.target_record_id] = patch.value
+            self.label_timestamps_by_target_id[patch.target_record_id] = (
+                entry.created_at
+            )
+            return
+        self.labels_by_target_id.pop(patch.target_record_id, None)
+        self.label_timestamps_by_target_id.pop(patch.target_record_id, None)
 
-    def append_entry(self, entry: SessionEntry) -> str:
-        self.entries.append(entry)
-        self.by_id[entry.id] = entry
-        if isinstance(entry, LabelEntry):
+    async def append_entry(self, entry: AgentTranscriptRecord) -> str:
+        commit = await self._transcript.commit(entry)
+        if entry.kind == RECORD_ANNOTATION_PATCH_KIND:
             self._record_label_entry(entry)
-        self.leaf_id = entry.id
-        if self.persist and self.session_file is not None:
-            append_session_entry(self.session_file, entry)
-        return entry.id
+        return self._complete_commit(commit)
 
-    def append_message(self, message: AgentMessage) -> str:
-        if isinstance(message, BranchSummaryMessage | CompactionSummaryMessage):
-            raise ValueError(
-                "Projected summary messages must be persisted through dedicated session entries, not append_message()."
+    async def append_message(self, message: object) -> str:
+        if isinstance(message, ApplicationMessage):
+            return (await self.commit_application_message(message)).record_id
+        if isinstance(message, CommandExecutionRecord):
+            return self._complete_commit(
+                await self._transcript.append_command_execution(message)
             )
-        return self.append_entry(
-            SessionMessageEntry(
-                type="message",
-                id=_generate_id(),
-                parent_id=self.leaf_id,
-                timestamp=_now_iso(),
-                message=message,
+        if isinstance(message, UserMessage | AssistantMessage | ToolResultMessage):
+            return self._complete_commit(
+                await self._transcript.append_agent_message(message)
+            )
+        raise TypeError(f"Unsupported transcript message: {type(message)!r}")
+
+    async def commit_application_message(
+        self, message: ApplicationMessage
+    ) -> CommitResult:
+        result = await self._committer.commit_application_message(message)
+        if result.disposition == "committed":
+            self._notify_commit(result)
+        return result
+
+    async def append_thinking_level_change(self, thinking_level: str) -> str:
+        return self._complete_commit(
+            await self._transcript.append_thinking_selection(
+                ThinkingSelectionSnapshot(level=thinking_level)
             )
         )
 
-    def append_thinking_level_change(self, thinking_level: str) -> str:
-        return self.append_entry(
-            ThinkingLevelChangeEntry(
-                type="thinking_level_change",
-                id=_generate_id(),
-                parent_id=self.leaf_id,
-                timestamp=_now_iso(),
-                thinking_level=thinking_level,
-            )
-        )
-
-    def append_model_change(
+    async def append_model_change(
         self,
         provider: str,
         model_id: str,
         *,
         endpoint_id: str | None = None,
     ) -> str:
-        return self.append_entry(
-            ModelChangeEntry(
-                type="model_change",
-                id=_generate_id(),
-                parent_id=self.leaf_id,
-                timestamp=_now_iso(),
-                provider=provider,
-                model_id=model_id,
-                endpoint_id=endpoint_id,
+        return self._complete_commit(
+            await self._transcript.append_model_selection(
+                ModelSelectionSnapshot(
+                    provider=provider,
+                    model_id=model_id,
+                    endpoint_id=endpoint_id,
+                )
             )
         )
 
-    def append_compaction(
+    async def append_compaction(
         self,
         summary: str,
         first_kept_entry_id: str,
@@ -807,33 +1096,30 @@ class SessionManager:
         details: object | None = None,
         from_hook: bool | None = None,
     ) -> str:
-        return self.append_entry(
-            CompactionEntry(
-                type="compaction",
-                id=_generate_id(),
-                parent_id=self.leaf_id,
-                timestamp=_now_iso(),
-                summary=summary,
-                first_kept_entry_id=first_kept_entry_id,
-                tokens_before=tokens_before,
-                details=details,
-                from_hook=from_hook,
+        details = require_json_value(details, name="compaction.details")
+        return self._complete_commit(
+            await self._transcript.append_compaction_checkpoint(
+                ContextCompactionCheckpoint(
+                    summary=summary,
+                    first_kept_record_id=first_kept_entry_id,
+                    tokens_before=tokens_before,
+                    details=details,
+                    from_hook=from_hook,
+                )
             )
         )
 
-    def append_custom_entry(self, custom_type: str, data: object | None = None) -> str:
-        return self.append_entry(
-            CustomEntry(
-                type="custom",
-                id=_generate_id(),
-                parent_id=self.leaf_id,
-                timestamp=_now_iso(),
-                custom_type=custom_type,
-                data=data,
+    async def append_custom_entry(
+        self, custom_type: str, data: object | None = None
+    ) -> str:
+        data = require_json_value(data, name="custom_entry.data")
+        return self._complete_commit(
+            await self._transcript.append_extension_data(
+                ExtensionData(extension_type=custom_type, data=data)
             )
         )
 
-    def append_diagnostic_metadata(
+    async def append_diagnostic_metadata(
         self,
         *,
         code: str,
@@ -846,118 +1132,152 @@ class SessionManager:
             payload["message"] = message
         if details is not None:
             payload["details"] = details
-        return self.append_custom_entry("diagnostic", payload)
+        return await self.append_custom_entry("diagnostic", payload)
 
-    def append_custom_message_entry(
+    async def append_custom_message_entry(
         self,
         custom_type: str,
         content: str | list[object],
         display: bool,
         details: object | None = None,
     ) -> str:
-        return self.append_entry(
-            CustomMessageEntry(
-                type="custom_message",
-                id=_generate_id(),
-                parent_id=self.leaf_id,
-                timestamp=_now_iso(),
-                custom_type=custom_type,
-                content=content,
-                details=details,
-                display=display,
-            )
+        details = require_json_value(
+            details,
+            name="custom_message.details",
+        )
+        message = ApplicationMessage(
+            application_message_id=_generate_id(),
+            custom_type=custom_type,
+            content=content,  # type: ignore[arg-type]
+            details=details,
+            display=display,
+            timestamp=datetime.now(UTC).timestamp(),
+        )
+        return self._complete_application_commit(
+            await self._committer.commit_application_message(message)
         )
 
-    def append_label(self, target_id: str, label: str | None) -> str:
-        if target_id not in self.by_id:
+    async def append_label(self, target_id: str, label: str | None) -> str:
+        if self._transcript.get(target_id) is None:
             raise ValueError(f"Entry {target_id} not found")
-        return self.append_entry(
-            LabelEntry(
-                type="label",
-                id=_generate_id(),
-                parent_id=self.leaf_id,
-                timestamp=_now_iso(),
-                target_id=target_id,
-                label=_normalize_label(label),
+        normalized = _normalize_label(label)
+        commit = await self._transcript.append_annotation_patch(
+            RecordAnnotationPatch(
+                target_record_id=target_id,
+                namespace="display.label",
+                operation="set" if normalized is not None else "remove",
+                value=normalized,
             )
         )
+        record = commit.record
+        self._record_label_entry(record)
+        return self._complete_commit(commit)
 
-    def append_session_info(self, name: str | None) -> str:
-        return self.append_entry(
-            SessionInfoEntry(
-                type="session_info",
-                id=_generate_id(),
-                parent_id=self.leaf_id,
-                timestamp=_now_iso(),
-                name=_normalize_session_name(name),
-            )
+    async def append_session_info(self, name: str | None) -> str:
+        normalized = _normalize_session_name(name)
+        patch = (
+            ConversationMetadataPatch(values={"name": normalized})
+            if normalized is not None
+            else ConversationMetadataPatch(removed_keys=("name",))
+        )
+        return self._complete_commit(
+            await self._transcript.append_metadata_patch(patch)
         )
 
-    def fork(self, leaf_id: str) -> SessionManager:
+    async def fork(self, leaf_id: str) -> SessionManager:
         branch_entries = self.get_branch(leaf_id)
-        labels_by_target_id, label_timestamps_by_target_id = _build_label_indexes(branch_entries)
-        parent_session = str(self.session_file) if self.session_file is not None else None
-        header = SessionHeader(
-            type="session",
-            version=CURRENT_SESSION_VERSION,
-            id=_generate_id(),
-            timestamp=_now_iso(),
+        labels_by_target_id, label_timestamps_by_target_id = _build_label_indexes(
+            branch_entries
+        )
+        parent_session = (
+            str(self.session_file) if self.session_file is not None else None
+        )
+        header = _new_header(
+            conversation_id=_generate_id(),
             cwd=self.cwd,
+            parent_conversation_id=self.header.conversation_id,
             parent_session=parent_session,
+            runtime_profile_metadata=coding_runtime_snapshot_metadata(
+                self.runtime_profile
+            ),
+            capability_profile_metadata=coding_capability_snapshot_metadata(
+                resolve_coding_capability_profile()
+            ),
         )
 
-        session_file: Path | None = None
-        if self.persist:
-            self.session_dir.mkdir(parents=True, exist_ok=True)
-            file_timestamp = header.timestamp.replace(":", "-").replace(".", "-")
-            session_file = self.session_dir / f"{file_timestamp}_{header.id}.jsonl"
-            write_session_file(session_file, header, branch_entries)
+        (
+            runtime_binding,
+            backend,
+            key,
+            session_file,
+            transcript_profile,
+        ) = await _new_session_backend(
+            session_dir=self.session_dir,
+            header=header,
+            persist=self.persist,
+            runtime_profile=self.runtime_profile,
+        )
+        try:
+            transcript = await AgentTranscriptSessionStore.create(
+                backend,
+                key,
+                header,
+                records=branch_entries,
+                leaf_id=leaf_id,
+                id_factory=_generate_id,
+                profile=transcript_profile,
+            )
+        except Exception:
+            await runtime_binding.dispose()
+            raise
 
         return SessionManager(
             session_dir=self.session_dir,
             cwd=self.cwd,
             persist=self.persist,
-            header=header,
-            entries=list(branch_entries),
-            by_id={entry.id: entry for entry in branch_entries},
-            leaf_id=branch_entries[-1].id if branch_entries else None,
+            transcript=transcript,
+            runtime_binding=runtime_binding,
             session_file=session_file,
             labels_by_target_id=labels_by_target_id,
             label_timestamps_by_target_id=label_timestamps_by_target_id,
         )
 
-    def create_branched_session(self, leaf_id: str) -> Path | None:
-        return self.fork(leaf_id).session_file
+    async def create_branched_session(self, leaf_id: str) -> Path | None:
+        return (await self.fork(leaf_id)).session_file
 
-    def build_session_context(self) -> SessionContext:
-        return build_session_context(self.entries, self.leaf_id, self.by_id)
+    def build_session_context(self) -> AgentTranscriptContext:
+        return self._transcript.replay_context()
 
     @classmethod
-    def rename_session(cls, session_file: str | Path, name: str | None) -> SessionSummary:
-        manager = cls.open(session_file, persist=True)
-        manager.append_session_info(name)
+    async def rename_session(
+        cls, session_file: str | Path, name: str | None
+    ) -> SessionSummary:
+        manager = await cls.open(session_file, persist=True)
+        await manager.append_session_info(name)
         summary = manager.get_session_summary()
         cls._refresh_index_if_present(Path(session_file).expanduser().parent)
         return summary
 
     @classmethod
-    def delete_session(
+    async def delete_session(
         cls,
         session_file: str | Path,
         *,
         current_session_file: str | Path | None = None,
     ) -> bool:
         target = Path(session_file).expanduser()
-        if current_session_file is not None and _same_existing_path(target, Path(current_session_file).expanduser()):
+        if current_session_file is not None and _same_existing_path(
+            target, Path(current_session_file).expanduser()
+        ):
             raise ValueError("Cannot delete the currently active session")
-        if not target.exists():
+        if not target.is_file():
             return False
-        target.unlink()
-        lock_file = target.with_name(f"{target.name}.lock")
+        layout = CodingSessionFileLayout(target.parent)
+        key = layout.bind_existing_path(target)
         try:
-            lock_file.unlink()
-        except FileNotFoundError:
-            pass
+            await create_coding_file_store(layout).delete(key)
+        except StoreNotFoundError:
+            return False
         cls._refresh_index_if_present(target.parent)
         return True
 
@@ -980,7 +1300,22 @@ class SessionManager:
             if session_file.name.endswith("-export.jsonl"):
                 continue
             try:
-                record = cls.load(session_file).get_session_record()
+                conversation = load_session_repository(
+                    session_file,
+                    writable=False,
+                    persist=False,
+                )
+                record = SessionRecord(
+                    session_id=conversation.header.conversation_id,
+                    cwd=_header_cwd(conversation.header),
+                    session_file=session_file,
+                    parent_session=_header_parent_session(conversation.header),
+                    leaf_id=conversation.leaf_id,
+                    metadata=_load_session_metadata(
+                        conversation.header,
+                        conversation.records,
+                    ),
+                )
             except Exception:
                 continue
             records.append(record)
@@ -992,19 +1327,12 @@ class SessionManager:
     def list_summaries(cls, session_dir: Path) -> list[SessionSummary]:
         if not session_dir.exists():
             return []
-
-        summaries: list[SessionSummary] = []
-        for session_file in session_dir.glob("*.jsonl"):
-            if session_file.name.endswith("-export.jsonl"):
-                continue
-            try:
-                summary = cls.load(session_file).get_session_summary()
-            except Exception:
-                continue
-            summaries.append(summary)
-
-        summaries.sort(key=lambda summary: summary.updated_at, reverse=True)
-        return summaries
+        return list(
+            ProjectionQuery[SessionSummary](
+                sort_key=lambda summary: summary.updated_at,
+                reverse=True,
+            ).apply(_session_catalog(session_dir, indexed=False).scan())
+        )
 
     @classmethod
     def list_all_summaries(cls, sessions_root: Path) -> list[SessionSummary]:
@@ -1021,17 +1349,21 @@ class SessionManager:
         return summaries
 
     @classmethod
-    def load_summary(cls, session_file: Path) -> SessionSummary:
-        return cls.load(session_file).get_session_summary()
+    async def load_summary(cls, session_file: Path) -> SessionSummary:
+        return (await cls.load(session_file)).get_session_summary()
 
     @classmethod
-    def find_sessions(cls, session_dir: Path, query: SessionQuery | None = None) -> list[SessionSummary]:
+    def find_sessions(
+        cls, session_dir: Path, query: SessionQuery | None = None
+    ) -> list[SessionSummary]:
         query = query or SessionQuery()
         summaries = cls.list_summaries(session_dir)
         return _filter_session_summaries(summaries, query)
 
     @classmethod
-    def find_all_sessions(cls, sessions_root: Path, query: SessionQuery | None = None) -> list[SessionSummary]:
+    def find_all_sessions(
+        cls, sessions_root: Path, query: SessionQuery | None = None
+    ) -> list[SessionSummary]:
         query = query or SessionQuery()
         return _filter_session_summaries(cls.list_all_summaries(sessions_root), query)
 
@@ -1042,69 +1374,26 @@ class SessionManager:
     @classmethod
     def refresh_index(cls, session_dir: Path) -> list[SessionSummary]:
         session_dir.mkdir(parents=True, exist_ok=True)
-        summaries = cls.list_summaries(session_dir)
-        payload = {
-            "version": _SESSION_INDEX_VERSION,
-            "generated_at": _now_iso(),
-            "summaries": [_summary_to_index_item(summary) for summary in summaries],
-        }
-        index_file = cls.index_file(session_dir)
-        temp_file = index_file.with_suffix(index_file.suffix + ".tmp")
-        temp_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        temp_file.replace(index_file)
-        return summaries
+        return list(_session_catalog(session_dir, indexed=True).refresh())
 
     @classmethod
     def load_index(cls, session_dir: Path) -> list[SessionSummary]:
-        return cls._load_index(session_dir).summaries
+        return list(cls._load_index(session_dir).projections)
 
     @classmethod
-    def _load_index(cls, session_dir: Path) -> _LoadedSessionIndex:
-        index_file = cls.index_file(session_dir)
-        if not index_file.exists():
-            return _LoadedSessionIndex([])
-        try:
-            payload = json.loads(index_file.read_text(encoding="utf-8"))
-        except Exception:
-            cls._preserve_corrupt_index(index_file)
-            return _LoadedSessionIndex([], stale=True)
-        if not isinstance(payload, dict) or payload.get("version") != _SESSION_INDEX_VERSION:
-            return _LoadedSessionIndex([], stale=True)
-        raw_summaries = payload.get("summaries")
-        if not isinstance(raw_summaries, list):
-            return _LoadedSessionIndex([], stale=True)
-        summaries: list[SessionSummary] = []
-        stale = False
-        for summary in (_summary_from_index_item(item) for item in raw_summaries):
-            if summary is None:
-                stale = True
-                continue
-            if not _indexed_session_file_exists(summary):
-                stale = True
-                continue
-            summaries.append(summary)
-        summaries.sort(key=lambda summary: summary.updated_at, reverse=True)
-        return _LoadedSessionIndex(summaries, stale=stale)
+    def _load_index(cls, session_dir: Path) -> ProjectionIndexSnapshot[SessionSummary]:
+        return _session_projection_index(session_dir).load()
 
     @classmethod
-    def _preserve_corrupt_index(cls, index_file: Path) -> None:
-        if not index_file.exists():
-            return
-        corrupt_file = index_file.with_name(f"{index_file.name}.corrupt-{time_ns()}")
-        try:
-            index_file.replace(corrupt_file)
-        except Exception:
-            return
+    def list_indexed_summaries(
+        cls, session_dir: Path, *, refresh: bool = False
+    ) -> list[SessionSummary]:
+        return list(_session_catalog(session_dir, indexed=True).list(refresh=refresh))
 
     @classmethod
-    def list_indexed_summaries(cls, session_dir: Path, *, refresh: bool = False) -> list[SessionSummary]:
-        if refresh:
-            return cls.refresh_index(session_dir)
-        loaded = cls._load_index(session_dir)
-        return loaded.summaries if loaded.summaries and not loaded.stale else cls.refresh_index(session_dir)
-
-    @classmethod
-    def find_indexed_sessions(cls, session_dir: Path, query: SessionQuery | None = None) -> list[SessionSummary]:
+    def find_indexed_sessions(
+        cls, session_dir: Path, query: SessionQuery | None = None
+    ) -> list[SessionSummary]:
         query = query or SessionQuery()
         return _filter_session_summaries(cls.list_indexed_summaries(session_dir), query)
 
@@ -1121,7 +1410,9 @@ class SessionManager:
         return summaries
 
     @classmethod
-    def list_all_indexed_summaries(cls, sessions_root: Path, *, refresh: bool = False) -> list[SessionSummary]:
+    def list_all_indexed_summaries(
+        cls, sessions_root: Path, *, refresh: bool = False
+    ) -> list[SessionSummary]:
         if refresh:
             return cls.refresh_all_indexes(sessions_root)
         if not sessions_root.exists():
@@ -1135,41 +1426,64 @@ class SessionManager:
         return summaries
 
     @classmethod
-    def find_all_indexed_sessions(cls, sessions_root: Path, query: SessionQuery | None = None) -> list[SessionSummary]:
+    def find_all_indexed_sessions(
+        cls, sessions_root: Path, query: SessionQuery | None = None
+    ) -> list[SessionSummary]:
         query = query or SessionQuery()
-        return _filter_session_summaries(cls.list_all_indexed_summaries(sessions_root), query)
+        return _filter_session_summaries(
+            cls.list_all_indexed_summaries(sessions_root), query
+        )
 
 
-def _filter_session_summaries(summaries: list[SessionSummary], query: SessionQuery) -> list[SessionSummary]:
+def _filter_session_summaries(
+    summaries: list[SessionSummary], query: SessionQuery
+) -> list[SessionSummary]:
     def matches(summary: SessionSummary) -> bool:
         if query.cwd is not None and summary.cwd != query.cwd:
             return False
-        if query.name is not None and query.name.lower() not in (summary.name or "").lower():
+        if (
+            query.name is not None
+            and query.name.lower() not in (summary.name or "").lower()
+        ):
             return False
-        if query.named is not None and bool(_normalize_session_name(summary.name)) is not query.named:
+        if (
+            query.named is not None
+            and bool(_normalize_session_name(summary.name)) is not query.named
+        ):
             return False
-        if query.parent_session is not None and not _same_session_reference(summary.parent_session, query.parent_session):
+        if query.parent_session is not None and not _same_session_reference(
+            summary.parent_session, query.parent_session
+        ):
             return False
-        if query.has_diagnostics is not None and summary.has_diagnostics is not query.has_diagnostics:
+        if (
+            query.has_diagnostics is not None
+            and summary.has_diagnostics is not query.has_diagnostics
+        ):
             return False
         if query.text is not None and _session_query_score(summary, query.text) is None:
             return False
         return True
 
-    filtered = [summary for summary in summaries if matches(summary)]
+    sort_key = None
+    reverse = False
     if query.sort_by == "relevance" and query.text is not None:
-        filtered.sort(
-            key=lambda summary: (
+
+        def relevance_sort_key(summary: SessionSummary) -> tuple[int, str]:
+            return (
                 _session_query_score(summary, query.text) or 0,
                 summary.updated_at,
-            ),
-            reverse=True,
-        )
-    if query.limit is not None:
-        if query.limit < 0:
-            raise ValueError("Session query limit must be non-negative")
-        return filtered[: query.limit]
-    return filtered
+            )
+
+        sort_key = relevance_sort_key
+        reverse = True
+    return list(
+        ProjectionQuery(
+            predicate=matches,
+            sort_key=sort_key,
+            reverse=reverse,
+            limit=query.limit,
+        ).apply(summaries)
+    )
 
 
 def _session_haystack(summary: SessionSummary) -> str:

@@ -10,7 +10,7 @@
 
 归属组件：
 
-- `skill`
+- `loushang.harness.resources`；`coding.skill` 保留兼容和产品投影
 
 角色：
 
@@ -27,7 +27,7 @@
 
 归属组件：
 
-- `loader`
+- `loushang.harness.resources`；`coding.loader` 保留兼容 facade
 
 角色：
 
@@ -47,7 +47,7 @@
 
 归属组件：
 
-- `extensions`
+- `loushang.harness.resources`；`coding.extensions` 保留运行时投影
 
 角色：
 
@@ -63,8 +63,7 @@
 
 归属组件：
 
-- `loader`
-- `resources`
+- `loushang.harness.resources`
 
 角色：
 
@@ -83,5 +82,6 @@
 
 ## Notes
 
-- 这组对象主要服务于 loader / resources / skill / extensions / plugin / package 之间的资源交换
+- 这组跨产品对象由 Harness 拥有，服务于 Product loader / skill /
+  extensions / plugin / package adapters 之间的资源交换
 - `MethodDescriptor` / `MethodPlan` / `MethodStep` 归属 `loushang.method`，不再作为 `loushang-coding` resource descriptor 拥有对象

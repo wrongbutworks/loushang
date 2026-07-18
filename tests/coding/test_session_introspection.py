@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import loushang.coding as coding
 import loushang.coding.session as coding_session
 from loushang.agent import Agent
@@ -81,7 +83,12 @@ def _assistant_with_tool_call() -> AssistantMessage:
         role="assistant",
         content=[
             TextPart(type="text", text="Calling read"),
-            ToolCall(type="toolCall", id="call-1", name="read", arguments={"path": "README.md"}),
+            ToolCall(
+                type="toolCall",
+                id="call-1",
+                name="read",
+                arguments={"path": "README.md"},
+            ),
         ],
         api="anthropic-messages",
         provider="faux",
@@ -95,23 +102,29 @@ def _assistant_with_tool_call() -> AssistantMessage:
 
 
 def _build_session_with_tool_turn(tmp_path):
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(
-        UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="read the readme")],
-            timestamp=0.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="read the readme")],
+                timestamp=0.0,
+            )
         )
     )
-    manager.append_message(_assistant_with_tool_call())
-    manager.append_message(
-        ToolResultMessage(
-            role="toolResult",
-            tool_call_id="call-1",
-            tool_name="read",
-            content=[TextPart(type="text", text="README content")],
-            is_error=False,
-            timestamp=2.0,
+    asyncio.run(manager.append_message(_assistant_with_tool_call()))
+    asyncio.run(
+        manager.append_message(
+            ToolResultMessage(
+                role="toolResult",
+                tool_call_id="call-1",
+                tool_name="read",
+                content=[TextPart(type="text", text="README content")],
+                is_error=False,
+                timestamp=2.0,
+            )
         )
     )
     return coding_session.AgentSession(agent=Agent(), session_manager=manager)
@@ -153,14 +166,34 @@ def test_build_context_usage_uses_session_compaction_settings(tmp_path) -> None:
         SettingsManager,
     )
 
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="hello")], timestamp=0.0))
-    manager.append_message(_assistant_with_tool_call())
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="hello")],
+                timestamp=0.0,
+            )
+        )
+    )
+    asyncio.run(manager.append_message(_assistant_with_tool_call()))
     session = coding_session.AgentSession(
-        agent=Agent(initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}),
+        agent=Agent(
+            initial_state={
+                "system_prompt": "",
+                "model": _model(),
+                "thinking_level": "off",
+            }
+        ),
         session_manager=manager,
         settings_manager=SettingsManager(
-            ControlConfig(compaction=CompactionSettings(compact_percent=80, reserve_tokens=8192, keep_recent_tokens=4096))
+            ControlConfig(
+                compaction=CompactionSettings(
+                    compact_percent=80, reserve_tokens=8192, keep_recent_tokens=4096
+                )
+            )
         ),
     )
 
@@ -176,7 +209,9 @@ def test_build_context_usage_uses_session_compaction_settings(tmp_path) -> None:
     assert usage.threshold_reason == "compact_percent"
 
 
-def test_build_session_stats_includes_context_usage_and_session_metadata(tmp_path) -> None:
+def test_build_session_stats_includes_context_usage_and_session_metadata(
+    tmp_path,
+) -> None:
     session = _build_session_with_tool_turn(tmp_path)
     stats = build_session_stats(session)
     assert stats.session_id == session.session_id
@@ -184,51 +219,104 @@ def test_build_session_stats_includes_context_usage_and_session_metadata(tmp_pat
 
 
 def test_build_session_stats_reports_token_totals_after_compaction(tmp_path) -> None:
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="first")], timestamp=0.0))
-    manager.append_message(
-        AssistantMessage(
-            role="assistant",
-            content=[TextPart(type="text", text="first response")],
-            api="anthropic-messages",
-            provider="faux",
-            model="faux-model",
-            response_id=None,
-            usage=Usage(input=180_000, output=0, cache_read=0, cache_write=0, total_tokens=180_000, cost={}),
-            stop_reason="stop",
-            error_message=None,
-            timestamp=1.0,
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="first")],
+                timestamp=0.0,
+            )
         )
     )
-    kept_id = manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="second")], timestamp=2.0))
-    manager.append_message(
-        AssistantMessage(
-            role="assistant",
-            content=[TextPart(type="text", text="second response")],
-            api="anthropic-messages",
-            provider="faux",
-            model="faux-model",
-            response_id=None,
-            usage=Usage(input=195_000, output=0, cache_read=0, cache_write=0, total_tokens=195_000, cost={}),
-            stop_reason="stop",
-            error_message=None,
-            timestamp=3.0,
+    asyncio.run(
+        manager.append_message(
+            AssistantMessage(
+                role="assistant",
+                content=[TextPart(type="text", text="first response")],
+                api="anthropic-messages",
+                provider="faux",
+                model="faux-model",
+                response_id=None,
+                usage=Usage(
+                    input=180_000,
+                    output=0,
+                    cache_read=0,
+                    cache_write=0,
+                    total_tokens=180_000,
+                    cost={},
+                ),
+                stop_reason="stop",
+                error_message=None,
+                timestamp=1.0,
+            )
         )
     )
-    manager.append_compaction("summary", kept_id, 195_000)
-    manager.append_message(UserMessage(role="user", content=[TextPart(type="text", text="third")], timestamp=4.0))
-    manager.append_message(
-        AssistantMessage(
-            role="assistant",
-            content=[TextPart(type="text", text="third response")],
-            api="anthropic-messages",
-            provider="faux",
-            model="faux-model",
-            response_id=None,
-            usage=Usage(input=25_000, output=0, cache_read=0, cache_write=0, total_tokens=25_000, cost={}),
-            stop_reason="stop",
-            error_message=None,
-            timestamp=5.0,
+    kept_id = asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="second")],
+                timestamp=2.0,
+            )
+        )
+    )
+    asyncio.run(
+        manager.append_message(
+            AssistantMessage(
+                role="assistant",
+                content=[TextPart(type="text", text="second response")],
+                api="anthropic-messages",
+                provider="faux",
+                model="faux-model",
+                response_id=None,
+                usage=Usage(
+                    input=195_000,
+                    output=0,
+                    cache_read=0,
+                    cache_write=0,
+                    total_tokens=195_000,
+                    cost={},
+                ),
+                stop_reason="stop",
+                error_message=None,
+                timestamp=3.0,
+            )
+        )
+    )
+    asyncio.run(manager.append_compaction("summary", kept_id, 195_000))
+    asyncio.run(
+        manager.append_message(
+            UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="third")],
+                timestamp=4.0,
+            )
+        )
+    )
+    asyncio.run(
+        manager.append_message(
+            AssistantMessage(
+                role="assistant",
+                content=[TextPart(type="text", text="third response")],
+                api="anthropic-messages",
+                provider="faux",
+                model="faux-model",
+                response_id=None,
+                usage=Usage(
+                    input=25_000,
+                    output=0,
+                    cache_read=0,
+                    cache_write=0,
+                    total_tokens=25_000,
+                    cost={},
+                ),
+                stop_reason="stop",
+                error_message=None,
+                timestamp=5.0,
+            )
         )
     )
     agent = Agent(
@@ -251,7 +339,9 @@ def test_build_session_stats_reports_token_totals_after_compaction(tmp_path) -> 
 
 
 def test_build_session_stats_tracks_active_tools_and_diagnostics(tmp_path) -> None:
-    manager = SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
     diagnostics = DiagnosticsService()
     diagnostics.record(
         DiagnosticRecord(

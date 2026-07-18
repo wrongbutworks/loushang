@@ -1,0 +1,161 @@
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+
+from loushang.harness.runtime import (
+    BoundProductRuntimeContext,
+    ProductRuntimeBindings,
+    RuntimeBindingState,
+    UnboundProductRuntimeContext,
+)
+
+
+def _research_bindings(
+    *, cwd: str, active_tools: list[str], calls: list[tuple[str, object]]
+) -> ProductRuntimeBindings:
+    async def set_active_tools(names: list[str]) -> None:
+        calls.append(("tools", names))
+
+    async def set_model(selection: object) -> None:
+        calls.append(("model", selection))
+
+    async def append_entry(custom_type: str, data: object | None) -> None:
+        calls.append(("entry", (custom_type, data)))
+
+    async def set_session_name(name: str | None) -> None:
+        calls.append(("session_name", name))
+
+    async def set_label(entry_id: str, label: str | None) -> None:
+        calls.append(("label", (entry_id, label)))
+
+    async def set_thinking_level(level: str) -> None:
+        calls.append(("thinking", level))
+
+    async def compact(instructions: str | None) -> object:
+        calls.append(("compact", instructions))
+        return {"summary": "research summary"}
+
+    return ProductRuntimeBindings(
+        cwd=cwd,
+        get_active_tool_names=lambda: list(active_tools),
+        get_model_selection=lambda: {"provider": "example", "model": "research"},
+        set_active_tools=set_active_tools,
+        set_model=set_model,
+        append_entry=append_entry,
+        set_session_name=set_session_name,
+        set_label=set_label,
+        set_thinking_level=set_thinking_level,
+        request_resource_refresh=lambda: calls.append(("refresh", None)),
+        shutdown=lambda: calls.append(("shutdown", None)),
+        record_diagnostic=lambda diagnostic: calls.append(("diagnostic", diagnostic)),
+        compact=compact,
+        get_system_prompt=lambda: "You are a research assistant.",
+    )
+
+
+def test_bound_context_exposes_live_product_capabilities_without_coding() -> None:
+    calls: list[tuple[str, object]] = []
+    state = RuntimeBindingState(
+        _research_bindings(cwd="/tmp/research", active_tools=["search"], calls=calls)
+    )
+    context = BoundProductRuntimeContext(
+        state.capture(), get_flag_value={"citations": True}.get
+    )
+
+    async def scenario() -> None:
+        await context.setActiveTools(["search", "read"])
+        await context.setModel({"provider": "example", "model": "deep-research"})
+        await context.appendEntry("research.note", {"text": "finding"})
+        await context.setSessionName("Research")
+        await context.setLabel("entry-1", "source")
+        await context.setThinkingLevel("high")
+        result = await context.compact({"customInstructions": "preserve citations"})
+        assert result == {"summary": "research summary"}
+
+    asyncio.run(scenario())
+
+    assert context.cwd == "/tmp/research"
+    assert context.getActiveTools() == ["search"]
+    assert context.getFlag("citations") is True
+    assert context.getSystemPrompt() == "You are a research assistant."
+    assert calls == [
+        ("tools", ["search", "read"]),
+        ("model", {"provider": "example", "model": "deep-research"}),
+        ("entry", ("research.note", {"text": "finding"})),
+        ("session_name", "Research"),
+        ("label", ("entry-1", "source")),
+        ("thinking", "high"),
+        ("compact", "preserve citations"),
+    ]
+
+
+def test_bound_context_reads_refreshes_and_honors_invalidation() -> None:
+    calls: list[tuple[str, object]] = []
+    state = RuntimeBindingState(
+        _research_bindings(cwd="/tmp/first", active_tools=["search"], calls=calls),
+        stale_message="research session replaced",
+    )
+    context = BoundProductRuntimeContext(state.capture())
+
+    state.refresh(
+        _research_bindings(
+            cwd="/tmp/second", active_tools=["search", "read"], calls=calls
+        )
+    )
+    assert context.cwd == "/tmp/second"
+    assert context.getActiveTools() == ["search", "read"]
+
+    state.invalidate()
+    with pytest.raises(RuntimeError, match="research session replaced"):
+        _ = context.cwd
+
+
+def test_unbound_context_has_conservative_defaults() -> None:
+    context = UnboundProductRuntimeContext(
+        cwd="/tmp/research",
+        get_flag_value={"citations": "required"}.get,
+    )
+
+    assert context.cwd == "/tmp/research"
+    assert context.get_flag("citations") == "required"
+    assert context.get_all_tools() == []
+    assert context.has_ui is False
+    assert context.setTheme("dark") == {
+        "success": False,
+        "error": "Theme switching is not supported.",
+    }
+    asyncio.run(context.appendEntry("ignored"))
+    asyncio.run(context.setSessionName("ignored"))
+    asyncio.run(context.setLabel("entry-1", "ignored"))
+    asyncio.run(context.setThinkingLevel("high"))
+    with pytest.raises(RuntimeError, match="Extension runtime is not bound"):
+        asyncio.run(context.exec_command("pwd"))
+
+
+def test_product_runtime_binding_mutation_defaults_are_awaitable() -> None:
+    async def set_active_tools(names: list[str]) -> None:
+        del names
+
+    async def set_model(selection: object) -> None:
+        del selection
+
+    bindings = ProductRuntimeBindings(
+        cwd="/tmp/research",
+        get_active_tool_names=lambda: [],
+        get_model_selection=lambda: None,
+        set_active_tools=set_active_tools,
+        set_model=set_model,
+        request_resource_refresh=lambda: None,
+        shutdown=lambda: None,
+        record_diagnostic=lambda diagnostic: None,
+    )
+
+    async def scenario() -> None:
+        await bindings.append_entry("ignored", None)
+        await bindings.set_session_name("ignored")
+        await bindings.set_label("entry-1", "ignored")
+        await bindings.set_thinking_level("high")
+
+    asyncio.run(scenario())

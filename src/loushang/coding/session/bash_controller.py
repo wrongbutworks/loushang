@@ -3,18 +3,17 @@ from __future__ import annotations
 import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from time import time
 
 from loushang.agent import AbortController, Agent
-from loushang.coding.exec import ExecOutputChunk
 from loushang.coding.extensions import ExtensionRunner
-from loushang.coding.message import BashExecutionMessage
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
-from loushang.coding.tools.protocol import (
+from loushang.harness.conversation import CommandExecutionRecord
+from loushang.harness.tools.workspace.protocol import (
     normalize_bash_result_from_protocol,
     project_bash_result_for_protocol,
 )
+from loushang.harness.workspace.exec import ExecOutputChunk
 
 ExtensionRunnerProvider = Callable[[], ExtensionRunner | None]
 ToolRegistryProvider = Callable[[], ToolRegistry | None]
@@ -33,7 +32,9 @@ class BashController:
     session_manager: SessionManager
     get_extension_runner: ExtensionRunnerProvider
     get_tool_registry: ToolRegistryProvider
-    sync_extension_diagnostics: ExtensionDiagnosticsSync = _noop_sync_extension_diagnostics
+    sync_extension_diagnostics: ExtensionDiagnosticsSync = (
+        _noop_sync_extension_diagnostics
+    )
 
     _bash_abort_controller: AbortController | None = None
 
@@ -50,7 +51,9 @@ class BashController:
         command: str,
         *,
         cwd: str | None = None,
-        env: list[list[str] | tuple[str, str]] | tuple[tuple[str, str], ...] | None = None,
+        env: list[list[str] | tuple[str, str]]
+        | tuple[tuple[str, str], ...]
+        | None = None,
         timeout_seconds: float | None = None,
         stdin: str | None = None,
         exclude_from_context: bool = False,
@@ -74,14 +77,16 @@ class BashController:
             )
             bash_result = _bash_result_from_extension_user_bash_result(event_result)
             if bash_result is not None:
-                self.record_result(
+                await self.record_result(
                     command=command,
                     result=bash_result,
                     exclude_from_context=exclude_from_context,
                 )
                 self.sync_extension_diagnostics(phase="runtime")
                 return bash_result
-            extension_operations = _bash_operations_from_extension_user_bash_result(event_result)
+            extension_operations = _bash_operations_from_extension_user_bash_result(
+                event_result
+            )
             if extension_operations is not None:
                 selected_operations = extension_operations
             self.sync_extension_diagnostics(phase="runtime")
@@ -104,7 +109,11 @@ class BashController:
             stream = details.get("stream") if isinstance(details, dict) else None
             if stream not in {"stdout", "stderr"}:
                 return
-            text = "".join(block.text for block in partial_result.content if getattr(block, "type", None) == "text")
+            text = "".join(
+                block.text
+                for block in partial_result.content
+                if getattr(block, "type", None) == "text"
+            )
             if not text:
                 return
             streamed_chunks.append(text)
@@ -136,7 +145,9 @@ class BashController:
             )
             bash_result = _bash_result_from_tool_result(tool_result)
         except RuntimeError as exc:
-            if "Command aborted" not in str(exc) or not getattr(controller.signal, "aborted", False):
+            if "Command aborted" not in str(exc) or not getattr(
+                controller.signal, "aborted", False
+            ):
                 raise
             bash_result = {
                 "output": "".join(streamed_chunks),
@@ -148,7 +159,7 @@ class BashController:
         finally:
             self._bash_abort_controller = None
 
-        self.record_result(
+        await self.record_result(
             command=command,
             result=bash_result,
             exclude_from_context=exclude_from_context,
@@ -181,8 +192,14 @@ class BashController:
                     else None
                 )
             ),
-            stdin=options.get("stdin") if isinstance(options.get("stdin"), str) else None,
-            exclude_from_context=bool(options.get("excludeFromContext", options.get("exclude_from_context", False))),
+            stdin=options.get("stdin")
+            if isinstance(options.get("stdin"), str)
+            else None,
+            exclude_from_context=bool(
+                options.get(
+                    "excludeFromContext", options.get("exclude_from_context", False)
+                )
+            ),
             on_output=_on_output if on_chunk is not None else None,
             operations=options.get("operations"),
         )
@@ -192,34 +209,34 @@ class BashController:
         if self._bash_abort_controller is not None:
             self._bash_abort_controller.abort()
 
-    def record_result(
+    async def record_result(
         self,
         *,
         command: str,
         result: dict[str, object],
         exclude_from_context: bool,
     ) -> None:
-        self.session_manager.append_message(
-            BashExecutionMessage(
-                role="bashExecution",
+        exit_code = result.get("exit_code")
+        await self.session_manager.append_message(
+            CommandExecutionRecord(
                 command=command,
                 output=str(result.get("output") or ""),
-                exit_code=result.get("exit_code") if isinstance(result.get("exit_code"), int) else None,
+                exit_code=exit_code if type(exit_code) is int else None,
                 cancelled=bool(result.get("cancelled", False)),
                 truncated=bool(result.get("truncated", False)),
                 full_output_path=(
                     str(result["full_output_path"])
-                    if isinstance(result.get("full_output_path"), str) and result.get("full_output_path")
+                    if isinstance(result.get("full_output_path"), str)
+                    and result.get("full_output_path")
                     else None
                 ),
-                timestamp=time(),
                 exclude_from_context=exclude_from_context,
             )
         )
         session_context = self.session_manager.build_session_context()
         self.agent.state.set_messages(session_context.messages)
 
-    def record_pi_style_result(
+    async def record_pi_style_result(
         self,
         command: str,
         result: dict[str, object],
@@ -227,16 +244,24 @@ class BashController:
     ) -> None:
         options = dict(options or {})
         normalized = normalize_bash_result_from_protocol(result)
-        self.record_result(
+        await self.record_result(
             command=command,
             result=normalized,
-            exclude_from_context=bool(options.get("excludeFromContext", options.get("exclude_from_context", False))),
+            exclude_from_context=bool(
+                options.get(
+                    "excludeFromContext", options.get("exclude_from_context", False)
+                )
+            ),
         )
 
 
 def _bash_result_from_tool_result(tool_result) -> dict[str, object]:
     details = tool_result.details if isinstance(tool_result.details, dict) else {}
-    output = "".join(block.text for block in tool_result.content if getattr(block, "type", None) == "text")
+    output = "".join(
+        block.text
+        for block in tool_result.content
+        if getattr(block, "type", None) == "text"
+    )
     stderr = details.get("stderr")
     if isinstance(stderr, str) and stderr and not output.endswith(stderr):
         output = output + stderr
@@ -244,21 +269,32 @@ def _bash_result_from_tool_result(tool_result) -> dict[str, object]:
         "output": output,
         "exit_code": details.get("exit_code"),
         "cancelled": bool(details.get("cancelled", False)),
-        "truncated": bool(details.get("truncated", False) or details.get("stderr_truncated", False)),
-        "full_output_path": details.get("stdout_artifact_path") or details.get("stderr_artifact_path"),
+        "truncated": bool(
+            details.get("truncated", False) or details.get("stderr_truncated", False)
+        ),
+        "full_output_path": details.get("stdout_artifact_path")
+        or details.get("stderr_artifact_path"),
     }
 
 
-def _bash_result_from_extension_user_bash_result(event_result: object | None) -> dict[str, object] | None:
+def _bash_result_from_extension_user_bash_result(
+    event_result: object | None,
+) -> dict[str, object] | None:
     if event_result is None:
         return None
-    result = event_result.get("result") if isinstance(event_result, dict) else getattr(event_result, "result", None)
+    result = (
+        event_result.get("result")
+        if isinstance(event_result, dict)
+        else getattr(event_result, "result", None)
+    )
     if not isinstance(result, dict):
         return None
     return normalize_bash_result_from_protocol(result)
 
 
-def _bash_operations_from_extension_user_bash_result(event_result: object | None) -> object | None:
+def _bash_operations_from_extension_user_bash_result(
+    event_result: object | None,
+) -> object | None:
     if event_result is None:
         return None
     if isinstance(event_result, dict):

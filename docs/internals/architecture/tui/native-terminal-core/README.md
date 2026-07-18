@@ -63,6 +63,7 @@ This document set is written for three groups:
 - [Renderer Spec Inventory](./renderers/README.md)
 - [Terminal UX Reference Alignment](./reference/terminal-ux-feature-alignment.md)
 - [Testing Strategy](./testing-strategy.md)
+- [Render Performance Contract](./render-performance-contract.md)
 - [Development Slices](./development-slices.md)
 
 Later design passes may add:

@@ -1,335 +1,234 @@
 from __future__ import annotations
 
-import builtins
-import importlib
-import sys
+import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
-from loushang.ai.types import (
-    AssistantMessage,
-    TextPart,
-    ToolResultMessage,
-    Usage,
-    UserMessage,
+from loushang.ai.types import UserMessage
+from loushang.coding.store.file_codec import (
+    SessionFileError,
+    append_session_entry,
+    load_session_file,
+    load_session_repository,
+    write_session_file,
 )
-from loushang.coding.message import CompactionEntry, SessionHeader, SessionMessageEntry
+from loushang.harness.agent_transcript import AGENT_MESSAGE_KIND
+from loushang.harness.conversation import (
+    ConversationHeader,
+    ConversationRecord,
+    NativeConversationHeaderCodec,
+)
 
 
-def test_session_file_codec_import_does_not_require_fcntl(monkeypatch: pytest.MonkeyPatch) -> None:
-    sys.modules.pop("loushang.coding.store.file_codec", None)
-    store_package = sys.modules.get("loushang.coding.store")
-    if store_package is not None and hasattr(store_package, "file_codec"):
-        monkeypatch.delattr(store_package, "file_codec", raising=False)
-    original_import = builtins.__import__
-
-    def fake_import(name: str, *args: object, **kwargs: object):
-        if name == "fcntl":
-            raise ModuleNotFoundError("No module named 'fcntl'")
-        return original_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
-
-    module = importlib.import_module("loushang.coding.store.file_codec")
-
-    assert module.SessionFileError.__name__ == "SessionFileError"
-
-
-def test_write_then_load_jsonl_session_file(tmp_path: Path) -> None:
-    from loushang.coding.store.file_codec import load_session_file, write_session_file
-
-    header = SessionHeader(
-        type="session",
+def _header() -> ConversationHeader:
+    return ConversationHeader(
+        conversation_id="session-1",
         version=1,
-        id="s1",
-        timestamp="2026-05-20T09:00:00.000Z",
-        cwd="/tmp/project",
-        parent_session=None,
-    )
-    entry = SessionMessageEntry(
-        type="message",
-        id="e1",
-        parent_id=None,
-        timestamp="2026-05-20T09:00:01.000Z",
-        message=UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="hi")],
-            timestamp=0.0,
-        ),
+        created_at="2026-07-16T00:00:00Z",
+        metadata={"cwd": "/workspace/project"},
     )
 
+
+def _message_record(
+    record_id: str = "record-1",
+    parent_id: str | None = None,
+) -> ConversationRecord[object]:
+    return ConversationRecord(
+        record_id=record_id,
+        parent_id=parent_id,
+        kind=AGENT_MESSAGE_KIND,
+        payload_version=1,
+        created_at="2026-07-16T00:00:01Z",
+        payload=UserMessage(role="user", content="Hello", timestamp=1.0),
+    )
+
+
+def test_write_append_and_load_native_session_file(tmp_path: Path) -> None:
     path = tmp_path / "session.jsonl"
-    write_session_file(path, header, [entry])
-    loaded_header, loaded_entries = load_session_file(path)
+    first = _message_record()
+    second = _message_record("record-2", first.record_id)
 
-    assert loaded_header.id == "s1"
-    assert len(loaded_entries) == 1
-    assert loaded_entries[0].type == "message"
+    write_session_file(path, _header(), [first])
+    append_session_entry(path, second)
+    header, records = load_session_file(path)
+
+    assert header == _header()
+    assert records == [first, second]
+    lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert lines[0]["type"] == "conversation"
+    assert lines[0]["conversationId"] == "session-1"
+    assert [line["type"] for line in lines[1:]] == ["record", "record"]
+    assert lines[1]["kind"] == AGENT_MESSAGE_KIND
 
 
-def test_session_file_codec_locks_reads_and_writes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import fcntl
-
-    import loushang.coding.store.file_codec as codec
-    import loushang.coding.store.file_lock as file_lock
-
-    calls: list[int] = []
-
-    def fake_flock(_fd: int, op: int) -> None:
-        calls.append(op)
-
-    fake_fcntl = SimpleNamespace(
-        LOCK_EX=fcntl.LOCK_EX,
-        LOCK_SH=fcntl.LOCK_SH,
-        LOCK_UN=fcntl.LOCK_UN,
-        flock=fake_flock,
-    )
-    monkeypatch.setattr(file_lock, "_is_windows", lambda: False)
-    monkeypatch.setattr(file_lock, "_load_fcntl", lambda: fake_fcntl)
-
-    header = SessionHeader(
-        type="session",
-        version=1,
-        id="s1",
-        timestamp="2026-05-20T09:00:00.000Z",
-        cwd="/tmp/project",
-        parent_session=None,
-    )
-    entry = SessionMessageEntry(
-        type="message",
-        id="e1",
-        parent_id=None,
-        timestamp="2026-05-20T09:00:01.000Z",
-        message=UserMessage(
-            role="user",
-            content=[TextPart(type="text", text="hi")],
-            timestamp=0.0,
-        ),
-    )
+def test_native_session_load_skips_only_partial_tail(tmp_path: Path) -> None:
     path = tmp_path / "session.jsonl"
+    record = _message_record()
+    write_session_file(path, _header(), [record])
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write('{"type":"record"')
 
-    codec.write_session_file(path, header, [])
-    codec.append_session_entry(path, entry)
-    codec.load_session_file(path)
+    header, records = load_session_file(path)
 
-    assert fcntl.LOCK_EX in calls
-    assert fcntl.LOCK_SH in calls
-    assert calls.count(fcntl.LOCK_UN) == 3
-
-
-def test_session_file_lock_uses_msvcrt_on_windows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import loushang.coding.store.file_lock as file_lock
-
-    calls: list[tuple[int, int]] = []
-    fake_msvcrt = SimpleNamespace(
-        LK_LOCK=10,
-        LK_UNLCK=11,
-        locking=lambda _fd, mode, nbytes: calls.append((mode, nbytes)),
-    )
-    monkeypatch.setattr(file_lock, "_is_windows", lambda: True)
-    monkeypatch.setattr(file_lock, "_load_msvcrt", lambda: fake_msvcrt)
-
-    with file_lock.session_file_lock(tmp_path / "session.jsonl", "shared"):
-        pass
-
-    assert calls == [(fake_msvcrt.LK_LOCK, 1), (fake_msvcrt.LK_UNLCK, 1)]
+    assert header == _header()
+    assert records == [record]
 
 
-def test_load_session_file_rejects_missing_header(tmp_path: Path) -> None:
-    from loushang.coding.store.file_codec import load_session_file
+def test_writable_repository_repairs_partial_tail_before_append(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "session.jsonl"
+    first = _message_record()
+    write_session_file(path, _header(), [first])
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write('{"type":"record"')
 
-    path = tmp_path / "broken.jsonl"
+    repository = load_session_repository(path)
+    repository.append(_message_record("record-2", "record-1"))
+    reloaded = load_session_repository(path)
+
+    assert [record.record_id for record in reloaded.records] == [
+        "record-1",
+        "record-2",
+    ]
+    assert [diagnostic.code for diagnostic in repository.diagnostics] == [
+        "partial_journal_tail"
+    ]
+
+
+def test_native_session_rejects_invalid_complete_record(tmp_path: Path) -> None:
+    path = tmp_path / "session.jsonl"
+    write_session_file(path, _header(), [_message_record()])
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write("{not-json}\n")
+
+    with pytest.raises(SessionFileError):
+        load_session_file(path)
+
+
+def test_native_repository_rejects_session_v3_without_rewriting(tmp_path: Path) -> None:
+    path = tmp_path / "session.jsonl"
+    values = [
+        {
+            "type": "session",
+            "version": 3,
+            "id": "session-1",
+            "timestamp": "2026-07-16T00:00:00Z",
+            "cwd": "/workspace/project",
+            "parentSession": None,
+        },
+        {
+            "type": "message",
+            "id": "record-1",
+            "parentId": None,
+            "timestamp": "2026-07-16T00:00:01Z",
+            "message": {"role": "user", "content": "Hello", "timestamp": 1.0},
+        },
+    ]
     path.write_text(
-        '{"type":"message","id":"e1","parentId":null,"timestamp":"x","message":{"role":"user","content":[],"timestamp":0.0}}\n',
+        "".join(json.dumps(value) + "\n" for value in values),
         encoding="utf-8",
     )
+    original = path.read_bytes()
 
-    with pytest.raises(ValueError):
-        load_session_file(path)
+    with pytest.raises(SessionFileError) as error:
+        load_session_repository(path)
+
+    assert error.value.code == "unsupported_session_format"
+    assert path.read_bytes() == original
 
 
 @pytest.mark.parametrize(
-    ("content", "code"),
+    ("contents", "code"),
     [
-        ("", "empty_session_file"),
         ("not-json\n", "invalid_session_header_json"),
         (
-            '{"type":"message","id":"e1","parentId":null,"timestamp":"x","message":{"role":"user","content":[],"timestamp":0.0}}\n',
-            "missing_session_header",
+            '{"type":"record","recordId":"record-1"}\n',
+            "unsupported_session_format",
+        ),
+        (
+            '{"type":"session","version":2,"id":"old",'
+            '"timestamp":"2026-07-16T00:00:00Z","cwd":"/tmp"}\n',
+            "unsupported_session_format",
         ),
     ],
 )
-def test_load_session_file_reports_stable_store_error_codes(tmp_path: Path, content: str, code: str) -> None:
-    from loushang.coding.store.file_codec import SessionFileError, load_session_file
+def test_unsupported_input_is_rejected_without_rewrite(
+    tmp_path: Path,
+    contents: str,
+    code: str,
+) -> None:
+    path = tmp_path / "session.jsonl"
+    path.write_text(contents, encoding="utf-8")
 
-    path = tmp_path / "broken.jsonl"
-    path.write_text(content, encoding="utf-8")
-
-    with pytest.raises(SessionFileError) as exc_info:
+    with pytest.raises(SessionFileError) as error:
         load_session_file(path)
 
-    assert exc_info.value.code == code
-    assert exc_info.value.path == path
+    assert error.value.code == code
+    assert path.read_text(encoding="utf-8") == contents
 
 
-def test_session_file_codec_uses_pi_v3_json_keys(tmp_path: Path) -> None:
-    from loushang.coding.store.file_codec import write_session_file
-
-    header = SessionHeader(
-        type="session",
-        version=3,
-        id="s1",
-        timestamp="2026-05-20T09:00:00.000Z",
-        cwd="/tmp/project",
-        parent_session="/tmp/parent.jsonl",
-    )
-    assistant = SessionMessageEntry(
-        type="message",
-        id="e1",
-        parent_id=None,
-        timestamp="2026-05-20T09:00:01.000Z",
-        message=AssistantMessage(
-            role="assistant",
-            content=[TextPart(type="text", text="hi", text_signature="sig")],
-            api="anthropic-messages",
-            provider="anthropic",
-            model="claude-sonnet",
-            response_id="resp-1",
-            usage=Usage(
-                input=1,
-                output=2,
-                cache_read=3,
-                cache_write=4,
-                total_tokens=5,
-                cost={"input": 0.0, "output": 0.0, "cacheRead": 0.0, "cacheWrite": 0.0, "total": 0.0},
-            ),
-            stop_reason="stop",
-            error_message=None,
-            timestamp=1.0,
-        ),
-    )
-    tool_result = SessionMessageEntry(
-        type="message",
-        id="e2",
-        parent_id="e1",
-        timestamp="2026-05-20T09:00:02.000Z",
-        message=ToolResultMessage(
-            role="toolResult",
-            tool_call_id="call-1",
-            tool_name="bash",
-            content=[TextPart(type="text", text="ok")],
-            is_error=False,
-            timestamp=2.0,
-        ),
-    )
-
+def test_read_only_repository_rejects_append(tmp_path: Path) -> None:
     path = tmp_path / "session.jsonl"
-    write_session_file(path, header, [assistant, tool_result])
-    lines = path.read_text(encoding="utf-8").splitlines()
+    write_session_file(path, _header(), [_message_record()])
+    repository = load_session_repository(path, writable=False)
 
-    assert '"version": 3' in lines[0]
-    assert '"parentSession": "/tmp/parent.jsonl"' in lines[0]
-    assert '"responseId": "resp-1"' in lines[1]
-    assert '"stopReason": "stop"' in lines[1]
-    assert '"textSignature": "sig"' in lines[1]
-    assert '"cacheRead": 3' in lines[1]
-    assert '"cacheWrite": 4' in lines[1]
-    assert '"totalTokens": 5' in lines[1]
-    assert '"toolCallId": "call-1"' in lines[2]
-    assert '"toolName": "bash"' in lines[2]
-    assert '"isError": false' in lines[2]
-    assert "response_id" not in lines[1]
-    assert "stop_reason" not in lines[1]
-    assert "tool_call_id" not in lines[2]
-    assert "tool_name" not in lines[2]
-    assert "is_error" not in lines[2]
+    with pytest.raises(RuntimeError, match="read-only"):
+        repository.append(_message_record("record-2", "record-1"))
 
 
-def test_session_file_codec_preserves_compaction_plan_details(tmp_path: Path) -> None:
-    from loushang.coding.store.file_codec import load_session_file, write_session_file
-
-    header = SessionHeader(
-        type="session",
-        version=3,
-        id="s1",
-        timestamp="2026-05-20T09:00:00.000Z",
-        cwd="/tmp/project",
-        parent_session=None,
-    )
-    entry = CompactionEntry(
-        type="compaction",
-        id="c1",
-        parent_id="a1",
-        timestamp="2026-05-20T09:00:03.000Z",
-        summary="summary",
-        first_kept_entry_id="u2",
-        tokens_before=195,
-        details={
-            "compactionPlan": {
-                "firstKeptEntryId": "u2",
-                "summarizedEntryIds": ["u1", "a1"],
-                "turnPrefixEntryIds": [],
-                "keptEntryIds": ["u2", "a2"],
-                "isSplitTurn": False,
-                "tokensBefore": 195,
-                "keepRecentTokens": 32768,
-            }
+def test_read_only_repository_rejects_session_v3_without_rewriting_source(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "session.jsonl"
+    values = [
+        {
+            "type": "session",
+            "version": 3,
+            "id": "session-1",
+            "timestamp": "2026-07-16T00:00:00Z",
+            "cwd": "/workspace/project",
+            "parentSession": None,
         },
-    )
-    path = tmp_path / "session.jsonl"
-
-    write_session_file(path, header, [entry])
-    text = path.read_text(encoding="utf-8")
-    _, loaded_entries = load_session_file(path)
-
-    assert '"firstKeptEntryId": "u2"' in text
-    assert '"compactionPlan"' in text
-    assert loaded_entries == [entry]
-
-
-def test_load_session_file_accepts_pi_v3_user_string_content(tmp_path: Path) -> None:
-    from loushang.coding.store.file_codec import load_session_file
-
-    path = tmp_path / "session.jsonl"
+        {
+            "type": "message",
+            "id": "record-1",
+            "parentId": None,
+            "timestamp": "2026-07-16T00:00:01Z",
+            "message": {"role": "user", "content": "Hello", "timestamp": 1.0},
+        },
+    ]
     path.write_text(
-        "\n".join(
-            [
-                '{"type":"session","version":3,"id":"s1","timestamp":"2026-05-20T09:00:00.000Z","cwd":"/tmp/project"}',
-                '{"type":"message","id":"e1","parentId":null,"timestamp":"2026-05-20T09:00:01.000Z","message":{"role":"user","content":"Hello","timestamp":1}}',
-            ]
-        )
-        + "\n",
+        "".join(json.dumps(value) + "\n" for value in values),
+        encoding="utf-8",
+    )
+    original = path.read_bytes()
+
+    with pytest.raises(SessionFileError) as error:
+        load_session_repository(path, writable=False)
+
+    assert error.value.code == "unsupported_session_format"
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("loader", [load_session_file, load_session_repository])
+def test_native_future_version_is_rejected(tmp_path: Path, loader) -> None:
+    path = tmp_path / "session.jsonl"
+    header = _header()
+    future_header = ConversationHeader(
+        conversation_id=header.conversation_id,
+        version=2,
+        created_at=header.created_at,
+        metadata=header.metadata,
+    )
+    native_codec = NativeConversationHeaderCodec()
+    path.write_text(
+        json.dumps(native_codec.encode_header(future_header)) + "\n",
         encoding="utf-8",
     )
 
-    _, entries = load_session_file(path)
+    with pytest.raises(SessionFileError) as error:
+        loader(path)
 
-    assert len(entries) == 1
-    assert entries[0].message.content == "Hello"  # type: ignore[attr-defined]
-
-
-def test_load_session_file_skips_invalid_lines(tmp_path: Path) -> None:
-    from loushang.coding.store.file_codec import load_session_file
-
-    path = tmp_path / "session.jsonl"
-    path.write_text(
-        "\n".join(
-            [
-                '{"type":"session","version":3,"id":"s1","timestamp":"2026-05-20T09:00:00.000Z","cwd":"/tmp/project"}',
-                "{not-json}",
-                "{}",
-                '{"type":"message","id":"e1","parentId":null,"timestamp":"2026-05-20T09:00:01.000Z","message":{"role":"user","content":[{"type":"text","text":"ok"}],"timestamp":1.0}}',
-                '{"type":"message","id":"e2","parentId":"e1","timestamp":"2026-05-20T09:00:02.000Z","message":{"role":"assistant","content":[{"type":"text","text":"reply"}],"provider":"anthropic","model":"claude","api":"anthropic-messages","responseId":"resp","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0},"stopReason":"stop","timestamp":2.0}}',
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-
-    _, entries = load_session_file(path)
-
-    assert len(entries) == 2
-    assert entries[0].id == "e1"
-    assert entries[1].id == "e2"
+    assert error.value.code == "unsupported_session_format"

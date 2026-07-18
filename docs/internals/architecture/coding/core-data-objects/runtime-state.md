@@ -26,8 +26,7 @@
 
 归属组件：
 
-- `session`
-- `event`
+- `loushang.harness.host.types`
 
 角色：
 
@@ -41,8 +40,8 @@
 
 备注：
 
-- 可最终并入 `AgentSessionState`
-- 当前先显式保留，避免 session state 语义过宽
+- Coding 公共路径 re-export 同一个 Harness-owned record
+- `AgentSessionState` 仍是 Coding 产品投影
 
 ### `SessionContext`
 

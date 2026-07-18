@@ -3,15 +3,18 @@ from __future__ import annotations
 import importlib
 import inspect
 import re
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Callable, Protocol, Sequence, TypeAlias, cast
+from typing import Protocol, TypeAlias, cast
 
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 
 from loushang.tui.cell_width import (
+    ambiguous_width,
     autowrap_safe_width,
+    max_display_cluster_width,
     normalize_box_drawing_diagram,
     truncate_to_width,
     visible_width,
@@ -57,6 +60,8 @@ from loushang.tui.theme import (
 _TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")
 _MARKDOWN_LINE_CACHE_SIZE = 2_048
 _MARKDOWN_STABLE_BLOCK_CACHE_SIZE = 4_096
+# A partial list marker can merge backward into the preceding top-level list.
+_STREAMING_MARKDOWN_FRONTIER_GROUPS = 2
 _MARKDOWN_PARSER = MarkdownIt("commonmark").enable("table").enable("strikethrough")
 _QUOTE_MARKER = "│ "
 
@@ -72,10 +77,171 @@ class CapabilityAwareCodeHighlighter(Protocol):
 CodeHighlighterLike: TypeAlias = CodeHighlighter | CapabilityAwareCodeHighlighter
 
 
+@dataclass(frozen=True, slots=True)
+class _ParsedMarkdownGroup:
+    start_line: int
+    end_line: int
+    blocks: tuple[_MarkdownBlock, ...]
+    # Value equality is not enough for a streaming cache: two equal-looking
+    # top-level groups may occur at different places in the same document.  A
+    # group gets a fresh occurrence identity when it is parsed and keeps that
+    # identity after it is promoted into the stable prefix.
+    occurrence_id: object = field(default_factory=object, compare=False, repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class _StreamingMarkdownPartition:
+    """The append-only parse result without flattening the stable prefix."""
+
+    stable_groups: Sequence[_ParsedMarkdownGroup]
+    frontier_groups: tuple[_ParsedMarkdownGroup, ...]
+    generation: object
+    revision: int
+    full_blocks: tuple[_MarkdownBlock, ...] | None = None
+
+    @property
+    def segmented_safe(self) -> bool:
+        return self.full_blocks is None
+
+
+@dataclass(frozen=True, slots=True)
+class MarkdownRenderedSegment:
+    """A rendered semantic-group segment from an active Markdown stream."""
+
+    lines: tuple[str, ...]
+    identity: object
+    revision: object
+    stable: bool
+    _has_nonblank: bool = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        try:
+            hash(self.identity)
+        except TypeError as exc:
+            raise TypeError("Markdown segment identity must be hashable") from exc
+        object.__setattr__(self, "_has_nonblank", any(line != "" for line in self.lines))
+
+    @property
+    def has_nonblank(self) -> bool:
+        return self._has_nonblank
+
+
+@dataclass(frozen=True, slots=True)
+class MarkdownSegmentedRenderResult:
+    segments: tuple[MarkdownRenderedSegment, ...]
+
+
+@dataclass(slots=True)
+class _StreamingMarkdownParseState:
+    _source: str = ""
+    _stable_end_line: int = 0
+    _stable_groups: list[_ParsedMarkdownGroup] = field(default_factory=list)
+    _last_blocks: tuple[_MarkdownBlock, ...] = ()
+    _last_blocks_revision: int = -1
+    _last_partition: _StreamingMarkdownPartition | None = None
+    _generation: object = field(default_factory=object)
+    _revision: int = 0
+    _initialized: bool = False
+    _full_parse_only: bool = False
+
+    def parse(self, markdown: str) -> tuple[_MarkdownBlock, ...]:
+        partition = self.update(markdown)
+        if self._last_blocks_revision == partition.revision:
+            return self._last_blocks
+        if partition.full_blocks is not None:
+            self._last_blocks = partition.full_blocks
+        else:
+            self._last_blocks = _markdown_blocks_from_groups(
+                (*partition.stable_groups, *partition.frontier_groups)
+            )
+        self._last_blocks_revision = partition.revision
+        return self._last_blocks
+
+    def update(self, markdown: str) -> _StreamingMarkdownPartition:
+        """Update the streaming partition without flattening stable groups."""
+
+        normalized = markdown.expandtabs(3)
+        if self._initialized and normalized == self._source:
+            assert self._last_partition is not None
+            return self._last_partition
+        if self._initialized and not normalized.startswith(self._source):
+            self.reset()
+
+        self._source = normalized
+        self._initialized = True
+        self._revision += 1
+        if self._full_parse_only:
+            partition = _StreamingMarkdownPartition(
+                stable_groups=self._stable_groups,
+                frontier_groups=(),
+                generation=self._generation,
+                revision=self._revision,
+                full_blocks=_parse_normalized_markdown_blocks(normalized),
+            )
+            self._last_partition = partition
+            self._last_blocks_revision = -1
+            return partition
+
+        source_lines = normalized.split("\n")
+        tail_source = "\n".join(source_lines[self._stable_end_line :])
+        tail_groups, has_references = _parse_markdown_groups(
+            tail_source,
+            line_offset=self._stable_end_line,
+        )
+        if has_references:
+            self._stable_end_line = 0
+            self._stable_groups.clear()
+            self._full_parse_only = True
+            partition = _StreamingMarkdownPartition(
+                stable_groups=self._stable_groups,
+                frontier_groups=(),
+                generation=self._generation,
+                revision=self._revision,
+                full_blocks=_parse_normalized_markdown_blocks(normalized),
+            )
+            self._last_partition = partition
+            self._last_blocks_revision = -1
+            return partition
+
+        promote_count = max(0, len(tail_groups) - _STREAMING_MARKDOWN_FRONTIER_GROUPS)
+        if promote_count:
+            promoted = tail_groups[:promote_count]
+            self._stable_groups.extend(promoted)
+            self._stable_end_line = promoted[-1].end_line
+        frontier_groups = tail_groups[promote_count:]
+        partition = _StreamingMarkdownPartition(
+            stable_groups=self._stable_groups,
+            frontier_groups=frontier_groups,
+            generation=self._generation,
+            revision=self._revision,
+        )
+        self._last_partition = partition
+        self._last_blocks_revision = -1
+        return partition
+
+    def reset(self) -> None:
+        self._source = ""
+        self._stable_end_line = 0
+        self._stable_groups.clear()
+        self._last_blocks = ()
+        self._last_blocks_revision = -1
+        self._last_partition = None
+        self._generation = object()
+        self._revision = 0
+        self._initialized = False
+        self._full_parse_only = False
+
+
 @dataclass(slots=True)
 class MarkdownRenderCache:
     stable_entry_limit: int = _MARKDOWN_STABLE_BLOCK_CACHE_SIZE
     _stable_blocks: dict[tuple[object, ...], tuple[str, ...]] = field(default_factory=dict, init=False, repr=False)
+    _streaming_key: object | None = field(default=None, init=False, repr=False)
+    _streaming_parse_state: _StreamingMarkdownParseState | None = field(default=None, init=False, repr=False)
+    _streaming_render_context: tuple[object, ...] | None = field(default=None, init=False, repr=False)
+    _streaming_render_generation: object | None = field(default=None, init=False, repr=False)
+    _streaming_rendered_stable: list[MarkdownRenderedSegment] = field(default_factory=list, init=False, repr=False)
+    _streaming_rendered_frontier: MarkdownRenderedSegment | None = field(default=None, init=False, repr=False)
 
     @property
     def stable_entry_count(self) -> int:
@@ -91,6 +257,35 @@ class MarkdownRenderCache:
 
     def clear(self) -> None:
         self._stable_blocks.clear()
+        self.clear_streaming()
+
+    def clear_streaming(self) -> None:
+        self._streaming_key = None
+        self._streaming_parse_state = None
+        self._clear_streaming_rendered_segments()
+
+    def parse_streaming(self, markdown: str, *, key: object) -> tuple[_MarkdownBlock, ...]:
+        self._ensure_streaming_state(key)
+        assert self._streaming_parse_state is not None
+        return self._streaming_parse_state.parse(markdown)
+
+    def update_streaming(self, markdown: str, *, key: object) -> _StreamingMarkdownPartition:
+        self._ensure_streaming_state(key)
+        assert self._streaming_parse_state is not None
+        return self._streaming_parse_state.update(markdown)
+
+    def _ensure_streaming_state(self, key: object) -> None:
+        if self._streaming_key is key and self._streaming_parse_state is not None:
+            return
+        self._streaming_key = key
+        self._streaming_parse_state = _StreamingMarkdownParseState()
+        self._clear_streaming_rendered_segments()
+
+    def _clear_streaming_rendered_segments(self) -> None:
+        self._streaming_render_context = None
+        self._streaming_render_generation = None
+        self._streaming_rendered_stable.clear()
+        self._streaming_rendered_frontier = None
 
     def get_or_render(self, key: tuple[object, ...], render: Callable[[], tuple[str, ...]]) -> tuple[str, ...]:
         cached = self._stable_blocks.get(key)
@@ -141,6 +336,7 @@ class MarkdownRenderer:
     padding_y: int = 0
     default_style: ThemeStyle | None = None
     render_cache: MarkdownRenderCache | None = None
+    streaming_key: object | None = None
     _render_cache: dict[tuple[object, ...], tuple[str, ...]] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -155,9 +351,14 @@ class MarkdownRenderer:
         framed = self.padding_x > 0 or self.padding_y > 0 or _has_background_style(frame_style)
         width = _markdown_frame_content_width(target_width, self.padding_x) if framed else target_width
         if self.render_cache is not None:
+            blocks = (
+                self.render_cache.parse_streaming(self.markdown, key=self.streaming_key)
+                if self.streaming_key is not None
+                else _parse_markdown_blocks(self.markdown)
+            )
             raw_lines = list(
                 _render_markdown_blocks(
-                    _parse_markdown_blocks(self.markdown),
+                    blocks,
                     width=width,
                     theme=self.theme,
                     capabilities=self.capabilities,
@@ -167,7 +368,7 @@ class MarkdownRenderer:
                 )
             )
         elif self.theme is None and self.code_highlighter is None and self.default_style is None:
-            raw_lines = list(_render_markdown_lines(self.markdown, width))
+            raw_lines = list(_render_markdown_lines(self.markdown, width, ambiguous_width()))
         else:
             cache_key = _renderer_cache_key(
                 markdown=self.markdown,
@@ -199,6 +400,61 @@ class MarkdownRenderer:
                 frame_style=frame_style,
             )
         return _result(raw_lines, constraints)
+
+    def render_streaming_segments(
+        self,
+        constraints: RenderConstraints,
+    ) -> MarkdownSegmentedRenderResult | None:
+        """Render an append-only stream as stable groups plus one frontier.
+
+        Framing is intentionally excluded because padding and a background are
+        whole-result operations.  Reference definitions also require a full
+        parse, so callers should use :meth:`render` when this method returns
+        ``None``.
+        """
+
+        if self.render_cache is None or self.streaming_key is None:
+            return None
+
+        target_width = autowrap_safe_width(constraints.width)
+        frame_style = _resolve_style(self.theme, "markdown.background", self.capabilities)
+        framed = self.padding_x > 0 or self.padding_y > 0 or _has_background_style(frame_style)
+        if framed:
+            return None
+
+        partition = self.render_cache.update_streaming(
+            self.markdown,
+            key=self.streaming_key,
+        )
+        if not partition.segmented_safe:
+            self.render_cache._clear_streaming_rendered_segments()
+            return None
+
+        context = (
+            target_width,
+            ambiguous_width(),
+            _theme_cache_signature(self.theme),
+            _capabilities_cache_signature(self.capabilities),
+            id(self.code_highlighter) if self.code_highlighter is not None else None,
+            _style_cache_signature(self.default_style),
+        )
+        segments = _render_streaming_markdown_partition(
+            partition,
+            constraints=constraints,
+            width=target_width,
+            context=context,
+            theme=self.theme,
+            capabilities=self.capabilities,
+            code_highlighter=self.code_highlighter,
+            default_style=self.default_style,
+            render_cache=self.render_cache,
+        )
+        return MarkdownSegmentedRenderResult(
+            segments=_limit_markdown_rendered_segments(
+                segments,
+                max_height=constraints.max_height,
+            )
+        )
 
     def invalidate(self) -> None:
         self._render_cache.clear()
@@ -300,6 +556,7 @@ def _renderer_cache_key(
     return (
         markdown,
         width,
+        ambiguous_width(),
         _theme_cache_signature(theme),
         _capabilities_cache_signature(capabilities),
         id(code_highlighter) if code_highlighter is not None else None,
@@ -337,18 +594,84 @@ def _capabilities_cache_signature(capabilities: TerminalCapabilities | None) -> 
 
 
 @lru_cache(maxsize=_MARKDOWN_LINE_CACHE_SIZE)
-def _render_markdown_lines(markdown: str, width: int) -> tuple[str, ...]:
+def _render_markdown_lines(
+    markdown: str,
+    width: int,
+    _ambiguous_width: int,
+) -> tuple[str, ...]:
     return _render_markdown_blocks(_parse_markdown_blocks(markdown), width=width)
 
 
 def _parse_markdown_blocks(markdown: str) -> tuple[_MarkdownBlock, ...]:
     normalized = markdown.expandtabs(3)
+    return _parse_normalized_markdown_blocks(normalized)
+
+
+def _parse_normalized_markdown_blocks(normalized: str) -> tuple[_MarkdownBlock, ...]:
     blocks, _index = _parse_markdown_it_blocks(
         _MARKDOWN_PARSER.parse(normalized),
         0,
         stop_type=None,
         source_lines=normalized.split("\n"),
     )
+    return tuple(blocks)
+
+
+def _parse_markdown_groups(
+    markdown: str,
+    *,
+    line_offset: int,
+) -> tuple[tuple[_ParsedMarkdownGroup, ...], bool]:
+    environment: dict[str, object] = {}
+    tokens = _MARKDOWN_PARSER.parse(markdown, environment)
+    if environment.get("references"):
+        return (), True
+
+    source_lines = markdown.split("\n")
+    group_starts = [
+        index
+        for index, token in enumerate(tokens)
+        if token.level == 0 and token.map is not None and token.nesting >= 0
+    ]
+    groups: list[_ParsedMarkdownGroup] = []
+    for group_index, token_index in enumerate(group_starts):
+        token = tokens[token_index]
+        token_map = token.map
+        if token_map is None:
+            continue
+        next_token_index = group_starts[group_index + 1] if group_index + 1 < len(group_starts) else len(tokens)
+        group_blocks, _index = _parse_markdown_it_blocks(
+            tokens[token_index:next_token_index],
+            0,
+            stop_type=None,
+            source_lines=source_lines,
+        )
+        local_end_line = _token_end_line(token, token_map[1], source_lines)
+        groups.append(
+            _ParsedMarkdownGroup(
+                start_line=line_offset + token_map[0],
+                end_line=line_offset + (local_end_line if local_end_line is not None else token_map[1]),
+                blocks=tuple(group_blocks),
+            )
+        )
+    return tuple(groups), False
+
+
+def _markdown_blocks_from_groups(groups: Sequence[_ParsedMarkdownGroup]) -> tuple[_MarkdownBlock, ...]:
+    blocks: list[_MarkdownBlock] = []
+    previous_end_line: int | None = None
+    for group in groups:
+        if (
+            group.blocks
+            and previous_end_line is not None
+            and group.start_line > previous_end_line
+            and blocks
+            and blocks[-1].kind != "blank"
+        ):
+            blocks.append(_MarkdownBlock("blank"))
+        blocks.extend(group.blocks)
+        if group.blocks:
+            previous_end_line = group.end_line
     return tuple(blocks)
 
 
@@ -656,17 +979,20 @@ def _render_markdown_blocks(
 ) -> tuple[str, ...]:
     rendered: list[str] = []
     stable_block_count = max(0, len(blocks) - 1) if render_cache is not None else 0
+    block_cache_context: tuple[object, ...] = ()
+    if stable_block_count:
+        block_cache_context = (
+            width,
+            ambiguous_width(),
+            _theme_cache_signature(theme),
+            _capabilities_cache_signature(capabilities),
+            id(code_highlighter) if code_highlighter is not None else None,
+            _style_cache_signature(default_style),
+        )
     for index, block in enumerate(blocks):
         if render_cache is not None and index < stable_block_count:
             block_lines = render_cache.get_or_render(
-                _markdown_block_cache_key(
-                    block,
-                    width=width,
-                    theme=theme,
-                    capabilities=capabilities,
-                    code_highlighter=code_highlighter,
-                    default_style=default_style,
-                ),
+                (block, *block_cache_context),
                 lambda block=block: _render_markdown_block(
                     block,
                     width=width,
@@ -692,23 +1018,169 @@ def _render_markdown_blocks(
     return tuple(rendered)
 
 
-def _markdown_block_cache_key(
-    block: _MarkdownBlock,
+def _render_streaming_markdown_partition(
+    partition: _StreamingMarkdownPartition,
     *,
+    constraints: RenderConstraints,
+    width: int,
+    context: tuple[object, ...],
+    theme: ThemeResolver | None,
+    capabilities: TerminalCapabilities | None,
+    code_highlighter: CodeHighlighterLike | None,
+    default_style: ThemeStyle | None,
+    render_cache: MarkdownRenderCache,
+) -> tuple[MarkdownRenderedSegment, ...]:
+    if (
+        render_cache._streaming_render_context != context
+        or render_cache._streaming_render_generation is not partition.generation
+    ):
+        render_cache._streaming_render_context = context
+        render_cache._streaming_render_generation = partition.generation
+        render_cache._streaming_rendered_stable.clear()
+        render_cache._streaming_rendered_frontier = None
+
+    stable_groups = partition.stable_groups
+    rendered_stable = render_cache._streaming_rendered_stable
+
+    # A generation is append-only.  Therefore the already-rendered prefix is
+    # trusted and only newly promoted groups are visited here.
+    for index in range(len(rendered_stable), len(stable_groups)):
+        group = stable_groups[index]
+        previous = stable_groups[index - 1] if index else None
+        lines = _render_streaming_markdown_group_run(
+            (group,),
+            previous_group=previous,
+            constraints=constraints,
+            width=width,
+            theme=theme,
+            capabilities=capabilities,
+            code_highlighter=code_highlighter,
+            default_style=default_style,
+            render_cache=render_cache,
+        )
+        segment = MarkdownRenderedSegment(
+            lines=lines,
+            identity=(
+                "markdown-stable-group",
+                partition.generation,
+                group.occurrence_id,
+                context,
+            ),
+            revision=0,
+            stable=True,
+        )
+        rendered_stable.append(segment)
+
+    frontier_identity = (
+        "markdown-frontier",
+        partition.generation,
+        context,
+    )
+    frontier = render_cache._streaming_rendered_frontier
+    if (
+        frontier is None
+        or frontier.identity != frontier_identity
+        or frontier.revision != partition.revision
+    ):
+        previous = stable_groups[-1] if stable_groups else None
+        frontier = MarkdownRenderedSegment(
+            lines=_render_streaming_markdown_group_run(
+                partition.frontier_groups,
+                previous_group=previous,
+                constraints=constraints,
+                width=width,
+                theme=theme,
+                capabilities=capabilities,
+                code_highlighter=code_highlighter,
+                default_style=default_style,
+                render_cache=render_cache,
+            ),
+            identity=frontier_identity,
+            revision=partition.revision,
+            stable=False,
+        )
+        render_cache._streaming_rendered_frontier = frontier
+
+    segments = tuple(rendered_stable)
+    if frontier.lines:
+        segments = (*segments, frontier)
+    return segments
+
+
+def _render_streaming_markdown_group_run(
+    groups: Sequence[_ParsedMarkdownGroup],
+    *,
+    previous_group: _ParsedMarkdownGroup | None,
+    constraints: RenderConstraints,
     width: int,
     theme: ThemeResolver | None,
     capabilities: TerminalCapabilities | None,
     code_highlighter: CodeHighlighterLike | None,
     default_style: ThemeStyle | None,
-) -> tuple[object, ...]:
-    return (
-        block,
-        width,
-        _theme_cache_signature(theme),
-        _capabilities_cache_signature(capabilities),
-        id(code_highlighter) if code_highlighter is not None else None,
-        _style_cache_signature(default_style),
+    render_cache: MarkdownRenderCache,
+) -> tuple[str, ...]:
+    run_blocks: list[_MarkdownBlock] = []
+    previous = previous_group if previous_group is not None and previous_group.blocks else None
+    for group in groups:
+        if not group.blocks:
+            continue
+        if previous is not None:
+            source_gap = group.start_line > previous.end_line
+            previous_kind = previous.blocks[-1].kind
+            current_kind = group.blocks[0].kind
+            if source_gap or _needs_pi_style_blank_after(previous_kind, current_kind):
+                run_blocks.append(_MarkdownBlock("blank"))
+        run_blocks.extend(group.blocks)
+        previous = group
+    if not run_blocks:
+        return ()
+
+    raw_lines = _render_markdown_blocks(
+        tuple(run_blocks),
+        width=width,
+        theme=theme,
+        capabilities=capabilities,
+        code_highlighter=code_highlighter,
+        default_style=default_style,
+        render_cache=render_cache,
     )
+
+    # Block rendering has already wrapped to the target width.  The ordinary
+    # result finalizer is still used so rstrip/image handling stays identical;
+    # the document-wide height cap is applied after descriptors are joined.
+    unbounded_constraints = RenderConstraints(
+        width=constraints.width,
+        max_height=2_147_483_647,
+        visible_height=constraints.visible_height,
+    )
+    rendered = _result(list(raw_lines), unbounded_constraints)
+    return tuple(line.text for line in rendered.lines)
+
+
+def _limit_markdown_rendered_segments(
+    segments: tuple[MarkdownRenderedSegment, ...],
+    *,
+    max_height: int,
+) -> tuple[MarkdownRenderedSegment, ...]:
+    remaining = max_height
+    limited: list[MarkdownRenderedSegment] = []
+    for segment in segments:
+        if remaining <= 0:
+            break
+        if len(segment.lines) <= remaining:
+            limited.append(segment)
+            remaining -= len(segment.lines)
+            continue
+        limited.append(
+            MarkdownRenderedSegment(
+                lines=segment.lines[:remaining],
+                identity=("markdown-height-slice", segment.identity, remaining),
+                revision=segment.revision,
+                stable=segment.stable,
+            )
+        )
+        remaining = 0
+    return tuple(limited)
 
 
 def _render_markdown_block(
@@ -1373,13 +1845,15 @@ def _render_table(
     padded_rows = [row + [""] * (column_count - len(row)) for row in rows]
     column_widths = _table_column_widths(padded_rows, width)
     if column_widths is not None:
-        return _render_box_table(
+        boxed = _render_box_table(
             padded_rows,
             column_widths,
             table_alignments=table_alignments,
             theme=theme,
             capabilities=capabilities,
         )
+        if _box_table_lines_are_safe(boxed, width=width):
+            return boxed
 
     raw_lines: list[str] = []
     for line in lines:
@@ -1389,6 +1863,8 @@ def _render_table(
 
 def _table_column_widths(rows: list[list[str]], width: int) -> list[int] | None:
     column_count = max(len(row) for row in rows)
+    if not _box_table_glyphs_are_single_cell():
+        return None
     border_overhead = 3 * column_count + 1
     available_for_cells = width - border_overhead
     if available_for_cells < column_count:
@@ -1398,17 +1874,29 @@ def _table_column_widths(rows: list[list[str]], width: int) -> list[int] | None:
         max(visible_width(row[column]) for row in rows)
         for column in range(column_count)
     ]
+    hard_min_widths = [
+        max(1, max(max_display_cluster_width(row[column]) for row in rows))
+        for column in range(column_count)
+    ]
     min_widths = [
-        max(1, max(_longest_word_width(row[column], max_width=30) for row in rows))
+        max(
+            hard_min_widths[column],
+            max(_longest_word_width(row[column], max_width=30) for row in rows),
+        )
         for column in range(column_count)
     ]
     min_total = sum(min_widths)
     if min_total > available_for_cells:
         widths = list(min_widths)
         while sum(widths) > available_for_cells:
-            widest_index = max(range(column_count), key=lambda index: widths[index])
-            if widths[widest_index] <= 1:
-                break
+            shrinkable = [
+                index
+                for index in range(column_count)
+                if widths[index] > hard_min_widths[index]
+            ]
+            if not shrinkable:
+                return None
+            widest_index = max(shrinkable, key=lambda index: widths[index])
             widths[widest_index] -= 1
         if sum(widths) > available_for_cells:
             return None
@@ -1441,6 +1929,15 @@ def _table_column_widths(rows: list[list[str]], width: int) -> list[int] | None:
             if not grew:
                 break
     return widths
+
+
+def _box_table_glyphs_are_single_cell() -> bool:
+    return all(visible_width(glyph) == 1 for glyph in "┌─┬┐├┼┤│└┴┘")
+
+
+def _box_table_lines_are_safe(lines: list[str], *, width: int) -> bool:
+    line_widths = {visible_width(line) for line in lines}
+    return len(line_widths) == 1 and next(iter(line_widths), width + 1) <= width
 
 
 def _render_table_rows(

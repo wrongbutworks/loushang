@@ -149,6 +149,54 @@ The TUI must not be the architectural center. It is one channel/host
 composition over the same operation/event model that future GUI, remote
 services, messaging channels, and upper-level host architectures use.
 
+## Orthogonal Replaceability
+
+loushang is not designed as a feature-list system. It is designed so that key
+dimensions can vary independently — any valid combination of these dimensions
+should produce a correct, executable work run:
+
+```text
+product      coding / ppt / research / design / cowork
+interface    TUI / WebUI / AppUI / SDK / RPC / bot / headless
+method       bugfix / tdd / architecture-review / security-audit / …
+model        opus / sonnet / gpt-5.2 / custom-provider / …
+agent        single / method-guided / fixed-workflow / subagent / team
+policy       allow / deny / ask-user
+storage      in-memory / JSONL / SQLite / remote
+host         desktop / daemon / team-server / managed-cloud
+```
+
+These are not inventory items. They are **replaceability points**. Each can
+change without forcing a rewrite of the others. The architecture guarantees
+this through:
+
+- **Layering**: product adapters depend on harness protocols, not internals.
+  A product change does not touch harness.
+- **Protocol injection**: OEMs supply policy/approval/routing decisions
+  through stable protocols. The provider of a decision is opaque to the
+  mechanism that consumes it.
+- **Channel neutrality**: all interfaces consume `WorkEvent` and produce
+  `WorkOperation`. The channel adapter is the only layer that knows whether
+  it is rendering to a terminal, a web browser, or a messaging app.
+- **Resource files, not code**: skills, methods, prompts, and themes are
+  filesystem resources. OEMs overlay them without modifying product or
+  harness code.
+
+### Orthogonality Validation
+
+The architecture is valid only if these combinations produce correct results
+without cross-dimension coupling:
+
+- A `coding` product using the `TUI` interface with a `bugfix` method running
+  on `sonnet` in `single-agent` mode.
+- A `ppt` product using the `WebUI` interface with a `storyline-design` method
+  running on `opus` in `fixed-workflow` mode.
+- An OEM fork of `coding` with injected `PolicyEvaluator`, OEM `skills`, and
+  an OEM `channel` adapter for Feishu.
+
+If adding a second product or a second interface requires changing harness
+code, the orthogonality contract is broken and must be repaired.
+
 ## Review Follow-Up Decisions
 
 The current draft adopts these follow-up decisions:

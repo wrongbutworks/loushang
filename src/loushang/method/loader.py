@@ -4,11 +4,14 @@ from collections.abc import Iterable
 from collections.abc import Mapping as MappingABC
 from pathlib import Path
 
+from loushang.harness.resources.frontmatter import (
+    FrontmatterParseError,
+    parse_frontmatter,
+)
 from loushang.method.applicability import applicability_from_frontmatter, primary_domain
 from loushang.method.resources import SkillResourceLoader, discover_skill_resources
 from loushang.method.skill_adapter import method_from_skill
 from loushang.method.types import MethodDescriptor
-from loushang.resource.frontmatter import FrontmatterParseError, parse_frontmatter
 
 _METHOD_ELEMENT_TYPES = frozenset({"phase", "activity", "task", "role", "guidance", "workproduct"})
 

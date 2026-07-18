@@ -19,12 +19,18 @@
 
 当前已落地的支撑/实验性包包括：
 
-- `loushang.runtime`
 - `loushang.observability`
 - `loushang.ontology`
 
+`loushang.runtime` 不再作为子系统保留。若某个 worktree 中仍存在
+`src/loushang/runtime`，它只是待删除的旧 command/effect 临时路径；迁移目标是
+`loushang.harness.commands`，不保留 runtime shim。跨产品 host / adapter /
+command substrate 的目标归属是 `loushang.harness`，见
+[ARD-002: Harness Product Adapter Substrate](./agent/ARD-002-harness-product-adapter-substrate.md)。
+
 目标产品线概念包括：
 
+- `loushang.design`
 - `loushang.research`
 - `loushang.ppt`
 - `loushang.cowork`
@@ -76,12 +82,14 @@ agent 运行内核。
 - prepared agent run contract
 - UI 渲染
 - 跨边界 transport
-- coding / research / ppt / cowork 产品语义
+- coding / design / research / ppt / cowork 产品语义
 - work / method 投影语义
 
 ### loushang-harness
 
-跨产品的 prepared agent run contract。
+跨产品的 product-adapter substrate。当前已落地的核心是 prepared agent run
+contract，后续 product-neutral host / adapter / command / lifecycle /
+diagnostics 合同也归属这里。
 
 负责：
 
@@ -89,13 +97,20 @@ agent 运行内核。
 - `AgentRunResult`
 - `run_agent()`
 - headless agent run 编排
+- product-neutral adapter / prepared-turn / adapter-result contracts
+- product-neutral host lifecycle contracts
+- command/effect value objects, such as `loushang.harness.commands`
+- generic diagnostics / status records
 
 不负责：
 
 - `Agent` 生命周期
 - low-level agent loop ownership
-- coding / research / ppt / cowork 产品语义
+- coding / design / research / ppt / cowork 产品语义
+- coding command catalog、command handlers、slash parsing 或 command execution policy
 - work / method 投影语义
+- provider auth / model default persistence
+- TUI render loop、layout、input 或 screen state
 
 `loushang.harness` 位于 low-level agent loop 之上，依赖 `loushang.agent` 并
 复用现有 loop，不另写第二套 loop。`loushang.agent` 不依赖
@@ -103,7 +118,11 @@ agent 运行内核。
 prepared-run contract，不引入第二套 `HarnessRunSpec`。原
 `src/loushang/agent/harness` / `loushang.agent.harness` compatibility path 已删除；
 新代码应从 `loushang.harness` import。详见
-[Agent Harness and Product Adapter Boundaries](./agent/ARD-001-agent-harness-and-product-adapters.md)。
+[Agent Harness and Product Adapter Boundaries](./agent/ARD-001-agent-harness-and-product-adapters.md)
+和
+[Harness Product Adapter Substrate](./agent/ARD-002-harness-product-adapter-substrate.md)。
+后续 harness 迁移准则、shared capability 边界和 coding 迁移 inventory 见
+[Loushang Harness Architecture](./harness/README.md)。
 
 ### loushang-channel (target)
 
@@ -126,7 +145,7 @@ prepared-run contract，不引入第二套 `HarnessRunSpec`。原
 - agent 内核状态机
 - 本地 UI 组件实现
 - 方法层调度
-- coding / research / ppt / cowork 产品内部 session
+- coding / design / research / ppt / cowork 产品内部 session
 - 产品 adapter 注册之外的业务执行
 
 `channel` 面向多客户端和多 UI：TUI、WebUI、AppUI、SDK host、RPC client
@@ -207,16 +226,16 @@ workflows 中使用 `method`，但轻量 turn 可以直接使用 `loushang.harne
 - method resource 编译
 - TUI 呈现
 - 外部 transport
-- coding / research / ppt / cowork 产品语义
+- coding / design / research / ppt / cowork 产品语义
 
-`work` 是 coding、research、ppt、cowork 等产品线共享的工作事实与投影抽象。
+`work` 是 coding、design、research、ppt、cowork 等产品线共享的工作事实与投影抽象。
 它不依赖这些产品线，也不依赖 `method`。
 
 Artifact 分层规则：
 
 - `method` 定义 expected artifact，即结构化工作“应该产出什么”
 - `work` 记录 actual artifact reference，即“实际产出了什么、在哪里、状态如何”
-- `coding` / `research` / `ppt` / `cowork` 定义具体 artifact 类型、内容、
+- `coding` / `design` / `research` / `ppt` / `cowork` 定义具体 artifact 类型、内容、
   加载、渲染、校验和物化逻辑
 
 因此 `work` 层优先引入 `ArtifactRef`，而不是抽象 `Artifact` ABC。若未来需要
@@ -273,14 +292,14 @@ loushang.ai
 
 loushang.agent
   <- loushang.harness
-  <- loushang.coding / loushang.research / loushang.ppt / loushang.cowork
+  <- loushang.coding / loushang.design / loushang.research / loushang.ppt / loushang.cowork
 ```
 
 跨产品工作抽象链路为：
 
 ```text
 loushang.work
-  <- loushang.coding / loushang.research / loushang.ppt / loushang.cowork
+  <- loushang.coding / loushang.design / loushang.research / loushang.ppt / loushang.cowork
 
 loushang.work
   <- loushang.method
@@ -297,14 +316,15 @@ external host/client -> loushang.channel -> loushang.work -> domain app
 
 - `ai` 提供模型接入能力
 - `agent` 提供运行语义
-- `harness` 提供跨产品 prepared-run contract
+- `harness` 提供跨产品 prepared-run contract 以及 product-neutral host /
+  adapter / command substrate
 - `channel` 提供目标边界通信，当前未作为源码包落地
 - `tui` 提供通用终端交互原语
 - `method` 提供可选的方法组织与 plan/projection
 - `work` 提供运行、事件、日志与 projection
 - `coding` 提供 coding 产品装配，并通过 `loushang.coding.ui` 调用
   `loushang.tui`
-- `research`、`ppt`、`cowork` 是目标产品线概念，和 `coding` 并列，而不是
+- `design`、`research`、`ppt`、`cowork` 是目标产品线概念，和 `coding` 并列，而不是
   `work` 或 `agent` 的子层
 
 ## Future Dependency Map
@@ -342,6 +362,7 @@ Product packages are peers:
 
 ```text
 coding
+design
 research
 ppt
 cowork
@@ -364,3 +385,26 @@ TUI / WebUI / AppUI / SDK / RPC client
 
 The channel core transports and replays work operations/events. It does not
 render UI and does not own product execution internals.
+
+## Loop Boundaries
+
+`loushang` 有多个循环边界，不能合并成一个“大 runtime”：
+
+| Loop | Owner | Responsibility | Does not own |
+| --- | --- | --- | --- |
+| Provider stream loop | `loushang.ai` | provider/model/auth/stream protocol and upstream API capability mapping | agent state, product policy, UI |
+| Agent loop | `loushang.agent` | message/tool-call turn execution, low-level events, abort/error semantics | product preparation, work/method projection, UI |
+| Product-run loop | `loushang.harness` plus product adapter | prepared run handoff, product-neutral host/adapter/lifecycle contracts, shared engines | second agent loop, product defaults, provider behavior |
+| Work/method loop | `loushang.work` and optional `loushang.method` | durable operations/events/projections, method plan/step guidance | model streaming, product UI, harness execution mechanics |
+| Channel loop | target `loushang.channel` | external operation/event transport, subscription, replay, correlation | local UI widgets, product internals, agent state machine |
+| TUI render loop | `loushang.tui` plus product UI adapter | terminal input/render primitives and product-specific terminal wiring | agent loop, provider behavior, harness policy |
+
+This split lets `harness`, `tui`, `agent`, and `ai` develop in parallel. A
+harness change should affect those lanes only when it intentionally changes a
+stable cross-boundary contract. Otherwise:
+
+- TUI changes stay in `loushang.tui` or product-owned UI adapters.
+- Agent changes stay in `loushang.agent`.
+- Provider/model/auth changes stay in `loushang.ai`.
+- Harness changes stay in product-neutral contracts, shared registries,
+  lifecycle shapes, and helper engines consumed by product adapters.

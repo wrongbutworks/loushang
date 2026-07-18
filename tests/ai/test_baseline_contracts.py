@@ -14,6 +14,7 @@ ROOT_STABLE_EXPORTS = (
     "Message",
     "Model",
     "ModelNotFoundError",
+    "ModelSelection",
     "StopReason",
     "AIError",
     "AIErrorCode",

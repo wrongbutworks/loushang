@@ -12,7 +12,7 @@ from loushang.ai.errors import (
     ModelNotFoundError,
 )
 from loushang.ai.event_stream import AssistantMessageEventStream
-from loushang.ai.model import Model
+from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import (
     ModelRegistry as _ModelRegistry,
 )
@@ -98,6 +98,7 @@ __all__ = [
     "Message",
     "Model",
     "ModelNotFoundError",
+    "ModelSelection",
     "StopReason",
     "AIError",
     "AIErrorCode",

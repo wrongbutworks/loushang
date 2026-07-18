@@ -33,6 +33,7 @@ from loushang.ai.model.registry import (
     resolve_model_endpoint,
     resolve_model_ref,
 )
+from loushang.ai.model.selection import ModelSelection
 
 __all__ = [
     "AdapterConfig",
@@ -45,6 +46,7 @@ __all__ = [
     "Defaults",
     "Endpoint",
     "Model",
+    "ModelSelection",
     "ModelRegistry",
     "OpenAICompletionsConfig",
     "OpenAIResponsesConfig",

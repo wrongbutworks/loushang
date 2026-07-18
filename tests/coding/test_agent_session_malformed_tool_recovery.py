@@ -20,7 +20,9 @@ from loushang.observability import get_problem_store, log_context, reset_observa
 
 
 def _usage() -> Usage:
-    return Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    return Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
 
 
 def _model() -> Model:
@@ -79,7 +81,9 @@ def _stream_with_message(message: AssistantMessage) -> AssistantMessageEventStre
     return stream
 
 
-def test_agent_session_recovers_after_malformed_write_tool_call_history(tmp_path) -> None:
+def test_agent_session_recovers_after_malformed_write_tool_call_history(
+    tmp_path,
+) -> None:
     reset_observability()
     prompts = [
         "你好",
@@ -117,13 +121,21 @@ def test_agent_session_recovers_after_malformed_write_tool_call_history(tmp_path
                 type="toolCall",
                 id="write-python",
                 name="write",
-                arguments={"path": "tmp/bmi.py", "content": "def bmi(height, weight):\n    return weight / (height * height)\n"},
+                arguments={
+                    "path": "tmp/bmi.py",
+                    "content": "def bmi(height, weight):\n    return weight / (height * height)\n",
+                },
             )
         ),
         _assistant_text("Python BMI 程序已生成。"),
         _assistant_tool_calls(
             ToolCall(type="toolCall", id="write-empty", name="write", arguments={}),
-            ToolCall(type="toolCall", id="write-html", name="write", arguments={"path": "tmp/bmi.html", "content": html}),
+            ToolCall(
+                type="toolCall",
+                id="write-html",
+                name="write",
+                arguments={"path": "tmp/bmi.html", "content": html},
+            ),
         ),
         _assistant_text("HTML BMI 程序已生成。"),
         _assistant_text("你好，还可以继续。"),
@@ -148,7 +160,12 @@ def test_agent_session_recovers_after_malformed_write_tool_call_history(tmp_path
                 "tools": [create_write_tool(cwd=str(tmp_path))],
             },
         )
-        session = AgentSession(agent=agent, session_manager=SessionManager.new(session_dir=tmp_path / ".sessions", cwd=str(tmp_path), persist=False))
+        session = AgentSession(
+            agent=agent,
+            session_manager=await SessionManager.new(
+                session_dir=tmp_path / ".sessions", cwd=str(tmp_path), persist=False
+            ),
+        )
 
         with log_context(session_id="bmi-session", cwd=str(tmp_path), mode="scenario"):
             for prompt in prompts:
@@ -171,7 +188,11 @@ def test_agent_session_recovers_after_malformed_write_tool_call_history(tmp_path
         ]
 
         assert error_results
-        validation_problems = [record for record in get_problem_store().all() if record.code == "tool_validation_failed"]
+        validation_problems = [
+            record
+            for record in get_problem_store().all()
+            if record.code == "tool_validation_failed"
+        ]
         assert validation_problems
         assert validation_problems[0].source == "tool"
         assert validation_problems[0].recoverable is True

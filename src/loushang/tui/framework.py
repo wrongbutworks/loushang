@@ -308,6 +308,15 @@ class SurfaceHost:
         for entry in self.entries:
             entry.last_row = None
             entry.last_column = None
+        if not any(
+            self._is_entry_visible(entry, size)
+            and (
+                surface_is_inline_presentation(entry.surface)
+                or surface_is_overlay_presentation(entry.surface)
+            )
+            for entry in self.entries
+        ):
+            return base
         lines = [line.text for line in base.lines]
         cursor = base.cursor
         for entry in self.entries:

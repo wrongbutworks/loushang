@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import sys
 from pathlib import Path
 
 from loushang.coding.ui.native_app import NativeCodingTuiApp
+
 from loushang.coding.ui.perf_probe import (
     build_synthetic_long_transcript_records,
     characterize_long_transcript_rendering,
@@ -47,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
 
     if args.session_file:
-        records = load_session_history_records(Path(args.session_file))
+        records = asyncio.run(load_session_history_records(Path(args.session_file)))
         source = str(Path(args.session_file).expanduser().resolve())
     else:
         records = build_synthetic_long_transcript_records(

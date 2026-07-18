@@ -1,30 +1,42 @@
 from __future__ import annotations
 
-import inspect
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Literal, Protocol
 
-from loushang.agent import AgentMessage, ThinkingLevel
+from loushang.agent import ThinkingLevel
 from loushang.coding.commands import SessionCommandDescriptor
 from loushang.coding.compaction import BranchSummaryResult, CompactionResult
-from loushang.coding.exec import ExecResult, ExecUpdateCallback
-from loushang.coding.extensions.contributions import ExtensionSurfaceDescriptor
-from loushang.coding.extensions.events import VALID_EXTENSION_EVENTS
-from loushang.coding.extensions.manifest import ExtensionManifest
-from loushang.coding.extensions.policy import ExtensionPolicyDecision
-from loushang.coding.loader import (
-    ExtensionDescriptor,
-    PromptFragmentDescriptor,
-    ResourceDiagnostic,
-    SkillDescriptor,
-    ThemeDescriptor,
-)
-from loushang.coding.loader.types import ResourceSourceKind, ResourceSourceScope
-from loushang.coding.source_info import SourceOrigin, SourceScope
-from loushang.coding.tools import ToolDefinition
 from loushang.coding.types import ModelSelection
+from loushang.harness.extensions.events import VALID_EXTENSION_EVENTS
+from loushang.harness.extensions.types import (
+    BeforeAgentStartResult,
+    ContextResult,
+    ExtensionHandler,
+    ExtensionResourceContribution,
+    InputEvent,
+    InputEventResult,
+    InputSource,
+    LoadedExtension,
+    RegisteredCommand,
+    RegisteredFlag,
+    RegisteredShortcut,
+    ResolvedCommand,
+    ResolvedFlag,
+    ResolvedShortcut,
+    ToolCallDecision,
+    ToolResultDecision,
+)
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.source import SourceInfo
+from loushang.harness.runtime import ProductRuntimeBindings
+from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
+
+
+async def _ignore_thinking_level(level: ThinkingLevel) -> None:
+    del level
 
 
 class ExtensionContext(Protocol):
@@ -106,33 +118,45 @@ class ExtensionContext(Protocol):
 
     def get_thinking_level(self) -> ThinkingLevel: ...
 
-    def setThinkingLevel(self, level: ThinkingLevel) -> None: ...
+    async def setThinkingLevel(self, level: ThinkingLevel) -> None: ...
 
-    def set_thinking_level(self, level: ThinkingLevel) -> None: ...
+    async def set_thinking_level(self, level: ThinkingLevel) -> None: ...
 
-    def appendEntry(self, custom_type: str, data: object | None = None) -> None: ...
+    async def appendEntry(
+        self, custom_type: str, data: object | None = None
+    ) -> None: ...
 
-    def append_entry(self, custom_type: str, data: object | None = None) -> None: ...
+    async def append_entry(
+        self, custom_type: str, data: object | None = None
+    ) -> None: ...
 
-    async def sendMessage(self, message: object, options: object | None = None) -> None: ...
+    async def sendMessage(
+        self, message: object, options: object | None = None
+    ) -> None: ...
 
-    async def send_message(self, message: object, options: object | None = None) -> None: ...
+    async def send_message(
+        self, message: object, options: object | None = None
+    ) -> None: ...
 
-    async def sendUserMessage(self, content: object, options: object | None = None) -> None: ...
+    async def sendUserMessage(
+        self, content: object, options: object | None = None
+    ) -> None: ...
 
-    async def send_user_message(self, content: object, options: object | None = None) -> None: ...
+    async def send_user_message(
+        self, content: object, options: object | None = None
+    ) -> None: ...
 
-    def setSessionName(self, name: str | None) -> None: ...
+    async def setSessionName(self, name: str | None) -> None: ...
 
-    def set_session_name(self, name: str | None) -> None: ...
+    async def set_session_name(self, name: str | None) -> None: ...
 
     def getSessionName(self) -> str | None: ...
 
     def get_session_name(self) -> str | None: ...
 
-    def setLabel(self, entry_id: str, label: str | None) -> None: ...
+    async def setLabel(self, entry_id: str, label: str | None) -> None: ...
 
-    def set_label(self, entry_id: str, label: str | None) -> None: ...
+    async def set_label(self, entry_id: str, label: str | None) -> None: ...
 
     def listCommands(self) -> list[SessionCommandDescriptor]: ...
 
@@ -164,19 +188,29 @@ class ExtensionContext(Protocol):
 
     async def reload(self) -> None: ...
 
-    async def navigateTree(self, target_id: str, options: object | None = None) -> dict[str, object]: ...
+    async def navigateTree(
+        self, target_id: str, options: object | None = None
+    ) -> dict[str, object]: ...
 
-    async def navigate_tree(self, target_id: str, options: object | None = None) -> dict[str, object]: ...
+    async def navigate_tree(
+        self, target_id: str, options: object | None = None
+    ) -> dict[str, object]: ...
 
-    async def fork(self, entry_id: str, options: object | None = None) -> dict[str, object]: ...
+    async def fork(
+        self, entry_id: str, options: object | None = None
+    ) -> dict[str, object]: ...
 
     async def newSession(self, options: object | None = None) -> dict[str, object]: ...
 
     async def new_session(self, options: object | None = None) -> dict[str, object]: ...
 
-    async def switchSession(self, session_path: str, options: object | None = None) -> dict[str, object]: ...
+    async def switchSession(
+        self, session_path: str, options: object | None = None
+    ) -> dict[str, object]: ...
 
-    async def switch_session(self, session_path: str, options: object | None = None) -> dict[str, object]: ...
+    async def switch_session(
+        self, session_path: str, options: object | None = None
+    ) -> dict[str, object]: ...
 
     def shutdown(self) -> None: ...
 
@@ -188,9 +222,13 @@ class ExtensionContext(Protocol):
 
     def setStatus(self, key: str, text: str | None) -> None: ...
 
-    def set_widget(self, key: str, lines: list[str] | None, *, placement: str | None = None) -> None: ...
+    def set_widget(
+        self, key: str, lines: list[str] | None, *, placement: str | None = None
+    ) -> None: ...
 
-    def setWidget(self, key: str, lines: list[str] | None, *, placement: str | None = None) -> None: ...
+    def setWidget(
+        self, key: str, lines: list[str] | None, *, placement: str | None = None
+    ) -> None: ...
 
     def set_title(self, title: str) -> None: ...
 
@@ -232,11 +270,21 @@ class ExtensionContext(Protocol):
 
     def setToolsExpanded(self, expanded: bool) -> None: ...
 
-    async def select(self, title: str, options: list[str], *, timeout: float | None = None) -> str | None: ...
+    async def select(
+        self, title: str, options: list[str], *, timeout: float | None = None
+    ) -> str | None: ...
 
-    async def confirm(self, title: str, message: str, *, timeout: float | None = None) -> bool: ...
+    async def confirm(
+        self, title: str, message: str, *, timeout: float | None = None
+    ) -> bool: ...
 
-    async def input(self, title: str, placeholder: str | None = None, *, timeout: float | None = None) -> str | None: ...
+    async def input(
+        self,
+        title: str,
+        placeholder: str | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> str | None: ...
 
     async def editor(self, title: str, prefill: str | None = None) -> str | None: ...
 
@@ -310,29 +358,41 @@ class ExtensionCommandContext(Protocol):
 
     async def set_model(self, selection: ModelSelection) -> None: ...
 
-    def appendEntry(self, custom_type: str, data: object | None = None) -> None: ...
+    async def appendEntry(
+        self, custom_type: str, data: object | None = None
+    ) -> None: ...
 
-    def append_entry(self, custom_type: str, data: object | None = None) -> None: ...
+    async def append_entry(
+        self, custom_type: str, data: object | None = None
+    ) -> None: ...
 
-    async def sendMessage(self, message: object, options: object | None = None) -> None: ...
+    async def sendMessage(
+        self, message: object, options: object | None = None
+    ) -> None: ...
 
-    async def send_message(self, message: object, options: object | None = None) -> None: ...
+    async def send_message(
+        self, message: object, options: object | None = None
+    ) -> None: ...
 
-    async def sendUserMessage(self, content: object, options: object | None = None) -> None: ...
+    async def sendUserMessage(
+        self, content: object, options: object | None = None
+    ) -> None: ...
 
-    async def send_user_message(self, content: object, options: object | None = None) -> None: ...
+    async def send_user_message(
+        self, content: object, options: object | None = None
+    ) -> None: ...
 
-    def setSessionName(self, name: str | None) -> None: ...
+    async def setSessionName(self, name: str | None) -> None: ...
 
-    def set_session_name(self, name: str | None) -> None: ...
+    async def set_session_name(self, name: str | None) -> None: ...
 
     def getSessionName(self) -> str | None: ...
 
     def get_session_name(self) -> str | None: ...
 
-    def setLabel(self, entry_id: str, label: str | None) -> None: ...
+    async def setLabel(self, entry_id: str, label: str | None) -> None: ...
 
-    def set_label(self, entry_id: str, label: str | None) -> None: ...
+    async def set_label(self, entry_id: str, label: str | None) -> None: ...
 
     def listCommands(self) -> list[SessionCommandDescriptor]: ...
 
@@ -364,19 +424,29 @@ class ExtensionCommandContext(Protocol):
 
     async def reload(self) -> None: ...
 
-    async def navigateTree(self, target_id: str, options: object | None = None) -> dict[str, object]: ...
+    async def navigateTree(
+        self, target_id: str, options: object | None = None
+    ) -> dict[str, object]: ...
 
-    async def navigate_tree(self, target_id: str, options: object | None = None) -> dict[str, object]: ...
+    async def navigate_tree(
+        self, target_id: str, options: object | None = None
+    ) -> dict[str, object]: ...
 
-    async def fork(self, entry_id: str, options: object | None = None) -> dict[str, object]: ...
+    async def fork(
+        self, entry_id: str, options: object | None = None
+    ) -> dict[str, object]: ...
 
     async def newSession(self, options: object | None = None) -> dict[str, object]: ...
 
     async def new_session(self, options: object | None = None) -> dict[str, object]: ...
 
-    async def switchSession(self, session_path: str, options: object | None = None) -> dict[str, object]: ...
+    async def switchSession(
+        self, session_path: str, options: object | None = None
+    ) -> dict[str, object]: ...
 
-    async def switch_session(self, session_path: str, options: object | None = None) -> dict[str, object]: ...
+    async def switch_session(
+        self, session_path: str, options: object | None = None
+    ) -> dict[str, object]: ...
 
     def shutdown(self) -> None: ...
 
@@ -388,9 +458,13 @@ class ExtensionCommandContext(Protocol):
 
     def setStatus(self, key: str, text: str | None) -> None: ...
 
-    def set_widget(self, key: str, lines: list[str] | None, *, placement: str | None = None) -> None: ...
+    def set_widget(
+        self, key: str, lines: list[str] | None, *, placement: str | None = None
+    ) -> None: ...
 
-    def setWidget(self, key: str, lines: list[str] | None, *, placement: str | None = None) -> None: ...
+    def setWidget(
+        self, key: str, lines: list[str] | None, *, placement: str | None = None
+    ) -> None: ...
 
     def set_title(self, title: str) -> None: ...
 
@@ -432,45 +506,27 @@ class ExtensionCommandContext(Protocol):
 
     def setToolsExpanded(self, expanded: bool) -> None: ...
 
-    async def select(self, title: str, options: list[str], *, timeout: float | None = None) -> str | None: ...
+    async def select(
+        self, title: str, options: list[str], *, timeout: float | None = None
+    ) -> str | None: ...
 
-    async def confirm(self, title: str, message: str, *, timeout: float | None = None) -> bool: ...
+    async def confirm(
+        self, title: str, message: str, *, timeout: float | None = None
+    ) -> bool: ...
 
-    async def input(self, title: str, placeholder: str | None = None, *, timeout: float | None = None) -> str | None: ...
+    async def input(
+        self,
+        title: str,
+        placeholder: str | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> str | None: ...
 
     async def editor(self, title: str, prefill: str | None = None) -> str | None: ...
 
 
 class ReplacedSessionContext(ExtensionCommandContext, Protocol):
     """Context passed to `withSession` callbacks after a session replacement."""
-
-
-ExtensionHandler = Callable[[object, ExtensionContext], object | None]
-InputSource = Literal["interactive", "rpc", "extension"]
-
-
-@dataclass
-class InputEvent:
-    text: str
-    images: list[object] | None = None
-    source: InputSource = "interactive"
-    type: Literal["input"] = "input"
-
-
-@dataclass
-class InputEventResult:
-    action: Literal["continue", "transform", "handled"]
-    text: str | None = None
-    images: list[object] | None = None
-
-
-@dataclass(frozen=True)
-class SourceInfo:
-    path: Path
-    source: str = "filesystem"
-    scope: SourceScope = "project"
-    origin: SourceOrigin = "top-level"
-    base_dir: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -595,177 +651,14 @@ class SessionBeforeTreeResult(SessionActionDecision):
 
 
 @dataclass
-class ExtensionRuntimeBindings:
-    cwd: str
-    get_active_tool_names: Callable[[], list[str]]
+class ExtensionRuntimeBindings(ProductRuntimeBindings):
     get_model_selection: Callable[[], ModelSelection | None]
-    set_active_tools: Callable[[list[str]], Awaitable[None]]
     set_model: Callable[[ModelSelection], Awaitable[None]]
-    request_resource_refresh: Callable[[], None]
-    shutdown: Callable[[], None]
-    record_diagnostic: Callable[[ResourceDiagnostic], None]
-    register_tool: Callable[[object, object | None], None] = lambda tool, source_info=None: None
-    get_all_tools: Callable[[], list[object]] = lambda: []
-    session_manager: object | None = None
-    model_registry: object | None = None
-    get_signal: Callable[[], object | None] = lambda: None
-    append_entry: Callable[[str, object | None], None] = lambda custom_type, data=None: None
-    send_message: Callable[[object, object | None], Awaitable[None]] | None = None
-    send_user_message: Callable[[object, object | None], Awaitable[None]] | None = None
-    set_session_name: Callable[[str | None], None] = lambda name: None
-    get_session_name: Callable[[], str | None] = lambda: None
-    set_label: Callable[[str, str | None], None] = lambda entry_id, label: None
     list_commands: Callable[[], list[SessionCommandDescriptor]] = lambda: []
-    abort: Callable[[], None] = lambda: None
-    is_idle: Callable[[], bool] = lambda: True
-    has_pending_messages: Callable[[], bool] = lambda: False
-    get_context_usage: Callable[[], object | None] = lambda: None
     get_thinking_level: Callable[[], ThinkingLevel] = lambda: "off"
-    set_thinking_level: Callable[[ThinkingLevel], None] = lambda level: None
-    register_provider: Callable[[str, object], None] | None = None
-    unregister_provider: Callable[[str], None] | None = None
-    set_extension_status: Callable[[str, str | None], None] = lambda key, text: None
-    footer_data_provider: object | None = None
-    compact: Callable[[str | None], Awaitable[object | None]] | None = None
-    get_system_prompt: Callable[[], str] = lambda: ""
-    wait_for_idle: Callable[[], Awaitable[None]] | None = None
-    reload: Callable[[], Awaitable[None]] | None = None
-    navigate_tree: Callable[[str, object | None], Awaitable[dict[str, object]]] | None = None
-    fork: Callable[[str, object | None], Awaitable[dict[str, object]]] | None = None
-    new_session: Callable[[object | None], Awaitable[dict[str, object]]] | None = None
-    switch_session: Callable[[str, object | None], Awaitable[dict[str, object]]] | None = None
-    exec_command: Callable[..., Awaitable[ExecResult]] | None = None
-    ui_context: object | None = None
-    on_error: Callable[[dict[str, object]], None] | None = None
-
-
-@dataclass(frozen=True)
-class BeforeAgentStartResult:
-    system_prompt_append: str = ""
-    system_prompt: str | None = None
-    extra_messages: list[object] = field(default_factory=list)
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
-    block: bool = False
-    reason: str | None = None
-
-    @property
-    def systemPrompt(self) -> str | None:
-        return self.system_prompt
-
-    @property
-    def extraMessages(self) -> list[object]:
-        return self.extra_messages
-
-
-@dataclass(frozen=True)
-class ContextResult:
-    messages: list[AgentMessage] | None = None
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class ToolCallDecision:
-    block: bool = False
-    reason: str | None = None
-    tool_name: str | None = None
-    arguments: dict[str, Any] | None = None
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class ToolResultDecision:
-    result: object | None = None
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
-
-
-@dataclass(frozen=True, kw_only=True)
-class RegisteredCommand:
-    name: str
-    handler: Callable[[str, ExtensionCommandContext], Awaitable[None]]
-    description: str | None = None
-    get_argument_completions: Callable[[str], list[object] | Awaitable[list[object] | None] | None] | None = None
-
-    def __post_init__(self) -> None:
-        if not _is_async_callable(self.handler):
-            raise TypeError("RegisteredCommand.handler must be an async callable.")
-
-
-@dataclass(frozen=True, kw_only=True)
-class ResolvedCommand(RegisteredCommand):
-    invocation_name: str
-    source_info: SourceInfo
-    extension_name: str
-
-
-@dataclass(frozen=True)
-class RegisteredFlag:
-    name: str
-    type: Literal["boolean", "string"]
-    description: str | None = None
-    default: bool | str | None = None
-
-
-@dataclass(frozen=True, kw_only=True)
-class ResolvedFlag(RegisteredFlag):
-    source_info: SourceInfo
-    extension_name: str
-
-
-@dataclass(frozen=True)
-class RegisteredShortcut:
-    shortcut: str
-    handler: Callable[[ExtensionContext], object | None]
-    description: str | None = None
-
-
-@dataclass(frozen=True, kw_only=True)
-class ResolvedShortcut(RegisteredShortcut):
-    source_info: SourceInfo
-    extension_name: str
-
-
-@dataclass(frozen=True)
-class LoadedExtension:
-    name: str
-    source_path: Path
-    entry_path: Path | None = None
-    source: str = "filesystem"
-    source_kind: ResourceSourceKind = "project_local"
-    source_scope: ResourceSourceScope = "project"
-    source_root: Path | None = None
-    hooks: dict[str, list[ExtensionHandler]] = field(default_factory=dict)
-    tool_definitions: list[ToolDefinition] = field(default_factory=list)
-    commands: dict[str, RegisteredCommand] = field(default_factory=dict)
-    flags: dict[str, RegisteredFlag] = field(default_factory=dict)
-    shortcuts: dict[str, RegisteredShortcut] = field(default_factory=dict)
-    message_renderers: dict[str, Callable[[object, object, object], object | None]] = field(default_factory=dict)
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
-    metadata: dict[str, object] = field(default_factory=dict)
-    api: object | None = None
-    manifest: ExtensionManifest | None = None
-    policy: ExtensionPolicyDecision | None = None
-    contributions: list[ExtensionSurfaceDescriptor] = field(default_factory=list)
-
-    @property
-    def surfaces(self) -> list[ExtensionSurfaceDescriptor]:
-        return list(self.contributions)
-
-
-@dataclass(frozen=True)
-class ExtensionResourceContribution:
-    prompt_descriptors: list[PromptFragmentDescriptor] = field(default_factory=list)
-    skills: list[SkillDescriptor] = field(default_factory=list)
-    extensions: list[ExtensionDescriptor] = field(default_factory=list)
-    prompts: list[PromptFragmentDescriptor] = field(default_factory=list)
-    themes: list[ThemeDescriptor] = field(default_factory=list)
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
-
-
-def _is_async_callable(value: object) -> bool:
-    if inspect.iscoroutinefunction(value):
-        return True
-    call = getattr(value, "__call__", None)
-    return inspect.iscoroutinefunction(call)
+    set_thinking_level: Callable[[ThinkingLevel], Awaitable[None]] = (
+        _ignore_thinking_level
+    )
 
 
 __all__ = [

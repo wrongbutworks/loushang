@@ -1,0 +1,181 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field, replace
+from typing import Any, Literal, cast
+
+from loushang.tui import (
+    CursorDeclaration,
+    FocusableMixin,
+    InfoPanel,
+    InputEvent,
+    InputIntent,
+    RenderConstraints,
+    RenderLine,
+    RenderResult,
+)
+from loushang.tui.cell_width import truncate_to_width, wrap_cells
+from loushang.tui.input import InputIntentKind
+
+ScreenSurfacePurpose = Literal[
+    "info", "model", "command", "settings", "dialog", "approval"
+]
+ScreenSurfacePresentation = Literal["bottom", "bottom-exclusive"]
+
+
+@dataclass(slots=True)
+class ScreenSurfaceView(FocusableMixin):
+    title: str
+    purpose: ScreenSurfacePurpose
+    content: Any
+    footer: str = "Enter to select - Esc to close"
+    subtitle: str = ""
+    presentation: ScreenSurfacePresentation = "bottom"
+    preferred_height: int | None = None
+    _last_content_start_row: int = field(default=0, init=False, repr=False)
+    _info_scroll_offset: int = field(default=0, init=False, repr=False)
+    _last_info_body_height: int = field(default=0, init=False, repr=False)
+    _last_info_body_line_count: int = field(default=0, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        FocusableMixin.__init__(self)
+
+    @property
+    def exclusive_bottom(self) -> bool:
+        return self.presentation == "bottom-exclusive"
+
+    def editor_input_target(self) -> object | None:
+        target = getattr(self.content, "editor_input_target", None)
+        return target() if callable(target) else None
+
+    def handle_input(self, event: InputEvent) -> InputIntent | None:
+        if self.purpose == "info":
+            if event.kind == "key" and event.key in {"enter", "space", "escape", "esc"}:
+                return InputIntent(kind="surface_close")
+            if event.kind == "key":
+                return self._handle_info_scroll_input(event.key)
+            return None
+        handler = getattr(self.content, "handle_input", None)
+        if callable(handler):
+            intent = _screen_input_intent_or_none(
+                handler(self._translate_content_input_event(event))
+            )
+            if intent is not None:
+                return intent
+        if event.kind == "key" and event.key in {"escape", "esc"}:
+            return InputIntent(kind="surface_close")
+        return None
+
+    def render(self, constraints: RenderConstraints) -> RenderResult:
+        width = constraints.width
+        lines = [truncate_to_width(self.title, max_width=width)]
+        cursor: CursorDeclaration | None = None
+        if self.subtitle:
+            lines.append(truncate_to_width(self.subtitle, max_width=width))
+        lines.append("")
+        reserved_footer_lines = 2 if self.footer else 0
+        body_constraints = RenderConstraints(
+            width=width,
+            max_height=max(
+                1, constraints.max_height - len(lines) - reserved_footer_lines
+            ),
+        )
+        if isinstance(self.content, InfoPanel):
+            body_lines: list[str] = []
+            for raw_line in self.content.text.splitlines():
+                body_lines.extend(wrap_cells(raw_line, width=width) or [""])
+            self._last_info_body_height = body_constraints.max_height
+            self._last_info_body_line_count = len(body_lines)
+            max_offset = self._max_info_scroll_offset()
+            self._info_scroll_offset = max(0, min(self._info_scroll_offset, max_offset))
+            visible_body_lines = body_lines[
+                self._info_scroll_offset : self._info_scroll_offset
+                + body_constraints.max_height
+            ]
+            body_start_row = len(lines)
+            lines.extend(visible_body_lines)
+            if visible_body_lines:
+                cursor = CursorDeclaration(
+                    row=body_start_row + len(visible_body_lines) - 1, column=0
+                )
+        else:
+            self._last_content_start_row = len(lines)
+            result = self.content.render(body_constraints)
+            lines.extend(line.text for line in result.lines)
+            if result.cursor is not None:
+                cursor_row = self._last_content_start_row + result.cursor.row
+                if cursor_row < constraints.max_height:
+                    cursor = CursorDeclaration(
+                        row=cursor_row, column=result.cursor.column
+                    )
+        footer = self._footer_text()
+        if footer and len(lines) < constraints.max_height:
+            if len(lines) + 1 < constraints.max_height:
+                lines.append("")
+            lines.append(truncate_to_width(footer, max_width=width))
+        return RenderResult.from_lines(
+            [RenderLine(line) for line in lines[: constraints.max_height]],
+            constraints=constraints,
+            cursor=cursor,
+        )
+
+    def _translate_content_input_event(self, event: InputEvent) -> InputEvent:
+        if event.kind != "mouse" or event.mouse_row is None:
+            return event
+        return replace(event, mouse_row=event.mouse_row - self._last_content_start_row)
+
+    def _handle_info_scroll_input(self, key: str) -> InputIntent | None:
+        page = max(1, self._last_info_body_height)
+        if key == "down":
+            return self._scroll_info(1)
+        if key == "up":
+            return self._scroll_info(-1)
+        if key == "pageDown":
+            return self._scroll_info(page)
+        if key == "pageUp":
+            return self._scroll_info(-page)
+        if key == "home":
+            return self._set_info_scroll(0)
+        if key == "end":
+            return self._set_info_scroll(self._max_info_scroll_offset())
+        return None
+
+    def _scroll_info(self, delta: int) -> InputIntent | None:
+        return self._set_info_scroll(self._info_scroll_offset + delta)
+
+    def _set_info_scroll(self, offset: int) -> InputIntent | None:
+        max_offset = self._max_info_scroll_offset()
+        next_offset = max(0, min(offset, max_offset))
+        if next_offset == self._info_scroll_offset:
+            return None
+        self._info_scroll_offset = next_offset
+        return InputIntent(kind="consumed", note="info_scroll")
+
+    def _max_info_scroll_offset(self) -> int:
+        return max(0, self._last_info_body_line_count - self._last_info_body_height)
+
+    def _footer_text(self) -> str:
+        if not self.footer:
+            return ""
+        if self.purpose == "info" and self._max_info_scroll_offset() > 0:
+            return f"Up/Down/Page to scroll - {self.footer}"
+        return self.footer
+
+
+def _screen_input_intent_or_none(result: object) -> InputIntent | None:
+    if isinstance(result, InputIntent):
+        return result
+    kind = getattr(result, "kind", None)
+    if not isinstance(kind, str):
+        return None
+    return InputIntent(
+        kind=cast(InputIntentKind, kind),
+        text=str(getattr(result, "text", "")),
+        note=str(getattr(result, "note", "")),
+    )
+
+
+__all__ = [
+    "ScreenSurfacePresentation",
+    "ScreenSurfacePurpose",
+    "ScreenSurfaceView",
+]

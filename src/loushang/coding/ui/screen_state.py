@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from loushang.coding.ui.status_line import StatusLineSettings
+from loushang.harnesstui.status.line import StatusLineSettings
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     DisplayRecord,
@@ -25,6 +25,7 @@ class ScreenTranscriptWindow:
 @dataclass(slots=True)
 class ScreenCodingTuiState:
     records: list[DisplayRecord] = field(default_factory=list)
+    records_revision: int = field(default=0, init=False)
     transcript_window_generation: int = 0
     evicted_prefix_record_count: int = 0
     active_started_at: float | None = None
@@ -56,6 +57,9 @@ class ScreenCodingTuiState:
     def assistant_draft_buffer(self) -> StreamingTextBuffer | None:
         return self._assistant_draft_buffer
 
+    def mark_records_changed(self) -> None:
+        self.records_revision += 1
+
     def replace_transcript_window(
         self,
         records: Iterable[DisplayRecord] | ScreenTranscriptWindow,
@@ -69,11 +73,15 @@ class ScreenCodingTuiState:
                 records=tuple(records),
                 evicted_prefix_record_count=evicted_prefix_record_count,
             )
-        self.records = list(window.records)
+        replacement = list(window.records)
+        records_changed = replacement != self.records
+        self.records = replacement
         self.evicted_prefix_record_count = max(0, window.evicted_prefix_record_count)
         self.transcript_window_generation += 1
         self._tool_record_indices.clear()
         self._pending_user_echo = None
+        if records_changed:
+            self.mark_records_changed()
 
     def trim_transcript_prefix(self, *, max_records: int) -> int:
         max_records = max(0, max_records)
@@ -81,6 +89,7 @@ class ScreenCodingTuiState:
             return 0
         evicted_count = len(self.records) - max_records
         del self.records[:evicted_count]
+        self.mark_records_changed()
         self.evicted_prefix_record_count += evicted_count
         self.transcript_window_generation += 1
         self._tool_record_indices.clear()
@@ -91,6 +100,7 @@ class ScreenCodingTuiState:
         stripped = text.strip()
         if stripped:
             self.records.append(UserPromptRecord(stripped))
+            self.mark_records_changed()
             self._pending_user_echo = stripped
         self.active_started_at = started_at
         self._assistant_draft_buffer = None
@@ -123,12 +133,14 @@ class ScreenCodingTuiState:
         self._assistant_draft_buffer = None
         if text:
             self.records.append(AssistantMessageRecord(text, stable=True))
+            self.mark_records_changed()
 
     def complete_run(self, *, elapsed_seconds: float) -> None:
         if self.assistant_draft is not None:
             self.end_assistant()
         if not self.records or not isinstance(self.records[-1], WorkedDividerRecord):
             self.records.append(WorkedDividerRecord(elapsed_seconds))
+            self.mark_records_changed()
         self.active_started_at = None
         self.status_message = None
         self._tool_record_indices.clear()
@@ -163,6 +175,7 @@ class ScreenCodingTuiState:
         if self.assistant_draft is not None:
             self.end_assistant()
         self.records.append(WorkedDividerRecord(elapsed_seconds))
+        self.mark_records_changed()
         self.interruption_message = message
         self.active_started_at = None
         self.status_message = None
@@ -172,12 +185,14 @@ class ScreenCodingTuiState:
     def add_error(self, summary: str, diagnostics: str = "") -> None:
         if summary:
             self.records.append(ErrorRecord(summary, diagnostics))
+            self.mark_records_changed()
         self._pending_user_echo = None
 
     def add_status(self, message: str) -> None:
         stripped = message.strip()
         if stripped:
             self.records.append(StatusRecord(stripped))
+            self.mark_records_changed()
         self._pending_user_echo = None
 
     def consume_pending_user_echo(self, text: str) -> bool:
@@ -195,10 +210,14 @@ class ScreenCodingTuiState:
     def upsert_tool_record(self, tool_call_id: str, record: ToolExecutionRecord) -> None:
         existing = self._tool_record_indices.get(tool_call_id)
         if existing is not None and 0 <= existing < len(self.records):
+            if self.records[existing] == record:
+                return
             self.records[existing] = record
+            self.mark_records_changed()
             return
         self._tool_record_indices[tool_call_id] = len(self.records)
         self.records.append(record)
+        self.mark_records_changed()
 
 
 __all__ = ["ScreenCodingTuiState", "ScreenTranscriptWindow"]

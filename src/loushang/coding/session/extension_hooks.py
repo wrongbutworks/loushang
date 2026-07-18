@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 
 from loushang.agent import Agent
+from loushang.agent.tool_output import STRICT_JSON_TOOL_OUTPUT_PROJECTOR
 from loushang.agent.types import AfterToolCallResult, BeforeToolCallResult
 from loushang.ai.types import ToolCall
 from loushang.coding.extensions import ExtensionRunner
@@ -36,14 +37,25 @@ class ExtensionHooks:
             return await compose_before_tool_call_hooks(
                 context,
                 signal,
-                [hook for hook in (existing_before, self.extension_runner.before_tool_call) if hook is not None],
+                [
+                    hook
+                    for hook in (
+                        existing_before,
+                        self.extension_runner.before_tool_call,
+                    )
+                    if hook is not None
+                ],
             )
 
         async def _after_tool_call(context, signal):
             return await compose_after_tool_call_hooks(
                 context,
                 signal,
-                [hook for hook in (existing_after, self.extension_runner.after_tool_call) if hook is not None],
+                [
+                    hook
+                    for hook in (existing_after, self.extension_runner.after_tool_call)
+                    if hook is not None
+                ],
             )
 
         self.agent.transform_context = _transform_context
@@ -103,21 +115,50 @@ async def compose_after_tool_call_hooks(context, signal, hooks):
         if result is None:
             continue
         next_result = current_context.result
-        if result.content is not None or result.details is not None or result.terminate is not None:
+        details_provided = result.details_provided
+        projection_changed = details_provided or result.projector is not None
+        if (
+            result.content is not None
+            or details_provided
+            or result.terminate is not None
+            or result.projector is not None
+        ):
             changed = True
             next_result = replace(
                 current_context.result,
-                content=result.content if result.content is not None else current_context.result.content,
-                details=result.details if result.details is not None else current_context.result.details,
-                terminate=result.terminate if result.terminate is not None else current_context.result.terminate,
+                content=result.content
+                if result.content is not None
+                else current_context.result.content,
+                details=result.details
+                if details_provided
+                else current_context.result.details,
+                terminate=result.terminate
+                if result.terminate is not None
+                else current_context.result.terminate,
+                projector=(
+                    result.projector
+                    if result.projector is not None
+                    else (
+                        current_context.result.projector
+                        if not details_provided
+                        else STRICT_JSON_TOOL_OUTPUT_PROJECTOR
+                    )
+                ),
             )
-        next_is_error = result.is_error if result.is_error is not None else current_context.is_error
+        next_is_error = (
+            result.is_error if result.is_error is not None else current_context.is_error
+        )
         if next_is_error != current_context.is_error:
             changed = True
         current_context = replace(
             current_context,
             result=next_result,
             is_error=next_is_error,
+            hook_details=(
+                next_result.hook_details()
+                if projection_changed
+                else current_context.hook_details
+            ),
         )
 
     if not changed:
@@ -127,4 +168,5 @@ async def compose_after_tool_call_hooks(context, signal, hooks):
         details=current_context.result.details,
         is_error=current_context.is_error,
         terminate=current_context.result.terminate,
+        projector=current_context.result.projector,
     )

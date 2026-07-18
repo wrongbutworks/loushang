@@ -1,0 +1,1196 @@
+from __future__ import annotations
+
+import asyncio
+
+
+def test_approval_decision_helpers_cover_allow_and_deny() -> None:
+    from loushang.harness.approval import ApprovalDecision
+
+    assert ApprovalDecision.allow() == ApprovalDecision(
+        disposition="allow", reason=None
+    )
+    assert ApprovalDecision.deny("blocked") == ApprovalDecision(
+        disposition="deny", reason="blocked"
+    )
+
+
+def test_approval_decision_rejects_invalid_disposition() -> None:
+    import pytest
+
+    from loushang.harness.approval import ApprovalDecision
+
+    with pytest.raises(ValueError, match="Unsupported approval decision disposition"):
+        ApprovalDecision(disposition="prompt")  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError, match="reason"):
+        ApprovalDecision(disposition="deny", reason=object())  # type: ignore[arg-type]
+
+
+def test_resolve_approval_defaults_to_deny() -> None:
+    from loushang.harness.approval import ApprovalRequest, resolve_approval
+
+    decision = asyncio.run(
+        resolve_approval(
+            None,
+            ApprovalRequest(
+                tool_name="write",
+                arguments={"path": "x"},
+                reason="needs approval",
+            ),
+        )
+    )
+
+    assert decision.disposition == "deny"
+    assert decision.reason == "needs approval"
+
+
+def test_resolve_approval_rejects_invalid_resolver_result() -> None:
+    import pytest
+
+    from loushang.harness.approval import ApprovalRequest, resolve_approval
+
+    class InvalidResolver:
+        def resolve(self, request):
+            del request
+            return object()
+
+    with pytest.raises(TypeError, match="ApprovalResolver returned object"):
+        asyncio.run(
+            resolve_approval(
+                InvalidResolver(),
+                ApprovalRequest(tool_name="write", arguments={}),
+            )
+        )
+
+
+def test_headless_approval_resolver_can_allow() -> None:
+    from loushang.harness.approval import ApprovalRequest, HeadlessApprovalResolver
+
+    decision = HeadlessApprovalResolver(mode="allow").resolve(
+        ApprovalRequest(tool_name="read", arguments={})
+    )
+
+    assert decision.disposition == "allow"
+
+
+def test_headless_approval_resolver_rejects_invalid_mode() -> None:
+    import pytest
+
+    from loushang.harness.approval import HeadlessApprovalResolver
+
+    with pytest.raises(ValueError, match="Unsupported headless approval mode"):
+        HeadlessApprovalResolver(mode="prompt")  # type: ignore[arg-type]
+
+
+def test_approval_request_accepts_opaque_policy_context() -> None:
+    from loushang.harness.approval import ApprovalRequest
+
+    policy_decision = object()
+    request = ApprovalRequest(
+        tool_name="bash",
+        arguments={"command": "git push"},
+        policy_decision=policy_decision,
+    )
+
+    assert request.policy_decision is policy_decision
+
+
+def test_approval_request_snapshots_arguments() -> None:
+    import pytest
+
+    from loushang.harness.approval import ApprovalRequest
+
+    edits = [{"oldText": "before", "newText": "after"}]
+    arguments = {"path": "before.txt", "edits": edits}
+    request = ApprovalRequest(tool_name="write", arguments=arguments)
+    arguments["path"] = "after.txt"
+    edits[0]["newText"] = "changed"
+
+    assert request.arguments["path"] == "before.txt"
+    assert request.arguments["edits"][0]["newText"] == "after"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        request.arguments["edits"][0]["newText"] = "forbidden"  # type: ignore[index]
+
+
+def test_approval_request_rejects_invalid_fields_and_mutable_leaf_values() -> None:
+    import pytest
+
+    from loushang.harness.approval import ApprovalRequest
+
+    with pytest.raises(ValueError, match="tool_name"):
+        ApprovalRequest(tool_name="", arguments={})
+    with pytest.raises(TypeError, match="cwd"):
+        ApprovalRequest(tool_name="write", arguments={}, cwd=object())  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="action_id"):
+        ApprovalRequest(tool_name="write", arguments={}, action_id="")
+    with pytest.raises(TypeError, match="JSON-compatible"):
+        ApprovalRequest(
+            tool_name="write",
+            arguments={"payload": bytearray(b"mutable")},
+        )
+    with pytest.raises(TypeError, match="mapping keys must be strings"):
+        ApprovalRequest(
+            tool_name="write",
+            arguments={"nested": {1: "numeric", "1": "string"}},
+        )
+
+
+def test_approval_request_snapshot_supports_standard_serializers() -> None:
+    import json
+    import pickle
+    from copy import deepcopy
+    from dataclasses import asdict
+
+    from loushang.harness.approval import ApprovalRequest
+
+    request = ApprovalRequest(
+        tool_name="write",
+        arguments={"path": "notes.txt", "options": {"lines": [1, 2]}},
+        action_id="approval-serializable",
+    )
+
+    copied = deepcopy(request)
+    restored = pickle.loads(pickle.dumps(request))
+    projected = asdict(request)
+
+    assert copied == request
+    assert restored == request
+    assert projected["arguments"] == request.arguments
+    assert json.loads(json.dumps(projected))["arguments"]["path"] == "notes.txt"
+
+
+def test_approval_request_public_projection_is_mutable_and_detached() -> None:
+    from loushang.harness.approval import (
+        ApprovalRequest,
+        approval_request_to_dict,
+    )
+
+    request = ApprovalRequest(
+        tool_name="edit",
+        arguments={"edits": [{"oldText": "before", "newText": "after"}]},
+    )
+
+    projected = approval_request_to_dict(request)
+    arguments = projected["arguments"]
+    assert isinstance(arguments, dict)
+    edits = arguments["edits"]
+    assert isinstance(edits, list)
+    edits[0]["newText"] = "projected mutation"
+
+    assert request.arguments["edits"][0]["newText"] == "after"  # type: ignore[index]
+
+
+def test_resolve_approval_revalidates_mutated_decision_fields() -> None:
+    import pytest
+
+    from loushang.harness.approval import (
+        ApprovalDecision,
+        ApprovalRequest,
+        resolve_approval,
+    )
+
+    malformed = ApprovalDecision.allow()
+    object.__setattr__(malformed, "reason", object())
+
+    class Resolver:
+        def resolve(self, request: ApprovalRequest) -> ApprovalDecision:
+            del request
+            return malformed
+
+    with pytest.raises(TypeError, match="reason"):
+        asyncio.run(
+            resolve_approval(
+                Resolver(),
+                ApprovalRequest(tool_name="write", arguments={}),
+            )
+        )
+
+
+def test_approval_broker_revalidates_all_terminal_decisions() -> None:
+    import pytest
+
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        HeadlessApprovalResolver,
+    )
+
+    malformed = ApprovalDecision.allow()
+    object.__setattr__(malformed, "reason", object())
+
+    operations = (
+        lambda broker: broker.resolve_request("missing", malformed),
+        lambda broker: broker.cancel_request("missing", malformed),
+        lambda broker: broker.cancel_all(malformed),
+        lambda broker: broker.dispose(malformed),
+    )
+    for operation in operations:
+        broker = ApprovalBroker(fallback=HeadlessApprovalResolver(mode="deny"))
+        with pytest.raises(TypeError, match="reason"):
+            operation(broker)
+
+
+def test_ensure_approval_action_id_is_idempotent() -> None:
+    from loushang.harness.approval import (
+        ApprovalRequest,
+        ensure_approval_action_id,
+    )
+
+    request = ApprovalRequest(tool_name="write", arguments={})
+    prepared = ensure_approval_action_id(request)
+
+    assert prepared.action_id is not None
+    assert ensure_approval_action_id(prepared) is prepared
+
+
+def test_approval_broker_presents_and_correlates_result() -> None:
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    class Presenter:
+        def __init__(self, broker: ApprovalBroker) -> None:
+            self.broker = broker
+            self.requests: list[ApprovalRequest] = []
+
+        def present(self, request: ApprovalRequest) -> None:
+            self.requests.append(request)
+            assert request.action_id is not None
+            assert self.broker.resolve_request(
+                request.action_id, ApprovalDecision.allow()
+            )
+
+    async def run() -> tuple[ApprovalDecision, tuple[ApprovalRequest, ...]]:
+        broker = ApprovalBroker(
+            fallback=HeadlessApprovalResolver(mode="deny"),
+        )
+        presenter = Presenter(broker)
+        broker.set_presenter(presenter)
+        decision = await broker.resolve(
+            ApprovalRequest(tool_name="write", arguments={"path": "x"})
+        )
+        return decision, tuple(presenter.requests)
+
+    decision, requests = asyncio.run(run())
+
+    assert decision == ApprovalDecision.allow()
+    assert len(requests) == 1
+
+
+def test_approval_broker_rejects_duplicate_pending_action_id() -> None:
+    import pytest
+
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalRequest,
+        ApprovalRequestCollisionError,
+        HeadlessApprovalResolver,
+    )
+
+    presented = asyncio.Event()
+
+    class Presenter:
+        async def present(self, request: ApprovalRequest) -> None:
+            del request
+            presented.set()
+
+    async def run() -> None:
+        broker = ApprovalBroker(fallback=HeadlessApprovalResolver(mode="deny"))
+        broker.set_presenter(Presenter())
+        request = ApprovalRequest(
+            tool_name="write",
+            arguments={},
+            action_id="approval-shared",
+        )
+        first = asyncio.create_task(broker.resolve(request))
+        await presented.wait()
+        with pytest.raises(ApprovalRequestCollisionError):
+            await broker.resolve(request)
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        assert broker.pending_requests() == ()
+
+    asyncio.run(run())
+
+
+def test_approval_broker_rejects_pending_collision_after_presenter_unbind() -> None:
+    import pytest
+
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+        ApprovalRequestCollisionError,
+        HeadlessApprovalResolver,
+    )
+
+    presented = asyncio.Event()
+
+    class Presenter:
+        async def present(self, request: ApprovalRequest) -> None:
+            del request
+            presented.set()
+
+    async def run() -> None:
+        broker = ApprovalBroker(fallback=HeadlessApprovalResolver(mode="allow"))
+        broker.set_presenter(Presenter())
+        request = ApprovalRequest(
+            tool_name="write",
+            arguments={},
+            action_id="approval-shared",
+        )
+        first = asyncio.create_task(broker.resolve(request))
+        await presented.wait()
+        broker.set_presenter(None)
+
+        with pytest.raises(ApprovalRequestCollisionError):
+            await broker.resolve(request)
+
+        assert (
+            await broker.resolve(
+                ApprovalRequest(
+                    tool_name="read",
+                    arguments={},
+                    action_id="approval-distinct",
+                )
+            )
+            == ApprovalDecision.allow()
+        )
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+
+    asyncio.run(run())
+
+
+def test_approval_broker_rejects_reuse_after_cancellation_and_late_result() -> None:
+    import pytest
+
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+        ApprovalRequestCollisionError,
+        HeadlessApprovalResolver,
+    )
+
+    presented = asyncio.Event()
+
+    class Presenter:
+        def present(self, request: ApprovalRequest) -> None:
+            del request
+            presented.set()
+
+    async def run() -> None:
+        broker = ApprovalBroker(fallback=HeadlessApprovalResolver(mode="deny"))
+        broker.set_presenter(Presenter())
+        request = ApprovalRequest(
+            tool_name="write",
+            arguments={},
+            action_id="approval-reused",
+        )
+        first = asyncio.create_task(broker.resolve(request))
+        await presented.wait()
+        assert broker.cancel_all(ApprovalDecision.deny("session replaced")) == 1
+        assert await first == ApprovalDecision.deny("session replaced")
+
+        with pytest.raises(ApprovalRequestCollisionError):
+            await broker.resolve(request)
+        assert not broker.resolve_request(
+            "approval-reused",
+            ApprovalDecision.allow(),
+        )
+        assert broker.pending_requests() == ()
+        assert broker.dispose(ApprovalDecision.deny("disposed")) == 0
+        assert (await broker.resolve(request)).disposition == "deny"
+
+    asyncio.run(run())
+
+
+def test_approval_broker_cleans_up_presenter_failure_and_caller_cancellation() -> None:
+    import pytest
+
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    class BrokenPresenter:
+        def present(self, request: ApprovalRequest) -> None:
+            del request
+            raise RuntimeError("presentation failed")
+
+    async def run() -> None:
+        broker = ApprovalBroker(fallback=HeadlessApprovalResolver(mode="deny"))
+        broker.set_presenter(BrokenPresenter())
+        with pytest.raises(RuntimeError, match="presentation failed"):
+            await broker.resolve(ApprovalRequest(tool_name="write", arguments={}))
+        assert broker.pending_requests() == ()
+
+        presented = asyncio.Event()
+        dismissed: list[str | None] = []
+
+        class WaitingPresenter:
+            async def present(self, request: ApprovalRequest) -> None:
+                del request
+                presented.set()
+
+            def dismiss(self, request: ApprovalRequest) -> None:
+                dismissed.append(request.action_id)
+
+        broker.set_presenter(WaitingPresenter())
+        task = asyncio.create_task(
+            broker.resolve(ApprovalRequest(tool_name="edit", arguments={}))
+        )
+        await presented.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert broker.pending_requests() == ()
+        assert len(dismissed) == 1
+
+    asyncio.run(run())
+
+
+def test_approval_broker_timeout_uses_validated_fallback() -> None:
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+    )
+
+    dismissed: list[str | None] = []
+
+    class Presenter:
+        def present(self, request: ApprovalRequest) -> None:
+            del request
+
+        def dismiss(self, request: ApprovalRequest) -> None:
+            dismissed.append(request.action_id)
+
+    class AsyncFallback:
+        async def resolve(self, request: ApprovalRequest) -> ApprovalDecision:
+            del request
+            return ApprovalDecision.allow()
+
+    async def run() -> tuple[ApprovalDecision, tuple[ApprovalRequest, ...]]:
+        broker = ApprovalBroker(
+            fallback=AsyncFallback(),
+            timeout_seconds=0.001,
+        )
+        broker.set_presenter(Presenter())
+        decision = await broker.resolve(
+            ApprovalRequest(
+                tool_name="write",
+                arguments={},
+                action_id="approval-timeout-dismiss",
+            )
+        )
+        return decision, broker.pending_requests()
+
+    decision, pending = asyncio.run(run())
+
+    assert decision == ApprovalDecision.allow()
+    assert pending == ()
+    assert dismissed == ["approval-timeout-dismiss"]
+
+
+def test_approval_broker_timeout_preserves_caller_cancellation_from_presenter() -> None:
+    import pytest
+
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    resolution: asyncio.Task[object] | None = None
+
+    class Presenter:
+        async def present(self, request: ApprovalRequest) -> None:
+            del request
+            try:
+                await asyncio.Event().wait()
+            finally:
+                assert resolution is not None
+                resolution.cancel()
+
+    async def run() -> None:
+        nonlocal resolution
+        broker = ApprovalBroker(
+            fallback=HeadlessApprovalResolver(mode="allow"),
+            timeout_seconds=0.001,
+        )
+        broker.set_presenter(Presenter())
+        resolution = asyncio.create_task(
+            broker.resolve(ApprovalRequest(tool_name="write", arguments={}))
+        )
+        with pytest.raises(asyncio.CancelledError):
+            await resolution
+        assert broker.pending_requests() == ()
+
+    asyncio.run(run())
+
+
+def test_approval_broker_does_not_wait_for_async_dismissal() -> None:
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    dismiss_started = asyncio.Event()
+    dismiss_release = asyncio.Event()
+
+    class Presenter:
+        def __init__(self, broker: ApprovalBroker) -> None:
+            self.broker = broker
+
+        def present(self, request: ApprovalRequest) -> None:
+            assert request.action_id is not None
+            assert self.broker.resolve_request(
+                request.action_id,
+                ApprovalDecision.allow(),
+            )
+
+        async def dismiss(self, request: ApprovalRequest) -> None:
+            del request
+            dismiss_started.set()
+            try:
+                await dismiss_release.wait()
+            except asyncio.CancelledError:
+                await dismiss_release.wait()
+
+    async def run() -> None:
+        broker = ApprovalBroker(fallback=HeadlessApprovalResolver(mode="deny"))
+        broker.set_presenter(Presenter(broker))
+        resolved = asyncio.create_task(
+            broker.resolve(ApprovalRequest(tool_name="write", arguments={}))
+        )
+        await dismiss_started.wait()
+        try:
+            assert resolved.done()
+            assert await resolved == ApprovalDecision.allow()
+        finally:
+            dismiss_release.set()
+            await asyncio.sleep(0)
+
+    asyncio.run(run())
+
+
+def test_approval_broker_ignores_sync_dismissal_cancellation() -> None:
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    class Presenter:
+        def __init__(self, broker: ApprovalBroker) -> None:
+            self.broker = broker
+
+        def present(self, request: ApprovalRequest) -> None:
+            assert request.action_id is not None
+            assert self.broker.resolve_request(
+                request.action_id,
+                ApprovalDecision.allow(),
+            )
+
+        def dismiss(self, request: ApprovalRequest) -> None:
+            del request
+            raise asyncio.CancelledError
+
+    async def run() -> ApprovalDecision:
+        broker = ApprovalBroker(fallback=HeadlessApprovalResolver(mode="deny"))
+        broker.set_presenter(Presenter(broker))
+        return await broker.resolve(ApprovalRequest(tool_name="write", arguments={}))
+
+    assert asyncio.run(run()) == ApprovalDecision.allow()
+
+
+def test_approval_broker_timeout_after_async_presenter_uses_fallback() -> None:
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    class Presenter:
+        async def present(self, request: ApprovalRequest) -> None:
+            del request
+
+    async def run() -> tuple[ApprovalDecision, tuple[ApprovalRequest, ...]]:
+        broker = ApprovalBroker(
+            fallback=HeadlessApprovalResolver(mode="allow"),
+            timeout_seconds=0.001,
+        )
+        broker.set_presenter(Presenter())
+        decision = await broker.resolve(
+            ApprovalRequest(tool_name="write", arguments={})
+        )
+        return decision, broker.pending_requests()
+
+    decision, pending = asyncio.run(run())
+
+    assert decision == ApprovalDecision.allow()
+    assert pending == ()
+
+
+def test_approval_broker_dispose_overrides_blocked_timeout_fallback() -> None:
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+    )
+
+    fallback_started = asyncio.Event()
+    fallback_cancelled = asyncio.Event()
+    release_fallback = asyncio.Event()
+
+    class Presenter:
+        def present(self, request: ApprovalRequest) -> None:
+            del request
+
+    class BlockingFallback:
+        async def resolve(self, request: ApprovalRequest) -> ApprovalDecision:
+            del request
+            fallback_started.set()
+            try:
+                await release_fallback.wait()
+            except asyncio.CancelledError:
+                fallback_cancelled.set()
+                await release_fallback.wait()
+            return ApprovalDecision.allow()
+
+    async def run() -> tuple[ApprovalDecision, int]:
+        broker = ApprovalBroker(
+            fallback=BlockingFallback(),
+            timeout_seconds=0.001,
+        )
+        broker.set_presenter(Presenter())
+        resolution = asyncio.create_task(
+            broker.resolve(ApprovalRequest(tool_name="write", arguments={}))
+        )
+        await fallback_started.wait()
+        pending_requests = broker.pending_requests()
+        assert len(pending_requests) == 1
+        action_id = pending_requests[0].action_id
+        assert action_id is not None
+        assert not broker.resolve_request(action_id, ApprovalDecision.allow())
+        completed = broker.dispose(ApprovalDecision.deny("session closed"))
+        try:
+            decision = await asyncio.wait_for(resolution, timeout=0.2)
+            assert broker.pending_requests() == ()
+            await fallback_cancelled.wait()
+            return decision, completed
+        finally:
+            release_fallback.set()
+            await asyncio.sleep(0)
+
+    decision, completed = asyncio.run(run())
+
+    assert decision == ApprovalDecision.deny("session closed")
+    assert completed == 1
+
+
+def test_approval_broker_rejects_late_ui_result_after_timeout() -> None:
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+    )
+
+    fallback_started = asyncio.Event()
+    release_fallback = asyncio.Event()
+
+    class Presenter:
+        def present(self, request: ApprovalRequest) -> None:
+            del request
+
+    class BlockingFallback:
+        async def resolve(self, request: ApprovalRequest) -> ApprovalDecision:
+            del request
+            fallback_started.set()
+            await release_fallback.wait()
+            return ApprovalDecision.deny("fallback denied")
+
+    async def run() -> ApprovalDecision:
+        broker = ApprovalBroker(
+            fallback=BlockingFallback(),
+            timeout_seconds=0.001,
+        )
+        broker.set_presenter(Presenter())
+        resolution = asyncio.create_task(
+            broker.resolve(ApprovalRequest(tool_name="write", arguments={}))
+        )
+        await fallback_started.wait()
+        request = broker.pending_requests()[0]
+        assert request.action_id is not None
+        assert not broker.resolve_request(
+            request.action_id,
+            ApprovalDecision.allow(),
+        )
+        release_fallback.set()
+        return await resolution
+
+    assert asyncio.run(run()) == ApprovalDecision.deny("fallback denied")
+
+
+def test_approval_broker_propagates_presenter_timeout_error() -> None:
+    import pytest
+
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    class Presenter:
+        async def present(self, request: ApprovalRequest) -> None:
+            del request
+            raise TimeoutError("presenter internal timeout")
+
+    async def run() -> None:
+        broker = ApprovalBroker(
+            fallback=HeadlessApprovalResolver(mode="allow"),
+            timeout_seconds=1,
+        )
+        broker.set_presenter(Presenter())
+        with pytest.raises(TimeoutError, match="presenter internal timeout"):
+            await broker.resolve(ApprovalRequest(tool_name="write", arguments={}))
+        assert broker.pending_requests() == ()
+
+    asyncio.run(run())
+
+
+def test_approval_broker_timeout_does_not_wait_for_cancel_resistant_presenter() -> None:
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    presentation_cancelled = asyncio.Event()
+    release_presenter = asyncio.Event()
+
+    class Presenter:
+        async def present(self, request: ApprovalRequest) -> None:
+            del request
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                presentation_cancelled.set()
+                await release_presenter.wait()
+
+    async def run() -> ApprovalDecision:
+        broker = ApprovalBroker(
+            fallback=HeadlessApprovalResolver(mode="allow"),
+            timeout_seconds=0.001,
+        )
+        broker.set_presenter(Presenter())
+        resolution = asyncio.create_task(
+            broker.resolve(ApprovalRequest(tool_name="write", arguments={}))
+        )
+        await presentation_cancelled.wait()
+        await asyncio.sleep(0.01)
+        try:
+            assert resolution.done()
+            return await resolution
+        finally:
+            release_presenter.set()
+            await asyncio.sleep(0)
+
+    assert asyncio.run(run()) == ApprovalDecision.allow()
+
+
+def test_approval_broker_redismisses_cancel_resistant_late_presentation() -> None:
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    presentation_cancelled = asyncio.Event()
+    release_presenter = asyncio.Event()
+    events: list[str] = []
+
+    class Presenter:
+        async def present(self, request: ApprovalRequest) -> None:
+            del request
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                presentation_cancelled.set()
+                await release_presenter.wait()
+                events.append("presented-after-cancel")
+
+        def dismiss(self, request: ApprovalRequest) -> None:
+            del request
+            events.append("dismissed")
+
+    async def run() -> ApprovalDecision:
+        broker = ApprovalBroker(
+            fallback=HeadlessApprovalResolver(mode="allow"),
+            timeout_seconds=0.001,
+        )
+        broker.set_presenter(Presenter())
+        decision = await broker.resolve(
+            ApprovalRequest(tool_name="write", arguments={})
+        )
+        await presentation_cancelled.wait()
+        assert events == ["dismissed"]
+        release_presenter.set()
+        for _ in range(10):
+            if events == [
+                "dismissed",
+                "presented-after-cancel",
+                "dismissed",
+            ]:
+                break
+            await asyncio.sleep(0)
+        return decision
+
+    assert asyncio.run(run()) == ApprovalDecision.allow()
+    assert events == ["dismissed", "presented-after-cancel", "dismissed"]
+
+
+def test_approval_broker_redismisses_late_presentation_that_reraises_cancel() -> None:
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    presentation_cancelled = asyncio.Event()
+    release_presenter = asyncio.Event()
+    events: list[str] = []
+
+    class Presenter:
+        async def present(self, request: ApprovalRequest) -> None:
+            del request
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                presentation_cancelled.set()
+                await release_presenter.wait()
+                events.append("presented-after-cancel")
+                raise
+
+        def dismiss(self, request: ApprovalRequest) -> None:
+            del request
+            events.append("dismissed")
+
+    async def run() -> None:
+        broker = ApprovalBroker(
+            fallback=HeadlessApprovalResolver(mode="allow"),
+            timeout_seconds=0.001,
+        )
+        broker.set_presenter(Presenter())
+        await broker.resolve(ApprovalRequest(tool_name="write", arguments={}))
+        await presentation_cancelled.wait()
+        assert events == ["dismissed"]
+        release_presenter.set()
+        for _ in range(10):
+            if events == [
+                "dismissed",
+                "presented-after-cancel",
+                "dismissed",
+            ]:
+                break
+            await asyncio.sleep(0)
+
+    asyncio.run(run())
+
+    assert events == ["dismissed", "presented-after-cancel", "dismissed"]
+
+
+def test_approval_broker_dispose_completes_pending_and_uses_fallback_afterward() -> (
+    None
+):
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    presented = asyncio.Event()
+
+    class Presenter:
+        async def present(self, request: ApprovalRequest) -> None:
+            del request
+            presented.set()
+
+    async def run() -> tuple[ApprovalDecision, ApprovalDecision, int, int]:
+        broker = ApprovalBroker(
+            fallback=HeadlessApprovalResolver(mode="allow"),
+        )
+        broker.set_presenter(Presenter())
+        pending = asyncio.create_task(
+            broker.resolve(ApprovalRequest(tool_name="write", arguments={}))
+        )
+        await presented.wait()
+        completed = broker.dispose(ApprovalDecision.deny("session closed"))
+        duplicate_dispose = broker.dispose(ApprovalDecision.deny("ignored"))
+        first = await pending
+        after = await broker.resolve(ApprovalRequest(tool_name="read", arguments={}))
+        return first, after, completed, duplicate_dispose
+
+    first, after, completed, duplicate_dispose = asyncio.run(run())
+
+    assert first == ApprovalDecision.deny("session closed")
+    assert after == ApprovalDecision.allow()
+    assert completed == 1
+    assert duplicate_dispose == 0
+
+
+def test_approval_broker_dispose_interrupts_pending_async_presentation() -> None:
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    presenting = asyncio.Event()
+    presentation_cancelled = asyncio.Event()
+
+    class Presenter:
+        async def present(self, request: ApprovalRequest) -> None:
+            del request
+            presenting.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                presentation_cancelled.set()
+
+    async def run() -> ApprovalDecision:
+        broker = ApprovalBroker(
+            fallback=HeadlessApprovalResolver(mode="allow"),
+        )
+        broker.set_presenter(Presenter())
+        pending = asyncio.create_task(
+            broker.resolve(ApprovalRequest(tool_name="write", arguments={}))
+        )
+        await presenting.wait()
+        assert broker.dispose(ApprovalDecision.deny("session closed")) == 1
+        decision = await pending
+        await presentation_cancelled.wait()
+        return decision
+
+    assert asyncio.run(run()) == ApprovalDecision.deny("session closed")
+
+
+def test_approval_broker_resolves_concurrent_requests_independently() -> None:
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    presented = asyncio.Event()
+    requests: list[ApprovalRequest] = []
+
+    class Presenter:
+        def present(self, request: ApprovalRequest) -> None:
+            requests.append(request)
+            if len(requests) == 2:
+                presented.set()
+
+    async def run() -> tuple[ApprovalDecision, ApprovalDecision]:
+        broker = ApprovalBroker(fallback=HeadlessApprovalResolver(mode="deny"))
+        broker.set_presenter(Presenter())
+        first = asyncio.create_task(
+            broker.resolve(
+                ApprovalRequest(
+                    tool_name="write",
+                    arguments={},
+                    action_id="approval-first",
+                )
+            )
+        )
+        second = asyncio.create_task(
+            broker.resolve(
+                ApprovalRequest(
+                    tool_name="publish",
+                    arguments={},
+                    action_id="approval-second",
+                )
+            )
+        )
+        await presented.wait()
+
+        assert broker.cancel_request(
+            "approval-first", ApprovalDecision.deny("cancelled")
+        )
+        assert not second.done()
+        assert broker.resolve_request("approval-second", ApprovalDecision.allow())
+        decisions = await asyncio.gather(first, second)
+        assert broker.pending_requests() == ()
+        return decisions[0], decisions[1]
+
+    first, second = asyncio.run(run())
+
+    assert first == ApprovalDecision.deny("cancelled")
+    assert second == ApprovalDecision.allow()
+
+
+def test_approval_broker_can_be_reused_across_sequential_event_loops() -> None:
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    broker = ApprovalBroker(fallback=HeadlessApprovalResolver(mode="deny"))
+
+    class Presenter:
+        def present(self, request: ApprovalRequest) -> None:
+            assert request.action_id is not None
+            assert broker.resolve_request(request.action_id, ApprovalDecision.allow())
+
+    broker.set_presenter(Presenter())
+
+    async def resolve(tool_name: str) -> ApprovalDecision:
+        return await broker.resolve(ApprovalRequest(tool_name=tool_name, arguments={}))
+
+    assert asyncio.run(resolve("write")) == ApprovalDecision.allow()
+    assert asyncio.run(resolve("publish")) == ApprovalDecision.allow()
+
+
+def test_approval_broker_wrong_loop_dispose_does_not_poison_owner_cleanup() -> None:
+    import pytest
+
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    class Presenter:
+        def present(self, request: ApprovalRequest) -> None:
+            del request
+
+    broker = ApprovalBroker(fallback=HeadlessApprovalResolver(mode="allow"))
+    broker.set_presenter(Presenter())
+    owner_loop = asyncio.new_event_loop()
+
+    async def start_request() -> asyncio.Task[ApprovalDecision]:
+        task = asyncio.create_task(
+            broker.resolve(ApprovalRequest(tool_name="write", arguments={}))
+        )
+        await asyncio.sleep(0)
+        return task
+
+    pending = owner_loop.run_until_complete(start_request())
+
+    async def dispose_on_wrong_loop() -> None:
+        broker.dispose(ApprovalDecision.deny("wrong loop"))
+
+    with pytest.raises(RuntimeError, match="owning event loop"):
+        asyncio.run(dispose_on_wrong_loop())
+
+    async def dispose_on_owner_loop() -> ApprovalDecision:
+        assert broker.dispose(ApprovalDecision.deny("owner cleanup")) == 1
+        return await pending
+
+    try:
+        decision = owner_loop.run_until_complete(dispose_on_owner_loop())
+    finally:
+        if not pending.done():
+            pending.cancel()
+            owner_loop.run_until_complete(
+                asyncio.gather(pending, return_exceptions=True)
+            )
+        owner_loop.close()
+
+    assert decision == ApprovalDecision.deny("owner cleanup")
+
+
+def test_approval_broker_invalid_dispose_decision_does_not_poison_cleanup() -> None:
+    import pytest
+
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    presented = asyncio.Event()
+
+    class Presenter:
+        def present(self, request: ApprovalRequest) -> None:
+            del request
+            presented.set()
+
+    async def run() -> ApprovalDecision:
+        broker = ApprovalBroker(fallback=HeadlessApprovalResolver(mode="allow"))
+        broker.set_presenter(Presenter())
+        pending = asyncio.create_task(
+            broker.resolve(ApprovalRequest(tool_name="write", arguments={}))
+        )
+        await presented.wait()
+        with pytest.raises(TypeError, match="ApprovalDecision"):
+            broker.dispose(object())  # type: ignore[arg-type]
+        assert broker.dispose(ApprovalDecision.deny("valid cleanup")) == 1
+        return await pending
+
+    assert asyncio.run(run()) == ApprovalDecision.deny("valid cleanup")
+
+
+def test_approval_broker_unknown_and_late_results_do_not_mutate_state() -> None:
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        HeadlessApprovalResolver,
+    )
+
+    broker = ApprovalBroker(fallback=HeadlessApprovalResolver(mode="deny"))
+
+    assert not broker.resolve_request("missing", ApprovalDecision.allow())
+    assert not broker.cancel_request("missing", ApprovalDecision.deny("late"))
+
+
+def test_approval_broker_rejects_presenter_rebind_after_disposal() -> None:
+    import pytest
+
+    from loushang.harness.approval import (
+        ApprovalBroker,
+        ApprovalDecision,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    presented = False
+
+    class Presenter:
+        def present(self, request: ApprovalRequest) -> None:
+            nonlocal presented
+            del request
+            presented = True
+
+    broker = ApprovalBroker(fallback=HeadlessApprovalResolver(mode="deny"))
+    assert broker.dispose(ApprovalDecision.deny("closed")) == 0
+    broker.set_presenter(None)
+    with pytest.raises(RuntimeError, match="disposed"):
+        broker.set_presenter(Presenter())
+
+    decision = asyncio.run(
+        broker.resolve(ApprovalRequest(tool_name="write", arguments={}))
+    )
+    assert decision.disposition == "deny"
+    assert not presented

@@ -1,15 +1,31 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from io import StringIO
 from types import SimpleNamespace
+
+from loushang.harness.events import RuntimeEvent
+
+
+def _runtime_event(payload: dict[str, object]) -> RuntimeEvent[object]:
+    return RuntimeEvent(
+        event_id="event-1",
+        kind=f"agent.{payload['type']}",
+        stream_id="session:test",
+        sequence=1,
+        occurred_at=datetime(2026, 7, 16, tzinfo=UTC),
+        payload=payload,
+    )
 
 
 def test_prompt_command_renders_stable_transcript_and_worked() -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage
     from loushang.coding.prompt_command import run_prompt_command
 
-    usage = Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    usage = Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
 
     class FakeRuntime:
         def __init__(self) -> None:
@@ -97,7 +113,7 @@ def test_prompt_command_selects_usable_model_before_prompt() -> None:
 
     kimi = Model(
         id="kimi-for-coding",
-        provider="moonshot",
+        provider="kimi-code",
         endpoint="kimi-code-anthropic",
     )
 
@@ -119,7 +135,9 @@ def test_prompt_command_selects_usable_model_before_prompt() -> None:
 
         async def set_model(self, selection):
             self.set_model_calls.append(selection)
-            self.current_model = ModelSelection(provider=selection.provider_id, model_id=selection.id)
+            self.current_model = ModelSelection(
+                provider=selection.provider_id, model_id=selection.id
+            )
 
         def subscribe(self, listener):
             self.listeners.append(listener)
@@ -147,7 +165,9 @@ def test_prompt_command_selects_usable_model_before_prompt() -> None:
 
         assert exit_code == 0
         assert session.set_model_calls == [kimi]
-        assert session.prompt_calls == [("hello", ModelSelection(provider="moonshot", model_id="kimi-for-coding"))]
+        assert session.prompt_calls == [
+            ("hello", ModelSelection(provider="kimi-code", model_id="kimi-for-coding"))
+        ]
 
     asyncio.run(scenario())
 
@@ -164,6 +184,7 @@ def test_prompt_command_work_event_log_records_prompt_turn() -> None:
 
         def __init__(self) -> None:
             self.listeners = []
+            self.runtime_listeners = []
 
         def get_model_selection(self):
             return None
@@ -176,16 +197,27 @@ def test_prompt_command_work_event_log_records_prompt_turn() -> None:
 
             return unsubscribe
 
+        def subscribe_runtime_events(self, listener):
+            self.runtime_listeners.append(listener)
+
+            def unsubscribe() -> None:
+                self.runtime_listeners.remove(listener)
+
+            return unsubscribe
+
         async def prompt(self, user_input: str, images=None) -> None:
             del user_input, images
+            payload = {
+                "type": "message_update",
+                "message": {"role": "assistant"},
+                "assistant_message_event": {"type": "text_delta", "text": "done"},
+            }
             for listener in list(self.listeners):
-                result = listener(
-                    {
-                        "type": "message_update",
-                        "message": {"role": "assistant"},
-                        "assistant_message_event": {"type": "text_delta", "text": "done"},
-                    }
-                )
+                result = listener(payload)
+                if result is not None:
+                    await result
+            for listener in list(self.runtime_listeners):
+                result = listener(_runtime_event(payload))
                 if result is not None:
                     await result
 
@@ -266,7 +298,9 @@ def test_prompt_command_does_not_render_worked_after_assistant_error() -> None:
 
         rendered = stdout.getvalue()
         assert exit_code == 1
-        assert "■ Error: Endpoint not found for model: unknown:unknown:unknown" in rendered
+        assert (
+            "■ Error: Endpoint not found for model: unknown:unknown:unknown" in rendered
+        )
         assert "Worked for" not in rendered
         assert stderr.getvalue() == ""
 

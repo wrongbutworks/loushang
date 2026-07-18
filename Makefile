@@ -17,8 +17,68 @@ BINARY_NAME := loushang$(EXE_EXT)
 DIST_BINARY := dist/$(BINARY_NAME)
 AI_OFFLINE_ENV := env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_OAUTH_TOKEN -u ANTHROPIC_BASE_URL -u ARK_API_KEY -u BAIDU_QIANFAN_API_KEY -u COPILOT_GITHUB_TOKEN -u DASHSCOPE_API_KEY -u DEEPSEEK_API_KEY -u GH_TOKEN -u GITHUB_TOKEN -u HUNYUAN_API_KEY -u MINIMAX_API_KEY -u MOONSHOT_API_KEY -u OPENAI_API_KEY -u QIANFAN_API_KEY -u STEPFUN_API_KEY -u STEP_API_KEY -u ZAI_API_KEY
 
-.PHONY: bootstrap test test-ai check-ai test-tui lint-ai fmt-ai typecheck-ai typecheck-tui build-binary install-binary clean-binary vendor-ai-moonshot-anthropic-stream vendor-ai-moonshot-anthropic-complete vendor-ai-moonshot-anthropic-tools vendor-ai-moonshot-openai-stream vendor-ai-moonshot-openai-complete vendor-ai-moonshot-openai-tools vendor-ai-dashscope-openai-responses-stream vendor-ai-dashscope-openai-responses-tools vendor-ai-moonshot-custom-base-url-openai example-ai-model-lookup example-ai-complete example-ai-stream example-ai-tools example-ai-typed-context example-ai-advanced-faux-stream example-ai-advanced-context-tools example-ai-advanced-tool-result-roundtrip example-ai-kimi-anthropic-stream example-ai-kimi-anthropic-complete example-ai-kimi-anthropic-tools example-ai-kimi-openai-stream example-ai-kimi-openai-complete example-ai-kimi-openai-tools example-ai-dashscope-openai-responses-stream example-ai-dashscope-openai-responses-tools example-ai-custom-base-url-openai-advanced example-ai-faux-stream example-ai-context-tools-minimal example-ai-tool-result-roundtrip
+HARNESSTUI_SHARED_SOURCES := \
+	src/loushang/tui/clipboard_image.py \
+	src/loushang/tui/settings.py \
+	src/loushang/harnesstui
+HARNESSTUI_CODING_ADAPTERS := \
+	src/loushang/coding/platform/__init__.py \
+	src/loushang/coding/platform/clipboard_image.py \
+	src/loushang/coding/ui/command_list.py \
+	src/loushang/coding/ui/completion.py \
+	src/loushang/coding/ui/conversation_event_adapter.py \
+	src/loushang/coding/ui/model_list.py \
+	src/loushang/coding/ui/plain_app.py \
+	src/loushang/coding/ui/plain_events.py \
+	src/loushang/coding/ui/plain_renderer.py \
+	src/loushang/coding/ui/plain_toolbar.py \
+	src/loushang/coding/ui/playback_scenarios/surface.py \
+	src/loushang/coding/ui/screen_app.py \
+	src/loushang/coding/ui/screen_events.py \
+	src/loushang/coding/ui/screen_input.py \
+	src/loushang/coding/ui/screen_state.py \
+	src/loushang/coding/ui/screen_surfaces.py \
+	src/loushang/coding/ui/settings_common.py \
+	src/loushang/coding/ui/settings_config.py \
+	src/loushang/coding/ui/settings_page.py \
+	src/loushang/coding/ui/settings_status_line.py \
+	src/loushang/coding/ui/status_line.py \
+	src/loushang/coding/ui/tool_blocks.py \
+	src/loushang/coding/ui/transcript_projection.py \
+	src/loushang/coding/ui/transcript_reader.py \
+	src/loushang/coding/ui/transcript_source.py
+HARNESSTUI_TEST_PATHS := \
+	tests/harnesstui \
+	tests/tui/test_clipboard_image.py \
+	tests/tui/test_import_boundaries.py \
+	tests/tui/test_settings.py \
+	tests/architecture/test_import_boundaries.py \
+	tests/coding/test_platform_utils.py \
+	tests/coding/test_ui_import_boundaries.py \
+	tests/coding/test_screen_coding_tui_app.py \
+	tests/coding/test_screen_coding_tui_events.py \
+	tests/coding/test_screen_coding_tui_input.py \
+	tests/coding/test_screen_coding_tui_mode.py \
+	tests/coding/test_screen_coding_tui_state.py \
+	tests/coding/test_screen_coding_tui_surfaces.py \
+	tests/coding/test_screen_settings_page.py \
+	tests/coding/test_screen_tui_transcript_reader.py \
+	tests/coding/test_tool_transcript_blocks.py \
+	tests/coding/test_ui_command_list.py \
+	tests/coding/test_ui_completion.py \
+	tests/coding/test_ui_conversation_event_adapter.py \
+	tests/coding/test_ui_model_list.py \
+	tests/coding/test_ui_plain_app.py \
+	tests/coding/test_ui_plain_toolbar.py \
+	tests/coding/test_ui_plain_renderer.py \
+	tests/coding/test_ui_status_line.py \
+	tests/coding/test_ui_status_provider.py \
+	tests/coding/test_ui_transcript_projection.py \
+	tests/coding/test_ui_transcript_source.py
+
+.PHONY: bootstrap test test-ai check-ai test-tui test-tui-render-contract lint-ai fmt-ai typecheck-ai typecheck-tui build-binary install-binary clean-binary vendor-ai-moonshot-anthropic-stream vendor-ai-moonshot-anthropic-complete vendor-ai-moonshot-anthropic-tools vendor-ai-moonshot-openai-stream vendor-ai-moonshot-openai-complete vendor-ai-moonshot-openai-tools vendor-ai-dashscope-openai-responses-stream vendor-ai-dashscope-openai-responses-tools example-ai-model-lookup example-ai-complete example-ai-stream example-ai-tools example-ai-typed-context example-ai-advanced-faux-stream example-ai-advanced-context-tools example-ai-advanced-tool-result-roundtrip example-ai-kimi-anthropic-stream example-ai-kimi-anthropic-complete example-ai-kimi-anthropic-tools example-ai-kimi-openai-stream example-ai-kimi-openai-complete example-ai-kimi-openai-tools example-ai-dashscope-openai-responses-stream example-ai-dashscope-openai-responses-tools example-ai-custom-base-url-openai-advanced example-ai-faux-stream example-ai-context-tools-minimal example-ai-tool-result-roundtrip
 .PHONY: check-ai-catalog check-ai-examples check-ai-imports check-ai-coverage
+.PHONY: check-harnesstui lint-harnesstui typecheck-harnesstui test-harnesstui
 
 bootstrap:
 	test -d .venv || uv venv .venv
@@ -46,8 +106,22 @@ check-ai-coverage:
 	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run pytest tests/ai tests/protocols tests/examples/test_ai_examples.py -m "not live" --cov=src/loushang/ai --cov-report=term-missing:skip-covered --cov-report=xml:.artifacts/ai/coverage.xml --cov-fail-under=90 -q
 	uv run python scripts/ai/check_coverage_targets.py .artifacts/ai/coverage.xml
 
+check-harnesstui: lint-harnesstui typecheck-harnesstui test-harnesstui
+
+lint-harnesstui:
+	uv --cache-dir .uv-cache run --extra dev ruff check $(HARNESSTUI_SHARED_SOURCES) $(HARNESSTUI_CODING_ADAPTERS) src/loushang/coding/ui/status_provider.py $(HARNESSTUI_TEST_PATHS)
+
+typecheck-harnesstui:
+	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(HARNESSTUI_SHARED_SOURCES) $(HARNESSTUI_CODING_ADAPTERS) src/loushang/coding/ui/status_provider.py
+
+test-harnesstui:
+	uv --cache-dir .uv-cache run --extra dev pytest $(HARNESSTUI_TEST_PATHS) -m "not tui_render_contract" -q
+
 test-tui:
 	. .venv/bin/activate && python -m pytest tests/tui -q
+
+test-tui-render-contract:
+	uv --cache-dir .uv-cache run pytest tests/tui tests/coding -m tui_render_contract -q
 
 lint-ai:
 	. .venv/bin/activate && uv run ruff check src/loushang/ai examples/ai tests/ai tests/protocols scripts/ai
@@ -87,9 +161,6 @@ vendor-ai-dashscope-openai-responses-stream:
 
 vendor-ai-dashscope-openai-responses-tools:
 	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/dashscope/test_openai_responses_tools_live.py -q -s
-
-vendor-ai-moonshot-custom-base-url-openai:
-	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_custom_base_url_openai_live.py -q -s
 
 .PHONY: example-ai-offline example-ai-provider-matrix example-ai-provider-smoke
 

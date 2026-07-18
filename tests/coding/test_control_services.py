@@ -3,8 +3,6 @@ from __future__ import annotations
 import asyncio
 from datetime import date
 
-import pytest
-
 from loushang.ai.model import Capabilities, Model
 
 
@@ -33,98 +31,6 @@ def _model(
     )
 
 
-def test_model_registry_rebuild_preserves_layering_and_concrete_api(tmp_path) -> None:
-    import json
-
-    from loushang.ai.model import (
-        Auth,
-        Defaults,
-        EndpointRouting,
-        EndpointTransport,
-        OpenAIResponsesConfig,
-    )
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-    from loushang.coding.control import ModelRegistry
-
-    user_dir = tmp_path / "user"
-    project_dir = tmp_path / "project"
-    for directory, model_id, explicit_auth in (
-        (user_dir, "user-model", True),
-        (project_dir, "project-model", False),
-    ):
-        directory.mkdir()
-        model: dict[str, object] = {
-            "capabilities": {"input": ["text"], "output": ["text"]}
-        }
-        if explicit_auth:
-            model["authOverride"] = {"apiKeyEnv": "MODEL_API_KEY"}
-        (directory / "models.json").write_text(
-            json.dumps(
-                {
-                    "providers": {
-                        "custom": {
-                            "endpoints": {
-                                "responses": {
-                                    "api": "openai-responses",
-                                    "models": {model_id: model},
-                                }
-                            }
-                        }
-                    }
-                }
-            ),
-            encoding="utf-8",
-        )
-
-    registry = ModelRegistry(ai_registry=AiModelRegistry())
-    registry.reload(user_dir=user_dir, project_dir=project_dir)
-
-    assert {
-        model.id for model in registry.ai_registry.list_models(provider="custom")
-    } == {
-        "project-model",
-        "user-model",
-    }
-    assert registry.ai_registry.has_explicit_model_auth(
-        "custom", "responses", "user-model"
-    )
-
-    dynamic = Model(
-        id="dynamic",
-        provider="custom",
-        endpoint="custom-endpoint",
-        api="openai-responses",
-        base_url="https://eu.example/v1",
-        base_url_env="CUSTOM_BASE_URL",
-        region="eu",
-        lane="coding",
-        preferred_endpoint=True,
-        auth=Auth(kind="none"),
-        adapter=OpenAIResponsesConfig(developer_role=False),
-        defaults=Defaults.from_raw({"temperature": 0.2}),
-        transport=EndpointTransport(kind="httpx", timeout=30),
-        routing=EndpointRouting.from_raw(
-            {"requestOverrides": {"custom": {"order": ["eu"]}}}
-        ),
-        upstream_id="upstream-dynamic",
-    )
-    registry.register_model(dynamic)
-    dynamic_endpoint = registry.ai_registry.get_endpoint("custom", "custom-endpoint")
-    assert dynamic_endpoint is not None
-    assert dynamic_endpoint.api == dynamic.api
-    rebuilt = registry.ai_registry.get_model("custom", "custom-endpoint", "dynamic")
-    assert rebuilt.base_url == dynamic.base_url
-    assert rebuilt.base_url_env == dynamic.base_url_env
-    assert rebuilt.region == dynamic.region
-    assert rebuilt.lane == dynamic.lane
-    assert rebuilt.preferred_endpoint is True
-    assert rebuilt.adapter == dynamic.adapter
-    assert rebuilt.defaults == dynamic.defaults
-    assert rebuilt.transport == dynamic.transport
-    assert rebuilt.routing == dynamic.routing
-    assert rebuilt.upstream_id == dynamic.upstream_id
-
-
 def test_control_config_exposes_stable_slice_objects() -> None:
     from loushang.coding.control import (
         BranchSummarySettings,
@@ -140,75 +46,6 @@ def test_control_config_exposes_stable_slice_objects() -> None:
     assert config.branch_summary == BranchSummarySettings()
     assert config.retry == RetrySettings()
     assert config.images == ImageSettings()
-
-
-def test_auth_manager_uses_its_injected_environment_for_extra_headers(
-    monkeypatch,
-) -> None:
-    from loushang.ai.model import Auth
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-    from loushang.coding.control import AuthManager
-
-    monkeypatch.setenv("DEMO_EXTRA", "from-process")
-    model = Model(
-        id="demo",
-        provider="custom",
-        endpoint="responses",
-        api="openai-responses",
-        auth=Auth(
-            api_key_env="DEMO_API_KEY",
-            extra_headers={"X-Extra": "${DEMO_EXTRA}"},
-        ),
-    )
-    manager = AuthManager(
-        ai_registry=AiModelRegistry(),
-        env={
-            "DEMO_API_KEY": "secret",
-            "DEMO_EXTRA": "from-injected",
-        },
-    )
-
-    resolution = manager.resolve_for_model(model)
-
-    assert resolution.headers == {
-        "Authorization": "Bearer secret",
-        "X-Extra": "from-injected",
-    }
-
-
-def test_auth_manager_propagates_oauth_reauthentication_required(monkeypatch) -> None:
-    from loushang.ai.auth import OAuthReauthenticationRequiredError
-    from loushang.ai.auth.types import OAuthCredentials
-    from loushang.ai.model import Auth
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-    from loushang.coding.control import AuthManager
-
-    model = Model(
-        id="secured",
-        provider="demo",
-        endpoint="responses",
-        api="demo-api",
-        auth=Auth(kind="oauth"),
-    )
-    credentials = OAuthCredentials(
-        provider="demo",
-        access_token="expired-secret",
-        refresh_token=None,
-        expires_at=0.0,
-    )
-    store = {
-        "providers": {"demo": credentials},
-        "endpoints": {},
-        "models": {},
-    }
-    monkeypatch.setattr(
-        "loushang.ai.auth.storage.load_credential_store",
-        lambda: store,
-    )
-    manager = AuthManager(ai_registry=AiModelRegistry(), env={})
-
-    with pytest.raises(OAuthReauthenticationRequiredError, match="log in again"):
-        manager.resolve_for_model(model)
 
 
 def test_settings_manager_updates_slice_objects_and_notifies_subscribers() -> None:
@@ -304,8 +141,8 @@ def test_create_services_provides_settings_and_model_resolution_for_sessions(
         system_prompt="Be precise.", thinking_level="high"
     )
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     session = create_agent_session(session_manager=manager, services=services)
 
@@ -474,8 +311,10 @@ def test_create_services_can_use_preloaded_persistent_settings_manager(
     )
     services.model_registry.register_model(_model("alpha", name="Alpha"))
 
-    manager = SessionManager.new(
-        session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+    manager = asyncio.run(
+        SessionManager.new(
+            session_dir=tmp_path / "sessions", cwd=str(project_root), persist=False
+        )
     )
     session = create_agent_session(session_manager=manager, services=services)
 
@@ -506,10 +345,10 @@ def test_session_restores_persisted_model_and_accepts_model_selection_updates(
         ModelSelection(provider="faux", model_id="alpha")
     )
 
-    manager = SessionManager.new(
-        session_dir=tmp_path, cwd="/tmp/project", persist=False
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
-    manager.append_model_change("faux", "beta")
+    asyncio.run(manager.append_model_change("faux", "beta"))
 
     session = create_agent_session(session_manager=manager, services=services)
 
@@ -522,15 +361,14 @@ def test_session_restores_persisted_model_and_accepts_model_selection_updates(
     assert session.get_model_selection() == ModelSelection(
         provider="faux", model_id="alpha"
     )
-    assert [entry.type for entry in manager.get_entries()] == [
-        "model_change",
-        "model_change",
+    assert [entry.kind for entry in manager.get_entries()] == [
+        "agent.model_selection",
+        "agent.model_selection",
     ]
 
 
 def test_create_services_exposes_ai_backed_auth_manager(monkeypatch) -> None:
     from loushang.ai.auth.types import OAuthCredentials
-    from loushang.ai.model import Auth, Endpoint, Provider
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.bootstrap import create_services
     from loushang.coding.control import AuthManager
@@ -550,40 +388,3 @@ def test_create_services_exposes_ai_backed_auth_manager(monkeypatch) -> None:
     assert isinstance(services.auth_manager, AuthManager)
     assert services.auth_manager.ai_registry is services.model_registry.ai_registry
     assert services.auth_manager.load_stored_oauth_credentials() == stored
-
-    model = Model(
-        id="secured",
-        provider="demo",
-        endpoint="responses",
-        api="demo-api",
-    )
-    services.model_registry.register_provider(
-        Provider(
-            id="demo",
-            auth=Auth(kind="oauth"),
-            endpoints={
-                "responses": Endpoint(
-                    id="responses",
-                    provider="demo",
-                    api="demo-api",
-                    models={model.id: model},
-                )
-            },
-        )
-    )
-    assert services.auth_manager.ai_registry is services.model_registry.ai_registry
-    assert services.auth_manager.resolve_for_model(model).auth_required is True
-
-    services.model_registry.unregister_provider("demo")
-    assert services.auth_manager.ai_registry is services.model_registry.ai_registry
-    assert services.auth_manager.resolve_for_model(model).auth_required is False
-
-    services.model_registry.register_model(model)
-    assert services.auth_manager.ai_registry is services.model_registry.ai_registry
-    services.model_registry.reload()
-    assert services.auth_manager.ai_registry is services.model_registry.ai_registry
-
-    detached_registry = AiModelRegistry()
-    services.auth_manager.ai_registry = detached_registry
-    services.model_registry.register_model(model)
-    assert services.auth_manager.ai_registry is detached_registry

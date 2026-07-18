@@ -108,6 +108,14 @@ def test_tool_to_definition_preserves_explicit_decorated_metadata() -> None:
     assert definition.parameters["properties"]["name"]["type"] == "string"
 
 
+def test_authoring_private_spec_attr_is_direct_import_only() -> None:
+    from loushang.coding.tools import authoring
+    from loushang.coding.tools.authoring import _TOOL_SPEC_ATTR
+
+    assert _TOOL_SPEC_ATTR == "__loushang_tool_spec__"
+    assert "_TOOL_SPEC_ATTR" not in authoring.__all__
+
+
 def test_tool_to_definition_rejects_duck_typed_tool_like_objects() -> None:
     class DuckTypedTool:
         name = "duck"

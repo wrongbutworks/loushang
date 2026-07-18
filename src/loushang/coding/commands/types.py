@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
-from loushang.coding.source_info import SourceInfo
+from loushang.harness.capabilities.commands import CommandDescriptor
+from loushang.harness.resources.source import SourceInfo
 
 SlashCommandSource = Literal["builtin", "extension", "prompt", "skill"]
 
@@ -12,14 +13,9 @@ CommandSourceInfo = SourceInfo
 
 
 @dataclass(frozen=True)
-class SessionCommandDescriptor:
-    name: str
-    description: str | None
+class SessionCommandDescriptor(CommandDescriptor[SourceInfo[str]]):
     source: SlashCommandSource
-    source_info: CommandSourceInfo
-    invocation_name: str | None = None
-    conflict_group: str | None = None
-    argument_hint: str | None = None
+    source_info: SourceInfo[str] = field()
 
 
 @dataclass(frozen=True)
@@ -27,7 +23,7 @@ class SlashCommandInfo:
     name: str
     description: str | None
     source: SlashCommandSource
-    source_info: CommandSourceInfo
+    source_info: SourceInfo[str]
 
 
 @dataclass(frozen=True)

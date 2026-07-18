@@ -1,25 +1,41 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
 
 from loushang.agent import AbortController, Agent
-from loushang.ai.types import UserMessage
+from loushang.ai.types import TextPart, UserMessage
 from loushang.coding.compaction import (
+    BranchSummaryDetails,
+    BranchSummaryResult,
     collect_entries_for_branch_summary,
     generate_branch_summary,
 )
-from loushang.coding.event import AgentSessionEvent
 from loushang.coding.extensions import ExtensionRunner, SessionBeforeTreeEvent
-from loushang.coding.message import CustomMessageEntry, SessionMessageEntry
 from loushang.coding.session.types import TreeNavigationResult
 from loushang.coding.store import SessionManager
+from loushang.harness.agent_transcript import (
+    AGENT_MESSAGE_KIND,
+    APPLICATION_MESSAGE_KIND,
+    AgentTranscriptContext,
+    ApplicationMessage,
+)
+from loushang.harness.events import (
+    BranchSummaryCompleted,
+    BranchSummaryStarted,
+    SessionRuntimeEventPayload,
+)
+from loushang.harness.runtime import (
+    NavigationFailure,
+    NavigationTransactionCoordinator,
+)
+from loushang.protocol import JSONValue, require_json_value
 
-EventDispatcher = Callable[[AgentSessionEvent], Awaitable[None]]
+EventDispatcher = Callable[[SessionRuntimeEventPayload], Awaitable[None]]
 RuntimeExceptionRecorder = Callable[..., None]
 ExtensionDiagnosticsSync = Callable[..., None]
-BranchSummaryGenerator = Callable[..., Awaitable[Any]]
+BranchSummaryGenerator = Callable[..., Awaitable[BranchSummaryResult]]
+SessionContextApplier = Callable[[AgentTranscriptContext], None]
 
 
 def _noop_record_runtime_exception(*, code: str, exc: Exception | str) -> None:
@@ -30,20 +46,46 @@ def _noop_sync_extension_diagnostics(*, phase: str) -> None:
     del phase
 
 
+@dataclass(frozen=True)
+class _SummaryNavigationPlan:
+    target_id: str
+    old_leaf_id: str | None
+    new_leaf_id: str | None
+    editor_text: str | None
+    custom_instructions: str | None
+    replace_instructions: bool
+    label: str | None
+    hook_summary: BranchSummaryResult | None
+    generate: BranchSummaryGenerator
+
+
 @dataclass
 class TreeController:
     agent: Agent
     session_manager: SessionManager
     dispatch_event: EventDispatcher
+    apply_session_context: SessionContextApplier | None = None
     extension_runner: ExtensionRunner | None = None
     record_runtime_exception: RuntimeExceptionRecorder = _noop_record_runtime_exception
-    sync_extension_diagnostics: ExtensionDiagnosticsSync = _noop_sync_extension_diagnostics
+    sync_extension_diagnostics: ExtensionDiagnosticsSync = (
+        _noop_sync_extension_diagnostics
+    )
 
+    _summary_navigation: NavigationTransactionCoordinator[AbortController] = field(
+        default_factory=lambda: NavigationTransactionCoordinator(
+            create_abort_scope=AbortController,
+            abort=lambda controller: controller.abort(),
+        ),
+        init=False,
+    )
     _branch_summary_abort_controller: AbortController | None = None
 
     @property
     def is_branch_summarizing(self) -> bool:
-        return self._branch_summary_abort_controller is not None
+        return (
+            self._summary_navigation.is_active
+            or self._branch_summary_abort_controller is not None
+        )
 
     async def navigate_tree(
         self,
@@ -64,12 +106,16 @@ class TreeController:
             raise ValueError(f"Entry {target_id} not found")
 
         editor_text: str | None = None
-        if isinstance(target_entry, SessionMessageEntry) and isinstance(target_entry.message, UserMessage):
+        if target_entry.kind == AGENT_MESSAGE_KIND and isinstance(
+            target_entry.payload, UserMessage
+        ):
             new_leaf_id = target_entry.parent_id
-            editor_text = _extract_user_message_text(target_entry.message)
-        elif isinstance(target_entry, CustomMessageEntry):
+            editor_text = _extract_user_message_text(target_entry.payload)
+        elif target_entry.kind == APPLICATION_MESSAGE_KIND and isinstance(
+            target_entry.payload, ApplicationMessage
+        ):
             new_leaf_id = target_entry.parent_id
-            editor_text = _extract_custom_message_text(target_entry)
+            editor_text = _extract_custom_message_text(target_entry.payload)
         else:
             new_leaf_id = target_id
 
@@ -120,126 +166,144 @@ class TreeController:
                 editor_text=editor_text,
             )
 
-        await self.dispatch_event(
-            {
-                "type": "branch_summary_start",
-                "target_id": target_id,
-                "old_leaf_id": old_leaf_id,
-                "summarize": True,
-            }
+        plan = _SummaryNavigationPlan(
+            target_id=target_id,
+            old_leaf_id=old_leaf_id,
+            new_leaf_id=new_leaf_id,
+            editor_text=editor_text,
+            custom_instructions=custom_instructions,
+            replace_instructions=replace_instructions,
+            label=label,
+            hook_summary=summary_result,
+            generate=generate_branch_summary_fn or generate_branch_summary,
+        )
+        return await self._summary_navigation.run(
+            plan,
+            before_commit=self._start_summary_navigation,
+            commit=self._commit_summary_navigation,
+            after_commit=self._finish_summary_navigation,
+            on_failure=self._fail_summary_navigation,
         )
 
-        self._branch_summary_abort_controller = AbortController()
-        summary_from_hook = False
-        summary_entry_id: str | None = None
-        if summary_result is not None:
-            summary_entry_id = self.session_manager.branch_with_summary(
-                new_leaf_id,
-                summary_result.summary,
-                details=summary_result.details,
-                from_hook=True,
-            )
-            summary_from_hook = True
-            if label:
-                self.session_manager.append_label(summary_entry_id, label)
-
-        try:
-            entries_to_summarize = collect_entries_for_branch_summary(
-                self.session_manager,
-                old_leaf_id,
-                target_id,
-            ).entries
-            if entries_to_summarize and summary_result is None:
-                generate = generate_branch_summary_fn or generate_branch_summary
-                summary_result = await generate(
-                    entries_to_summarize,
-                    model=self.agent.model,
-                    api_key="",
-                    signal=self._branch_summary_abort_controller.signal,
-                    custom_instructions=custom_instructions,
-                    replace_instructions=replace_instructions,
-                )
-                if summary_result.aborted:
-                    await self.dispatch_event(
-                        {
-                            "type": "branch_summary_end",
-                            "target_id": target_id,
-                            "old_leaf_id": old_leaf_id,
-                            "new_leaf_id": old_leaf_id,
-                            "summary_entry_id": None,
-                            "cancelled": True,
-                            "aborted": True,
-                        }
-                    )
-                    return TreeNavigationResult(cancelled=True, aborted=True)
-                if summary_result.error:
-                    self.record_runtime_exception(code="branch_summary_failed", exc=summary_result.error)
-                    await self.dispatch_event(
-                        {
-                            "type": "branch_summary_end",
-                            "target_id": target_id,
-                            "old_leaf_id": old_leaf_id,
-                            "new_leaf_id": old_leaf_id,
-                            "summary_entry_id": None,
-                            "cancelled": False,
-                            "aborted": False,
-                            "error_message": summary_result.error,
-                        }
-                    )
-                    raise RuntimeError(summary_result.error)
-                if summary_result.summary:
-                    summary_entry_id = self.session_manager.branch_with_summary(
-                        new_leaf_id,
-                        summary_result.summary,
-                        details=summary_result.details,
-                        from_hook=summary_from_hook,
-                    )
-                    if label:
-                        self.session_manager.append_label(summary_entry_id, label)
-
-            if summary_entry_id is None:
-                self._apply_navigation_leaf(new_leaf_id)
-                if label:
-                    self.session_manager.append_label(target_id, label)
-
-            self._rebuild_agent_context()
-            await self.dispatch_event(
-                {
-                    "type": "branch_summary_end",
-                    "target_id": target_id,
-                    "old_leaf_id": old_leaf_id,
-                    "new_leaf_id": self.session_manager.get_leaf_id(),
-                    "summary_entry_id": summary_entry_id,
-                    "cancelled": False,
-                    "aborted": False,
-                }
-            )
-            return TreeNavigationResult(
-                cancelled=False,
-                editor_text=editor_text,
-                summary_entry_id=summary_entry_id,
-            )
-        except Exception as exc:
-            self.record_runtime_exception(code="branch_summary_failed", exc=exc)
-            await self.dispatch_event(
-                {
-                    "type": "branch_summary_end",
-                    "target_id": target_id,
-                    "old_leaf_id": old_leaf_id,
-                    "new_leaf_id": old_leaf_id,
-                    "summary_entry_id": None,
-                    "cancelled": False,
-                    "aborted": False,
-                    "error_message": str(exc),
-                }
-            )
-            raise
-        finally:
-            self._branch_summary_abort_controller = None
-
     def abort_branch_summary(self) -> None:
+        self._summary_navigation.abort()
         if self._branch_summary_abort_controller is not None:
             self._branch_summary_abort_controller.abort()
+
+    async def _start_summary_navigation(self, plan: _SummaryNavigationPlan) -> None:
+        await self.dispatch_event(
+            BranchSummaryStarted(
+                target_id=plan.target_id,
+                old_leaf_id=plan.old_leaf_id,
+                summarize=True,
+            )
+        )
+
+    async def _commit_summary_navigation(
+        self,
+        plan: _SummaryNavigationPlan,
+        abort_controller: AbortController,
+    ) -> TreeNavigationResult:
+        summary_result = plan.hook_summary
+        summary_entry_id: str | None = None
+        if summary_result is not None:
+            summary_entry_id = await self._append_branch_summary(
+                plan,
+                summary_result,
+                from_hook=True,
+            )
+
+        entries = collect_entries_for_branch_summary(
+            self.session_manager,
+            plan.old_leaf_id,
+            plan.target_id,
+        ).entries
+        if entries and summary_result is None:
+            summary_result = await plan.generate(
+                entries,
+                model=self.agent.model,
+                api_key="",
+                signal=abort_controller.signal,
+                custom_instructions=plan.custom_instructions,
+                replace_instructions=plan.replace_instructions,
+            )
+            if summary_result.aborted:
+                return TreeNavigationResult(cancelled=True, aborted=True)
+            if summary_result.error:
+                raise RuntimeError(summary_result.error)
+            if summary_result.summary:
+                summary_entry_id = await self._append_branch_summary(
+                    plan,
+                    summary_result,
+                    from_hook=False,
+                )
+
+        if summary_entry_id is None:
+            self._apply_navigation_leaf(plan.new_leaf_id)
+            if plan.label:
+                await self.session_manager.append_label(plan.target_id, plan.label)
+        self._rebuild_agent_context()
+        return TreeNavigationResult(
+            cancelled=False,
+            editor_text=plan.editor_text,
+            summary_entry_id=summary_entry_id,
+        )
+
+    async def _append_branch_summary(
+        self,
+        plan: _SummaryNavigationPlan,
+        summary: BranchSummaryResult,
+        *,
+        from_hook: bool,
+    ) -> str:
+        if summary.summary is None:
+            raise RuntimeError("Branch summary did not include summary text")
+        entry_id = await self.session_manager.branch_with_summary(
+            plan.new_leaf_id,
+            summary.summary,
+            details=_project_branch_summary_details(summary.details),
+            from_hook=from_hook,
+        )
+        if plan.label:
+            await self.session_manager.append_label(entry_id, plan.label)
+        return entry_id
+
+    async def _finish_summary_navigation(
+        self,
+        plan: _SummaryNavigationPlan,
+        result: TreeNavigationResult,
+    ) -> None:
+        await self.dispatch_event(
+            BranchSummaryCompleted(
+                target_id=plan.target_id,
+                old_leaf_id=plan.old_leaf_id,
+                new_leaf_id=(
+                    plan.old_leaf_id
+                    if result.aborted
+                    else self.session_manager.get_leaf_id()
+                ),
+                summary_record_id=result.summary_entry_id,
+                cancelled=result.cancelled,
+                aborted=result.aborted,
+            )
+        )
+
+    async def _fail_summary_navigation(
+        self,
+        failure: NavigationFailure[_SummaryNavigationPlan],
+    ) -> None:
+        self.record_runtime_exception(code="branch_summary_failed", exc=failure.error)
+        await self.dispatch_event(
+            BranchSummaryCompleted(
+                target_id=failure.plan.target_id,
+                old_leaf_id=failure.plan.old_leaf_id,
+                new_leaf_id=failure.plan.old_leaf_id,
+                summary_record_id=None,
+                cancelled=False,
+                aborted=False,
+                error_message=str(failure.error),
+            )
+        )
 
     def _apply_navigation_leaf(self, new_leaf_id: str | None) -> None:
         if new_leaf_id is None:
@@ -249,16 +313,32 @@ class TreeController:
 
     def _rebuild_agent_context(self) -> None:
         session_context = self.session_manager.build_session_context()
+        if self.apply_session_context is not None:
+            self.apply_session_context(session_context)
+            return
         self.agent.state.set_messages(session_context.messages)
 
 
 def _extract_user_message_text(message: UserMessage) -> str:
     if isinstance(message.content, str):
         return message.content
-    return "".join(block.text for block in message.content if getattr(block, "type", None) == "text")
+    return "".join(
+        block.text for block in message.content if isinstance(block, TextPart)
+    )
 
 
-def _extract_custom_message_text(entry: CustomMessageEntry) -> str:
-    if isinstance(entry.content, str):
-        return entry.content
-    return "".join(block.text for block in entry.content if getattr(block, "type", None) == "text")
+def _extract_custom_message_text(message: ApplicationMessage) -> str:
+    if isinstance(message.content, str):
+        return message.content
+    return "".join(
+        block.text for block in message.content if isinstance(block, TextPart)
+    )
+
+
+def _project_branch_summary_details(details: object | None) -> JSONValue:
+    if isinstance(details, BranchSummaryDetails):
+        return {
+            "readFiles": list(details.read_files),
+            "modifiedFiles": list(details.modified_files),
+        }
+    return require_json_value(details, name="branch_summary.details")

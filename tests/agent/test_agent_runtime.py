@@ -495,9 +495,8 @@ def test_default_agent_stream_preserves_canonical_options(
 
     captured_options: list[object] = []
 
-    async def stream_fn(model, context, options=None, *, provider_registry=None):
+    async def stream_fn(model, context, options=None):
         del model, context
-        assert provider_registry is not None
         captured_options.append(options)
         return _stream_with_final_message(_assistant_text_message("hello"))
 

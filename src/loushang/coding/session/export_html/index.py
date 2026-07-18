@@ -3,24 +3,37 @@ from __future__ import annotations
 import base64
 import html
 import json
+from dataclasses import asdict
 from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from loushang.coding.message.json_codec import serialize_json_value
 from loushang.coding.session.introspection import build_session_stats
-from loushang.coding.store.file_codec import _serialize_entry, _serialize_header
+from loushang.harness.agent_transcript import AgentTranscriptProfile
+from loushang.harness.conversation import (
+    NativeConversationHeaderCodec,
+    NativeConversationRecordCodec,
+)
+from loushang.protocol import require_json_mapping
 
 from .tool_renderer import render_entry_tree, render_tool_sections, render_transcript
 
 if TYPE_CHECKING:
     from loushang.coding.session.agent_session import AgentSession
 
+_PROFILE = AgentTranscriptProfile.default()
+_HEADER_CODEC = NativeConversationHeaderCodec()
+_RECORD_CODEC = NativeConversationRecordCodec(_PROFILE.payload_codecs)
 
-def export_session_to_html(session: AgentSession, output_path: str | None = None) -> str:
+
+def export_session_to_html(
+    session: AgentSession, output_path: str | None = None
+) -> str:
     stats = build_session_stats(session)
     messages = list(session.get_session_context().messages)
-    path = Path(output_path) if output_path is not None else _default_export_path(session)
+    path = (
+        Path(output_path) if output_path is not None else _default_export_path(session)
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
 
     template = _read_asset("template.html")
@@ -30,12 +43,18 @@ def export_session_to_html(session: AgentSession, output_path: str | None = None
     renderer = _custom_message_renderer(session)
     context_usage = stats.context_usage
     entries = session.session_manager.get_entries()
+    branch_entries = session.session_manager.get_branch()
     session_data = _encode_session_data(
         {
-            "header": _serialize_header(session.session_manager.get_header()),
-            "entries": [_serialize_entry(entry) for entry in entries],
+            "header": dict(
+                _HEADER_CODEC.encode_header(session.session_manager.get_header())
+            ),
+            "entries": [dict(_RECORD_CODEC.encode_record(entry)) for entry in entries],
             "leafId": session.session_manager.get_leaf_id(),
-            "stats": serialize_json_value(stats),
+            "stats": require_json_mapping(
+                asdict(stats),
+                name="session_export.stats",
+            ),
             "tree": {
                 "entryCount": len(entries),
                 "leafId": session.session_manager.get_leaf_id(),
@@ -52,7 +71,9 @@ def export_session_to_html(session: AgentSession, output_path: str | None = None
         }
     )
     html_output = (
-        template.replace("{{TITLE}}", html.escape(session.session_name or session.session_id))
+        template.replace(
+            "{{TITLE}}", html.escape(session.session_name or session.session_id)
+        )
         .replace("{{STYLE}}", _apply_theme(css, theme))
         .replace("{{SCRIPT}}", js)
         .replace("{{SESSION_ID}}", html.escape(session.session_id))
@@ -60,9 +81,22 @@ def export_session_to_html(session: AgentSession, output_path: str | None = None
         .replace("{{ENTRY_COUNT}}", str(stats.entry_count))
         .replace("{{MESSAGE_COUNT}}", str(stats.message_count))
         .replace("{{ACTIVE_TOOL_COUNT}}", str(stats.active_tool_count))
-        .replace("{{ESTIMATED_CONTEXT_TOKENS}}", str(context_usage.estimated_context_tokens if context_usage else 0))
-        .replace("{{SESSION_TREE}}", render_entry_tree(entries, leaf_id=session.session_manager.get_leaf_id()))
-        .replace("{{TRANSCRIPT}}", render_transcript(messages, custom_renderer=renderer, theme=theme))
+        .replace(
+            "{{ESTIMATED_CONTEXT_TOKENS}}",
+            str(context_usage.estimated_context_tokens if context_usage else 0),
+        )
+        .replace(
+            "{{SESSION_TREE}}",
+            render_entry_tree(entries, leaf_id=session.session_manager.get_leaf_id()),
+        )
+        .replace(
+            "{{TRANSCRIPT}}",
+            render_transcript(
+                branch_entries,
+                custom_renderer=renderer,
+                theme=theme,
+            ),
+        )
         .replace(
             "{{TOOL_SECTIONS}}",
             render_tool_sections(
@@ -95,7 +129,9 @@ def _encode_session_data(data: dict[str, object]) -> str:
 
 def _custom_message_renderer(session: AgentSession):
     runner = getattr(session, "extension_runner", None)
-    getter = getattr(runner, "get_message_renderer", None) if runner is not None else None
+    getter = (
+        getattr(runner, "get_message_renderer", None) if runner is not None else None
+    )
     return getter if callable(getter) else None
 
 
@@ -109,5 +145,8 @@ def _export_theme(session: AgentSession) -> dict[str, str]:
 def _apply_theme(css: str, theme: dict[str, str]) -> str:
     if not theme:
         return css
-    variables = "\n".join(f"  --{html.escape(key)}: {html.escape(value)};" for key, value in sorted(theme.items()))
+    variables = "\n".join(
+        f"  --{html.escape(key)}: {html.escape(value)};"
+        for key, value in sorted(theme.items())
+    )
     return ":root {\n" + variables + "\n}\n" + css

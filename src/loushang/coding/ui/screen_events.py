@@ -5,15 +5,18 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from loushang.coding.ui.event_policy import is_cancelled_error_message
+from loushang.coding.ui.conversation_event_adapter import (
+    CodingConversationEventAdapter,
+)
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.tool_blocks import (
+from loushang.coding.ui.tool_blocks import ToolTranscriptProjector
+from loushang.coding.ui.transcript_projection import tool_block_to_record
+from loushang.harnesstui.conversation.projection import ConversationProjector
+from loushang.harnesstui.conversation.tool_transcript import (
     ToolCallSnapshot,
     ToolTranscriptBlock,
-    ToolTranscriptProjector,
 )
-from loushang.coding.ui.transcript_projection import tool_block_to_record
-from loushang.tui.transcript import ToolExecutionRecord
+from loushang.tui.transcript import ToolExecutionRecord, UserPromptRecord
 
 QueueReader = Callable[[], tuple[str, ...] | list[str]]
 TraceFn = Callable[[str], None]
@@ -21,6 +24,8 @@ TraceFn = Callable[[str], None]
 
 @dataclass(slots=True)
 class ScreenCodingEventProjector:
+    """Coding raw-event facade for the full-screen conversation target."""
+
     app: ScreenCodingTuiApp
     tool_definition_resolver: Any | None = None
     max_tool_body_lines: int = 8
@@ -28,223 +33,156 @@ class ScreenCodingEventProjector:
     read_pending_followups: QueueReader = tuple
     now: Callable[[], float] = time.monotonic
     _tool_projector: ToolTranscriptProjector = field(init=False, repr=False)
-    _tool_calls: dict[str, ToolCallSnapshot] = field(default_factory=dict, init=False, repr=False)
-    _tool_started_at: dict[str, float] = field(default_factory=dict, init=False, repr=False)
-    _rendered_assistant_error_ids: set[int] = field(default_factory=set, init=False, repr=False)
+    _projection: ConversationProjector = field(init=False, repr=False)
+    _adapter: CodingConversationEventAdapter = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._tool_projector = ToolTranscriptProjector(
             tool_definition_resolver=self.tool_definition_resolver,
             max_body_lines=self.max_tool_body_lines,
         )
-
-    def handle(self, event: dict[str, Any]) -> None:
-        event_type = event.get("type")
-        if event_type == "agent_start":
-            self._handle_agent_start()
-            return
-        if event_type == "queue_update":
-            self._sync_queues()
-            return
-        if event_type == "message_start":
-            self._handle_message_start(event)
-            return
-        if event_type == "message_update":
-            self._handle_message_update(event)
-            return
-        if event_type == "message_end":
-            self._handle_message_end(event)
-            return
-        if event_type == "agent_end":
-            self._handle_agent_end(event)
-            return
-        if event_type == "tool_execution_start":
-            self._handle_tool_start(event)
-            return
-        if event_type == "tool_execution_update":
-            self._handle_tool_update(event)
-            return
-        if event_type == "tool_execution_end":
-            self._handle_tool_end(event)
-            return
-        if event_type == "auto_retry_start":
-            self.app.set_status(
-                "retry "
-                f"{event.get('attempt')}/{event.get('max_attempts')} "
-                f"in {event.get('delay_ms')}ms: {event.get('error_message')}"
-            )
-            return
-        if event_type == "compaction_start":
-            self.app.set_status(f"compact start: {event.get('reason')}")
-            return
-        if event_type == "compaction_end":
-            if event.get("error_message"):
-                self.app.set_status(f"compact error: {event.get('error_message')}")
-            else:
-                self.app.set_status("compact done")
-                summary = _compaction_summary(event)
-                if summary:
-                    self.app.append_context_compaction_record(
-                        summary=summary,
-                        tokens_before=_compaction_tokens_before(event),
-                    )
-
-    def _handle_agent_start(self) -> None:
-        self._tool_calls.clear()
-        self._tool_started_at.clear()
-        if not self.app.state.running:
-            self.app.begin_run(started_at=self.now())
-
-    def _sync_queues(self) -> None:
-        self.app.sync_queues(
-            steers=tuple(self.read_pending_steers()),
-            followups=tuple(self.read_pending_followups()),
+        self._projection = ConversationProjector(
+            target=_ScreenProjectionTarget(self.app),
+            tool_projector=self._tool_projector.neutral_projector,
+            now=self.now,
+            track_rendered_tool_results=False,
+        )
+        self._adapter = CodingConversationEventAdapter(
+            self._projection,
+            self._tool_projector,
+            read_pending_steers=self.read_pending_steers,
+            read_pending_followups=self.read_pending_followups,
+            recover_tool_updates=True,
+            project_tool_result_messages=False,
+            require_assistant_message_for_delta=True,
+            project_run_starts=True,
+            project_queue_updates=True,
+            project_user_messages=True,
+            project_assistant_error_text=True,
+            project_compaction_details=True,
         )
 
-    def _handle_message_start(self, event: dict[str, Any]) -> None:
-        message = event.get("message")
-        role = getattr(message, "role", None)
-        if role == "user":
-            text = _extract_text(message).strip()
-            if text and not self.app.state.consume_pending_user_echo(text):
-                self.app.state.records.append(_user_record(text))
-            return
-        if role == "assistant":
-            self.app.begin_assistant()
+    def handle(self, event: dict[str, Any]) -> None:
+        self._adapter.handle(event)
 
-    def _handle_message_update(self, event: dict[str, Any]) -> None:
-        message = event.get("message")
-        if getattr(message, "role", None) != "assistant":
-            return
-        assistant_event = event.get("assistant_message_event")
-        if not isinstance(assistant_event, dict):
-            return
-        if assistant_event.get("type") != "text_delta":
-            return
-        delta = assistant_event.get("delta")
-        if isinstance(delta, str):
-            self.app.append_assistant_chunk(delta)
 
-    def _handle_message_end(self, event: dict[str, Any]) -> None:
-        message = event.get("message")
-        role = getattr(message, "role", None)
-        if role == "assistant":
-            text = _extract_text(message)
-            self.app.end_assistant(text)
-            self._render_assistant_error(message)
+@dataclass(slots=True)
+class _ScreenProjectionTarget:
+    app: ScreenCodingTuiApp
 
-    def _handle_agent_end(self, event: dict[str, Any]) -> None:
-        messages = event.get("messages")
-        if not isinstance(messages, list):
-            return
-        for message in reversed(messages):
-            if getattr(message, "role", None) == "assistant":
-                self._render_assistant_error(message)
-                return
+    def run_started(self, *, start_time: Callable[[], float]) -> None:
+        if not self.app.state.running:
+            self.app.begin_run(started_at=start_time())
 
-    def _render_assistant_error(self, message: object) -> bool:
-        error_message = getattr(message, "error_message", None)
-        stop_reason = getattr(message, "stop_reason", None)
-        if not isinstance(error_message, str) or not error_message:
-            return False
-        if stop_reason not in {"error", "aborted"}:
-            return False
-        if stop_reason == "aborted" and is_cancelled_error_message(error_message):
-            return True
-        message_id = id(message)
-        if message_id in self._rendered_assistant_error_ids:
-            return True
-        self._rendered_assistant_error_ids.add(message_id)
+    def queues_updated(
+        self,
+        *,
+        steers: tuple[str, ...],
+        followups: tuple[str, ...],
+    ) -> None:
+        self.app.sync_queues(steers=steers, followups=followups)
+
+    def user_message(self, text: str) -> None:
+        text = text.strip()
+        if text and not self.app.state.consume_pending_user_echo(text):
+            self.app.state.records.append(UserPromptRecord(text))
+            self.app.state.mark_records_changed()
+
+    def assistant_started(self) -> None:
+        self.app.begin_assistant()
+
+    def assistant_delta(self, delta: str) -> None:
+        self.app.append_assistant_chunk(delta)
+
+    def assistant_finished(
+        self,
+        final_text: str,
+        *,
+        error_message: str | None,
+        show_error: bool,
+    ) -> None:
+        # Screen commits the final assistant text even when the message reports an
+        # error, then adds only errors that product policy says should be visible.
+        self.app.end_assistant(final_text)
+        if error_message is not None and show_error:
+            self.app.add_error(error_message)
+
+    def assistant_error(self, error_message: str) -> None:
         self.app.add_error(error_message)
-        return True
 
-    def _handle_tool_start(self, event: dict[str, Any]) -> None:
-        tool_call_id = _tool_call_id(event)
-        snapshot = self._tool_projector.remember_call(event)
-        self._tool_calls[tool_call_id] = snapshot
-        self._tool_started_at[tool_call_id] = self.now()
+    def tool_started(
+        self,
+        tool_call_id: str,
+        snapshot: ToolCallSnapshot,
+    ) -> None:
         self.app.state.upsert_tool_record(
             tool_call_id,
             ToolExecutionRecord(
-                name=_tool_title(snapshot, event),
+                name=_tool_title(snapshot),
                 state="running",
                 elapsed_seconds=0.0,
             ),
         )
 
-    def _handle_tool_update(self, event: dict[str, Any]) -> None:
-        tool_call_id = _tool_call_id(event)
-        if tool_call_id not in self._tool_calls:
-            self._handle_tool_start(event)
-
-    def _handle_tool_end(self, event: dict[str, Any]) -> None:
-        tool_call_id = _tool_call_id(event)
-        snapshot = self._tool_calls.get(tool_call_id)
-        started_at = self._tool_started_at.get(tool_call_id, self.now())
-        block = self._tool_projector.project_result(event, snapshot)
+    def tool_finished(
+        self,
+        block: ToolTranscriptBlock,
+        *,
+        elapsed_seconds: float,
+    ) -> None:
         self.app.state.upsert_tool_record(
-            tool_call_id,
-            tool_block_to_record(block, elapsed_seconds=max(0.0, self.now() - started_at)),
+            block.tool_call_id,
+            tool_block_to_record(block, elapsed_seconds=elapsed_seconds),
         )
-        self._tool_calls.pop(tool_call_id, None)
-        self._tool_started_at.pop(tool_call_id, None)
+
+    def tool_result_message(self, block: ToolTranscriptBlock) -> None:
+        # Full-screen mode already projects tool execution lifecycle records.
+        del block
+
+    def retry_started(
+        self,
+        *,
+        attempt: int | None,
+        max_attempts: int | None,
+        delay_ms: int | float | None,
+        error_message: str | None,
+    ) -> None:
+        self.app.set_status(
+            f"retry {attempt}/{max_attempts} in {delay_ms}ms: {error_message}"
+        )
+
+    def compaction_started(self, *, reason: str | None) -> None:
+        self.app.set_status(f"compact start: {reason}")
+
+    def compaction_finished(
+        self,
+        *,
+        error_message: str | None,
+        summary: str,
+        tokens_before: int | None,
+    ) -> None:
+        if error_message:
+            self.app.set_status(f"compact error: {error_message}")
+            return
+        self.app.set_status("compact done")
+        if summary:
+            self.app.append_context_compaction_record(
+                summary=summary,
+                tokens_before=tokens_before,
+            )
 
 
-def _tool_call_id(event: dict[str, Any]) -> str:
-    value = event.get("tool_call_id", event.get("toolCallId"))
-    if isinstance(value, str) and value:
-        return value
-    value = event.get("tool_name", event.get("toolName"))
-    return value if isinstance(value, str) and value else "tool"
-
-
-def _tool_title(snapshot: ToolCallSnapshot, event: dict[str, Any]) -> str:
+def _tool_title(snapshot: ToolCallSnapshot) -> str:
     if snapshot.rendered_call_text:
         return snapshot.rendered_call_text.splitlines()[0].strip()
     block = ToolTranscriptBlock(
-        tool_call_id=_tool_call_id(event),
+        tool_call_id="tool",
         tool_name=snapshot.tool_name,
         status="running",
         verb="Ran",
         title=snapshot.tool_name,
     )
     return tool_block_to_record(block).name
-
-
-def _extract_text(value: object) -> str:
-    content = getattr(value, "content", value)
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for part in content:
-            text = getattr(part, "text", None)
-            if isinstance(text, str):
-                parts.append(text)
-        return "".join(parts)
-    return ""
-
-
-def _compaction_summary(event: dict[str, Any]) -> str:
-    result = event.get("result")
-    if not isinstance(result, dict):
-        return ""
-    summary = result.get("summary")
-    return summary.strip() if isinstance(summary, str) else ""
-
-
-def _compaction_tokens_before(event: dict[str, Any]) -> int | None:
-    result = event.get("result")
-    if not isinstance(result, dict):
-        return None
-    tokens_before = result.get("tokens_before")
-    return tokens_before if isinstance(tokens_before, int) else None
-
-
-def _user_record(text: str):
-    from loushang.tui.transcript import UserPromptRecord
-
-    return UserPromptRecord(text)
 
 
 __all__ = ["ScreenCodingEventProjector"]

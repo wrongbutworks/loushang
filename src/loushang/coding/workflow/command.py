@@ -49,7 +49,9 @@ async def run_prompt_steps_workflow(
                 on_step_start=(
                     None
                     if output_mode == "json"
-                    else lambda index, total, step: _write_step_progress(stdout, index, total, _step_progress_label(step))
+                    else lambda index, total, step: _write_step_progress(
+                        stdout, index, total, _step_progress_label(step)
+                    )
                 ),
             )
             results.append(result)
@@ -70,7 +72,9 @@ async def run_prompt_steps_workflow(
     except Exception as error:
         stderr.write(f"Error: {error}\n")
         if verbose:
-            traceback.print_exception(type(error), error, error.__traceback__, file=stderr)
+            traceback.print_exception(
+                type(error), error, error.__traceback__, file=stderr
+            )
         exit_code = 1
     finally:
         try:
@@ -78,7 +82,9 @@ async def run_prompt_steps_workflow(
         except Exception as error:
             stderr.write(f"Error: {error}\n")
             if verbose:
-                traceback.print_exception(type(error), error, error.__traceback__, file=stderr)
+                traceback.print_exception(
+                    type(error), error, error.__traceback__, file=stderr
+                )
             exit_code = 1
     return exit_code
 

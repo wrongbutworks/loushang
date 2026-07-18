@@ -3,7 +3,8 @@ from __future__ import annotations
 import inspect
 import time
 import traceback
-from typing import Any, Mapping, Sequence, TextIO
+from collections.abc import Mapping, Sequence
+from typing import Any, TextIO
 
 from loushang.coding.ui.model import ensure_usable_session_model
 from loushang.coding.ui.plain_events import PlainCodingEventRenderer
@@ -85,7 +86,8 @@ async def run_prompt_command(
                     plan_facts=plan_facts,
                     step_facts=step_facts,
                     emit_plan_start=False,
-                    emit_plan_completion=emit_plan_completion and follow_up_index == len(follow_up_messages) - 1,
+                    emit_plan_completion=emit_plan_completion
+                    and follow_up_index == len(follow_up_messages) - 1,
                 )
                 if exit_code != 0:
                     break
@@ -102,7 +104,9 @@ async def run_prompt_command(
             except Exception as exc:
                 renderer.render_error(str(exc) or exc.__class__.__name__)
                 if verbose:
-                    traceback.print_exception(type(exc), exc, exc.__traceback__, file=stderr)
+                    traceback.print_exception(
+                        type(exc), exc, exc.__traceback__, file=stderr
+                    )
                 exit_code = 1
     return exit_code
 
@@ -149,7 +153,10 @@ async def _run_turn(
     )
     await session.wait_for_idle()
     assistant_failure = _last_assistant_failure_message(session)
-    if assistant_failure is None and event_renderer.last_error_message != previous_error:
+    if (
+        assistant_failure is None
+        and event_renderer.last_error_message != previous_error
+    ):
         assistant_failure = event_renderer.last_error_message
     if assistant_failure is not None:
         return 1
@@ -197,7 +204,9 @@ async def _run_prompt_session(
     )
 
 
-async def _prompt_session(session: Any, user_input: str, *, images: list[object] | None = None) -> None:
+async def _prompt_session(
+    session: Any, user_input: str, *, images: list[object] | None = None
+) -> None:
     if images is None:
         await session.prompt(user_input)
         return
@@ -208,11 +217,19 @@ def _last_assistant_failure_message(session: Any) -> str | None:
     for message in reversed(_session_messages(session)):
         if _safe_getattr(message, "role", None) != "assistant":
             continue
-        stop_reason = _safe_getattr(message, "stop_reason", _safe_getattr(message, "stopReason", None))
+        stop_reason = _safe_getattr(
+            message, "stop_reason", _safe_getattr(message, "stopReason", None)
+        )
         if stop_reason not in {"error", "aborted"}:
             return None
-        error_message = _safe_getattr(message, "error_message", _safe_getattr(message, "errorMessage", None))
-        return error_message if isinstance(error_message, str) and error_message else f"Request {stop_reason}"
+        error_message = _safe_getattr(
+            message, "error_message", _safe_getattr(message, "errorMessage", None)
+        )
+        return (
+            error_message
+            if isinstance(error_message, str) and error_message
+            else f"Request {stop_reason}"
+        )
     return None
 
 
@@ -265,7 +282,7 @@ def _work_session_id(session: Any) -> str:
             header = get_header()
         except Exception:
             header = None
-        header_id = _safe_getattr(header, "id", None)
+        header_id = _safe_getattr(header, "conversation_id", None)
         if isinstance(header_id, str) and header_id:
             return header_id
     return "session"

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import sys
 
+import pytest
+
 from loushang.coding.ui import playback_runner
 from loushang.coding.ui.playback_fakes import SessionCommandPlaybackSession
 from loushang.coding.ui.playback_runner import (
@@ -217,6 +219,7 @@ def test_screen_tui_playback_runner_runs_tagged_command_scenarios(capsys) -> Non
     assert "PASS long-transcript-input" not in captured.out
 
 
+@pytest.mark.tui_render_contract
 def test_screen_tui_playback_runner_runs_tagged_product_scenarios(capsys) -> None:
     exit_code = run_playback_cli(["--tag", "product"])
 

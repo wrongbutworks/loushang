@@ -7,11 +7,11 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO, cast
 
-from loushang.coding.ui.native_loop import run_native_coding_tui
+from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
 if TYPE_CHECKING:
-    from loushang.coding.ui.native_app import (
-        NativeCodingTuiApp as _PerfNativeCodingTuiAppBase,
+    from loushang.coding.ui.screen_app import (
+        ScreenCodingTuiApp as _PerfScreenCodingTuiAppBase,
     )
 
 
@@ -29,13 +29,17 @@ def _load_example(filename: str, module_name: str) -> Any:
     return module
 
 
-_perf31 = _load_example("31_native_coding_markdown_perf.py", "_native_coding_markdown_perf31_for33")
-_perf32 = _load_example("32_native_coding_markdown_perf_trim.py", "_native_coding_markdown_perf32_for33")
+_perf31 = _load_example(
+    "31_native_coding_markdown_perf.py", "_native_coding_markdown_perf31_for33"
+)
+_perf32 = _load_example(
+    "32_native_coding_markdown_perf_trim.py", "_native_coding_markdown_perf32_for33"
+)
 if not TYPE_CHECKING:
-    _PerfNativeCodingTuiAppBase = _perf31.PerfNativeCodingTuiApp
+    _PerfScreenCodingTuiAppBase = _perf31.PerfScreenCodingTuiApp
 
 
-class TrimInteractiveNativeCodingTuiApp(_PerfNativeCodingTuiAppBase):
+class TrimInteractiveScreenCodingTuiApp(_PerfScreenCodingTuiAppBase):
     __slots__ = ("trim_events",)
 
     def __init__(self, *, active_line_budget: int, **kwargs: Any) -> None:
@@ -61,7 +65,9 @@ class TrimInteractiveNativeCodingTuiApp(_PerfNativeCodingTuiAppBase):
                 f"budget={self.active_transcript_line_budget}"
             )
         else:
-            self.set_status(f"active window records={len(self.state.records)} budget={self.active_transcript_line_budget}")
+            self.set_status(
+                f"active window records={len(self.state.records)} budget={self.active_transcript_line_budget}"
+            )
 
 
 async def run_interactive(
@@ -71,7 +77,7 @@ async def run_interactive(
     stream_seconds: float,
     active_line_budget: int,
 ) -> int:
-    app = TrimInteractiveNativeCodingTuiApp(
+    app = TrimInteractiveScreenCodingTuiApp(
         model_label="fake-model",
         cwd="/repo",
         branch="markdown-perf-trim-interactive",
@@ -81,7 +87,7 @@ async def run_interactive(
     app.set_status(
         f"type 1, 10, 100... /quit exits | trim budget={active_line_budget} lines | per-turn auto trim"
     )
-    return await run_native_coding_tui(
+    return await run_screen_coding_tui(
         app=app,
         stdin=stdin,
         stdout=stdout,
@@ -99,15 +105,28 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Interactive fake-model Markdown performance harness with per-turn active transcript trimming."
     )
-    parser.add_argument("--script-count", type=int, help="run scripted fake prompts instead of interactive mode")
-    parser.add_argument("--script-rounds", type=int, default=1, help="number of scripted fake prompts to run")
+    parser.add_argument(
+        "--script-count",
+        type=int,
+        help="run scripted fake prompts instead of interactive mode",
+    )
+    parser.add_argument(
+        "--script-rounds",
+        type=int,
+        default=1,
+        help="number of scripted fake prompts to run",
+    )
     parser.add_argument(
         "--active-line-budget",
         type=int,
         default=180,
         help="active transcript line budget applied after every completed turn",
     )
-    parser.add_argument("--show-final", action="store_true", help="print the final rendered snapshot in script mode")
+    parser.add_argument(
+        "--show-final",
+        action="store_true",
+        help="print the final rendered snapshot in script mode",
+    )
     parser.add_argument(
         "--stream-seconds",
         type=float,
@@ -120,7 +139,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=80,
         help="script render coalescing interval; use 0 to render every chunk",
     )
-    parser.add_argument("--trace-memory", action="store_true", help="enable tracemalloc current/peak memory stats")
+    parser.add_argument(
+        "--trace-memory",
+        action="store_true",
+        help="enable tracemalloc current/peak memory stats",
+    )
     parser.add_argument("--width", type=int, default=100, help="script snapshot width")
     parser.add_argument("--height", type=int, default=32, help="script snapshot height")
     return parser.parse_args(argv)

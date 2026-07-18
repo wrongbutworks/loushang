@@ -5,23 +5,13 @@ import os
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+from collections.abc import Mapping
 from importlib.metadata import PackageNotFoundError, distribution
 from importlib.metadata import version as package_version
 from pathlib import Path
-from typing import Literal, Mapping, Protocol
+from typing import Protocol
 
-SourceScope = Literal["user", "project", "temporary"]
-SourceOrigin = Literal["package", "top-level"]
-
-
-@dataclass(frozen=True)
-class SourceInfo:
-    path: str
-    source: str = "filesystem"
-    scope: SourceScope = "project"
-    origin: SourceOrigin = "top-level"
-    base_dir: str | None = None
+from loushang.harness.resources.source import SourceInfo, SourceOrigin, SourceScope
 
 
 class SourceDescriptor(Protocol):
@@ -39,7 +29,7 @@ def create_source_info(
     scope: SourceScope = "project",
     origin: SourceOrigin = "top-level",
     base_dir: str | Path | None = None,
-) -> SourceInfo:
+) -> SourceInfo[str]:
     return SourceInfo(
         path=_path_text(path),
         source=source,
@@ -49,7 +39,7 @@ def create_source_info(
     )
 
 
-def source_info_from_resource_descriptor(descriptor: SourceDescriptor) -> SourceInfo:
+def source_info_from_resource_descriptor(descriptor: SourceDescriptor) -> SourceInfo[str]:
     return create_source_info(
         descriptor.source_path,
         source=descriptor.source or "filesystem",

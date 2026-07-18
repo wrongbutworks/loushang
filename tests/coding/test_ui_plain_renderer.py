@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from io import StringIO
-from types import SimpleNamespace
+from os import terminal_size
 from typing import Literal
 
 from loushang.agent import AgentToolResult
@@ -36,6 +36,38 @@ def _assistant(
         error_message=error_message,
         timestamp=0.0,
     )
+
+
+def test_plain_renderer_uses_shared_core_with_compatible_constructor() -> None:
+    from inspect import signature
+
+    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.harnesstui.plain.renderer import PlainConversationRenderer
+
+    assert issubclass(PlainCodingUiRenderer, PlainConversationRenderer)
+    assert tuple(signature(PlainCodingUiRenderer).parameters) == (
+        "stdout",
+        "stderr",
+        "max_payload_chars",
+        "verbose",
+        "use_transcript_view",
+        "transcript_theme",
+        "transcript_capabilities",
+        "code_highlighter",
+        "transcript_buffer",
+        "_assistant_deltas",
+    )
+
+
+def test_plain_renderer_preserves_extract_text_compatibility() -> None:
+    from loushang.coding.ui.plain_renderer import extract_text
+
+    message = UserMessage(
+        role="user",
+        content=[TextPart(type="text", text="hello")],
+        timestamp=0.0,
+    )
+    assert extract_text(message) == "hello"
 
 
 def test_plain_renderer_prints_header_and_user_message() -> None:
@@ -82,6 +114,73 @@ def test_event_renderer_buffers_assistant_deltas_until_final_block() -> None:
     event_renderer.handle({"type": "message_end", "message": _assistant("hi there")})
 
     assert stdout.getvalue() == "• hi there\n"
+
+
+def test_event_renderer_accepts_legacy_delta_without_message() -> None:
+    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
+    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+
+    stdout = StringIO()
+    event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
+
+    event_renderer.handle({"type": "message_start", "message": _assistant("")})
+    event_renderer.handle(
+        {
+            "type": "message_update",
+            "assistant_message_event": {"type": "text_delta", "delta": "legacy"},
+        }
+    )
+    event_renderer.handle({"type": "message_end", "message": _assistant("legacy")})
+
+    assert stdout.getvalue() == "• legacy\n"
+
+
+def test_event_renderer_preserves_legacy_constructor_and_injected_state() -> None:
+    from inspect import signature
+
+    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
+    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.harnesstui.conversation.tool_transcript import ToolCallSnapshot
+
+    assert tuple(signature(PlainCodingEventRenderer).parameters) == (
+        "renderer",
+        "tool_definition_resolver",
+        "max_tool_body_lines",
+        "tool_calls",
+        "rendered_tool_results",
+        "rendered_assistant_errors",
+        "last_error_message",
+        "render_user_messages",
+    )
+
+    tool_calls = {"tc-pending": ToolCallSnapshot(tool_name="read")}
+    rendered_tool_results = {"tc-done"}
+    rendered_assistant_errors = {123}
+    event_renderer = PlainCodingEventRenderer(
+        PlainCodingUiRenderer(stdout=StringIO()),
+        None,
+        4,
+        tool_calls,
+        rendered_tool_results,
+        rendered_assistant_errors,
+        "old error",
+        False,
+    )
+
+    assert event_renderer.tool_calls is tool_calls
+    assert event_renderer.rendered_tool_results is rendered_tool_results
+    assert event_renderer.rendered_assistant_errors is rendered_assistant_errors
+    assert event_renderer.last_error_message == "old error"
+    event_renderer.last_error_message = "new error"
+    assert event_renderer.last_error_message == "new error"
+
+    event_renderer.handle({"type": "agent_start"})
+    event_renderer.handle({"type": "queue_update"})
+
+    assert event_renderer.tool_calls is tool_calls
+    assert event_renderer.tool_calls == {
+        "tc-pending": ToolCallSnapshot(tool_name="read")
+    }
 
 
 def test_event_renderer_renders_completed_assistant_markdown_without_raw_markers() -> None:
@@ -154,6 +253,45 @@ def test_event_renderer_prints_assistant_error_from_agent_end() -> None:
     assert stdout.getvalue() == "■ Error: provider failure\n"
 
 
+def test_event_renderer_deduplicates_assistant_error_and_keeps_last_error() -> None:
+    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
+    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+
+    stdout = StringIO()
+    event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
+    message = _assistant(
+        "partial answer",
+        stop_reason="error",
+        error_message="provider failure",
+    )
+
+    event_renderer.handle({"type": "message_start", "message": message})
+    event_renderer.handle({"type": "message_end", "message": message})
+    event_renderer.handle({"type": "agent_end", "messages": [message]})
+
+    assert stdout.getvalue() == "■ Error: provider failure\n"
+    assert event_renderer.last_error_message == "provider failure"
+
+
+def test_event_renderer_suppresses_intentional_abort_without_committing_draft() -> None:
+    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
+    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+
+    stdout = StringIO()
+    event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
+    message = _assistant(
+        "partial answer",
+        stop_reason="aborted",
+        error_message="Request aborted by user",
+    )
+
+    event_renderer.handle({"type": "message_start", "message": message})
+    event_renderer.handle({"type": "message_end", "message": message})
+
+    assert stdout.getvalue() == ""
+    assert event_renderer.last_error_message == "Request aborted by user"
+
+
 def test_event_renderer_prints_user_message_start() -> None:
     from loushang.coding.ui.plain_events import PlainCodingEventRenderer
     from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
@@ -169,6 +307,30 @@ def test_event_renderer_prints_user_message_start() -> None:
     )
 
     assert stdout.getvalue() == "› hello\n"
+
+
+def test_event_renderer_can_suppress_user_messages() -> None:
+    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
+    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+
+    stdout = StringIO()
+    event_renderer = PlainCodingEventRenderer(
+        PlainCodingUiRenderer(stdout=stdout),
+        render_user_messages=False,
+    )
+
+    event_renderer.handle(
+        {
+            "type": "message_start",
+            "message": UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="hidden")],
+                timestamp=0.0,
+            ),
+        }
+    )
+
+    assert stdout.getvalue() == ""
 
 
 def test_event_renderer_aggregates_tool_lifecycle() -> None:
@@ -280,7 +442,7 @@ def test_plain_renderer_prints_worked_divider_to_terminal_width(monkeypatch) -> 
     from loushang.coding.ui import plain_renderer as renderer_module
     from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
 
-    monkeypatch.setattr(renderer_module.shutil, "get_terminal_size", lambda fallback: SimpleNamespace(columns=24))
+    monkeypatch.setattr(renderer_module.shutil, "get_terminal_size", lambda fallback: terminal_size((24, 24)))
     stdout = StringIO()
     renderer = PlainCodingUiRenderer(stdout=stdout)
 

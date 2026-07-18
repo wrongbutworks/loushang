@@ -15,6 +15,7 @@ dependencies = [
   "openai>=2.30.0",
   "pillow>=12.2.0",
   "pygments>=2.19,<3",
+  "wcwidth==0.8.2",
 ]
 
 [project.scripts]
@@ -35,6 +36,7 @@ testpaths = ["tests"]
 addopts = ["--import-mode=importlib"]
 markers = [
   "live: real provider verification that may require network access and credentials",
+  "tui_render_contract: deterministic TUI render correctness, structural performance, and terminal-operation contract",
   "vendor_verification: vendor or endpoint compatibility verification cases",
 ]
 

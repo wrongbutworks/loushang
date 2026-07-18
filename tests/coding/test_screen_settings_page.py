@@ -38,6 +38,7 @@ class _SettingsManager:
         self.image_auto_resize = True
         self.block_images = False
         self.retry_enabled = True
+        self.default_model_calls: list[tuple[ModelSelection | None, str]] = []
 
     def get_show_terminal_progress(self) -> bool:
         return self.terminal_progress
@@ -74,6 +75,14 @@ class _SettingsManager:
 
     def set_retry_enabled(self, enabled: bool) -> None:
         self.retry_enabled = enabled
+
+    def set_default_model(
+        self,
+        selection: ModelSelection | None,
+        *,
+        scope: str = "session",
+    ) -> None:
+        self.default_model_calls.append((selection, scope))
 
 
 def test_status_provider_exposes_read_only_snapshot() -> None:
@@ -146,11 +155,37 @@ def _raw(page: SettingsPageView, *, width: int = 100, height: int = 18) -> tuple
 
 
 def test_settings_page_tab_modules_export_page_components() -> None:
+    from loushang.coding.ui.settings_common import ConfigRow
     from loushang.coding.ui.settings_config import ConfigSettingsPage
+    from loushang.coding.ui.settings_page import (
+        ModelPage,
+    )
+    from loushang.coding.ui.settings_page import (
+        StaticLinesPage as CodingStaticLinesPage,
+    )
     from loushang.coding.ui.settings_status_line import StatusLineSettingsPage
+    from loushang.harnesstui.settings.dashboard import (
+        SettingsDashboard,
+        StaticLinesPage,
+    )
+    from loushang.harnesstui.settings.model import ModelPage as SharedModelPage
+    from loushang.harnesstui.settings.page import (
+        ConfigSettingsPage as SharedConfigSettingsPage,
+    )
+    from loushang.harnesstui.status.settings import (
+        StatusLineSettingsPage as SharedStatusLineSettingsPage,
+    )
+    from loushang.tui.settings import ConfigRow as SharedConfigRow
 
     page = _page()
 
+    assert ConfigSettingsPage is SharedConfigSettingsPage
+    assert StatusLineSettingsPage is SharedStatusLineSettingsPage
+    assert ModelPage is SharedModelPage
+    assert CodingStaticLinesPage is StaticLinesPage
+    assert ConfigRow is SharedConfigRow
+    assert isinstance(page, SettingsDashboard)
+    assert type(page.status_page) is StaticLinesPage
     assert isinstance(page.config_page, ConfigSettingsPage)
     assert isinstance(page.statusline_page, StatusLineSettingsPage)
 
@@ -331,3 +366,15 @@ def test_settings_page_model_tab_filters_and_selects_model() -> None:
     intent = page.handle_input(InputEvent(kind="key", key="enter"))
 
     assert intent == InputIntent(kind="setting", text="model.current", note="openai/gpt-5.4")
+
+
+def test_settings_page_model_apply_persists_with_page_settings_manager() -> None:
+    settings_manager = _SettingsManager()
+    page = _page(settings_manager=settings_manager)
+
+    result = asyncio.run(page.apply_setting("model.current", "openai/gpt-5.4"))
+
+    selection = ModelSelection(provider="openai", model_id="gpt-5.4")
+    assert result.message == "Model set: openai/gpt-5.4"
+    assert result.refresh_model_label is True
+    assert settings_manager.default_model_calls == [(selection, "global")]

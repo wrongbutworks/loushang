@@ -8,12 +8,22 @@
 
 - 活动 `Agent` 绑定
 - session 级命令入口
-- session 级事件分发
+- session 级产品事件定义与投影
 - 当前 active tool names
 - 当前 allowed tool names hard boundary
 - 当前注入给 `Agent` 的 runtime tools
-- 本地 steering / follow-up 队列状态
+- steering / follow-up 输入适配与 Agent delivery
 - 从 `SessionManager` 恢复出的运行上下文
+
+## Uses Harness Core
+
+- `loushang.harness.host.runtime.HostRuntime` 协调 prompt / continue / abort /
+  wait-for-idle / dispose 生命周期，并委托现有 `Agent` driver。
+- `loushang.harness.host.queue.HostInputQueue` 持有中立队列账本和快照；
+  Coding 继续负责 preflight、消息构造、Agent queue 和产品事件。
+- `loushang.harness.host.events.OrderedEventBus` 提供有序异步分发；
+  `AgentSessionEvent` 仍由 Coding 定义。
+- `loushang.harness.host.types.RunState` 是 Coding 公共路径复用的记录所有者。
 
 ## Depends On
 
@@ -23,6 +33,7 @@
 - `tools`
 - `loader`
 - `loushang-agent`
+- `loushang.harness.host`
 
 ## Commands
 

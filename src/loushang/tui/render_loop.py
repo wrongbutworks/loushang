@@ -1,12 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
+from bisect import bisect_right
+from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import ClassVar, Literal, Protocol
 
 from loushang.tui.cell_width import normalize_terminal_output, visible_width
-from loushang.tui.core import CursorDeclaration, RenderConstraints, RenderResult
+from loushang.tui.core import (
+    CursorDeclaration,
+    RenderConstraints,
+    RenderLineSegmentLike,
+    RenderResult,
+    SegmentedRenderLines,
+)
 from loushang.tui.playback import RenderDiagnostics
 from loushang.tui.terminal import TerminalOperation, TerminalSize
 from loushang.tui.terminal_image import (
@@ -18,6 +25,71 @@ from loushang.tui.terminal_image import (
 
 ClearScrollbackPolicy = Literal["disabled", "resize", "explicit"]
 SEGMENT_RESET = "\x1b[0m\x1b]8;;\x07"
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _LogicalLineSegment:
+    raw_lines: tuple[str, ...]
+    finalized_lines: tuple[str, ...]
+    kitty_images: tuple[tuple[int, int, str], ...] = ()
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _SegmentedTextLines(Sequence[str]):
+    segments: tuple[_LogicalLineSegment, ...] = ()
+    finalized: bool = True
+    _segment_ends: tuple[int, ...] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        total = 0
+        ends: list[int] = []
+        for segment in self.segments:
+            total += len(self._segment_lines(segment))
+            ends.append(total)
+        object.__setattr__(self, "_segment_ends", tuple(ends))
+
+    def __len__(self) -> int:
+        return self._segment_ends[-1] if self._segment_ends else 0
+
+    def __iter__(self) -> Iterator[str]:
+        for segment in self.segments:
+            yield from self._segment_lines(segment)
+
+    def __getitem__(self, index: int | slice) -> str | tuple[str, ...]:
+        if isinstance(index, slice):
+            start, stop, step = index.indices(len(self))
+            return tuple(self[row] for row in range(start, stop, step))
+        normalized = index + len(self) if index < 0 else index
+        if normalized < 0 or normalized >= len(self):
+            raise IndexError("logical line index out of range")
+        segment_index = bisect_right(self._segment_ends, normalized)
+        segment_start = self._segment_ends[segment_index - 1] if segment_index else 0
+        return self._segment_lines(self.segments[segment_index])[normalized - segment_start]
+
+    def __eq__(self, other: object) -> bool:
+        if self is other:
+            return True
+        if not isinstance(other, Sequence):
+            return NotImplemented
+        if len(self) != len(other):
+            return False
+        return all(current == candidate for current, candidate in zip(self, other, strict=True))
+
+    def tail_segments(self, start: int) -> _SegmentedTextLines:
+        return _SegmentedTextLines(self.segments[start:], finalized=self.finalized)
+
+    def segment_start(self, index: int) -> int:
+        return self._segment_ends[index - 1] if index else 0
+
+    def iter_kitty_images(self) -> Iterator[tuple[int, int, str]]:
+        row_offset = 0
+        for segment in self.segments:
+            for row, image_id, delete_sequence in segment.kitty_images:
+                yield row_offset + row, image_id, delete_sequence
+            row_offset += len(self._segment_lines(segment))
+
+    def _segment_lines(self, segment: _LogicalLineSegment) -> tuple[str, ...]:
+        return segment.finalized_lines if self.finalized else segment.raw_lines
 
 
 class ScreenRoot(Protocol):
@@ -526,8 +598,8 @@ class RenderLoop:
     screen_root: ScreenRoot
     clear_scrollback_policy: ClearScrollbackPolicy = "resize"
     termux_session: bool = False
-    previous_rendered_lines: tuple[str, ...] = ()
-    previous_raw_lines: tuple[str, ...] = ()
+    previous_rendered_lines: Sequence[str] = ()
+    previous_raw_lines: Sequence[str] = ()
     previous_size: TerminalSize | None = None
     previous_viewport_top: int = 0
     hardware_cursor_row: int = 0
@@ -537,7 +609,19 @@ class RenderLoop:
     previous_cursor_column: int = 0
     _unsafe_viewport_reason: str | None = None
     _baseline_reset_reason: str | None = None
-    _planned_raw_lines: tuple[str, ...] = ()
+    _planned_raw_lines: Sequence[str] = ()
+    _finalized_segment_cache: dict[tuple[object, object], _LogicalLineSegment] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
+    _planned_reused_segment_count: int = field(default=0, init=False, repr=False)
+    _planned_materialized_line_count: int = field(default=0, init=False, repr=False)
+    _planned_flattened_line_count: int = field(default=0, init=False, repr=False)
+    committed_frame_revision: int = field(default=0, init=False)
+    _next_frame_revision: int = field(default=0, init=False, repr=False)
+    _planned_base_frame_revision: int = field(default=0, init=False, repr=False)
+    _planned_frame_revision: int = field(default=0, init=False, repr=False)
 
     def mark_viewport_unsafe(self, reason: str) -> None:
         self._unsafe_viewport_reason = reason
@@ -546,16 +630,14 @@ class RenderLoop:
         self._baseline_reset_reason = reason
 
     def _build_plan_context(self, size: TerminalSize) -> RenderPlanContext:
+        self._planned_base_frame_revision = self.committed_frame_revision
+        self._next_frame_revision += 1
+        self._planned_frame_revision = self._next_frame_revision
         result = self.screen_root.render(
             RenderConstraints(width=size.columns, max_height=1_000_000, visible_height=size.rows)
         )
-        raw_current_lines = tuple(line.text for line in result.lines)
+        raw_current_lines, current_lines = self._logical_lines(result)
         self._planned_raw_lines = raw_current_lines
-        current_lines = _finalize_rendered_lines(
-            raw_current_lines,
-            previous_raw_lines=self.previous_raw_lines,
-            previous_finalized_lines=self.previous_rendered_lines,
-        )
         cursor = _cursor_or_line_end(result.cursor, current_lines)
         previous_lines = self.previous_rendered_lines
         previous_size = self.previous_size
@@ -604,6 +686,46 @@ class RenderLoop:
             height_changed=height_changed,
             previous_kitty_delete_sequences=previous_kitty_delete_sequences,
         )
+
+    def _logical_lines(self, result: RenderResult) -> tuple[Sequence[str], Sequence[str]]:
+        self._planned_reused_segment_count = 0
+        self._planned_materialized_line_count = 0
+        self._planned_flattened_line_count = 0
+        if not isinstance(result.lines, SegmentedRenderLines):
+            raw_lines = tuple(line.text for line in result.lines)
+            self._planned_flattened_line_count = len(raw_lines)
+            self._planned_materialized_line_count = len(raw_lines)
+            return raw_lines, _finalize_rendered_lines(
+                raw_lines,
+                previous_raw_lines=self.previous_raw_lines,
+                previous_finalized_lines=self.previous_rendered_lines,
+            )
+
+        # Retain only segments from the latest complete segmented materialization.
+        # Building off to the side keeps the previous cache intact if finalization fails.
+        previous_segment_cache = self._finalized_segment_cache
+        current_segment_cache: dict[tuple[object, object], _LogicalLineSegment] = {}
+        segments: list[_LogicalLineSegment] = []
+        for rendered_segment in result.lines.segments:
+            cache_key = _render_segment_cache_key(rendered_segment)
+            logical_segment = (
+                current_segment_cache.get(cache_key) if cache_key is not None else None
+            )
+            if logical_segment is None and cache_key is not None:
+                logical_segment = previous_segment_cache.get(cache_key)
+            if logical_segment is not None:
+                self._planned_reused_segment_count += 1
+            else:
+                logical_segment = _finalize_render_segment(rendered_segment)
+                self._planned_materialized_line_count += len(logical_segment.raw_lines)
+            segments.append(logical_segment)
+            if cache_key is not None:
+                current_segment_cache[cache_key] = logical_segment
+        logical_segments = tuple(segments)
+        raw_lines = _SegmentedTextLines(logical_segments, finalized=False)
+        finalized_lines = _SegmentedTextLines(logical_segments, finalized=True)
+        self._finalized_segment_cache = current_segment_cache
+        return raw_lines, finalized_lines
 
     def _plan_runtime(self) -> RenderPlanRuntime:
         return RenderPlanRuntime(
@@ -667,8 +789,10 @@ class RenderLoop:
         )
 
     def commit(self, diagnostics: RenderDiagnostics, *, size: TerminalSize) -> None:
+        if diagnostics.base_frame_revision != self.committed_frame_revision:
+            raise RuntimeError("render plan base revision no longer matches the committed frame")
         self.previous_rendered_lines = diagnostics.current_logical_lines
-        self.previous_raw_lines = self._planned_raw_lines
+        self.previous_raw_lines = diagnostics.raw_logical_lines
         self.previous_size = size
         self.previous_viewport_top = diagnostics.viewport_top
         self.hardware_cursor_row = diagnostics.hardware_cursor_row
@@ -678,6 +802,7 @@ class RenderLoop:
         self.working_area_high_water_mark = max(
             self.working_area_high_water_mark, len(diagnostics.current_logical_lines)
         )
+        self.committed_frame_revision = diagnostics.frame_revision
         self._unsafe_viewport_reason = None
         self._baseline_reset_reason = None
 
@@ -750,6 +875,7 @@ class RenderLoop:
         terminal_cursor_column = logical_cursor.column if hardware_cursor_column is None else hardware_cursor_column
         return RenderDiagnostics(
             current_logical_lines=current_lines,
+            raw_logical_lines=self._planned_raw_lines,
             previous_rendered_lines=previous_lines,
             changed_line_range=changed_range,
             operation_class=operation_class,
@@ -770,10 +896,42 @@ class RenderLoop:
             repaint_reason=repaint_reason,
             clear_scrollback_policy=self.clear_scrollback_policy,
             clear_scrollback_emitted=clear_scrollback_emitted,
+            reused_render_segment_count=self._planned_reused_segment_count,
+            materialized_logical_line_count=self._planned_materialized_line_count,
+            flattened_logical_line_count=self._planned_flattened_line_count,
+            base_frame_revision=self._planned_base_frame_revision,
+            frame_revision=self._planned_frame_revision,
         )
 
 
-def _changed_line_range(previous_lines: tuple[str, ...], current_lines: tuple[str, ...]) -> tuple[int, int] | None:
+def _changed_line_range(previous_lines: Sequence[str], current_lines: Sequence[str]) -> tuple[int, int] | None:
+    if isinstance(previous_lines, _SegmentedTextLines) and isinstance(current_lines, _SegmentedTextLines):
+        common_segments = 0
+        common_limit = min(len(previous_lines.segments), len(current_lines.segments))
+        while (
+            common_segments < common_limit
+            and previous_lines.segments[common_segments] is current_lines.segments[common_segments]
+        ):
+            common_segments += 1
+        if common_segments == len(previous_lines.segments) == len(current_lines.segments):
+            return None
+        prefix_rows = previous_lines.segment_start(common_segments)
+        if prefix_rows != current_lines.segment_start(common_segments):
+            return _changed_line_range_flat(previous_lines, current_lines)
+        local = _changed_line_range_flat(
+            previous_lines.tail_segments(common_segments),
+            current_lines.tail_segments(common_segments),
+        )
+        if local is None:
+            return None
+        return prefix_rows + local[0], prefix_rows + local[1]
+    return _changed_line_range_flat(previous_lines, current_lines)
+
+
+def _changed_line_range_flat(
+    previous_lines: Sequence[str],
+    current_lines: Sequence[str],
+) -> tuple[int, int] | None:
     first_changed = -1
     last_changed = -1
     for index in range(max(len(previous_lines), len(current_lines))):
@@ -790,19 +948,33 @@ def _changed_line_range(previous_lines: tuple[str, ...], current_lines: tuple[st
 
 
 def _expand_changed_range_for_kitty_images(
-    previous_lines: tuple[str, ...],
+    previous_lines: Sequence[str],
     changed_range: tuple[int, int] | None,
 ) -> tuple[int, int] | None:
     if changed_range is None:
         return None
     first_changed, last_changed = changed_range
+    if isinstance(previous_lines, _SegmentedTextLines):
+        for row, _image_id, _delete_sequence in previous_lines.iter_kitty_images():
+            if row >= first_changed:
+                last_changed = max(last_changed, row)
+        return first_changed, last_changed
     for index in range(first_changed, len(previous_lines)):
         if extract_kitty_image_ids(previous_lines[index]):
             last_changed = max(last_changed, index)
     return first_changed, last_changed
 
 
-def _kitty_delete_sequences(lines: tuple[str, ...]) -> tuple[str, ...]:
+def _kitty_delete_sequences(lines: Sequence[str]) -> tuple[str, ...]:
+    if isinstance(lines, _SegmentedTextLines):
+        deletes: list[str] = []
+        seen: set[int] = set()
+        for _row, image_id, delete_sequence in lines.iter_kitty_images():
+            if image_id in seen:
+                continue
+            seen.add(image_id)
+            deletes.append(delete_sequence)
+        return tuple(deletes)
     deletes: list[str] = []
     seen: set[int] = set()
     for line in lines:
@@ -818,9 +990,18 @@ def _kitty_delete_sequences(lines: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(deletes)
 
 
-def _kitty_delete_sequences_in_range(lines: tuple[str, ...], first: int, last: int) -> tuple[str, ...]:
+def _kitty_delete_sequences_in_range(lines: Sequence[str], first: int, last: int) -> tuple[str, ...]:
     if last < first or first >= len(lines):
         return ()
+    if isinstance(lines, _SegmentedTextLines):
+        deletes: list[str] = []
+        seen: set[int] = set()
+        for row, image_id, delete_sequence in lines.iter_kitty_images():
+            if row < first or row > last or image_id in seen:
+                continue
+            seen.add(image_id)
+            deletes.append(delete_sequence)
+        return tuple(deletes)
     return _kitty_delete_sequences(lines[max(0, first) : min(last + 1, len(lines))])
 
 
@@ -857,6 +1038,35 @@ def _finalize_rendered_line(line: str) -> str:
     if normalized.endswith(SEGMENT_RESET):
         return normalized
     return normalized + SEGMENT_RESET
+
+
+def _render_segment_cache_key(segment: RenderLineSegmentLike) -> tuple[object, object] | None:
+    if not segment.cacheable:
+        return None
+    key = (segment.identity_key, segment.revision)
+    try:
+        hash(key)
+    except TypeError:
+        return None
+    return key
+
+
+def _finalize_render_segment(segment: RenderLineSegmentLike) -> _LogicalLineSegment:
+    raw_lines = tuple(line.text for line in segment.iter_lines())
+    finalized_lines = tuple(_finalize_rendered_line(line) for line in raw_lines)
+    kitty_images: list[tuple[int, int, str]] = []
+    for row, line in enumerate(finalized_lines):
+        tmux_passthrough = _line_uses_tmux_passthrough(line)
+        for image_id in extract_kitty_image_ids(line):
+            delete_sequence = delete_kitty_image(image_id)
+            if tmux_passthrough:
+                delete_sequence = wrap_tmux_passthrough(delete_sequence)
+            kitty_images.append((row, image_id, delete_sequence))
+    return _LogicalLineSegment(
+        raw_lines=raw_lines,
+        finalized_lines=finalized_lines,
+        kitty_images=tuple(kitty_images),
+    )
 
 
 def _viewport_top(lines: tuple[str, ...], size: TerminalSize) -> int:
@@ -989,7 +1199,10 @@ def _protected_append_plan(
         return None
     if cursor.row < protected_start:
         return None
-    if previous_lines[:inserted_start] != current_lines[:inserted_start]:
+    if not (
+        isinstance(previous_lines, _SegmentedTextLines)
+        and isinstance(current_lines, _SegmentedTextLines)
+    ) and previous_lines[:inserted_start] != current_lines[:inserted_start]:
         return None
     return inserted_start, inserted_end, protected_start
 

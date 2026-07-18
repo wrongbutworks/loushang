@@ -1,0 +1,512 @@
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import MISSING, dataclass, field, fields, is_dataclass
+from inspect import Parameter, signature
+from types import NoneType
+from typing import (
+    Annotated,
+    Any,
+    NotRequired,
+    Protocol,
+    Required,
+    TypedDict,
+    get_args,
+    get_origin,
+    get_type_hints,
+    is_typeddict,
+    runtime_checkable,
+)
+
+from loushang.agent.types import (
+    AgentTool,
+    AgentToolResult,
+    ToolExecutionMode,
+    ensure_agent_tool,
+    is_agent_tool_like,
+)
+from loushang.harness.presentation import ToolRenderContext, ToolRenderResultOptions
+
+_TOOL_SPEC_ATTR = "__loushang_tool_spec__"
+
+ToolRenderOutput = str | Mapping[str, Any] | None
+ToolRenderCall = Callable[[object, Mapping[str, str], ToolRenderContext], ToolRenderOutput]
+ToolRenderResult = Callable[
+    [AgentToolResult[Any], ToolRenderResultOptions, Mapping[str, str], ToolRenderContext],
+    ToolRenderOutput,
+]
+
+_SCALAR_TYPES: dict[type[object], str] = {
+    str: "string",
+    int: "integer",
+    float: "number",
+    bool: "boolean",
+}
+
+
+def _as_tuple_of_strings(value: tuple[str, ...] | list[str], field_name: str) -> tuple[str, ...]:
+    if isinstance(value, str):
+        raise TypeError(f"{field_name} must be a sequence of strings, not a string")
+    normalized: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise TypeError(f"{field_name} must be a sequence of strings")
+        normalized.append(item)
+    return tuple(normalized)
+
+
+def _validate_execution_mode(value: ToolExecutionMode, field_name: str) -> ToolExecutionMode:
+    if value not in {"sequential", "parallel"}:
+        raise ValueError(f"{field_name} must be 'sequential' or 'parallel'")
+    return value
+
+
+@dataclass(frozen=True)
+class ToolDefinition:
+    name: str
+    label: str
+    description: str
+    parameters: dict[str, Any]
+    execute: Callable[
+        [str, dict[str, Any], object | None, object | None],
+        Awaitable[AgentToolResult[Any]],
+    ]
+    prepare_arguments: Callable[[object], dict[str, Any]] | None = None
+    execution_mode: ToolExecutionMode = "parallel"
+    prompt_snippet: str | None = None
+    prompt_guidelines: tuple[str, ...] = field(default_factory=tuple)
+    render_call: ToolRenderCall | None = None
+    render_result: ToolRenderResult | None = None
+    provider_parameters: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "prompt_guidelines",
+            _as_tuple_of_strings(self.prompt_guidelines, "prompt_guidelines"),
+        )
+        object.__setattr__(
+            self,
+            "execution_mode",
+            _validate_execution_mode(self.execution_mode, "execution_mode"),
+        )
+        if self.render_call is not None and not callable(self.render_call):
+            raise TypeError("render_call must be callable")
+        if self.render_result is not None and not callable(self.render_result):
+            raise TypeError("render_result must be callable")
+        if self.provider_parameters is not None and not isinstance(self.provider_parameters, dict):
+            raise TypeError("provider_parameters must be a dict")
+
+    @property
+    def renderCall(self) -> ToolRenderCall | None:
+        return self.render_call
+
+    @property
+    def renderResult(self) -> ToolRenderResult | None:
+        return self.render_result
+
+
+@dataclass(frozen=True)
+class DecoratedToolSpec:
+    fn: Callable[..., object]
+    name: str | None = None
+    description: str | None = None
+    label: str | None = None
+    prompt_snippet: str | None = None
+    prompt_guidelines: tuple[str, ...] | list[str] = ()
+    schema_overrides: dict[str, object] | None = None
+
+    def __call__(self, *args: object, **kwargs: object) -> object:
+        return self.fn(*args, **kwargs)
+
+
+@runtime_checkable
+class DecoratedTool(Protocol):
+    __loushang_tool_spec__: DecoratedToolSpec
+
+
+def tool(
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    label: str | None = None,
+    prompt_snippet: str | None = None,
+    prompt_guidelines: tuple[str, ...] | list[str] = (),
+    schema_overrides: dict[str, object] | None = None,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+        spec = DecoratedToolSpec(
+            fn=fn,
+            name=name,
+            description=description,
+            label=label,
+            prompt_snippet=prompt_snippet,
+            prompt_guidelines=prompt_guidelines,
+            schema_overrides=schema_overrides,
+        )
+        setattr(fn, _TOOL_SPEC_ATTR, spec)
+        return fn
+
+    return decorator
+
+
+def _base_object_schema() -> dict[str, object]:
+    return {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": False,
+    }
+
+
+def _unwrap_annotation(annotation: object) -> object:
+    origin = get_origin(annotation)
+    if origin is Annotated:
+        return _unwrap_annotation(get_args(annotation)[0])
+    if origin in (Required, NotRequired):
+        return _unwrap_annotation(get_args(annotation)[0])
+    if origin is None and annotation is not None:
+        return annotation
+    return annotation
+
+
+def _merge_schema(base: dict[str, object], overrides: dict[str, object]) -> dict[str, object]:
+    merged: dict[str, object] = dict(base)
+    for key, value in overrides.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = _merge_schema(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def apply_schema_overrides(schema: dict[str, object], overrides: dict[str, object] | None) -> dict[str, object]:
+    if overrides in (None, {}):
+        return schema
+    if not isinstance(overrides, dict):
+        raise TypeError("schema overrides must be a mapping")
+    return _merge_schema(schema, overrides)
+
+
+def infer_schema_from_signature(fn: object, *, exclude_names: set[str] | frozenset[str] | None = None) -> dict[str, object]:
+    sig = signature(fn)
+    hints = get_type_hints(fn, include_extras=True)
+    schema = _base_object_schema()
+    properties = schema["properties"]
+    required = schema["required"]
+    excluded = set(exclude_names or ())
+
+    for param in sig.parameters.values():
+        if param.name in excluded:
+            continue
+        if param.kind == Parameter.POSITIONAL_ONLY:
+            raise TypeError("positional-only parameters are not supported for schema inference")
+        if param.kind in (Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD):
+            raise TypeError("variadic parameters are not supported for schema inference")
+        if param.name not in hints:
+            raise TypeError(f"parameter {param.name!r} must be annotated")
+        annotation = hints[param.name]
+        properties[param.name] = infer_schema_from_type(annotation)
+        if param.default is Parameter.empty:
+            required.append(param.name)
+
+    return schema
+
+
+def infer_schema_from_type(annotation: object) -> dict[str, object]:
+    annotation = _unwrap_annotation(annotation)
+
+    if annotation is Any:
+        raise TypeError("cannot infer schema from typing.Any")
+
+    origin = get_origin(annotation)
+    if origin is None:
+        if annotation in _SCALAR_TYPES:
+            return {"type": _SCALAR_TYPES[annotation]}
+
+        if isinstance(annotation, type):
+            if is_typeddict(annotation):
+                return _infer_schema_from_typeddict(annotation)
+            if is_dataclass(annotation):
+                return _infer_schema_from_dataclass(annotation)
+            if _is_pydantic_model(annotation):
+                return _infer_schema_from_pydantic_model(annotation)
+
+        raise TypeError(f"unsupported schema annotation: {annotation!r}")
+
+    if origin is list:
+        (item_annotation,) = get_args(annotation) or (Any,)
+        return {"type": "array", "items": infer_schema_from_type(item_annotation)}
+
+    if origin is tuple:
+        args = get_args(annotation)
+        if len(args) == 2 and args[1] is Ellipsis:
+            return {"type": "array", "items": infer_schema_from_type(args[0])}
+        raise TypeError("fixed-length tuples are not supported for schema inference")
+
+    union_args = get_args(annotation)
+    if union_args and any(arg is NoneType for arg in union_args):
+        non_none = [arg for arg in union_args if arg is not NoneType]
+        if len(non_none) != 1:
+            raise TypeError("optional unions must contain exactly one non-None type")
+        return {
+            "anyOf": [
+                infer_schema_from_type(non_none[0]),
+                {"type": "null"},
+            ]
+        }
+
+    if origin is NoneType or annotation is NoneType:
+        raise TypeError("bare None is not a supported schema annotation")
+
+    raise TypeError(f"unsupported schema annotation: {annotation!r}")
+
+
+def _infer_schema_from_dataclass(cls: type[object]) -> dict[str, object]:
+    type_hints = get_type_hints(cls, include_extras=True)
+    schema = _base_object_schema()
+    properties = schema["properties"]
+    required = schema["required"]
+
+    for dataclass_field in fields(cls):
+        annotation = type_hints.get(dataclass_field.name, dataclass_field.type)
+        properties[dataclass_field.name] = infer_schema_from_type(annotation)
+        if dataclass_field.default is MISSING and dataclass_field.default_factory is MISSING:
+            required.append(dataclass_field.name)
+
+    return schema
+
+
+def _infer_schema_from_typeddict(cls: type[TypedDict]) -> dict[str, object]:
+    type_hints = get_type_hints(cls, include_extras=True)
+    schema = _base_object_schema()
+    properties = schema["properties"]
+    required = schema["required"]
+
+    required_keys = getattr(cls, "__required_keys__", frozenset())
+    optional_keys = getattr(cls, "__optional_keys__", frozenset())
+
+    for name, annotation in type_hints.items():
+        properties[name] = infer_schema_from_type(annotation)
+        if _typeddict_key_is_required(
+            cls,
+            name,
+            annotation,
+            required_keys=required_keys,
+            optional_keys=optional_keys,
+        ):
+            required.append(name)
+
+    return schema
+
+
+def _typeddict_key_is_required(
+    cls: type[TypedDict],
+    name: str,
+    annotation: object,
+    *,
+    required_keys: frozenset[str],
+    optional_keys: frozenset[str],
+) -> bool:
+    origin = get_origin(annotation)
+    if origin is Required:
+        return True
+    if origin is NotRequired:
+        return False
+    if name in optional_keys:
+        return False
+    if name in required_keys:
+        return True
+    return bool(getattr(cls, "__total__", True))
+
+
+def _is_pydantic_model(annotation: type[object]) -> bool:
+    try:
+        from pydantic import BaseModel
+    except ImportError:
+        return False
+    return issubclass(annotation, BaseModel)
+
+
+def _infer_schema_from_pydantic_model(annotation: type[object]) -> dict[str, object]:
+    if hasattr(annotation, "model_json_schema"):
+        schema = annotation.model_json_schema()
+    elif hasattr(annotation, "schema"):
+        schema = annotation.schema()
+    else:
+        raise TypeError("pydantic model does not expose a schema method")
+
+    if not isinstance(schema, dict):
+        raise TypeError("pydantic model schema must be a mapping")
+    _raise_on_unresolved_pydantic_refs(schema)
+    return schema
+
+
+def _raise_on_unresolved_pydantic_refs(value: object, *, in_properties_map: bool = False) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not in_properties_map and key in {"$ref", "$defs", "definitions"}:
+                raise ValueError("unresolved pydantic refs are not yet supported")
+            if key == "properties":
+                _raise_on_unresolved_pydantic_refs(item, in_properties_map=True)
+            else:
+                _raise_on_unresolved_pydantic_refs(item)
+    elif isinstance(value, list):
+        for item in value:
+            _raise_on_unresolved_pydantic_refs(item)
+
+
+@dataclass
+class WrappedToolDefinition:
+    definition: ToolDefinition
+
+    @property
+    def name(self) -> str:
+        return self.definition.name
+
+    @property
+    def label(self) -> str:
+        return self.definition.label
+
+    @property
+    def description(self) -> str:
+        return self.definition.description
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return self.definition.parameters
+
+    @property
+    def prepare_arguments(self):
+        return self.definition.prepare_arguments
+
+    @property
+    def execution_mode(self) -> ToolExecutionMode:
+        return self.definition.execution_mode
+
+    @property
+    def render_call(self) -> ToolRenderCall | None:
+        return self.definition.render_call
+
+    @property
+    def renderCall(self) -> ToolRenderCall | None:
+        return self.definition.renderCall
+
+    @property
+    def render_result(self) -> ToolRenderResult | None:
+        return self.definition.render_result
+
+    @property
+    def renderResult(self) -> ToolRenderResult | None:
+        return self.definition.renderResult
+
+    async def execute(
+        self,
+        tool_call_id: str,
+        params: dict[str, Any],
+        signal: object | None = None,
+        on_update: object | None = None,
+    ) -> AgentToolResult[Any]:
+        return await self.definition.execute(tool_call_id, params, signal, on_update)
+
+
+def wrap_tool_definition(definition: ToolDefinition) -> AgentTool[Any]:
+    return WrappedToolDefinition(definition=definition)
+
+
+def create_tool_definition_from_tool(tool: AgentTool[Any]) -> ToolDefinition:
+    definition = getattr(tool, "definition", None)
+    if isinstance(definition, ToolDefinition):
+        return definition
+    return ToolDefinition(
+        name=tool.name,
+        label=tool.label,
+        description=tool.description,
+        parameters=tool.parameters,
+        prepare_arguments=tool.prepare_arguments,
+        execution_mode=tool.execution_mode,
+        render_call=getattr(tool, "render_call", getattr(tool, "renderCall", None)),
+        render_result=getattr(tool, "render_result", getattr(tool, "renderResult", None)),
+        execute=tool.execute,
+    )
+
+
+def wrap_tool_definitions(definitions: list[ToolDefinition]) -> list[AgentTool[Any]]:
+    return [wrap_tool_definition(definition) for definition in definitions]
+
+
+@dataclass(frozen=True)
+class _RegisteredTool:
+    definition: ToolDefinition
+    enabled: bool = True
+    source_info: object | None = None
+
+
+class ToolRegistry:
+    def __init__(self) -> None:
+        self._tools: dict[str, _RegisteredTool] = {}
+        self._order: list[str] = []
+
+    def register_tool(
+        self,
+        tool: ToolDefinition | AgentTool[Any] | object,
+        *,
+        enabled: bool = True,
+        source_info: object | None = None,
+    ) -> ToolDefinition:
+        if isinstance(tool, ToolDefinition):
+            definition = tool
+        elif is_agent_tool_like(tool):
+            definition = create_tool_definition_from_tool(ensure_agent_tool(tool))
+        else:
+            raise TypeError(
+                "ToolRegistry.register_tool expects a pre-normalized ToolDefinition "
+                "or AgentTool-like object"
+            )
+        if definition.name not in self._tools:
+            self._order.append(definition.name)
+        self._tools[definition.name] = _RegisteredTool(definition=definition, enabled=enabled, source_info=source_info)
+        return definition
+
+    def get_tool(self, name: str) -> AgentTool[Any]:
+        return self.materialize_tool(name)
+
+    def get_definition(self, name: str) -> ToolDefinition:
+        return self._tools[name].definition
+
+    def get_source_info(self, name: str) -> object | None:
+        return self._tools[name].source_info
+
+    def list_tools(self) -> list[AgentTool[Any]]:
+        return self.materialize_definitions(self.list_definitions())
+
+    def list_enabled_tools(self) -> list[AgentTool[Any]]:
+        return self.materialize_definitions(self.list_enabled_definitions())
+
+    def list_definitions(self) -> list[ToolDefinition]:
+        return [self._tools[name].definition for name in self._order]
+
+    def list_enabled_definitions(self) -> list[ToolDefinition]:
+        return [self._tools[name].definition for name in self._order if self._tools[name].enabled]
+
+    def enable_tool(self, name: str) -> None:
+        registered = self._tools[name]
+        self._tools[name] = _RegisteredTool(
+            definition=registered.definition,
+            enabled=True,
+            source_info=registered.source_info,
+        )
+
+    def disable_tool(self, name: str) -> None:
+        registered = self._tools[name]
+        self._tools[name] = _RegisteredTool(
+            definition=registered.definition,
+            enabled=False,
+            source_info=registered.source_info,
+        )
+
+    def materialize_tool(self, name: str) -> AgentTool[Any]:
+        return wrap_tool_definition(self.get_definition(name))
+
+    def materialize_definitions(self, definitions: list[ToolDefinition]) -> list[AgentTool[Any]]:
+        return [wrap_tool_definition(definition) for definition in definitions]

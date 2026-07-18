@@ -72,8 +72,12 @@ def test_extension_api_registers_command_flag_and_shortcut() -> None:
         del args, ctx
 
     api.register_command("deploy", description="Deploy project", handler=_deploy)
-    api.register_flag("plan", type="boolean", description="Enable plan mode", default=False)
-    api.register_shortcut("ctrl+p", description="Trigger deploy", handler=lambda ctx: None)
+    api.register_flag(
+        "plan", type="boolean", description="Enable plan mode", default=False
+    )
+    api.register_shortcut(
+        "ctrl+p", description="Trigger deploy", handler=lambda ctx: None
+    )
 
     loaded = api.build_loaded_extension()
 
@@ -82,16 +86,13 @@ def test_extension_api_registers_command_flag_and_shortcut() -> None:
     assert loaded.flags["plan"].type == "boolean"
     assert loaded.flags["plan"].default is False
     assert loaded.shortcuts["ctrl+p"].description == "Trigger deploy"
-    assert (
-        ResolvedCommand(
-            name="deploy",
-            handler=_deploy,
-            invocation_name="deploy",
-            source_info=SourceInfo(path=Path("/tmp/demo.py")),
-            extension_name="demo",
-        ).source_info.path
-        == Path("/tmp/demo.py")
-    )
+    assert ResolvedCommand(
+        name="deploy",
+        handler=_deploy,
+        invocation_name="deploy",
+        source_info=SourceInfo(path=Path("/tmp/demo.py")),
+        extension_name="demo",
+    ).source_info.path == Path("/tmp/demo.py")
 
 
 def test_extension_api_registers_message_renderer() -> None:
@@ -129,10 +130,10 @@ def test_extension_api_runtime_actions_are_noop_before_binding() -> None:
 
     api = ExtensionAPI(name="demo", source_path=Path("/tmp/demo.py"))
 
-    api.append_entry("demo")
-    api.set_session_name("Demo")
-    api.set_label("entry", "label")
-    api.set_thinking_level("high")
+    asyncio.run(api.append_entry("demo"))
+    asyncio.run(api.set_session_name("Demo"))
+    asyncio.run(api.set_label("entry", "label"))
+    asyncio.run(api.set_thinking_level("high"))
     asyncio.run(api.send_message({"customType": "demo"}))
     asyncio.run(api.send_user_message("hello"))
     asyncio.run(api.set_active_tools(["read"]))
@@ -173,7 +174,9 @@ def test_extension_api_exec_command_delegates_to_runtime_binding() -> None:
         return ExecResult(exit_code=0, stdout="ok\n")
 
     api = ExtensionAPI(name="demo", source_path=Path("/tmp/demo.py"))
-    api.bind_runtime_state(SimpleNamespace(bindings=SimpleNamespace(exec_command=_exec_command)))
+    api.bind_runtime_state(
+        SimpleNamespace(bindings=SimpleNamespace(exec_command=_exec_command))
+    )
 
     async def scenario() -> None:
         result = await api.exec_command(
@@ -283,7 +286,9 @@ def test_extension_api_v1_core_types_are_available() -> None:
     from loushang.coding.loader import ResourceDiagnostic
     from loushang.coding.tools import ToolDefinition
 
-    async def _execute_tool(tool_name: str, arguments: dict[str, object], context, signal):
+    async def _execute_tool(
+        tool_name: str, arguments: dict[str, object], context, signal
+    ):
         return {"tool_name": tool_name, "arguments": arguments}
 
     def _session_start(event, ctx):
@@ -296,7 +301,9 @@ def test_extension_api_v1_core_types_are_available() -> None:
         parameters={},
         execute=_execute_tool,
     )
-    diagnostic = ResourceDiagnostic(code="demo", message="demo diagnostic", source_path=Path("/tmp/demo"))
+    diagnostic = ResourceDiagnostic(
+        code="demo", message="demo diagnostic", source_path=Path("/tmp/demo")
+    )
     loaded = LoadedExtension(
         name="demo_extension",
         source_path=Path("/tmp/demo_extension.py"),
@@ -332,7 +339,12 @@ def test_extension_api_v1_core_types_are_available() -> None:
     assert loaded.hooks["session_start"] == [_session_start]
     assert loaded.tool_definitions == [tool]
     assert loaded.diagnostics == [diagnostic]
-    assert BeforeAgentStartResult(system_prompt_append="Be concise.", block=False).system_prompt_append == "Be concise."
+    assert (
+        BeforeAgentStartResult(
+            system_prompt_append="Be concise.", block=False
+        ).system_prompt_append
+        == "Be concise."
+    )
     assert ContextResult(messages=[]).messages == []
     assert ToolCallDecision(block=True, reason="blocked").reason == "blocked"
     assert ToolResultDecision(result={"ok": True}).result == {"ok": True}
@@ -342,7 +354,9 @@ def test_extension_api_registers_hooks_and_tools() -> None:
     from loushang.coding.extensions.api import ExtensionAPI
     from loushang.coding.tools import ToolDefinition
 
-    async def _execute_tool(tool_name: str, arguments: dict[str, object], context, signal):
+    async def _execute_tool(
+        tool_name: str, arguments: dict[str, object], context, signal
+    ):
         return {"tool_name": tool_name, "arguments": arguments}
 
     def _session_start(event, ctx):
@@ -373,7 +387,9 @@ def test_extension_api_registers_hooks_and_tools() -> None:
 def test_extension_api_rejects_unknown_event_names() -> None:
     from loushang.coding.extensions.api import ExtensionAPI
 
-    api = ExtensionAPI(name="demo_extension", source_path=Path("/tmp/demo_extension.py"))
+    api = ExtensionAPI(
+        name="demo_extension", source_path=Path("/tmp/demo_extension.py")
+    )
 
     try:
         api.on("not_real", lambda event, ctx: None)
@@ -398,11 +414,29 @@ def test_extension_api_exports_runtime_binding_types() -> None:
     )
 
     assert SessionRefreshEvent
-    assert SessionStartEvent(reason="new", previous_session_file="/tmp/old.jsonl").reason == "new"
-    assert SessionStartEvent(reason="new", previous_session_file="/tmp/old.jsonl").previousSessionFile == "/tmp/old.jsonl"
+    assert (
+        SessionStartEvent(reason="new", previous_session_file="/tmp/old.jsonl").reason
+        == "new"
+    )
+    assert (
+        SessionStartEvent(
+            reason="new", previous_session_file="/tmp/old.jsonl"
+        ).previousSessionFile
+        == "/tmp/old.jsonl"
+    )
     assert SessionStartEvent().type == "session_start"
-    assert SessionShutdownEvent(reason="resume", target_session_file="/tmp/target.jsonl").target_session_file == "/tmp/target.jsonl"
-    assert SessionShutdownEvent(reason="resume", target_session_file="/tmp/target.jsonl").targetSessionFile == "/tmp/target.jsonl"
+    assert (
+        SessionShutdownEvent(
+            reason="resume", target_session_file="/tmp/target.jsonl"
+        ).target_session_file
+        == "/tmp/target.jsonl"
+    )
+    assert (
+        SessionShutdownEvent(
+            reason="resume", target_session_file="/tmp/target.jsonl"
+        ).targetSessionFile
+        == "/tmp/target.jsonl"
+    )
     assert SessionShutdownEvent().type == "session_shutdown"
     assert ExtensionRuntimeBindings
 
@@ -421,17 +455,55 @@ def test_extension_api_v2_core_types_include_session_control_hooks() -> None:
     assert "session_before_fork" in VALID_EXTENSION_EVENTS
     assert "session_before_compact" in VALID_EXTENSION_EVENTS
     assert "session_before_tree" in VALID_EXTENSION_EVENTS
-    assert SessionBeforeSwitchEvent(reason="new", cwd="/tmp/project").type == "session_before_switch"
+    assert (
+        SessionBeforeSwitchEvent(reason="new", cwd="/tmp/project").type
+        == "session_before_switch"
+    )
     assert SessionBeforeSwitchEvent(reason="new", cwd="/tmp/project").reason == "new"
-    assert SessionBeforeSwitchEvent(reason="resume", cwd="/tmp/project", target_session_file="/tmp/target.jsonl").targetSessionFile == "/tmp/target.jsonl"
-    assert SessionBeforeForkEvent(entry_id="entry-1", cwd="/tmp/project").type == "session_before_fork"
-    assert SessionBeforeForkEvent(entry_id="entry-1", cwd="/tmp/project").entry_id == "entry-1"
-    assert SessionBeforeForkEvent(entry_id="entry-1", cwd="/tmp/project").entryId == "entry-1"
-    assert SessionBeforeCompactEvent(reason="manual", cwd="/tmp/project").type == "session_before_compact"
-    assert SessionBeforeCompactEvent(reason="manual", cwd="/tmp/project").reason == "manual"
-    assert SessionBeforeCompactEvent(reason="manual", cwd="/tmp/project", custom_instructions="keep").customInstructions == "keep"
-    assert SessionBeforeTreeEvent(target_id="entry-1", old_leaf_id="entry-2", cwd="/tmp/project").type == "session_before_tree"
-    assert SessionBeforeTreeEvent(target_id="entry-1", old_leaf_id="entry-2", cwd="/tmp/project").target_id == "entry-1"
+    assert (
+        SessionBeforeSwitchEvent(
+            reason="resume", cwd="/tmp/project", target_session_file="/tmp/target.jsonl"
+        ).targetSessionFile
+        == "/tmp/target.jsonl"
+    )
+    assert (
+        SessionBeforeForkEvent(entry_id="entry-1", cwd="/tmp/project").type
+        == "session_before_fork"
+    )
+    assert (
+        SessionBeforeForkEvent(entry_id="entry-1", cwd="/tmp/project").entry_id
+        == "entry-1"
+    )
+    assert (
+        SessionBeforeForkEvent(entry_id="entry-1", cwd="/tmp/project").entryId
+        == "entry-1"
+    )
+    assert (
+        SessionBeforeCompactEvent(reason="manual", cwd="/tmp/project").type
+        == "session_before_compact"
+    )
+    assert (
+        SessionBeforeCompactEvent(reason="manual", cwd="/tmp/project").reason
+        == "manual"
+    )
+    assert (
+        SessionBeforeCompactEvent(
+            reason="manual", cwd="/tmp/project", custom_instructions="keep"
+        ).customInstructions
+        == "keep"
+    )
+    assert (
+        SessionBeforeTreeEvent(
+            target_id="entry-1", old_leaf_id="entry-2", cwd="/tmp/project"
+        ).type
+        == "session_before_tree"
+    )
+    assert (
+        SessionBeforeTreeEvent(
+            target_id="entry-1", old_leaf_id="entry-2", cwd="/tmp/project"
+        ).target_id
+        == "entry-1"
+    )
     tree_event = SessionBeforeTreeEvent(
         target_id="entry-1",
         old_leaf_id="entry-2",
@@ -475,10 +547,17 @@ def test_extension_api_uses_public_model_selection_type_for_runtime_bindings() -
     assert send_user_message_hints["return"] is type(None)
     assert inspect.iscoroutinefunction(ExtensionContext.set_model)
     assert inspect.iscoroutinefunction(ExtensionContext.set_active_tools)
+    assert inspect.iscoroutinefunction(ExtensionContext.appendEntry)
+    assert inspect.iscoroutinefunction(ExtensionContext.setSessionName)
+    assert inspect.iscoroutinefunction(ExtensionContext.setLabel)
+    assert inspect.iscoroutinefunction(ExtensionContext.setThinkingLevel)
     assert inspect.iscoroutinefunction(ExtensionContext.sendMessage)
     assert inspect.iscoroutinefunction(ExtensionContext.sendUserMessage)
     assert inspect.iscoroutinefunction(ExtensionCommandContext.sendMessage)
     assert inspect.iscoroutinefunction(ExtensionCommandContext.sendUserMessage)
+    assert inspect.iscoroutinefunction(ExtensionCommandContext.appendEntry)
+    assert inspect.iscoroutinefunction(ExtensionCommandContext.setSessionName)
+    assert inspect.iscoroutinefunction(ExtensionCommandContext.setLabel)
 
     get_model_selection_binding = runtime_binding_hints["get_model_selection"]
     assert get_origin(get_model_selection_binding) is Callable
@@ -492,8 +571,20 @@ def test_extension_api_uses_public_model_selection_type_for_runtime_bindings() -
     assert get_origin(set_model_binding) is Callable
     assert get_args(set_model_binding) == ([ModelSelection], Awaitable[None])
 
+    for binding_name in (
+        "append_entry",
+        "set_session_name",
+        "set_label",
+        "set_thinking_level",
+    ):
+        mutation_binding = runtime_binding_hints[binding_name]
+        assert get_origin(mutation_binding) is Callable
+        assert get_args(mutation_binding)[1] == Awaitable[None]
 
-def test_extension_loader_build_extension_adapts_context_and_session_refresh(tmp_path) -> None:
+
+def test_extension_loader_build_extension_adapts_context_and_session_refresh(
+    tmp_path,
+) -> None:
     from loushang.coding.extensions.loader import ExtensionLoader
     from loushang.coding.loader import ExtensionDescriptor
 
@@ -528,4 +619,7 @@ def build_extension():
 
     assert len(loaded) == 1
     assert loaded[0].hooks["context"][0]("ctx-event", object()) == "context:ctx-event"
-    assert loaded[0].hooks["session_refresh"][0]("refresh-event", object()) == "refresh:refresh-event"
+    assert (
+        loaded[0].hooks["session_refresh"][0]("refresh-event", object())
+        == "refresh:refresh-event"
+    )

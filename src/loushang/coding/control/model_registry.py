@@ -26,42 +26,7 @@ log = get_log(__name__).bind(component="ModelRegistry")
 def _registry_provider_snapshot(
     registry: AiModelRegistry,
 ) -> dict[str, Provider]:
-    providers: dict[str, Provider] = {}
-    for provider in registry.list_providers():
-        endpoints: dict[str, Endpoint] = {}
-        for endpoint in provider.list_endpoints():
-            models = {
-                model.id: replace(
-                    model,
-                    auth=(
-                        model.auth
-                        if registry.has_explicit_model_auth(
-                            provider.id,
-                            endpoint.id,
-                            model.id,
-                        )
-                        else None
-                    ),
-                )
-                for model in endpoint.list_models()
-            }
-            endpoints[endpoint.id] = replace(
-                endpoint,
-                auth=(
-                    endpoint.auth
-                    if registry.has_explicit_endpoint_auth(provider.id, endpoint.id)
-                    else None
-                ),
-                models=models,
-            )
-        providers[provider.id] = Provider(
-            id=provider.id,
-            name=provider.name,
-            website=provider.website,
-            auth=provider.auth,
-            endpoints=endpoints,
-        )
-    return providers
+    return registry.providers
 
 
 class ModelRegistry:
@@ -97,10 +62,12 @@ class ModelRegistry:
     ) -> None:
         from loushang.ai.model.loader import _combine_model_registries
 
-        sources = [("<builtin>", load_builtin_model_registry())]
+        sources = [("<builtin>", load_builtin_model_registry().providers)]
         for path in (user_dir, project_dir):
             if path is not None and path.is_dir():
-                sources.append((str(path), load_model_registry_from_directory(path)))
+                sources.append(
+                    (str(path), load_model_registry_from_directory(path).providers)
+                )
         self._replace_ai_registry(_combine_model_registries(sources))
 
     def register_model(self, model: Model) -> None:
@@ -117,8 +84,6 @@ class ModelRegistry:
             preferred=model.preferred_endpoint,
             adapter=model.adapter,
             defaults=model.defaults,
-            transport=model.transport,
-            routing=model.routing,
         )
         models = dict(endpoint.models)
         models[model.id] = model

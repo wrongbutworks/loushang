@@ -4,13 +4,15 @@ from typing import TYPE_CHECKING
 
 from loushang.ai.types import AssistantMessage, ToolCall, ToolResultMessage, UserMessage
 from loushang.coding.compaction import calculate_context_tokens, estimate_context_tokens
-from loushang.coding.message import (
-    CompactionEntry,
-    CustomMessageEntry,
-    SessionMessageEntry,
-    SessionTreeNode,
-)
 from loushang.coding.session.types import ContextUsage, SessionStats, TokenUsageTotals
+from loushang.coding.store.types import SessionTreeNode
+from loushang.harness.agent_transcript import (
+    AGENT_MESSAGE_KIND,
+    APPLICATION_MESSAGE_KIND,
+    CONTEXT_COMPACTION_CHECKPOINT_KIND,
+    ContextCompactionCheckpoint,
+)
+from loushang.harness.conversation import ConversationRecord
 
 if TYPE_CHECKING:
     from loushang.coding.session.agent_session import AgentSession
@@ -43,13 +45,17 @@ def build_context_usage(session: AgentSession) -> ContextUsage | None:
     for message in messages:
         if isinstance(message, AssistantMessage):
             assistant_message_count += 1
-            tool_call_count += sum(1 for block in message.content if isinstance(block, ToolCall))
+            tool_call_count += sum(
+                1 for block in message.content if isinstance(block, ToolCall)
+            )
         elif isinstance(message, UserMessage):
             user_message_count += 1
         elif isinstance(message, ToolResultMessage):
             tool_result_count += 1
 
-    estimated_context_tokens = estimate_context_tokens(messages).tokens if messages else 0
+    estimated_context_tokens = (
+        estimate_context_tokens(messages).tokens if messages else 0
+    )
     branch_depth = len(branch_entries)
     return ContextUsage(
         message_count=len(messages),
@@ -57,9 +63,13 @@ def build_context_usage(session: AgentSession) -> ContextUsage | None:
         user_message_count=user_message_count,
         tool_call_count=tool_call_count,
         tool_result_count=tool_result_count,
-        custom_message_count=sum(1 for entry in entries if isinstance(entry, CustomMessageEntry)),
+        custom_message_count=sum(
+            1 for entry in entries if entry.kind == APPLICATION_MESSAGE_KIND
+        ),
         estimated_context_tokens=estimated_context_tokens,
-        has_compaction=any(isinstance(entry, CompactionEntry) for entry in entries),
+        has_compaction=any(
+            entry.kind == CONTEXT_COMPACTION_CHECKPOINT_KIND for entry in entries
+        ),
         branch_depth=branch_depth,
         leaf_entry_id=session.session_manager.get_leaf_id(),
     )
@@ -74,7 +84,9 @@ def build_session_stats(session: AgentSession) -> SessionStats:
         session_name=session.session_name,
         entry_count=len(entries),
         message_count=context_usage.message_count if context_usage is not None else 0,
-        custom_message_count=sum(1 for entry in entries if isinstance(entry, CustomMessageEntry)),
+        custom_message_count=sum(
+            1 for entry in entries if entry.kind == APPLICATION_MESSAGE_KIND
+        ),
         active_tool_count=len(session.get_active_tool_names()),
         is_retrying=session.is_retrying,
         is_compacting=session.is_compacting,
@@ -102,9 +114,11 @@ def _build_token_usage_totals(branch_entries: list[object]) -> TokenUsageTotals:
         start_index = index + 1
 
     for entry in branch_entries[start_index:]:
-        if not isinstance(entry, SessionMessageEntry):
+        if not isinstance(entry, ConversationRecord):
             continue
-        message = entry.message
+        if entry.kind != AGENT_MESSAGE_KIND:
+            continue
+        message = entry.payload
         if not isinstance(message, AssistantMessage):
             continue
         if message.stop_reason in {"aborted", "error"}:
@@ -125,11 +139,17 @@ def _build_token_usage_totals(branch_entries: list[object]) -> TokenUsageTotals:
     )
 
 
-def _latest_compaction_with_index(entries: list[object]) -> tuple[CompactionEntry, int] | None:
+def _latest_compaction_with_index(
+    entries: list[object],
+) -> tuple[ContextCompactionCheckpoint, int] | None:
     for index in range(len(entries) - 1, -1, -1):
         entry = entries[index]
-        if isinstance(entry, CompactionEntry):
-            return entry, index
+        if (
+            hasattr(entry, "kind")
+            and entry.kind == CONTEXT_COMPACTION_CHECKPOINT_KIND
+            and isinstance(entry.payload, ContextCompactionCheckpoint)
+        ):
+            return entry.payload, index
     return None
 
 
