@@ -1913,8 +1913,10 @@ def test_resource_package_runtime_has_harness_owners() -> None:
     from loushang.harness.policy import PolicyDecision
     from loushang.harness.resources.loader import ResourceLoader
     from loushang.harness.resources.packages import (
+        PackageCatalogBuilder,
         PackageMaterializer,
         PackageSourceConfig,
+        PackageSourceResolver,
     )
     from loushang.harness.resources.plugins import PluginManager
     from loushang.harness.resources.types import ResourceBundle
@@ -1925,6 +1927,8 @@ def test_resource_package_runtime_has_harness_owners() -> None:
     assert CodingPolicyDecision is PolicyDecision
     assert issubclass(DefaultResourceLoader, ResourceLoader)
     assert issubclass(CodingPackageMaterializer, PackageMaterializer)
+    assert PackageCatalogBuilder.__module__.startswith("loushang.harness")
+    assert PackageSourceResolver.__module__.startswith("loushang.harness")
 
 
 def test_coding_internal_resource_consumers_use_harness_owners() -> None:
@@ -1935,6 +1939,7 @@ def test_coding_internal_resource_consumers_use_harness_owners() -> None:
         "src/loushang/coding/package/manifest.py",
         "src/loushang/coding/package/resource_roots.py",
         "src/loushang/coding/package/source.py",
+        "src/loushang/coding/package/source_manager.py",
         "src/loushang/coding/plugin/__init__.py",
         "src/loushang/coding/plugin/lifecycle.py",
         "src/loushang/coding/plugin/manager.py",
@@ -1949,6 +1954,7 @@ def test_coding_internal_resource_consumers_use_harness_owners() -> None:
         "loushang.coding.package.manifest",
         "loushang.coding.package.resource_roots",
         "loushang.coding.package.source",
+        "loushang.coding.package.source_manager",
         "loushang.coding.plugin.lifecycle",
         "loushang.coding.plugin.manager",
         "loushang.coding.plugin.registry",
