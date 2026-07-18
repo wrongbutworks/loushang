@@ -61,26 +61,41 @@ The explicit module path
 capability. The conversation package initializer does not add a convenience
 re-export.
 
-## First Slice: Conversation Reader
+## Conversation State, Queue, and Reader
 
-The reusable transcript source protocol, record-composition helpers, and modal
-conversation reader live here while Coding-specific Session- and ScreenState-
-backed source adapters remain in `loushang.coding.ui`. Record composition may
-merge history with a live window, preserve presentation-only decorations,
-deduplicate the projected history suffix shared with the active-window prefix,
-and select recent assistant text, but it only operates on product-supplied
-`DisplayRecord` values.
+`loushang.harnesstui.conversation.screen_state` owns reusable screen
+conversation presentation state: retained display records, record revisions,
+window generations, live assistant buffers, tool-record replacement, pending
+input queues, and presentation-ready status facts. This is UI projection state,
+not Harness Session lifecycle, persistence, or runtime orchestration.
+
+The reusable transcript source protocol, active-window source,
+record-composition helpers, and modal conversation reader also live here.
+Record composition may merge history with a live window, preserve
+presentation-only decorations, deduplicate the projected history suffix shared
+with the active-window prefix, and select recent assistant text, but it only
+operates on product-supplied `DisplayRecord` values. Coding retains the
+Session-backed source because it still materializes Coding Session history and
+AI message shapes.
+
+`loushang.harnesstui.conversation.queue` owns defensive queue reads, cleared
+queue normalization, draft restoration, and `PendingQueueView` composition over
+a session-like port. Products retain queue availability policy, tracing sinks,
+and the decision about when to present or restore queued input.
 
 This slice does not own session lifecycle, persistence, runtime orchestration,
 or raw Agent/Coding event projection. It does not enter the render hot path.
-Incremental transcript segmentation, streaming buffers, revision/window
-generation, trimming, caching, and frame composition remain where they are.
+The state and active-window algorithms retain their existing semantics after
+moving here. Incremental transcript segmentation, render caches, committed and
+draft segments, and frame composition remain untouched in their current owner.
 
 Compatibility modules in `loushang.coding.ui` may temporarily re-export moved
 symbols. They must depend inward on `loushang.harnesstui`; this package must
 never depend back on those compatibility modules.
 
 The stable imports introduced by this slice are the explicit module paths
+`loushang.harnesstui.conversation.screen_state`,
+`loushang.harnesstui.conversation.queue`,
 `loushang.harnesstui.conversation.reader` and
 `loushang.harnesstui.conversation.source`. The conversation package does not
 yet expose a broader convenience API.

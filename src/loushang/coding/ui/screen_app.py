@@ -7,8 +7,6 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from loushang.coding.ui.screen_state import ScreenCodingTuiState, ScreenTranscriptWindow
-from loushang.coding.ui.transcript_source import ActiveWindowTranscriptSource
 from loushang.coding.ui.transcript_style import apply_coding_transcript_style
 from loushang.harness.tools.workspace.output_preview import (
     DEFAULT_TOOL_OUTPUT_PREVIEW_LINES,
@@ -17,7 +15,14 @@ from loushang.harness.tools.workspace.output_preview import (
     prefers_tail_tool_output,
 )
 from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
-from loushang.harnesstui.conversation.source import TranscriptSource
+from loushang.harnesstui.conversation.screen_state import (
+    ActiveTranscriptWindow,
+    ScreenConversationState,
+)
+from loushang.harnesstui.conversation.source import (
+    ActiveWindowTranscriptSource,
+    TranscriptSource,
+)
 from loushang.harnesstui.status.line import (
     StatusLinePreviewSnapshot,
     StatusLineSettings,
@@ -103,7 +108,7 @@ class ScreenCodingTuiApp:
     session_label: str | None
     now: Callable[[], float] = time.monotonic
     composer: Composer = field(default_factory=lambda: Composer(prompt="› ", continuation_prompt="  "))
-    state: ScreenCodingTuiState = field(init=False)
+    state: ScreenConversationState = field(init=False)
     active_surface: Any | None = None
     surface_host: SurfaceHost | None = None
     transcript_theme: ThemeResolver = field(default_factory=_terminal_transcript_theme)
@@ -119,7 +124,7 @@ class ScreenCodingTuiApp:
     _render_baseline_reset_reason: str | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        self.state = ScreenCodingTuiState(
+        self.state = ScreenConversationState(
             model_label=self.model_label,
             cwd=self.cwd,
             branch=self.branch,
@@ -231,7 +236,7 @@ class ScreenCodingTuiApp:
 
     def replace_transcript_window(
         self,
-        records: Iterable[DisplayRecord] | ScreenTranscriptWindow,
+        records: Iterable[DisplayRecord] | ActiveTranscriptWindow,
         *,
         evicted_prefix_record_count: int = 0,
         reason: str = "replace",
@@ -323,7 +328,7 @@ class ScreenCodingTuiApp:
         if not changed:
             return
         self.state.replace_transcript_window(
-            ScreenTranscriptWindow(
+            ActiveTranscriptWindow(
                 records=records,
                 evicted_prefix_record_count=self.state.evicted_prefix_record_count + evicted_count,
             )

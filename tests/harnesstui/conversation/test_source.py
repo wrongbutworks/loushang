@@ -4,9 +4,12 @@ from dataclasses import FrozenInstanceError, dataclass
 
 import pytest
 
+from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.harnesstui.conversation.source import (
+    ActiveWindowTranscriptSource,
     TranscriptSnapshot,
     TranscriptSource,
+    active_window_records,
     merge_history_and_active_records,
     recent_assistant_texts,
 )
@@ -87,6 +90,37 @@ def test_recent_assistant_texts_filters_blank_messages_newest_first() -> None:
     )
 
     assert recent_assistant_texts(iter(records)) == ("second", "  first  ")
+
+
+def test_active_window_records_appends_live_assistant_draft() -> None:
+    state = ScreenConversationState(
+        records=[UserPromptRecord("question")],
+        evicted_prefix_record_count=3,
+    )
+    state.begin_run(started_at=1.0)
+    state.append_assistant_chunk("draft")
+
+    assert active_window_records(state) == (
+        UserPromptRecord("question"),
+        AssistantMessageRecord("draft", stable=False),
+    )
+
+
+def test_active_window_transcript_source_exposes_bounded_snapshot() -> None:
+    state = ScreenConversationState(
+        records=[AssistantMessageRecord("answer")],
+        evicted_prefix_record_count=3,
+    )
+
+    source = ActiveWindowTranscriptSource(state)
+
+    assert source.snapshot() == TranscriptSnapshot(
+        records=(AssistantMessageRecord("answer"),),
+        evicted_prefix_record_count=3,
+        complete=False,
+        source_label="Transcript window",
+    )
+    assert source.recent_assistant_texts() == ("answer",)
 
 
 @pytest.mark.parametrize(

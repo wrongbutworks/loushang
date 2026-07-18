@@ -29,7 +29,9 @@ HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/ui/command_list.py \
 	src/loushang/coding/ui/completion.py \
 	src/loushang/coding/ui/conversation_event_adapter.py \
+	src/loushang/coding/ui/handlers.py \
 	src/loushang/coding/ui/model_list.py \
+	src/loushang/coding/ui/pending_queue.py \
 	src/loushang/coding/ui/plain_app.py \
 	src/loushang/coding/ui/plain_events.py \
 	src/loushang/coding/ui/plain_renderer.py \
@@ -62,6 +64,9 @@ HARNESSTUI_TEST_PATHS := \
 	tests/coding/test_playback_suite_compatibility.py \
 	tests/coding/test_platform_utils.py \
 	tests/coding/test_terminal_diagnostics_compatibility.py \
+	tests/coding/test_ui_handlers.py \
+	tests/coding/test_ui_pending_queue.py \
+	tests/coding/test_ui_pending_queue_compatibility.py \
 	tests/coding/test_ui_import_boundaries.py \
 	tests/coding/test_screen_coding_tui_app.py \
 	tests/coding/test_screen_coding_tui_events.py \
