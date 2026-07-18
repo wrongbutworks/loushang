@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -9,11 +8,15 @@ from typing import Literal
 
 from loushang.ai.types import ImagePart
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.tui.clipboard_image import (
-    ClipboardImage,
-    extension_for_image_mime_type,
-    read_clipboard_image,
+from loushang.harnesstui.conversation.attachments import (
+    ClipboardImageNameFactory,
+    ClipboardImageReader,
+    PendingPromptImageRegistry,
+    PromptImageAttachment,
+    new_prompt_image_name_token,
+    stage_clipboard_image,
 )
+from loushang.tui.clipboard_image import read_clipboard_image
 from loushang.tui.input import (
     ComposerInputTarget,
     InputEvent,
@@ -25,14 +28,6 @@ from loushang.tui.input import (
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
 
 RunningSubmitMode = Literal["steer", "follow_up"]
-ClipboardImageReader = Callable[[], ClipboardImage | None]
-ClipboardImageNameFactory = Callable[[], str]
-
-
-@dataclass(frozen=True, slots=True)
-class _PendingClipboardImage:
-    marker: str
-    image: ImagePart
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,9 +57,15 @@ class ScreenInputRouter:
     height: int = 12
     clipboard_image_reader: ClipboardImageReader = read_clipboard_image
     clipboard_image_dir: Path | str | None = None
-    clipboard_image_name_factory: ClipboardImageNameFactory = field(default_factory=lambda: lambda: uuid.uuid4().hex)
+    clipboard_image_name_factory: ClipboardImageNameFactory = (
+        new_prompt_image_name_token
+    )
     _jump_mode: Literal["forward", "backward"] | None = None
-    _pending_clipboard_images: list[_PendingClipboardImage] = field(default_factory=list, init=False, repr=False)
+    _pending_clipboard_images: PendingPromptImageRegistry = field(
+        default_factory=PendingPromptImageRegistry,
+        init=False,
+        repr=False,
+    )
     _composer_target: ComposerInputTarget = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -257,84 +258,58 @@ class ScreenInputRouter:
         return ScreenInputResult()
 
     def _paste_clipboard_image(self) -> ScreenInputResult:
-        try:
-            image = self.clipboard_image_reader()
-        except Exception as error:
-            self.app.set_status(f"Unable to read clipboard image: {_exception_message(error)}")
-            return ScreenInputResult()
-        if image is None:
+        directory = (
+            Path(self.clipboard_image_dir)
+            if self.clipboard_image_dir is not None
+            else Path(self.app.cwd) / ".loushang" / "clipboard"
+        )
+        outcome = stage_clipboard_image(
+            self.clipboard_image_reader,
+            directory=directory,
+            display_root=Path(self.app.cwd),
+            name_factory=self.clipboard_image_name_factory,
+        )
+        if outcome.kind == "empty":
             self.app.set_status("No clipboard image found.")
             return ScreenInputResult()
-        extension = extension_for_image_mime_type(image.mime_type)
-        if extension is None:
-            self.app.set_status(f"Unsupported clipboard image type: {image.mime_type or 'unknown'}")
-            return ScreenInputResult()
-        try:
-            path = self._write_clipboard_image(image, extension=extension)
-        except OSError as error:
-            self.app.set_status(f"Unable to attach clipboard image: {error}")
-            return ScreenInputResult()
-        marker_path = _display_path(path, cwd=Path(self.app.cwd))
-        marker = f"@{marker_path}"
-        self.app.composer.paste(f"{marker} ")
-        self._pending_clipboard_images.append(
-            _PendingClipboardImage(
-                marker=marker,
-                image=ImagePart(
-                    type="image",
-                    data=base64.b64encode(image.bytes).decode("ascii"),
-                    mime_type=_base_mime_type(image.mime_type),
-                ),
+        if outcome.kind == "read_error":
+            self.app.set_status(
+                f"Unable to read clipboard image: {outcome.error_message}"
             )
-        )
-        self.app.set_status(f"Attached clipboard image: {marker_path}")
+            return ScreenInputResult()
+        if outcome.kind == "unsupported":
+            self.app.set_status(
+                f"Unsupported clipboard image type: {outcome.mime_type or 'unknown'}"
+            )
+            return ScreenInputResult()
+        if outcome.kind == "write_error":
+            self.app.set_status(
+                f"Unable to attach clipboard image: {outcome.error_message}"
+            )
+            return ScreenInputResult()
+        attachment = outcome.attachment
+        if attachment is None:
+            raise RuntimeError("attached clipboard outcome requires an attachment")
+        self.app.composer.paste(f"{attachment.marker} ")
+        self._pending_clipboard_images.add(attachment)
+        self.app.set_status(f"Attached clipboard image: {attachment.display_path}")
         return ScreenInputResult()
 
-    def _write_clipboard_image(self, image: ClipboardImage, *, extension: str) -> Path:
-        directory = Path(self.clipboard_image_dir) if self.clipboard_image_dir is not None else Path(self.app.cwd) / ".loushang" / "clipboard"
-        directory.mkdir(parents=True, exist_ok=True)
-        token = _safe_filename_token(self.clipboard_image_name_factory())
-        path = directory / f"clipboard-{token}.{extension}"
-        path.write_bytes(image.bytes)
-        return path
-
     def _prompt_images_for_text(self, text: str) -> tuple[ImagePart, ...] | None:
-        present = [
-            (position, pending.image)
-            for pending in self._pending_clipboard_images
-            if (position := text.find(pending.marker)) >= 0
-        ]
-        images = tuple(image for _position, image in sorted(present, key=lambda item: item[0]))
+        attachments = self._pending_clipboard_images.select_for_text(text)
+        images = tuple(_image_part(attachment) for attachment in attachments)
         return images or None
 
     def _clear_prompt_attachments(self) -> None:
         self._pending_clipboard_images.clear()
 
 
-def _display_path(path: Path, *, cwd: Path) -> str:
-    try:
-        return path.relative_to(cwd).as_posix()
-    except ValueError:
-        return path.as_posix()
-
-
-def _safe_filename_token(value: str) -> str:
-    token = value.strip() or uuid.uuid4().hex
-    safe = "".join(character if _is_safe_filename_character(character) else "_" for character in token)
-    safe = safe.strip("._")
-    return safe or uuid.uuid4().hex
-
-
-def _is_safe_filename_character(character: str) -> bool:
-    return character.isascii() and (character.isalnum() or character in {"-", "_", "."})
-
-
-def _exception_message(error: BaseException) -> str:
-    return str(error) or error.__class__.__name__
-
-
-def _base_mime_type(mime_type: str) -> str:
-    return mime_type.split(";", 1)[0].strip().lower()
+def _image_part(attachment: PromptImageAttachment) -> ImagePart:
+    return ImagePart(
+        type="image",
+        data=base64.b64encode(attachment.bytes).decode("ascii"),
+        mime_type=attachment.mime_type,
+    )
 
 
 __all__ = ["ScreenInputResult", "ScreenInputRouter", "RunningSubmitMode"]

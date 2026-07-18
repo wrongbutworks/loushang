@@ -332,6 +332,7 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.coding.ui` -> `loushang.harnesstui`" in text
     assert "`loushang.harnesstui.conversation.reader`" in text
     assert "`loushang.harnesstui.conversation.source`" in text
+    assert "`loushang.harnesstui.conversation.attachments`" in text
     assert "`loushang.harnesstui.conversation.projection`" in text
     assert "`loushang.harnesstui.conversation.plain_target`" in text
     assert "`loushang.harnesstui.conversation.tool_transcript`" in text
@@ -354,6 +355,7 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
 
 def test_harnesstui_capability_entrypoints_exist() -> None:
     paths = (
+        Path("src/loushang/harnesstui/conversation/attachments.py"),
         Path("src/loushang/harnesstui/conversation/plain_target.py"),
         Path("src/loushang/harnesstui/conversation/projection.py"),
         Path("src/loushang/harnesstui/conversation/tool_transcript.py"),

@@ -259,6 +259,39 @@ def test_screen_input_router_reports_empty_clipboard_image_without_editing(tmp_p
     assert not (tmp_path / ".clips").exists()
 
 
+def test_screen_input_router_reports_unsupported_clipboard_image_without_writing(
+    tmp_path,
+) -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
+    from loushang.tui.clipboard_image import ClipboardImage
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd=str(tmp_path),
+        branch="main",
+        session_label="abcd",
+        now=lambda: 12.0,
+    )
+    router = ScreenInputRouter(
+        app,
+        should_exit=lambda text: False,
+        clipboard_image_reader=lambda: ClipboardImage(
+            bytes=b"svg",
+            mime_type=" IMAGE/SVG+XML ",
+        ),
+        clipboard_image_dir=tmp_path / ".clips",
+        clipboard_image_name_factory=lambda: "unused",
+    )
+
+    result = router.handle(InputEvent(kind="key", key="ctrl+v"))
+
+    assert result.render_requested is True
+    assert app.composer.value == ""
+    assert app.state.status_message == "Unsupported clipboard image type: image/svg+xml"
+    assert not (tmp_path / ".clips").exists()
+
+
 def test_screen_input_router_reports_clipboard_image_read_failure_without_crashing(tmp_path) -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import ScreenInputRouter
@@ -360,6 +393,48 @@ def test_screen_input_router_orders_clipboard_images_by_marker_position(tmp_path
         base64.b64encode(b"second").decode("ascii"),
         base64.b64encode(b"first").decode("ascii"),
     ]
+
+
+def test_screen_input_router_uses_default_workspace_clipboard_directory_and_clears_registry(
+    tmp_path,
+) -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_input import ScreenInputRouter
+    from loushang.tui.clipboard_image import ClipboardImage
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd=str(tmp_path),
+        branch="main",
+        session_label="abcd",
+        now=lambda: 12.0,
+    )
+    router = ScreenInputRouter(
+        app,
+        should_exit=lambda text: False,
+        clipboard_image_reader=lambda: ClipboardImage(
+            bytes=b"png",
+            mime_type="image/png",
+        ),
+        clipboard_image_name_factory=lambda: "image",
+    )
+
+    router.handle(InputEvent(kind="key", key="ctrl+v"))
+
+    marker = "@.loushang/clipboard/clipboard-image.png"
+    saved_path = tmp_path / ".loushang" / "clipboard" / "clipboard-image.png"
+    assert saved_path.read_bytes() == b"png"
+    assert app.composer.value == f"{marker} "
+
+    first_submit = router.handle(InputEvent(kind="key", key="enter"))
+    assert first_submit.prompt_images is not None
+
+    app.complete_run(elapsed_seconds=0.1)
+    app.composer.set_text(f"reuse {marker}")
+    second_submit = router.handle(InputEvent(kind="key", key="enter"))
+
+    assert second_submit.prompt_images is None
+    assert saved_path.read_bytes() == b"png"
 
 
 def test_screen_input_router_exit_command_returns_exit_code_without_transcript() -> None:

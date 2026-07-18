@@ -40,6 +40,27 @@ presentation primitives.
 contracts. Product adapters such as `loushang.coding.ui` continue to own raw
 product-event interpretation, commands, policy, branding, and runtime assembly.
 
+## Conversation Attachments
+
+`loushang.harnesstui.conversation.attachments` owns product-neutral prompt-image
+attachment coordination after the host clipboard has been read. It persists a
+neutral `ClipboardImage` into a caller-supplied directory, derives a composer
+marker relative to a caller-supplied display root, and tracks pending
+attachments so submission order follows marker order in the composed text.
+Read, unsupported-type, and persistence failures are returned as neutral
+outcomes; products supply their own status copy.
+
+The host clipboard backend and MIME detection remain in
+`loushang.tui.clipboard_image`. Products continue to choose workspace and
+storage-directory policy and adapt a neutral prompt attachment into model-facing
+values such as `ImagePart`. Harnesstui does not import AI message types or
+hard-code a Coding workspace layout.
+
+The explicit module path
+`loushang.harnesstui.conversation.attachments` is the stable entrypoint for this
+capability. The conversation package initializer does not add a convenience
+re-export.
+
 ## First Slice: Conversation Reader
 
 The reusable transcript source protocol, record-composition helpers, and modal
