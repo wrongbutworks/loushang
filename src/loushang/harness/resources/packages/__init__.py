@@ -9,6 +9,9 @@ from loushang.harness.resources.packages.catalog import (
     package_catalog_sources,
     summarize_package_resources,
 )
+from loushang.harness.resources.packages.catalog_diagnostics import (
+    PackageCatalogDiagnosticsRecorder,
+)
 from loushang.harness.resources.packages.manifest import (
     PackageManifestInfo,
     resolve_package_manifest,
@@ -23,6 +26,14 @@ from loushang.harness.resources.packages.materializer import (
     PackageSourcePolicy,
     PythonPackageInstallerBackend,
     package_offline_enabled,
+)
+from loushang.harness.resources.packages.operations import (
+    PackageMaterializerPort,
+    PackageMaterializerProvider,
+    PackageOperationsRuntime,
+    PackageResourceRefresh,
+    PackageSourceRegistration,
+    PackageUpdatePreparation,
 )
 from loushang.harness.resources.packages.roots import (
     ResolvedPackageResourceRoots,
@@ -55,6 +66,7 @@ __all__ = [
     "MissingSourceResolver",
     "PackageCatalogBuilder",
     "PackageCatalogDiagnostic",
+    "PackageCatalogDiagnosticsRecorder",
     "PackageCatalogEntry",
     "PackageCatalogSources",
     "PackageManifestInfo",
@@ -62,12 +74,18 @@ __all__ = [
     "PackageMaterializationRecord",
     "PackageMaterializer",
     "PackageMaterializerBackend",
+    "PackageMaterializerPort",
+    "PackageMaterializerProvider",
+    "PackageOperationsRuntime",
     "PackageProgressEvent",
     "PackageResolveResult",
     "PackageSourceConfig",
     "PackageSourceIdentity",
     "PackageSourcePolicy",
+    "PackageResourceRefresh",
+    "PackageSourceRegistration",
     "PackageSourceResolver",
+    "PackageUpdatePreparation",
     "PythonPackageInstallerBackend",
     "ResolvedPackageResourceRoots",
     "clone_source_and_ref",

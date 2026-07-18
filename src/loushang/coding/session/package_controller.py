@@ -1,21 +1,27 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 from loushang.coding.control import SettingsManager
+from loushang.coding.control.settings_manager import SettingsScope
 from loushang.coding.loader import DefaultResourceLoader
-from loushang.coding.package.materializer import (
-    PackageMaterializationRecord,
-    PackageMaterializer,
+from loushang.coding.package.projection import (
+    collect_coding_package_catalog,
+    project_package_entries,
+    serialize_package_materialization_record,
 )
-from loushang.coding.package.projection import collect_package_entries
 from loushang.coding.store import SessionManager
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.packages.catalog_diagnostics import (
+    PackageCatalogDiagnosticsRecorder,
+)
+from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.packages.operations import PackageOperationsRuntime
 from loushang.harness.resources.packages.roots import resolve_package_resource_roots
-from loushang.harness.resources.packages.source import is_remote_package_source
+from loushang.harness.resources.packages.source import PackageSourceConfig
 from loushang.harness.resources.packages.source_resolver import (
     PackageSourceResolver,
     configured_package_sources,
@@ -37,6 +43,16 @@ class PackageController:
     get_resource_loader: ResourceLoaderProvider
     get_diagnostics_service: DiagnosticsServiceProvider
     refresh_resources: ResourceRefresh
+    _operations: PackageOperationsRuntime = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._operations = PackageOperationsRuntime(
+            get_materializer=self.get_package_materializer,
+            add_source=self._add_package_source,
+            remove_source=self._remove_package_source,
+            refresh_resources=self.refresh_package_resources,
+            prepare_updates=self.prepare_configured_remote_package_records,
+        )
 
     @property
     def session_id(self) -> str:
@@ -49,7 +65,7 @@ class PackageController:
         if settings_manager is None:
             return []
         settings = settings_manager.get_settings()
-        packages = collect_package_entries(
+        entries = collect_coding_package_catalog(
             package_roots=tuple(settings.package_roots),
             plugin_sources=tuple(settings.plugin_sources),
             package_sources=tuple(settings.package_sources),
@@ -61,60 +77,31 @@ class PackageController:
             else None,
             materializer=self.get_package_materializer(),
         )
-        self.record_package_projection_diagnostics(packages)
-        return packages
+        PackageCatalogDiagnosticsRecorder(
+            diagnostics_service=self.get_diagnostics_service(),
+            session_id=self.session_id,
+        ).record(entries)
+        return project_package_entries(entries)
 
     async def materialize_package(self, source: str) -> dict[str, object]:
-        materializer = self.get_package_materializer()
-        if materializer is None:
-            raise RuntimeError("Package materializer is not available.")
-        if not is_remote_package_source(source):
-            path = Path(source).expanduser().resolve()
-            if not path.exists():
-                raise FileNotFoundError(f"Package path does not exist: {path}")
-            return serialize_package_materialization_record(
-                PackageMaterializationRecord(
-                    source=source,
-                    name=path.name,
-                    lifecycle="installed",
-                    target_path=path,
-                )
-            )
-        record = await materializer.materialize_remote_source(source)
-        return serialize_package_materialization_record(record)
+        return serialize_package_materialization_record(
+            await self._operations.materialize(source)
+        )
 
     async def install_package(
         self, source: str, *, scope: str = "project"
     ) -> dict[str, object]:
-        record = await self.materialize_package(source)
-        if record.get("lifecycle") != "installed":
-            return record
-        settings_manager = self.get_settings_manager()
-        if settings_manager is not None:
-            try:
-                settings_manager.add_package_source(source, scope=scope)
-            except ValueError:
-                settings_manager.add_package_source(source, scope="session")
-        self.refresh_package_resources()
-        return record
+        return serialize_package_materialization_record(
+            await self._operations.install(source, scope=scope)
+        )
 
     async def update_package(self, source: str) -> dict[str, object]:
-        materializer = self.get_package_materializer()
-        if materializer is None:
-            raise RuntimeError("Package materializer is not available.")
-        if not is_remote_package_source(source):
-            return await self.materialize_package(source)
-        record = await materializer.update_remote_source(source)
-        self.refresh_package_resources()
-        return serialize_package_materialization_record(record)
+        return serialize_package_materialization_record(
+            await self._operations.update(source)
+        )
 
     async def update_packages(self) -> list[dict[str, object]]:
-        materializer = self.get_package_materializer()
-        if materializer is None:
-            raise RuntimeError("Package materializer is not available.")
-        await self.prepare_configured_remote_package_records()
-        records = await materializer.update_all_remote_sources()
-        self.refresh_package_resources()
+        records = await self._operations.update_all()
         return [serialize_package_materialization_record(record) for record in records]
 
     async def check_package_updates(self) -> list[dict[str, object]]:
@@ -127,37 +114,33 @@ class PackageController:
         return updates
 
     def remove_package(self, source: str) -> dict[str, object]:
-        materializer = self.get_package_materializer()
-        if materializer is None:
-            raise RuntimeError("Package materializer is not available.")
-        if not is_remote_package_source(source):
-            path = Path(source).expanduser().resolve()
-            return serialize_package_materialization_record(
-                PackageMaterializationRecord(
-                    source=source,
-                    name=path.name,
-                    lifecycle="remote_registered",
-                    target_path=path,
-                )
-            )
-        record = materializer.remove_remote_source(source)
-        return serialize_package_materialization_record(record)
+        return serialize_package_materialization_record(self._operations.remove(source))
 
     def uninstall_package(
         self, source: str, *, scope: str = "project"
     ) -> dict[str, object]:
-        record = self.remove_package(source)
+        record = self._operations.uninstall(source, scope=scope)
+        return serialize_package_materialization_record(record)
+
+    def _add_package_source(self, source: str, scope: str) -> None:
         settings_manager = self.get_settings_manager()
         if settings_manager is not None:
             try:
-                settings_manager.remove_package_source(source, scope=scope)
+                settings_manager.add_package_source(
+                    source, scope=cast(SettingsScope, scope)
+                )
+            except ValueError:
+                settings_manager.add_package_source(source, scope="session")
+
+    def _remove_package_source(self, source: str, scope: str) -> None:
+        settings_manager = self.get_settings_manager()
+        if settings_manager is not None:
+            try:
+                settings_manager.remove_package_source(
+                    source, scope=cast(SettingsScope, scope)
+                )
             except ValueError:
                 settings_manager.remove_package_source(source, scope="session")
-        materializer = self.get_package_materializer()
-        if materializer is not None:
-            materializer.forget_remote_source(source)
-        self.refresh_package_resources()
-        return record
 
     def refresh_package_resources(self) -> None:
         if self.get_resource_loader() is None:
@@ -176,74 +159,6 @@ class PackageController:
             diagnostics_service=self.get_diagnostics_service(),
             session_id=self.session_id,
         ).prepare_configured_remote_records()
-
-    def record_package_projection_diagnostics(
-        self, packages: list[dict[str, object]]
-    ) -> None:
-        diagnostics_service = self.get_diagnostics_service()
-        if diagnostics_service is None:
-            return
-        records = []
-        for package in packages:
-            for diagnostics_key, default_code, default_message, source_kind in (
-                (
-                    "manifestDiagnostics",
-                    "invalid_package_manifest",
-                    "Package manifest diagnostic.",
-                    "external_package",
-                ),
-                (
-                    "catalogDiagnostics",
-                    "invalid_package_catalog",
-                    "Package catalog diagnostic.",
-                    None,
-                ),
-                (
-                    "conflictDiagnostics",
-                    "package_version_conflict",
-                    "Package version conflict.",
-                    "external_package",
-                ),
-            ):
-                diagnostics = package.get(diagnostics_key)
-                if not isinstance(diagnostics, tuple | list):
-                    continue
-                for diagnostic in diagnostics:
-                    if not isinstance(diagnostic, dict):
-                        continue
-                    path = diagnostic.get("path")
-                    diagnostic_details = {
-                        "package_source": str(package.get("source") or ""),
-                        "package_name": str(package.get("name") or ""),
-                        "package_kind": str(
-                            package.get("packageKind") or package.get("kind") or ""
-                        ),
-                    }
-                    conflict_versions = diagnostic.get("conflictVersions")
-                    if isinstance(conflict_versions, tuple | list):
-                        diagnostic_details["conflict_versions"] = [
-                            str(version) for version in conflict_versions
-                        ]
-                    records.append(
-                        diagnostics_service.normalize_resource_diagnostic(
-                            ResourceDiagnostic(
-                                code=str(diagnostic.get("code") or default_code),
-                                message=str(
-                                    diagnostic.get("message") or default_message
-                                ),
-                                source_path=Path(path)
-                                if isinstance(path, str)
-                                else None,
-                                resource_type="package",
-                                source_kind=source_kind,
-                            ),
-                            details=diagnostic_details,
-                            phase="resource_loading",
-                            source="package",
-                            session_id=self.session_id,
-                        )
-                    )
-        diagnostics_service.record_many(records)
 
     def record_package_update_check_diagnostics(
         self, updates: list[dict[str, object]]
@@ -294,7 +209,10 @@ class PackageController:
                 diagnostics_service=self.get_diagnostics_service(),
                 session_id=self.session_id,
             )
-            resource_loader.set_package_roots(resolved.roots, resolved.filters)
+            resource_loader.set_package_roots(
+                resolved.roots,
+                cast(dict[str | Path, PackageSourceConfig], resolved.filters),
+            )
         set_user_resource_roots = getattr(
             resource_loader, "set_user_resource_roots", None
         )
@@ -309,28 +227,3 @@ class PackageController:
                 global_base_dir=settings_manager.global_base_dir,
             )
             set_user_resource_roots(user_roots, explicit_roots=explicit_roots)
-
-
-def serialize_package_materialization_record(
-    record: PackageMaterializationRecord,
-) -> dict[str, object]:
-    return {
-        "source": record.source,
-        "name": record.name,
-        "lifecycle": record.lifecycle,
-        "targetPath": str(record.target_path),
-        "errorMessage": record.error_message,
-        "security": record.security,
-        "pinned": record.pinned,
-        "requestedRef": record.requested_ref,
-        "resolvedCommit": record.resolved_commit,
-        "installedCommit": record.installed_commit,
-        "dirty": record.dirty,
-        "lastUpdatedAt": record.last_updated_at,
-        "sourceType": record.source_type,
-        "requirement": record.requirement,
-        "resolvedName": record.resolved_name,
-        "resolvedVersion": record.resolved_version,
-        "installer": record.installer,
-        "installedDistributions": list(record.installed_distributions),
-    }

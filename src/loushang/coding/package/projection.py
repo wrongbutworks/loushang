@@ -11,7 +11,10 @@ from loushang.harness.resources.packages.catalog import (
     empty_package_summary,
     package_catalog_sources,
 )
-from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.packages.materializer import (
+    PackageMaterializationRecord,
+    PackageMaterializer,
+)
 from loushang.harness.resources.packages.source import PackageSourceConfig
 from loushang.harness.resources.types import PackageResourceSummary
 
@@ -29,8 +32,35 @@ def collect_package_entries(
 ) -> list[dict[str, object]]:
     """Project the shared package catalog into Coding's CLI/RPC wire schema."""
 
+    return project_package_entries(
+        collect_coding_package_catalog(
+            package_roots=package_roots,
+            plugin_sources=plugin_sources,
+            disabled_plugins=disabled_plugins,
+            cwd=cwd,
+            package_sources=package_sources,
+            settings_manager=settings_manager,
+            catalog_path=catalog_path,
+            materializer=materializer,
+        )
+    )
+
+
+def collect_coding_package_catalog(
+    *,
+    package_roots: tuple[str, ...],
+    plugin_sources: tuple[str, ...],
+    disabled_plugins: tuple[str, ...],
+    cwd: Path,
+    package_sources: tuple[PackageSourceConfig, ...] = (),
+    settings_manager: Any | None = None,
+    catalog_path: Path | None = None,
+    materializer: PackageMaterializer | None = None,
+) -> tuple[PackageCatalogEntry, ...]:
+    """Collect typed package records using Coding's resource summary policy."""
+
     builder = PackageCatalogBuilder(summary_provider=_summarize_coding_package_root)
-    entries = builder.collect(
+    return builder.collect(
         sources=package_catalog_sources(
             settings_manager,
             package_roots=package_roots,
@@ -42,7 +72,41 @@ def collect_package_entries(
         catalog_path=catalog_path,
         materializer=materializer,
     )
+
+
+def project_package_entries(
+    entries: tuple[PackageCatalogEntry, ...],
+) -> list[dict[str, object]]:
+    """Project typed package catalog entries into Coding's CLI/RPC wire schema."""
+
     return [_coding_package_entry(entry) for entry in entries]
+
+
+def serialize_package_materialization_record(
+    record: PackageMaterializationRecord,
+) -> dict[str, object]:
+    """Project a shared materialization record into Coding's command schema."""
+
+    return {
+        "source": record.source,
+        "name": record.name,
+        "lifecycle": record.lifecycle,
+        "targetPath": str(record.target_path),
+        "errorMessage": record.error_message,
+        "security": record.security,
+        "pinned": record.pinned,
+        "requestedRef": record.requested_ref,
+        "resolvedCommit": record.resolved_commit,
+        "installedCommit": record.installed_commit,
+        "dirty": record.dirty,
+        "lastUpdatedAt": record.last_updated_at,
+        "sourceType": record.source_type,
+        "requirement": record.requirement,
+        "resolvedName": record.resolved_name,
+        "resolvedVersion": record.resolved_version,
+        "installer": record.installer,
+        "installedDistributions": list(record.installed_distributions),
+    }
 
 
 def remote_package_entry(
