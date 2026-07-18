@@ -27,7 +27,8 @@ Harness:
 - `loushang.ai.json_codec` owns AI message, content-part, usage, and assistant
   event JSON codecs;
 - `loushang.ai.model.ModelSelection` owns stable model references;
-- `loushang.ai.auth.AuthResolution` owns the neutral auth-resolution result;
+- `loushang.ai.auth` owns request-ready credential types and credential-to-header
+  resolution;
 - `loushang.agent.json_codec.AgentMessageJsonCodec` composes AI messages with
   product-registered custom message codecs;
 - `loushang.agent.tool_output.ToolOutputProjector` owns raw tool-result
@@ -80,7 +81,7 @@ Coding and future Product adapters retain:
 
 - product goals, domain language, completion criteria, prompt and skill content;
 - domain-specific tools and activation of shared tool packs;
-- model choice, provider registration, credential lookup/login, auth wording,
+- model choice, provider registration, auth error presentation,
   risk/approval defaults, and configuration fields/defaults;
 - context salience, exact compaction/summary prompts, and artifact semantics;
 - transcript header/custom record schemas and codecs, session paths, naming,

@@ -37,7 +37,6 @@ class SelectionController:
     get_extension_runner: Callable[[], _ExtensionRunner | None]
     refresh_extension_runtime: Callable[[str], Awaitable[None]]
     is_extension_runtime_refreshing: Callable[[], bool]
-    record_model_auth_resolution: Callable[[Model], None]
     _scoped_models: list[dict[str, object]] = field(default_factory=list)
 
     def get_model_selection(self) -> ModelSelection | None:
@@ -216,7 +215,6 @@ class SelectionController:
             endpoint_id=endpoint_id,
         )
         self.agent.model = model
-        self.record_model_auth_resolution(model)
 
 
 def _validate_model(model: object) -> Model:

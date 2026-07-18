@@ -273,7 +273,6 @@ class CompactionController:
             compact_kwargs = {
                 "preparation": preparation,
                 "model": self.agent.model,
-                "api_key": "",
                 "headers": None,
                 "signal": self.agent.signal,
             }

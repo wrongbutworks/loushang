@@ -2634,7 +2634,6 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
                     "authOverride": {
                         "kind": "apiKey",
                         "apiKeyEnv": "PROXY_API_KEY",
-                        "extraHeaders": {"x-proxy": "yes"},
                     },
                     "adapter": {"streamingUsage": True},
                     "defaults": {"temperature": 0.1},
@@ -2670,21 +2669,22 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
         extension_runner=ExtensionRunner([api.build_loaded_extension()]),
     )
 
-    provider = ai_registry.get_provider("proxy")
+    provider = model_registry.ai_registry.get_provider("proxy")
     assert provider is not None
     assert provider.name == "Proxy Provider"
     assert provider.website == "https://proxy.example.com"
-    endpoint = ai_registry.get_endpoint("proxy", "proxy-simple")
+    endpoint = model_registry.ai_registry.get_endpoint("proxy", "proxy-simple")
     assert endpoint is not None
     assert endpoint.name == "Proxy Endpoint"
     assert endpoint.base_url == "https://proxy.example.com"
     assert endpoint.auth is not None
     assert endpoint.auth.api_key_env == "PROXY_API_KEY"
-    assert endpoint.auth.extra_headers == {"x-proxy": "yes"}
     assert endpoint.adapter is not None
     assert endpoint.adapter.streaming_usage is True
     assert dict(endpoint.defaults) == {"temperature": 0.1}
-    model = ai_registry.get_model("proxy", "proxy-simple", "proxy-model")
+    model = model_registry.ai_registry.get_model(
+        "proxy", "proxy-simple", "proxy-model"
+    )
     assert model.name == "Proxy Model"
     assert model.supports_image_input is True
     assert model.supports_thinking is True
@@ -2703,7 +2703,6 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
                     "authOverride": {
                         "kind": "apiKey",
                         "apiKeyEnv": "PROXY_API_KEY",
-                        "extraHeaders": {"x-proxy": "updated"},
                     },
                     "adapter": {"store": True},
                     "defaults": {"maxTokens": 1024},
@@ -2711,12 +2710,14 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
             }
         },
     )
-    endpoint = ai_registry.get_endpoint("proxy", "proxy-simple")
+    endpoint = model_registry.ai_registry.get_endpoint("proxy", "proxy-simple")
     assert endpoint is not None
     assert endpoint.base_url == "https://proxy-updated.example.com"
     assert endpoint.auth is not None
-    assert endpoint.auth.extra_headers == {"x-proxy": "updated"}
-    model = ai_registry.get_model("proxy", "proxy-simple", "proxy-model")
+    assert endpoint.auth.api_key_env == "PROXY_API_KEY"
+    model = model_registry.ai_registry.get_model(
+        "proxy", "proxy-simple", "proxy-model"
+    )
     assert model.name == "Proxy Model"
     assert model.adapter is not None
     assert model.adapter.streaming_usage is True
@@ -2729,7 +2730,7 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
     }
 
     api.unregister_provider("proxy")
-    assert ai_registry.get_provider("proxy") is None
+    assert model_registry.ai_registry.get_provider("proxy") is None
 
 
 def test_agent_session_rejects_pi_style_extension_provider_config(tmp_path) -> None:
@@ -5876,76 +5877,6 @@ def test_agent_session_exposes_diagnostics_views(tmp_path) -> None:
     ]
     assert session.get_last_error_report() is not None
     assert session.get_last_error_report().primary.code == "session_error"
-
-
-def test_agent_session_set_model_records_auth_resolution_failures(tmp_path) -> None:
-    from loushang.agent import Agent
-    from loushang.ai.model.domain import Auth, Endpoint
-    from loushang.coding.control import AuthManager, ModelRegistry
-    from loushang.coding.diagnostics import DiagnosticsService
-    from loushang.coding.session import AgentSession, ModelSelection
-    from loushang.coding.store import SessionManager
-
-    endpoint = Endpoint(
-        id="responses",
-        api="responses",
-        provider="demo",
-        auth=Auth(api_key_env="LOUSHANG_TEST_DEMO_KEY"),
-    )
-    ai_registry = _ai_model_registry(
-        Model(
-            id="open",
-            name="Open",
-            provider="demo",
-            endpoint="responses",
-            capabilities=Capabilities(
-                reasoning=True, input=("text",), context_window=128000, max_tokens=4096
-            ),
-        ),
-        Model(
-            id="secured",
-            name="Secured",
-            provider="demo",
-            endpoint="responses",
-            capabilities=Capabilities(
-                reasoning=True, input=("text",), context_window=128000, max_tokens=4096
-            ),
-        ),
-        endpoints=(endpoint,),
-    )
-
-    manager = asyncio.run(
-        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    )
-    diagnostics_service = DiagnosticsService()
-    session = AgentSession(
-        agent=Agent(
-            initial_state={
-                "system_prompt": "",
-                "model": _model(),
-                "thinking_level": "off",
-            }
-        ),
-        session_manager=manager,
-        model_registry=ModelRegistry(ai_registry=ai_registry),
-        auth_manager=AuthManager(ai_registry=ai_registry, env={}),
-        diagnostics_service=diagnostics_service,
-    )
-
-    asyncio.run(session.set_model(ModelSelection(provider="demo", model_id="secured")))
-
-    diagnostics = [
-        record
-        for record in session.get_last_diagnostics()
-        if record.code == "model_auth_unresolved"
-    ]
-
-    assert session.get_model_selection() == ModelSelection(
-        provider="demo", model_id="secured"
-    )
-    assert len(diagnostics) == 1
-    assert diagnostics[0].type == "warning"
-    assert diagnostics[0].details["provider"] == "demo"
 
 
 def test_agent_session_serializes_async_queue_updates_for_steer(tmp_path) -> None:

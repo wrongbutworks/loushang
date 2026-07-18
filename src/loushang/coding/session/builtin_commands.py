@@ -45,7 +45,6 @@ class BuiltinCommandBackend:
     set_active_tools: Callable[[list[str]], object | Awaitable[object]] | None = None
     get_default_active_tool_names: Callable[[], list[str]] | None = None
     get_extensions: Callable[[], list[object]] | None = None
-    login_provider: Callable[[str | None], object | Awaitable[object]] | None = None
 
 
 def list_builtin_command_descriptors() -> list[SessionCommandDescriptor]:
@@ -105,8 +104,6 @@ async def execute_builtin_command_async(
             return await _execute_tree(args, backend)
         case "import":
             return await _execute_import(args, backend)
-        case "login":
-            return await _execute_login(args, backend)
         case _:
             return _unsupported(invocation_name)
 
@@ -343,28 +340,6 @@ async def _execute_import(args: str, backend: BuiltinCommandBackend) -> CommandE
         return _error("import", "Usage: /import <jsonl-path> [cwd]")
     result = await _maybe_await(backend.import_session(tokens[0], tokens[1] if len(tokens) > 1 else None))
     return _ok("import", result=_to_plain_data(result))
-
-
-async def _execute_login(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    if backend.login_provider is None:
-        return _unsupported("login")
-    tokens = _split_args(args.strip()) if args.strip() else []
-    if len(tokens) > 1:
-        return _error("login", "Usage: /login [provider[:endpoint[:model]]]")
-    result = await _maybe_await(backend.login_provider(tokens[0] if tokens else None))
-    return _ok("login", result=_to_plain_data(result), message=_login_message(result))
-
-
-def _login_message(result: object) -> str:
-    if isinstance(result, Mapping):
-        message = result.get("message")
-        if isinstance(message, str) and message:
-            return message
-        provider = result.get("provider")
-        scope = result.get("scope")
-        if isinstance(provider, str) and isinstance(scope, str):
-            return f"Login complete for {provider} ({scope} scope)."
-    return "Login complete."
 
 
 def read_changelog_for_cwd(cwd: str | Path, args: str = "") -> dict[str, object]:

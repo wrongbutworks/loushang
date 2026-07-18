@@ -56,7 +56,7 @@ class FakeExtensionRunner:
         self.events.append((event, cwd))
 
 
-def test_selection_controller_sets_model_records_auth_refresh_and_model_select(
+def test_selection_controller_sets_model_refreshes_and_emits_model_select(
     tmp_path,
 ) -> None:
     from loushang.coding.session.selection_controller import SelectionController
@@ -65,7 +65,6 @@ def test_selection_controller_sets_model_records_auth_refresh_and_model_select(
     second = _model("alt-model", "alt")
     registry = FakeModelRegistry([first, second])
     runner = FakeExtensionRunner()
-    auth_records: list[Model] = []
     refresh_reasons: list[str] = []
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -79,7 +78,6 @@ def test_selection_controller_sets_model_records_auth_refresh_and_model_select(
         get_extension_runner=lambda: runner,
         refresh_extension_runtime=lambda reason: _append_async(refresh_reasons, reason),
         is_extension_runtime_refreshing=lambda: False,
-        record_model_auth_resolution=auth_records.append,
     )
 
     asyncio.run(
@@ -95,7 +93,6 @@ def test_selection_controller_sets_model_records_auth_refresh_and_model_select(
         "provider": "alt",
         "model_id": "alt-model",
     }
-    assert auth_records == [second]
     assert refresh_reasons == ["model_selection_changed"]
     assert runner.events == [
         (
@@ -132,7 +129,6 @@ def test_selection_controller_records_explicit_endpoint_selection(tmp_path) -> N
         get_extension_runner=lambda: None,
         refresh_extension_runtime=lambda reason: _append_async([], reason),
         is_extension_runtime_refreshing=lambda: False,
-        record_model_auth_resolution=lambda model: None,
     )
 
     asyncio.run(
@@ -175,7 +171,6 @@ def test_selection_controller_set_model_from_extension_respects_refresh_guard(
         get_extension_runner=lambda: runner,
         refresh_extension_runtime=lambda reason: _append_async(refresh_reasons, reason),
         is_extension_runtime_refreshing=lambda: True,
-        record_model_auth_resolution=lambda model: None,
     )
 
     asyncio.run(
@@ -214,7 +209,6 @@ def test_selection_controller_cycles_scoped_model_and_thinking_level(tmp_path) -
         get_extension_runner=lambda: None,
         refresh_extension_runtime=lambda reason: _append_async([], reason),
         is_extension_runtime_refreshing=lambda: False,
-        record_model_auth_resolution=lambda model: None,
     )
     controller.set_scoped_models(
         [
@@ -251,7 +245,6 @@ def test_selection_controller_thinking_levels_follow_model_capability(tmp_path) 
         get_extension_runner=lambda: None,
         refresh_extension_runtime=lambda reason: _append_async([], reason),
         is_extension_runtime_refreshing=lambda: False,
-        record_model_auth_resolution=lambda model: None,
     )
 
     assert controller.get_available_thinking_levels() == [

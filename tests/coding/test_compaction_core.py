@@ -893,7 +893,10 @@ def test_tree_navigation_result_is_exported() -> None:
 
 @pytest.mark.anyio
 async def test_generate_branch_summary_returns_summary_text(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
     async def _fake_complete(*args, **kwargs):
+        captured["options"] = args[2] if len(args) > 2 else kwargs.get("options")
         return "branch summary"
 
     monkeypatch.setattr(
@@ -904,7 +907,6 @@ async def test_generate_branch_summary_returns_summary_text(monkeypatch) -> None
     result = await generate_branch_summary(
         [UserMessage(role="user", content="old summary", timestamp=0.0)],
         model=object(),
-        api_key="",
         signal=None,
         reserve_tokens=1024,
     )
@@ -914,6 +916,9 @@ async def test_generate_branch_summary_returns_summary_text(monkeypatch) -> None
         "Summary of that exploration:\n\nbranch summary",
         details=BranchSummaryDetails(read_files=[], modified_files=[]),
     )
+    options = captured["options"]
+    assert isinstance(options, CallOptions)
+    assert options.auth is None
 
 
 @pytest.mark.anyio
@@ -1123,7 +1128,6 @@ async def test_compact_serializes_conversation_and_previous_summary_for_llm(
     result = await compact(
         preparation=preparation,
         model="model",
-        api_key="test-key",
         headers={"x-test": "1"},
         signal=signal,
         custom_instructions="Keep exact file paths.",
@@ -1141,7 +1145,7 @@ async def test_compact_serializes_conversation_and_previous_summary_for_llm(
     assert "Do NOT continue the conversation" in context.system_prompt
     options = captured["options"]
     assert isinstance(options, CallOptions)
-    assert options.auth == ApiKeyAuth("test-key")
+    assert options.auth is None
     assert options.headers == {"x-test": "1"}
     assert options.cancellation is signal
 

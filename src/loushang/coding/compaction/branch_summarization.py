@@ -87,7 +87,7 @@ async def generate_branch_summary(
     entries_or_messages: Sequence[object],
     *,
     model: object,
-    api_key: str,
+    api_key: str | None = None,
     headers: Mapping[str, str] | None = None,
     signal: object | None = None,
     custom_instructions: str | None = None,
@@ -121,7 +121,7 @@ async def generate_branch_summary(
                 ],
             ),
             CallOptions(
-                auth=ApiKeyAuth(api_key),
+                auth=ApiKeyAuth(api_key) if api_key else None,
                 headers=dict(headers or {}),
                 cancellation=signal,
             ),

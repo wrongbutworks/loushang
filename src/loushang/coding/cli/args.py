@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser, RawTextHelpFormatter
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal, Mapping, TypeAlias
+from typing import Literal, TypeAlias
 
 from loushang.coding.extensions.types import RegisteredFlag, ResolvedFlag
 
@@ -69,7 +70,6 @@ _BUILTIN_FLAG_NAMES = frozenset(
         "no-prompt-templates",
         "theme",
         "no-themes",
-        "api-key",
         "system-prompt",
         "append-system-prompt",
         "offline",
@@ -221,7 +221,6 @@ class CliArgs:
     no_prompt_templates: bool
     themes: tuple[str, ...]
     no_themes: bool
-    api_key: str | None
     system_prompt: str | None
     append_system_prompt: tuple[str, ...]
     verbose: bool
@@ -383,7 +382,6 @@ def parse_args(
         no_prompt_templates=namespace.no_prompt_templates,
         themes=tuple(namespace.theme),
         no_themes=namespace.no_themes,
-        api_key=namespace.api_key,
         system_prompt=namespace.system_prompt,
         append_system_prompt=tuple(_parse_csv_items_list(namespace.append_system_prompt)),
         verbose=namespace.verbose,
@@ -472,7 +470,6 @@ def _build_parser() -> ArgumentParser:
     )
     parser.add_argument("--theme", action="append", default=[])
     parser.add_argument("--no-themes", action="store_true")
-    parser.add_argument("--api-key")
     parser.add_argument("--system-prompt")
     parser.add_argument("--append-system-prompt", action="append", default=[])
     parser.add_argument("--verbose", action="store_true")

@@ -222,7 +222,6 @@ class TreeController:
             summary_result = await plan.generate(
                 entries,
                 model=self.agent.model,
-                api_key="",
                 signal=abort_controller.signal,
                 custom_instructions=plan.custom_instructions,
                 replace_instructions=plan.replace_instructions,

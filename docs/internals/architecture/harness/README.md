@@ -66,7 +66,8 @@ planning, work event persistence, or AI provider behavior.
   defines transactional layered configuration, declarative Product schema
   adapters, scoped change records, injected value resolution, and activation
   DAG ownership while preserving Product fields, defaults, paths, effects,
-  diagnostics, model/auth behavior, and credentials.
+  diagnostics and model-selection behavior while request authentication remains
+  AI-owned.
 - [Product Runtime Injection Architecture](product-runtime-injection/README.md)
   records proposed requirements and the component directory for Product,
   OEM, and extension selection of runtime capabilities. Detailed component

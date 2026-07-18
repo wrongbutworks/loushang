@@ -151,7 +151,7 @@ def test_command_controller_lists_builtin_commands_before_extension_and_resource
         "deploy",
         "plan",
     }
-    assert all(command.source == "builtin" for command in commands[:23])
+    assert all(command.source == "builtin" for command in commands[:21])
     assert commands[0].source_info.source == "builtin"
 
 
@@ -284,57 +284,6 @@ def test_command_controller_dispatches_extension_before_builtin_and_resource(
     assert result.result is None
     assert calls == [("Project Alpha", "/tmp/project")]
     assert builtin_names == []
-
-
-def test_command_controller_executes_builtin_login(tmp_path) -> None:
-    calls: list[str | None] = []
-    manager = asyncio.run(
-        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    )
-    controller = CommandController(
-        session_manager=manager,
-        get_extension_runner=lambda: None,
-        get_resource_bundle=lambda: None,
-        get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
-            login_provider=lambda target: (
-                calls.append(target)
-                or {
-                    "provider": "demo",
-                    "scope": "provider",
-                    "message": "Login complete.",
-                }
-            )
-        ),
-    )
-
-    result = asyncio.run(controller.execute_command_async("login", "demo"))
-
-    assert calls == ["demo"]
-    assert result is not None
-    assert result.result["status"] == "ok"
-    assert result.result["message"] == "Login complete."
-
-
-def test_command_controller_rejects_builtin_login_extra_args(tmp_path) -> None:
-    manager = asyncio.run(
-        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    )
-    controller = CommandController(
-        session_manager=manager,
-        get_extension_runner=lambda: None,
-        get_resource_bundle=lambda: None,
-        get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
-            login_provider=lambda _target: pytest.fail("login should not execute")
-        ),
-    )
-
-    result = asyncio.run(controller.execute_command_async("login", "one two"))
-
-    assert result is not None
-    assert result.result["status"] == "error"
-    assert result.result["message"] == "Usage: /login [provider[:endpoint[:model]]]"
 
 
 def test_command_controller_executes_builtin_name_session_and_unsupported_commands(
