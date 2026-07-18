@@ -833,6 +833,7 @@ def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
             "loushang.harness.agent_transcript.file_store.agent_transcript_file_lock",
         },
         Path("src/loushang/coding/store/session_manager.py"): {
+            "loushang.harness.agent_transcript.AgentTranscriptLifecycle",
             "loushang.harness.agent_transcript.AgentTranscriptSession",
             "loushang.harness.agent_transcript.catalog.AgentTranscriptSessionCatalog",
         },
@@ -918,6 +919,46 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
     )
     assert (
         "loushang.harness.agent_transcript.catalog.AgentTranscriptSessionCatalog"
+        in session_manager_imports
+    )
+
+
+def test_harness_agent_transcript_lifecycle_is_documented_and_adopted() -> None:
+    design_path = Path(
+        "docs/internals/architecture/harness/agent-transcript-lifecycle-boundary.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Agent Transcript Lifecycle Boundary",
+        "`AgentTranscriptLifecycle`",
+        "`AgentTranscriptLifecycleContext`",
+        "`AgentTranscriptRuntimeBinding`",
+        "does not import Coding",
+        "exactly once",
+        "Detached restore therefore never mutates its source file",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Agent Transcript Lifecycle Boundary" in readme_text
+
+    lifecycle_imports = set(
+        _absolute_imports(Path("src/loushang/harness/agent_transcript/lifecycle.py"))
+    )
+    assert not any(
+        imported.startswith("loushang.coding") for imported in lifecycle_imports
+    )
+
+    session_manager_imports = set(
+        _absolute_imports(Path("src/loushang/coding/store/session_manager.py"))
+    )
+    assert (
+        "loushang.harness.agent_transcript.AgentTranscriptLifecycle"
         in session_manager_imports
     )
 

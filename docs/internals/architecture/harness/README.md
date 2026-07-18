@@ -88,6 +88,10 @@ planning, work event persistence, or AI provider behavior.
   defines the common Native transcript discovery, summary/query, projection
   index, and branch-label read model while Products retain roots and
   presentation policy.
+- [Agent Transcript Lifecycle Boundary](agent-transcript-lifecycle-boundary.md)
+  defines common create, restore, detached-copy, fork, disposal, and active
+  Native-file deletion mechanics while Products retain binding and resume
+  policy.
 - [Store And Runtime Event Protocol Migration](store-event-protocol-migration.md)
   records the implemented protocol-based Store cutover, Memory/File reference
   adapters, Agent transcript persistence facade, common runtime-event envelope,

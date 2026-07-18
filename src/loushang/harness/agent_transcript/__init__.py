@@ -60,6 +60,13 @@ from loushang.harness.agent_transcript.kinds import (
     STANDARD_AGENT_TRANSCRIPT_KINDS,
     THINKING_SELECTION_KIND,
 )
+from loushang.harness.agent_transcript.lifecycle import (
+    AgentTranscriptLifecycle,
+    AgentTranscriptLifecycleContext,
+    AgentTranscriptLifecycleSession,
+    AgentTranscriptRuntimeBinding,
+    delete_current_native_agent_transcript,
+)
 from loushang.harness.agent_transcript.migration import (
     CURRENT_SESSION_VERSION,
     LEGACY_SESSION_OPAQUE_KIND,
@@ -137,10 +144,14 @@ __all__ = [
     "AgentTranscriptCommit",
     "AgentTranscriptFileError",
     "AgentTranscriptFileLayout",
+    "AgentTranscriptLifecycle",
+    "AgentTranscriptLifecycleContext",
+    "AgentTranscriptLifecycleSession",
     "AgentTranscriptPayload",
     "AgentTranscriptProfile",
     "AgentTranscriptRecord",
     "AgentTranscriptRecordFactory",
+    "AgentTranscriptRuntimeBinding",
     "AgentTranscriptSessionStore",
     "AgentTranscriptSession",
     "AgentTranscriptSessionCatalog",
@@ -191,6 +202,7 @@ __all__ = [
     "create_agent_transcript_message_codec",
     "create_agent_transcript_file_store",
     "create_agent_transcript_repository",
+    "delete_current_native_agent_transcript",
     "estimate_record_tokens",
     "filter_agent_transcript_session_summaries",
     "find_all_agent_transcript_session_summaries",

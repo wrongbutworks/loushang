@@ -23,10 +23,13 @@ from loushang.coding.runtime_profile import (
 )
 from loushang.harness.agent_transcript import (
     AgentTranscriptContext,
-    AgentTranscriptProfile,
+    AgentTranscriptLifecycle,
+    AgentTranscriptLifecycleContext,
+    AgentTranscriptLifecycleSession,
     AgentTranscriptRecord,
+    AgentTranscriptRuntimeBinding,
     AgentTranscriptSession,
-    AgentTranscriptSessionStore,
+    delete_current_native_agent_transcript,
 )
 from loushang.harness.agent_transcript.catalog import (
     AgentTranscriptSessionCatalog,
@@ -35,9 +38,7 @@ from loushang.harness.agent_transcript.catalog import (
     SessionRecord,
     SessionSummary,
     SessionTreeNode,
-    agent_transcript_header_cwd,
     agent_transcript_header_parent_session,
-    build_agent_transcript_label_indexes,
     build_agent_transcript_session_context,
     build_agent_transcript_session_tree,
     find_all_agent_transcript_session_summaries,
@@ -47,23 +48,12 @@ from loushang.harness.agent_transcript.catalog import (
     load_agent_transcript_session_metadata,
     project_agent_transcript_session_summary,
     refresh_all_agent_transcript_session_indexes,
-    same_agent_transcript_session_path,
-)
-from loushang.harness.agent_transcript.file_store import (
-    AgentTranscriptFileLayout,
-    create_agent_transcript_file_store,
-    load_current_agent_transcript_header,
 )
 from loushang.harness.agent_transcript.migration import NATIVE_CONVERSATION_VERSION
 from loushang.harness.conversation import (
     ConversationHeader,
 )
 from loushang.harness.runtime import ResolvedRuntimeProfile
-from loushang.harness.storage import (
-    ConversationKey,
-    ConversationStore,
-    StoreNotFoundError,
-)
 from loushang.protocol import JSONValue, require_json_value
 
 CURRENT_SESSION_VERSION = NATIVE_CONVERSATION_VERSION
@@ -116,37 +106,51 @@ def _resolve_session_id(session_id: str | None) -> str:
 build_session_context = build_agent_transcript_session_context
 
 
-async def _new_session_backend(
-    *,
-    session_dir: Path,
-    header: ConversationHeader,
-    persist: bool,
-    session_file: Path | None = None,
-    runtime_profile: ResolvedRuntimeProfile | None = None,
-) -> tuple[
-    CodingRuntimeSessionBinding,
-    ConversationStore[ConversationHeader, AgentTranscriptRecord],
-    ConversationKey,
-    Path | None,
-    AgentTranscriptProfile,
-]:
-    if persist and session_file is None:
-        file_timestamp = header.created_at.replace(":", "-").replace(".", "-")
-        session_file = session_dir / f"{file_timestamp}_{header.conversation_id}.jsonl"
-    profile = runtime_profile or resolve_coding_runtime_profile(persist=persist)
-    context = CodingRuntimeSessionContext(
-        session_dir=session_dir,
-        header=header,
-        persist=persist,
-        session_file=session_file,
+async def _bind_coding_agent_transcript_runtime(
+    context: AgentTranscriptLifecycleContext,
+    runtime_profile: ResolvedRuntimeProfile,
+) -> AgentTranscriptRuntimeBinding[CodingRuntimeSessionBinding]:
+    coding_context = CodingRuntimeSessionContext(
+        session_dir=context.session_dir,
+        header=context.header,
+        persist=context.persist,
+        session_file=context.session_file,
     )
-    binding = await bind_coding_runtime(profile=profile, context=context)
-    return (
-        binding,
-        selected_store(binding),
-        context.conversation_key,
-        session_file,
-        selected_transcript_profile(binding),
+    binding = await bind_coding_runtime(
+        profile=runtime_profile,
+        context=coding_context,
+    )
+    return AgentTranscriptRuntimeBinding(
+        store=selected_store(binding),
+        key=coding_context.conversation_key,
+        profile=selected_transcript_profile(binding),
+        product_binding=binding,
+        dispose=binding.dispose,
+    )
+
+
+_LIFECYCLE = AgentTranscriptLifecycle(
+    bind_runtime=_bind_coding_agent_transcript_runtime
+)
+
+
+def _new_coding_lifecycle_context(
+    *,
+    session_dir: str | Path,
+    cwd: str | Path,
+    persist: bool,
+    header: ConversationHeader,
+) -> AgentTranscriptLifecycleContext:
+    return _LIFECYCLE.new_context(
+        session_dir=session_dir,
+        cwd=cwd,
+        persist=persist,
+        header=header,
+        session_file=(
+            _LIFECYCLE.default_native_session_file(session_dir, header)
+            if persist
+            else None
+        ),
     )
 
 
@@ -154,24 +158,20 @@ class SessionManager(AgentTranscriptSession):
     def __init__(
         self,
         *,
-        session_dir: Path,
-        cwd: str,
-        persist: bool,
-        transcript: AgentTranscriptSessionStore,
-        runtime_binding: CodingRuntimeSessionBinding,
-        session_file: Path | None = None,
-        labels_by_target_id: dict[str, str] | None = None,
-        label_timestamps_by_target_id: dict[str, str] | None = None,
+        lifecycle_session: AgentTranscriptLifecycleSession[CodingRuntimeSessionBinding],
     ) -> None:
-        self.session_dir = session_dir
-        self.cwd = cwd
-        self.persist = persist
-        self._runtime_binding = runtime_binding
-        self.session_file = session_file
+        self._lifecycle_session = lifecycle_session
+        self.session_dir = lifecycle_session.context.session_dir
+        self.cwd = lifecycle_session.context.cwd
+        self.persist = lifecycle_session.context.persist
+        self._runtime_binding = lifecycle_session.product_binding
+        self.session_file = lifecycle_session.context.session_file
         super().__init__(
-            transcript=transcript,
-            labels_by_target_id=labels_by_target_id,
-            label_timestamps_by_target_id=label_timestamps_by_target_id,
+            transcript=lifecycle_session.transcript,
+            labels_by_target_id=lifecycle_session.labels_by_target_id,
+            label_timestamps_by_target_id=(
+                lifecycle_session.label_timestamps_by_target_id
+            ),
             application_message_id_factory=_generate_id,
         )
 
@@ -183,7 +183,7 @@ class SessionManager(AgentTranscriptSession):
         return self._runtime_binding.value(slot)
 
     async def dispose_runtime_profile(self) -> None:
-        await self._runtime_binding.dispose()
+        await self._lifecycle_session.dispose()
 
     @classmethod
     async def new(
@@ -207,42 +207,23 @@ class SessionManager(AgentTranscriptSession):
                 capability_profile
             ),
         )
-        (
-            runtime_binding,
-            backend,
-            key,
-            session_file,
-            transcript_profile,
-        ) = await _new_session_backend(
-            session_dir=Path(session_dir),
-            header=header,
-            persist=persist,
-            runtime_profile=runtime_profile,
-        )
-        try:
-            transcript = await AgentTranscriptSessionStore.create(
-                backend,
-                key,
-                header,
-                id_factory=_generate_id,
-                profile=transcript_profile,
-            )
-        except Exception:
-            await runtime_binding.dispose()
-            raise
-        return cls(
-            session_dir=Path(session_dir),
+        context = _new_coding_lifecycle_context(
+            session_dir=session_dir,
             cwd=normalized_cwd,
             persist=persist,
-            transcript=transcript,
-            runtime_binding=runtime_binding,
-            session_file=session_file,
+            header=header,
         )
+        lifecycle_session = await _LIFECYCLE.create(
+            context,
+            runtime_profile,
+        )
+        return cls(lifecycle_session=lifecycle_session)
 
     @classmethod
     async def load(cls, session_file: Path, persist: bool = True) -> SessionManager:
         path = Path(session_file).expanduser().resolve(strict=False)
-        header = load_current_agent_transcript_header(path)
+        context = _LIFECYCLE.current_native_context(path, persist=persist)
+        header = context.header
         snapshot = validate_coding_runtime_snapshot(header)
         capability_snapshot = validate_coding_capability_snapshot(header)
         runtime_profile = resolve_coding_runtime_profile(persist=persist)
@@ -259,59 +240,11 @@ class SessionManager(AgentTranscriptSession):
             raise ValueError(
                 "Coding cannot resume a session with an unsupported capability profile"
             )
-        (
-            runtime_binding,
-            backend,
-            key,
-            _,
-            transcript_profile,
-        ) = await _new_session_backend(
-            session_dir=path.parent,
-            header=header,
-            persist=persist,
-            session_file=path,
-            runtime_profile=runtime_profile,
+        lifecycle_session = await _LIFECYCLE.restore(
+            context,
+            runtime_profile,
         )
-        try:
-            if persist:
-                transcript = await AgentTranscriptSessionStore.load(
-                    backend,
-                    key,
-                    id_factory=_generate_id,
-                    profile=transcript_profile,
-                )
-            else:
-                layout = AgentTranscriptFileLayout(path.parent)
-                layout.bind_existing_path(path)
-                source_backend = create_agent_transcript_file_store(layout)
-                source_key = layout.key(header.conversation_id)
-                source_snapshot = await source_backend.load(source_key)
-                transcript = await AgentTranscriptSessionStore.create(
-                    backend,
-                    key,
-                    source_snapshot.header,
-                    records=source_snapshot.records,
-                    id_factory=_generate_id,
-                    profile=transcript_profile,
-                )
-        except Exception:
-            await runtime_binding.dispose()
-            raise
-        header = transcript.header
-        entries = list(transcript.records)
-        labels_by_target_id, label_timestamps_by_target_id = (
-            build_agent_transcript_label_indexes(entries)
-        )
-        return cls(
-            session_dir=path.parent,
-            cwd=agent_transcript_header_cwd(header),
-            persist=persist,
-            transcript=transcript,
-            runtime_binding=runtime_binding,
-            session_file=path,
-            labels_by_target_id=labels_by_target_id,
-            label_timestamps_by_target_id=label_timestamps_by_target_id,
-        )
+        return cls(lifecycle_session=lifecycle_session)
 
     @classmethod
     async def open(
@@ -380,44 +313,18 @@ class SessionManager(AgentTranscriptSession):
                 capability_profile
             ),
         )
-        target_dir = Path(session_dir)
-        (
-            runtime_binding,
-            backend,
-            key,
-            session_file,
-            transcript_profile,
-        ) = await _new_session_backend(
-            session_dir=target_dir,
+        context = _new_coding_lifecycle_context(
+            session_dir=session_dir,
+            cwd=target_cwd,
+            persist=persist,
             header=header,
-            persist=persist,
-            runtime_profile=runtime_profile,
         )
-        try:
-            transcript = await AgentTranscriptSessionStore.create(
-                backend,
-                key,
-                header,
-                records=source_entries,
-                id_factory=_generate_id,
-                profile=transcript_profile,
-            )
-        except Exception:
-            await runtime_binding.dispose()
-            raise
-        labels_by_target_id, label_timestamps_by_target_id = (
-            build_agent_transcript_label_indexes(source_entries)
+        lifecycle_session = await _LIFECYCLE.create(
+            context,
+            runtime_profile,
+            records=source_entries,
         )
-        return cls(
-            session_dir=target_dir,
-            cwd=str(target_cwd),
-            persist=persist,
-            transcript=transcript,
-            runtime_binding=runtime_binding,
-            session_file=session_file,
-            labels_by_target_id=labels_by_target_id,
-            label_timestamps_by_target_id=label_timestamps_by_target_id,
-        )
+        return cls(lifecycle_session=lifecycle_session)
 
     def get_session_dir(self) -> Path:
         return self.session_dir
@@ -486,10 +393,6 @@ class SessionManager(AgentTranscriptSession):
         return await self.append_conversation_name(name)
 
     async def fork(self, leaf_id: str) -> SessionManager:
-        branch_entries = self.get_branch(leaf_id)
-        labels_by_target_id, label_timestamps_by_target_id = (
-            build_agent_transcript_label_indexes(branch_entries)
-        )
         parent_session = (
             str(self.session_file) if self.session_file is not None else None
         )
@@ -506,42 +409,19 @@ class SessionManager(AgentTranscriptSession):
             ),
         )
 
-        (
-            runtime_binding,
-            backend,
-            key,
-            session_file,
-            transcript_profile,
-        ) = await _new_session_backend(
-            session_dir=self.session_dir,
-            header=header,
-            persist=self.persist,
-            runtime_profile=self.runtime_profile,
-        )
-        try:
-            transcript = await AgentTranscriptSessionStore.create(
-                backend,
-                key,
-                header,
-                records=branch_entries,
-                leaf_id=leaf_id,
-                id_factory=_generate_id,
-                profile=transcript_profile,
-            )
-        except Exception:
-            await runtime_binding.dispose()
-            raise
-
-        return SessionManager(
+        context = _new_coding_lifecycle_context(
             session_dir=self.session_dir,
             cwd=self.cwd,
             persist=self.persist,
-            transcript=transcript,
-            runtime_binding=runtime_binding,
-            session_file=session_file,
-            labels_by_target_id=labels_by_target_id,
-            label_timestamps_by_target_id=label_timestamps_by_target_id,
+            header=header,
         )
+        lifecycle_session = await _LIFECYCLE.fork(
+            self._transcript,
+            context,
+            self.runtime_profile,
+            leaf_id=leaf_id,
+        )
+        return SessionManager(lifecycle_session=lifecycle_session)
 
     async def create_branched_session(self, leaf_id: str) -> Path | None:
         return (await self.fork(leaf_id)).session_file
@@ -567,20 +447,13 @@ class SessionManager(AgentTranscriptSession):
         current_session_file: str | Path | None = None,
     ) -> bool:
         target = Path(session_file).expanduser()
-        if current_session_file is not None and same_agent_transcript_session_path(
-            target, Path(current_session_file).expanduser()
-        ):
-            raise ValueError("Cannot delete the currently active session")
-        if not target.is_file():
-            return False
-        layout = AgentTranscriptFileLayout(target.parent)
-        key = layout.bind_existing_path(target)
-        try:
-            await create_agent_transcript_file_store(layout).delete(key)
-        except StoreNotFoundError:
-            return False
-        cls._refresh_index_if_present(target.parent)
-        return True
+        deleted = await delete_current_native_agent_transcript(
+            target,
+            current_session_file=current_session_file,
+        )
+        if deleted:
+            cls._refresh_index_if_present(target.parent)
+        return deleted
 
     @classmethod
     def _refresh_index_if_present(cls, session_dir: Path) -> None:
