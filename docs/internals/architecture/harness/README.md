@@ -80,6 +80,10 @@ planning, work event persistence, or AI provider behavior.
   defines the optional common Agent/AI transcript schema and codec profile,
   opaque preservation, Native v3 migration, idempotent application-message
   commit, Product extension points, and its narrow AI/Agent import allowlist.
+- [Agent Transcript File Store Boundary](agent-transcript-file-store-boundary.md)
+  defines the current Native JSONL provider, file layout and lock ownership,
+  Product store selection, and the separation between native loading and
+  external importers.
 - [Store And Runtime Event Protocol Migration](store-event-protocol-migration.md)
   records the implemented protocol-based Store cutover, Memory/File reference
   adapters, Agent transcript persistence facade, common runtime-event envelope,

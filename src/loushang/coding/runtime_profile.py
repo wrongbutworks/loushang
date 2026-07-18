@@ -12,13 +12,13 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
-from loushang.coding.store.backend import (
-    CodingSessionFileLayout,
-    create_coding_file_store,
-)
 from loushang.harness.agent_transcript import (
     AgentTranscriptProfile,
     AgentTranscriptRecord,
+)
+from loushang.harness.agent_transcript.file_store import (
+    AgentTranscriptFileLayout,
+    create_agent_transcript_file_store,
 )
 from loushang.harness.conversation import ConversationHeader
 from loushang.harness.runtime import (
@@ -256,11 +256,11 @@ def _create_file_store(
     coding_context = _require_context(context)
     if not coding_context.persist or coding_context.session_file is None:
         raise ValueError("the Coding file store requires a persistent session context")
-    layout = CodingSessionFileLayout(coding_context.session_dir)
+    layout = AgentTranscriptFileLayout(coding_context.session_dir)
     layout.bind_create_path(
         coding_context.conversation_key, coding_context.session_file
     )
-    return create_coding_file_store(layout)
+    return create_agent_transcript_file_store(layout)
 
 
 def _create_agent_transcript_profile(

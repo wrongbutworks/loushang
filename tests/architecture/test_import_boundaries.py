@@ -820,15 +820,20 @@ def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
         Path("src/loushang/coding/compaction/service.py"): {
             "loushang.harness.context.compaction.CompactionCoordinator",
         },
-        Path("src/loushang/coding/store/file_codec.py"): {
+        Path("src/loushang/harness/agent_transcript/file_store.py"): {
             "loushang.harness.conversation.NativeConversationHeaderCodec",
             "loushang.harness.conversation.NativeConversationRecordCodec",
             "loushang.harness.journal.JsonlJournal",
+            "loushang.harness.journal.journal_file_lock",
+        },
+        Path("src/loushang/coding/store/file_codec.py"): {
+            "loushang.harness.agent_transcript.file_store.AgentTranscriptFileError",
         },
         Path("src/loushang/coding/store/file_lock.py"): {
-            "loushang.harness.journal.jsonl.journal_file_lock",
+            "loushang.harness.agent_transcript.file_store.agent_transcript_file_lock",
         },
         Path("src/loushang/coding/store/session_manager.py"): {
+            "loushang.harness.agent_transcript.AgentTranscriptSession",
             "loushang.harness.conversation.ConversationRepository",
         },
         Path("src/loushang/work/event_log.py"): {
@@ -844,6 +849,37 @@ def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
             f"{path.as_posix()} missing {name}" for name in sorted(required - imports)
         )
     assert missing == []
+
+
+def test_harness_agent_transcript_file_store_is_documented() -> None:
+    design_path = Path(
+        "docs/internals/architecture/harness/agent-transcript-file-store-boundary.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Agent Transcript File Store Boundary",
+        "implementation complete for integration into `lane/harness`",
+        "`AgentTranscriptFileLayout`",
+        "`ConversationStore[ConversationHeader, AgentTranscriptRecord]`",
+        "`AgentTranscriptSession`",
+        "accepts only `ConversationHeader.version == 1`",
+        "The normal native loader never performs implicit migration",
+        "does not implement SQL, Redis, outbox delivery, or extension-owned persistence providers",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Agent Transcript File Store Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "current Native Agent transcript codec" in inventory_text
 
 
 def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:

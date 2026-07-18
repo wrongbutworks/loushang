@@ -6,19 +6,25 @@ from pathlib import Path
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.coding.store.file_codec import (
-    SessionFileError,
-    append_session_entry,
-    load_session_file,
-    load_session_repository,
-    write_session_file,
-)
 from loushang.harness.agent_transcript import AGENT_MESSAGE_KIND
+from loushang.harness.agent_transcript.file_store import (
+    AgentTranscriptFileError,
+    append_agent_transcript_record,
+    load_agent_transcript_file,
+    load_agent_transcript_repository,
+    write_agent_transcript_file,
+)
 from loushang.harness.conversation import (
     ConversationHeader,
     ConversationRecord,
     NativeConversationHeaderCodec,
 )
+
+SessionFileError = AgentTranscriptFileError
+append_session_entry = append_agent_transcript_record
+load_session_file = load_agent_transcript_file
+load_session_repository = load_agent_transcript_repository
+write_session_file = write_agent_transcript_file
 
 
 def _header() -> ConversationHeader:
