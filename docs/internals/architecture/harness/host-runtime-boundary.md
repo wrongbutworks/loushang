@@ -119,13 +119,13 @@ Coding adopts the Host Runtime core as follows:
 - `harness.session.QueueController` owns visible queue coordination over
   `HostInputQueue`; Coding injects preflight, extension-command rejection,
   queue-update projection, and its concrete Agent delivery;
-- `AgentSession` owns one scoped Runtime publisher and ordered bus; its Product
-  subscription API is a projection adapter on that same stream;
-- `AgentSession` delegates prompt/continue lifecycle, abort, idle waiting, and
-  disposal state to `HostRuntime`;
-- `harness.session.PromptController` and `AgentEventRouter` order generic turn
-  and Agent-event coordination; Coding supplies Product callbacks for prompt
-  content, extensions, retry, compaction, diagnostics, and transcript access;
+- `harness.session.SessionRuntime` owns one scoped Runtime publisher, ordered
+  bus, Agent subscription, transcript-commit observation, and the composition
+  of HostRuntime, queue, prompt, Agent-event, and application-input controls;
+- `AgentSession` delegates prompt/continue lifecycle, abort, idle waiting,
+  disposal, and runtime-event subscription to that one Harness component;
+- Coding supplies SessionRuntime's Product callbacks for prompt content,
+  extensions, retry, compaction, diagnostics, and transcript access;
 - resource and extension controllers supply Product discovery, event,
   diagnostic, and binding callbacks to Harness lifecycle coordinators.
 

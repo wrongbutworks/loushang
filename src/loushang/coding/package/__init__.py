@@ -26,7 +26,7 @@ from loushang.coding.package.source import (
     python_package_requirement,
     remote_package_name,
 )
-from loushang.coding.package.source_manager import (
+from loushang.harness.resources.packages.source_resolver import (
     MissingSourceAction,
     PackageResolveResult,
     PackageSourceResolver,

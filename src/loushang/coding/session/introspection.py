@@ -1,18 +1,19 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from loushang.ai.types import AssistantMessage, ToolCall, ToolResultMessage, UserMessage
 from loushang.coding.compaction import calculate_context_tokens, estimate_context_tokens
 from loushang.coding.session.types import ContextUsage, SessionStats, TokenUsageTotals
-from loushang.coding.store.types import SessionTreeNode
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
     APPLICATION_MESSAGE_KIND,
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
+    AgentTranscriptRecord,
     ContextCompactionCheckpoint,
+    SessionTreeNode,
 )
-from loushang.harness.conversation import ConversationRecord
 
 if TYPE_CHECKING:
     from loushang.coding.session.agent_session import AgentSession
@@ -98,7 +99,9 @@ def build_session_stats(session: AgentSession) -> SessionStats:
     )
 
 
-def _build_token_usage_totals(branch_entries: list[object]) -> TokenUsageTotals:
+def _build_token_usage_totals(
+    branch_entries: Sequence[AgentTranscriptRecord],
+) -> TokenUsageTotals:
     latest_compaction = _latest_compaction_with_index(branch_entries)
     input_tokens = 0
     output_tokens = 0
@@ -114,8 +117,6 @@ def _build_token_usage_totals(branch_entries: list[object]) -> TokenUsageTotals:
         start_index = index + 1
 
     for entry in branch_entries[start_index:]:
-        if not isinstance(entry, ConversationRecord):
-            continue
         if entry.kind != AGENT_MESSAGE_KIND:
             continue
         message = entry.payload
@@ -140,14 +141,12 @@ def _build_token_usage_totals(branch_entries: list[object]) -> TokenUsageTotals:
 
 
 def _latest_compaction_with_index(
-    entries: list[object],
+    entries: Sequence[AgentTranscriptRecord],
 ) -> tuple[ContextCompactionCheckpoint, int] | None:
     for index in range(len(entries) - 1, -1, -1):
         entry = entries[index]
-        if (
-            hasattr(entry, "kind")
-            and entry.kind == CONTEXT_COMPACTION_CHECKPOINT_KIND
-            and isinstance(entry.payload, ContextCompactionCheckpoint)
+        if entry.kind == CONTEXT_COMPACTION_CHECKPOINT_KIND and isinstance(
+            entry.payload, ContextCompactionCheckpoint
         ):
             return entry.payload, index
     return None

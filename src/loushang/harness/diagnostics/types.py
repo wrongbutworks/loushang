@@ -10,6 +10,7 @@ DiagnosticPhase = Literal["startup", "resource_loading", "runtime"]
 DiagnosticSource = Literal[
     "bootstrap",
     "loader",
+    "package",
     "extensions",
     "session",
     "policy",

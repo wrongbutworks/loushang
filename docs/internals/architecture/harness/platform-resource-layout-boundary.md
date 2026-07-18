@@ -156,8 +156,12 @@ Accepted Coding paths remain compatibility adapters.
 - projects the Harness resource snapshot into Coding prompt/session behavior.
 
 It does not retain a second implementation of scanning, provenance, merging,
-package materialization, or `AGENTS.md` discovery. Coding package projection
-and settings-backed source resolution remain product adapters.
+package materialization, package catalog construction, source resolution, or
+`AGENTS.md` discovery. `harness.resources.packages` owns the structured
+catalog, scoped source resolver, materialization lifecycle, manifest summary,
+and conflict diagnostics. Coding supplies its settings object and package
+security policy, then projects the structured catalog into its CLI/RPC JSON
+schema.
 
 ## Security Boundary
 

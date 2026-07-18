@@ -7,7 +7,11 @@ prepared input into an Agent turn and turn Agent observations into durable and
 observable Session facts. It is an optional Agent/AI profile, not part of the
 neutral conversation, storage, or event cores.
 
-The component has three composable mechanisms:
+The component has four composable mechanisms:
+
+- `SessionRuntime` is the one owner for an Agent subscription, Host lifecycle,
+  ordered RuntimeEvent stream, transcript-commit observation, and the standard
+  session controller composition below.
 
 - `QueueController` maintains visible steering, follow-up, and next-turn input
   queues while delegating delivery to an Agent.
@@ -21,10 +25,12 @@ The component has three composable mechanisms:
 
 ## Product Binding Contract
 
-Products construct these controllers once per Session and inject their policy
-ports. Product callbacks decide extension command syntax, input preflight,
-resource-derived system-prompt options, diagnostics, retry rules, compaction
-rules, transcript provider, and runtime-event projection.
+Products construct one `SessionRuntime` per Session and inject its transcript,
+turn-policy, and after-turn-policy ports. `SessionRuntime` composes the
+controllers once; Products do not construct parallel queue, prompt, event, or
+event-publisher state. Product callbacks decide extension command syntax, input
+preflight, resource-derived system-prompt options, diagnostics, retry rules,
+compaction rules, transcript provider, and runtime-event projection.
 
 Harness owns only the ordering contract:
 
@@ -46,16 +52,18 @@ separate transcript-commit capability.
   message values, plus Harness host, transcript, and observability primitives.
 - It must not import Coding, provider APIs, model registries, authentication,
   concrete stores, shell execution, TUI, Work, or Method.
-- The Agent, queue delivery callbacks, transcript append callback, and policy
-  ports are sealed for one Session lifetime. They are not refreshable bindings.
+- The Agent binding is structural (`SessionAgentPort`), not a dependency on a
+  concrete Agent-loop implementation. It, the queue delivery callbacks,
+  transcript append callback, event publisher, and policy ports are sealed for
+  one Session lifetime; they are not refreshable bindings.
 - Product/OEM extension behavior is represented only by injected callbacks or
   structurally typed runners. It cannot replace the Session's durable store or
   runtime event publisher after construction.
 
 ## Verification
 
-- Harness unit tests exercise queue, prompt, and Agent-event ordering with
-  neutral fakes.
+- Harness unit tests exercise SessionRuntime's turn, direct application input,
+  transcript-commit publication, and teardown ownership with neutral fakes.
 - Coding's `AgentSession` remains a compatibility consumer and provides the
   concrete Coding policy ports.
 - Import-boundary tests permit only this narrow Agent/AI dependency allowance

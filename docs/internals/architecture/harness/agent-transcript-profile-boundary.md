@@ -2,8 +2,7 @@
 
 ## Status
 
-Status: approved for implementation on the semantic branch
-`harness/agent-transcript-profile`.
+Status: implementation complete for integration into `lane/harness`.
 
 This wave replaces the Coding-owned common transcript model with one optional,
 cross-product Agent transcript profile. It is not a directory-only move of

@@ -81,6 +81,18 @@ planning, work event persistence, or AI provider behavior.
   defines the optional common Agent/AI transcript schema and codec profile,
   opaque preservation, Native v3 migration, idempotent application-message
   commit, Product extension points, and its narrow AI/Agent import allowlist.
+- [Agent Transcript File Store Boundary](agent-transcript-file-store-boundary.md)
+  defines the current Native JSONL provider, file layout and lock ownership,
+  Product store selection, and the separation between native loading and
+  external importers.
+- [Agent Transcript Catalog Boundary](agent-transcript-catalog-boundary.md)
+  defines the common Native transcript discovery, summary/query, projection
+  index, and branch-label read model while Products retain roots and
+  presentation policy.
+- [Agent Transcript Lifecycle Boundary](agent-transcript-lifecycle-boundary.md)
+  defines common create, restore, detached-copy, fork, disposal, and active
+  Native-file deletion mechanics while Products retain binding and resume
+  policy.
 - [Store And Runtime Event Protocol Migration](store-event-protocol-migration.md)
   records the implemented protocol-based Store cutover, Memory/File reference
   adapters, Agent transcript persistence facade, common runtime-event envelope,
@@ -90,6 +102,10 @@ planning, work event persistence, or AI provider behavior.
   common queue, compaction, retry, branch, metadata, package-progress, and
   transcript-commit facts, the single ordered Session stream, and Product event
   projection ownership.
+- [Session Lifecycle Runtime Boundary](session-lifecycle-runtime-boundary.md)
+  defines active Product-session replacement, Product-selected store/hooks,
+  staged import, configurable fork profiles, and Harness's conservative
+  default `at` fork profile.
 - [Application Input Runtime Boundary](application-input-runtime-boundary.md)
   defines common direct and queued ApplicationMessage delivery, one durable
   commit owner, direct projection retry semantics, and Product Extension/API
