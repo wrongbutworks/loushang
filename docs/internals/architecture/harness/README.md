@@ -102,6 +102,10 @@ planning, work event persistence, or AI provider behavior.
   defines live tool activation, dynamic command composition and dispatch, and
   selected command-tool execution while Products retain policy, command
   implementations, extension semantics, prompts, and presentation.
+- [Session Facade Boundary](session-facade-boundary.md) defines the common
+  Product-facing operation surface over already-bound session runtimes while
+  Products retain model/auth, prompts, extension protocols, lifecycle policy,
+  and channel projection.
 - [Session Diagnostics Runtime Boundary](session-diagnostics-boundary.md)
   defines common session-correlated diagnostic reads and Agent/Tool failure
   projection while Products retain diagnostic selection and presentation.

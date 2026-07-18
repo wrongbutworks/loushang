@@ -135,6 +135,7 @@ from loushang.harness.session import (
     AfterTurnPolicyPort,
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
+    SessionFacade,
     SessionRuntime,
     TranscriptRuntimePort,
     TurnPolicyPort,
@@ -513,6 +514,15 @@ class AgentSession:
                 self._get_compaction_settings().keep_recent_tokens
             ),
         )
+        self._facade = SessionFacade(
+            runtime=self._session_runtime,
+            transcript=self.session_manager,
+            tools=self._tool_controller,
+            commands=self._command_controller,
+            command_execution=self._bash_controller,
+            view=self._view_controller,
+            retry=self._retry_controller,
+        )
         session_context = self.session_manager.build_session_context()
         self._apply_agent_transcript_context(session_context)
         if self._tool_registry is not None:
@@ -552,16 +562,13 @@ class AgentSession:
         self.agent.model = resolved_model
 
     def get_state(self) -> AgentSessionState:
-        return self._view_controller.get_state(
-            steering=self._session_runtime.queue.get_steering_messages(),
-            follow_up=self._session_runtime.queue.get_follow_up_messages(),
-        )
+        return self._facade.get_state()
 
     def get_session_context(self) -> AgentTranscriptContext:
-        return self.session_manager.build_session_context()
+        return self._facade.get_session_context()
 
     def get_session_record(self) -> SessionRecord:
-        return self.session_manager.get_session_record()
+        return self._facade.get_session_record()
 
     def set_approval_presenter(
         self,
@@ -602,22 +609,22 @@ class AgentSession:
         return self._selection_controller.get_model_selection()
 
     def get_active_tool_names(self) -> list[str]:
-        return self._tool_controller.get_active_tool_names()
+        return self._facade.get_active_tool_names()
 
     def getActiveToolNames(self) -> list[str]:
         return self.get_active_tool_names()
 
     def get_all_tools(self) -> list[ToolDefinition]:
-        return self._tool_controller.get_all_tools()
+        return self._facade.get_all_tools()
 
     def getAllTools(self) -> list[dict[str, object]]:
         return self._tool_controller.get_all_tool_infos()
 
     def getToolDefinition(self, name: str) -> ToolDefinition | None:
-        return self._tool_controller.get_tool_definition(name)
+        return self._facade.get_tool_definition(name)
 
     def list_commands(self) -> list[SessionCommandDescriptor]:
-        return self._command_controller.list_commands()
+        return self._facade.list_commands()
 
     def list_extensions(self) -> list[dict[str, object]]:
         return self._extension_runner.list_extensions()
@@ -628,9 +635,7 @@ class AgentSession:
     async def execute_command_async(
         self, invocation_name: str, args: str
     ) -> CommandExecutionResult | None:
-        return await self._command_controller.execute_command_async(
-            invocation_name, args
-        )
+        return await self._facade.execute_command_async(invocation_name, args)
 
     def _execute_resource_command(
         self, invocation_name: str, args: str
@@ -711,9 +716,7 @@ class AgentSession:
         return self._package_controller.uninstall_package(source, scope=scope)
 
     def get_context_usage(self):
-        return serialize_context_usage_payload(
-            self._view_controller.get_context_usage()
-        )
+        return serialize_context_usage_payload(self._facade.get_context_usage())
 
     def get_session_stats(self) -> dict[str, object]:
         return self._view_controller.get_pi_style_stats()
@@ -842,7 +845,7 @@ class AgentSession:
 
     @property
     def session_file(self):
-        return self.session_manager.get_session_file()
+        return self._facade.get_session_file()
 
     @property
     def sessionFile(self) -> str | None:
@@ -893,19 +896,19 @@ class AgentSession:
         return self._resource_loader
 
     def subscribe(self, listener: SessionEventListener) -> Callable[[], None]:
-        def project(event: RuntimeEvent[object]) -> Awaitable[None] | None:
-            projected = project_runtime_event_to_session_event(event)
-            if projected is None:
-                return None
-            return listener(projected)
+        def project(event: RuntimeEvent[object]) -> AgentSessionEvent | None:
+            return project_runtime_event_to_session_event(event)
 
-        return self._session_runtime.subscribe(project)
+        return self._facade.subscribe(
+            listener,
+            project=project,
+        )
 
     def subscribe_runtime_events(
         self,
         listener: RuntimeEventListener,
     ) -> Callable[[], None]:
-        return self._session_runtime.subscribe(listener)
+        return self._facade.subscribe_runtime_events(listener)
 
     # Run entrypoint.
 
@@ -918,7 +921,7 @@ class AgentSession:
         source: str | None = None,
         preflight_result: Callable[[bool], None] | None = None,
     ) -> None:
-        await self._session_runtime.prompt(
+        await self._facade.prompt(
             user_input,
             images=images,
             streaming_behavior=streaming_behavior,
@@ -929,33 +932,33 @@ class AgentSession:
     # Public facade: queued steering and follow-up messages.
 
     def steer(self, user_input: str, images: list[ImagePart] | None = None) -> None:
-        self._session_runtime.steer(user_input, images=images)
+        self._facade.steer(user_input, images=images)
 
     def follow_up(self, user_input: str, images: list[ImagePart] | None = None) -> None:
-        self._session_runtime.follow_up(user_input, images=images)
+        self._facade.follow_up(user_input, images=images)
 
     @property
     def pending_message_count(self) -> int:
-        return self._session_runtime.queue.pending_message_count
+        return self._facade.pending_message_count
 
     @property
     def pendingMessageCount(self) -> int:
         return self.pending_message_count
 
     def get_steering_messages(self) -> list[str]:
-        return self._session_runtime.queue.get_steering_messages()
+        return self._facade.get_steering_messages()
 
     def getSteeringMessages(self) -> list[str]:
         return self.get_steering_messages()
 
     def get_follow_up_messages(self) -> list[str]:
-        return self._session_runtime.queue.get_follow_up_messages()
+        return self._facade.get_follow_up_messages()
 
     def getFollowUpMessages(self) -> list[str]:
         return self.get_follow_up_messages()
 
     def clear_queue(self) -> dict[str, list[str]]:
-        return self._session_runtime.queue.clear_queue()
+        return self._facade.clear_queue()
 
     def clearQueue(self) -> dict[str, list[str]]:
         return self.clear_queue()
@@ -1104,22 +1107,22 @@ class AgentSession:
         return self.session_name
 
     def get_user_messages_for_forking(self) -> list[dict[str, str]]:
-        return self._view_controller.get_user_messages_for_forking()
+        return self._facade.get_user_messages_for_forking()
 
     def getUserMessagesForForking(self) -> list[dict[str, str]]:
         return self._view_controller.get_pi_style_user_messages_for_forking()
 
     def get_entry_text(self, entry_id: str) -> str | None:
-        return self._view_controller.get_entry_text(entry_id)
+        return self._facade.get_entry_text(entry_id)
 
     def get_last_assistant_text(self) -> str | None:
-        return self._view_controller.get_last_assistant_text()
+        return self._facade.get_last_assistant_text()
 
     def getLastAssistantText(self) -> str | None:
         return self.get_last_assistant_text()
 
     def get_recent_assistant_texts(self) -> tuple[str, ...]:
-        return self._view_controller.get_recent_assistant_texts()
+        return self._facade.get_recent_assistant_texts()
 
     # Public facade: bash execution.
 
@@ -1137,7 +1140,7 @@ class AgentSession:
         on_output: Callable[[ExecOutputChunk], Awaitable[None] | None] | None = None,
         operations: object | None = None,
     ) -> dict[str, object]:
-        return await self._bash_controller.execute_bash(
+        return await self._facade.execute_command_tool(
             command,
             cwd=cwd,
             env=env,
@@ -1171,11 +1174,11 @@ class AgentSession:
 
     @property
     def isBashRunning(self) -> bool:
-        return self._bash_controller.is_running
+        return self._facade.is_command_running
 
     @property
     def hasPendingBashMessages(self) -> bool:
-        return self._bash_controller.has_pending_messages
+        return self._facade.has_pending_command_messages
 
     # Public facade: extension runtime configuration.
 
@@ -1230,26 +1233,26 @@ class AgentSession:
     # Public facade: run controls, retry, compaction, and tree navigation.
 
     async def continue_run(self) -> None:
-        await self._session_runtime.continue_run()
+        await self._facade.continue_run()
 
     def abort(self) -> None:
-        self._session_runtime.abort()
+        self._facade.abort()
 
     def abort_bash(self) -> None:
-        self._bash_controller.abort()
+        self._facade.abort_command()
 
     async def wait_for_idle(self) -> None:
-        await self._session_runtime.wait_for_idle()
+        await self._facade.wait_for_idle()
 
     def abort_retry(self) -> None:
-        self._retry_controller.abort()
+        self._facade.abort_retry()
 
     async def wait_for_retry(self) -> None:
-        await self._retry_controller.wait()
+        await self._facade.wait_for_retry()
 
     @property
     def is_retrying(self) -> bool:
-        return self._retry_controller.is_retrying
+        return self._facade.is_retrying
 
     @property
     def auto_retry_enabled(self) -> bool:
