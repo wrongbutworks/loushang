@@ -5,8 +5,8 @@ import asyncio
 from loushang.agent import Agent
 from loushang.coding.loader import DefaultResourceLoader
 from loushang.coding.session import AgentSession
-from loushang.coding.session.resource_watcher import ResourceChangeWatcher
 from loushang.coding.store import SessionManager
+from loushang.harness.resources.watcher import ResourceChangeWatcher
 
 
 def test_resource_change_watcher_establishes_baseline_then_reports_changes(

@@ -8,6 +8,8 @@ from loushang.harness.runtime.context import (
     UnboundProductRuntimeContext,
 )
 from loushang.harness.runtime.navigation import (
+    CancellationController,
+    CancellationSignal,
     NavigationFailure,
     NavigationTransactionCoordinator,
 )
@@ -71,6 +73,8 @@ __all__ = [
     "AGENT_TRANSCRIPT_PROFILE_SLOT",
     "COMMAND_PACKS_SLOT",
     "BoundProductRuntimeContext",
+    "CancellationController",
+    "CancellationSignal",
     "CancelledSessionOperation",
     "CoalescingScheduler",
     "CONTEXT_COMPACTION_SLOT",

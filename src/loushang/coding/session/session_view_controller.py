@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 
 from loushang.agent import Agent
-from loushang.ai.types import AssistantMessage, ToolCall, ToolResultMessage, UserMessage
-from loushang.coding.compaction import estimate_context_tokens
-from loushang.coding.session.context_usage import build_context_usage_snapshot
 from loushang.coding.session.types import (
     AgentSessionState,
     ContextUsage,
@@ -16,11 +13,12 @@ from loushang.coding.session.types import (
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
-    AGENT_MESSAGE_KIND,
-    APPLICATION_MESSAGE_KIND,
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
-    ApplicationMessage,
+    AgentTranscriptInspector,
+    AgentTranscriptRecord,
     ContextCompactionCheckpoint,
+    build_context_usage_snapshot,
+    estimate_context_tokens,
 )
 from loushang.harness.host.types import RunState
 
@@ -38,6 +36,10 @@ class SessionViewController:
     get_compaction_reserve_tokens: Callable[[], int] = lambda: 0
     get_compaction_compact_percent: Callable[[], float] = lambda: 100.0
     get_compaction_keep_recent_tokens: Callable[[], int | None] = lambda: None
+    _inspector: AgentTranscriptInspector = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._inspector = AgentTranscriptInspector(self.session_manager)
 
     def get_state(
         self, *, steering: list[str], follow_up: list[str]
@@ -61,24 +63,8 @@ class SessionViewController:
     def get_context_usage(self) -> ContextUsage | None:
         session_context = self.session_manager.build_session_context()
         messages = list(session_context.messages)
-        entries = self.session_manager.get_entries()
-        branch_entries = self.session_manager.get_branch()
-
-        assistant_message_count = 0
-        user_message_count = 0
-        tool_call_count = 0
-        tool_result_count = 0
-
-        for message in messages:
-            if isinstance(message, AssistantMessage):
-                assistant_message_count += 1
-                tool_call_count += sum(
-                    1 for block in message.content if isinstance(block, ToolCall)
-                )
-            elif isinstance(message, UserMessage):
-                user_message_count += 1
-            elif isinstance(message, ToolResultMessage):
-                tool_result_count += 1
+        branch_entries: list[object] = list(self.session_manager.get_branch())
+        counts = self._inspector.message_counts()
 
         estimated_context_tokens = (
             estimate_context_tokens(messages).tokens if messages else 0
@@ -92,18 +78,14 @@ class SessionViewController:
             keep_recent_tokens=self.get_compaction_keep_recent_tokens(),
         )
         return ContextUsage(
-            message_count=len(messages),
-            assistant_message_count=assistant_message_count,
-            user_message_count=user_message_count,
-            tool_call_count=tool_call_count,
-            tool_result_count=tool_result_count,
-            custom_message_count=sum(
-                1 for entry in entries if entry.kind == APPLICATION_MESSAGE_KIND
-            ),
+            message_count=counts.message_count,
+            assistant_message_count=counts.assistant_message_count,
+            user_message_count=counts.user_message_count,
+            tool_call_count=counts.tool_call_count,
+            tool_result_count=counts.tool_result_count,
+            custom_message_count=counts.application_message_count,
             estimated_context_tokens=estimated_context_tokens,
-            has_compaction=any(
-                entry.kind == CONTEXT_COMPACTION_CHECKPOINT_KIND for entry in entries
-            ),
+            has_compaction=self._inspector.has_compaction_checkpoint(),
             branch_depth=len(branch_entries),
             leaf_entry_id=self.session_manager.get_leaf_id(),
             tokens=snapshot.tokens,
@@ -127,6 +109,7 @@ class SessionViewController:
         entries = self.session_manager.get_entries()
         context_usage = self.get_context_usage()
         record = self.session_manager.get_session_record()
+        counts = self._inspector.message_counts()
         return SessionStats(
             session_id=record.session_id,
             session_name=record.metadata.name,
@@ -134,14 +117,12 @@ class SessionViewController:
             message_count=context_usage.message_count
             if context_usage is not None
             else 0,
-            custom_message_count=sum(
-                1 for entry in entries if entry.kind == APPLICATION_MESSAGE_KIND
-            ),
+            custom_message_count=counts.application_message_count,
             active_tool_count=len(self.get_active_tool_names()),
             is_retrying=self.is_retrying(),
             is_compacting=self.is_compacting(),
             has_diagnostics=bool(self.get_last_diagnostics(1)),
-            branch_count=_count_leaf_branches(self.session_manager.get_tree()),
+            branch_count=self._inspector.branch_leaf_count(),
             last_model_selection=self.get_model_selection(),
             context_usage=context_usage,
         )
@@ -217,17 +198,10 @@ class SessionViewController:
         }
 
     def get_user_messages_for_forking(self) -> list[dict[str, str]]:
-        messages: list[dict[str, str]] = []
-        for entry in self.session_manager.get_entries():
-            if entry.kind != AGENT_MESSAGE_KIND:
-                continue
-            if not isinstance(entry.payload, UserMessage):
-                continue
-            text = _extract_user_message_text(entry.payload)
-            if not text:
-                continue
-            messages.append({"entry_id": entry.record_id, "text": text})
-        return messages
+        return [
+            {"entry_id": candidate.record_id, "text": candidate.text}
+            for candidate in self._inspector.fork_candidates()
+        ]
 
     def get_pi_style_user_messages_for_forking(self) -> list[dict[str, str]]:
         return [
@@ -236,73 +210,22 @@ class SessionViewController:
         ]
 
     def get_entry_text(self, entry_id: str) -> str | None:
-        entry = self.session_manager.get_entry(entry_id)
-        if entry is None:
-            return None
-        if entry.kind == AGENT_MESSAGE_KIND and isinstance(entry.payload, UserMessage):
-            return _extract_user_message_text(entry.payload) or None
-        content = (
-            entry.payload.content
-            if entry.kind == APPLICATION_MESSAGE_KIND
-            and isinstance(entry.payload, ApplicationMessage)
-            else None
-        )
-        if isinstance(content, str):
-            return content or None
-        if isinstance(content, list):
-            text = "".join(
-                block.text
-                for block in content
-                if getattr(block, "type", None) == "text"
-            )
-            return text or None
-        return None
+        return self._inspector.entry_text(entry_id)
 
     def get_last_assistant_text(self) -> str | None:
         texts = self.get_recent_assistant_texts()
         return texts[0] if texts else None
 
     def get_recent_assistant_texts(self) -> tuple[str, ...]:
-        texts: list[str] = []
-        for message in reversed(self.agent.state.messages):
-            if not isinstance(message, AssistantMessage):
-                continue
-            text = _extract_assistant_message_text(message)
-            if text is not None:
-                texts.append(text)
-        return tuple(texts)
+        return self._inspector.recent_assistant_texts(self.agent.state.messages)
 
 
-def _count_leaf_branches(nodes: list[object]) -> int:
-    if not nodes:
-        return 0
-
-    def _count(node: object) -> int:
-        children = getattr(node, "children", [])
-        if not children:
-            return 1
-        return sum(_count(child) for child in children)
-
-    return sum(_count(node) for node in nodes)
-
-
-def _extract_assistant_message_text(message: AssistantMessage) -> str | None:
-    content = getattr(message, "content", None)
-    if isinstance(content, str):
-        return content if content.strip() else None
-    if isinstance(content, list):
-        text = "".join(
-            block.text for block in content if getattr(block, "type", None) == "text"
-        )
-        return text if text.strip() else None
-    return None
-
-
-def _latest_compaction_payload(entries: list[object]) -> dict[str, object] | None:
+def _latest_compaction_payload(
+    entries: Sequence[AgentTranscriptRecord],
+) -> dict[str, object] | None:
     for entry in reversed(entries):
         if (
-            not hasattr(entry, "kind")
-            or entry.kind != CONTEXT_COMPACTION_CHECKPOINT_KIND
+            entry.kind != CONTEXT_COMPACTION_CHECKPOINT_KIND
             or not isinstance(entry.payload, ContextCompactionCheckpoint)
         ):
             continue
@@ -317,13 +240,3 @@ def _latest_compaction_payload(entries: list[object]) -> dict[str, object] | Non
             "plan": dict(plan) if isinstance(plan, Mapping) else None,
         }
     return None
-
-
-def _extract_user_message_text(message: UserMessage) -> str:
-    if isinstance(message.content, str):
-        return message.content
-    return "".join(
-        block.text
-        for block in message.content
-        if getattr(block, "type", None) == "text"
-    )

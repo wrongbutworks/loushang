@@ -7,8 +7,9 @@ from typing import Literal, Protocol
 
 from loushang.agent import ThinkingLevel
 from loushang.coding.commands import SessionCommandDescriptor
-from loushang.coding.compaction import BranchSummaryResult, CompactionResult
+from loushang.coding.compaction import BranchSummaryResult
 from loushang.coding.types import ModelSelection
+from loushang.harness.agent_transcript import CompactionResult
 from loushang.harness.extensions.events import VALID_EXTENSION_EVENTS
 from loushang.harness.extensions.types import (
     BeforeAgentStartResult,
