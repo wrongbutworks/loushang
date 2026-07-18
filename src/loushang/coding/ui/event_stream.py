@@ -1,24 +1,25 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 from loushang.coding.ui.event_policy import event_writes_transcript
+from loushang.harnesstui.conversation.dispatch import (
+    EventRenderer as SharedEventRenderer,
+)
+from loushang.harnesstui.conversation.dispatch import (
+    StableEmit,
+    StableEventStreamHandler,
+    TraceFn,
+)
 
 
-class EventRenderer(Protocol):
-    def handle(self, event: dict[str, Any]) -> None: ...
+class EventRenderer(SharedEventRenderer[dict[str, Any]], Protocol):
+    """Coding-compatible raw event rendering port."""
 
 
-class TraceFn(Protocol):
-    def __call__(self, name: str, **data: Any) -> None: ...
+class CodingUiEventStreamHandler(StableEventStreamHandler[dict[str, Any]]):
+    """Adapt Coding raw-event policy to neutral stable event delivery."""
 
-
-class StableEmit(Protocol):
-    def __call__(self, write_callable: Callable[[], None], *, label: str) -> Awaitable[None]: ...
-
-
-class CodingUiEventStreamHandler:
     def __init__(
         self,
         *,
@@ -26,20 +27,17 @@ class CodingUiEventStreamHandler:
         emit: StableEmit,
         trace: TraceFn,
     ) -> None:
-        self._renderer = renderer
-        self._emit = emit
-        self._trace = trace
+        super().__init__(
+            renderer=renderer,
+            emit=emit,
+            writes_stably=event_writes_transcript,
+            event_type=_coding_event_type,
+            trace=trace,
+        )
 
-    async def handle(self, event: dict[str, Any]) -> None:
-        event_type = str(event.get("type") or "unknown")
-        self._trace("event.start", event_type=event_type)
-        try:
-            if not event_writes_transcript(event):
-                self._renderer.handle(event)
-                return
-            await self._emit(lambda: self._renderer.handle(event), label=f"event:{event_type}")
-        finally:
-            self._trace("event.end", event_type=event_type)
+
+def _coding_event_type(event: dict[str, Any]) -> str:
+    return str(event.get("type") or "unknown")
 
 
 __all__ = ["CodingUiEventStreamHandler"]

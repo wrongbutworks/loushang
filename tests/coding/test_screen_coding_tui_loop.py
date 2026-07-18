@@ -126,6 +126,58 @@ def test_screen_loop_passes_prompt_images_to_handler() -> None:
     assert seen == {"text": "describe", "images": (image,)}
 
 
+def test_screen_loop_adapts_neutral_attachments_to_coding_images() -> None:
+    from loushang.coding.ui.screen_loop import _adapt_attachment_handler
+
+    seen: dict[str, object] = {}
+    image = ImagePart(type="image", data="abc", mime_type="image/png")
+
+    async def handle_prompt(
+        text: str,
+        *,
+        images: tuple[ImagePart, ...] | None = None,
+    ) -> int:
+        seen["text"] = text
+        seen["images"] = images
+        return 9
+
+    adapted = _adapt_attachment_handler(handle_prompt)
+    result = asyncio.run(adapted("describe", attachments=(image,)))
+
+    assert result == 9
+    assert seen == {"text": "describe", "images": (image,)}
+
+
+def test_finish_active_task_preserves_legacy_signature_and_cancellation_copy() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_loop import _finish_active_task
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=lambda: 2.0,
+    )
+    app.start_prompt("work", started_at=1.0)
+
+    async def scenario() -> int | None:
+        async def pending() -> int:
+            await asyncio.Event().wait()
+            return 0
+
+        task = asyncio.create_task(pending())
+        task.cancel()
+        return await _finish_active_task(
+            app=app,
+            active_task=task,
+            started_at=1.0,
+        )
+
+    assert asyncio.run(scenario()) is None
+    assert app.state.interruption_message == "Operation aborted"
+
+
 def test_screen_loop_scripted_prompt_then_quit_exits_without_status_residue() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_loop import run_screen_coding_tui
