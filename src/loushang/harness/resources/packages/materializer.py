@@ -1174,6 +1174,12 @@ async def _run_with_concurrency(tasks, *, limit: int):
 
 
 def _package_offline_enabled() -> bool:
+    return package_offline_enabled()
+
+
+def package_offline_enabled() -> bool:
+    """Return whether package materialization must avoid network access."""
+
     for name in ("LOUSHANG_OFFLINE", "PI_OFFLINE"):
         value = os.environ.get(name)
         if value and value.lower() in {"1", "true", "yes"}:

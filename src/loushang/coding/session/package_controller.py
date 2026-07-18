@@ -11,16 +11,16 @@ from loushang.coding.package.materializer import (
     PackageMaterializer,
 )
 from loushang.coding.package.projection import collect_package_entries
-from loushang.coding.package.source_manager import (
-    PackageSourceResolver,
-    configured_package_sources,
-    package_source_scopes,
-)
 from loushang.coding.store import SessionManager
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.packages.roots import resolve_package_resource_roots
 from loushang.harness.resources.packages.source import is_remote_package_source
+from loushang.harness.resources.packages.source_resolver import (
+    PackageSourceResolver,
+    configured_package_sources,
+    package_source_scopes,
+)
 
 SettingsManagerProvider = Callable[[], SettingsManager | None]
 PackageMaterializerProvider = Callable[[], PackageMaterializer | None]
@@ -42,7 +42,9 @@ class PackageController:
     def session_id(self) -> str:
         return self.session_manager.get_session_record().session_id
 
-    def get_packages(self, *, catalog_path: str | None = None) -> list[dict[str, object]]:
+    def get_packages(
+        self, *, catalog_path: str | None = None
+    ) -> list[dict[str, object]]:
         settings_manager = self.get_settings_manager()
         if settings_manager is None:
             return []
@@ -54,7 +56,9 @@ class PackageController:
             disabled_plugins=tuple(settings.disabled_plugins),
             cwd=Path(self.session_manager.get_cwd()),
             settings_manager=settings_manager,
-            catalog_path=Path(catalog_path).expanduser().resolve() if catalog_path else None,
+            catalog_path=Path(catalog_path).expanduser().resolve()
+            if catalog_path
+            else None,
             materializer=self.get_package_materializer(),
         )
         self.record_package_projection_diagnostics(packages)
@@ -79,7 +83,9 @@ class PackageController:
         record = await materializer.materialize_remote_source(source)
         return serialize_package_materialization_record(record)
 
-    async def install_package(self, source: str, *, scope: str = "project") -> dict[str, object]:
+    async def install_package(
+        self, source: str, *, scope: str = "project"
+    ) -> dict[str, object]:
         record = await self.materialize_package(source)
         if record.get("lifecycle") != "installed":
             return record
@@ -137,7 +143,9 @@ class PackageController:
         record = materializer.remove_remote_source(source)
         return serialize_package_materialization_record(record)
 
-    def uninstall_package(self, source: str, *, scope: str = "project") -> dict[str, object]:
+    def uninstall_package(
+        self, source: str, *, scope: str = "project"
+    ) -> dict[str, object]:
         record = self.remove_package(source)
         settings_manager = self.get_settings_manager()
         if settings_manager is not None:
@@ -169,7 +177,9 @@ class PackageController:
             session_id=self.session_id,
         ).prepare_configured_remote_records()
 
-    def record_package_projection_diagnostics(self, packages: list[dict[str, object]]) -> None:
+    def record_package_projection_diagnostics(
+        self, packages: list[dict[str, object]]
+    ) -> None:
         diagnostics_service = self.get_diagnostics_service()
         if diagnostics_service is None:
             return
@@ -182,7 +192,12 @@ class PackageController:
                     "Package manifest diagnostic.",
                     "external_package",
                 ),
-                ("catalogDiagnostics", "invalid_package_catalog", "Package catalog diagnostic.", None),
+                (
+                    "catalogDiagnostics",
+                    "invalid_package_catalog",
+                    "Package catalog diagnostic.",
+                    None,
+                ),
                 (
                     "conflictDiagnostics",
                     "package_version_conflict",
@@ -200,17 +215,25 @@ class PackageController:
                     diagnostic_details = {
                         "package_source": str(package.get("source") or ""),
                         "package_name": str(package.get("name") or ""),
-                        "package_kind": str(package.get("packageKind") or package.get("kind") or ""),
+                        "package_kind": str(
+                            package.get("packageKind") or package.get("kind") or ""
+                        ),
                     }
                     conflict_versions = diagnostic.get("conflictVersions")
                     if isinstance(conflict_versions, tuple | list):
-                        diagnostic_details["conflict_versions"] = [str(version) for version in conflict_versions]
+                        diagnostic_details["conflict_versions"] = [
+                            str(version) for version in conflict_versions
+                        ]
                     records.append(
                         diagnostics_service.normalize_resource_diagnostic(
                             ResourceDiagnostic(
                                 code=str(diagnostic.get("code") or default_code),
-                                message=str(diagnostic.get("message") or default_message),
-                                source_path=Path(path) if isinstance(path, str) else None,
+                                message=str(
+                                    diagnostic.get("message") or default_message
+                                ),
+                                source_path=Path(path)
+                                if isinstance(path, str)
+                                else None,
                                 resource_type="package",
                                 source_kind=source_kind,
                             ),
@@ -222,7 +245,9 @@ class PackageController:
                     )
         diagnostics_service.record_many(records)
 
-    def record_package_update_check_diagnostics(self, updates: list[dict[str, object]]) -> None:
+    def record_package_update_check_diagnostics(
+        self, updates: list[dict[str, object]]
+    ) -> None:
         diagnostics_service = self.get_diagnostics_service()
         if diagnostics_service is None:
             return
@@ -270,11 +295,15 @@ class PackageController:
                 session_id=self.session_id,
             )
             resource_loader.set_package_roots(resolved.roots, resolved.filters)
-        set_user_resource_roots = getattr(resource_loader, "set_user_resource_roots", None)
+        set_user_resource_roots = getattr(
+            resource_loader, "set_user_resource_roots", None
+        )
         if callable(set_user_resource_roots):
             from loushang.coding.bootstrap import _resolve_user_resource_roots
 
-            global_resource_roots = tuple(settings_manager.get_global_settings().get("resource_roots", ()))
+            global_resource_roots = tuple(
+                settings_manager.get_global_settings().get("resource_roots", ())
+            )
             user_roots, explicit_roots = _resolve_user_resource_roots(
                 global_resource_roots,
                 global_base_dir=settings_manager.global_base_dir,
@@ -282,7 +311,9 @@ class PackageController:
             set_user_resource_roots(user_roots, explicit_roots=explicit_roots)
 
 
-def serialize_package_materialization_record(record: PackageMaterializationRecord) -> dict[str, object]:
+def serialize_package_materialization_record(
+    record: PackageMaterializationRecord,
+) -> dict[str, object]:
     return {
         "source": record.source,
         "name": record.name,
