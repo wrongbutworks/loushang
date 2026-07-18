@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Protocol
 
+from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     ContextCompactionRecord,
@@ -29,6 +30,38 @@ class TranscriptSource(Protocol):
     def snapshot(self) -> TranscriptSnapshot: ...
 
     def recent_assistant_texts(self) -> tuple[str, ...]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ActiveWindowTranscriptSource:
+    """Expose the bounded records and live draft of a screen conversation."""
+
+    state: ScreenConversationState
+
+    def snapshot(self) -> TranscriptSnapshot:
+        return TranscriptSnapshot(
+            records=active_window_records(self.state),
+            evicted_prefix_record_count=max(
+                0, self.state.evicted_prefix_record_count
+            ),
+            complete=False,
+            source_label="Transcript window",
+        )
+
+    def recent_assistant_texts(self) -> tuple[str, ...]:
+        return recent_assistant_texts(active_window_records(self.state))
+
+
+def active_window_records(
+    state: ScreenConversationState,
+) -> tuple[DisplayRecord, ...]:
+    """Return retained records followed by a live assistant draft, if present."""
+
+    records = tuple(state.records)
+    assistant_draft = state.assistant_draft
+    if assistant_draft is not None:
+        return (*records, assistant_draft)
+    return records
 
 
 def recent_assistant_texts(records: Iterable[DisplayRecord]) -> tuple[str, ...]:
@@ -82,8 +115,10 @@ def _decorated_suffix_prefix_overlap(
 
 
 __all__ = [
+    "ActiveWindowTranscriptSource",
     "TranscriptSnapshot",
     "TranscriptSource",
+    "active_window_records",
     "merge_history_and_active_records",
     "recent_assistant_texts",
 ]
