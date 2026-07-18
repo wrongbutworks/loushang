@@ -87,6 +87,16 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
             "class PlainToolbarSnapshot",
             "def render_plain_toolbar",
         ),
+        Path("src/loushang/coding/ui/plain_renderer.py"): (
+            "def render_user",
+            "def render_assistant",
+            "def render_tool_block",
+            "def render_transcript",
+        ),
+        Path("src/loushang/coding/ui/plain_events.py"): (
+            "class _PlainProjectionTarget",
+            "class PlainConversationProjectionTarget",
+        ),
         Path("src/loushang/coding/ui/status_provider.py"): (
             "class CodingTuiStatusProvider",
             "class StatusSnapshot",
@@ -121,6 +131,28 @@ def test_shared_status_provider_does_not_own_settings_manager_adaptation() -> No
     assert "settings_manager" not in source
     assert "status_line_settings_from_control" not in source
     assert "status_line_settings_to_patch" not in source
+
+
+def test_shared_plain_presentation_does_not_own_coding_policy() -> None:
+    renderer = Path("src/loushang/harnesstui/plain/renderer.py").read_text(
+        encoding="utf-8"
+    )
+    target = Path(
+        "src/loushang/harnesstui/conversation/plain_target.py"
+    ).read_text(encoding="utf-8")
+
+    for token in (
+        "Loushang TUI",
+        "/feedback",
+        "PlainCoding",
+        "_coding_line",
+        "CodingConversationEventAdapter",
+        "AgentToolResult",
+    ):
+        assert token not in renderer
+        assert token not in target
+    assert 'event.get("type")' not in renderer
+    assert 'event.get("type")' not in target
 
 
 def test_old_coding_ui_app_module_is_removed() -> None:
