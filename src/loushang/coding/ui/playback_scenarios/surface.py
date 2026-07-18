@@ -14,12 +14,14 @@ from loushang.coding.ui.playback_fakes import (
     SessionCommandPlaybackSession,
 )
 from loushang.coding.ui.playback_scenarios.budgets import INTERACTION_FRAME_BUDGET
-from loushang.coding.ui.playback_suite import ScreenPlaybackScenarioSpec
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.tui import DialogSurface, SelectionSurface, SelectItem
+from loushang.tui.playback_suite import (
+    PlaybackScenarioSpec as ScreenPlaybackScenarioSpec,
+)
 
 
 def _run_active_surface() -> ScreenTuiInputPlaybackResult:

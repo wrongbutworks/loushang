@@ -11,7 +11,6 @@ from loushang.coding.ui.playback_fakes import (
     SessionCommandPlaybackSession as _SessionCommandSession,
 )
 from loushang.coding.ui.playback_scenarios.budgets import INTERACTION_FRAME_BUDGET
-from loushang.coding.ui.playback_suite import ScreenPlaybackScenarioSpec
 from loushang.tui import (
     CompletionItem,
     CompletionProvider,
@@ -19,6 +18,9 @@ from loushang.tui import (
     RenderConstraints,
 )
 from loushang.tui.input import BRACKETED_PASTE_END, BRACKETED_PASTE_START
+from loushang.tui.playback_suite import (
+    PlaybackScenarioSpec as ScreenPlaybackScenarioSpec,
+)
 
 
 def _run_completion_tab() -> ScreenTuiInputPlaybackResult:

@@ -14,12 +14,16 @@ from loushang.coding.ui.playback_scenarios.product import PRODUCT_SCENARIOS
 from loushang.coding.ui.playback_scenarios.surface import SURFACE_SCENARIOS
 from loushang.coding.ui.playback_scenarios.terminal import TERMINAL_SCENARIOS
 from loushang.coding.ui.playback_scenarios.transcript import TRANSCRIPT_SCENARIOS
-from loushang.coding.ui.playback_suite import (
-    ScreenPlaybackScenarioResult,
-    ScreenPlaybackScenarioSpec,
-    ScreenPlaybackSuite,
+from loushang.tui.playback_suite import (
+    PlaybackScenarioResult as ScreenPlaybackScenarioResult,
 )
-from loushang.coding.ui.playback_suite import (
+from loushang.tui.playback_suite import (
+    PlaybackScenarioSpec as ScreenPlaybackScenarioSpec,
+)
+from loushang.tui.playback_suite import (
+    PlaybackSuite as ScreenPlaybackSuite,
+)
+from loushang.tui.playback_suite import (
     run_playback_scenarios as _run_playback_scenarios,
 )
 

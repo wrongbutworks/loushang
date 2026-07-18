@@ -87,6 +87,7 @@ class TerminalInputMode:
             termios_module.ECHO
             | termios_module.ICANON
             | getattr(termios_module, "ISIG", 0)
+            | getattr(termios_module, "IEXTEN", 0)
         )
         attrs[6][termios_module.VMIN] = 1
         attrs[6][termios_module.VTIME] = 0

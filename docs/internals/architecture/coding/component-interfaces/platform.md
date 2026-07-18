@@ -3,11 +3,12 @@
 ## Role
 
 - host platform helpers used by coding CLI/TUI/runtime surfaces
-- thin boundary for terminal, clipboard, git, stdout, version, and footer helper behavior
+- thin boundary for terminal, text clipboard, git, stdout, version, and footer helper behavior
 
 ## Owns
 
-- clipboard text/image helpers
+- clipboard text helpers
+- compatibility aliases for TUI-owned clipboard-image acquisition
 - stdout takeover/restore guard
 - git branch helper
 - changelog/version lookup helpers
@@ -18,11 +19,12 @@
 - host OS services
 - filesystem
 - git executable or repository metadata when available
+- `loushang.tui.clipboard_image` for legacy image-clipboard exports
 
 ## Commands
 
 - `copy_to_clipboard(...)`
-- `read_clipboard_image(...)`
+- `read_clipboard_image(...)` compatibility alias
 - `take_over_stdout(...)`
 - `restore_stdout(...)`
 - `write_raw_stdout(...)`
@@ -43,7 +45,7 @@
 ## Key Data
 
 - `ClipboardCopyResult`
-- `ClipboardImage`
+- `ClipboardImage` compatibility alias
 - `ChangelogEntry`
 - `FooterSnapshot`
 - `FooterDataProvider`
@@ -52,6 +54,7 @@
 
 - mode lifecycle
 - TUI rendering policy
+- clipboard-image acquisition, MIME normalization, and attachment adaptation
 - filesystem permission policy
 - session state
 
@@ -59,3 +62,5 @@
 
 - Keeps platform-specific helpers outside session/runtime business logic.
 - Allows CLI/TUI/RPC surfaces to share host capability helpers without making `utils` a hidden business layer.
+- New code imports clipboard-image acquisition from `loushang.tui.clipboard_image`;
+  the Coding exports remain compatibility aliases.

@@ -15,8 +15,10 @@ from loushang.coding.ui.playback_scenarios.budgets import (
     INTERACTION_FRAME_BUDGET,
     LONG_TRANSCRIPT_FRAME_BUDGET,
 )
-from loushang.coding.ui.playback_suite import ScreenPlaybackScenarioSpec
 from loushang.tui import strip_control_sequences
+from loushang.tui.playback_suite import (
+    PlaybackScenarioSpec as ScreenPlaybackScenarioSpec,
+)
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     ErrorRecord,

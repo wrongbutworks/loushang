@@ -23,6 +23,8 @@ This layer owns reusable Harness-oriented terminal interaction, including:
   timing and duplicate-result suppression;
 - neutral tool-result views, transcript blocks, and deterministic presentation
   projection;
+- product-neutral plain-terminal conversation rendering and projection targets
+  over presentation-ready records and facts;
 - shared Harness status profiles that product shells can populate and present;
 - reusable settings pages, Harness status configuration, surface framing, and
   model-selection interaction over neutral TUI items;
@@ -32,10 +34,32 @@ This layer owns reusable Harness-oriented terminal interaction, including:
   approval lifecycle has defined the corresponding ports.
 
 `loushang.tui` continues to own terminal mechanics, rendering, layout, input
-decoding, generic widgets, and transcript presentation primitives.
+decoding, host clipboard-image acquisition, generic widgets, and transcript
+presentation primitives.
 `loushang.harness` continues to own neutral runtime and durable conversation
 contracts. Product adapters such as `loushang.coding.ui` continue to own raw
 product-event interpretation, commands, policy, branding, and runtime assembly.
+
+## Conversation Attachments
+
+`loushang.harnesstui.conversation.attachments` owns product-neutral prompt-image
+attachment coordination after the host clipboard has been read. It persists a
+neutral `ClipboardImage` into a caller-supplied directory, derives a composer
+marker relative to a caller-supplied display root, and tracks pending
+attachments so submission order follows marker order in the composed text.
+Read, unsupported-type, and persistence failures are returned as neutral
+outcomes; products supply their own status copy.
+
+The host clipboard backend and MIME detection remain in
+`loushang.tui.clipboard_image`. Products continue to choose workspace and
+storage-directory policy and adapt a neutral prompt attachment into model-facing
+values such as `ImagePart`. Harnesstui does not import AI message types or
+hard-code a Coding workspace layout.
+
+The explicit module path
+`loushang.harnesstui.conversation.attachments` is the stable entrypoint for this
+capability. The conversation package initializer does not add a convenience
+re-export.
 
 ## First Slice: Conversation Reader
 
@@ -112,9 +136,11 @@ Product adapters keep ownership of raw event interpretation. In Coding,
 `loushang.coding.ui.conversation_event_adapter` reads product event shapes,
 extracts message and compaction values, applies Coding cancellation policy,
 and converts tool events through the Coding tool adapter before invoking the
-neutral projector. Plain and Screen implementations remain product targets:
-they decide how a projected fact mutates their renderer or screen app and keep
-their product-specific status copy.
+neutral projector. `loushang.harnesstui.conversation.plain_target` owns the
+reusable Plain projection target and its generic retry/compaction status copy.
+Coding keeps the raw-event facade and decides which events reach that target.
+The Screen implementation remains a product target and decides how projected
+facts mutate its app and product-specific status copy.
 
 Surface-interest checks happen in the Coding adapter before queue reads, text
 joins, or tool rendering. This preserves Plain and Screen's distinct event
@@ -137,6 +163,30 @@ existing `make test-tui-render-contract` gate covers this new boundary.
 
 The explicit module path above is the stable import for this capability. The
 package initializer does not provide a convenience re-export.
+
+## Plain Conversation Presentation
+
+`loushang.harnesstui.plain.renderer` owns the reusable plain-terminal renderer:
+stdout flushing, assistant buffering, transcript-buffer projection, Markdown
+and terminal blocks, status/error/tool presentation, width handling, and a
+neutral presentation profile. It consumes only TUI records, neutral tool
+blocks, and presentation-ready status values.
+
+Coding retains a thin `PlainCodingUiRenderer` profile adapter. That adapter
+owns the `Loushang TUI` title, `/feedback` interruption copy, Coding glyphs,
+line mapping, and the Ran/Tested legacy command fallback. Coding also retains
+`PlainCodingEventRenderer`, `CodingConversationEventAdapter`, raw event and AI
+message interpretation, tool-result adaptation, and event-interest policy.
+
+The shared Plain renderer and target do not participate in the Screen pipeline's
+transcript segmentation, invalidation, caching, frame composition, or terminal
+writes. Those frozen hot-path responsibilities remain in the Screen product
+renderer and `loushang.tui`.
+
+The stable imports are the explicit module paths
+`loushang.harnesstui.plain.renderer` and
+`loushang.harnesstui.conversation.plain_target`; their package initializers do
+not provide convenience re-exports.
 
 ## Settings, Selection, and Surface Composition
 

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from importlib import import_module
+from typing import TYPE_CHECKING
+
 from loushang.coding.platform.changelog import (
     ChangelogEntry,
     find_changelog_path,
@@ -7,11 +10,6 @@ from loushang.coding.platform.changelog import (
     parse_changelog,
 )
 from loushang.coding.platform.clipboard import ClipboardCopyResult, copy_to_clipboard
-from loushang.coding.platform.clipboard_image import (
-    ClipboardImage,
-    extension_for_image_mime_type,
-    read_clipboard_image,
-)
 from loushang.coding.platform.footer_data_provider import (
     FooterDataProvider,
     FooterSnapshot,
@@ -27,6 +25,40 @@ from loushang.coding.platform.output_guard import (
     write_raw_stdout,
 )
 from loushang.coding.platform.version_check import check_for_new_loushang_version
+
+if TYPE_CHECKING:
+    from loushang.tui.clipboard_image import (
+        ClipboardImage,
+        extension_for_image_mime_type,
+        read_clipboard_image,
+    )
+
+_LAZY_EXPORTS = {
+    "ClipboardImage": ("loushang.tui.clipboard_image", "ClipboardImage"),
+    "extension_for_image_mime_type": (
+        "loushang.tui.clipboard_image",
+        "extension_for_image_mime_type",
+    ),
+    "read_clipboard_image": (
+        "loushang.tui.clipboard_image",
+        "read_clipboard_image",
+    ),
+}
+
+
+def __getattr__(name: str) -> object:
+    target = _LAZY_EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attribute_name = target
+    value = getattr(import_module(module_name), attribute_name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted({*globals(), *_LAZY_EXPORTS})
+
 
 __all__ = [
     "ChangelogEntry",

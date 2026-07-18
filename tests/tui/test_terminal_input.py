@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import os
 import sys
 import threading
 import time
@@ -44,7 +45,18 @@ def test_terminal_input_mode_enables_and_restores_tty_modes(monkeypatch: Any) ->
     pytest.importorskip("tty")
     stdin = _TtyInput()
     stdout = StringIO()
-    original_attrs = [0, 0, 0, 0, 0, 0, [0] * 32]
+    original_attrs = [
+        getattr(termios, "ICRNL", 0),
+        0,
+        0,
+        termios.ECHO
+        | termios.ICANON
+        | getattr(termios, "ISIG", 0)
+        | getattr(termios, "IEXTEN", 0),
+        0,
+        0,
+        [0] * 32,
+    ]
     tcsetattr_calls: list[tuple[int, int, list[Any]]] = []
 
     monkeypatch.setattr("termios.tcgetattr", lambda fd: original_attrs)
@@ -68,7 +80,34 @@ def test_terminal_input_mode_enables_and_restores_tty_modes(monkeypatch: Any) ->
     assert "\x1b[?2004l" in output
     assert "\x1b[?1004l" in output
     assert MODIFY_OTHER_KEYS_DISABLE_SEQUENCE in output
+    active_attrs = tcsetattr_calls[0][2]
+    assert active_attrs[3] & getattr(termios, "IEXTEN", 0) == 0
     assert tcsetattr_calls[-1] == (stdin.fileno(), termios.TCSADRAIN, original_attrs)
+
+
+def test_terminal_input_mode_delivers_control_v() -> None:
+    if os.name == "nt":
+        pytest.skip("PTY input test uses POSIX termios")
+    pty = pytest.importorskip("pty")
+    select = pytest.importorskip("select")
+    master_fd, slave_fd = pty.openpty()
+    try:
+        with os.fdopen(slave_fd, "r", closefd=False) as stdin:
+            with TerminalInputMode(
+                stdin=stdin,
+                stdout=StringIO(),
+                bracketed_paste=False,
+                focus_events=False,
+                keyboard_protocols=False,
+                drain_on_exit=False,
+            ):
+                os.write(master_fd, b"\x16")
+                readable, _, _ = select.select([slave_fd], [], [], 1.0)
+                assert readable == [slave_fd]
+                assert os.read(slave_fd, 1) == b"\x16"
+    finally:
+        os.close(master_fd)
+        os.close(slave_fd)
 
 
 def test_terminal_input_mode_writes_control_modes_on_windows_without_posix_modules(

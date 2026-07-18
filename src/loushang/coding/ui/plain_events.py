@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -10,10 +9,12 @@ from loushang.coding.ui.conversation_event_adapter import (
 from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
 from loushang.coding.ui.tool_blocks import ToolTranscriptProjector
 from loushang.harness.presentation import ToolDefinitionResolver
+from loushang.harnesstui.conversation.plain_target import (
+    PlainConversationProjectionTarget,
+)
 from loushang.harnesstui.conversation.projection import ConversationProjector
 from loushang.harnesstui.conversation.tool_transcript import (
     ToolCallSnapshot,
-    ToolTranscriptBlock,
 )
 
 
@@ -49,9 +50,8 @@ class PlainCodingEventRenderer:
             max_body_lines=max_tool_body_lines,
         )
         self._projection = ConversationProjector(
-            target=_PlainProjectionTarget(
+            target=PlainConversationProjectionTarget(
                 renderer=renderer,
-                render_user_messages=render_user_messages,
             ),
             tool_projector=self._tool_projector.neutral_projector,
             measure_tool_elapsed=False,
@@ -117,98 +117,6 @@ class PlainCodingEventRenderer:
 
     def handle(self, event: dict[str, Any]) -> None:
         self._adapter.handle(event)
-
-
-@dataclass(slots=True)
-class _PlainProjectionTarget:
-    renderer: PlainCodingUiRenderer
-    render_user_messages: bool
-
-    def run_started(self, *, start_time: Callable[[], float]) -> None:
-        del start_time
-
-    def queues_updated(
-        self,
-        *,
-        steers: tuple[str, ...],
-        followups: tuple[str, ...],
-    ) -> None:
-        del steers, followups
-
-    def user_message(self, text: str) -> None:
-        if self.render_user_messages:
-            self.renderer.render_user(text)
-
-    def assistant_started(self) -> None:
-        self.renderer.begin_assistant()
-
-    def assistant_delta(self, delta: str) -> None:
-        self.renderer.write_assistant_delta(delta)
-
-    def assistant_finished(
-        self,
-        final_text: str,
-        *,
-        error_message: str | None,
-        show_error: bool,
-    ) -> None:
-        # Plain output must not commit an errored (including intentionally aborted)
-        # assistant draft. The next run replaces the pending draft buffer.
-        if error_message is not None:
-            if show_error:
-                self.renderer.render_error(error_message)
-            return
-        self.renderer.end_assistant(final_text)
-
-    def assistant_error(self, error_message: str) -> None:
-        self.renderer.render_error(error_message)
-
-    def tool_started(
-        self,
-        tool_call_id: str,
-        snapshot: ToolCallSnapshot,
-    ) -> None:
-        del tool_call_id, snapshot
-
-    def tool_finished(
-        self,
-        block: ToolTranscriptBlock,
-        *,
-        elapsed_seconds: float,
-    ) -> None:
-        del elapsed_seconds
-        self.renderer.render_tool_block(block)
-
-    def tool_result_message(self, block: ToolTranscriptBlock) -> None:
-        self.renderer.render_tool_block(block)
-
-    def retry_started(
-        self,
-        *,
-        attempt: int | None,
-        max_attempts: int | None,
-        delay_ms: int | float | None,
-        error_message: str | None,
-    ) -> None:
-        self.renderer.render_status(
-            f"[retry] attempt {attempt}/{max_attempts} in {delay_ms}ms: {error_message}"
-        )
-
-    def compaction_started(self, *, reason: str | None) -> None:
-        self.renderer.render_status(f"[compact] start: {reason}")
-
-    def compaction_finished(
-        self,
-        *,
-        error_message: str | None,
-        summary: str,
-        tokens_before: int | None,
-    ) -> None:
-        del summary, tokens_before
-        if error_message:
-            self.renderer.render_status(f"[compact] error: {error_message}")
-        else:
-            self.renderer.render_status("[compact] done")
 
 
 __all__ = ["PlainCodingEventRenderer"]

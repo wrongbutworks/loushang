@@ -8,7 +8,9 @@ from loushang.coding.ui.playback import (
     ScreenTuiLoopScenario,
 )
 from loushang.coding.ui.playback_scenarios.budgets import INTERACTION_FRAME_BUDGET
-from loushang.coding.ui.playback_suite import ScreenPlaybackScenarioSpec
+from loushang.tui.playback_suite import (
+    PlaybackScenarioSpec as ScreenPlaybackScenarioSpec,
+)
 
 
 def _run_idle_escape_clears_draft() -> ScreenTuiInputPlaybackResult:

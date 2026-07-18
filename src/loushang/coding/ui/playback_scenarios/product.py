@@ -7,13 +7,15 @@ from loushang.coding.ui.playback import (
     ScreenTuiInputPlaybackResult,
     ScreenTuiInputScenario,
 )
-from loushang.coding.ui.playback_suite import ScreenPlaybackScenarioSpec
 from loushang.tui import (
     PlaybackEvent,
     PlaybackFrameBudget,
     SearchableList,
     SearchableListItem,
     strip_control_sequences,
+)
+from loushang.tui.playback_suite import (
+    PlaybackScenarioSpec as ScreenPlaybackScenarioSpec,
 )
 
 PRODUCT_COMPOSED_FRAME_BUDGET = PlaybackFrameBudget(

@@ -111,6 +111,12 @@ from loushang.tui.playback import (
     RenderDiagnostics,
     playback_artifacts_directory_from_env,
 )
+from loushang.tui.playback_suite import (
+    PlaybackScenarioResult,
+    PlaybackScenarioSpec,
+    PlaybackSuite,
+    run_playback_scenarios,
+)
 from loushang.tui.render_loop import RenderLoop
 from loushang.tui.runner import (
     TerminalSessionFactory,
@@ -165,6 +171,7 @@ from loushang.tui.terminal_capabilities import (
     format_terminal_capability_diagnostics,
     terminal_environment_from_env,
 )
+from loushang.tui.terminal_diagnostics import format_terminal_diagnostics
 from loushang.tui.terminal_image import (
     CellDimensions,
     Image,
@@ -491,7 +498,10 @@ __all__ = [
     "PlaybackHarness",
     "PlaybackResult",
     "PlaybackScenario",
+    "PlaybackScenarioResult",
+    "PlaybackScenarioSpec",
     "PlaybackStep",
+    "PlaybackSuite",
     "playback_artifacts_directory_from_env",
     "PageScaffold",
     "PageNavigation",
@@ -616,6 +626,7 @@ __all__ = [
     "detect_terminal_capabilities",
     "detect_image_protocol",
     "format_terminal_capability_diagnostics",
+    "format_terminal_diagnostics",
     "drain_input",
     "encode_iterm2_image",
     "encode_kitty_image",
@@ -640,6 +651,7 @@ __all__ = [
     "render_transcript_records",
     "render_terminal_image",
     "render_terminal_image_result",
+    "run_playback_scenarios",
     "slice_by_column",
     "slice_with_width",
     "stream_is_tty",
