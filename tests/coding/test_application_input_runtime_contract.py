@@ -29,8 +29,8 @@ def test_agent_session_direct_application_input_reuses_one_commit_and_projection
             delivery_mode="direct",
         )
 
-        first = await session._application_input_runtime.deliver(message)
-        second = await session._application_input_runtime.deliver(message)
+        first = await session._session_runtime.application_inputs.deliver(message)
+        second = await session._session_runtime.application_inputs.deliver(message)
         await asyncio.sleep(0)
 
         assert first.disposition == "committed"

@@ -274,6 +274,24 @@ def test_coding_session_uses_harness_runtime_events_as_the_only_internal_stream(
     assert "project_runtime_event_to_session_event" in session_source
 
 
+def test_coding_agent_session_delegates_shared_turn_runtime_to_harness() -> None:
+    source = Path("src/loushang/coding/session/agent_session.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "SessionRuntime" in source
+    forbidden_owners = (
+        "OrderedEventBus",
+        "RuntimeEventPublisher",
+        "HostRuntime",
+        "QueueController",
+        "PromptController",
+        "ApplicationInputRuntime",
+        "AgentEventRouter",
+    )
+    assert all(owner not in source for owner in forbidden_owners)
+
+
 def test_extension_message_controller_is_a_product_api_adapter() -> None:
     source = Path(
         "src/loushang/coding/session/extension_message_controller.py"
