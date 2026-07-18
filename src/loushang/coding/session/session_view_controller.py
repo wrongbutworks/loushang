@@ -4,8 +4,6 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from loushang.agent import Agent
-from loushang.coding.compaction import estimate_context_tokens
-from loushang.coding.session.context_usage import build_context_usage_snapshot
 from loushang.coding.session.types import (
     AgentSessionState,
     ContextUsage,
@@ -19,6 +17,8 @@ from loushang.harness.agent_transcript import (
     AgentTranscriptInspector,
     AgentTranscriptRecord,
     ContextCompactionCheckpoint,
+    build_context_usage_snapshot,
+    estimate_context_tokens,
 )
 from loushang.harness.host.types import RunState
 
