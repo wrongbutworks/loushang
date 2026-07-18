@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import isfinite
+from types import MappingProxyType
 from typing import Literal
 from unicodedata import category
 
@@ -56,7 +57,9 @@ class RetryOptions:
             or not isinstance(self.max_attempts, int)
             or self.max_attempts < 1
         ):
-            raise ValueError("max_attempts must be an integer greater than or equal to 1")
+            raise ValueError(
+                "max_attempts must be an integer greater than or equal to 1"
+            )
         if (
             isinstance(self.max_delay_seconds, bool)
             or not isinstance(self.max_delay_seconds, int | float)
@@ -70,6 +73,7 @@ class RetryOptions:
 class CallOptions:
     cancellation: object | None = None
     auth: AuthCredential | None = None
+    headers: Mapping[str, str] = field(default_factory=dict, repr=False)
     cache_retention: CacheRetention | None = None
     cache_key: str | None = None
     max_output_tokens: int | None = None
@@ -84,6 +88,11 @@ class CallOptions:
     output: StructuredOutputOptions | None = None
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "headers",
+            MappingProxyType(_validate_headers(self.headers, "headers")),
+        )
         if self.cache_key is not None:
             if not isinstance(self.cache_key, str):
                 raise TypeError("cache_key must be a string or None")
@@ -133,6 +142,31 @@ def _validate_optional_positive_number(value: object, field_name: str) -> None:
         raise ValueError(f"{field_name} must be a finite positive number or None")
 
 
+def _validate_headers(value: object, field_name: str) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{field_name} must be a mapping of strings")
+    headers: dict[str, str] = {}
+    normalized_names: set[str] = set()
+    for key, entry in value.items():
+        if (
+            not isinstance(key, str)
+            or not key
+            or not isinstance(entry, str)
+            or not entry
+        ):
+            raise ValueError(
+                f"{field_name} must contain non-empty string names and values"
+            )
+        if "\r" in key or "\n" in key or "\r" in entry or "\n" in entry:
+            raise ValueError(f"{field_name} must not contain CR or LF")
+        normalized = key.casefold()
+        if normalized in normalized_names:
+            raise ValueError(f"{field_name} contains duplicate header names")
+        normalized_names.add(normalized)
+        headers[key] = entry
+    return headers
+
+
 def _validate_tool_choice(value: ToolChoice | None) -> None:
     if value is None:
         return
@@ -175,6 +209,7 @@ def _validate_tool_choice(value: ToolChoice | None) -> None:
             ):
                 return
     raise ValueError("tool_choice mapping has an unsupported shape")
+
 
 def get_max_output_tokens(options: object | None) -> int | None:
     if options is None:

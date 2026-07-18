@@ -79,10 +79,9 @@ def resolve_endpoint_for_model(
         lane=model.lane,
         preferred=model.preferred_endpoint,
         auth=model.auth,
+        headers=model.headers,
         adapter=model.adapter,
         defaults=model.defaults,
-        transport=model.transport,
-        routing=model.routing,
         models={model.id: model},
     )
 

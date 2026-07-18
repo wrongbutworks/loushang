@@ -26,7 +26,6 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from loushang.coding.tools import create_write_tool_definition
 
 
 def _usage() -> object:
@@ -38,11 +37,17 @@ def _usage() -> object:
 
 
 def _write_tool() -> Tool:
-    definition = create_write_tool_definition()
     return Tool(
-        name=definition.name,
-        description=definition.description,
-        parameters=definition.parameters,
+        name="write",
+        description="Write a file",
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "content": {"type": "string"},
+            },
+            "required": ["path", "content"],
+        },
     )
 
 
@@ -1070,7 +1075,7 @@ def test_normalize_context_accepts_pi_style_assistant_and_tool_result_dicts() ->
                         },
                     ],
                     "api": "openai-responses",
-                    "provider": "github-copilot",
+                    "provider": "custom-openai",
                     "model": "gpt-5",
                     "responseId": "resp_1",
                     "usage": {

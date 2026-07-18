@@ -17,7 +17,6 @@ from loushang.ai.provider.errors import (
 from loushang.ai.tool.providers import to_openai_responses_tools
 from loushang.ai.tool.transform import (
     MISSING_TOOL_RESULT_TEXT,
-    TOOL_RESULTS_PROCESSED_ASSISTANT_TEXT,
 )
 from loushang.ai.types import AssistantMessage, TextPart, Tool, ToolResultMessage
 from loushang.ai.utils import sanitize_surrogates, short_hash
@@ -56,27 +55,15 @@ def convert_responses_messages(
         )
 
     messages = normalized.messages
-    last_role: str | None = None
     index = 0
     while index < len(messages):
         msg = messages[index]
         message_role = _message_role(msg)
         content = _message_content(msg)
         if message_role == "user":
-            if (
-                adapter_config.assistant_after_tool_result is True
-                and last_role == "toolResult"
-            ):
-                input_items.append(
-                    {
-                        "role": "assistant",
-                        "content": TOOL_RESULTS_PROCESSED_ASSISTANT_TEXT,
-                    }
-                )
             user_payload = _user_message_payload(content, model, capabilities)
             if user_payload is not None:
                 input_items.append(user_payload)
-                last_role = "user"
             index += 1
             continue
         if message_role == "assistant":
@@ -85,7 +72,6 @@ def convert_responses_messages(
             )
             if assistant_payload:
                 input_items.extend(assistant_payload)
-                last_role = "assistant"
             next_is_tool_result = (
                 index + 1 < len(messages)
                 and _message_role(messages[index + 1]) == "toolResult"
@@ -99,7 +85,6 @@ def convert_responses_messages(
                             "output": MISSING_TOOL_RESULT_TEXT,
                         }
                     )
-                    last_role = "toolResult"
             index += 1
             continue
         if message_role == "toolResult":
@@ -111,7 +96,6 @@ def convert_responses_messages(
             )
             if tool_result_payload is not None:
                 input_items.append(tool_result_payload)
-                last_role = "toolResult"
             index += 1
             continue
         index += 1
@@ -125,35 +109,6 @@ def convert_responses_tools(
     if not isinstance(tools, Sequence) or isinstance(tools, str) or not tools:
         return None
     return to_openai_responses_tools(list(tools))
-
-
-def build_copilot_dynamic_headers(messages: list[object]) -> dict[str, str]:
-    last_message = messages[-1] if messages else None
-    last_role = _message_role(last_message) if last_message is not None else None
-    has_images = False
-    for message in messages:
-        role = _message_role(message)
-        if role == "user":
-            content = _message_content(message)
-            if isinstance(content, list) and any(
-                _part_type(part) == "image" for part in content
-            ):
-                has_images = True
-                break
-        if (
-            role == "toolResult"
-            and isinstance(message, ToolResultMessage)
-            and any(_part_type(part) == "image" for part in message.content)
-        ):
-            has_images = True
-            break
-    headers = {
-        "X-Initiator": "agent" if last_role and last_role != "user" else "user",
-        "Openai-Intent": "conversation-edits",
-    }
-    if has_images:
-        headers["Copilot-Vision-Request"] = "true"
-    return headers
 
 
 async def process_responses_stream(

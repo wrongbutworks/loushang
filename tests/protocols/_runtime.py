@@ -9,8 +9,6 @@ from loushang.ai.model import (
     Capabilities,
     Defaults,
     Endpoint,
-    EndpointRouting,
-    EndpointTransport,
     Model,
     ModelRegistry,
     Pricing,
@@ -83,8 +81,8 @@ def bound_test_model(
     adapter_config: AdapterConfig | None = None,
     capabilities: Capabilities | None = None,
     defaults: dict[str, object] | None = None,
-    transport: EndpointTransport | None = None,
-    routing: EndpointRouting | None = None,
+    auth: Auth | None = None,
+    endpoint_headers: dict[str, str] | None = None,
     upstream_model_id: str | None = None,
 ) -> Model:
     provider_id = provider_id or str(getattr(model, "provider_id", "test-provider"))
@@ -99,7 +97,7 @@ def bound_test_model(
     pricing = getattr(model, "pricing", None)
     if not isinstance(pricing, Pricing):
         pricing = None
-    auth = _test_auth(options)
+    auth = auth or _test_auth(options)
     resolved_base_url = (
         base_url or getattr(model, "base_url", None) or "https://provider.test/v1"
     )
@@ -109,10 +107,9 @@ def bound_test_model(
         api=api,
         base_url=resolved_base_url,
         auth=auth,
+        headers=endpoint_headers or {},
         adapter=adapter_config,
         defaults=Defaults.from_raw(defaults or getattr(model, "defaults", None)),
-        transport=transport or EndpointTransport(),
-        routing=routing or EndpointRouting(),
         models={
             model_id: Model(
                 id=model_id,
@@ -146,8 +143,8 @@ def make_provider_request(
     adapter_config: AdapterConfig | None = None,
     capabilities: Capabilities | None = None,
     defaults: dict[str, object] | None = None,
-    transport: EndpointTransport | None = None,
-    routing: EndpointRouting | None = None,
+    auth: Auth | None = None,
+    endpoint_headers: dict[str, str] | None = None,
     upstream_model_id: str | None = None,
     max_tokens: int | None = None,
     reasoning_effort: str | None = None,
@@ -164,8 +161,8 @@ def make_provider_request(
         adapter_config=adapter_config,
         capabilities=capabilities,
         defaults=defaults,
-        transport=transport,
-        routing=routing,
+        auth=auth,
+        endpoint_headers=endpoint_headers,
         upstream_model_id=upstream_model_id,
     )
     return ProviderRequest(

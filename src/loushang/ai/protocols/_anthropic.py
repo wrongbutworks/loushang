@@ -4,15 +4,14 @@ from typing import Any, Literal
 
 from loushang.ai.model.domain import AnthropicMessagesConfig
 from loushang.ai.options import CacheRetention
-from loushang.ai.providers.anthropic_oauth_compat import AnthropicOAuthBridge
-from loushang.ai.providers.provider_helpers import (
+from loushang.ai.protocols._helpers import (
     get_header_case_insensitive,
     set_header_case_insensitive,
 )
 from loushang.ai.utils import sanitize_surrogates
 
 
-class AnthropicProviderBase:
+class AnthropicMessagesProtocol:
     """
     Anthropic provider shared helpers to align semantics with pi-ai across SDK/HTTPX impls.
     """
@@ -116,26 +115,11 @@ class AnthropicProviderBase:
         return out
 
     @classmethod
-    def apply_oauth_identity_headers(
-        cls, existing_headers: dict[str, str] | None
-    ) -> dict[str, str]:
-        return AnthropicOAuthBridge.apply_identity_headers(existing_headers)
-
-    @classmethod
-    def to_oauth_tool_name(cls, name: str) -> str:
-        return AnthropicOAuthBridge.to_provider_tool_name(name)
-
-    @classmethod
-    def from_oauth_tool_name(cls, name: str, tools: list[object] | None = None) -> str:
-        return AnthropicOAuthBridge.from_provider_tool_name(name, tools)
-
-    @classmethod
     def should_inject_fine_grained_tools(
         cls,
         *,
         adapter_config: AnthropicMessagesConfig | None,
         headers: dict[str, str] | None,
-        transport_kind: str | None = None,
     ) -> bool:
         if adapter_config is not None and adapter_config.fine_grained_tools is False:
             return False
@@ -144,8 +128,6 @@ class AnthropicProviderBase:
             if "anthropic-beta" in h:
                 return True
         if adapter_config is not None and adapter_config.fine_grained_tools is True:
-            return True
-        if transport_kind == "httpx":
             return True
         return False
 

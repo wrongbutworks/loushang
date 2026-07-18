@@ -9,12 +9,12 @@ from loushang.ai.context import NormalizedContext
 from loushang.ai.errors import AIProviderProtocolError, AITimeoutError
 from loushang.ai.model import Auth, Model
 from loushang.ai.options import CallOptions, RetryOptions
+from loushang.ai.protocols.anthropic_messages import AnthropicMessagesAdapter
+from loushang.ai.protocols.openai_chat_completions import OpenAIChatCompletionsAdapter
+from loushang.ai.protocols.openai_responses import OpenAIResponsesAdapter
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.errors import provider_error_part
 from loushang.ai.provider.runtime import start_provider_runtime
-from loushang.ai.providers.anthropic import AnthropicProvider
-from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
-from loushang.ai.providers.openai_responses import OpenAIResponsesProvider
 
 
 class _HTTPError(Exception):
@@ -49,7 +49,7 @@ class _BlockingRawSource:
 
 @pytest.mark.parametrize(
     "provider_cls",
-    (OpenAICompletionsProvider, OpenAIResponsesProvider, AnthropicProvider),
+    (OpenAIChatCompletionsAdapter, OpenAIResponsesAdapter, AnthropicMessagesAdapter),
 )
 def test_builtin_adapters_expose_invoke_raw_contract(provider_cls) -> None:
     provider = provider_cls()

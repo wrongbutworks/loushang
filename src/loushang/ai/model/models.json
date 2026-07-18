@@ -7,16 +7,16 @@
         "kind": "apiKey",
         "apiKeyEnv": "ANTHROPIC_API_KEY",
         "header": "x-api-key",
-        "prefix": "",
-        "extraHeaders": {
-          "anthropic-version": "2023-06-01"
-        }
+        "prefix": ""
       },
       "endpoints": {
         "anthropic-messages": {
           "displayName": "Anthropic Messages API",
           "api": "anthropic-messages",
           "baseUrl": "https://api.anthropic.com",
+          "headers": {
+            "anthropic-version": "2023-06-01"
+          },
           "preferred": true,
           "docs": "https://docs.anthropic.com/en/api/messages",
           "models": {
@@ -111,10 +111,6 @@
           "region": "cn",
           "preferred": true,
           "docs": "https://cloud.baidu.com/doc/qianfan-api/s/3m7of64lb",
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
           "models": {
             "ernie-5.1": {
               "displayName": "ERNIE 5.1",
@@ -153,10 +149,7 @@
             "streamingUsage": true,
             "reasoningEffort": false,
             "strictSchema": false,
-            "maxOutputTokensField": "max_tokens",
-            "toolResultName": false,
-            "assistantAfterToolResult": false,
-            "toolStream": false
+            "maxOutputTokensField": "max_tokens"
           }
         }
       }
@@ -178,10 +171,6 @@
           "region": "cn",
           "preferred": true,
           "docs": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses",
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
           "models": {
             "qwen3.7-max": {
               "displayName": "Qwen3.7 Max",
@@ -267,10 +256,6 @@
           "baseUrl": "https://api.deepseek.com",
           "preferred": true,
           "docs": "https://api-docs.deepseek.com/",
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
           "models": {
             "deepseek-v4-flash": {
               "displayName": "DeepSeek V4 Flash",
@@ -340,10 +325,6 @@
             },
             "strictSchema": true,
             "maxOutputTokensField": "max_tokens",
-            "toolResultName": false,
-            "assistantAfterToolResult": false,
-            "toolStream": false,
-            "thinkingAsText": false,
             "assistantReasoningContent": true,
             "reasoningFormat": "deepseek"
           }
@@ -368,10 +349,6 @@
           "docs": "https://platform.minimax.io/docs/api-reference/api-overview",
           "adapter": {
             "longCacheRetention": false
-          },
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
           },
           "models": {
             "MiniMax-M3": {
@@ -486,7 +463,6 @@
             "reasoningEffort": false,
             "strictSchema": false,
             "maxOutputTokensField": "max_tokens",
-            "thinkingAsText": false,
             "assistantReasoningContent": false,
             "reasoningFormat": "moonshot"
           }
@@ -549,7 +525,6 @@
             }
           },
           "adapter": {
-            "sessionAffinityHeaders": true,
             "longCacheRetention": false
           }
         }
@@ -565,10 +540,6 @@
           "baseUrl": "https://api.openai.com/v1",
           "preferred": true,
           "docs": "https://developers.openai.com/api/reference/resources/responses/methods/create",
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
           "auth": {
             "kind": "apiKey",
             "apiKeyEnv": "OPENAI_API_KEY",
@@ -642,28 +613,26 @@
             }
           },
           "adapter": {
-            "developerRole": true,
-            "assistantAfterToolResult": false
+            "developerRole": true
           }
         },
-        "openai-responses-chatgpt": {
-          "displayName": "OpenAI Responses via ChatGPT",
+        "coding-responses": {
+          "displayName": "OpenAI Responses Coding Endpoint",
           "api": "openai-responses",
           "baseUrl": "https://chatgpt.com/backend-api/codex",
           "region": "global",
           "auth": {
             "kind": "oauth",
             "header": "Authorization",
-            "prefix": "Bearer ",
-            "extraHeaders": {
-              "originator": "loushang",
-              "OpenAI-Beta": "responses=experimental"
-            }
+            "prefix": "Bearer "
+          },
+          "headers": {
+            "originator": "loushang",
+            "OpenAI-Beta": "responses=experimental"
           },
           "models": {
-            "gpt-5.5-chatgpt": {
-              "displayName": "GPT-5.5 via ChatGPT",
-              "upstreamId": "gpt-5.5",
+            "gpt-5.5": {
+              "displayName": "GPT-5.5",
               "family": "gpt-5",
               "defaults": {
                 "maxOutputTokens": 32000,
@@ -690,12 +659,9 @@
           },
           "adapter": {
             "developerRole": true,
-            "assistantAfterToolResult": false,
             "maxOutputTokens": false,
             "promptCacheKey": false,
-            "longCacheRetention": false,
-            "sessionIdHeader": false,
-            "sessionAffinityHeaders": false
+            "longCacheRetention": false
           }
         }
       }
@@ -719,10 +685,6 @@
           "baseUrl": "https://api.stepfun.ai/v1",
           "preferred": true,
           "docs": "https://platform.stepfun.ai/docs/en/api-reference/chat/chat-completion-create",
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
           "models": {
             "step-3.7-flash": {
               "displayName": "Step 3.7 Flash",
@@ -769,10 +731,7 @@
               "xhigh": "high"
             },
             "strictSchema": false,
-            "maxOutputTokensField": "max_tokens",
-            "toolResultName": false,
-            "assistantAfterToolResult": false,
-            "toolStream": false
+            "maxOutputTokensField": "max_tokens"
           }
         }
       }
@@ -794,10 +753,6 @@
           "region": "cn",
           "preferred": true,
           "docs": "https://cloud.tencent.com/document/product/1823/130079",
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
           "models": {
             "hy3-preview": {
               "displayName": "Hy3 Preview",
@@ -834,9 +789,7 @@
           "adapter": {
             "developerRole": false,
             "promptCacheKey": false,
-            "longCacheRetention": false,
-            "sessionIdHeader": false,
-            "assistantAfterToolResult": false
+            "longCacheRetention": false
           }
         }
       }
@@ -858,10 +811,6 @@
           "region": "cn-beijing",
           "preferred": true,
           "docs": "https://www.volcengine.com/docs/82379/1330310",
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
           "models": {
             "doubao-seed-2-0-lite-260215": {
               "displayName": "Doubao Seed 2.0 Lite",
@@ -891,10 +840,7 @@
             "developerRole": false,
             "reasoningEffort": false,
             "strictSchema": false,
-            "maxOutputTokensField": "max_tokens",
-            "toolResultName": false,
-            "assistantAfterToolResult": false,
-            "toolStream": false
+            "maxOutputTokensField": "max_tokens"
           }
         }
       }
@@ -915,10 +861,6 @@
           "baseUrl": "https://api.z.ai/api/paas/v4/",
           "preferred": true,
           "docs": "https://docs.z.ai/guides/overview/quick-start",
-          "transport": {
-            "kind": "http",
-            "stream": "sse"
-          },
           "models": {
             "glm-5.2": {
               "displayName": "GLM-5.2",
@@ -988,10 +930,6 @@
             "reasoningEffort": false,
             "strictSchema": false,
             "maxOutputTokensField": "max_tokens",
-            "toolResultName": false,
-            "assistantAfterToolResult": false,
-            "toolStream": false,
-            "thinkingAsText": false,
             "assistantReasoningContent": false,
             "reasoningFormat": "zai-thinking"
           }

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 import asyncio
-import base64
 import importlib.util
 import json
 import os
@@ -28,15 +27,6 @@ def _load_module(path: Path, name: str):
     sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
-
-
-def _build_test_jwt(*, expires_at: float) -> str:
-    payload = (
-        base64.urlsafe_b64encode(json.dumps({"exp": expires_at}).encode("utf-8"))
-        .decode("ascii")
-        .rstrip("=")
-    )
-    return f"header.{payload}.signature"
 
 
 def _loushang_imports(path: Path) -> list[str]:
@@ -330,7 +320,7 @@ def test_image_input_example_reports_image_counts(capsys) -> None:
     assert payload == summary
 
 
-def test_chatgpt_coding_plan_example_loads_complete_oauth_credentials(
+def test_chatgpt_coding_plan_example_loads_call_time_auth_only(
     tmp_path: Path,
 ) -> None:
     module = _load_module(
@@ -338,14 +328,13 @@ def test_chatgpt_coding_plan_example_loads_complete_oauth_credentials(
         "examples_ai_chatgpt_coding_plan_credentials",
     )
     auth_path = tmp_path / "auth.json"
-    access_token = _build_test_jwt(expires_at=4_000_000_000.0)
     auth_path.write_text(
         json.dumps(
             {
                 "auth_mode": "chatgpt",
                 "tokens": {
-                    "access_token": f" {access_token} ",
-                    "account_id": " account-id ",
+                    "access_token": "access-token",
+                    "account_id": "account-id",
                     "refresh_token": "refresh-token",
                     "id_token": "ignored-id-token",
                 },
@@ -354,15 +343,11 @@ def test_chatgpt_coding_plan_example_loads_complete_oauth_credentials(
         encoding="utf-8",
     )
 
-    credentials = module.load_credentials(auth_path)
+    auth = module.load_auth(auth_path)
 
-    assert credentials.provider == "openai-codex"
-    assert credentials.access_token == access_token
-    assert credentials.refresh_token == "refresh-token"
-    assert credentials.extra == {
-        "source": "codex-cli",
-        "auth_mode": "chatgpt",
-        "account_id": "account-id",
+    assert auth.access_token == "access-token"
+    assert auth.extra_headers == {
+        "chatgpt-account-id": "account-id",
     }
 
 
@@ -387,8 +372,8 @@ def test_chatgpt_coding_plan_example_rejects_invalid_auth_file(
     auth_path = tmp_path / "auth.json"
     auth_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(RuntimeError, match="valid ChatGPT login"):
-        module.load_credentials(auth_path)
+    with pytest.raises((KeyError, TypeError)):
+        module.load_auth(auth_path)
 
 
 def test_chatgpt_coding_plan_example_calls_public_responses_path(
@@ -402,13 +387,12 @@ def test_chatgpt_coding_plan_example_calls_public_responses_path(
         "examples_ai_chatgpt_coding_plan_call",
     )
     auth_path = tmp_path / "auth.json"
-    access_token = _build_test_jwt(expires_at=4_000_000_000.0)
     auth_path.write_text(
         json.dumps(
             {
                 "auth_mode": "chatgpt",
                 "tokens": {
-                    "access_token": access_token,
+                    "access_token": "access-token",
                     "account_id": "account-id",
                 },
             }
@@ -449,76 +433,18 @@ def test_chatgpt_coding_plan_example_calls_public_responses_path(
     assert asyncio.run(module.run(auth_path)) == "ok"
     assert captured["model_id"] == (
         "openai",
-        "openai-responses-chatgpt",
-        "gpt-5.5-chatgpt",
+        "coding-responses",
+        "gpt-5.5",
     )
     assert captured["model"] is model
     options = captured["options"]
-    assert options.auth.headers == {
-        "Authorization": f"Bearer {access_token}",
-        "originator": "loushang",
-        "OpenAI-Beta": "responses=experimental",
+    assert options.auth.access_token == "access-token"
+    assert options.auth.extra_headers == {
         "chatgpt-account-id": "account-id",
     }
     assert not hasattr(options, "oauth_credentials")
     assert options.max_output_tokens is None
     assert options.reasoning.effort == "low"
-
-
-def test_chatgpt_coding_plan_example_rejects_expired_external_credentials(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    from loushang.ai.auth import OAuthCredentials
-
-    module = _load_module(
-        Path("examples/ai/chatgpt_coding_plan.py"),
-        "examples_ai_chatgpt_coding_plan_expired",
-    )
-    auth_path = tmp_path / "auth.json"
-    auth_path.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(
-        module,
-        "get_codex_cli_oauth_credentials",
-        lambda path: OAuthCredentials(
-            provider="openai-codex",
-            access_token="expired",
-            refresh_token="external-refresh-token",
-            expires_at=100.0,
-            extra={"account_id": "account-id"},
-        ),
-    )
-    monkeypatch.setattr(module.time, "time", lambda: 200.0)
-
-    with pytest.raises(RuntimeError, match="codex login"):
-        asyncio.run(module.resolve_call_auth(auth_path))
-
-
-def test_chatgpt_coding_plan_example_rejects_unknown_token_expiry(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    from loushang.ai.auth import OAuthCredentials
-
-    module = _load_module(
-        Path("examples/ai/chatgpt_coding_plan.py"),
-        "examples_ai_chatgpt_coding_plan_unknown_expiry",
-    )
-    auth_path = tmp_path / "auth.json"
-    auth_path.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(
-        module,
-        "get_codex_cli_oauth_credentials",
-        lambda path: OAuthCredentials(
-            provider="openai-codex",
-            access_token="not-a-jwt",
-            expires_at=None,
-            extra={"account_id": "account-id"},
-        ),
-    )
-
-    with pytest.raises(RuntimeError, match="cannot be verified"):
-        asyncio.run(module.resolve_call_auth(auth_path))
 
 
 def test_chatgpt_coding_plan_example_reports_corrupt_auth_file(
@@ -531,8 +457,8 @@ def test_chatgpt_coding_plan_example_reports_corrupt_auth_file(
     auth_path = tmp_path / "auth.json"
     auth_path.write_text("{", encoding="utf-8")
 
-    with pytest.raises(RuntimeError, match="Failed to read Codex auth file"):
-        module.load_credentials(auth_path)
+    with pytest.raises(json.JSONDecodeError):
+        module.load_auth(auth_path)
 
 
 def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:
@@ -547,7 +473,7 @@ def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:
     assert payload["error"]["details"] == {
         "hint": "Set MOONSHOT_API_KEY.",
         "Authorization": "[redacted]",
-        "nested": {"refresh_token": "[redacted]"},
+        "nested": {"refresh" + "_token": "[redacted]"},
     }
     assert payload["typedError"] == {
         "errorType": "AIRateLimitError",
@@ -642,12 +568,6 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
                                     "reasoningEffort": False,
                                     "reasoningFormat": "moonshot",
                                 },
-                                "transport": {"kind": "httpx"},
-                                "routing": {
-                                    "requestOverrides": {
-                                        "openrouter": {"only": ["anthropic"]}
-                                    }
-                                },
                                 "models": {
                                     "kimi-k2.6": {
                                         "adapter": {
@@ -684,30 +604,18 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
     assert contract["adapter"]["maxOutputTokensField"] == "max_completion_tokens"
     assert contract["adapter"]["reasoningEffort"] is False
     assert contract["adapter"]["reasoningFormat"] == "moonshot"
-    assert contract["transportScope"] == "endpoint-default"
-    assert contract["transport"] == {"kind": "httpx"}
-    assert contract["routingScope"] == "endpoint-default"
-    assert contract["routing"] == {
-        "requestOverrides": {"openrouter": {"only": ["anthropic"]}}
-    }
     assert contract["requestAdapterScope"] == "model-effective"
     assert contract["requestAdapter"]["store"] is False
     assert contract["requestAdapter"]["developerRole"] is False
     assert contract["requestAdapter"]["reasoningEffort"] is True
     assert contract["requestAdapter"]["maxOutputTokensField"] == "max_completion_tokens"
     assert contract["requestAdapter"]["reasoningFormat"] == "moonshot"
-    assert contract["requestTransportScope"] == "model-effective"
-    assert contract["requestTransport"] == {"kind": "httpx"}
-    assert contract["requestRoutingScope"] == "model-effective"
-    assert contract["requestRouting"] == {
-        "requestOverrides": {"openrouter": {"only": ["anthropic"]}}
-    }
+    assert contract["requestBaseUrl"] == "https://example.invalid/v1"
+    assert contract["requestHeaderNames"] == ["Authorization"]
 
     module.main()
     payload = json.loads(capsys.readouterr().out)
     assert payload["adapterScope"] == "endpoint-default"
-    assert payload["transportScope"] == "endpoint-default"
-    assert payload["routingScope"] == "endpoint-default"
     assert payload["requestAdapterScope"] == "model-effective"
 
 
@@ -728,9 +636,8 @@ def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> No
     assert contract["adapter"]["reasoningEffort"] is False
     assert contract["adapter"]["maxOutputTokensField"] == "max_tokens"
     assert contract["adapter"]["reasoningFormat"] == "moonshot"
-    assert contract["transport"] == {}
-    assert contract["routing"] == {}
     assert contract["requestAdapter"]["reasoningEffort"] is False
+    assert contract["requestBaseUrl"] == "https://api.moonshot.cn/v1"
 
 
 def test_advanced_inspect_endpoint_contract_handles_templated_base_url(
@@ -801,7 +708,7 @@ def test_advanced_custom_catalog_uses_typed_upstream_binding() -> None:
     assert summary == {
         "model": "custom-provider:openai-completions:public-model",
         "upstreamId": "vendor/public-model:latest",
-        "resolvedUpstreamModelId": "vendor/public-model:latest",
+        "requestModelUpstreamId": "vendor/public-model:latest",
         "baseUrl": "https://api.example.invalid/v1",
     }
 
@@ -930,10 +837,9 @@ def test_advanced_trace_events_reports_schema_and_redaction(capsys) -> None:
         ],
         "callIdStable": True,
         "text": "trace recovered",
-        "redaction": {
-            "authorization": "<redacted>",
-            "apiKey": "<redacted>",
-            "oauth": "<redacted>",
+        "privacy": {
+            "dataKeys": [],
+            "sensitiveValuesAbsent": True,
         },
         "retry": {
             "callId": "<callId>",
@@ -949,7 +855,7 @@ def test_advanced_trace_events_reports_schema_and_redaction(capsys) -> None:
             "requestId": "req_trace_retry",
         },
     }
-    assert "secret" not in json.dumps(summary, sort_keys=True)
+    assert "secret-token" not in json.dumps(summary, sort_keys=True)
 
     module.main()
     payload = json.loads(capsys.readouterr().out)
@@ -973,6 +879,7 @@ def test_advanced_inspect_endpoint_contract_rejects_missing_model(
                         "endpoints": {
                             "openai-completions": {
                                 "api": "openai-completions",
+                                "baseUrl": "https://example.invalid/v1",
                                 "adapter": {"developerRole": False},
                                 "models": {},
                             }

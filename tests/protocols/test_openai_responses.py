@@ -8,20 +8,20 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from loushang.ai import CallOptions, ReasoningOptions
-from loushang.ai.auth import ApiKeyAuth, HeadersAuth, NoAuth
+from loushang.ai.auth import ApiKeyAuth, OAuthBearerAuth
 from loushang.ai.context import NormalizedContext, normalize_context
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import (
+    Auth,
     Capabilities,
-    EndpointTransport,
     Model,
     OpenAIResponsesConfig,
     Pricing,
 )
 from loushang.ai.options import get_reasoning_effort, is_reasoning_requested
+from loushang.ai.protocols._openai_responses import process_responses_stream
+from loushang.ai.protocols.openai_responses import OpenAIResponsesAdapter
 from loushang.ai.provider import ProviderRequest, resolve_request_for_model
-from loushang.ai.providers.openai_responses import OpenAIResponsesProvider
-from loushang.ai.providers.openai_responses_shared import process_responses_stream
 from loushang.ai.structured import StructuredOutputOptions
 from loushang.ai.types import (
     AssistantMessage,
@@ -35,7 +35,7 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from tests.providers._runtime import (
+from tests.protocols._runtime import (
     bound_test_model,
     make_provider_request,
     provider_request_for_test,
@@ -126,7 +126,7 @@ def test_openai_responses_payload_maps_formal_context_and_tools(
 ) -> None:
     _fake_openai_module(monkeypatch)
     _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
 
     asyncio.run(
         _collect_parts(
@@ -201,7 +201,7 @@ def test_openai_responses_complete_mode_maps_non_stream_response(
         ),
     )
     _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
 
     parts = asyncio.run(
         _collect_parts(
@@ -254,7 +254,7 @@ def test_openai_responses_payload_uses_resolved_capabilities_for_images(
         base_url="https://api.openai.test/v1",
         capabilities=Capabilities(input=("text", "image")),
     )
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
 
     asyncio.run(
         _collect_parts(
@@ -332,7 +332,7 @@ def test_openai_responses_payload_maps_structured_output_text_format(
         base_url="https://api.openai.test/v1",
         capabilities=Capabilities(input=("text",), structured_output=True),
     )
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
 
     asyncio.run(
         _collect_parts(
@@ -356,7 +356,7 @@ def test_openai_responses_payload_maps_structured_output_text_format(
 
 
 def test_openai_responses_direct_stream_rejects_mismatched_request_api() -> None:
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
     request = make_provider_request(
         _Model(),
         api="openai-completions",
@@ -382,7 +382,7 @@ def test_openai_responses_supplied_empty_request_uses_typed_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
     request = make_provider_request(
         _Model(reasoning=True),
         api="openai-responses",
@@ -416,16 +416,15 @@ def test_openai_responses_supplied_empty_request_uses_typed_defaults(
     }
     assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-default"
     assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_retention"] == "24h"
-    assert _FakeAsyncOpenAI.last_create_kwargs["extra_headers"]["session_id"] == (
-        "session-default"
-    )
+    headers = _FakeAsyncOpenAI.last_create_kwargs.get("extra_headers") or {}
+    assert "session_id" not in headers
 
 
 def test_openai_responses_supplied_request_adapter_config_projects_to_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
     request = make_provider_request(
         _Model(reasoning=True),
         api="openai-responses",
@@ -433,9 +432,7 @@ def test_openai_responses_supplied_request_adapter_config_projects_to_payload(
         headers={"Authorization": "Bearer test-key"},
         adapter_config=OpenAIResponsesConfig(
             developer_role=False,
-            assistant_after_tool_result=True,
             long_cache_retention=False,
-            session_id_header=False,
         ),
         capabilities=Capabilities(input=("text",), reasoning=True),
         max_tokens=128,
@@ -469,7 +466,6 @@ def test_openai_responses_supplied_request_adapter_config_projects_to_payload(
             "call_id": "call_1",
             "output": "42",
         },
-        {"role": "assistant", "content": "I have processed the tool results."},
         {"role": "user", "content": [{"type": "input_text", "text": "next"}]},
     ]
     assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-options"
@@ -483,17 +479,13 @@ def test_openai_responses_ignores_unsupported_cache_key_without_headers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
     request = make_provider_request(
         _Model(reasoning=True),
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        adapter_config=OpenAIResponsesConfig(
-            prompt_cache_key=False,
-            session_id_header=False,
-            session_affinity_headers=False,
-        ),
+        adapter_config=OpenAIResponsesConfig(prompt_cache_key=False),
         capabilities=Capabilities(input=("text",), reasoning=True),
         max_tokens=128,
     )
@@ -523,7 +515,7 @@ def test_openai_responses_rejects_unsupported_long_cache_retention(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
     request = make_provider_request(
         _Model(reasoning=True),
         api="openai-responses",
@@ -559,7 +551,7 @@ def test_openai_responses_supplied_request_typed_adapter_overrides_stale_options
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
     request = make_provider_request(
         _Model(reasoning=True),
         api="openai-responses",
@@ -567,9 +559,7 @@ def test_openai_responses_supplied_request_typed_adapter_overrides_stale_options
         headers={"Authorization": "Bearer test-key"},
         adapter_config=OpenAIResponsesConfig(
             developer_role=False,
-            assistant_after_tool_result=False,
             long_cache_retention=False,
-            session_id_header=False,
         ),
         capabilities=Capabilities(input=("text",), reasoning=True),
         max_tokens=128,
@@ -616,17 +606,13 @@ def test_openai_responses_cache_retention_none_suppresses_cache_key_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
     request = make_provider_request(
         _Model(),
         api="openai-responses",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        adapter_config=OpenAIResponsesConfig(
-            prompt_cache_key=True,
-            session_id_header=True,
-            session_affinity_headers=True,
-        ),
+        adapter_config=OpenAIResponsesConfig(prompt_cache_key=True),
     )
 
     asyncio.run(
@@ -655,7 +641,7 @@ def test_openai_responses_uses_upstream_model_id(
         base_url="https://api.openai.test/v1",
         upstream_model_id="openai/gpt-oss-120b:free",
     )
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
 
     asyncio.run(
         _collect_parts(
@@ -683,7 +669,7 @@ def test_openai_responses_caps_model_max_tokens_default(
         base_url="https://api.openai.test/v1",
         max_tokens=None,
     )
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
 
     asyncio.run(
         _collect_parts(
@@ -713,7 +699,7 @@ def test_openai_responses_uses_resolved_capability_max_tokens(
         max_tokens=None,
         capabilities=Capabilities(max_tokens=2048),
     )
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
 
     asyncio.run(
         _collect_parts(
@@ -742,7 +728,7 @@ def test_openai_responses_can_omit_model_default_max_output_tokens(
         base_url="https://api.openai.test/v1",
         adapter_config=OpenAIResponsesConfig(max_output_tokens=False),
     )
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
 
     asyncio.run(
         _collect_parts(
@@ -770,7 +756,7 @@ def test_openai_responses_rejects_explicit_unsupported_max_output_tokens(
         base_url="https://api.openai.test/v1",
         adapter_config=OpenAIResponsesConfig(max_output_tokens=False),
     )
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
 
     with pytest.raises(UnsupportedCapabilityError, match="max_output_tokens"):
         asyncio.run(
@@ -797,7 +783,7 @@ def test_openai_responses_payload_maps_assistant_tool_call_and_synthesizes_missi
 ) -> None:
     _fake_openai_module(monkeypatch)
     _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
     assistant = AssistantMessage(
         role="assistant",
         content=[
@@ -846,7 +832,7 @@ def test_openai_responses_payload_normalizes_cross_provider_tool_call_ids(
 ) -> None:
     _fake_openai_module(monkeypatch)
     _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
     assistant = AssistantMessage(
         role="assistant",
         content=[
@@ -902,7 +888,7 @@ def test_openai_responses_payload_replays_assistant_thinking_signature(
 ) -> None:
     _fake_openai_module(monkeypatch)
     _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
     assistant = AssistantMessage(
         role="assistant",
         content=[
@@ -951,7 +937,7 @@ def test_openai_responses_payload_replays_assistant_text_signature_and_phase(
 ) -> None:
     _fake_openai_module(monkeypatch)
     _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
     assistant = AssistantMessage(
         role="assistant",
         content=[
@@ -994,7 +980,7 @@ def test_openai_responses_payload_maps_reasoning_option(
 ) -> None:
     _fake_openai_module(monkeypatch)
     _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
 
     asyncio.run(
         _collect_parts(
@@ -1046,7 +1032,7 @@ def test_openai_responses_uses_resolved_temperature(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
     request = make_provider_request(
         _Model(),
         api="openai-responses",
@@ -1082,7 +1068,7 @@ def test_openai_responses_payload_uses_resolved_capabilities_for_reasoning(
         base_url="https://api.openai.test/v1",
         capabilities=Capabilities(reasoning=True),
     )
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
 
     asyncio.run(
         _collect_parts(
@@ -1111,16 +1097,15 @@ def test_openai_responses_payload_uses_resolved_capabilities_for_reasoning(
     ]
 
 
-def test_openai_responses_payload_maps_tool_result_images_and_bridge(
+def test_openai_responses_payload_maps_tool_result_images(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
     _patch_resolved_request(
         monkeypatch,
         base_url="https://bridge.example/v1",
-        compat={"requiresAssistantAfterToolResult": True},
     )
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
     assistant = AssistantMessage(
         role="assistant",
         content=[
@@ -1185,94 +1170,8 @@ def test_openai_responses_payload_maps_tool_result_images_and_bridge(
                 },
             ],
         },
-        {"role": "assistant", "content": "I have processed the tool results."},
         {"role": "user", "content": [{"type": "input_text", "text": "next"}]},
     ]
-
-
-def test_openai_responses_provider_adds_github_copilot_dynamic_headers(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _fake_openai_module(monkeypatch)
-    _patch_resolved_request(
-        monkeypatch,
-        base_url="https://api.githubcopilot.test/v1",
-        extra_headers={
-            "Editor-Version": "vscode/1.100.0",
-            "x-initiator": "caller",
-        },
-        transport=EndpointTransport(kind="github-copilot"),
-    )
-    provider = OpenAIResponsesProvider()
-
-    asyncio.run(
-        _collect_parts(
-            _invoke_raw_parts(
-                provider,
-                _Model(provider_id="github-copilot"),
-                {
-                    "messages": [
-                        UserMessage(
-                            role="user",
-                            content=[
-                                TextPart(type="text", text="look"),
-                                ImagePart(
-                                    type="image", data="dXNlcg==", mime_type="image/png"
-                                ),
-                            ],
-                            timestamp=0.0,
-                        ),
-                        AssistantMessage(
-                            role="assistant",
-                            content=[
-                                ToolCall(
-                                    type="toolCall",
-                                    id="call_1",
-                                    name="calc",
-                                    arguments={"x": 1},
-                                )
-                            ],
-                            api="openai-responses",
-                            provider="github-copilot",
-                            model="gpt-test",
-                            response_id="resp_1",
-                            usage=Usage(
-                                input=0,
-                                output=0,
-                                cache_read=0,
-                                cache_write=0,
-                                total_tokens=0,
-                                cost={},
-                            ),
-                            stop_reason="toolUse",
-                            error_message=None,
-                            timestamp=0.0,
-                        ),
-                        ToolResultMessage(
-                            role="toolResult",
-                            tool_call_id="call_1",
-                            tool_name="calc",
-                            content=[
-                                ImagePart(
-                                    type="image", data="aGVsbG8=", mime_type="image/png"
-                                )
-                            ],
-                            is_error=False,
-                            timestamp=0.0,
-                        ),
-                    ]
-                },
-                CallOptions(auth=ApiKeyAuth("test-key")),
-            )
-        )
-    )
-
-    headers = _FakeAsyncOpenAI.last_create_kwargs["extra_headers"]
-    assert headers["Editor-Version"] == "vscode/1.100.0"
-    assert headers["X-Initiator"] == "agent"
-    assert "x-initiator" not in headers
-    assert headers["Openai-Intent"] == "conversation-edits"
-    assert headers["Copilot-Vision-Request"] == "true"
 
 
 def test_openai_responses_stream_applies_priority_service_tier_cost_multiplier(
@@ -1300,7 +1199,7 @@ def test_openai_responses_stream_applies_priority_service_tier_cost_multiplier(
         ],
     )
     _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
 
     stream = asyncio.run(
         _stream(
@@ -1369,7 +1268,7 @@ def test_openai_responses_stream_retains_thinking_signature_on_final_message(
         ],
     )
     _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
 
     stream = asyncio.run(
         _stream(
@@ -1635,7 +1534,7 @@ def test_openai_responses_stream_joins_multiple_reasoning_summary_parts(
         ],
     )
     _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
 
     stream = asyncio.run(
         _stream(
@@ -1702,7 +1601,7 @@ def test_openai_responses_stream_retains_text_signature_on_final_message(
         ],
     )
     _patch_resolved_request(monkeypatch, base_url="https://api.openai.test/v1")
-    provider = OpenAIResponsesProvider()
+    provider = OpenAIResponsesAdapter()
 
     stream = asyncio.run(
         _stream(
@@ -1802,33 +1701,33 @@ def _fake_openai_module(
 
 
 @pytest.mark.parametrize(
-    ("auth", "expected_header", "expected_value"),
+    ("auth", "expected_headers"),
     [
+        (ApiKeyAuth("opaque"), {"Authorization": "Bearer opaque"}),
         (
-            HeadersAuth({"AUTHORIZATION": "Token opaque"}),
-            "Authorization",
-            "Token opaque",
+            OAuthBearerAuth(
+                "oauth-token",
+                extra_headers={"X-Account-Id": "account-1"},
+            ),
+            {
+                "Authorization": "Bearer oauth-token",
+                "X-Account-Id": "account-1",
+            },
         ),
-        (
-            ApiKeyAuth("opaque", header="X-Custom-Auth", prefix="Token "),
-            "X-Custom-Auth",
-            "Token opaque",
-        ),
-        (NoAuth(), None, None),
+        (None, {}),
     ],
 )
 def test_openai_responses_forwards_authoritative_auth_headers(
     monkeypatch: pytest.MonkeyPatch,
     auth,
-    expected_header: str | None,
-    expected_value: str | None,
+    expected_headers: dict[str, str],
 ) -> None:
     _fake_openai_module(monkeypatch)
 
     asyncio.run(
         _collect_parts(
             _invoke_raw_parts(
-                OpenAIResponsesProvider(),
+                OpenAIResponsesAdapter(),
                 _Model(),
                 {
                     "messages": [
@@ -1842,11 +1741,40 @@ def test_openai_responses_forwards_authoritative_auth_headers(
 
     headers = _FakeAsyncOpenAI.last_create_kwargs["extra_headers"]
     assert _FakeAsyncOpenAI.last_init_kwargs["api_key"] == ""
-    if expected_header is None:
+    if not expected_headers:
         assert isinstance(headers["Authorization"], _FakeOmit)
         assert isinstance(headers["X-Api-Key"], _FakeOmit)
     else:
-        assert headers[expected_header] == expected_value
+        assert headers | expected_headers == headers
+
+
+def test_openai_responses_uses_catalog_auth_header_and_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_openai_module(monkeypatch)
+    model = bound_test_model(
+        _Model(),
+        api="openai-responses",
+        auth=Auth(kind="apiKey", header="X-Custom-Auth", prefix="Token "),
+    )
+
+    asyncio.run(
+        _collect_parts(
+            _invoke_raw_parts(
+                OpenAIResponsesAdapter(),
+                model,
+                {
+                    "messages": [
+                        UserMessage(role="user", content="hello", timestamp=0.0)
+                    ]
+                },
+                CallOptions(auth=ApiKeyAuth("opaque")),
+            )
+        )
+    )
+
+    headers = _FakeAsyncOpenAI.last_create_kwargs["extra_headers"]
+    assert headers["X-Custom-Auth"] == "Token opaque"
 
 
 class _FakeOmit:
@@ -1862,7 +1790,6 @@ def _patch_resolved_request(
     extra_headers: dict[str, str] | None = None,
     max_tokens: int | None = 1024,
     capabilities: Capabilities | None = None,
-    transport: EndpointTransport | None = None,
     upstream_model_id: str | None = None,
 ) -> None:
     def _resolve(_model, *, context=None, options=None, request=None):
@@ -1871,8 +1798,6 @@ def _patch_resolved_request(
         option_auth = getattr(options, "auth", None) if options is not None else None
         if isinstance(option_auth, ApiKeyAuth):
             headers["Authorization"] = f"Bearer {option_auth.value}"
-        elif isinstance(option_auth, HeadersAuth):
-            headers.update(dict(option_auth.headers))
         if extra_headers:
             headers.update(extra_headers)
         option_max_tokens = (
@@ -1896,7 +1821,6 @@ def _patch_resolved_request(
             base_url=base_url,
             adapter_config=resolved_adapter,
             capabilities=resolved_capabilities,
-            transport=transport,
             upstream_model_id=upstream_model_id,
         )
         return ProviderRequest(
@@ -1918,7 +1842,7 @@ def _patch_resolved_request(
         )
 
     monkeypatch.setattr(
-        "tests.providers._runtime.resolve_request_for_model",
+        "tests.protocols._runtime.resolve_request_for_model",
         _resolve,
     )
 
@@ -1928,12 +1852,8 @@ def _responses_adapter_config_from_compat(
 ) -> OpenAIResponsesConfig:
     return OpenAIResponsesConfig(
         developer_role=bool(compat.get("supportsDeveloperRole", True)),
-        assistant_after_tool_result=bool(
-            compat.get("requiresAssistantAfterToolResult", False)
-        ),
         long_cache_retention=bool(compat.get("supportsLongCacheRetention", True)),
         prompt_cache_key=bool(compat.get("supportsPromptCacheKey", True)),
-        session_id_header=bool(compat.get("sendSessionIdHeader", True)),
     )
 
 

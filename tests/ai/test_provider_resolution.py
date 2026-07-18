@@ -13,8 +13,6 @@ from loushang.ai.model import (
     Capabilities,
     Defaults,
     Endpoint,
-    EndpointRouting,
-    EndpointTransport,
     Model,
     ModelRegistry,
     OpenAICompletionsConfig,
@@ -48,8 +46,6 @@ def _model(
     base_url_env: str | None = None,
     capabilities: Capabilities | None = None,
     defaults: Defaults | None = None,
-    transport: EndpointTransport | None = None,
-    routing: EndpointRouting | None = None,
     upstream_id: str | None = None,
     auth: Auth | None = None,
 ) -> Model:
@@ -65,8 +61,6 @@ def _model(
         capabilities=capabilities or Capabilities(stream=True),
         adapter=adapter,  # type: ignore[arg-type]
         defaults=defaults or Defaults(),
-        transport=transport or EndpointTransport(),
-        routing=routing or EndpointRouting(),
         upstream_id=upstream_id,
     )
 
@@ -215,8 +209,8 @@ def test_resolver_uses_bound_model_without_registry_reselection() -> None:
         auth=Auth(
             header="x-region-key",
             prefix="",
-            extra_headers={"x-selected-region": "us"},
         ),
+        headers={"x-selected-region": "us"},
         adapter=us_adapter,
         defaults=us_defaults,
         models={
@@ -238,8 +232,8 @@ def test_resolver_uses_bound_model_without_registry_reselection() -> None:
         auth=Auth(
             header="x-region-key",
             prefix="",
-            extra_headers={"x-selected-region": "eu"},
         ),
+        headers={"x-selected-region": "eu"},
         adapter=eu_adapter,
         defaults=eu_defaults,
         models={
@@ -308,10 +302,6 @@ def test_bound_model_endpoint_snapshot_preserves_model_facts() -> None:
     model = _model(
         api="openai-completions",
         adapter=OpenAICompletionsConfig(reasoning_format="moonshot"),
-        transport=EndpointTransport(kind="httpx", timeout=10),
-        routing=EndpointRouting.from_raw(
-            {"requestOverrides": {"openrouter": {"order": ["x"]}}}
-        ),
     )
 
     endpoint = resolve_endpoint_for_model(model)
@@ -319,8 +309,6 @@ def test_bound_model_endpoint_snapshot_preserves_model_facts() -> None:
     assert endpoint is not None
     assert endpoint.base_url == model.base_url
     assert endpoint.adapter == model.adapter
-    assert endpoint.transport == model.transport
-    assert endpoint.routing == model.routing
     assert endpoint.get_model(model.id) is model
 
 

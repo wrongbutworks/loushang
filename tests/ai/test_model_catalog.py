@@ -30,7 +30,7 @@ def test_builtin_catalog_excludes_archived_legacy_providers() -> None:
     registry = load_builtin_model_registry()
 
     for provider_id in [
-        "openrouter",
+        "legacy-openai-gateway",
         "cloudflare-ai-gateway",
         "cloudflare-workers-ai",
         "mistral",
@@ -46,9 +46,7 @@ def test_builtin_catalog_includes_verified_curated_routes() -> None:
 
     moonshot = registry.get_model("moonshot", "openai-completions", "kimi-k2.6")
     openai = registry.get_model("openai", "openai-responses", "gpt-5.5")
-    chatgpt = registry.get_model(
-        "openai", "openai-responses-chatgpt", "gpt-5.5-chatgpt"
-    )
+    coding = registry.get_model("openai", "coding-responses", "gpt-5.5")
     anthropic = registry.get_model(
         "anthropic", "anthropic-messages", "claude-sonnet-4-6"
     )
@@ -59,10 +57,10 @@ def test_builtin_catalog_includes_verified_curated_routes() -> None:
     assert moonshot.supports_stream is True
     assert moonshot.supports_tool_use is True
     assert openai.api == "openai-responses"
-    assert chatgpt.api == "openai-responses"
-    assert chatgpt.provider_id == "openai"
-    assert chatgpt.endpoint_id == "openai-responses-chatgpt"
-    assert chatgpt.upstream_id == "gpt-5.5"
+    assert coding.api == "openai-responses"
+    assert coding.provider_id == "openai"
+    assert coding.endpoint_id == "coding-responses"
+    assert coding.upstream_id is None
     assert anthropic.api == "anthropic-messages"
     assert qianfan.auth is not None
     assert "QIANFAN_API_KEY" in qianfan.auth.api_key_envs

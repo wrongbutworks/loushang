@@ -6,34 +6,30 @@ from contextlib import suppress
 from typing import Any, cast
 
 from loushang.ai.context import NormalizedContext
-from loushang.ai.errors import AIProviderProtocolError, UnsupportedCapabilityError
+from loushang.ai.errors import AIProviderProtocolError
 from loushang.ai.event_stream.raw_parts import RawPart, UsageDeltaPart
 from loushang.ai.model.domain import OpenAICompletionsConfig
 from loushang.ai.output_budget import resolve_output_token_budget
+from loushang.ai.protocols._helpers import (
+    canonicalize_sdk_headers,
+    close_provider_stream,
+)
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.errors import (
     provider_error_part,
     provider_error_part_from_raw,
 )
-from loushang.ai.providers.openai_responses_shared import build_copilot_dynamic_headers
-from loushang.ai.providers.provider_helpers import (
-    apply_cache_key_headers,
-    canonicalize_sdk_headers,
-    close_provider_stream,
-    merge_headers_case_insensitive,
-)
 from loushang.ai.structured import openai_chat_response_format
 from loushang.ai.tool.providers import sanitize_tool_parameters
 from loushang.ai.tool.transform import (
     MISSING_TOOL_RESULT_TEXT,
-    TOOL_RESULTS_PROCESSED_ASSISTANT_TEXT,
 )
 from loushang.ai.trace import emit_trace as _emit_trace
 from loushang.ai.types import AssistantMessage, TextPart, Tool, ToolResultMessage
 from loushang.ai.utils import sanitize_surrogates
 
 
-class OpenAICompletionsProvider:
+class OpenAIChatCompletionsAdapter:
     api = "openai-completions"
     supports_structured_output = True
 
@@ -67,40 +63,21 @@ class OpenAICompletionsProvider:
 
         headers = resolved.headers or {}
         default_headers = canonicalize_sdk_headers(headers)
-        if _uses_copilot_dynamic_headers(resolved):
-            copilot_headers = build_copilot_dynamic_headers(list(normalized.messages))
-            default_headers = merge_headers_case_insensitive(
-                default_headers,
-                copilot_headers,
-            )
-        cache_retention = (
-            getattr(options, "cache_retention", None) if options is not None else None
-        ) or "short"
-        cache_key = getattr(options, "cache_key", None) if options is not None else None
-        _validate_cache_options(
-            model,
-            resolved,
-            adapter_config=adapter_config,
-            cache_retention=cache_retention,
-        )
-        if (
-            cache_retention != "none"
-            and isinstance(cache_key, str)
-            and cache_key
-            and adapter_config.session_affinity_headers
-        ):
-            apply_cache_key_headers(
-                default_headers,
-                cache_key,
-                include_affinity=True,
-            )
 
         client_kwargs: dict[str, Any] = {
             "api_key": "",
             "base_url": resolved.base_url,
         }
         client = self._client or AsyncOpenAI(**client_kwargs)  # type: ignore[call-arg]
-        _debug("client", {"base_url": resolved.base_url, "headers": default_headers})
+        _debug(
+            "client",
+            {
+                "api": model.api,
+                "provider": model.provider_id,
+                "endpoint": model.endpoint_id,
+                "model": model.id,
+            },
+        )
 
         capabilities = model.capabilities
         messages_param = _build_messages(
@@ -112,10 +89,6 @@ class OpenAICompletionsProvider:
         tools_param = _build_tools(normalized.tools, adapter_config)
         if tools_param is None and _has_tool_history(list(normalized.messages)):
             tools_param = []
-        cache_control = _get_cache_control(adapter_config, cache_retention)
-        if cache_control is not None:
-            _apply_anthropic_cache_control(messages_param, tools_param, cache_control)
-
         max_tokens = resolve_output_token_budget(model, resolved).value
         upstream_model_id = model.upstream_id or model.id
         is_stream_request = getattr(resolved, "mode", "stream") == "stream"
@@ -125,12 +98,6 @@ class OpenAICompletionsProvider:
         }
         if is_stream_request:
             params["stream"] = True
-        _apply_prompt_cache_params(
-            params,
-            adapter_config=adapter_config,
-            cache_retention=cache_retention,
-            cache_key=cache_key,
-        )
         extra_body: dict[str, Any] = {}
         if is_stream_request and supports_usage_in_streaming:
             params["stream_options"] = {"include_usage": True}
@@ -144,8 +111,6 @@ class OpenAICompletionsProvider:
             params["temperature"] = resolved.temperature
         if tools_param is not None:
             params["tools"] = tools_param
-            if is_stream_request and adapter_config.tool_stream:
-                params["tool_stream"] = True
         tool_choice = getattr(options, "tool_choice", None)
         if tool_choice is not None:
             params["tool_choice"] = tool_choice
@@ -164,18 +129,19 @@ class OpenAICompletionsProvider:
             supports_reasoning_effort=supports_reasoning_effort,
             capabilities=capabilities,
         )
-        _apply_provider_routing(
-            params,
-            request_overrides=getattr(
-                model.routing,
-                "request_overrides",
-                {},
-            ),
-        )
         if extra_body:
             params["extra_body"] = extra_body
         _debug(
-            "payload", {"params": {k: v for k, v in params.items() if k != "messages"}}
+            "payload",
+            {
+                "api": model.api,
+                "provider": model.provider_id,
+                "endpoint": model.endpoint_id,
+                "model": model.id,
+                "parameter_keys": sorted(params),
+                "message_count": len(messages_param),
+                "tool_count": len(tools_param or []),
+            },
         )
         params["extra_headers"] = {
             "Authorization": Omit(),
@@ -619,40 +585,6 @@ def _map_stop_reason(reason: str) -> str:
     return "error"
 
 
-def _apply_prompt_cache_params(
-    params: dict[str, Any],
-    *,
-    adapter_config: OpenAICompletionsConfig,
-    cache_retention: str | None,
-    cache_key: str | None,
-) -> None:
-    if cache_retention == "none" or not isinstance(cache_key, str) or not cache_key:
-        return
-    if not adapter_config.prompt_cache_key:
-        return
-    params["prompt_cache_key"] = cache_key
-    if cache_retention == "long" and adapter_config.long_cache_retention:
-        params["prompt_cache_retention"] = "24h"
-
-
-def _validate_cache_options(
-    model: object,
-    resolved: object,
-    *,
-    adapter_config: OpenAICompletionsConfig,
-    cache_retention: str | None,
-) -> None:
-    if cache_retention == "long" and not adapter_config.long_cache_retention:
-        raise UnsupportedCapabilityError(
-            f"Model {getattr(model, 'id', '<unknown>')!r} does not support long cache retention",
-            source=getattr(model, "api", None),
-            provider=getattr(model, "provider_id", None),
-            endpoint=getattr(model, "endpoint_id", None),
-            model=getattr(model, "id", None),
-            details={"capability": "cache_long_retention"},
-        )
-
-
 def _apply_reasoning_params(
     params: dict[str, Any],
     extra_body: dict[str, Any],
@@ -669,18 +601,9 @@ def _apply_reasoning_params(
         return
     if reasoning_enabled is None:
         return
-    if thinking_format in {"zai", "qwen"}:
-        params["enable_thinking"] = reasoning_enabled
-        return
     if thinking_format == "moonshot":
         extra_body["thinking"] = {
             "type": "enabled" if reasoning_enabled else "disabled"
-        }
-        return
-    if thinking_format == "qwen-chat-template":
-        params["chat_template_kwargs"] = {
-            "enable_thinking": reasoning_enabled,
-            "preserve_thinking": True,
         }
         return
     if thinking_format == "deepseek":
@@ -696,22 +619,6 @@ def _apply_reasoning_params(
         return
     if thinking_format == "zai-thinking":
         params["thinking"] = {"type": "enabled" if reasoning_enabled else "disabled"}
-        _apply_reasoning_effort_if_supported(
-            params,
-            reasoning_effort,
-            reasoning_effort_map,
-            supports_reasoning_effort,
-        )
-        return
-    if thinking_format == "openrouter":
-        params["reasoning"] = {
-            "effort": _map_reasoning_effort(reasoning_effort, reasoning_effort_map)
-            if reasoning_enabled and isinstance(reasoning_effort, str)
-            else "none"
-        }
-        return
-    if thinking_format == "together":
-        params["reasoning"] = {"enabled": reasoning_enabled}
         _apply_reasoning_effort_if_supported(
             params,
             reasoning_effort,
@@ -740,146 +647,6 @@ def _apply_reasoning_effort_if_supported(
         params["reasoning_effort"] = _map_reasoning_effort(
             reasoning_effort, reasoning_effort_map
         )
-
-
-def _apply_provider_routing(
-    params: dict[str, Any],
-    *,
-    request_overrides: Mapping[str, Mapping[str, object]] | None,
-) -> None:
-    overrides = request_overrides or {}
-    namespace = _active_routing_namespace(overrides)
-    if namespace is None:
-        return
-    openrouter_routing = overrides.get("openrouter")
-    if namespace == "openrouter" and openrouter_routing:
-        params["provider"] = _mutable_json_mapping(openrouter_routing)
-        return
-    vercel_gateway_routing = overrides.get("vercelGateway")
-    if namespace != "vercelGateway" or not vercel_gateway_routing:
-        return
-    gateway: dict[str, Any] = {}
-    if vercel_gateway_routing.get("only"):
-        gateway["only"] = _mutable_json_value(vercel_gateway_routing["only"])
-    if vercel_gateway_routing.get("order"):
-        gateway["order"] = _mutable_json_value(vercel_gateway_routing["order"])
-    if gateway:
-        params["providerOptions"] = {"gateway": gateway}
-
-
-def _mutable_json_mapping(value: Mapping[str, object]) -> dict[str, object]:
-    return {key: _mutable_json_value(entry) for key, entry in value.items()}
-
-
-def _mutable_json_value(value: object) -> object:
-    if isinstance(value, Mapping):
-        return _mutable_json_mapping(value)
-    if isinstance(value, (list, tuple)):
-        return [_mutable_json_value(entry) for entry in value]
-    return value
-
-
-def _active_routing_namespace(
-    request_overrides: Mapping[str, Mapping[str, object]],
-) -> str | None:
-    present = [
-        namespace
-        for namespace in ("openrouter", "vercelGateway")
-        if request_overrides.get(namespace)
-    ]
-    if len(present) == 1:
-        return present[0]
-    if len(present) > 1:
-        raise ValueError(
-            "Ambiguous provider routing requestOverrides: choose one namespace"
-        )
-    return None
-
-
-def _uses_copilot_dynamic_headers(resolved: object) -> bool:
-    transport = getattr(getattr(resolved, "model", None), "transport", None)
-    return getattr(transport, "kind", None) == "github-copilot"
-
-
-def _get_cache_control(
-    adapter_config: OpenAICompletionsConfig,
-    cache_retention: str | None,
-) -> dict[str, str] | None:
-    if adapter_config.cache_control_format != "anthropic":
-        return None
-    if cache_retention == "none":
-        return None
-    ttl = (
-        "1h"
-        if cache_retention == "long" and adapter_config.long_cache_retention
-        else None
-    )
-    return {"type": "ephemeral", **({"ttl": ttl} if ttl else {})}
-
-
-def _apply_anthropic_cache_control(
-    messages: list[dict[str, Any]],
-    tools: list[dict[str, Any]] | None,
-    cache_control: dict[str, str],
-) -> None:
-    _add_cache_control_to_system_prompt(messages, cache_control)
-    _add_cache_control_to_last_tool(tools, cache_control)
-    _add_cache_control_to_last_conversation_message(messages, cache_control)
-
-
-def _add_cache_control_to_system_prompt(
-    messages: list[dict[str, Any]],
-    cache_control: dict[str, str],
-) -> None:
-    for message in messages:
-        if message.get("role") in {"system", "developer"}:
-            _add_cache_control_to_message(message, cache_control)
-            return
-
-
-def _add_cache_control_to_last_conversation_message(
-    messages: list[dict[str, Any]],
-    cache_control: dict[str, str],
-) -> None:
-    for message in reversed(messages):
-        if message.get("role") in {
-            "user",
-            "assistant",
-        } and _add_cache_control_to_message(message, cache_control):
-            return
-
-
-def _add_cache_control_to_last_tool(
-    tools: list[dict[str, Any]] | None,
-    cache_control: dict[str, str],
-) -> None:
-    if tools:
-        tools[-1]["cache_control"] = cache_control
-
-
-def _add_cache_control_to_message(
-    message: dict[str, Any],
-    cache_control: dict[str, str],
-) -> bool:
-    content = message.get("content")
-    if isinstance(content, str):
-        if not content:
-            return False
-        message["content"] = [
-            {
-                "type": "text",
-                "text": content,
-                "cache_control": cache_control,
-            }
-        ]
-        return True
-    if not isinstance(content, list):
-        return False
-    for part in reversed(content):
-        if isinstance(part, dict) and part.get("type") == "text":
-            part["cache_control"] = cache_control
-            return True
-    return False
 
 
 def _map_reasoning_effort(
@@ -921,7 +688,6 @@ def _build_messages(
     messages_param: list[dict[str, Any]] = []
     system_prompt = normalized.system_prompt
     supports_developer_role = adapter_config.developer_role
-    requires_assistant_after_tool_result = adapter_config.assistant_after_tool_result
     if isinstance(system_prompt, str) and system_prompt.strip():
         role = (
             "developer"
@@ -933,28 +699,14 @@ def _build_messages(
         )
 
     messages = normalized.messages
-    last_role: str | None = None
     index = 0
     while index < len(messages):
         msg = messages[index]
         message_role = _message_role(msg)
-        if (
-            requires_assistant_after_tool_result
-            and last_role == "toolResult"
-            and message_role == "user"
-        ):
-            messages_param.append(
-                {
-                    "role": "assistant",
-                    "content": TOOL_RESULTS_PROCESSED_ASSISTANT_TEXT,
-                }
-            )
-            last_role = "assistant"
         if message_role == "user":
             payload = _user_message_payload(msg, model, capabilities)
             if payload is not None:
                 messages_param.append(payload)
-                last_role = "user"
             index += 1
             continue
         if message_role == "assistant":
@@ -963,7 +715,6 @@ def _build_messages(
             )
             if payload is not None:
                 messages_param.append(payload)
-                last_role = "assistant"
             index += 1
             continue
         if message_role == "toolResult":
@@ -973,7 +724,6 @@ def _build_messages(
             ):
                 tool_payload, tool_images = _tool_result_payload(
                     messages[index],
-                    adapter_config,
                     model,
                     capabilities,
                 )
@@ -981,13 +731,6 @@ def _build_messages(
                 image_blocks.extend(tool_images)
                 index += 1
             if image_blocks:
-                if requires_assistant_after_tool_result:
-                    messages_param.append(
-                        {
-                            "role": "assistant",
-                            "content": TOOL_RESULTS_PROCESSED_ASSISTANT_TEXT,
-                        }
-                    )
                 messages_param.append(
                     {
                         "role": "user",
@@ -1000,9 +743,6 @@ def _build_messages(
                         ],
                     }
                 )
-                last_role = "user"
-            else:
-                last_role = "toolResult"
             continue
         index += 1
     return messages_param
@@ -1090,8 +830,6 @@ def _assistant_message_payload(
     model,
     capabilities: object | None = None,
 ) -> dict[str, Any] | None:
-    requires_assistant_after_tool_result = adapter_config.assistant_after_tool_result
-    requires_thinking_as_text = adapter_config.thinking_as_text
     content = getattr(message, "content", None)
     if not isinstance(content, list):
         return None
@@ -1134,21 +872,14 @@ def _assistant_message_payload(
                 if isinstance(thought_signature, str) and thought_signature:
                     with suppress(Exception):
                         reasoning_details.append(json.loads(thought_signature))
-    assistant_content = (
-        "".join(text_blocks)
-        if text_blocks
-        else ("" if requires_assistant_after_tool_result else None)
-    )
+    assistant_content = "".join(text_blocks) if text_blocks else None
     payload: dict[str, Any] = {"role": "assistant", "content": assistant_content}
     if thinking_blocks:
         thinking_text = "\n\n".join(block for block, _ in thinking_blocks)
-        if requires_thinking_as_text:
-            payload["content"] = f"{thinking_text}{assistant_content or ''}"
-        else:
-            for _, signature in thinking_blocks:
-                if isinstance(signature, str) and signature:
-                    payload[signature] = thinking_text
-                    break
+        for _, signature in thinking_blocks:
+            if isinstance(signature, str) and signature:
+                payload[signature] = thinking_text
+                break
     if tool_calls:
         payload["tool_calls"] = tool_calls
     if reasoning_details:
@@ -1165,16 +896,11 @@ def _assistant_message_payload(
     )
     if not has_content and not tool_calls and not payload.keys() - {"role", "content"}:
         return None
-    if payload.get("content") == "" and not requires_assistant_after_tool_result:
-        payload["content"] = None
-    if payload.get("content") == "" and not tool_calls:
-        return None
     return payload
 
 
 def _tool_result_payload(
     message: object,
-    adapter_config: OpenAICompletionsConfig,
     model,
     capabilities: object | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -1211,8 +937,6 @@ def _tool_result_payload(
         "content": text_result
         or ("(see attached image)" if has_images else MISSING_TOOL_RESULT_TEXT),
     }
-    if adapter_config.tool_result_name and message.tool_name:
-        tool_payload["name"] = message.tool_name
     return tool_payload, image_blocks
 
 

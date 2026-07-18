@@ -43,35 +43,6 @@ def set_header_case_insensitive(
     headers[name] = value
 
 
-def merge_headers_case_insensitive(
-    *sources: Mapping[str, str],
-) -> dict[str, str]:
-    merged: dict[str, str] = {}
-    for source in sources:
-        for key, value in source.items():
-            set_header_case_insensitive(merged, key, value)
-    return merged
-
-
-def apply_cache_key_headers(
-    headers: MutableMapping[str, str],
-    cache_key: str | None,
-    *,
-    include_session_id: bool = True,
-    include_client_request_id: bool = True,
-    include_affinity: bool = False,
-) -> bool:
-    if not isinstance(cache_key, str) or not cache_key:
-        return False
-    if include_session_id:
-        set_header_case_insensitive(headers, "session_id", cache_key)
-    if include_client_request_id:
-        set_header_case_insensitive(headers, "x-client-request-id", cache_key)
-    if include_affinity:
-        set_header_case_insensitive(headers, "x-session-affinity", cache_key)
-    return True
-
-
 async def close_provider_stream(stream: object) -> None:
     for name in ("aclose", "close"):
         close = getattr(stream, name, None)

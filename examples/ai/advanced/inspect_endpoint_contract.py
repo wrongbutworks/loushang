@@ -1,9 +1,4 @@
-"""Inspect typed provider request facts from the built-in catalog.
-
-This advanced example is offline. It reads the model catalog and prints the
-endpoint-default adapter, transport, and routing contracts, then shows the
-model-effective request facts produced by provider resolution.
-"""
+"""Inspect typed adapter and request facts from the built-in catalog."""
 
 from __future__ import annotations
 
@@ -36,10 +31,6 @@ def inspect_endpoint_contract(
         "api": endpoint.api,
         "adapterScope": "endpoint-default",
         "adapter": endpoint.adapter.to_raw() if endpoint.adapter is not None else None,
-        "transportScope": "endpoint-default",
-        "transport": endpoint.transport.to_raw(),
-        "routingScope": "endpoint-default",
-        "routing": endpoint.routing.to_raw(),
     }
     if model_id is not None:
         model = registry.find_model(provider_id, endpoint_id, model_id)
@@ -52,14 +43,12 @@ def inspect_endpoint_contract(
         )
         contract["model"] = model_id
         contract["requestAdapterScope"] = "model-effective"
-        adapter_config = resolved.adapter_config
+        adapter_config = resolved.model.adapter
         contract["requestAdapter"] = (
             adapter_config.to_raw() if hasattr(adapter_config, "to_raw") else None
         )
-        contract["requestTransportScope"] = "model-effective"
-        contract["requestTransport"] = resolved.transport.to_raw()
-        contract["requestRoutingScope"] = "model-effective"
-        contract["requestRouting"] = resolved.routing.to_raw()
+        contract["requestBaseUrl"] = resolved.base_url
+        contract["requestHeaderNames"] = sorted(resolved.headers)
     return contract
 
 

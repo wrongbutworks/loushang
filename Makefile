@@ -28,7 +28,7 @@ test:
 	. .venv/bin/activate && uv run pytest tests -q
 
 test-ai:
-	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run pytest tests/ai tests/providers -m "not live" -q
+	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run pytest tests/ai tests/protocols tests/examples/test_ai_examples.py -m "not live" -q
 
 check-ai: lint-ai typecheck-ai check-ai-catalog check-ai-imports check-ai-examples check-ai-coverage
 
@@ -43,23 +43,23 @@ check-ai-examples:
 
 check-ai-coverage:
 	mkdir -p .artifacts/ai
-	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run pytest tests/ai tests/providers -m "not live" --cov=src/loushang/ai --cov-report=term-missing:skip-covered --cov-report=xml:.artifacts/ai/coverage.xml --cov-fail-under=80 -q
+	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run pytest tests/ai tests/protocols tests/examples/test_ai_examples.py -m "not live" --cov=src/loushang/ai --cov-report=term-missing:skip-covered --cov-report=xml:.artifacts/ai/coverage.xml --cov-fail-under=90 -q
 	uv run python scripts/ai/check_coverage_targets.py .artifacts/ai/coverage.xml
 
 test-tui:
 	. .venv/bin/activate && python -m pytest tests/tui -q
 
 lint-ai:
-	. .venv/bin/activate && uv run ruff check src/loushang/ai tests/ai tests/providers
+	. .venv/bin/activate && uv run ruff check src/loushang/ai examples/ai tests/ai tests/protocols scripts/ai
 
 fmt-ai:
-	. .venv/bin/activate && uv run ruff format src/loushang/ai tests/ai tests/providers
+	. .venv/bin/activate && uv run ruff format src/loushang/ai examples/ai tests/ai tests/protocols scripts/ai
 
 typecheck-ai:
-	. .venv/bin/activate && uv run mypy
+	. .venv/bin/activate && uv run mypy src/loushang/ai
 
 vendor-ai-moonshot-anthropic-stream:
-	uv run pytest tests/ai/vendors/moonshot/test_kimi_anthropic_stream_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_anthropic_stream_live.py -q -s
 
 typecheck-tui:
 	. .venv/bin/activate && mypy src/loushang/tui
@@ -68,28 +68,28 @@ example-ai-kimi-anthropic-stream:
 	uv run python examples/ai/kimi_anthropic_stream.py
 
 vendor-ai-moonshot-anthropic-complete:
-	uv run pytest tests/ai/vendors/moonshot/test_kimi_anthropic_complete_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_anthropic_complete_live.py -q -s
 
 vendor-ai-moonshot-anthropic-tools:
-	uv run pytest tests/ai/vendors/moonshot/test_kimi_anthropic_tools_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_anthropic_tools_live.py -q -s
 
 vendor-ai-moonshot-openai-complete:
-	uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_complete_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_complete_live.py -q -s
 
 vendor-ai-moonshot-openai-stream:
-	uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_stream_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_stream_live.py -q -s
 
 vendor-ai-moonshot-openai-tools:
-	uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_tools_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_tools_live.py -q -s
 
 vendor-ai-dashscope-openai-responses-stream:
-	uv run pytest tests/ai/vendors/dashscope/test_openai_responses_stream_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/dashscope/test_openai_responses_stream_live.py -q -s
 
 vendor-ai-dashscope-openai-responses-tools:
-	uv run pytest tests/ai/vendors/dashscope/test_openai_responses_tools_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/dashscope/test_openai_responses_tools_live.py -q -s
 
 vendor-ai-moonshot-custom-base-url-openai:
-	uv run pytest tests/ai/vendors/moonshot/test_custom_base_url_openai_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_custom_base_url_openai_live.py -q -s
 
 .PHONY: example-ai-offline example-ai-provider-matrix example-ai-provider-smoke
 

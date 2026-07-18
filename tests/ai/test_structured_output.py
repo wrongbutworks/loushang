@@ -11,7 +11,7 @@ from loushang.ai import (
     StructuredOutputOptions,
     complete_structured,
 )
-from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.api_registry import get_default_api_provider_registry
 from loushang.ai.context import NormalizedContext
 from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import Capabilities, Endpoint, Model, ModelRegistry, Provider
@@ -131,7 +131,8 @@ def test_complete_structured_returns_raw_and_parsed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = _StructuredProvider()
-    registry = ApiProviderRegistry()
+    registry = get_default_api_provider_registry()
+    registry.clear_api_providers()
     registry.register_api_provider(provider)
     _patch_resolved_request(monkeypatch, api="openai-responses")
 
@@ -141,7 +142,6 @@ def test_complete_structured_returns_raw_and_parsed(
             {"messages": []},
             StructuredOutputOptions(mode="json_object"),
             options=CallOptions(),
-            provider_registry=registry,
         )
     )
 
@@ -154,7 +154,8 @@ def test_complete_structured_uses_provider_declared_mapping_support(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = _StructuredProvider(api="custom-structured")
-    registry = ApiProviderRegistry()
+    registry = get_default_api_provider_registry()
+    registry.clear_api_providers()
     registry.register_api_provider(provider)
     _patch_resolved_request(monkeypatch, api="custom-structured")
 
@@ -164,7 +165,6 @@ def test_complete_structured_uses_provider_declared_mapping_support(
             {"messages": []},
             StructuredOutputOptions(mode="json_object"),
             options=CallOptions(),
-            provider_registry=registry,
         )
     )
 
@@ -176,7 +176,8 @@ def test_complete_structured_rejects_provider_without_mapping_support(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = _StructuredProvider(api="openai-responses", supports_mapping=False)
-    registry = ApiProviderRegistry()
+    registry = get_default_api_provider_registry()
+    registry.clear_api_providers()
     registry.register_api_provider(provider)
     _patch_resolved_request(monkeypatch, api="openai-responses")
 
@@ -190,7 +191,6 @@ def test_complete_structured_rejects_provider_without_mapping_support(
                 {"messages": []},
                 StructuredOutputOptions(mode="json_object"),
                 options=CallOptions(),
-                provider_registry=registry,
             )
         )
 

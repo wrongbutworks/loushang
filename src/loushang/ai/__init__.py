@@ -3,8 +3,14 @@ from loushang.ai.api import (
     complete_structured,
     stream,
 )
-from loushang.ai.auth import ApiKeyAuth, HeadersAuth, NoAuth, OAuthBearerAuth
-from loushang.ai.errors import AIError, AIErrorCode, AIErrorInfo
+from loushang.ai.auth import ApiKeyAuth, OAuthBearerAuth
+from loushang.ai.errors import (
+    AIError,
+    AIErrorCode,
+    AIErrorInfo,
+    AmbiguousModelError,
+    ModelNotFoundError,
+)
 from loushang.ai.event_stream import AssistantMessageEventStream
 from loushang.ai.model import Model
 from loushang.ai.model.registry import (
@@ -51,7 +57,23 @@ def _model_registry() -> _ModelRegistry:
 
 
 def get_model(provider: str, endpoint: str, model_id: str) -> Model:
-    return _model_registry().get_model(provider, endpoint, model_id)
+    try:
+        return _model_registry().get_model(provider, endpoint, model_id)
+    except KeyError as error:
+        ref = f"{provider}:{endpoint}:{model_id}"
+        raise ModelNotFoundError(
+            f"Model not found: {ref}",
+            provider=provider,
+            endpoint=endpoint,
+            model=model_id,
+        ) from error
+    except ValueError as error:
+        raise AmbiguousModelError(
+            f"Ambiguous model: {model_id}",
+            provider=provider,
+            endpoint=endpoint,
+            model=model_id,
+        ) from error
 
 
 def list_models(
@@ -71,17 +93,17 @@ __all__ = [
     "AssistantMessage",
     "AssistantMessageEvent",
     "AssistantMessageEventStream",
+    "AmbiguousModelError",
     "Context",
     "Message",
     "Model",
+    "ModelNotFoundError",
     "StopReason",
     "AIError",
     "AIErrorCode",
     "AIErrorInfo",
     "ApiKeyAuth",
     "CallOptions",
-    "HeadersAuth",
-    "NoAuth",
     "OAuthBearerAuth",
     "ReasoningOptions",
     "RetryOptions",

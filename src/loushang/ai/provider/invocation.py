@@ -26,8 +26,6 @@ def validate_provider_invoke_raw_contract(provider: Any) -> None:
         inspect.Parameter.POSITIONAL_OR_KEYWORD,
     ):
         raise TypeError("Provider invoke_raw request must be a positional parameter")
-    if parameter.name not in {"request", "provider_request"}:
-        raise TypeError("Provider invoke_raw parameter must be named request")
 
 
 def validate_provider_request_validator_contract(provider: Any) -> None:
@@ -54,12 +52,9 @@ def validate_provider_request_validator_contract(provider: Any) -> None:
         inspect.Parameter.POSITIONAL_OR_KEYWORD,
     ):
         raise TypeError("Provider validate_request request must be positional")
-    if parameter.name not in {"request", "provider_request"}:
-        raise TypeError("Provider validate_request parameter must be named request")
 
 
 def validate_provider_request(provider: Any, request: ProviderRequest) -> None:
-    validate_provider_request_validator_contract(provider)
     if isinstance(provider, ProviderRequestValidator):
         provider.validate_request(request)
 
@@ -85,7 +80,6 @@ async def call_api_provider_stream(
         )
     if not callable(invoke_raw_method):
         raise TypeError("Provider missing required invoke_raw method")
-    validate_provider_invoke_raw_contract(provider)
     if not isinstance(request.context, NormalizedContext):
         raise TypeError("ProviderRequest.context must be NormalizedContext")
     return start_provider_runtime(

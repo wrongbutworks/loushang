@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import os
 from collections.abc import AsyncIterator
-from contextlib import suppress
 from typing import Any
 
 from loushang.ai.errors import UnsupportedCapabilityError
@@ -10,21 +8,18 @@ from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model.domain import OpenAIResponsesConfig
 from loushang.ai.options import get_reasoning_summary
 from loushang.ai.output_budget import resolve_output_token_budget
-from loushang.ai.provider import ProviderRequest
-from loushang.ai.provider.errors import provider_error_part
-from loushang.ai.providers.openai_responses_shared import (
-    build_copilot_dynamic_headers,
+from loushang.ai.protocols._helpers import (
+    canonicalize_sdk_headers,
+    close_provider_stream,
+)
+from loushang.ai.protocols._openai_responses import (
     convert_responses_messages,
     convert_responses_tools,
     process_responses_response,
     process_responses_stream,
 )
-from loushang.ai.providers.provider_helpers import (
-    apply_cache_key_headers,
-    canonicalize_sdk_headers,
-    close_provider_stream,
-    merge_headers_case_insensitive,
-)
+from loushang.ai.provider import ProviderRequest
+from loushang.ai.provider.errors import provider_error_part
 from loushang.ai.structured import openai_responses_text_format
 from loushang.ai.trace import emit_trace as _emit_trace
 
@@ -35,8 +30,6 @@ def _resolve_cache_retention(options: object | None) -> str | None:
     )
     if isinstance(cache_retention, str):
         return cache_retention
-    if (os.getenv("PI_CACHE_RETENTION") or "").lower() == "long":
-        return "long"
     return None
 
 
@@ -94,7 +87,7 @@ def _validate_max_output_tokens_option(
     )
 
 
-class OpenAIResponsesProvider:
+class OpenAIResponsesAdapter:
     api = "openai-responses"
     supports_structured_output = True
 
@@ -107,14 +100,6 @@ class OpenAIResponsesProvider:
         resolved = request
 
         def _debug(event: str, data: dict | None = None) -> None:
-            # Allow callers to suppress provider SDK trace events explicitly.
-            if options is not None:
-                with suppress(Exception):
-                    if (
-                        getattr(options, "debug", None) is False
-                        or getattr(options, "quiet_debug", None) is True
-                    ):
-                        return
             _emit_trace(options, {"type": f"sdk:{event}", **(data or {})})
 
         normalized = request.context
@@ -136,11 +121,6 @@ class OpenAIResponsesProvider:
 
         headers = resolved.headers or {}
         default_headers = canonicalize_sdk_headers(headers)
-        if _uses_copilot_dynamic_headers(resolved):
-            default_headers = merge_headers_case_insensitive(
-                default_headers,
-                build_copilot_dynamic_headers(list(normalized.messages)),
-            )
 
         # 构造 Responses API 输入。下一步会继续向 pi-ai 的 shared conversion 收敛。
         capabilities = model.capabilities
@@ -159,32 +139,19 @@ class OpenAIResponsesProvider:
             adapter_config=adapter_config,
             cache_retention=cache_retention,
         )
-        should_apply_cache_headers = (
-            (cache_retention or "short") != "none"
-            and isinstance(cache_key, str)
-            and cache_key
-            and (
-                adapter_config.session_id_header
-                or adapter_config.session_affinity_headers
-            )
-        )
-        if should_apply_cache_headers:
-            apply_cache_key_headers(
-                default_headers,
-                cache_key,
-                include_session_id=adapter_config.session_id_header,
-                include_client_request_id=(
-                    adapter_config.session_id_header
-                    or adapter_config.session_affinity_headers
-                ),
-                include_affinity=adapter_config.session_affinity_headers,
-            )
-
         client = self._client or AsyncOpenAI(  # type: ignore[call-arg]
             api_key="",
             base_url=resolved.base_url,
         )
-        _debug("client", {"base_url": resolved.base_url, "headers": default_headers})
+        _debug(
+            "client",
+            {
+                "api": model.api,
+                "provider": model.provider_id,
+                "endpoint": model.endpoint_id,
+                "model": model.id,
+            },
+        )
 
         upstream_model_id = model.upstream_id or model.id
         is_stream_request = getattr(resolved, "mode", "stream") == "stream"
@@ -237,7 +204,18 @@ class OpenAIResponsesProvider:
         if text_format is not None:
             params["text"] = text_format
 
-        _debug("payload", {"params": {k: v for k, v in params.items() if k != "input"}})
+        _debug(
+            "payload",
+            {
+                "api": model.api,
+                "provider": model.provider_id,
+                "endpoint": model.endpoint_id,
+                "model": model.id,
+                "parameter_keys": sorted(params),
+                "input_count": len(input_items),
+                "tool_count": len(mapped_tools or []),
+            },
+        )
         params["extra_headers"] = {
             "Authorization": Omit(),
             "X-Api-Key": Omit(),
@@ -288,8 +266,3 @@ def _request_adapter_config(request: ProviderRequest) -> OpenAIResponsesConfig:
     if isinstance(adapter_config, OpenAIResponsesConfig):
         return adapter_config
     return OpenAIResponsesConfig()
-
-
-def _uses_copilot_dynamic_headers(resolved: object) -> bool:
-    transport = getattr(getattr(resolved, "model", None), "transport", None)
-    return getattr(transport, "kind", None) == "github-copilot"

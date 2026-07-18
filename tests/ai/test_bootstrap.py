@@ -133,9 +133,9 @@ def test_register_builtin_ai_providers_registers_only_core_protocol_adapters() -
 
 def test_azure_openai_provider_module_is_not_in_core() -> None:
     assert (
-        importlib.util.find_spec("loushang.ai.providers.azure_openai_responses") is None
+        importlib.util.find_spec("loushang.ai.protocols.azure_openai_responses") is None
     )
 
 
 def test_bedrock_provider_module_is_not_in_core() -> None:
-    assert importlib.util.find_spec("loushang.ai.providers.bedrock_converse") is None
+    assert importlib.util.find_spec("loushang.ai.protocols.bedrock_converse") is None

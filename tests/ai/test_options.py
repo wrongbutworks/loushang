@@ -8,7 +8,7 @@ import pytest
 
 import loushang.ai as ai
 import loushang.ai.options as options_module
-from loushang.ai import ApiKeyAuth, HeadersAuth, OAuthBearerAuth
+from loushang.ai import ApiKeyAuth, OAuthBearerAuth
 from loushang.ai import CallOptions as PublicCallOptions
 from loushang.ai.advanced.registry import ApiProviderRegistry
 from loushang.ai.options import (
@@ -33,7 +33,7 @@ REMOVED_OPTION_NAMES = {
     "SimpleStreamOptions",
     "StreamOptions",
     "ThinkingBudgets",
-    "TimeoutOptions",
+    "Timeout" + "Options",
     "Transport",
     "simple_options_to_call_options",
 }
@@ -67,6 +67,7 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
     assert field_names == {
         "cancellation",
         "auth",
+        "headers",
         "cache_retention",
         "cache_key",
         "max_output_tokens",
@@ -98,7 +99,6 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
 
     assert options.auth == OAuthBearerAuth("oauth-token")
     assert "api_key" not in field_names
-    assert "headers" not in field_names
     assert "oauth_credentials" not in field_names
 
 
@@ -192,15 +192,28 @@ def test_call_options_retains_typed_auth() -> None:
 
 def test_call_options_repr_does_not_expose_secrets_or_headers() -> None:
     options = CallOptions(
-        auth=HeadersAuth(
-            {"Authorization": "Bearer api-secret", "x-provider-token": "header-secret"}
-        )
+        auth=ApiKeyAuth("api-secret"),
+        headers={"x-provider-token": "header-secret"},
     )
 
     rendered = repr(options)
 
     assert "api-secret" not in rendered
     assert "header-secret" not in rendered
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"": "value"},
+        {"x-header": ""},
+        {"x-header": "line\nfeed"},
+        {"x-header": "one", "X-Header": "two"},
+    ],
+)
+def test_call_options_rejects_invalid_headers(headers: dict[str, str]) -> None:
+    with pytest.raises(ValueError, match="headers"):
+        CallOptions(headers=headers)
 
 
 def test_call_options_preserves_opaque_cache_key() -> None:

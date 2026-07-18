@@ -36,7 +36,7 @@ def test_error_info_serializes_stable_shape_and_redacts_secrets() -> None:
             "session_cookie": "cookie-secret",
             "total_tokens": 42,
             "x-amz-security-token": "aws-secret",
-            "oauth": [{"refresh_token": "refresh-secret"}],
+            "oauth": [{"private_value": "secret-value"}],
         },
     )
 
@@ -97,7 +97,7 @@ def test_root_error_exports_are_stable_base_entries() -> None:
     assert AIError is errors.AIError
     error = AIError(
         AIErrorInfo(
-            code="provider",
+            code=AIErrorCode.PROVIDER,
             message="Provider failed.",
             source="provider",
             retryable=True,

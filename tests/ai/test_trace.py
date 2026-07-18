@@ -38,7 +38,7 @@ def test_emit_trace_emits_versioned_options_callback_event() -> None:
     ]
 
 
-def test_emit_trace_redacts_sensitive_options_callback_fields() -> None:
+def test_emit_trace_drops_sensitive_options_callback_fields() -> None:
     events: list[dict[str, object]] = []
 
     emit_trace(
@@ -66,6 +66,8 @@ def test_emit_trace_redacts_sensitive_options_callback_fields() -> None:
             "credentials": {"apiKey": "secret-key", "cookie_header": "cookie-secret"},
             "account_id": "account-secret",
             "nested": {"cookies": "cookie-secret", "total_tokens": 3},
+            "prompt": "private prompt",
+            "response": "private response",
             "total_tokens": 42,
             "output_tokens": 7,
         },
@@ -73,30 +75,9 @@ def test_emit_trace_redacts_sensitive_options_callback_fields() -> None:
 
     payload = json.dumps(events[0], sort_keys=True)
     assert "secret" not in payload
-    data = events[0]["data"]
-    assert data["headers"] == {
-        "Authorization": "<redacted>",
-        "Proxy-Authorization": "<redacted>",
-        "X-Auth-Token": "<redacted>",
-        "X-Amz-Security-Token": "<redacted>",
-        "x-api-key": "<redacted>",
-        "chatgpt-account-id": "<redacted>",
-        "X-Custom-Signature": "<redacted>",
-        "anthropic-version": "<redacted>",
-    }
-    assert data["apiKey"] == "<redacted>"
-    assert data["openai_api_key"] == "<redacted>"
-    assert data["anthropic_api_key"] == "<redacted>"
-    assert data["access_token"] == "<redacted>"
-    assert data["provider_token"] == "<redacted>"
-    assert data["session_cookie"] == "<redacted>"
-    assert data["token"] == "<redacted>"
-    assert data["oauth"] == "<redacted>"
-    assert data["credentials"] == "<redacted>"
-    assert data["account_id"] == "<redacted>"
-    assert data["nested"] == {"cookies": "<redacted>", "total_tokens": 3}
-    assert data["total_tokens"] == 42
-    assert data["output_tokens"] == 7
+    assert events[0]["data"] == {"total_tokens": 42, "output_tokens": 7}
+    assert "private prompt" not in payload
+    assert "private response" not in payload
 
 
 def test_emit_trace_writes_provider_debug_event_to_observability_trace(
@@ -137,7 +118,6 @@ def test_emit_trace_writes_provider_debug_event_to_observability_trace(
                 "args": {
                     "kind": "object",
                     "keys": ["path"],
-                    "path": "tmp/bmi.html",
                 },
             },
         }
@@ -167,12 +147,13 @@ def test_emit_trace_summarizes_tool_content_for_observability_trace(
     assert record["data"]["event"]["data"]["args"] == {
         "kind": "object",
         "keys": ["content", "path"],
-        "path": "tmp/bmi.html",
         "content_chars": 19,
     }
+    assert "tmp/bmi.html" not in repr(record)
+    assert "<html>secret</html>" not in repr(record)
 
 
-def test_emit_trace_redacts_sensitive_observability_fields(tmp_path: Path) -> None:
+def test_emit_trace_drops_sensitive_observability_fields(tmp_path: Path) -> None:
     trace_path = tmp_path / "provider.jsonl"
     configure_observability(
         trace_sink=TraceJSONLSink(trace_path),
@@ -198,19 +179,10 @@ def test_emit_trace_redacts_sensitive_observability_fields(tmp_path: Path) -> No
 
     record = json.loads(trace_path.read_text(encoding="utf-8").splitlines()[0])
     event = record["data"]["event"]["data"]
-    assert event["headers"] == {
-        "Authorization": "<redacted>",
-        "Proxy-Authorization": "<redacted>",
-        "X-Auth-Token": "<redacted>",
-        "x-api-key": "<redacted>",
-        "X-Custom-Signature": "<redacted>",
-        "anthropic-version": "<redacted>",
-    }
-    assert event["apiKey"] == "<redacted>"
-    assert event["total_tokens"] == 42
+    assert event == {"total_tokens": 42}
 
 
-def test_emit_trace_stringifies_non_json_safe_event_values(tmp_path: Path) -> None:
+def test_emit_trace_drops_non_json_safe_unknown_values(tmp_path: Path) -> None:
     trace_path = tmp_path / "provider.jsonl"
     configure_observability(
         trace_sink=TraceJSONLSink(trace_path),
@@ -220,7 +192,7 @@ def test_emit_trace_stringifies_non_json_safe_event_values(tmp_path: Path) -> No
     emit_trace(None, {"type": "sdk:payload", "path": Path("tmp/bmi.html")})
 
     record = json.loads(trace_path.read_text(encoding="utf-8").splitlines()[0])
-    assert record["data"]["event"]["data"]["path"] == "tmp/bmi.html"
+    assert record["data"]["event"]["data"] == {}
 
 
 def test_emit_trace_never_stringifies_exception_messages() -> None:
@@ -238,7 +210,7 @@ def test_emit_trace_never_stringifies_exception_messages() -> None:
     assert "secret-token" not in repr(events)
 
 
-def test_emit_trace_stringifies_non_finite_floats(tmp_path: Path) -> None:
+def test_emit_trace_drops_non_finite_floats(tmp_path: Path) -> None:
     trace_path = tmp_path / "provider.jsonl"
     configure_observability(
         trace_sink=TraceJSONLSink(trace_path),
@@ -254,5 +226,4 @@ def test_emit_trace_stringifies_non_finite_floats(tmp_path: Path) -> None:
     record = json.loads(raw_text)
     assert "NaN" not in raw_text
     assert "Infinity" not in raw_text
-    assert record["data"]["event"]["data"]["nan_value"] == "nan"
-    assert record["data"]["event"]["data"]["inf_value"] == "inf"
+    assert record["data"]["event"]["data"] == {}

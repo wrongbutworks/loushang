@@ -81,6 +81,7 @@ def provider_error_part_from_raw(
         source=source,
         retryable=_is_retryable_provider_error(error_code),
         status_code=status_code,
+        details=_raw_code_details(code, error_code, status_code),
     )
     info = _canonicalize_provider_error_info(info)
     part = cast(
@@ -114,7 +115,10 @@ def normalize_provider_error(
         retryable=_is_retryable_provider_error(code),
         status_code=status_code,
         request_id=_provider_request_id(error),
-        details={"exceptionType": error.__class__.__name__},
+        details={
+            "exceptionType": error.__class__.__name__,
+            **_raw_code_details(getattr(error, "code", None), code, status_code),
+        },
     )
     return error_type(_canonicalize_provider_error_info(info))
 
@@ -150,6 +154,7 @@ def provider_error_info_from_raw(
         provider=provider,
         model=model,
         status_code=outer_status_code,
+        details=_raw_code_details(part.get("code"), code, outer_status_code),
     )
     return _canonicalize_provider_error_info(info)
 
@@ -187,6 +192,9 @@ def _safe_provider_error_details(
     exception_type = details.get("exceptionType")
     if isinstance(exception_type, str) and exception_type:
         safe["exceptionType"] = exception_type
+    raw_code = details.get("rawCode")
+    if isinstance(raw_code, str) and raw_code:
+        safe["rawCode"] = raw_code
     if code is not AIErrorCode.PROVIDER_PROTOCOL:
         return safe
     for key in ("maxParts", "maxBytes", "partCount", "estimatedBytes"):
@@ -194,6 +202,18 @@ def _safe_provider_error_details(
         if isinstance(value, int) and not isinstance(value, bool):
             safe[key] = value
     return safe
+
+
+def _raw_code_details(
+    raw_code: object,
+    code: AIErrorCode,
+    status_code: int | None,
+) -> dict[str, JSONValue]:
+    if status_code is not None or code is not AIErrorCode.PROVIDER:
+        return {}
+    if isinstance(raw_code, str) and raw_code.strip():
+        return {"rawCode": raw_code}
+    return {}
 
 
 def _public_provider_error_message(code: AIErrorCode) -> str:

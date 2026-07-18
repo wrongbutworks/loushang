@@ -4,9 +4,9 @@ import asyncio
 
 from loushang.ai.context import normalize_context
 from loushang.ai.model import Auth, Model
-from loushang.ai.providers.faux import FauxProvider
+from loushang.ai.protocols.faux import FauxProvider
 from loushang.ai.types import UserMessage
-from tests.providers._runtime import start_test_provider_stream
+from tests.protocols._runtime import start_test_provider_stream
 
 
 def _normalized_context(model, context, options=None):

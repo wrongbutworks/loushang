@@ -9,37 +9,26 @@ from typing import TypeAlias
 @dataclass(frozen=True, slots=True)
 class ApiKeyAuth:
     value: str = field(repr=False)
-    header: str | None = None
-    prefix: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class OAuthBearerAuth:
     access_token: str = field(repr=False)
-    header: str | None = None
-    prefix: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class NoAuth:
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class HeadersAuth:
-    headers: Mapping[str, str] = field(default_factory=dict, repr=False)
+    extra_headers: Mapping[str, str] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "headers", MappingProxyType(dict(self.headers)))
+        object.__setattr__(
+            self,
+            "extra_headers",
+            MappingProxyType(dict(self.extra_headers)),
+        )
 
 
-AuthCredential: TypeAlias = ApiKeyAuth | OAuthBearerAuth | NoAuth | HeadersAuth
+AuthCredential: TypeAlias = ApiKeyAuth | OAuthBearerAuth
 
 
 __all__ = [
     "ApiKeyAuth",
     "AuthCredential",
-    "HeadersAuth",
-    "NoAuth",
     "OAuthBearerAuth",
 ]

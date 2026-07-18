@@ -11,7 +11,6 @@ from loushang.ai.model import (
     Auth,
     Defaults,
     Endpoint,
-    EndpointRouting,
     Model,
     ModelRegistry,
     OpenAICompletionsConfig,
@@ -131,20 +130,15 @@ def test_registry_is_constructed_once_and_exposes_queries_only() -> None:
         id="new-model",
         provider="new-provider",
         endpoint="new-endpoint",
-        auth=Auth(extra_headers={"x-tenant": "demo"}),
-        adapter=OpenAICompletionsConfig(
-            reasoning_format="moonshot",
-            extra_body={"metadata": {"tags": ["stable"]}},
-        ),
+        auth=Auth(api_key_env="NEW_PROVIDER_KEY"),
+        adapter=OpenAICompletionsConfig(reasoning_format="moonshot"),
         defaults=Defaults.from_raw({"metadata": {"tags": ["stable"]}}),
-        routing=EndpointRouting.from_raw(
-            {"requestOverrides": {"openrouter": {"only": ["openai"]}}}
-        ),
     )
     endpoint = Endpoint(
         id="new-endpoint",
         provider="new-provider",
         api="openai-completions",
+        headers={"x-static": "yes"},
         models={model.id: model},
     )
     registry = ModelRegistry.from_providers(
@@ -188,22 +182,8 @@ def test_registry_is_constructed_once_and_exposes_queries_only() -> None:
         default_tags[0] = "changed"  # type: ignore[index]
     assert resolved_model.auth is not None
     with pytest.raises(TypeError):
-        resolved_model.auth.extra_headers["x-tenant"] = "changed"  # type: ignore[index]
-    with pytest.raises(TypeError):
-        resolved_model.routing.request_overrides["openrouter"]["only"] = []  # type: ignore[index]
-    routing_only = resolved_model.routing.request_overrides["openrouter"]["only"]
-    assert isinstance(routing_only, tuple)
-    with pytest.raises(TypeError):
-        routing_only[0] = "changed"  # type: ignore[index]
+        resolved_model.headers["x-static"] = "changed"  # type: ignore[index]
     assert isinstance(resolved_model.adapter, OpenAICompletionsConfig)
-    with pytest.raises(TypeError):
-        resolved_model.adapter.extra_body["metadata"] = {}  # type: ignore[index]
-    adapter_metadata = resolved_model.adapter.extra_body["metadata"]
-    assert isinstance(adapter_metadata, Mapping)
-    adapter_tags = adapter_metadata["tags"]
-    assert isinstance(adapter_tags, tuple)
-    with pytest.raises(TypeError):
-        adapter_tags[0] = "changed"  # type: ignore[index]
     json.dumps(resolved_model.to_raw())
     for method_name in (
         "replace_providers",

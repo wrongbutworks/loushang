@@ -8,8 +8,8 @@ import sys
 
 from loushang.ai import ApiKeyAuth, CallOptions, Model
 from loushang.ai.context import normalize_context
+from loushang.ai.protocols.openai_chat_completions import OpenAIChatCompletionsAdapter
 from loushang.ai.provider import ProviderRequest
-from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
 
 BASE_URL = "https://api.moonshot.cn/v1"
 
@@ -25,7 +25,7 @@ def _resolve_api_key() -> str:
 
 async def _main() -> None:
     api_key = _resolve_api_key()
-    provider = OpenAICompletionsProvider()
+    provider = OpenAIChatCompletionsAdapter()
     model = Model(
         id="kimi-k2.5",
         provider="moonshot",

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from loushang.ai import CallOptions, complete
-from loushang.ai.advanced.registry import ApiProviderRegistry
+from loushang.ai.advanced.registry import get_default_api_provider_registry
 from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.model import (
     load_builtin_model_registry,
@@ -102,7 +102,8 @@ def test_json_only_custom_model_loads_merges_queries_and_completes(
     assert model.upstream_id == "vendor/company-chat-2026-06"
 
     provider = RecordingProvider()
-    provider_registry = ApiProviderRegistry()
+    provider_registry = get_default_api_provider_registry()
+    provider_registry.clear_api_providers()
     provider_registry.register_api_provider(provider)
 
     async def run_complete():
@@ -110,7 +111,6 @@ def test_json_only_custom_model_loads_merges_queries_and_completes(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
             CallOptions(auth=ApiKeyAuth("test-key")),
-            provider_registry=provider_registry,
         )
 
     message = asyncio.run(run_complete())
@@ -131,8 +131,6 @@ def test_json_only_custom_model_loads_merges_queries_and_completes(
     assert request.model == model
     assert request.model.capabilities == model.capabilities
     assert request.model.defaults == model.defaults
-    assert request.model.transport == model.transport
-    assert request.model.routing == model.routing
     assert request.model.upstream_id == "vendor/company-chat-2026-06"
     assert getattr(request.model.adapter, "fine_grained_tools") is True
     assert getattr(request.model.adapter, "long_cache_retention") is False

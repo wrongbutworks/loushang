@@ -10,7 +10,6 @@ from loushang.ai.errors import UnsupportedCapabilityError
 from loushang.ai.model import (
     AnthropicMessagesConfig,
     Model,
-    OpenAICompletionsConfig,
     OpenAIResponsesConfig,
     default_adapter_config,
 )
@@ -69,28 +68,15 @@ def _supports(capabilities, field: str) -> bool:
 
 
 def _adapter_supports_long_cache_retention(adapter_config: object) -> bool:
-    if isinstance(
-        adapter_config,
-        OpenAICompletionsConfig | OpenAIResponsesConfig | AnthropicMessagesConfig,
-    ):
+    if isinstance(adapter_config, OpenAIResponsesConfig | AnthropicMessagesConfig):
         return adapter_config.long_cache_retention
-    return True
+    return False
 
 
 def _adapter_consumes_cache_key(adapter_config: object) -> bool:
-    if isinstance(adapter_config, OpenAICompletionsConfig):
-        return (
-            adapter_config.prompt_cache_key or adapter_config.session_affinity_headers
-        )
     if isinstance(adapter_config, OpenAIResponsesConfig):
-        return (
-            adapter_config.prompt_cache_key
-            or adapter_config.session_id_header
-            or adapter_config.session_affinity_headers
-        )
-    if isinstance(adapter_config, AnthropicMessagesConfig):
-        return adapter_config.session_affinity_headers
-    return True
+        return adapter_config.prompt_cache_key
+    return False
 
 
 def _normalize_cache_key_for_adapter(
@@ -196,9 +182,7 @@ def _validate_capability(
         )
 
 
-def _resolve_api_provider_registry(api_provider_registry=None):
-    if api_provider_registry is not None:
-        return api_provider_registry
+def _resolve_api_provider_registry():
     default_registry = get_default_api_provider_registry()
     if not default_registry.list_api_providers():
         register_builtin_ai_providers(default_registry)
@@ -238,8 +222,7 @@ def _emit_normalization_diagnostics(
         payload = {
             "type": "normalization:diagnostic",
             "code": diagnostic.code,
-            "path": diagnostic.path,
-            "message": diagnostic.message,
+            "field": diagnostic.path,
             "level": diagnostic.level,
         }
         emit_trace(options, payload)
@@ -264,7 +247,6 @@ async def _start_stream(
     context,
     options: CallOptions | None = None,
     *,
-    provider_registry=None,
     mode: ProviderInvocationMode,
     require_stream: bool,
 ):
@@ -297,7 +279,7 @@ async def _start_stream(
         require_stream=require_stream,
     )
     _validate_explicit_adapter_config(resolved_model, options)
-    provider = _resolve_api_provider_registry(provider_registry).get_api_provider(
+    provider = _resolve_api_provider_registry().get_api_provider(
         resolved_model.api or ""
     )
     resolved = normalize_provider_request_for_api(provider.api, resolved)
@@ -322,14 +304,11 @@ async def stream(
     model: Model,
     context,
     options: CallOptions | None = None,
-    *,
-    provider_registry=None,
 ):
     return await _start_stream(
         model,
         context,
         options,
-        provider_registry=provider_registry,
         mode="stream",
         require_stream=True,
     )
@@ -339,14 +318,11 @@ async def complete(
     model: Model,
     context,
     options: CallOptions | None = None,
-    *,
-    provider_registry=None,
 ):
     event_stream = await _start_stream(
         model,
         context,
         options,
-        provider_registry=provider_registry,
         mode="complete",
         require_stream=False,
     )
@@ -359,16 +335,10 @@ async def complete_structured(
     output: StructuredOutputOptions | None = None,
     *,
     options: CallOptions | None = None,
-    provider_registry=None,
 ) -> StructuredOutputResult:
     structured_output = output or get_structured_output_options(options)
     if structured_output is None:
         raise ValueError("complete_structured requires StructuredOutputOptions")
     call_options = with_structured_output_options(options, structured_output)
-    message = await complete(
-        model,
-        context,
-        call_options,
-        provider_registry=provider_registry,
-    )
+    message = await complete(model, context, call_options)
     return parse_structured_output(message, structured_output)

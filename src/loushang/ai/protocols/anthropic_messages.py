@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator, Iterator
-from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any, cast
 
-from loushang.ai.auth.credentials import OAuthBearerAuth
 from loushang.ai.context import NormalizedContext
 from loushang.ai.errors import AIProviderProtocolError
 from loushang.ai.event_stream.raw_parts import RawPart, UsageDeltaPart
@@ -15,15 +13,12 @@ from loushang.ai.options import (
     get_reasoning_budget_tokens,
 )
 from loushang.ai.output_budget import resolve_output_token_budget
+from loushang.ai.protocols._anthropic import AnthropicMessagesProtocol
+from loushang.ai.protocols._helpers import canonicalize_sdk_headers
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.errors import (
     provider_error_part,
     provider_error_part_from_raw,
-)
-from loushang.ai.providers.anthropic_base import AnthropicProviderBase
-from loushang.ai.providers.provider_helpers import (
-    apply_cache_key_headers,
-    canonicalize_sdk_headers,
 )
 from loushang.ai.tool import to_anthropic_tools
 from loushang.ai.tool.helpers import (
@@ -36,8 +31,6 @@ from loushang.ai.utils import parse_streaming_json, sanitize_surrogates
 
 def _build_anthropic_message_payloads(
     normalized: NormalizedContext,
-    *,
-    uses_oauth_protocol: bool,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]] | None]:
     messages_param: list[dict[str, Any]] = []
     system_param = None
@@ -106,16 +99,9 @@ def _build_anthropic_message_payloads(
                             )
                         continue
                     payload = (
-                        AnthropicProviderBase.assistant_block_to_anthropic_payload(p)
+                        AnthropicMessagesProtocol.assistant_block_to_anthropic_payload(p)
                     )
                     if payload is not None:
-                        if uses_oauth_protocol and payload.get("type") == "tool_use":
-                            payload = {
-                                **payload,
-                                "name": AnthropicProviderBase.to_oauth_tool_name(
-                                    str(payload.get("name", ""))
-                                ),
-                            }
                         assistant_blocks.append(payload)
                 if assistant_blocks:
                     messages_param.append(
@@ -131,7 +117,7 @@ def _build_anthropic_message_payloads(
                     {
                         "type": "tool_result",
                         "tool_use_id": tool_call_id,
-                        "content": AnthropicProviderBase.tool_result_content_to_anthropic_payload(
+                        "content": AnthropicMessagesProtocol.tool_result_content_to_anthropic_payload(
                             content
                         ),
                         "is_error": bool(is_error),
@@ -182,8 +168,6 @@ class _AnthropicToolStreamState:
     name: str | None = None
     args_source: str = "none"
     delta_chars: int = 0
-    last_delta: dict[str, object] | None = None
-    last_snapshot: dict[str, object] | None = None
 
 
 def _get_tool_stream_state(
@@ -210,55 +194,6 @@ def _pop_tool_stream_state(
     return None
 
 
-def _summarize_tool_input(value: object) -> dict[str, object]:
-    if value is _MISSING:
-        return {"present": False}
-    if value is None:
-        return {"present": True, "kind": "none"}
-    if isinstance(value, dict):
-        summary: dict[str, object] = {
-            "present": True,
-            "kind": "object",
-            "keys": list(value.keys()),
-            "empty": not bool(value),
-        }
-        path = value.get("path") or value.get("file_path")
-        if isinstance(path, str):
-            summary["path"] = _summarize_sdk_string(path)
-        content = value.get("content")
-        if isinstance(content, str):
-            summary["content_chars"] = len(content)
-        return summary
-    if isinstance(value, str):
-        return {
-            "present": True,
-            "kind": "string",
-            "chars": len(value),
-            "preview": _summarize_sdk_string(value),
-        }
-    return {
-        "present": True,
-        "kind": type(value).__name__,
-        "value": _summarize_sdk_value(value),
-    }
-
-
-def _summarize_tool_snapshot(snapshot: object) -> dict[str, object]:
-    return {
-        "type": getattr(snapshot, "type", None),
-        "input": _summarize_tool_input(getattr(snapshot, "input", _MISSING)),
-    }
-
-
-def _summarize_tool_delta(delta: object) -> dict[str, object]:
-    summary: dict[str, object] = {"type": getattr(delta, "type", None)}
-    partial = getattr(delta, "partial_json", None)
-    if isinstance(partial, str):
-        summary["partial_chars"] = len(partial)
-        summary["partial_preview"] = _summarize_sdk_string(partial)
-    return summary
-
-
 def _summarize_tool_args_json(raw: str) -> dict[str, object]:
     summary: dict[str, object] = {"chars": len(raw)}
     if not raw:
@@ -271,8 +206,7 @@ def _summarize_tool_args_json(raw: str) -> dict[str, object]:
         if repaired:
             repair_summary.update(
                 {
-                    "repaired_keys": list(repaired.keys()),
-                    "repaired_path": repaired.get("path") or repaired.get("file_path"),
+                    "repaired_keys": sorted(str(key) for key in repaired),
                     "repaired_content_chars": len(repaired["content"])
                     if isinstance(repaired.get("content"), str)
                     else None,
@@ -281,13 +215,8 @@ def _summarize_tool_args_json(raw: str) -> dict[str, object]:
         return {
             **summary,
             "valid_json": False,
-            "error": f"{error.msg} at {error.pos}",
+            "error_position": error.pos,
             **repair_summary,
-            "prefix": _summarize_sdk_string(raw[:240]),
-            "around_error": _summarize_sdk_string(
-                raw[max(0, error.pos - 120) : error.pos + 120]
-            ),
-            "suffix": _summarize_sdk_string(raw[-240:]),
         }
     if not isinstance(parsed, dict):
         return {
@@ -299,48 +228,14 @@ def _summarize_tool_args_json(raw: str) -> dict[str, object]:
         **summary,
         "valid_json": True,
         "kind": "object",
-        "keys": list(parsed.keys()),
-        "path": parsed.get("path") or parsed.get("file_path"),
+        "keys": sorted(str(key) for key in parsed),
         "content_chars": len(parsed["content"])
         if isinstance(parsed.get("content"), str)
         else None,
     }
 
 
-def _summarize_sdk_value(value: object) -> object:
-    if value is None or isinstance(value, (bool, int, float)):
-        return value
-    if isinstance(value, str):
-        return _summarize_sdk_string(value)
-    if isinstance(value, dict):
-        return {str(key): _summarize_sdk_value(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_summarize_sdk_value(item) for item in value[:20]]
-
-    model_dump = getattr(value, "model_dump", None)
-    if callable(model_dump):
-        with suppress(Exception):
-            dumped = model_dump(exclude_none=True)
-            if isinstance(dumped, dict):
-                return _summarize_sdk_value(dumped)
-
-    attrs = getattr(value, "__dict__", None)
-    if isinstance(attrs, dict):
-        return {
-            key: _summarize_sdk_value(item)
-            for key, item in attrs.items()
-            if not key.startswith("_")
-        }
-    return repr(value)
-
-
-def _summarize_sdk_string(value: str) -> str:
-    if len(value) <= 240:
-        return value
-    return f"{value[:160]}...<{len(value)} chars>"
-
-
-class AnthropicProvider(AnthropicProviderBase):
+class AnthropicMessagesAdapter(AnthropicMessagesProtocol):
     api = "anthropic-messages"
 
     def __init__(self, *, client: Any | None = None) -> None:
@@ -386,7 +281,6 @@ class AnthropicProvider(AnthropicProviderBase):
         need_fg = self.should_inject_fine_grained_tools(
             adapter_config=adapter_config,
             headers=default_headers,
-            transport_kind=model.transport.kind,
         )
         if need_ilt or need_fg:
             default_headers = self.apply_beta_headers(
@@ -395,54 +289,28 @@ class AnthropicProvider(AnthropicProviderBase):
                 force_fine_grained_tools=need_fg,
             )
 
-        uses_oauth_protocol = isinstance(
-            getattr(options, "auth", None),
-            OAuthBearerAuth,
-        )
-        if uses_oauth_protocol:
-            default_headers = self.apply_oauth_identity_headers(default_headers)
-        cache_retention = (
-            getattr(options, "cache_retention", None) if options is not None else None
-        )
-        cache_key = getattr(options, "cache_key", None) if options is not None else None
-        if (
-            cache_retention != "none"
-            and isinstance(cache_key, str)
-            and cache_key
-            and adapter_config.session_affinity_headers
-        ):
-            apply_cache_key_headers(
-                default_headers,
-                cache_key,
-                include_affinity=True,
-            )
-
         client = self._client or AsyncAnthropic(  # type: ignore[call-arg]
             api_key="",
             auth_token="",
             base_url=resolved.base_url,
         )
-        _debug("client", {"base_url": resolved.base_url, "headers": default_headers})
-
-        messages_param, system_param = _build_anthropic_message_payloads(
-            normalized,
-            uses_oauth_protocol=uses_oauth_protocol,
+        _debug(
+            "client",
+            {
+                "api": model.api,
+                "provider": model.provider_id,
+                "endpoint": model.endpoint_id,
+                "model": model.id,
+            },
         )
+
+        messages_param, system_param = _build_anthropic_message_payloads(normalized)
         upstream_model_id = model.upstream_id or model.id
 
         tools_param = None
         if normalized.tools:
             tools_param = []
-            for t in to_anthropic_tools(list(normalized.tools)):
-                tools_param.append(
-                    {
-                        "name": self.to_oauth_tool_name(str(t.get("name", "")))
-                        if uses_oauth_protocol
-                        else t.get("name"),
-                        "description": t.get("description"),
-                        "input_schema": t.get("input_schema"),
-                    }
-                )
+            tools_param.extend(to_anthropic_tools(list(normalized.tools)))
 
         max_tokens = resolve_output_token_budget(model, resolved).value
         thinking_cfg: dict[str, object] | None = None
@@ -538,7 +406,16 @@ class AnthropicProvider(AnthropicProviderBase):
             )
 
         _debug(
-            "payload", {"params": {k: v for k, v in params.items() if k != "messages"}}
+            "payload",
+            {
+                "api": model.api,
+                "provider": model.provider_id,
+                "endpoint": model.endpoint_id,
+                "model": model.id,
+                "parameter_keys": sorted(params),
+                "message_count": len(messages_param),
+                "tool_count": len(tools_param or []),
+            },
         )
         params["extra_headers"] = {
             "X-Api-Key": Omit(),
@@ -559,8 +436,6 @@ class AnthropicProvider(AnthropicProviderBase):
             for part in _iter_complete_response_parts(
                 response,
                 source=self.api,
-                uses_oauth_protocol=uses_oauth_protocol,
-                registered_tools=cast(list[object] | None, list(normalized.tools)),
             ):
                 yield part
             return
@@ -600,13 +475,7 @@ class AnthropicProvider(AnthropicProviderBase):
                             if isinstance(tid, str) and isinstance(tname, str) and tid:
                                 new_tool_state = _AnthropicToolStreamState(
                                     id=tid,
-                                    name=(
-                                        self.from_oauth_tool_name(
-                                            tname, list(normalized.tools)
-                                        )
-                                        if uses_oauth_protocol
-                                        else tname
-                                    ),
+                                    name=tname,
                                 )
                                 active_tool_blocks[content_index] = new_tool_state
                                 active_tool_name = new_tool_state.name
@@ -616,9 +485,7 @@ class AnthropicProvider(AnthropicProviderBase):
                                     {
                                         "id": active_tool_id,
                                         "name": active_tool_name,
-                                        "input": _summarize_tool_input(
-                                            getattr(cblk, "input", _MISSING)
-                                        ),
+                                        "args": getattr(cblk, "input", {}),
                                     },
                                 )
                                 start_part: dict[str, object] = {
@@ -659,12 +526,6 @@ class AnthropicProvider(AnthropicProviderBase):
                         active_tool_state = _get_tool_stream_state(
                             active_tool_blocks, content_index
                         )
-                        if active_tool_state is not None:
-                            snapshot = getattr(event, "snapshot", None)
-                            if snapshot is not None:
-                                active_tool_state.last_snapshot = (
-                                    _summarize_tool_snapshot(snapshot)
-                                )
                         if (
                             delta is not None
                             and getattr(delta, "type", None) == "text_delta"
@@ -702,9 +563,6 @@ class AnthropicProvider(AnthropicProviderBase):
                                         active_tool_state
                                     )
                                 active_tool_state.delta_chars += len(partial)
-                                active_tool_state.last_delta = _summarize_tool_delta(
-                                    delta
-                                )
                                 if not active_tool_state.args_from_start:
                                     active_tool_state.args_source = "input_json_delta"
                                     active_tool_state.arg_chunks.append(partial)
@@ -715,8 +573,6 @@ class AnthropicProvider(AnthropicProviderBase):
                                     if content_index is not None:
                                         args_part["index"] = content_index
                                     yield _raw_part(args_part)
-                        elif active_tool_state is not None and delta is not None:
-                            active_tool_state.last_delta = _summarize_tool_delta(delta)
                         continue
                     if etype == "content_block_stop":
                         content_index = _optional_int(getattr(event, "index", None))
@@ -734,14 +590,12 @@ class AnthropicProvider(AnthropicProviderBase):
                                     "".join(active_tool_state.arg_chunks)
                                 ),
                             }
-                            if active_tool_state.args_source == "none":
-                                tool_trace["last_delta"] = active_tool_state.last_delta
-                                tool_trace["last_snapshot"] = (
-                                    active_tool_state.last_snapshot
-                                )
-                                _debug("tool_empty_args", tool_trace)
-                            else:
-                                _debug("tool_done", tool_trace)
+                            _debug(
+                                "tool_empty_args"
+                                if active_tool_state.args_source == "none"
+                                else "tool_done",
+                                tool_trace,
+                            )
                             done_part: dict[str, object] = {"type": "tool_call_done"}
                             if content_index is not None:
                                 done_part["index"] = content_index
@@ -807,8 +661,6 @@ def _iter_complete_response_parts(
     response: object,
     *,
     source: str,
-    uses_oauth_protocol: bool,
-    registered_tools: list[object] | None,
 ) -> Iterator[RawPart]:
     response_id = getattr(response, "id", None)
     if isinstance(response_id, str) and response_id:
@@ -846,8 +698,6 @@ def _iter_complete_response_parts(
                 yield from _iter_complete_tool_call_parts(
                     block,
                     index=index,
-                    uses_oauth_protocol=uses_oauth_protocol,
-                    registered_tools=registered_tools,
                 )
 
     stop_reason = getattr(response, "stop_reason", None)
@@ -868,17 +718,12 @@ def _iter_complete_tool_call_parts(
     block: object,
     *,
     index: int,
-    uses_oauth_protocol: bool,
-    registered_tools: list[object] | None,
 ) -> Iterator[RawPart]:
     tool_call_id = getattr(block, "id", None)
     if not isinstance(tool_call_id, str) or not tool_call_id:
         tool_call_id = f"tool_call_{index}"
     raw_name = getattr(block, "name", "")
-    if uses_oauth_protocol and isinstance(raw_name, str):
-        name = AnthropicProviderBase.from_oauth_tool_name(raw_name, registered_tools)
-    else:
-        name = raw_name if isinstance(raw_name, str) else ""
+    name = raw_name if isinstance(raw_name, str) else ""
     yield _raw_part(
         {
             "type": "tool_call_start",

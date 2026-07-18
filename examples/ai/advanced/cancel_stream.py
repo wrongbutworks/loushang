@@ -6,7 +6,7 @@ import asyncio
 import json
 
 from loushang.ai import CallOptions, Model, stream
-from loushang.ai.advanced.registry import ApiProviderRegistry
+from loushang.ai.advanced.registry import clear_api_providers, register_api_provider
 from loushang.ai.model import Auth, Capabilities
 from loushang.ai.provider import ProviderRequest
 
@@ -32,13 +32,12 @@ class _SlowProvider:
 async def inspect_stream_cancellation() -> dict[str, object]:
     provider = _SlowProvider()
     signal = asyncio.Event()
-    registry = ApiProviderRegistry()
-    registry.register_api_provider(provider)
+    clear_api_providers()
+    register_api_provider(provider)
     event_stream = await stream(
         _build_model(),
         {"messages": []},
         CallOptions(cancellation=signal),
-        provider_registry=registry,
     )
     await asyncio.wait_for(provider.blocked.wait(), timeout=1)
     signal.set()
@@ -67,6 +66,7 @@ def _build_model() -> Model:
         provider="cancel-demo",
         endpoint="anthropic-messages",
         api="anthropic-messages",
+        base_url="https://example.invalid/v1",
         capabilities=Capabilities(stream=True),
         auth=Auth(kind="none"),
     )

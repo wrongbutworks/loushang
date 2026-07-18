@@ -58,7 +58,7 @@ def inspect_custom_catalog() -> dict[str, object]:
     return {
         "model": f"{model.provider_id}:{model.endpoint_id}:{model.id}",
         "upstreamId": model.upstream_id,
-        "resolvedUpstreamModelId": resolved.upstream_model_id,
+        "requestModelUpstreamId": resolved.model.upstream_id,
         "baseUrl": resolved.base_url,
     }
 

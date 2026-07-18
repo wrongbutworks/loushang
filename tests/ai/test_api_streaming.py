@@ -13,7 +13,10 @@ from loushang.ai.api.streaming import (
     complete_structured,
     stream,
 )
-from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.api_registry import (
+    ApiProviderRegistry,
+    get_default_api_provider_registry,
+)
 from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.context import NormalizedContext, normalize_context
 from loushang.ai.errors import AIRateLimitError, UnsupportedCapabilityError
@@ -25,10 +28,10 @@ from loushang.ai.model import (
     OpenAIResponsesConfig,
 )
 from loushang.ai.options import get_reasoning_effort, is_reasoning_requested
+from loushang.ai.protocols.openai_chat_completions import OpenAIChatCompletionsAdapter
+from loushang.ai.protocols.openai_responses import OpenAIResponsesAdapter
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.provider.invocation import call_api_provider_stream
-from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
-from loushang.ai.providers.openai_responses import OpenAIResponsesProvider
 from loushang.ai.types import (
     AssistantMessage,
     ImagePart,
@@ -52,14 +55,6 @@ class _Model:
     id: str = "test-model"
     api: str | None = None
     capabilities: _Capabilities = field(default_factory=_Capabilities)
-
-
-class _Registry:
-    def __init__(self, provider) -> None:
-        self._provider = provider
-
-    def get_api_provider(self, _api: str):
-        return self._provider
 
 
 class _Provider:
@@ -172,10 +167,22 @@ class _StreamOnlyProvider:
         return None
 
 
+def _empty_test_registry() -> ApiProviderRegistry:
+    registry = get_default_api_provider_registry()
+    registry.clear_api_providers()
+    return registry
+
+
+def _test_registry_with(provider) -> ApiProviderRegistry:
+    registry = _empty_test_registry()
+    registry.register_api_provider(provider)
+    return registry
+
+
 @pytest.mark.parametrize("entrypoint", ["complete", "stream"])
 def test_public_invocation_preserves_effective_model_identity(entrypoint: str) -> None:
     provider = _Provider()
-    registry = ApiProviderRegistry()
+    registry = _empty_test_registry()
     registry.register_api_provider(provider)
     model = Model(
         id="effective-model",
@@ -193,9 +200,9 @@ def test_public_invocation_preserves_effective_model_identity(entrypoint: str) -
             "messages": [UserMessage(role="user", content="hello", timestamp=0.0)]
         }
         if entrypoint == "complete":
-            await complete(model, context, provider_registry=registry)
+            await complete(model, context)
             return
-        event_stream = await stream(model, context, provider_registry=registry)
+        event_stream = await stream(model, context)
         await event_stream.result()
 
     asyncio.run(_run())
@@ -209,7 +216,7 @@ def test_public_invocation_preserves_effective_model_identity(entrypoint: str) -
 
 def test_public_stream_suppresses_cache_key_when_retention_is_none() -> None:
     provider = _Provider()
-    registry = ApiProviderRegistry()
+    registry = _empty_test_registry()
     registry.register_api_provider(provider)
     model = Model(
         id="cache-model",
@@ -227,7 +234,6 @@ def test_public_stream_suppresses_cache_key_when_retention_is_none() -> None:
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(cache_key="opaque-key", cache_retention="none"),
-            provider_registry=registry,
         )
         await event_stream.result()
 
@@ -247,7 +253,7 @@ def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
         "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
     )
     provider = _Provider()
-    registry = _Registry(provider)
+    _test_registry_with(provider)
     assistant = AssistantMessage(
         role="assistant",
         content=[
@@ -281,7 +287,6 @@ def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
                     ]
                 },
                 CallOptions(),
-                provider_registry=registry,
             )
         )
 
@@ -295,7 +300,6 @@ def test_stream_defaults_to_strict_pairing_and_exposes_repair_option(
                 ]
             },
             CallOptions(pairing_mode="repair"),
-            provider_registry=registry,
         )
     )
 
@@ -316,7 +320,7 @@ def test_complete_raises_typed_error_for_stream_error(
 ) -> None:
     _patch_resolved_request(monkeypatch)
     provider = _ErrorProvider()
-    registry = _Registry(provider)
+    _test_registry_with(provider)
 
     with pytest.raises(AIRateLimitError) as exc_info:
         asyncio.run(
@@ -328,7 +332,6 @@ def test_complete_raises_typed_error_for_stream_error(
                     ]
                 },
                 CallOptions(),
-                provider_registry=registry,
             )
         )
 
@@ -345,7 +348,7 @@ def test_stream_exposes_strict_pairing_through_public_options(
         "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
     )
     provider = _Provider()
-    registry = _Registry(provider)
+    _test_registry_with(provider)
     assistant = AssistantMessage(
         role="assistant",
         content=[
@@ -379,7 +382,6 @@ def test_stream_exposes_strict_pairing_through_public_options(
                     ]
                 },
                 CallOptions(pairing_mode="strict"),
-                provider_registry=registry,
             )
         )
 
@@ -393,14 +395,13 @@ def test_stream_passes_normalized_context_to_provider(
         "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
     )
     provider = _Provider()
-    registry = _Registry(provider)
+    _test_registry_with(provider)
 
     asyncio.run(
         stream(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(),
-            provider_registry=registry,
         )
     )
 
@@ -485,10 +486,10 @@ def test_stream_enforces_capability_matrix(
         "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
     )
     provider = _Provider()
-    registry = _Registry(provider)
+    _test_registry_with(provider)
 
     with pytest.raises(UnsupportedCapabilityError, match=expected_message):
-        asyncio.run(stream(_Model(), context, options, provider_registry=registry))
+        asyncio.run(stream(_Model(), context, options))
 
     assert provider.context is None
 
@@ -512,7 +513,7 @@ def test_stream_allows_complete_capability_matrix(
         "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
     )
     provider = _Provider()
-    registry = _Registry(provider)
+    _test_registry_with(provider)
 
     asyncio.run(
         stream(
@@ -543,7 +544,6 @@ def test_stream_allows_complete_capability_matrix(
                 temperature=0.2,
                 reasoning=ReasoningOptions(effort="high"),
             ),
-            provider_registry=registry,
         )
     )
 
@@ -568,14 +568,13 @@ def test_complete_does_not_require_stream_capability(
         "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
     )
     provider = _Provider()
-    registry = _Registry(provider)
+    _test_registry_with(provider)
 
     result = asyncio.run(
         complete(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(),
-            provider_registry=registry,
         )
     )
 
@@ -610,7 +609,7 @@ def test_stream_canonicalizes_raw_dict_context_before_provider(
         "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
     )
     provider = _Provider()
-    registry = _Registry(provider)
+    _test_registry_with(provider)
 
     asyncio.run(
         stream(
@@ -633,7 +632,6 @@ def test_stream_canonicalizes_raw_dict_context_before_provider(
                 ],
             },
             CallOptions(),
-            provider_registry=registry,
         )
     )
 
@@ -653,7 +651,7 @@ def test_stream_rejects_raw_dict_tools_with_non_object_parameters_before_provide
 ) -> None:
     _patch_resolved_request(monkeypatch)
     provider = _Provider()
-    registry = _Registry(provider)
+    _test_registry_with(provider)
 
     with pytest.raises(TypeError, match="Unsupported tool parameters type"):
         asyncio.run(
@@ -672,7 +670,6 @@ def test_stream_rejects_raw_dict_tools_with_non_object_parameters_before_provide
                     ],
                 },
                 CallOptions(),
-                provider_registry=registry,
             )
         )
 
@@ -684,7 +681,7 @@ def test_stream_rejects_raw_dict_tools_with_invalid_names_before_provider(
 ) -> None:
     _patch_resolved_request(monkeypatch)
     provider = _Provider()
-    registry = _Registry(provider)
+    _test_registry_with(provider)
 
     with pytest.raises(TypeError, match="Unsupported tool name type"):
         asyncio.run(
@@ -703,7 +700,6 @@ def test_stream_rejects_raw_dict_tools_with_invalid_names_before_provider(
                     ],
                 },
                 CallOptions(),
-                provider_registry=registry,
             )
         )
 
@@ -728,7 +724,7 @@ def test_stream_rejects_non_call_options_before_provider(
 ) -> None:
     _patch_resolved_request(monkeypatch)
     provider = _Provider()
-    registry = _Registry(provider)
+    _test_registry_with(provider)
 
     with pytest.raises(TypeError, match="options must be CallOptions"):
         asyncio.run(
@@ -740,7 +736,6 @@ def test_stream_rejects_non_call_options_before_provider(
                     ]
                 },
                 legacy_options,  # type: ignore[arg-type]
-                provider_registry=registry,
             )
         )
 
@@ -752,7 +747,7 @@ def test_complete_rejects_non_call_options_before_provider(
 ) -> None:
     _patch_resolved_request(monkeypatch)
     provider = _Provider()
-    registry = _Registry(provider)
+    _test_registry_with(provider)
 
     with pytest.raises(TypeError, match="options must be CallOptions"):
         asyncio.run(
@@ -764,7 +759,6 @@ def test_complete_rejects_non_call_options_before_provider(
                     ]
                 },
                 SimpleNamespace(max_tokens=64),  # type: ignore[arg-type]
-                provider_registry=registry,
             )
         )
 
@@ -780,7 +774,7 @@ def test_stream_passes_request_through_registered_provider(
         "loushang.ai.tool.transform.resolve_model_api", lambda _model: "faux"
     )
     provider = _Provider()
-    registry = ApiProviderRegistry()
+    registry = _empty_test_registry()
     registry.register_api_provider(provider)
 
     asyncio.run(
@@ -788,7 +782,6 @@ def test_stream_passes_request_through_registered_provider(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(),
-            provider_registry=registry,
         )
     )
 
@@ -801,7 +794,7 @@ def test_stream_runs_optional_provider_request_validator_before_iteration(
 ) -> None:
     _patch_resolved_request(monkeypatch)
     provider = _ValidatingProvider()
-    registry = ApiProviderRegistry()
+    registry = _empty_test_registry()
     registry.register_api_provider(provider)
 
     event_stream = asyncio.run(
@@ -809,7 +802,6 @@ def test_stream_runs_optional_provider_request_validator_before_iteration(
             _Model(),
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(),
-            provider_registry=registry,
         )
     )
 
@@ -824,7 +816,7 @@ def test_stream_raises_provider_request_validation_error_before_iteration(
 ) -> None:
     _patch_resolved_request(monkeypatch)
     provider = _RejectingValidatorProvider()
-    registry = ApiProviderRegistry()
+    registry = _empty_test_registry()
     registry.register_api_provider(provider)
 
     with pytest.raises(TypeError, match="invalid adapter for faux"):
@@ -837,7 +829,6 @@ def test_stream_raises_provider_request_validation_error_before_iteration(
                     ]
                 },
                 CallOptions(),
-                provider_registry=registry,
             )
         )
 
@@ -845,7 +836,7 @@ def test_stream_raises_provider_request_validation_error_before_iteration(
 
 
 def test_register_api_provider_rejects_stream_only_provider() -> None:
-    registry = ApiProviderRegistry()
+    registry = _empty_test_registry()
 
     with pytest.raises(TypeError, match="invoke_raw"):
         registry.register_api_provider(_StreamOnlyProvider())
@@ -853,7 +844,7 @@ def test_register_api_provider_rejects_stream_only_provider() -> None:
 
 def test_register_api_provider_rejects_legacy_provider_signature() -> None:
     provider = _LegacyProvider()
-    registry = ApiProviderRegistry()
+    registry = _empty_test_registry()
 
     with pytest.raises(TypeError, match="exactly one ProviderRequest"):
         registry.register_api_provider(provider)
@@ -861,7 +852,7 @@ def test_register_api_provider_rejects_legacy_provider_signature() -> None:
 
 def test_register_api_provider_rejects_keyword_request_signature() -> None:
     provider = _KeywordRequestProvider()
-    registry = ApiProviderRegistry()
+    registry = _empty_test_registry()
 
     with pytest.raises(TypeError, match="exactly one ProviderRequest"):
         registry.register_api_provider(provider)
@@ -869,7 +860,7 @@ def test_register_api_provider_rejects_keyword_request_signature() -> None:
 
 def test_register_api_provider_rejects_optional_legacy_argument_signature() -> None:
     provider = _LegacyProviderWithOptionalDebug()
-    registry = ApiProviderRegistry()
+    registry = _empty_test_registry()
 
     with pytest.raises(TypeError, match="exactly one ProviderRequest"):
         registry.register_api_provider(provider)
@@ -894,7 +885,7 @@ def test_stream_maps_reasoning_options_before_provider_call(
         provider="custom",
     )
     provider = _Provider(api=api)
-    registry = _Registry(provider)
+    _test_registry_with(provider)
 
     asyncio.run(
         stream(
@@ -909,7 +900,6 @@ def test_stream_maps_reasoning_options_before_provider_call(
                 ),
                 max_output_tokens=123,
             ),
-            provider_registry=registry,
         )
     )
 
@@ -924,26 +914,9 @@ def test_stream_maps_reasoning_options_before_provider_call(
     assert provider.request.model.api == api
 
 
-def test_stream_rejects_legacy_provider_from_custom_registry(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_resolved_request(monkeypatch)
-    provider = _LegacyProvider()
-    registry = _Registry(provider)
-
+def test_default_registry_rejects_legacy_provider_at_registration() -> None:
     with pytest.raises(TypeError, match="exactly one ProviderRequest"):
-        asyncio.run(
-            stream(
-                _Model(),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
-                },
-                CallOptions(),
-                provider_registry=registry,
-            )
-        )
+        _test_registry_with(_LegacyProvider())
 
 
 def test_call_api_provider_stream_supports_registered_provider(
@@ -951,7 +924,7 @@ def test_call_api_provider_stream_supports_registered_provider(
 ) -> None:
     _patch_resolved_request(monkeypatch)
     provider = _Provider()
-    registry = ApiProviderRegistry()
+    registry = _empty_test_registry()
     registry.register_api_provider(provider)
 
     asyncio.run(
@@ -982,7 +955,7 @@ def test_call_api_provider_stream_supports_registered_provider(
 
 def test_call_api_provider_stream_requires_normalized_context() -> None:
     provider = _Provider()
-    registry = ApiProviderRegistry()
+    registry = _empty_test_registry()
     registry.register_api_provider(provider)
 
     with pytest.raises(
@@ -1011,7 +984,7 @@ def test_call_api_provider_stream_requires_normalized_context() -> None:
 
 def test_get_api_provider_stream_rejects_legacy_provider_signature() -> None:
     provider = _LegacyProvider()
-    registry = ApiProviderRegistry()
+    registry = _empty_test_registry()
 
     with pytest.raises(TypeError, match="exactly one ProviderRequest"):
         registry.register_api_provider(provider)
@@ -1019,7 +992,7 @@ def test_get_api_provider_stream_rejects_legacy_provider_signature() -> None:
 
 def test_get_api_provider_stream_rejects_legacy_optional_arg_signature() -> None:
     provider = _LegacyProviderWithOptionalDebug()
-    registry = ApiProviderRegistry()
+    registry = _empty_test_registry()
 
     with pytest.raises(TypeError, match="exactly one ProviderRequest"):
         registry.register_api_provider(provider)
@@ -1027,7 +1000,7 @@ def test_get_api_provider_stream_rejects_legacy_optional_arg_signature() -> None
 
 def test_call_api_provider_stream_rejects_mismatched_resolved_request() -> None:
     provider = _Provider()
-    registry = ApiProviderRegistry()
+    registry = _empty_test_registry()
     registry.register_api_provider(provider)
     request = _provider_request(
         provider="faux",
@@ -1064,7 +1037,7 @@ def test_call_api_provider_stream_passes_normalized_context_without_renormalizin
     None
 ):
     provider = _Provider(api="anthropic-messages")
-    registry = ApiProviderRegistry()
+    registry = _empty_test_registry()
     registry.register_api_provider(provider)
     request = _provider_request(
         api="anthropic-messages",
@@ -1141,7 +1114,7 @@ def test_stream_validates_effective_model_capabilities() -> None:
         capabilities=Capabilities(input=("text",), stream=True),
     )
     provider = _Provider()
-    registry = _Registry(provider)
+    _test_registry_with(provider)
 
     with pytest.raises(
         UnsupportedCapabilityError, match="does not support image input"
@@ -1165,7 +1138,6 @@ def test_stream_validates_effective_model_capabilities() -> None:
                     ]
                 },
                 CallOptions(),
-                provider_registry=registry,
             )
         )
 
@@ -1181,7 +1153,7 @@ def test_stream_uses_effective_model_capabilities() -> None:
         capabilities=Capabilities(input=("text", "image"), stream=True),
     )
     provider = _Provider()
-    registry = _Registry(provider)
+    _test_registry_with(provider)
 
     async def _run() -> None:
         event_stream = await stream(
@@ -1202,7 +1174,6 @@ def test_stream_uses_effective_model_capabilities() -> None:
                 ]
             },
             CallOptions(),
-            provider_registry=registry,
         )
         await event_stream.result()
 
@@ -1222,7 +1193,7 @@ def test_stream_normalizes_context_against_effective_model_api() -> None:
         capabilities=Capabilities(input=("text",), stream=True),
     )
     provider = _Provider(api="anthropic-messages")
-    registry = _Registry(provider)
+    _test_registry_with(provider)
     assistant = AssistantMessage(
         role="assistant",
         content=[
@@ -1262,7 +1233,6 @@ def test_stream_normalizes_context_against_effective_model_api() -> None:
                 ]
             },
             CallOptions(),
-            provider_registry=registry,
         )
     )
 
@@ -1276,8 +1246,8 @@ def test_stream_public_path_uses_openai_completions_typed_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
-    registry = ApiProviderRegistry()
-    registry.register_api_provider(OpenAICompletionsProvider())
+    registry = _empty_test_registry()
+    registry.register_api_provider(OpenAIChatCompletionsAdapter())
     model = SimpleNamespace(
         id="gpt-test",
         provider_id="custom",
@@ -1292,9 +1262,7 @@ def test_stream_public_path_uses_openai_completions_typed_request(
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
         adapter_config=OpenAICompletionsConfig(
-            prompt_cache_key=True,
             max_output_tokens_field="max_completion_tokens",
-            tool_stream=True,
         ),
         max_tokens=128,
         capabilities=Capabilities(
@@ -1327,7 +1295,6 @@ def test_stream_public_path_uses_openai_completions_typed_request(
                 cache_retention="short",
                 cache_key="session-public",
             ),
-            provider_registry=registry,
         )
         await event_stream.result()
 
@@ -1335,8 +1302,8 @@ def test_stream_public_path_uses_openai_completions_typed_request(
 
     assert _FakeAsyncOpenAI.last_create_kwargs["max_completion_tokens"] == 128
     assert "max_tokens" not in _FakeAsyncOpenAI.last_create_kwargs
-    assert _FakeAsyncOpenAI.last_create_kwargs["prompt_cache_key"] == "session-public"
-    assert _FakeAsyncOpenAI.last_create_kwargs["tool_stream"] is True
+    assert "prompt_cache_key" not in _FakeAsyncOpenAI.last_create_kwargs
+    assert "tool_stream" not in _FakeAsyncOpenAI.last_create_kwargs
     assert _FakeAsyncOpenAI.last_create_kwargs["tools"] == [
         {
             "type": "function",
@@ -1354,8 +1321,8 @@ def test_stream_missing_base_url_fails_before_sdk_client_construction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
-    registry = ApiProviderRegistry()
-    registry.register_api_provider(OpenAICompletionsProvider())
+    registry = _empty_test_registry()
+    registry.register_api_provider(OpenAIChatCompletionsAdapter())
     model = Model(
         id="missing-base-url",
         provider="custom",
@@ -1371,7 +1338,6 @@ def test_stream_missing_base_url_fails_before_sdk_client_construction(
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(auth=ApiKeyAuth("must-not-reach-sdk")),
-            provider_registry=registry,
         )
 
     with pytest.raises(ValueError, match="no configured provider base URL"):
@@ -1384,8 +1350,8 @@ def test_stream_public_path_uses_openai_responses_typed_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
-    registry = ApiProviderRegistry()
-    registry.register_api_provider(OpenAIResponsesProvider())
+    registry = _empty_test_registry()
+    registry.register_api_provider(OpenAIResponsesAdapter())
     model = SimpleNamespace(
         id="gpt-test",
         api="anthropic-messages",
@@ -1404,8 +1370,6 @@ def test_stream_public_path_uses_openai_responses_typed_request(
             developer_role=False,
             long_cache_retention=False,
             prompt_cache_key=True,
-            session_id_header=False,
-            assistant_after_tool_result=True,
         ),
         max_tokens=128,
         capabilities=Capabilities(
@@ -1472,7 +1436,6 @@ def test_stream_public_path_uses_openai_responses_typed_request(
                 cache_retention="short",
                 cache_key="session-responses",
             ),
-            provider_registry=registry,
         )
         await event_stream.result()
 
@@ -1488,7 +1451,6 @@ def test_stream_public_path_uses_openai_responses_typed_request(
             "arguments": '{"x": 1}',
         },
         {"type": "function_call_output", "call_id": "call_1", "output": "42"},
-        {"role": "assistant", "content": "I have processed the tool results."},
         {"role": "user", "content": [{"type": "input_text", "text": "next"}]},
     ]
     assert _FakeAsyncOpenAI.last_create_kwargs["tools"] == [
@@ -1512,8 +1474,8 @@ def test_stream_public_path_rejects_unsupported_long_cache_retention(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
-    registry = ApiProviderRegistry()
-    registry.register_api_provider(OpenAIResponsesProvider())
+    registry = _empty_test_registry()
+    registry.register_api_provider(OpenAIResponsesAdapter())
     model = SimpleNamespace(
         id="gpt-test",
         provider_id="custom",
@@ -1547,7 +1509,6 @@ def test_stream_public_path_rejects_unsupported_long_cache_retention(
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(cache_retention="long"),
-            provider_registry=registry,
         )
 
     with pytest.raises(UnsupportedCapabilityError, match="long cache retention"):
@@ -1557,7 +1518,7 @@ def test_stream_public_path_rejects_unsupported_long_cache_retention(
 def test_stream_public_path_ignores_unsupported_cache_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    registry = ApiProviderRegistry()
+    registry = _empty_test_registry()
     provider = _Provider(api="openai-completions")
     registry.register_api_provider(provider)
     model = SimpleNamespace(
@@ -1573,10 +1534,7 @@ def test_stream_public_path_ignores_unsupported_cache_key(
         api="openai-completions",
         base_url="https://api.openai.test/v1",
         headers={"Authorization": "Bearer test-key"},
-        adapter_config=OpenAICompletionsConfig(
-            prompt_cache_key=False,
-            session_affinity_headers=False,
-        ),
+        adapter_config=OpenAICompletionsConfig(),
         capabilities=Capabilities(input=("text",), stream=True, max_tokens=4096),
     )
 
@@ -1593,7 +1551,6 @@ def test_stream_public_path_ignores_unsupported_cache_key(
             model,
             {"messages": [UserMessage(role="user", content="hello", timestamp=0.0)]},
             CallOptions(cache_key="session-public"),
-            provider_registry=registry,
         )
         await event_stream.result()
 
@@ -1607,8 +1564,8 @@ def test_stream_public_path_uses_adapter_protocol_override_for_cache_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_openai_module(monkeypatch)
-    registry = ApiProviderRegistry()
-    registry.register_api_provider(OpenAIResponsesProvider())
+    registry = _empty_test_registry()
+    registry.register_api_provider(OpenAIResponsesAdapter())
     model = SimpleNamespace(
         id="gpt-test",
         provider_id="custom",
@@ -1645,7 +1602,6 @@ def test_stream_public_path_uses_adapter_protocol_override_for_cache_validation(
                 cache_retention="long",
                 cache_key="session-override",
             ),
-            provider_registry=registry,
         )
         await event_stream.result()
 

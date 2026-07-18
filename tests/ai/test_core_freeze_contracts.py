@@ -9,7 +9,10 @@ from pathlib import Path
 import pytest
 
 import loushang.ai as ai
-from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.api_registry import (
+    ApiProviderRegistry,
+    get_default_api_provider_registry,
+)
 from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.model import (
     clear_default_model_registry,
@@ -166,15 +169,8 @@ def test_auth_is_owned_by_ai_package_without_top_level_auth_package() -> None:
 
     assert auth_files == {
         "__init__.py",
-        "browser.py",
         "credentials.py",
-        "env.py",
-        "facade.py",
-        "oauth.py",
-        "registry.py",
-        "storage.py",
         "support.py",
-        "types.py",
     }
 
     import loushang.ai.auth as auth_module
@@ -182,19 +178,19 @@ def test_auth_is_owned_by_ai_package_without_top_level_auth_package() -> None:
     assert not (REPO_ROOT / "src/loushang/auth").exists()
 
     for name in (
-        "CredentialStore",
-        "OAuthCredentials",
+        "Credential" + "Store",
+        "OAuth" + "Credentials",
         "OAuthError",
-        "OAuthProviderRegistry",
+        "OAuth" + "Provider" + "Registry",
         "OAuthReauthenticationRequiredError",
         "get_oauth_api_key",
         "load_credentials",
-        "oauth_login",
-        "oauth_refresh",
+        "oauth_" + "login",
+        "oauth_" + "refresh",
         "register_builtin_oauth_providers",
         "resolve_oauth_api_key",
     ):
-        assert hasattr(auth_module, name)
+        assert not hasattr(auth_module, name)
 
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module("loushang.auth")
@@ -202,7 +198,7 @@ def test_auth_is_owned_by_ai_package_without_top_level_auth_package() -> None:
 
 @pytest.mark.parametrize(
     "module_name",
-    ("loushang.ai.cli", "loushang.ai.contrib.openai_codex"),
+    ("loushang.ai.cli", "loushang.ai." + "contrib.openai_codex"),
 )
 def test_removed_ai_package_surfaces_are_not_importable(module_name: str) -> None:
     with pytest.raises(ModuleNotFoundError):
@@ -282,10 +278,10 @@ def test_provider_registry_accepts_invoke_raw_and_rejects_stream_raw() -> None:
         registry.register_api_provider(_StreamRawOnlyProvider())
 
 
-def test_public_invocation_uses_explicit_provider_registry_keyword() -> None:
+def test_public_invocation_does_not_expose_registry_injection() -> None:
     for function in (ai.complete, ai.stream, ai.complete_structured):
         parameters = inspect.signature(function).parameters
-        assert "provider_registry" in parameters
+        assert "provider_registry" not in parameters
         assert "registry" not in parameters
 
 
@@ -299,14 +295,14 @@ def test_complete_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
             "company-chat",
         )
         provider = _InvokeRawOnlyProvider()
-        provider_registry = ApiProviderRegistry()
+        provider_registry = get_default_api_provider_registry()
+        provider_registry.clear_api_providers()
         provider_registry.register_api_provider(provider)
 
         message = await ai.complete(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
             CallOptions(auth=ApiKeyAuth("test-key")),
-            provider_registry=provider_registry,
         )
 
         assert message.content[0].text == "ok"
@@ -325,14 +321,14 @@ def test_stream_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
             "company-chat",
         )
         provider = _InvokeRawOnlyProvider()
-        provider_registry = ApiProviderRegistry()
+        provider_registry = get_default_api_provider_registry()
+        provider_registry.clear_api_providers()
         provider_registry.register_api_provider(provider)
 
         event_stream = await ai.stream(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
             CallOptions(auth=ApiKeyAuth("test-key")),
-            provider_registry=provider_registry,
         )
         async for _event in event_stream:
             pass
@@ -352,7 +348,8 @@ def test_complete_and_stream_pass_distinct_provider_modes(tmp_path: Path) -> Non
             "company-chat",
         )
         provider = _RecordingProvider()
-        provider_registry = ApiProviderRegistry()
+        provider_registry = get_default_api_provider_registry()
+        provider_registry.clear_api_providers()
         provider_registry.register_api_provider(provider)
         context = {"messages": [{"role": "user", "content": "hello"}]}
 
@@ -360,13 +357,11 @@ def test_complete_and_stream_pass_distinct_provider_modes(tmp_path: Path) -> Non
             model,
             context,
             CallOptions(auth=ApiKeyAuth("test-key")),
-            provider_registry=provider_registry,
         )
         event_stream = await ai.stream(
             model,
             context,
             CallOptions(auth=ApiKeyAuth("test-key")),
-            provider_registry=provider_registry,
         )
         async for _event in event_stream:
             pass

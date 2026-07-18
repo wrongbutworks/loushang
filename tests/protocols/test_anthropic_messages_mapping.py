@@ -9,22 +9,16 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from loushang.ai import CallOptions, ReasoningOptions
-from loushang.ai.auth import (
-    ApiKeyAuth,
-    HeadersAuth,
-    NoAuth,
-    OAuthBearerAuth,
-)
+from loushang.ai.auth import ApiKeyAuth, OAuthBearerAuth
 from loushang.ai.context import normalize_context
-from loushang.ai.model import ModelRegistry, Provider
+from loushang.ai.model import Auth, ModelRegistry, Provider
 from loushang.ai.model.domain import (
     AnthropicMessagesConfig,
     Capabilities,
     Endpoint,
-    EndpointTransport,
     Model,
 )
-from loushang.ai.providers.anthropic import AnthropicProvider
+from loushang.ai.protocols.anthropic_messages import AnthropicMessagesAdapter
 from loushang.ai.types import (
     AssistantMessage,
     ImagePart,
@@ -36,7 +30,7 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from tests.providers._runtime import (
+from tests.protocols._runtime import (
     bound_test_model,
     make_provider_request,
     provider_request_for_test,
@@ -45,7 +39,6 @@ from tests.providers._runtime import (
 
 FINE_GRAINED_TOOLS = "fineGrainedTools"
 INTERLEAVED_THINKING = "interleavedThinking"
-SEND_SESSION_AFFINITY_HEADERS = "sendSessionAffinityHeaders"
 SUPPORTS_CACHE_CONTROL_ON_TOOLS = "supportsCacheControlOnTools"
 SUPPORTS_EAGER_TOOL_INPUT_STREAMING = "supportsEagerToolInputStreaming"
 SUPPORTS_LONG_CACHE_RETENTION = "supportsLongCacheRetention"
@@ -117,7 +110,7 @@ async def _stream(provider, model, context, options=None, request=None):
 
 def test_stop_reason_mapping_tool_use():
     # 直接调用内部映射函数，验证 "tool_use" -> "toolUse"
-    from loushang.ai.providers.anthropic import _map_stop_reason
+    from loushang.ai.protocols.anthropic_messages import _map_stop_reason
 
     assert _map_stop_reason("tool_use") == "toolUse"
     assert _map_stop_reason("max_tokens") == "length"
@@ -125,9 +118,9 @@ def test_stop_reason_mapping_tool_use():
 
 
 def test_output_config_injected_for_adaptive_thinking():
-    from loushang.ai.providers.anthropic_base import AnthropicProviderBase
+    from loushang.ai.protocols._anthropic import AnthropicMessagesProtocol
 
-    base = AnthropicProviderBase()
+    base = AnthropicMessagesProtocol()
     # 伪模型ID包含 opus-4-6 / opus-4-8 -> 支持自适应思考
     assert base.supports_adaptive_thinking("claude-opus-4-6-latest") is True
     assert base.supports_adaptive_thinking("claude-opus-4-8-latest") is True
@@ -143,7 +136,7 @@ def test_anthropic_provider_sends_opus_48_xhigh_adaptive_thinking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-    provider = AnthropicProvider()
+    provider = AnthropicMessagesAdapter()
 
     asyncio.run(
         _collect_parts(
@@ -195,7 +188,7 @@ def test_anthropic_provider_complete_mode_maps_non_stream_response(
             usage=SimpleNamespace(input_tokens=3, output_tokens=2),
         ),
     )
-    provider = AnthropicProvider()
+    provider = AnthropicMessagesAdapter()
 
     parts = asyncio.run(
         _collect_parts(
@@ -238,86 +231,37 @@ def test_anthropic_provider_complete_mode_maps_non_stream_response(
     assert parts[9] == {"type": "stop_reason", "stop_reason": "error"}
 
 
-def test_fine_grained_tool_beta_uses_typed_transport_kind() -> None:
-    from loushang.ai.providers.anthropic_base import AnthropicProviderBase
+def test_fine_grained_tool_beta_uses_adapter_config() -> None:
+    from loushang.ai.protocols._anthropic import AnthropicMessagesProtocol
 
     unsupported = AnthropicMessagesConfig(fine_grained_tools=False)
     assert (
-        AnthropicProviderBase.should_inject_fine_grained_tools(
+        AnthropicMessagesProtocol.should_inject_fine_grained_tools(
             adapter_config=unsupported,
             headers={"anthropic-beta": "other-beta"},
-            transport_kind=None,
         )
         is False
     )
     assert (
-        AnthropicProviderBase.should_inject_fine_grained_tools(
+        AnthropicMessagesProtocol.should_inject_fine_grained_tools(
             adapter_config=unsupported,
             headers={},
-            transport_kind="httpx",
         )
         is False
     )
     assert (
-        AnthropicProviderBase.should_inject_fine_grained_tools(
+        AnthropicMessagesProtocol.should_inject_fine_grained_tools(
             adapter_config=AnthropicMessagesConfig(),
             headers={},
-            transport_kind="httpx",
         )
-        is True
+        is False
     )
     assert (
-        AnthropicProviderBase.should_inject_fine_grained_tools(
+        AnthropicMessagesProtocol.should_inject_fine_grained_tools(
             adapter_config=AnthropicMessagesConfig(fine_grained_tools=True),
             headers={},
-            transport_kind=None,
         )
         is True
-    )
-
-
-def test_anthropic_provider_uses_typed_transport_for_fine_grained_beta(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-    registry = _registry_with_endpoint(
-        "anthropic",
-        Endpoint(
-            id="anthropic-messages",
-            provider="anthropic",
-            api="anthropic-messages",
-            base_url="https://api.anthropic.test",
-            transport=EndpointTransport(kind="httpx"),
-            models={
-                "claude-sonnet-4-5": Model(
-                    id="claude-sonnet-4-5",
-                    provider="anthropic",
-                    endpoint="anthropic-messages",
-                )
-            },
-        ),
-    )
-    model = registry.get_model("anthropic", "anthropic-messages", "claude-sonnet-4-5")
-    provider = AnthropicProvider()
-
-    asyncio.run(
-        _collect_parts(
-            _invoke_raw_parts(
-                provider,
-                model,
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ]
-                },
-                CallOptions(auth=ApiKeyAuth("test-key")),
-            )
-        )
-    )
-
-    assert (
-        "fine-grained-tool-streaming-2025-05-14"
-        in _last_anthropic_request_headers()["anthropic-beta"]
     )
 
 
@@ -345,7 +289,7 @@ def test_anthropic_provider_uses_upstream_model_id(
     model = registry.get_model(
         "anthropic", "anthropic-messages", "claude-sonnet-4-5_public"
     )
-    provider = AnthropicProvider()
+    provider = AnthropicMessagesAdapter()
 
     asyncio.run(
         _collect_parts(
@@ -366,7 +310,7 @@ def test_anthropic_provider_uses_upstream_model_id(
 
 
 def test_assistant_block_to_payload_maps_signed_thinking() -> None:
-    from loushang.ai.providers.anthropic_base import AnthropicProviderBase
+    from loushang.ai.protocols._anthropic import AnthropicMessagesProtocol
 
     block = ThinkingPart(
         type="thinking",
@@ -374,7 +318,7 @@ def test_assistant_block_to_payload_maps_signed_thinking() -> None:
         thinking_signature="sig_123",
     )
 
-    assert AnthropicProviderBase.assistant_block_to_anthropic_payload(block) == {
+    assert AnthropicMessagesProtocol.assistant_block_to_anthropic_payload(block) == {
         "type": "thinking",
         "thinking": "reasoning text",
         "signature": "sig_123",
@@ -382,7 +326,7 @@ def test_assistant_block_to_payload_maps_signed_thinking() -> None:
 
 
 def test_assistant_block_to_payload_downgrades_unsigned_thinking_to_text() -> None:
-    from loushang.ai.providers.anthropic_base import AnthropicProviderBase
+    from loushang.ai.protocols._anthropic import AnthropicMessagesProtocol
 
     block = ThinkingPart(
         type="thinking",
@@ -390,14 +334,14 @@ def test_assistant_block_to_payload_downgrades_unsigned_thinking_to_text() -> No
         thinking_signature=None,
     )
 
-    assert AnthropicProviderBase.assistant_block_to_anthropic_payload(block) == {
+    assert AnthropicMessagesProtocol.assistant_block_to_anthropic_payload(block) == {
         "type": "text",
         "text": "reasoning text",
     }
 
 
 def test_assistant_block_to_payload_maps_redacted_thinking() -> None:
-    from loushang.ai.providers.anthropic_base import AnthropicProviderBase
+    from loushang.ai.protocols._anthropic import AnthropicMessagesProtocol
 
     block = ThinkingPart(
         type="thinking",
@@ -406,18 +350,18 @@ def test_assistant_block_to_payload_maps_redacted_thinking() -> None:
         redacted=True,
     )
 
-    assert AnthropicProviderBase.assistant_block_to_anthropic_payload(block) == {
+    assert AnthropicMessagesProtocol.assistant_block_to_anthropic_payload(block) == {
         "type": "redacted_thinking",
         "data": "sig_redacted",
     }
 
 
 def test_assistant_block_to_payload_keeps_tool_call_shape() -> None:
-    from loushang.ai.providers.anthropic_base import AnthropicProviderBase
+    from loushang.ai.protocols._anthropic import AnthropicMessagesProtocol
 
     block = ToolCall(type="toolCall", id="call_1", name="calc", arguments={"x": 1})
 
-    assert AnthropicProviderBase.assistant_block_to_anthropic_payload(block) == {
+    assert AnthropicMessagesProtocol.assistant_block_to_anthropic_payload(block) == {
         "type": "tool_use",
         "id": "call_1",
         "name": "calc",
@@ -426,10 +370,10 @@ def test_assistant_block_to_payload_keeps_tool_call_shape() -> None:
 
 
 def test_tool_result_content_to_payload_keeps_plain_text_as_string() -> None:
-    from loushang.ai.providers.anthropic_base import AnthropicProviderBase
+    from loushang.ai.protocols._anthropic import AnthropicMessagesProtocol
 
     assert (
-        AnthropicProviderBase.tool_result_content_to_anthropic_payload(
+        AnthropicMessagesProtocol.tool_result_content_to_anthropic_payload(
             [TextPart(type="text", text="hello"), TextPart(type="text", text="world")]
         )
         == "hello\nworld"
@@ -437,9 +381,9 @@ def test_tool_result_content_to_payload_keeps_plain_text_as_string() -> None:
 
 
 def test_tool_result_content_to_payload_maps_image_only_result() -> None:
-    from loushang.ai.providers.anthropic_base import AnthropicProviderBase
+    from loushang.ai.protocols._anthropic import AnthropicMessagesProtocol
 
-    assert AnthropicProviderBase.tool_result_content_to_anthropic_payload(
+    assert AnthropicMessagesProtocol.tool_result_content_to_anthropic_payload(
         [ImagePart(type="image", data="aGVsbG8=", mime_type="image/png")]
     ) == [
         {
@@ -454,9 +398,9 @@ def test_tool_result_content_to_payload_maps_image_only_result() -> None:
 
 
 def test_tool_result_content_to_payload_preserves_mixed_content_order() -> None:
-    from loushang.ai.providers.anthropic_base import AnthropicProviderBase
+    from loushang.ai.protocols._anthropic import AnthropicMessagesProtocol
 
-    assert AnthropicProviderBase.tool_result_content_to_anthropic_payload(
+    assert AnthropicMessagesProtocol.tool_result_content_to_anthropic_payload(
         [
             TextPart(type="text", text="before"),
             ImagePart(type="image", data="aGVsbG8=", mime_type="image/png"),
@@ -476,8 +420,10 @@ def test_tool_result_content_to_payload_preserves_mixed_content_order() -> None:
     ]
 
 
-def test_anthropic_payload_maps_images_oauth_tools_and_groups_tool_results() -> None:
-    from loushang.ai.providers.anthropic import _build_anthropic_message_payloads
+def test_anthropic_payload_maps_images_tools_and_groups_tool_results() -> None:
+    from loushang.ai.protocols.anthropic_messages import (
+        _build_anthropic_message_payloads,
+    )
 
     messages, system = _build_anthropic_message_payloads(
         normalize_context(
@@ -550,8 +496,7 @@ def test_anthropic_payload_maps_images_oauth_tools_and_groups_tool_results() -> 
                     ),
                 ],
             }
-        ),
-        uses_oauth_protocol=True,
+        )
     )
 
     assert system == [{"type": "text", "text": "system"}]
@@ -580,13 +525,13 @@ def test_anthropic_payload_maps_images_oauth_tools_and_groups_tool_results() -> 
         {
             "type": "tool_use",
             "id": "call_1",
-            "name": "Read",
+            "name": "read",
             "input": {"path": "README.md"},
         },
         {
             "type": "tool_use",
             "id": "call_2",
-            "name": "Write",
+            "name": "write",
             "input": {},
         },
     ]
@@ -610,23 +555,12 @@ def test_anthropic_payload_maps_images_oauth_tools_and_groups_tool_results() -> 
 
 
 def test_anthropic_internal_summarizers_cover_debug_shapes() -> None:
-    from loushang.ai.providers.anthropic import (
+    from loushang.ai.protocols.anthropic_messages import (
         _map_stop_reason,
         _optional_int,
-        _summarize_sdk_value,
         _summarize_tool_args_json,
         _tool_input_to_json_delta,
     )
-
-    class Dumpable:
-        def model_dump(self, *, exclude_none: bool):
-            assert exclude_none is True
-            return {"path": "README.md", "content": "hello"}
-
-    class Attrs:
-        def __init__(self) -> None:
-            self.public = ["x" * 300]
-            self._private = "hidden"
 
     assert _tool_input_to_json_delta("") is None
     assert _tool_input_to_json_delta({}) is None
@@ -646,16 +580,8 @@ def test_anthropic_internal_summarizers_cover_debug_shapes() -> None:
     repaired = _summarize_tool_args_json('{"path":"README.md","content":"hello"')
     assert repaired["valid_json"] is False
     assert repaired["repair_valid"] is True
-    assert repaired["repaired_keys"] == ["path", "content"]
-    assert repaired["repaired_path"] == "README.md"
+    assert repaired["repaired_keys"] == ["content", "path"]
     assert repaired["repaired_content_chars"] == 5
-
-    assert _summarize_sdk_value(Dumpable()) == {
-        "path": "README.md",
-        "content": "hello",
-    }
-    assert _summarize_sdk_value(Attrs()) == {"public": ["x" * 160 + "...<300 chars>"]}
-    assert _summarize_sdk_value(object()).startswith("<object object at ")
 
     assert _map_stop_reason("refusal") == "error"
     with pytest.raises(ValueError, match="Unhandled stop reason"):
@@ -665,30 +591,10 @@ def test_anthropic_internal_summarizers_cover_debug_shapes() -> None:
     assert _optional_int("3") is None
 
 
-def test_apply_oauth_identity_headers_merges_required_betas() -> None:
-    from loushang.ai.providers.anthropic_base import AnthropicProviderBase
-    from loushang.ai.providers.anthropic_oauth_compat import AnthropicOAuthBridge
-
-    headers = AnthropicProviderBase.apply_oauth_identity_headers(
-        {
-            "ANTHROPIC-BETA": "fine-grained-tool-streaming-2025-05-14",
-            "USER-AGENT": "custom-agent",
-        }
-    )
-
-    assert headers["anthropic-beta"] == (
-        "claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14"
-    )
-    assert headers["USER-AGENT"] == "custom-agent"
-    assert headers["x-app"] == AnthropicOAuthBridge.SDK_APP_ID
-    assert len([key for key in headers if key.casefold() == "anthropic-beta"]) == 1
-    assert len([key for key in headers if key.casefold() == "user-agent"]) == 1
-
-
 def test_apply_beta_headers_merges_case_insensitively() -> None:
-    from loushang.ai.providers.anthropic_base import AnthropicProviderBase
+    from loushang.ai.protocols._anthropic import AnthropicMessagesProtocol
 
-    headers = AnthropicProviderBase.apply_beta_headers(
+    headers = AnthropicMessagesProtocol.apply_beta_headers(
         existing_headers={"ANTHROPIC-BETA": "custom-beta"},
         need_interleaved_beta=True,
         force_fine_grained_tools=False,
@@ -699,134 +605,6 @@ def test_apply_beta_headers_merges_case_insensitively() -> None:
         "interleaved-thinking-2025-05-14",
     }
     assert len([key for key in headers if key.casefold() == "anthropic-beta"]) == 1
-
-
-def test_oauth_tool_name_roundtrip_prefers_registered_tool_name() -> None:
-    from loushang.ai.providers.anthropic_base import AnthropicProviderBase
-
-    assert AnthropicProviderBase.to_oauth_tool_name("read") == "Read"
-    assert (
-        AnthropicProviderBase.from_oauth_tool_name(
-            "Read",
-            [{"name": "read"}],
-        )
-        == "read"
-    )
-    assert (
-        AnthropicProviderBase.from_oauth_tool_name(
-            "TaskOutput",
-            [{"name": "task_output"}],
-        )
-        == "TaskOutput"
-    )
-
-
-def test_anthropic_provider_oauth_request_uses_sdk_headers_and_tool_names(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-    provider = AnthropicProvider()
-
-    asyncio.run(
-        _collect_parts(
-            _invoke_raw_parts(
-                provider,
-                _Model(),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0),
-                        {
-                            "role": "assistant",
-                            "content": [
-                                ToolCall(
-                                    type="toolCall",
-                                    id="call_1",
-                                    name="read",
-                                    arguments={"path": "README.md"},
-                                ),
-                            ],
-                        },
-                    ],
-                    "tools": [
-                        Tool(
-                            name="read",
-                            description="Read a file",
-                            parameters={"type": "object"},
-                        ),
-                    ],
-                },
-                CallOptions(
-                    auth=OAuthBearerAuth("opaque-oauth-token"),
-                    pairing_mode="repair",
-                ),
-            )
-        )
-    )
-
-    headers = _FakeAsyncAnthropic.last_stream_kwargs["extra_headers"]
-    assert headers["anthropic-beta"] == (
-        "claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14"
-    )
-    assert headers["user-agent"] == "loushang-ai"
-    assert headers["x-app"] == "sdk"
-
-    payload = _FakeAsyncAnthropic.last_stream_kwargs
-    assert payload["tools"][0]["name"] == "Read"
-    assert payload["messages"][1]["content"][0]["name"] == "Read"
-
-
-def test_anthropic_provider_oauth_stream_maps_claude_code_tool_name_back_to_registered_name(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _fake_anthropic_module(
-        monkeypatch,
-        [
-            SimpleNamespace(
-                type="message_start",
-                message=SimpleNamespace(id="resp_1", usage=None),
-            ),
-            SimpleNamespace(
-                type="content_block_start",
-                content_block=SimpleNamespace(
-                    type="tool_use", id="call_1", name="Read"
-                ),
-            ),
-            SimpleNamespace(
-                type="content_block_delta",
-                delta=SimpleNamespace(
-                    type="input_json_delta", partial_json='{"path":"README.md"}'
-                ),
-            ),
-            SimpleNamespace(type="content_block_stop", index=0),
-            SimpleNamespace(type="message_stop"),
-        ],
-    )
-    provider = AnthropicProvider()
-
-    parts = asyncio.run(
-        _collect_parts(
-            _invoke_raw_parts(
-                provider,
-                _Model(),
-                {
-                    "messages": [
-                        UserMessage(role="user", content="hello", timestamp=0.0)
-                    ],
-                    "tools": [
-                        Tool(
-                            name="read",
-                            description="Read a file",
-                            parameters={"type": "object"},
-                        ),
-                    ],
-                },
-                CallOptions(auth=OAuthBearerAuth("opaque-oauth-token")),
-            )
-        )
-    )
-
-    tool_start = next(part for part in parts if part["type"] == "tool_call_start")
-    assert tool_start["name"] == "read"
 
 
 def test_anthropic_provider_stream_uses_tool_input_from_content_block_start(
@@ -865,7 +643,7 @@ def test_anthropic_provider_stream_uses_tool_input_from_content_block_start(
             SimpleNamespace(type="message_stop"),
         ],
     )
-    provider = AnthropicProvider()
+    provider = AnthropicMessagesAdapter()
     trace_events: list[dict] = []
 
     parts = asyncio.run(
@@ -898,8 +676,12 @@ def test_anthropic_provider_stream_uses_tool_input_from_content_block_start(
         event for event in trace_events if event.get("type") == "sdk:tool_start"
     )
     tool_start_data = tool_start_trace["data"]
-    assert tool_start_data["input"]["path"] == "tmp/bmi.html"
-    assert tool_start_data["input"]["content_chars"] == len(tool_input["content"])
+    assert tool_start_data["args"] == {
+        "kind": "object",
+        "keys": ["content", "path"],
+        "content_chars": len(tool_input["content"]),
+    }
+    assert "tmp/bmi.html" not in str(tool_start_trace)
 
 
 def test_anthropic_provider_stream_keeps_interleaved_tool_blocks_by_index(
@@ -949,7 +731,7 @@ def test_anthropic_provider_stream_keeps_interleaved_tool_blocks_by_index(
             SimpleNamespace(type="message_stop"),
         ],
     )
-    provider = AnthropicProvider()
+    provider = AnthropicMessagesAdapter()
 
     parts = asyncio.run(
         _collect_parts(
@@ -997,7 +779,7 @@ def test_anthropic_provider_payload_snapshot_for_mixed_assistant_and_tool_result
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-    provider = AnthropicProvider()
+    provider = AnthropicMessagesAdapter()
 
     asyncio.run(
         _collect_parts(
@@ -1138,7 +920,7 @@ def test_anthropic_provider_respects_explicit_max_tokens(
         ],
     )
 
-    provider = AnthropicProvider()
+    provider = AnthropicMessagesAdapter()
     stream = asyncio.run(
         _stream(
             provider,
@@ -1185,7 +967,7 @@ def test_anthropic_provider_stream_usage_delta_preserves_missing_fields(
             SimpleNamespace(type="message_stop"),
         ],
     )
-    provider = AnthropicProvider()
+    provider = AnthropicMessagesAdapter()
 
     async def _scenario():
         stream = await _stream(
@@ -1208,7 +990,7 @@ def test_anthropic_provider_uses_resolved_capability_max_tokens(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-    provider = AnthropicProvider()
+    provider = AnthropicMessagesAdapter()
     request = make_provider_request(
         _Model(max_tokens=8192),
         api="anthropic-messages",
@@ -1241,14 +1023,13 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_false_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-    provider = AnthropicProvider()
+    provider = AnthropicMessagesAdapter()
     request = make_provider_request(
         _Model(),
         api="anthropic-messages",
         base_url=None,
         headers={"x-api-key": "test-key"},
         adapter_config=AnthropicMessagesConfig(
-            session_affinity_headers=True,
             long_cache_retention=True,
             fine_grained_tools=True,
             interleaved_thinking=True,
@@ -1282,9 +1063,6 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_false_options(
     )
 
     headers = _last_anthropic_request_headers()
-    assert headers["session_id"] == "sess_typed"
-    assert headers["x-client-request-id"] == "sess_typed"
-    assert headers["x-session-affinity"] == "sess_typed"
     assert "fine-grained-tool-streaming-2025-05-14" in headers["anthropic-beta"]
     assert "interleaved-thinking-2025-05-14" in headers["anthropic-beta"]
     payload = _FakeAsyncAnthropic.last_stream_kwargs
@@ -1298,14 +1076,13 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_true_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-    provider = AnthropicProvider()
+    provider = AnthropicMessagesAdapter()
     request = make_provider_request(
         _Model(),
         api="anthropic-messages",
         base_url=None,
         headers={"x-api-key": "test-key", "anthropic-version": "2023-06-01"},
         adapter_config=AnthropicMessagesConfig(
-            session_affinity_headers=False,
             long_cache_retention=False,
             fine_grained_tools=False,
             interleaved_thinking=False,
@@ -1341,13 +1118,6 @@ def test_anthropic_provider_uses_typed_protocol_over_stale_true_options(
     assert headers["X-Api-Key"] == "test-key"
     assert headers["anthropic-version"] == "2023-06-01"
     assert "anthropic-beta" not in headers
-    assert "session_id" not in headers
-    assert "x-client-request-id" not in headers
-    assert "x-session-affinity" not in headers
-    assert "anthropic-beta" not in headers
-    assert "session_id" not in headers
-    assert "x-client-request-id" not in headers
-    assert "x-session-affinity" not in headers
     payload = _FakeAsyncAnthropic.last_stream_kwargs
     assert payload["messages"][0]["content"][0]["cache_control"] == {
         "type": "ephemeral"
@@ -1358,15 +1128,12 @@ def test_anthropic_cache_retention_none_suppresses_cache_key_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-    provider = AnthropicProvider()
+    provider = AnthropicMessagesAdapter()
     request = make_provider_request(
         _Model(),
         api="anthropic-messages",
         headers={"x-api-key": "test-key"},
-        adapter_config=AnthropicMessagesConfig(
-            session_affinity_headers=True,
-            long_cache_retention=True,
-        ),
+        adapter_config=AnthropicMessagesConfig(long_cache_retention=True),
     )
 
     asyncio.run(
@@ -1389,10 +1156,6 @@ def test_anthropic_cache_retention_none_suppresses_cache_key_fields(
         )
     )
 
-    headers = _last_anthropic_request_headers()
-    assert "session_id" not in headers
-    assert "x-client-request-id" not in headers
-    assert "x-session-affinity" not in headers
     payload = _FakeAsyncAnthropic.last_stream_kwargs
     assert "cache_control" not in payload["messages"][0]["content"][0]
 
@@ -1406,7 +1169,7 @@ def test_anthropic_explicit_reasoning_disable_omits_thinking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-    provider = AnthropicProvider()
+    provider = AnthropicMessagesAdapter()
     request = make_provider_request(
         _Model(reasoning=True),
         api="anthropic-messages",
@@ -1438,7 +1201,7 @@ def test_anthropic_uses_resolved_temperature(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-    provider = AnthropicProvider()
+    provider = AnthropicMessagesAdapter()
     request = make_provider_request(
         _Model(),
         api="anthropic-messages",
@@ -1465,71 +1228,11 @@ def test_anthropic_uses_resolved_temperature(
     assert _FakeAsyncAnthropic.last_stream_kwargs["temperature"] == 0.4
 
 
-def test_anthropic_compat_fireworks_uses_session_headers_without_long_cache_ttl(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-    registry = _registry_with_endpoint(
-        "fireworks",
-        Endpoint(
-            id="anthropic-messages",
-            provider="fireworks",
-            api="anthropic-messages",
-            base_url="https://api.fireworks.ai/inference/v1",
-            adapter=AnthropicMessagesConfig(
-                session_affinity_headers=True,
-                long_cache_retention=False,
-            ),
-            models={
-                "claude-sonnet-4-5": Model(
-                    id="claude-sonnet-4-5",
-                    provider="fireworks",
-                    endpoint="anthropic-messages",
-                )
-            },
-        ),
-    )
-    model = registry.get_model("fireworks", "anthropic-messages", "claude-sonnet-4-5")
-    provider = AnthropicProvider()
-
-    asyncio.run(
-        _collect_parts(
-            _invoke_raw_parts(
-                provider,
-                model,
-                {
-                    "messages": [
-                        UserMessage(
-                            role="user",
-                            content=[TextPart(type="text", text="hello")],
-                            timestamp=0.0,
-                        )
-                    ]
-                },
-                CallOptions(
-                    auth=ApiKeyAuth("test-key"),
-                    cache_retention="long",
-                    cache_key="sess_fireworks",
-                ),
-            )
-        )
-    )
-
-    headers = _last_anthropic_request_headers()
-    assert headers["session_id"] == "sess_fireworks"
-    assert headers["x-client-request-id"] == "sess_fireworks"
-    assert headers["x-session-affinity"] == "sess_fireworks"
-    payload = _FakeAsyncAnthropic.last_stream_kwargs
-    assert payload["messages"][0]["content"][0]["cache_control"] == {
-        "type": "ephemeral"
-    }
-
-
 def test_anthropic_provider_uses_model_max_tokens_without_scaling(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-    provider = AnthropicProvider()
+    provider = AnthropicMessagesAdapter()
 
     asyncio.run(
         _collect_parts(
@@ -1553,7 +1256,7 @@ def test_anthropic_provider_caps_model_max_tokens_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
-    provider = AnthropicProvider()
+    provider = AnthropicMessagesAdapter()
 
     asyncio.run(
         _collect_parts(
@@ -1574,7 +1277,9 @@ def test_anthropic_provider_caps_model_max_tokens_default(
 
 
 def test_anthropic_payload_groups_consecutive_tool_results_from_same_turn() -> None:
-    from loushang.ai.providers.anthropic import _build_anthropic_message_payloads
+    from loushang.ai.protocols.anthropic_messages import (
+        _build_anthropic_message_payloads,
+    )
 
     messages, _system = _build_anthropic_message_payloads(
         normalize_context(
@@ -1638,8 +1343,7 @@ def test_anthropic_payload_groups_consecutive_tool_results_from_same_turn() -> N
                     ),
                 ],
             }
-        ),
-        uses_oauth_protocol=False,
+        )
     )
 
     assert messages == [
@@ -1680,29 +1384,33 @@ async def _collect_parts(source) -> list[dict]:
 
 
 @pytest.mark.parametrize(
-    ("auth", "expected_header", "expected_value"),
+    ("auth", "expected_headers"),
     [
-        (HeadersAuth({"X-API-KEY": "opaque"}), "X-Api-Key", "opaque"),
+        (ApiKeyAuth("opaque"), {"Authorization": "Bearer opaque"}),
         (
-            ApiKeyAuth("opaque", header="X-Custom-Auth", prefix="Token "),
-            "X-Custom-Auth",
-            "Token opaque",
+            OAuthBearerAuth(
+                "oauth-token",
+                extra_headers={"X-Account-Id": "account-1"},
+            ),
+            {
+                "Authorization": "Bearer oauth-token",
+                "X-Account-Id": "account-1",
+            },
         ),
-        (NoAuth(), None, None),
+        (None, {}),
     ],
 )
 def test_anthropic_forwards_authoritative_auth_headers(
     monkeypatch: pytest.MonkeyPatch,
     auth,
-    expected_header: str | None,
-    expected_value: str | None,
+    expected_headers: dict[str, str],
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
 
     asyncio.run(
         _collect_parts(
             _invoke_raw_parts(
-                AnthropicProvider(),
+                AnthropicMessagesAdapter(),
                 _Model(),
                 {
                     "messages": [
@@ -1717,48 +1425,40 @@ def test_anthropic_forwards_authoritative_auth_headers(
     headers = _last_anthropic_request_headers()
     assert _FakeAsyncAnthropic.last_init_kwargs["api_key"] == ""
     assert _FakeAsyncAnthropic.last_init_kwargs["auth_token"] == ""
-    if expected_header is None:
+    if not expected_headers:
         assert isinstance(headers["Authorization"], _FakeOmit)
         assert isinstance(headers["X-Api-Key"], _FakeOmit)
     else:
-        assert headers[expected_header] == expected_value
+        assert headers | expected_headers == headers
 
 
-@pytest.mark.parametrize(
-    ("auth", "uses_oauth_protocol"),
-    [
-        (OAuthBearerAuth("opaque-token"), True),
-        (ApiKeyAuth("sk-ant-oat-looking"), False),
-        (
-            HeadersAuth({"Authorization": "Bearer sk-ant-oat-looking"}),
-            False,
-        ),
-    ],
-)
-def test_anthropic_oauth_protocol_is_selected_by_credential_type(
+def test_anthropic_uses_catalog_auth_header_and_prefix(
     monkeypatch: pytest.MonkeyPatch,
-    auth,
-    uses_oauth_protocol: bool,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
+    model = bound_test_model(
+        _Model(),
+        api="anthropic-messages",
+        auth=Auth(kind="apiKey", header="X-Custom-Auth", prefix="Token "),
+    )
 
     asyncio.run(
         _collect_parts(
             _invoke_raw_parts(
-                AnthropicProvider(),
-                _Model(),
+                AnthropicMessagesAdapter(),
+                model,
                 {
                     "messages": [
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(auth=auth),
+                CallOptions(auth=ApiKeyAuth("opaque")),
             )
         )
     )
 
     headers = _last_anthropic_request_headers()
-    assert (headers.get("x-app") == "sdk") is uses_oauth_protocol
+    assert headers["X-Custom-Auth"] == "Token opaque"
 
 
 def _last_anthropic_request_headers() -> dict[str, object]:

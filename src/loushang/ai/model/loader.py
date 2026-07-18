@@ -14,17 +14,13 @@ from loushang.ai.model.domain import (
     Capabilities,
     Defaults,
     Endpoint,
-    EndpointRouting,
-    EndpointTransport,
     Model,
-    OpenAICompletionsConfig,
     Pricing,
     Provider,
     adapter_config_allowed_keys,
     adapter_config_from_raw,
 )
 from loushang.ai.model.registry import ModelRegistry
-from loushang.ai.output_budget import default_output_tokens_from_capability
 
 ALLOWED_ROOT_KEYS = frozenset({"providers"})
 ALLOWED_PROVIDER_KEYS = frozenset({"displayName", "website", "auth", "endpoints"})
@@ -39,11 +35,9 @@ ALLOWED_ENDPOINT_KEYS = frozenset(
         "preferred",
         "docs",
         "auth",
-        "authOverride",
+        "headers",
         "adapter",
         "defaults",
-        "transport",
-        "routing",
         "models",
     }
 )
@@ -58,11 +52,8 @@ ALLOWED_MODEL_KEYS = frozenset(
         "capabilities",
         "pricing",
         "auth",
-        "authOverride",
         "adapter",
         "defaults",
-        "transport",
-        "routing",
         "upstreamId",
     }
 )
@@ -92,17 +83,13 @@ ALLOWED_CAPABILITY_KEYS = frozenset(
 ALLOWED_PRICING_KEYS = frozenset(
     {"currency", "input", "output", "cacheRead", "cacheWrite"}
 )
-ALLOWED_AUTH_KEYS = frozenset(
-    {"kind", "apiKeyEnv", "apiKeyEnvs", "header", "prefix", "extraHeaders"}
-)
-ALLOWED_TRANSPORT_KEYS = frozenset({"kind", "stream", "fallback", "timeout"})
-ALLOWED_ROUTING_KEYS = frozenset({"requestOverrides"})
+ALLOWED_AUTH_KEYS = frozenset({"kind", "apiKeyEnv", "apiKeyEnvs", "header", "prefix"})
 REMOVED_CATALOG_FIELDS = frozenset({"compat", "protocol", "dialect"})
 
 
 def validate_model_registry_raw(raw: dict[str, Any]) -> None:
     root = _require_mapping(raw, "<root>")
-    _reject_removed_field(root, "<root>", fields=frozenset({"schema" "Version"}))
+    _reject_removed_field(root, "<root>", fields=frozenset({"schemaVersion"}))
     _validate_keyed_mapping(root, ALLOWED_ROOT_KEYS, "<root>")
     providers = _require_mapping(root.get("providers"), "providers")
     for provider_id, provider_raw in providers.items():
@@ -143,7 +130,9 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
             _validate_optional_bool(
                 endpoint.get("preferred"), f"{endpoint_path}.preferred"
             )
-            _validate_auth_fields(endpoint, endpoint_path)
+            _validate_auth_mapping(endpoint.get("auth"), f"{endpoint_path}.auth")
+            if "headers" in endpoint:
+                _as_str_mapping(endpoint["headers"], f"{endpoint_path}.headers")
             _validate_adapter_mapping(
                 endpoint.get("adapter"), endpoint_api, f"{endpoint_path}.adapter"
             )
@@ -151,12 +140,6 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                 endpoint,
                 endpoint_path,
                 provider_id=provider_id,
-            )
-            _validate_transport_mapping(
-                endpoint.get("transport"), f"{endpoint_path}.transport"
-            )
-            _validate_routing_mapping(
-                endpoint.get("routing"), f"{endpoint_path}.routing"
             )
             _validate_defaults_mapping(
                 endpoint.get("defaults"),
@@ -169,14 +152,10 @@ def validate_model_registry_raw(raw: dict[str, Any]) -> None:
                 model = _require_mapping(model_raw, model_path)
                 _reject_removed_field(model, model_path)
                 _validate_keyed_mapping(model, ALLOWED_MODEL_KEYS, model_path)
-                _validate_auth_fields(model, model_path)
+                _validate_auth_mapping(model.get("auth"), f"{model_path}.auth")
                 _validate_adapter_mapping(
                     model.get("adapter"), endpoint_api, f"{model_path}.adapter"
                 )
-                _validate_transport_mapping(
-                    model.get("transport"), f"{model_path}.transport"
-                )
-                _validate_routing_mapping(model.get("routing"), f"{model_path}.routing")
                 _validate_upstream_id(
                     model.get("upstreamId"), f"{model_path}.upstreamId"
                 )
@@ -248,21 +227,9 @@ def _validate_bool(value: object, path: str) -> None:
         raise ValueError(f"models registry field must be a boolean: {path}")
 
 
-def _validate_positive_number(value: object, path: str) -> None:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int | float)
-        or not isfinite(value)
-        or value <= 0
-    ):
-        raise ValueError(f"models registry field must be a positive number: {path}")
-
-
 def _validate_positive_int(value: object, path: str) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(
-            f"models registry field must be a positive integer: {path}"
-        )
+        raise ValueError(f"models registry field must be a positive integer: {path}")
 
 
 def _validate_optional_non_negative_number(value: object, path: str) -> None:
@@ -354,20 +321,6 @@ def _validate_auth_mapping(value: object, path: str) -> None:
         raise ValueError(
             f"models registry field must be a string list: {path}.apiKeyEnvs"
         )
-    extra_headers = mapping.get("extraHeaders")
-    if extra_headers is not None:
-        _as_str_mapping(extra_headers, f"{path}.extraHeaders")
-
-
-def _validate_auth_fields(raw: dict[str, Any], path: str) -> None:
-    auth = raw.get("auth")
-    auth_override = raw.get("authOverride")
-    if auth is not None and auth_override is not None:
-        raise ValueError(
-            f"models registry field cannot define both auth and authOverride: {path}"
-        )
-    _validate_auth_mapping(auth, f"{path}.auth")
-    _validate_auth_mapping(auth_override, f"{path}.authOverride")
 
 
 def _validate_pricing_mapping(value: object, path: str) -> None:
@@ -400,48 +353,10 @@ def _validate_defaults_mapping(value: object, path: str) -> None:
             or not isfinite(temperature)
         ):
             raise ValueError(
-                "models registry field must be a finite number: "
-                f"{path}.temperature"
+                f"models registry field must be a finite number: {path}.temperature"
             )
     if "reasoningEffort" in mapping:
         _require_str(mapping["reasoningEffort"], f"{path}.reasoningEffort")
-
-
-def _validate_transport_mapping(value: object, path: str) -> None:
-    if value is None:
-        return
-    mapping = _require_mapping(value, path)
-    unknown = sorted(set(mapping) - ALLOWED_TRANSPORT_KEYS)
-    if unknown:
-        raise ValueError(f"models registry field has unknown keys at {path}: {unknown}")
-    for key in ("kind", "stream"):
-        if key in mapping:
-            _require_str(mapping[key], f"{path}.{key}")
-    if "fallback" in mapping:
-        _validate_bool(mapping["fallback"], f"{path}.fallback")
-    if "timeout" in mapping:
-        _validate_positive_number(mapping["timeout"], f"{path}.timeout")
-
-
-def _validate_routing_mapping(value: object, path: str) -> None:
-    if value is None:
-        return
-    mapping = _require_mapping(value, path)
-    unknown = sorted(set(mapping) - ALLOWED_ROUTING_KEYS)
-    if unknown:
-        raise ValueError(f"models registry field has unknown keys at {path}: {unknown}")
-    if "requestOverrides" not in mapping:
-        return
-    overrides = _require_mapping(
-        mapping["requestOverrides"], f"{path}.requestOverrides"
-    )
-    for key, entry in overrides.items():
-        if not isinstance(key, str) or not key:
-            raise ValueError(
-                "models registry key must be a non-empty string: "
-                f"{path}.requestOverrides"
-            )
-        _require_mapping(entry, f"{path}.requestOverrides.{key}")
 
 
 def _validate_upstream_id(value: object, path: str) -> None:
@@ -509,159 +424,36 @@ def _as_str_mapping(value: object, path: str) -> dict[str, str]:
 
 def _auth_raw(raw: dict[str, Any]) -> dict[str, Any] | None:
     value = raw.get("auth")
-    if value is None:
-        value = raw.get("authOverride")
     return dict(value) if isinstance(value, dict) and value else None
-
-
-def _merge_auth_raw(
-    base: dict[str, Any] | None,
-    override: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    if override is None:
-        return dict(base) if base is not None else None
-    if base is None:
-        return dict(override)
-    merged = dict(base)
-    for key, value in override.items():
-        if key == "extraHeaders" and isinstance(value, dict):
-            existing_extra_headers = merged.get(key)
-            merged[key] = {
-                **dict(
-                    existing_extra_headers
-                    if isinstance(existing_extra_headers, dict)
-                    else {}
-                ),
-                **value,
-            }
-            continue
-        merged[key] = value
-    return merged
 
 
 def _adapter_raw(value: object) -> dict[str, object]:
     return dict(value) if isinstance(value, dict) else {}
 
 
-def _merged_adapter_config(
+def _model_adapter_config(
     endpoint_api: str,
-    endpoint_raw: dict[str, object],
     model_raw: dict[str, object],
 ) -> AdapterConfig | None:
-    endpoint_adapter_raw = _adapter_raw(endpoint_raw.get("adapter"))
     model_adapter_raw = _adapter_raw(model_raw.get("adapter"))
-    if model_adapter_raw:
-        return adapter_config_from_raw(
-            endpoint_api,
-            {**endpoint_adapter_raw, **model_adapter_raw},
-        )
-    return adapter_config_from_raw(endpoint_api, endpoint_adapter_raw)
+    return adapter_config_from_raw(endpoint_api, model_adapter_raw)
 
 
-def _overlay_nested_raw(
-    base: dict[str, object],
-    override: dict[str, object],
-) -> dict[str, object]:
-    result = dict(base)
-    for key, value in override.items():
-        existing = result.get(key)
-        if isinstance(existing, dict) and isinstance(value, dict):
-            result[key] = _overlay_nested_raw(existing, value)
-        else:
-            result[key] = value
-    return result
-
-
-def _derive_model_defaults(
-    endpoint_api: str,
-    endpoint_lane: str | None,
-    endpoint_defaults: Defaults,
-    raw: dict[str, Any],
-    adapter: AdapterConfig | None,
-) -> Defaults:
-    defaults = dict(endpoint_defaults)
-    defaults.update(dict(raw.get("defaults", {})))
-    capabilities = Capabilities.from_raw(raw)
-    max_tokens = capabilities.max_tokens
-    context_window = capabilities.context_window
-    supports_temperature = capabilities.temperature
-    if endpoint_api == "anthropic-messages":
-        defaults.setdefault(
-            "maxTokens", default_output_tokens_from_capability(max_tokens)
-        )
-    elif endpoint_lane == "coding" and endpoint_api == "openai-completions":
-        if isinstance(max_tokens, int):
-            defaults.setdefault(
-                "maxOutputTokens",
-                default_output_tokens_from_capability(max_tokens),
-            )
-        if supports_temperature:
-            defaults.setdefault("temperature", 0.2)
-        if isinstance(adapter, OpenAICompletionsConfig) and adapter.reasoning_effort:
-            defaults.setdefault("reasoningEffort", "medium")
-        if isinstance(context_window, int):
-            defaults.setdefault("contextWindow", context_window)
-    elif endpoint_api == "openai-responses" and isinstance(max_tokens, int):
-        defaults.setdefault(
-            "maxOutputTokens",
-            default_output_tokens_from_capability(max_tokens),
-        )
-    return Defaults(items_by_key=defaults)
-
-
-def _derive_endpoint_id(
-    endpoint_key: str,
-    api: str,
-    lane: str | None,
-    region: str | None,
-) -> str:
-    if endpoint_key and ":" not in endpoint_key:
-        return endpoint_key
-    if lane:
-        return lane
-    if region and region not in {"", "global", "cn"}:
-        return f"{api}-{region}"
-    return api
-
-
-def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
+def _build_provider_tree(raw: dict[str, Any]) -> dict[str, Provider]:
     validate_model_registry_raw(raw)
     providers: dict[str, Provider] = {}
-    endpoint_auth_explicit: set[tuple[str, str]] = set()
-    model_auth_explicit: set[tuple[str, str, str]] = set()
     for provider_id, provider_raw in raw.get("providers", {}).items():
         provider_auth_raw = _auth_raw(provider_raw)
         provider_auth = Auth.from_raw(provider_auth_raw)
         endpoints: dict[str, Endpoint] = {}
         for endpoint_key, endpoint_raw in provider_raw.get("endpoints", {}).items():
             endpoint_api = str(endpoint_raw.get("api", ""))
-            endpoint_id = _derive_endpoint_id(
-                endpoint_key,
-                endpoint_api,
-                endpoint_raw.get("lane"),
-                endpoint_raw.get("region"),
-            )
+            endpoint_id = endpoint_key
             endpoint_specific_auth_raw = _auth_raw(endpoint_raw)
-            if endpoint_specific_auth_raw is not None:
-                endpoint_auth_explicit.add((provider_id, endpoint_id))
-            effective_endpoint_auth_raw = _merge_auth_raw(
-                provider_auth_raw,
-                endpoint_specific_auth_raw,
-            )
             endpoint_auth = Auth.from_raw(endpoint_specific_auth_raw)
             endpoint_adapter_raw = _adapter_raw(endpoint_raw.get("adapter"))
             endpoint_adapter = adapter_config_from_raw(
                 endpoint_api, endpoint_adapter_raw
-            )
-            endpoint_transport_raw = endpoint_raw.get("transport")
-            endpoint_transport = EndpointTransport.from_raw(
-                endpoint_transport_raw
-                if isinstance(endpoint_transport_raw, dict)
-                else {}
-            )
-            endpoint_routing_raw = endpoint_raw.get("routing")
-            endpoint_routing = EndpointRouting.from_raw(
-                endpoint_routing_raw if isinstance(endpoint_routing_raw, dict) else {}
             )
             endpoint = Endpoint(
                 id=endpoint_id,
@@ -675,58 +467,24 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                 preferred=bool(endpoint_raw.get("preferred", False)),
                 docs=endpoint_raw.get("docs"),
                 auth=endpoint_auth,
+                headers=_as_str_mapping(
+                    endpoint_raw.get("headers", {}),
+                    f"providers.{provider_id}.endpoints.{endpoint_id}.headers",
+                ),
                 adapter=endpoint_adapter,
                 defaults=Defaults.from_raw(endpoint_raw.get("defaults")),
-                transport=endpoint_transport,
-                routing=endpoint_routing,
             )
             models: dict[str, Model] = {}
             for model_id, model_raw in endpoint_raw.get("models", {}).items():
                 model_auth_raw = _auth_raw(model_raw)
-                if model_auth_raw is not None:
-                    model_auth_explicit.add((provider_id, endpoint.id, model_id))
-                model_auth = Auth.from_raw(
-                    _merge_auth_raw(effective_endpoint_auth_raw, model_auth_raw)
-                )
-                model_adapter = _merged_adapter_config(
+                model_auth = Auth.from_raw(model_auth_raw)
+                model_adapter = _model_adapter_config(
                     endpoint.api,
-                    endpoint_raw,
                     model_raw,
-                )
-                model_transport_raw = (
-                    model_raw.get("transport")
-                    if isinstance(model_raw.get("transport"), dict)
-                    else {}
-                )
-                model_routing_raw = (
-                    model_raw.get("routing")
-                    if isinstance(model_raw.get("routing"), dict)
-                    else {}
-                )
-                model_transport = EndpointTransport.from_raw(
-                    _overlay_nested_raw(endpoint.transport.to_raw(), model_transport_raw)
-                )
-                model_routing = EndpointRouting.from_raw(
-                    _overlay_nested_raw(endpoint.routing.to_raw(), model_routing_raw)
-                )
-                defaults = _derive_model_defaults(
-                    endpoint.api,
-                    endpoint.lane,
-                    endpoint.defaults,
-                    model_raw,
-                    model_adapter,
                 )
                 model = Model(
                     id=model_id,
                     name=model_raw.get("displayName"),
-                    provider=provider_id,
-                    endpoint=endpoint.id,
-                    api=endpoint.api,
-                    base_url=endpoint.base_url,
-                    base_url_env=endpoint.base_url_env,
-                    region=endpoint.region,
-                    lane=endpoint.lane,
-                    preferred_endpoint=endpoint.preferred,
                     family=model_raw.get("family"),
                     alias=model_raw.get("alias"),
                     upstream_id=model_raw.get("upstreamId"),
@@ -737,9 +495,7 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                     auth=model_auth,
                     pricing=Pricing.from_raw(model_raw.get("pricing")),
                     adapter=model_adapter,
-                    defaults=defaults,
-                    transport=model_transport,
-                    routing=model_routing,
+                    defaults=Defaults.from_raw(model_raw.get("defaults")),
                 )
                 models[model_id] = model
             endpoints[endpoint.id] = Endpoint(
@@ -754,11 +510,10 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
                 preferred=endpoint.preferred,
                 docs=endpoint.docs,
                 auth=endpoint.auth,
+                headers=endpoint.headers,
                 defaults=endpoint.defaults,
                 models=models,
                 adapter=endpoint.adapter,
-                transport=endpoint.transport,
-                routing=endpoint.routing,
             )
         providers[provider_id] = Provider(
             id=provider_id,
@@ -766,19 +521,12 @@ def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
             website=provider_raw.get("website"),
             auth=provider_auth,
             endpoints=endpoints,
-            _auth_scope_known=True,
-            _explicit_endpoint_auth=frozenset(
-                endpoint_id
-                for explicit_provider_id, endpoint_id in endpoint_auth_explicit
-                if explicit_provider_id == provider_id
-            ),
-            _explicit_model_auth=frozenset(
-                (endpoint_id, model_id)
-                for explicit_provider_id, endpoint_id, model_id in model_auth_explicit
-                if explicit_provider_id == provider_id
-            ),
         )
-    return ModelRegistry.from_providers(providers)
+    return providers
+
+
+def _build_registry(raw: dict[str, Any]) -> ModelRegistry:
+    return ModelRegistry.from_providers(_build_provider_tree(raw))
 
 
 _BUILTIN_CATALOG_RESOURCE = "models.json"
@@ -799,9 +547,9 @@ def _load_json_file(path: Path) -> dict[str, Any]:
         raise ValueError("models registry file has invalid JSON") from error
 
 
-def _build_registry_from_file(path: Path) -> ModelRegistry:
+def _build_provider_tree_from_file(path: Path) -> dict[str, Provider]:
     try:
-        return _build_registry(_load_json_file(path))
+        return _build_provider_tree(_load_json_file(path))
     except ValueError as error:
         raise ValueError(f"models registry file {path}: {error}") from error
 
@@ -814,7 +562,7 @@ def load_model_registry_from_file(path: str | Path) -> ModelRegistry:
     resolved = Path(path)
     if not resolved.is_file():
         raise FileNotFoundError(str(resolved))
-    return _build_registry_from_file(resolved)
+    return ModelRegistry.from_providers(_build_provider_tree_from_file(resolved))
 
 
 def load_model_registry_from_directory(path: str | Path) -> ModelRegistry:
@@ -824,9 +572,11 @@ def load_model_registry_from_directory(path: str | Path) -> ModelRegistry:
     return _combine_model_registries(_model_registry_sources_from_directory(resolved))
 
 
-def _model_registry_sources_from_directory(path: Path) -> list[tuple[str, ModelRegistry]]:
+def _model_registry_sources_from_directory(
+    path: Path,
+) -> list[tuple[str, dict[str, Provider]]]:
     return [
-        (str(child), _build_registry_from_file(child))
+        (str(child), _build_provider_tree_from_file(child))
         for child in sorted(path.glob("*.json"))
     ]
 
@@ -840,24 +590,14 @@ def _endpoint_metadata(endpoint: Endpoint) -> Endpoint:
 
 
 def _combine_model_registries(
-    sources: list[tuple[str, ModelRegistry]],
+    sources: list[tuple[str, dict[str, Provider]]],
 ) -> ModelRegistry:
     providers: dict[str, Provider] = {}
-    endpoint_auth_explicit: set[tuple[str, str]] = set()
-    model_auth_explicit: set[tuple[str, str, str]] = set()
     seen_providers: dict[str, tuple[str, str]] = {}
     seen_endpoints: dict[tuple[str, str], tuple[str, str]] = {}
     seen_models: dict[tuple[str, str, str], tuple[str, str]] = {}
-    for source, registry in sources:
-        for provider in registry.list_providers():
-            endpoint_auth_explicit.update(
-                (provider.id, endpoint_id)
-                for endpoint_id in provider._explicit_endpoint_auth
-            )
-            model_auth_explicit.update(
-                (provider.id, endpoint_id, model_id)
-                for endpoint_id, model_id in provider._explicit_model_auth
-            )
+    for source, provider_tree in sources:
+        for provider in provider_tree.values():
             provider_path = f"providers.{provider.id}"
             existing_provider = providers.get(provider.id)
             for endpoint in provider.list_endpoints():
@@ -915,23 +655,6 @@ def _combine_model_registries(
                 providers[provider.id] = replace(provider, endpoints=endpoints)
             else:
                 providers[provider.id] = replace(existing_provider, endpoints=endpoints)
-    providers = {
-        provider_id: replace(
-            provider,
-            _auth_scope_known=True,
-            _explicit_endpoint_auth=frozenset(
-                endpoint_id
-                for explicit_provider_id, endpoint_id in endpoint_auth_explicit
-                if explicit_provider_id == provider_id
-            ),
-            _explicit_model_auth=frozenset(
-                (endpoint_id, model_id)
-                for explicit_provider_id, endpoint_id, model_id in model_auth_explicit
-                if explicit_provider_id == provider_id
-            ),
-        )
-        for provider_id, provider in providers.items()
-    }
     return ModelRegistry.from_providers(providers)
 
 
@@ -940,7 +663,7 @@ def _load_layered_model_registry(
     user_dir: Path | None = None,
     project_dir: Path | None = None,
 ) -> ModelRegistry:
-    sources = [("<builtin>", load_builtin_model_registry())]
+    sources = [("<builtin>", _build_provider_tree(_load_builtin_raw()))]
     for directory in (user_dir, project_dir):
         if directory is not None and directory.is_dir():
             sources.extend(_model_registry_sources_from_directory(directory))

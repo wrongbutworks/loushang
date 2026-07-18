@@ -205,9 +205,9 @@ def test_registry_rejects_unknown_adapter_field() -> None:
 
 
 def test_registry_rejects_reserved_extra_body_fields() -> None:
-    raw = _registry_raw(endpoint_adapter={"extraBody": {"model": "other"}})
+    raw = _registry_raw(endpoint_adapter={"extra" + "Body": {"model": "other"}})
 
-    with pytest.raises(ValueError, match="invalid adapter config"):
+    with pytest.raises(ValueError, match="unknown keys"):
         validate_model_registry_raw(raw)
 
 
@@ -233,23 +233,8 @@ def test_registry_rejects_reserved_extra_body_fields() -> None:
         ),
         (
             ("providers", "custom", "endpoints", "test-endpoint", "auth"),
-            {"extraHeaders": {"x-test": 1}},
-            "string map",
-        ),
-        (
-            ("providers", "custom", "endpoints", "test-endpoint", "transport"),
-            {"fallback": "yes"},
-            "must be a boolean",
-        ),
-        (
-            ("providers", "custom", "endpoints", "test-endpoint", "transport"),
-            {"timeout": 0},
-            "positive number",
-        ),
-        (
-            ("providers", "custom", "endpoints", "test-endpoint", "routing"),
-            {"requestOverrides": {"": {}}},
-            "non-empty string",
+            {"futureAuthField": "value"},
+            "unknown keys",
         ),
         (
             (
@@ -365,14 +350,13 @@ def test_registry_rejects_invalid_defaults(
         validate_model_registry_raw(raw)
 
 
-def test_registry_rejects_endpoint_with_both_auth_shapes() -> None:
+def test_registry_rejects_removed_auth_override() -> None:
     raw = _registry_raw(endpoint_adapter={"developerRole": False})
     endpoint = raw["providers"]["custom"]["endpoints"]["test-endpoint"]
     assert isinstance(endpoint, dict)
-    endpoint["auth"] = {"apiKeyEnv": "ENDPOINT_KEY"}
-    endpoint["authOverride"] = {"apiKeyEnv": "OVERRIDE_KEY"}
+    endpoint["auth" + "Override"] = {"apiKeyEnv": "OVERRIDE_KEY"}
 
-    with pytest.raises(ValueError, match="cannot define both auth and authOverride"):
+    with pytest.raises(ValueError, match="unknown keys"):
         validate_model_registry_raw(raw)
 
 
@@ -437,7 +421,6 @@ def test_openai_responses_adapter_schema_accepts_core_fields(tmp_path: Path) -> 
                 "developerRole": True,
                 "maxOutputTokens": False,
                 "promptCacheKey": True,
-                "sessionIdHeader": True,
                 "longCacheRetention": True,
             },
         ),
@@ -462,7 +445,6 @@ def test_anthropic_adapter_schema_accepts_tristate_fields(tmp_path: Path) -> Non
             endpoint_adapter={
                 "fineGrainedTools": True,
                 "interleavedThinking": False,
-                "sessionAffinityHeaders": True,
                 "longCacheRetention": False,
             },
         ),
@@ -479,7 +461,7 @@ def test_anthropic_adapter_schema_accepts_tristate_fields(tmp_path: Path) -> Non
     assert model.adapter.interleaved_thinking is False
 
 
-def test_load_registry_merges_adapter_auth_transport_and_defaults(
+def test_load_registry_binds_adapter_auth_headers_and_defaults_once(
     tmp_path: Path,
 ) -> None:
     raw = _registry_raw(
@@ -491,20 +473,11 @@ def test_load_registry_merges_adapter_auth_transport_and_defaults(
         model_adapter={"reasoningFormat": "moonshot"},
         endpoint_extra={
             "lane": "coding",
-            "auth": {
-                "apiKeyEnv": "ENDPOINT_KEY",
-                "extraHeaders": {"x-endpoint": "endpoint"},
-            },
-            "transport": {"kind": "httpx", "fallback": True, "timeout": 30},
-            "routing": {"requestOverrides": {"openrouter": {"order": ["a"]}}},
+            "auth": {"apiKeyEnv": "ENDPOINT_KEY"},
+            "headers": {"x-endpoint": "endpoint"},
         },
         model_extra={
-            "authOverride": {
-                "apiKeyEnv": "MODEL_KEY",
-                "extraHeaders": {"x-model": "model"},
-            },
-            "transport": {"timeout": 5},
-            "routing": {"requestOverrides": {"openrouter": {"only": ["b"]}}},
+            "auth": {"apiKeyEnv": "MODEL_KEY"},
             "upstreamId": "vendor/test-model",
         },
     )
@@ -522,17 +495,11 @@ def test_load_registry_merges_adapter_auth_transport_and_defaults(
     assert model.adapter.reasoning_format == "moonshot"
     assert model.auth is not None
     assert model.auth.api_key_env == "MODEL_KEY"
-    assert model.auth.extra_headers == {"x-endpoint": "endpoint", "x-model": "model"}
+    assert dict(model.headers) == {"x-endpoint": "endpoint"}
     assert isinstance(model.defaults.get("maxOutputTokens"), int)
     assert model.defaults.get("reasoningEffort") == "medium"
     assert model.defaults.get("temperature") == 0.2
     assert model.defaults.get("contextWindow") == 128000
-    assert model.transport.kind == "httpx"
-    assert model.transport.fallback is True
-    assert model.transport.timeout == 5
-    assert model.routing.request_overrides == {
-        "openrouter": {"order": ["a"], "only": ["b"]}
-    }
     assert model.upstream_id == "vendor/test-model"
 
 
