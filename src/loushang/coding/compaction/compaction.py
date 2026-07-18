@@ -1,25 +1,27 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, is_dataclass
+from dataclasses import dataclass
 
 from loushang.agent import AgentMessage
 from loushang.ai import CallOptions, Context, complete
-from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
+from loushang.ai.types import AssistantMessage, TextPart, UserMessage
 from loushang.coding.compaction.profiles import (
     CODING_COMPACTION_SUMMARY_PROFILE,
     CODING_TURN_PREFIX_SUMMARY_PROFILE,
 )
-from loushang.coding.compaction.types import (
-    CompactionPlan,
-    CompactionPreparation,
-    CompactionResult,
-)
 from loushang.harness.agent_transcript import (
     AgentTranscriptProfile,
     AgentTranscriptRecord,
+    CompactionPlan,
+    CompactionPreparation,
+    CompactionResult,
     ContextCompactionCheckpoint,
     context_item_to_model_message,
+    estimate_context_tokens,
+)
+from loushang.harness.agent_transcript import (
+    calculate_context_tokens as calculate_context_tokens,
 )
 from loushang.harness.context import (
     ConversationCompactionPlanner,
@@ -29,7 +31,6 @@ from loushang.harness.context.summary import (
     build_summary_prompt,
     compose_summary_prompt,
 )
-from loushang.harness.context.usage import ContextUsageEstimate
 
 TOOL_RESULT_MAX_CHARS = 2_000
 
@@ -48,18 +49,6 @@ class _PreparedCompaction:
     turn_prefix_messages: list[AgentMessage]
 
 
-def calculate_context_tokens(usage: object) -> int:
-    total_tokens = _usage_value(usage, "totalTokens", "total_tokens")
-    if isinstance(total_tokens, int) and total_tokens > 0:
-        return total_tokens
-    return (
-        int(_usage_value(usage, "input") or 0)
-        + int(_usage_value(usage, "output") or 0)
-        + int(_usage_value(usage, "cacheRead", "cache_read") or 0)
-        + int(_usage_value(usage, "cacheWrite", "cache_write") or 0)
-    )
-
-
 def _assistant_text(message: object) -> str:
     return "".join(
         part.text
@@ -74,30 +63,6 @@ async def _complete_text(
     options: CallOptions | None = None,
 ) -> str:
     return _assistant_text(await complete(model, context, options))
-
-
-def estimate_context_tokens(messages: list[AgentMessage]) -> ContextUsageEstimate:
-    usage_info = _last_assistant_usage_info(messages)
-    if usage_info is None:
-        estimated = sum(_estimate_message_tokens(message) for message in messages)
-        return ContextUsageEstimate(
-            tokens=estimated,
-            usage_tokens=0,
-            trailing_tokens=estimated,
-            last_usage_index=None,
-        )
-
-    usage_tokens = calculate_context_tokens(usage_info["usage"])
-    trailing_tokens = sum(
-        _estimate_message_tokens(message)
-        for message in messages[usage_info["index"] + 1 :]
-    )
-    return ContextUsageEstimate(
-        tokens=usage_tokens + trailing_tokens,
-        usage_tokens=usage_tokens,
-        trailing_tokens=trailing_tokens,
-        last_usage_index=usage_info["index"],
-    )
 
 
 def should_compact(
@@ -271,79 +236,6 @@ async def compact(
         tokens_before=preparation.tokens_before,
         details=details,
     )
-
-
-def _usage_value(usage: object, *keys: str) -> object | None:
-    if isinstance(usage, Mapping):
-        for key in keys:
-            value = usage.get(key)
-            if value is not None:
-                return value
-        return None
-    if is_dataclass(usage):
-        for key in keys:
-            if hasattr(usage, key):
-                value = getattr(usage, key)
-                if value is not None:
-                    return value
-        return None
-    for key in keys:
-        if hasattr(usage, key):
-            value = getattr(usage, key)
-            if value is not None:
-                return value
-    return None
-
-
-def _last_assistant_usage_info(
-    messages: list[AgentMessage],
-) -> dict[str, object] | None:
-    for index in range(len(messages) - 1, -1, -1):
-        message = messages[index]
-        if isinstance(message, AssistantMessage) and message.stop_reason not in (
-            "aborted",
-            "error",
-        ):
-            return {"usage": message.usage, "index": index}
-    return None
-
-
-def _estimate_message_tokens(message: AgentMessage) -> int:
-    chars = 0
-
-    if isinstance(message, UserMessage):
-        if isinstance(message.content, str):
-            chars = len(message.content)
-        else:
-            for block in message.content:
-                if getattr(block, "type", None) == "text":
-                    chars += len(block.text)
-                elif getattr(block, "type", None) == "image":
-                    chars += 4_800
-        return (chars + 3) // 4
-
-    if isinstance(message, AssistantMessage):
-        for block in message.content:
-            block_type = getattr(block, "type", None)
-            if block_type == "text":
-                chars += len(block.text)
-            elif block_type == "thinking":
-                chars += len(block.thinking)
-            elif block_type == "toolCall":
-                chars += len(block.name) + len(str(block.arguments))
-            elif block_type == "image":
-                chars += 4_800
-        return (chars + 3) // 4
-
-    if isinstance(message, ToolResultMessage):
-        for block in message.content:
-            if getattr(block, "type", None) == "text":
-                chars += len(block.text)
-            elif getattr(block, "type", None) == "image":
-                chars += 4_800
-        return (chars + 3) // 4
-
-    return 0
 
 
 def _entry_to_agent_message(entry: AgentTranscriptRecord) -> AgentMessage | None:

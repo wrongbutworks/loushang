@@ -6,6 +6,10 @@ from typing import Literal
 from loushang.coding.commands import CommandSourceInfo, SessionCommandDescriptor
 from loushang.coding.types import ModelSelection
 from loushang.harness.agent_transcript import (
+    CompactionDecision,
+    ContextUsageSnapshot,
+)
+from loushang.harness.agent_transcript import (
     TranscriptNavigationResult as TreeNavigationResult,
 )
 from loushang.harness.host.types import RunState as RunState
@@ -49,33 +53,6 @@ class ContextUsage:
     last_usage_index: int | None = None
     stale_after_compaction: bool = False
     compactable: bool = False
-    reason: str | None = None
-
-
-@dataclass(frozen=True)
-class ContextUsageSnapshot:
-    tokens: int | None
-    context_window: int | None
-    reserve_tokens: int
-    compact_percent: float = 100.0
-    keep_recent_tokens: int | None = None
-    percent_threshold_tokens: int | None = None
-    reserve_threshold_tokens: int | None = None
-    threshold_tokens: int | None = None
-    threshold_reason: Literal["compact_percent", "reserve_tokens"] | None = None
-    percent: float | None = None
-    source: Literal["assistant_usage", "estimated_from_last_usage", "estimated", "unknown"] = "unknown"
-    last_usage_index: int | None = None
-    stale_after_compaction: bool = False
-    compactable: bool = False
-    reason: str | None = None
-
-
-@dataclass(frozen=True)
-class CompactionDecision:
-    action: Literal["none", "threshold", "overflow"]
-    usage: ContextUsageSnapshot
-    will_retry: bool = False
     reason: str | None = None
 
 

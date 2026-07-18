@@ -6,7 +6,6 @@ from contextlib import suppress
 from pathlib import Path
 
 from loushang.agent import (
-    AbortController,
     AbortSignal,
     Agent,
     AgentEvent,
@@ -24,8 +23,6 @@ from loushang.coding.capability_profile import (
     bind_coding_capability_runtime,
 )
 from loushang.coding.compaction import (
-    CompactionResult,
-    CompactionStatus,
     compact,
     generate_branch_summary,
     prepare_compaction,
@@ -111,7 +108,11 @@ from loushang.coding.session.types import (
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager, SessionRecord
 from loushang.coding.tools import ToolRegistry
-from loushang.harness.agent_transcript import AgentTranscriptContext
+from loushang.harness.agent_transcript import (
+    AgentTranscriptContext,
+    CompactionResult,
+    CompactionStatus,
+)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import (
     DiagnosticRecord,
@@ -130,6 +131,7 @@ from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
 )
+from loushang.harness.runtime import CancellationController, CancellationSignal
 from loushang.harness.session import (
     AfterTurnPolicyPort,
     SessionRuntime,
@@ -819,11 +821,11 @@ class AgentSession:
         self._retry_controller.retry_future = value
 
     @property
-    def _retry_abort_controller(self) -> AbortController | None:
+    def _retry_abort_controller(self) -> CancellationController | None:
         return self._retry_controller.cancel_handle
 
     @_retry_abort_controller.setter
-    def _retry_abort_controller(self, value: AbortController | None) -> None:
+    def _retry_abort_controller(self, value: CancellationController | None) -> None:
         self._retry_controller.cancel_handle = value
 
     @property
@@ -1954,7 +1956,7 @@ class AgentSession:
         )
 
 
-async def _sleep_for_retry(delay_ms: int, signal: AbortSignal) -> None:
+async def _sleep_for_retry(delay_ms: int, signal: CancellationSignal) -> None:
     remaining = max(delay_ms, 0) / 1000
     step = 0.05
     while remaining > 0:

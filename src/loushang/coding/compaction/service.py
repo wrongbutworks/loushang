@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from loushang.coding.compaction.types import CompactionResult, CompactionStatus
+from loushang.harness.agent_transcript import CompactionResult, CompactionStatus
 from loushang.harness.context.compaction import (
     CompactionCoordinator as HarnessCompactionCoordinator,
 )

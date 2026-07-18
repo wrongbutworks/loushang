@@ -89,10 +89,15 @@ planning, work event persistence, or AI provider behavior.
   index, and branch-label read model while Products retain roots and
   presentation policy.
 - [Agent Transcript Lifecycle Boundary](agent-transcript-lifecycle-boundary.md)
-- [Agent Transcript Interaction Runtime Boundary](agent-transcript-interaction-runtime-boundary.md)
   defines common create, restore, detached-copy, fork, disposal, and active
   Native-file deletion mechanics while Products retain binding and resume
   policy.
+- [Agent Transcript Interaction Runtime Boundary](agent-transcript-interaction-runtime-boundary.md)
+  defines standard branch navigation, selection persistence, transcript
+  inspection, and context replay while Products retain domain actions.
+- [Agent Transcript Maintenance Runtime Boundary](agent-transcript-maintenance-boundary.md)
+  defines common context accounting, compaction/retry lifecycle, checkpoint
+  persistence, and runtime events while Products retain strategy and policy.
 - [Store And Runtime Event Protocol Migration](store-event-protocol-migration.md)
   records the implemented protocol-based Store cutover, Memory/File reference
   adapters, Agent transcript persistence facade, common runtime-event envelope,

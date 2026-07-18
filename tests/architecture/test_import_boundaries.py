@@ -318,6 +318,27 @@ def test_agent_transcript_interaction_runtime_is_neutral_and_adopted() -> None:
     assert "Coding keeps" in boundary
 
 
+def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
+    maintenance_source = Path(
+        "src/loushang/harness/agent_transcript/maintenance.py"
+    ).read_text(encoding="utf-8")
+    compaction_source = Path(
+        "src/loushang/coding/session/compaction_controller.py"
+    ).read_text(encoding="utf-8")
+    retry_source = Path(
+        "src/loushang/coding/session/retry_controller.py"
+    ).read_text(encoding="utf-8")
+    boundary = Path(
+        "docs/internals/architecture/harness/agent-transcript-maintenance-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in maintenance_source
+    assert "AgentTranscriptCompactionRuntime" in compaction_source
+    assert "AgentTranscriptRetryRuntime" in retry_source
+    assert "Product-supplied" in boundary
+    assert "Coding keeps" in boundary
+
+
 def test_extension_message_controller_is_a_product_api_adapter() -> None:
     source = Path(
         "src/loushang/coding/session/extension_message_controller.py"
@@ -2182,7 +2203,7 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
             "loushang.harness.session.SessionLifecycleRuntime",
         },
         Path("src/loushang/coding/session/compaction_controller.py"): {
-            "loushang.harness.context.compaction.CompactionCoordinator",
+            "loushang.harness.agent_transcript.AgentTranscriptCompactionRuntime",
         },
         Path("src/loushang/coding/session/extension_runtime_controller.py"): {
             "loushang.harness.extensions.lifecycle.ExtensionRuntimeCoordinator",
@@ -2197,7 +2218,7 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
             "loushang.harness.resources.refresh.ResourceRefreshCoordinator",
         },
         Path("src/loushang/coding/session/retry_controller.py"): {
-            "loushang.harness.host.retry.RetryCoordinator",
+            "loushang.harness.agent_transcript.AgentTranscriptRetryRuntime",
         },
         Path("src/loushang/coding/session/tree_controller.py"): {
             "loushang.harness.agent_transcript.AgentTranscriptNavigationRuntime",
