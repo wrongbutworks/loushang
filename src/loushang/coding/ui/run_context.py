@@ -1,41 +1,38 @@
 from __future__ import annotations
 
-import time
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
-from typing import Any, Protocol
+from collections.abc import Callable
+from typing import Any
 
 from loushang.coding.ui.event_stream import CodingUiEventStreamHandler
 from loushang.coding.ui.startup import CodingTuiStartupSnapshot
+from loushang.harnesstui.conversation.run_context import (
+    InteractionRunContext,
+    StableEmit,
+    TraceFn,
+    stable_emit_factory,
+    subscribe_events,
+)
 
 
-class TraceFn(Protocol):
-    def __call__(self, name: str, **data: Any) -> None: ...
+class CodingTuiRunContext(InteractionRunContext):
+    """Coding compatibility facade for a neutral interaction run context."""
 
-
-class StableEmit(Protocol):
-    def __call__(self, write_callable: Callable[[], None], *, label: str) -> Awaitable[None]: ...
-
-
-@dataclass
-class CodingTuiRunContext:
-    emit: StableEmit
-    _unsubscribe: Callable[[], None]
-    _observability_context: Any
-    _trace: TraceFn
-    _closed: bool = False
-
-    def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        try:
-            try:
-                self._trace("tui.end")
-            finally:
-                self._unsubscribe()
-        finally:
-            self._observability_context.__exit__(None, None, None)
+    def __init__(
+        self,
+        emit: StableEmit,
+        _unsubscribe: Callable[[], None],
+        _observability_context: Any,
+        _trace: TraceFn,
+        _closed: bool = False,
+    ) -> None:
+        self._observability_context = _observability_context
+        super().__init__(
+            emit=emit,
+            _unsubscribe=_unsubscribe,
+            _exit_context=_observability_context,
+            _trace=_trace,
+            _closed=_closed,
+        )
 
 
 def open_coding_tui_run_context(
@@ -58,7 +55,7 @@ def open_coding_tui_run_context(
             branch=snapshot.branch,
             session=snapshot.session_label,
         )
-        stable_emit = _stable_emit_factory(trace=trace, interactive=interactive)
+        stable_emit = stable_emit_factory(trace=trace, interactive=interactive)
         event_stream_handler = CodingUiEventStreamHandler(renderer=event_renderer, emit=stable_emit, trace=trace)
         listener = event_stream_handler.handle if interactive else event_renderer.handle
         unsubscribe = subscribe_session_events(session, listener)
@@ -69,31 +66,9 @@ def open_coding_tui_run_context(
 
 
 def subscribe_session_events(session: Any, listener: Any) -> Callable[[], None]:
-    subscribe = getattr(session, "subscribe", None)
-    if callable(subscribe):
-        unsubscribe = subscribe(listener)
-        if callable(unsubscribe):
-            return unsubscribe
-    return lambda: None
+    """Coding compatibility name for subscribing to Session events."""
 
-
-def _stable_emit_factory(*, trace: TraceFn, interactive: bool) -> StableEmit:
-    async def emit(write_callable: Callable[[], None], *, label: str) -> None:
-        started = time.monotonic()
-        trace("emit.start", label=label, interactive=interactive)
-        try:
-            write_callable()
-        except Exception as error:
-            trace(
-                "emit.error",
-                label=label,
-                elapsed_s=time.monotonic() - started,
-                error=str(error) or error.__class__.__name__,
-            )
-            raise
-        trace("emit.end", label=label, elapsed_s=time.monotonic() - started)
-
-    return emit
+    return subscribe_events(session, listener)
 
 
 __all__ = ["CodingTuiRunContext", "open_coding_tui_run_context", "subscribe_session_events"]

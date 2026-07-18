@@ -179,6 +179,37 @@ existing `make test-tui-render-contract` gate covers this new boundary.
 The explicit module path above is the stable import for this capability. The
 package initializer does not provide a convenience re-export.
 
+## Conversation Interaction Control
+
+The reusable control plane for a full-screen conversation lives behind five
+explicit entrypoints:
+
+- `loushang.harnesstui.conversation.input` coordinates decoded input,
+  completion, surfaces, running-submit modes, and neutral attachments;
+- `loushang.harnesstui.conversation.control` coordinates abort, steer, and
+  follow-up actions over caller-supplied controllers and status callbacks;
+- `loushang.harnesstui.conversation.dispatch` owns product-neutral dispatch,
+  result-presentation, and stable event-stream lifecycles;
+- `loushang.harnesstui.conversation.run_context` owns UI subscription cleanup,
+  stable emission, tracing, and context-exit ordering;
+- `loushang.harnesstui.conversation.screen_runner` owns the reusable terminal
+  read/route/run loop over explicit screen, router, and result ports.
+
+These modules build conversation interaction from neutral UI values. They do
+not own a Harness Session, persistence, runtime construction, raw product
+events, Coding intents, model-facing image types, workspace paths, command
+policy, or product copy. A product facade supplies those decisions and adapts
+neutral attachments to its runtime-facing values. In particular, Coding keeps
+`PromptIntent` and `BashIntent`, `ImagePart`, Session and observability setup,
+raw-event interpretation, `.loushang` storage policy, and its interruption,
+queue, and error messages.
+
+The screen runner coordinates existing rendering calls but does not move or
+replace transcript segmentation, invalidation, render caches, frame
+composition, or terminal writes. Those hot-path responsibilities and the
+independent render-performance contract remain unchanged. The conversation
+package initializer intentionally does not re-export these entrypoints.
+
 ## Plain Conversation Presentation
 
 `loushang.harnesstui.plain.renderer` owns the reusable plain-terminal renderer:

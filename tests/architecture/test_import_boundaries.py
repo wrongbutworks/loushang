@@ -353,6 +353,11 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.conversation.screen_state`" in text
     assert "`loushang.harnesstui.conversation.source`" in text
     assert "`loushang.harnesstui.conversation.attachments`" in text
+    assert "`loushang.harnesstui.conversation.control`" in text
+    assert "`loushang.harnesstui.conversation.dispatch`" in text
+    assert "`loushang.harnesstui.conversation.input`" in text
+    assert "`loushang.harnesstui.conversation.run_context`" in text
+    assert "`loushang.harnesstui.conversation.screen_runner`" in text
     assert "`loushang.harnesstui.conversation.projection`" in text
     assert "`loushang.harnesstui.conversation.plain_target`" in text
     assert "`loushang.harnesstui.conversation.tool_transcript`" in text
@@ -376,11 +381,16 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
 def test_harnesstui_capability_entrypoints_exist() -> None:
     paths = (
         Path("src/loushang/harnesstui/conversation/attachments.py"),
+        Path("src/loushang/harnesstui/conversation/control.py"),
+        Path("src/loushang/harnesstui/conversation/dispatch.py"),
+        Path("src/loushang/harnesstui/conversation/input.py"),
         Path("src/loushang/harnesstui/conversation/plain_target.py"),
         Path("src/loushang/harnesstui/conversation/projection.py"),
         Path("src/loushang/harnesstui/conversation/queue.py"),
         Path("src/loushang/harnesstui/conversation/reader.py"),
         Path("src/loushang/harnesstui/conversation/screen_state.py"),
+        Path("src/loushang/harnesstui/conversation/run_context.py"),
+        Path("src/loushang/harnesstui/conversation/screen_runner.py"),
         Path("src/loushang/harnesstui/conversation/source.py"),
         Path("src/loushang/harnesstui/conversation/tool_transcript.py"),
         Path("src/loushang/harnesstui/plain/renderer.py"),
@@ -403,6 +413,45 @@ def test_harnesstui_capability_entrypoints_exist() -> None:
     missing = [path.as_posix() for path in paths if not path.is_file()]
 
     assert missing == []
+
+
+def test_importing_conversation_interaction_entrypoints_stays_product_neutral() -> (
+    None
+):
+    script = """
+import importlib
+import sys
+
+for module_name in (
+    "loushang.harnesstui.conversation.control",
+    "loushang.harnesstui.conversation.dispatch",
+    "loushang.harnesstui.conversation.input",
+    "loushang.harnesstui.conversation.run_context",
+    "loushang.harnesstui.conversation.screen_runner",
+):
+    importlib.import_module(module_name)
+
+forbidden_prefixes = (
+    "loushang.agent",
+    "loushang.ai",
+    "loushang.coding",
+    "loushang.harness",
+)
+forbidden = sorted(
+    name
+    for name in sys.modules
+    if any(name == prefix or name.startswith(prefix + ".") for prefix in forbidden_prefixes)
+)
+assert forbidden == [], forbidden
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_importing_channel_types_does_not_eagerly_load_agent_or_ai() -> None:
