@@ -51,3 +51,7 @@ Host clipboard-image acquisition lives in
 neutral image bytes and MIME normalization. Product shells remain responsible
 for workspace persistence, composer markers, UI copy, and conversion into
 model-specific attachment values such as `ImagePart`.
+
+Clipboard-image acquisition resolves the host once into an ordered backend
+plan behind a common protocol. On macOS, the system `NSPasteboard` adapter is
+preferred, with `pngpaste` retained only as a compatibility fallback.
