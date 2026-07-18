@@ -84,6 +84,10 @@ planning, work event persistence, or AI provider behavior.
   defines the current Native JSONL provider, file layout and lock ownership,
   Product store selection, and the separation between native loading and
   external importers.
+- [Agent Transcript Catalog Boundary](agent-transcript-catalog-boundary.md)
+  defines the common Native transcript discovery, summary/query, projection
+  index, and branch-label read model while Products retain roots and
+  presentation policy.
 - [Store And Runtime Event Protocol Migration](store-event-protocol-migration.md)
   records the implemented protocol-based Store cutover, Memory/File reference
   adapters, Agent transcript persistence facade, common runtime-event envelope,
