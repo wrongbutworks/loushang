@@ -320,9 +320,11 @@ concrete execution remain coding-owned.
 
 The reusable `ToolContext` now lives with the workspace tool pack after a
 Coding adapter and independent contract probe validated its shape. Keep
-`ExtensionRuntimeBindings`, `ToolController`, active-tool policy, prompt
-rebuilds, session mutation, and product model/diagnostic interpretation in
-Coding.
+`ExtensionRuntimeBindings`, active-tool policy, prompt rebuilds, session
+mutation, and product model/diagnostic interpretation in Coding. The shared
+live capability application now belongs to
+`harness.session.capabilities`; Coding `ToolController`, `CommandController`,
+and `BashController` bind Product policy and protocol behavior to that runtime.
 
 ### Workspace Execution
 

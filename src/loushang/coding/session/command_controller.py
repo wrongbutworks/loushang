@@ -28,16 +28,10 @@ from loushang.coding.source_info import (
 from loushang.coding.store import SessionManager
 from loushang.harness.capabilities.commands import (
     CommandDispatchOutcome,
-    CommandHandlerBinding,
     ParsedSlashCommand,
-    dispatch_command_async,
-    normalize_command_name,
     split_slash_command,
 )
-from loushang.harness.capabilities.packs import (
-    CapabilityPack,
-    CapabilityPackComposer,
-)
+from loushang.harness.capabilities.packs import CapabilityPackComposer
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.frontmatter import strip_frontmatter
@@ -47,6 +41,7 @@ from loushang.harness.resources.types import (
     ResourceBundle,
     SkillDescriptor,
 )
+from loushang.harness.session import CommandRuntimeSource, SessionCommandRuntime
 
 
 @dataclass
@@ -59,12 +54,59 @@ class CommandController:
     pack_composer: CapabilityPackComposer = field(
         default_factory=CapabilityPackComposer
     )
+    _runtime: SessionCommandRuntime[SessionCommandDescriptor, CommandExecutionResult] = (
+        field(init=False, repr=False)
+    )
+
+    def __post_init__(self) -> None:
+        self._runtime = SessionCommandRuntime(
+            sources=(
+                CommandRuntimeSource(
+                    pack_id="coding.builtin-commands",
+                    source="product",
+                    descriptor_priority=300,
+                    handler_priority=200,
+                    list_descriptors=self._list_builtin_commands,
+                    handler_name="builtin",
+                    handler=self._dispatch_builtin_command,
+                ),
+                CommandRuntimeSource(
+                    pack_id="coding.extension-commands",
+                    source="extension",
+                    descriptor_priority=200,
+                    handler_priority=300,
+                    list_descriptors=self._list_extension_commands,
+                    handler_name="extension",
+                    handler=self._dispatch_extension_command,
+                ),
+                CommandRuntimeSource(
+                    pack_id="coding.resource-commands",
+                    source="product",
+                    descriptor_priority=100,
+                    handler_priority=100,
+                    list_descriptors=self._list_resource_commands,
+                    handler_name="resource",
+                    handler=self._dispatch_resource_command,
+                ),
+            ),
+            pack_composer=self.pack_composer,
+        )
 
     def list_commands(self) -> list[SessionCommandDescriptor]:
+        return self._runtime.list_commands()
+
+    async def execute_command_async(
+        self, invocation_name: str, args: str
+    ) -> CommandExecutionResult | None:
+        return await self._runtime.execute(invocation_name, args)
+
+    def _list_builtin_commands(self) -> list[SessionCommandDescriptor]:
         builtin_commands: list[SessionCommandDescriptor] = []
         if self.builtin_backend is not None:
             builtin_commands.extend(list_builtin_command_descriptors())
+        return builtin_commands
 
+    def _list_extension_commands(self) -> list[SessionCommandDescriptor]:
         extension_commands: list[SessionCommandDescriptor] = []
         extension_runner = self.get_extension_runner()
         if extension_runner is not None:
@@ -83,7 +125,9 @@ class CommandController:
                         else None,
                     )
                 )
+        return extension_commands
 
+    def _list_resource_commands(self) -> list[SessionCommandDescriptor]:
         resource_commands: list[SessionCommandDescriptor] = []
         resource_bundle = self.get_resource_bundle()
         if resource_bundle is not None:
@@ -112,78 +156,7 @@ class CommandController:
                         ),
                     )
                 )
-        return list(
-            self.pack_composer.compose(
-                (
-                    CapabilityPack(
-                        pack_id="coding.builtin-commands",
-                        source="product",
-                        priority=300,
-                        items=tuple(builtin_commands),
-                    ),
-                    CapabilityPack(
-                        pack_id="coding.extension-commands",
-                        source="extension",
-                        priority=200,
-                        items=tuple(extension_commands),
-                    ),
-                    CapabilityPack(
-                        pack_id="coding.resource-commands",
-                        source="product",
-                        priority=100,
-                        items=tuple(resource_commands),
-                    ),
-                )
-            ).items
-        )
-
-    async def execute_command_async(
-        self, invocation_name: str, args: str
-    ) -> CommandExecutionResult | None:
-        invocation_name = normalize_command_name(invocation_name)
-        invocation = ParsedSlashCommand(
-            name=invocation_name,
-            args=args,
-            is_mcp=invocation_name.endswith(" (MCP)"),
-        )
-        outcome = await dispatch_command_async(
-            invocation,
-            self.pack_composer.compose(
-                (
-                    CapabilityPack(
-                        pack_id="coding.extension-command-handler",
-                        source="extension",
-                        priority=300,
-                        items=(
-                            CommandHandlerBinding(
-                                "extension", self._dispatch_extension_command
-                            ),
-                        ),
-                    ),
-                    CapabilityPack(
-                        pack_id="coding.builtin-command-handler",
-                        source="product",
-                        priority=200,
-                        items=(
-                            CommandHandlerBinding(
-                                "builtin", self._dispatch_builtin_command
-                            ),
-                        ),
-                    ),
-                    CapabilityPack(
-                        pack_id="coding.resource-command-handler",
-                        source="product",
-                        priority=100,
-                        items=(
-                            CommandHandlerBinding(
-                                "resource", self._dispatch_resource_command
-                            ),
-                        ),
-                    ),
-                )
-            ).items,
-        )
-        return outcome.result if outcome.handled else None
+        return resource_commands
 
     async def _dispatch_extension_command(
         self,

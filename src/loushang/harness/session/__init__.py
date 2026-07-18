@@ -9,6 +9,17 @@ from loushang.harness.session.application_input import (
     ApplicationInputDelivery,
     ApplicationInputRuntime,
 )
+from loushang.harness.session.capabilities import (
+    AgentToolPort,
+    CommandRuntimeSource,
+    SessionCommandExecutionRuntime,
+    SessionCommandRuntime,
+    SessionToolRuntime,
+    ToolRegistryPort,
+    UserCommandHookResult,
+    UserCommandRequest,
+    command_result_from_tool_result,
+)
 from loushang.harness.session.lifecycle import (
     DEFAULT_FORK_PROFILE,
     FileCopy,
@@ -38,8 +49,10 @@ from loushang.harness.session.runtime import (
 __all__ = [
     "AgentEventRouter",
     "AfterTurnPolicyPort",
+    "AgentToolPort",
     "ApplicationInputDelivery",
     "ApplicationInputRuntime",
+    "CommandRuntimeSource",
     "DEFAULT_FORK_PROFILE",
     "FileCopy",
     "ForkProfile",
@@ -49,7 +62,10 @@ __all__ = [
     "MissingSessionCwdError",
     "PromptController",
     "QueueController",
+    "SessionCommandExecutionRuntime",
+    "SessionCommandRuntime",
     "SessionRuntime",
+    "SessionToolRuntime",
     "SessionCwdIssue",
     "SessionLifecycleDecision",
     "SessionLifecycleHooks",
@@ -59,5 +75,9 @@ __all__ = [
     "TransitionCandidateCallback",
     "TransitionReleaseCallback",
     "TranscriptRuntimePort",
+    "ToolRegistryPort",
     "TurnPolicyPort",
+    "UserCommandHookResult",
+    "UserCommandRequest",
+    "command_result_from_tool_result",
 ]
