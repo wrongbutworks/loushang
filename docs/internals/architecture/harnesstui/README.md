@@ -7,6 +7,10 @@ direction is:
 ```text
 `loushang.coding.ui` -> `loushang.harnesstui` -> `loushang.tui`
                                              -> `loushang.harness`
+
+`loushang.coding.testing.tui` -> `loushang.harnesstui.testing`
+                              -> `loushang.harnesstui`
+                              -> `loushang.tui`
 ```
 
 The reverse dependencies are forbidden. In particular, `loushang.harnesstui`
@@ -209,6 +213,42 @@ replace transcript segmentation, invalidation, render caches, frame
 composition, or terminal writes. Those hot-path responsibilities and the
 independent render-performance contract remain unchanged. The conversation
 package initializer intentionally does not re-export these entrypoints.
+
+## Conversation Playback Testing
+
+`loushang.harnesstui.testing` is opt-in test support for exercising the
+product-neutral interaction ports above. Its dependency direction is
+`loushang.coding.testing.tui` -> `loushang.harnesstui.testing` ->
+`loushang.harnesstui` / `loushang.tui`. The reverse direction is forbidden:
+production Harnesstui must never import its testing package, and the generic
+TUI remains independent of both Harnesstui layers.
+
+The shared testing package must not import Coding, AI, Agent, or Harness
+runtime packages. It owns only reusable terminal test mechanics over neutral
+ports:
+
+- `loushang.harnesstui.testing.ports` defines the application, router,
+  snapshot, result, and factory protocols used by playback drivers;
+- `loushang.harnesstui.testing.input_playback` owns decoded-input playback,
+  neutral routed results, state snapshots, artifacts, and the fluent input
+  scenario;
+- `loushang.harnesstui.testing.screen_loop_playback` owns scripted TTY chunks,
+  real screen-loop playback, captured output and state artifacts, and the
+  fluent loop scenario;
+- `loushang.harnesstui.testing.scenarios.factory` binds those drivers to a
+  product-supplied app, router, screen runner, artifact adapters, and frame
+  contracts;
+- the `composer`, `lifecycle`, `terminal`, `transcript`, and `surface` modules
+  under `loushang.harnesstui.testing.scenarios` provide reusable recipe
+  builders. They do not construct a product catalog at import time.
+
+These explicit modules are the stable testing entrypoints. The testing package
+initializer intentionally does not re-export them. Coding binds the neutral
+recipes into its concrete catalog under `loushang.coding.testing.tui.scenarios`
+and retains the app/router adapters, product-only scenarios, fakes, CLI runner,
+product copy, fixture volumes, and render-performance budgets. The former
+`loushang.coding.ui.playback*` modules remain temporary compatibility facades
+only; production UI modules do not own playback implementations.
 
 ## Plain Conversation Presentation
 

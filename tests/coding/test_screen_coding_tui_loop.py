@@ -834,13 +834,13 @@ def test_screen_loop_abort_uses_first_pending_steer_before_running_steer() -> No
 
 
 def test_screen_loop_waits_for_abort_settle_before_running_popped_pending_steer() -> None:
+    from loushang.coding.testing.tui.playback import ScreenTuiLoopPlayback
     from loushang.coding.ui.controller import CodingUiController
     from loushang.coding.ui.mode import (
         _screen_abort_handler,
         _screen_prompt_handler,
         _screen_text_handler,
     )
-    from loushang.coding.ui.playback import ScreenTuiLoopPlayback
 
     playback = ScreenTuiLoopPlayback()
     session = _AbortSettlingSession()
@@ -868,9 +868,9 @@ def test_screen_loop_waits_for_abort_settle_before_running_popped_pending_steer(
 
 
 def test_screen_loop_dispatches_session_command_without_prompting_agent() -> None:
+    from loushang.coding.testing.tui.playback import ScreenTuiLoopPlayback
     from loushang.coding.ui.controller import CodingUiController
     from loushang.coding.ui.mode import _screen_prompt_handler
-    from loushang.coding.ui.playback import ScreenTuiLoopPlayback
 
     playback = ScreenTuiLoopPlayback()
     session = _NameCommandSession()

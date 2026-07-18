@@ -6,9 +6,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from loushang.coding.testing.tui.playback import ScreenTuiInputPlayback
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.completion import coding_inline_completion_provider
-from loushang.coding.ui.playback import ScreenTuiInputPlayback
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_input import ScreenInputRouter
 from loushang.coding.ui.screen_loop import (

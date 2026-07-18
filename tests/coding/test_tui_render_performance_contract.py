@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from loushang.coding.ui.playback_scenarios.budgets import (
+from loushang.coding.testing.tui.scenarios.budgets import (
     INTERACTION_FRAME_BUDGET,
     LONG_TRANSCRIPT_FRAME_BUDGET,
 )
-from loushang.coding.ui.playback_scenarios.product import (
+from loushang.coding.testing.tui.scenarios.product import (
     PRODUCT_COMPOSED_FRAME_BUDGET,
     PRODUCT_STREAMING_CONTROL_FRAME_BUDGET,
 )

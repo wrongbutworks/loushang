@@ -72,7 +72,7 @@ Composer selection playback should be run directly when changing composer input,
 selection, paste marker, completion, keybinding, or render-highlight behavior:
 
 ```bash
-uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner composer-selection-stress --artifacts /tmp/loushang-selection-playback --include-frames
+uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.testing.tui.runner composer-selection-stress --artifacts /tmp/loushang-selection-playback --include-frames
 ```
 
 The trace should include `composer-selection-stress` as a passing scenario. Use
@@ -84,8 +84,8 @@ pending queue state, transcript viewport behavior, settings search, completion,
 or cross-feature input routing:
 
 ```bash
-uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner product-composed-interaction --artifacts /tmp/loushang-product-playback --include-frames
-uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.ui.playback_runner product-streaming-control-flow --artifacts /tmp/loushang-product-streaming-playback --include-frames
+uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.testing.tui.runner product-composed-interaction --artifacts /tmp/loushang-product-playback --include-frames
+uv --cache-dir .uv-cache run --extra dev python -m loushang.coding.testing.tui.runner product-streaming-control-flow --artifacts /tmp/loushang-product-streaming-playback --include-frames
 ```
 
 The trace should include `product-composed-interaction` and

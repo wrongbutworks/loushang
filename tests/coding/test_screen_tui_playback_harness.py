@@ -5,12 +5,12 @@ import json
 
 import pytest
 
-from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
-from loushang.coding.ui.playback import (
+from loushang.coding.testing.tui.playback import (
     ScreenTuiInputScenario,
     ScreenTuiLoopScenario,
     ScreenTuiScenario,
 )
+from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
 from loushang.tui import (
     PLAYBACK_ARTIFACTS_ENV,
     PlaybackFrameBudget,
