@@ -116,6 +116,10 @@ planning, work event persistence, or AI provider behavior.
   defines common session resource reload/discovery/activation/commit ordering
   while Products retain loaders, roots, settings, diagnostics, and extension
   protocol behavior.
+- [Package Session Operations Boundary](package-session-operations-boundary.md)
+  defines common package lifecycle ordering and typed catalog diagnostic
+  recording while Products retain source policy, roots, settings, and wire
+  projection.
 - [Store And Runtime Event Protocol Migration](store-event-protocol-migration.md)
   records the implemented protocol-based Store cutover, Memory/File reference
   adapters, Agent transcript persistence facade, common runtime-event envelope,
