@@ -307,6 +307,24 @@ def test_tui_and_harness_do_not_import_harnesstui() -> None:
     assert offenders == []
 
 
+def test_tui_does_not_import_runtime_product_or_model_layers() -> None:
+    boundary = ImportBoundary(
+        name="tui",
+        root=Path("src/loushang/tui"),
+        forbidden_prefixes=(
+            "loushang.agent",
+            "loushang.ai",
+            "loushang.coding",
+            "loushang.harness",
+            "loushang.harnesstui",
+            "loushang.method",
+            "loushang.work",
+        ),
+    )
+
+    assert _find_forbidden_imports(boundary) == []
+
+
 def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     path = Path("docs/internals/architecture/harnesstui/README.md")
     text = path.read_text(encoding="utf-8")

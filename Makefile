@@ -18,9 +18,12 @@ DIST_BINARY := dist/$(BINARY_NAME)
 AI_OFFLINE_ENV := env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_OAUTH_TOKEN -u ANTHROPIC_BASE_URL -u ARK_API_KEY -u BAIDU_QIANFAN_API_KEY -u COPILOT_GITHUB_TOKEN -u DASHSCOPE_API_KEY -u DEEPSEEK_API_KEY -u GH_TOKEN -u GITHUB_TOKEN -u HUNYUAN_API_KEY -u MINIMAX_API_KEY -u MOONSHOT_API_KEY -u OPENAI_API_KEY -u QIANFAN_API_KEY -u STEPFUN_API_KEY -u STEP_API_KEY -u ZAI_API_KEY
 
 HARNESSTUI_SHARED_SOURCES := \
+	src/loushang/tui/clipboard_image.py \
 	src/loushang/tui/settings.py \
 	src/loushang/harnesstui
 HARNESSTUI_CODING_ADAPTERS := \
+	src/loushang/coding/platform/__init__.py \
+	src/loushang/coding/platform/clipboard_image.py \
 	src/loushang/coding/ui/command_list.py \
 	src/loushang/coding/ui/completion.py \
 	src/loushang/coding/ui/conversation_event_adapter.py \
@@ -32,6 +35,7 @@ HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/ui/playback_scenarios/surface.py \
 	src/loushang/coding/ui/screen_app.py \
 	src/loushang/coding/ui/screen_events.py \
+	src/loushang/coding/ui/screen_input.py \
 	src/loushang/coding/ui/screen_state.py \
 	src/loushang/coding/ui/screen_surfaces.py \
 	src/loushang/coding/ui/settings_common.py \
@@ -45,9 +49,11 @@ HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/ui/transcript_source.py
 HARNESSTUI_TEST_PATHS := \
 	tests/harnesstui \
+	tests/tui/test_clipboard_image.py \
 	tests/tui/test_import_boundaries.py \
 	tests/tui/test_settings.py \
 	tests/architecture/test_import_boundaries.py \
+	tests/coding/test_platform_utils.py \
 	tests/coding/test_ui_import_boundaries.py \
 	tests/coding/test_screen_coding_tui_app.py \
 	tests/coding/test_screen_coding_tui_events.py \

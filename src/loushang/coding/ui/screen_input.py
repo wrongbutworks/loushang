@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import base64
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Literal
 
 from loushang.ai.types import ImagePart
-from loushang.coding.platform.clipboard_image import (
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+from loushang.tui.clipboard_image import (
     ClipboardImage,
     extension_for_image_mime_type,
     read_clipboard_image,
 )
-from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.tui.input import (
     ComposerInputTarget,
     InputEvent,
@@ -258,7 +259,7 @@ class ScreenInputRouter:
     def _paste_clipboard_image(self) -> ScreenInputResult:
         try:
             image = self.clipboard_image_reader()
-        except Exception as error:  # noqa: BLE001 - platform clipboard commands can fail in many ways.
+        except Exception as error:
             self.app.set_status(f"Unable to read clipboard image: {_exception_message(error)}")
             return ScreenInputResult()
         if image is None:
