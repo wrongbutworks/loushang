@@ -33,9 +33,12 @@ annotations, selected-branch context, and idempotent application-message
 commit. It does not create a second repository or own Product lifecycle.
 
 Coding supplies its runtime-profile selection, session root, persist decision,
-summary/search projection, display naming, retention, CLI/TUI behavior, and
-diagnostic wording. `SessionManager` is a Coding facade over the Harness
-transcript session rather than the owner of native codecs or file layout.
+display naming, retention, CLI/TUI behavior, and diagnostic wording. The
+standard Native transcript catalog, summary projection, query, JSON index,
+and branch-label read model live beside this provider in
+`harness.agent_transcript.catalog`. `SessionManager` is a Coding facade over
+the Harness transcript session and catalog rather than the owner of native
+codecs, file layout, or cross-session read mechanics.
 
 ## Current Format Policy
 

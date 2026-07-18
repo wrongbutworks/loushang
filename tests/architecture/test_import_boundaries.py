@@ -833,8 +833,9 @@ def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
             "loushang.harness.agent_transcript.file_store.agent_transcript_file_lock",
         },
         Path("src/loushang/coding/store/session_manager.py"): {
+            "loushang.harness.agent_transcript.AgentTranscriptLifecycle",
             "loushang.harness.agent_transcript.AgentTranscriptSession",
-            "loushang.harness.conversation.ConversationRepository",
+            "loushang.harness.agent_transcript.catalog.AgentTranscriptSessionCatalog",
         },
         Path("src/loushang/work/event_log.py"): {
             "loushang.harness.journal.FunctionalJournalRecordCodec",
@@ -882,6 +883,86 @@ def test_harness_agent_transcript_file_store_is_documented() -> None:
     assert "current Native Agent transcript codec" in inventory_text
 
 
+def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
+    design_path = Path(
+        "docs/internals/architecture/harness/agent-transcript-catalog-boundary.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Agent Transcript Catalog Boundary",
+        "`AgentTranscriptSessionCatalog`",
+        "`SessionSummary`",
+        "`ConversationCatalog`",
+        "does not create another repository or replay implementation",
+        "must not import Coding",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Agent Transcript Catalog Boundary" in readme_text
+
+    catalog_imports = set(
+        _absolute_imports(Path("src/loushang/harness/agent_transcript/catalog.py"))
+    )
+    assert "loushang.harness.conversation.ConversationCatalog" in catalog_imports
+    assert not any(
+        imported.startswith("loushang.coding") for imported in catalog_imports
+    )
+
+    session_manager_imports = set(
+        _absolute_imports(Path("src/loushang/coding/store/session_manager.py"))
+    )
+    assert (
+        "loushang.harness.agent_transcript.catalog.AgentTranscriptSessionCatalog"
+        in session_manager_imports
+    )
+
+
+def test_harness_agent_transcript_lifecycle_is_documented_and_adopted() -> None:
+    design_path = Path(
+        "docs/internals/architecture/harness/agent-transcript-lifecycle-boundary.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Agent Transcript Lifecycle Boundary",
+        "`AgentTranscriptLifecycle`",
+        "`AgentTranscriptLifecycleContext`",
+        "`AgentTranscriptRuntimeBinding`",
+        "does not import Coding",
+        "exactly once",
+        "Detached restore therefore never mutates its source file",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Agent Transcript Lifecycle Boundary" in readme_text
+
+    lifecycle_imports = set(
+        _absolute_imports(Path("src/loushang/harness/agent_transcript/lifecycle.py"))
+    )
+    assert not any(
+        imported.startswith("loushang.coding") for imported in lifecycle_imports
+    )
+
+    session_manager_imports = set(
+        _absolute_imports(Path("src/loushang/coding/store/session_manager.py"))
+    )
+    assert (
+        "loushang.harness.agent_transcript.AgentTranscriptLifecycle"
+        in session_manager_imports
+    )
+
+
 def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
     design_path = Path(
         "docs/internals/architecture/harness/runtime-data-foundations.md"
@@ -919,9 +1000,7 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
 
     expected_imports = {
         Path("src/loushang/coding/store/session_manager.py"): {
-            "loushang.harness.conversation.ConversationCatalog",
-            "loushang.harness.conversation.ConversationRepository",
-            "loushang.harness.journal.JsonProjectionIndex",
+            "loushang.harness.agent_transcript.catalog.AgentTranscriptSessionCatalog",
         },
         Path("src/loushang/coding/control/settings_manager.py"): {
             "loushang.harness.config.LayeredConfig",
@@ -1071,8 +1150,9 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
         )
         for imported in _absolute_imports(path)
     }
-    assert "loushang.harness.conversation.ConversationRepository" in (
-        coding_store_imports
+    assert (
+        "loushang.harness.agent_transcript.catalog.AgentTranscriptSessionCatalog"
+        in (coding_store_imports)
     )
     assert "loushang.harness.journal.TranscriptRepository" not in (coding_store_imports)
     assert "loushang.harness.journal.BranchGraph" not in coding_store_imports

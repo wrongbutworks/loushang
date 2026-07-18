@@ -620,7 +620,7 @@ async def test_list_summaries_skips_one_projection_failure(
     tmp_path, monkeypatch
 ) -> None:
     from loushang.coding.store import SessionManager
-    from loushang.coding.store import session_manager as session_manager_module
+    from loushang.harness.agent_transcript import catalog as catalog_module
     from loushang.harness.conversation import FunctionalConversationProjector
 
     await SessionManager.new(
@@ -635,7 +635,7 @@ async def test_list_summaries_skips_one_projection_failure(
         persist=True,
         session_id="bad",
     )
-    original = session_manager_module._SESSION_SUMMARY_PROJECTOR
+    original = catalog_module._SESSION_SUMMARY_PROJECTOR
 
     def project(header, records, leaf_id, source_path):
         if header.conversation_id == "bad":
@@ -648,7 +648,7 @@ async def test_list_summaries_skips_one_projection_failure(
         )
 
     monkeypatch.setattr(
-        session_manager_module,
+        catalog_module,
         "_SESSION_SUMMARY_PROJECTOR",
         FunctionalConversationProjector(project),
     )
