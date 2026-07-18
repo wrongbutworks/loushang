@@ -97,11 +97,23 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
             "class _PlainProjectionTarget",
             "class PlainConversationProjectionTarget",
         ),
+        Path("src/loushang/coding/ui/pending_queue.py"): (
+            "def pending_queue_view",
+            "def session_pending_messages",
+            "def cleared_queue_messages",
+            "def restore_queued_messages",
+        ),
+        Path("src/loushang/coding/ui/screen_state.py"): (
+            "class ScreenCodingTuiState",
+            "class ScreenTranscriptWindow",
+        ),
         Path("src/loushang/coding/ui/status_provider.py"): (
             "class CodingTuiStatusProvider",
             "class StatusSnapshot",
         ),
         Path("src/loushang/coding/ui/transcript_source.py"): (
+            "class ActiveWindowTranscriptSource",
+            "def _active_window_records",
             "def _recent_assistant_texts",
             "def _merge_active_window_records",
             "def _decorated_suffix_prefix_overlap",

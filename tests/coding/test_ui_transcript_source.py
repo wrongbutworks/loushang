@@ -14,7 +14,13 @@ from loushang.coding.ui.transcript_source import (
 from loushang.coding.ui.transcript_source import (
     TranscriptSource as CodingTranscriptSource,
 )
-from loushang.harnesstui.conversation.source import TranscriptSnapshot, TranscriptSource
+from loushang.harnesstui.conversation.source import (
+    ActiveWindowTranscriptSource as SharedActiveWindowTranscriptSource,
+)
+from loushang.harnesstui.conversation.source import (
+    TranscriptSnapshot,
+    TranscriptSource,
+)
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     ToolExecutionRecord,
@@ -29,6 +35,7 @@ class _Session:
 
 
 def test_coding_transcript_contracts_are_harnesstui_compatibility_aliases() -> None:
+    assert ActiveWindowTranscriptSource is SharedActiveWindowTranscriptSource
     assert CodingTranscriptSnapshot is TranscriptSnapshot
     assert CodingTranscriptSource is TranscriptSource
 

@@ -348,7 +348,9 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     text = path.read_text(encoding="utf-8")
 
     assert "`loushang.coding.ui` -> `loushang.harnesstui`" in text
+    assert "`loushang.harnesstui.conversation.queue`" in text
     assert "`loushang.harnesstui.conversation.reader`" in text
+    assert "`loushang.harnesstui.conversation.screen_state`" in text
     assert "`loushang.harnesstui.conversation.source`" in text
     assert "`loushang.harnesstui.conversation.attachments`" in text
     assert "`loushang.harnesstui.conversation.projection`" in text
@@ -376,6 +378,10 @@ def test_harnesstui_capability_entrypoints_exist() -> None:
         Path("src/loushang/harnesstui/conversation/attachments.py"),
         Path("src/loushang/harnesstui/conversation/plain_target.py"),
         Path("src/loushang/harnesstui/conversation/projection.py"),
+        Path("src/loushang/harnesstui/conversation/queue.py"),
+        Path("src/loushang/harnesstui/conversation/reader.py"),
+        Path("src/loushang/harnesstui/conversation/screen_state.py"),
+        Path("src/loushang/harnesstui/conversation/source.py"),
         Path("src/loushang/harnesstui/conversation/tool_transcript.py"),
         Path("src/loushang/harnesstui/plain/renderer.py"),
         Path("src/loushang/harnesstui/commands/presentation.py"),
