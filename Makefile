@@ -26,6 +26,7 @@ HARNESSTUI_SHARED_SOURCES := \
 HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/platform/__init__.py \
 	src/loushang/coding/platform/clipboard_image.py \
+	src/loushang/coding/testing/tui \
 	src/loushang/coding/ui/abort.py \
 	src/loushang/coding/ui/command_list.py \
 	src/loushang/coding/ui/completion.py \
@@ -40,9 +41,11 @@ HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/ui/plain_events.py \
 	src/loushang/coding/ui/plain_renderer.py \
 	src/loushang/coding/ui/plain_toolbar.py \
+	src/loushang/coding/ui/playback.py \
+	src/loushang/coding/ui/playback_fakes.py \
 	src/loushang/coding/ui/playback_runner.py \
+	src/loushang/coding/ui/playback_scenarios \
 	src/loushang/coding/ui/playback_suite.py \
-	src/loushang/coding/ui/playback_scenarios/surface.py \
 	src/loushang/coding/ui/prompt_dispatch.py \
 	src/loushang/coding/ui/prompt_result.py \
 	src/loushang/coding/ui/run_context.py \
@@ -70,6 +73,7 @@ HARNESSTUI_TEST_PATHS := \
 	tests/tui/test_settings.py \
 	tests/tui/test_terminal_diagnostics.py \
 	tests/architecture/test_import_boundaries.py \
+	tests/coding/test_coding_tui_playback_compatibility.py \
 	tests/coding/test_playback_suite_compatibility.py \
 	tests/coding/test_platform_utils.py \
 	tests/coding/test_terminal_diagnostics_compatibility.py \
