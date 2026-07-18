@@ -2069,7 +2069,7 @@ def test_harness_product_runtime_core_is_documented_and_adopted() -> None:
         },
         Path("src/loushang/coding/runtime/agent_session_runtime.py"): {
             "loushang.harness.runtime.CoalescingScheduler",
-            "loushang.harness.runtime.SessionTransitionHost",
+            "loushang.harness.session.SessionLifecycleRuntime",
         },
     }
     missing: list[str] = []
@@ -2118,9 +2118,12 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
     )
 
     expected_imports = {
-        Path("src/loushang/coding/runtime/agent_session_runtime.py"): {
+        Path("src/loushang/harness/session/lifecycle.py"): {
             "loushang.harness.runtime.SessionOperationCoordinator",
             "loushang.harness.runtime.stage_file_import",
+        },
+        Path("src/loushang/coding/runtime/agent_session_runtime.py"): {
+            "loushang.harness.session.SessionLifecycleRuntime",
         },
         Path("src/loushang/coding/session/compaction_controller.py"): {
             "loushang.harness.context.compaction.CompactionCoordinator",
@@ -2162,6 +2165,59 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
     assert "RetryCoordinator" not in harness_exports
     assert "SessionOperationCoordinator" not in harness_exports
     assert "TurnOrchestrator" not in harness_exports
+
+
+def test_session_lifecycle_runtime_is_documented_neutral_and_adopted() -> None:
+    design_path = Path(
+        "docs/internals/architecture/harness/session-lifecycle-runtime-boundary.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Session Lifecycle Runtime Boundary",
+        "implementation complete for integration into `lane/harness`",
+        "`SessionLifecycleRuntime`",
+        "`SessionLifecycleStore`",
+        "default position is `at`",
+        "default fork position: before",
+        "Fork target lookup, position validation, and target resolution happen while",
+        "must not import Agent, AI, Coding",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "Session Lifecycle Runtime Boundary" in readme_text
+    assert (
+        "`harness.session.SessionLifecycleRuntime` owns the active session"
+        in inventory_text
+    )
+
+    boundary = ImportBoundary(
+        name="session lifecycle",
+        root=Path("src/loushang/harness/session/lifecycle.py"),
+        forbidden_prefixes=(
+            "loushang.agent",
+            "loushang.ai",
+            "loushang.coding",
+            "loushang.method",
+            "loushang.tui",
+            "loushang.work",
+        ),
+    )
+    assert _find_forbidden_imports(boundary) == []
+
+    imports = set(
+        _absolute_imports(Path("src/loushang/coding/runtime/agent_session_runtime.py"))
+    )
+    assert "loushang.harness.session.SessionLifecycleRuntime" in imports
+    assert "loushang.harness.runtime.SessionOperationCoordinator" not in imports
 
 
 def test_product_capability_composition_core_is_documented_and_adopted() -> None:

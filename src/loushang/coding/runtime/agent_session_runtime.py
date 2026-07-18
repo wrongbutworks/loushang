@@ -33,18 +33,24 @@ from loushang.harness.diagnostics.types import (
     ErrorReport,
 )
 from loushang.harness.runtime import (
-    CancelledSessionOperation,
     CoalescingScheduler,
-    SessionOperationCandidate,
-    SessionOperationCoordinator,
     SessionOperationFailure,
     SessionOperationPhase,
-    SessionOperationPreparation,
     SessionOperationResult,
-    SessionTransitionHost,
     copy_file_exclusive,
     run_replacement_callbacks,
-    stage_file_import,
+)
+from loushang.harness.session import (
+    ForkProfile,
+    ForkSelection,
+    SessionCwdIssue,
+    SessionLifecycleDecision,
+    SessionLifecycleHooks,
+    SessionLifecycleRuntime,
+    SessionLifecycleTransition,
+)
+from loushang.harness.session import (
+    MissingSessionCwdError as HarnessMissingSessionCwdError,
 )
 
 _copy_import_file = copy_file_exclusive
@@ -52,11 +58,11 @@ _copy_import_file = copy_file_exclusive
 SessionFactory = Callable[..., AgentSession]
 SessionRebindCallback = Callable[[AgentSession], Awaitable[None]]
 BeforeSessionInvalidateCallback = Callable[[], None]
-_SessionPreparation = SessionOperationPreparation[AgentSession, str | None]
 _SessionOperationResult = SessionOperationResult[AgentSession, str | None]
-_SessionPrepare = Callable[
-    [AgentSession | None], Awaitable[_SessionPreparation] | _SessionPreparation
-]
+_CODING_FORK_PROFILE = ForkProfile(
+    default_position="before",
+    supported_positions=frozenset({"at", "before"}),
+)
 
 
 @dataclass(frozen=True)
@@ -92,6 +98,121 @@ def get_missing_session_cwd_issue(
     )
 
 
+class _CodingSessionLifecycleStore:
+    """Bind the generic lifecycle transaction to Coding's transcript session."""
+
+    def __init__(self, runtime: AgentSessionRuntime) -> None:
+        self._runtime = runtime
+        self._known_cwds: dict[int, str] = {}
+
+    async def create(
+        self,
+        current_session: AgentSession | None,
+        transition: SessionLifecycleTransition,
+        *,
+        cwd: str,
+        parent_session_ref: str | None,
+    ) -> AgentSession:
+        manager = await SessionManager.new(
+            session_dir=self._runtime.session_dir,
+            cwd=cwd,
+            persist=self._runtime.persist,
+            parent_session=parent_session_ref,
+        )
+        return self._build_session(
+            manager,
+            current=current_session,
+            transition=transition,
+        )
+
+    async def restore(
+        self,
+        current_session: AgentSession | None,
+        transition: SessionLifecycleTransition,
+        session_ref: str | Path,
+        *,
+        cwd_override: str | None = None,
+    ) -> AgentSession:
+        session_file = self._runtime._resolve_session_file(session_ref)
+        manager = await SessionManager.open(
+            session_file,
+            session_dir=self._runtime.session_dir,
+            cwd_override=(
+                self._runtime._resolve_import_cwd(cwd_override)
+                if cwd_override is not None
+                else None
+            ),
+            persist=self._runtime.persist,
+        )
+        missing_issue = get_missing_session_cwd_issue(manager)
+        if missing_issue is not None:
+            await manager.dispose_runtime_profile()
+            raise HarnessMissingSessionCwdError(
+                SessionCwdIssue(
+                    session_cwd=missing_issue.session_cwd,
+                    session_ref=(
+                        str(missing_issue.session_file)
+                        if missing_issue.session_file is not None
+                        else None
+                    ),
+                )
+            )
+        return self._build_session(
+            manager,
+            current=current_session,
+            transition=transition,
+        )
+
+    async def fork(
+        self,
+        session: AgentSession,
+        transition: SessionLifecycleTransition,
+        target_entry_id: str | None,
+    ) -> AgentSession:
+        if target_entry_id is None:
+            manager = await SessionManager.new(
+                session_dir=self._runtime.session_dir,
+                cwd=session.session_manager.get_cwd(),
+                persist=self._runtime.persist,
+                parent_session=_session_file_from_session(session),
+            )
+        else:
+            manager = await session.session_manager.fork(target_entry_id)
+        return self._build_session(
+            manager,
+            current=session,
+            transition=transition,
+        )
+
+    def get_cwd(self, session: AgentSession) -> str:
+        manager = getattr(session, "session_manager", None)
+        getter = getattr(manager, "get_cwd", None)
+        if callable(getter):
+            return getter()
+        return self._known_cwds[id(session)]
+
+    def get_session_ref(self, session: AgentSession) -> str | None:
+        return _session_file_from_session(session)
+
+    def get_leaf_entry_id(self, session: AgentSession) -> str | None:
+        return session.session_manager.get_leaf_id()
+
+    def _build_session(
+        self,
+        manager: SessionManager,
+        *,
+        current: AgentSession | None,
+        transition: SessionLifecycleTransition,
+    ) -> AgentSession:
+        session = self._runtime._create_session_for_transition(
+            manager,
+            current=current,
+            transition=transition,
+        )
+        self._known_cwds[id(session)] = manager.get_cwd()
+        return session
+
+
 class AgentSessionRuntime:
     def __init__(
         self,
@@ -111,11 +232,25 @@ class AgentSessionRuntime:
             session_factory
         )
         self.persist = persist
-        self._session_host = SessionTransitionHost[AgentSession](
-            current_session,
-            dispose=_dispose_session_only,
+        self._lifecycle = SessionLifecycleRuntime[AgentSession, str](
+            store=_CodingSessionLifecycleStore(self),
+            current_session=current_session,
+            fork_profile=_CODING_FORK_PROFILE,
+            fork_target_resolver=_resolve_coding_fork_target,
+            copy_file=lambda source, destination: _copy_import_file(
+                source, destination
+            ),
+            hooks=SessionLifecycleHooks(
+                before_transition=self._before_lifecycle_transition,
+                prepare_session=self._prepare_lifecycle_session,
+                activate_session=self._activate_lifecycle_session,
+                before_release=self._before_lifecycle_release,
+                dispose_session=_dispose_session_only,
+                after_commit=self._after_lifecycle_commit,
+                on_failure=self._on_lifecycle_failure,
+            ),
         )
-        self._session_operations = SessionOperationCoordinator(self._session_host)
+        self._session_host = self._lifecycle.transition_host
         self._diagnostics_service = diagnostics_service
         self.auto_refresh_session_index = auto_refresh_session_index
         self.session_index_refresh_interval = session_index_refresh_interval
@@ -187,36 +322,14 @@ class AgentSessionRuntime:
         parent_session: str | None = None,
         options: dict[str, object] | None = None,
     ) -> _SessionOperationResult:
-        async def _prepare(
-            current_session: AgentSession | None,
-        ) -> _SessionPreparation:
-            resolved_cwd = self._resolve_cwd(cwd)
-            if current_session is not None:
-                runner = self._get_extension_runner(current_session)
-                if runner is not None:
-                    decision = await runner.before_session_switch(
-                        SessionBeforeSwitchEvent(reason="new", cwd=resolved_cwd)
-                    )
-                    self._sync_session_extension_diagnostics(current_session)
-                    if decision is not None and decision.cancel:
-                        return CancelledSessionOperation(None)
-            manager = await SessionManager.new(
-                session_dir=self.session_dir,
-                cwd=resolved_cwd,
-                persist=self.persist,
-                parent_session=parent_session,
-            )
-            return self._create_session_candidate(
-                manager,
-                current=current_session,
-                reason="new",
-            )
-
-        return await self._execute_session_operation(
-            _prepare,
-            reason="new",
-            options=options,
-            include_setup=True,
+        return await self._lifecycle.new(
+            cwd=self._resolve_import_cwd(cwd) if cwd is not None else None,
+            parent_session_ref=parent_session,
+            metadata=self._lifecycle_metadata(
+                operation="new_session",
+                options=options,
+                include_setup=True,
+            ),
         )
 
     async def newSession(self, options: object | None = None) -> dict[str, bool]:
@@ -266,73 +379,25 @@ class AgentSessionRuntime:
         missing_cwd: Literal["error", "fallback"] = "error",
         options: dict[str, object] | None = None,
     ) -> _SessionOperationResult:
-        session_file: Path | None = None
-
-        async def _prepare(
-            current_session: AgentSession | None,
-        ) -> _SessionPreparation:
-            nonlocal session_file
-            session_file = self._resolve_session_file(session_id)
-            if current_session is not None:
-                runner = self._get_extension_runner(current_session)
-                if runner is not None:
-                    decision = await runner.before_session_switch(
-                        SessionBeforeSwitchEvent(
-                            reason="resume",
-                            cwd=current_session.session_manager.get_cwd(),
-                            target_session_file=str(session_file),
-                        )
-                    )
-                    self._sync_session_extension_diagnostics(current_session)
-                    if decision is not None and decision.cancel:
-                        return CancelledSessionOperation(None)
-            manager = await SessionManager.open(
-                session_file, session_dir=self.session_dir, persist=self.persist
+        session_file = self._resolve_session_file(session_id)
+        try:
+            return await self._lifecycle.restore(
+                session_file,
+                fallback_cwd=(str(fallback_cwd) if fallback_cwd is not None else None),
+                missing_cwd=missing_cwd,
+                metadata=self._lifecycle_metadata(
+                    operation="restore_session",
+                    options=options,
+                    session_ref=str(session_id),
+                    target_session_file=str(session_file),
+                    fallback_cwd=(
+                        str(fallback_cwd) if fallback_cwd is not None else None
+                    ),
+                    missing_cwd=missing_cwd,
+                ),
             )
-            missing_issue = get_missing_session_cwd_issue(
-                manager, fallback_cwd=fallback_cwd
-            )
-            if missing_issue is not None:
-                if missing_cwd != "fallback" or fallback_cwd is None:
-                    raise MissingSessionCwdError(missing_issue)
-                resolved_fallback_cwd = self._resolve_import_cwd(fallback_cwd)
-                manager = await SessionManager.open(
-                    session_file,
-                    session_dir=self.session_dir,
-                    cwd_override=resolved_fallback_cwd,
-                    persist=self.persist,
-                )
-            return self._create_session_candidate(
-                manager,
-                current=current_session,
-                reason="resume",
-            )
-
-        def _record_failure(failure: SessionOperationFailure[AgentSession]) -> None:
-            if failure.phase is SessionOperationPhase.AFTER_COMMIT:
-                return
-            self._record_session_operation_failure(
-                code="session_restore_failed",
-                exc=failure.error,
-                details={
-                    "operation": "restore_session",
-                    "session_ref": str(session_id),
-                    "target_session_file": str(session_file)
-                    if session_file is not None
-                    else None,
-                    "fallback_cwd": str(fallback_cwd)
-                    if fallback_cwd is not None
-                    else None,
-                    "missing_cwd": missing_cwd,
-                },
-            )
-
-        return await self._execute_session_operation(
-            _prepare,
-            reason="resume",
-            options=options,
-            on_failure=_record_failure,
-        )
+        except HarnessMissingSessionCwdError as exc:
+            raise _coding_missing_cwd_error(exc) from exc
 
     async def fork_session(
         self, entry_id: str, *, position: str = "at"
@@ -353,57 +418,13 @@ class AgentSessionRuntime:
         position: str = "at",
         options: dict[str, object] | None = None,
     ) -> _SessionOperationResult:
-        async def _prepare(
-            current: AgentSession | None,
-        ) -> _SessionPreparation:
-            if current is None:
-                raise RuntimeError("No active session")
-            resolved_entry_id = entry_id
-            if resolved_entry_id is None:
-                resolved_entry_id = current.session_manager.get_leaf_id()
-                if not isinstance(resolved_entry_id, str) or not resolved_entry_id:
-                    raise ValueError("Cannot clone session: no current entry selected")
-            fork_target_id, selected_text = _resolve_fork_target(
-                current.session_manager,
-                resolved_entry_id,
-                position=position,
-            )
-            runner = self._get_extension_runner(current)
-            decision = (
-                await runner.before_session_fork(
-                    SessionBeforeForkEvent(
-                        entry_id=resolved_entry_id,
-                        cwd=current.session_manager.get_cwd(),
-                        position=position,
-                    )
-                )
-                if runner is not None
-                else None
-            )
-            if runner is not None:
-                self._sync_session_extension_diagnostics(current)
-            if decision is not None and decision.cancel:
-                return CancelledSessionOperation(selected_text)
-            if fork_target_id is None:
-                manager = await SessionManager.new(
-                    session_dir=self.session_dir,
-                    cwd=current.session_manager.get_cwd(),
-                    persist=self.persist,
-                    parent_session=_session_file_from_session(current),
-                )
-            else:
-                manager = await current.session_manager.fork(fork_target_id)
-            return self._create_session_candidate(
-                manager,
-                current=current,
-                reason="fork",
-                selected_text=selected_text,
-            )
-
-        return await self._execute_session_operation(
-            _prepare,
-            reason="fork",
-            options=options,
+        return await self._lifecycle.fork(
+            entry_id,
+            position=position,
+            metadata=self._lifecycle_metadata(
+                operation="fork_session",
+                options=options,
+            ),
         )
 
     async def fork(
@@ -441,87 +462,23 @@ class AgentSessionRuntime:
     async def _run_import_session_operation(
         self, input_path: str | Path, cwd_override: str | Path | None = None
     ) -> _SessionOperationResult:
-        source: Path | None = None
-        destination: Path | None = None
-
-        async def _prepare(
-            current_session: AgentSession | None,
-        ) -> _SessionPreparation:
-            nonlocal source, destination
-            source = Path(input_path).expanduser().resolve()
-            if not source.exists():
-                raise FileNotFoundError(
-                    errno.ENOENT, "No such file or directory", str(source)
-                )
-            staged = stage_file_import(
+        source = Path(input_path).expanduser().resolve()
+        try:
+            return await self._lifecycle.import_file(
                 source,
-                self.session_dir,
-                copy_file=_copy_import_file,
+                destination_dir=self.session_dir,
+                cwd_override=(str(cwd_override) if cwd_override is not None else None),
+                metadata=self._lifecycle_metadata(
+                    operation="import_from_jsonl",
+                    input_path=str(input_path),
+                    source_path=str(source),
+                    cwd_override=(
+                        str(cwd_override) if cwd_override is not None else None
+                    ),
+                ),
             )
-            destination = staged.destination
-            try:
-                if current_session is not None:
-                    runner = self._get_extension_runner(current_session)
-                    if runner is not None:
-                        decision = await runner.before_session_switch(
-                            SessionBeforeSwitchEvent(
-                                reason="resume",
-                                cwd=current_session.session_manager.get_cwd(),
-                                target_session_file=str(destination),
-                            )
-                        )
-                        self._sync_session_extension_diagnostics(current_session)
-                        if decision is not None and decision.cancel:
-                            return CancelledSessionOperation(
-                                None, cleanup=staged.cleanup
-                            )
-
-                cwd = (
-                    self._resolve_import_cwd(cwd_override)
-                    if cwd_override is not None
-                    else None
-                )
-                manager = await SessionManager.open(
-                    destination,
-                    session_dir=self.session_dir,
-                    cwd_override=cwd,
-                    persist=self.persist,
-                )
-                self._raise_if_session_cwd_missing(manager, fallback_cwd=cwd)
-                return self._create_session_candidate(
-                    manager,
-                    current=current_session,
-                    reason="resume",
-                    cleanup=staged.cleanup,
-                )
-            except BaseException:
-                staged.cleanup()
-                raise
-
-        def _record_failure(failure: SessionOperationFailure[AgentSession]) -> None:
-            if failure.phase is SessionOperationPhase.AFTER_COMMIT:
-                return
-            self._record_session_operation_failure(
-                code="session_import_failed",
-                exc=failure.error,
-                details={
-                    "operation": "import_from_jsonl",
-                    "input_path": str(input_path),
-                    "source_path": str(source) if source is not None else None,
-                    "target_session_file": str(destination)
-                    if destination is not None
-                    else None,
-                    "cwd_override": str(cwd_override)
-                    if cwd_override is not None
-                    else None,
-                },
-            )
-
-        return await self._execute_session_operation(
-            _prepare,
-            reason="resume",
-            on_failure=_record_failure,
-        )
+        except HarnessMissingSessionCwdError as exc:
+            raise _coding_missing_cwd_error(exc) from exc
 
     async def importFromJsonl(
         self, input_path: str | Path, cwd_override: str | Path | None = None
@@ -529,21 +486,14 @@ class AgentSessionRuntime:
         return await self.import_from_jsonl(input_path, cwd_override)
 
     async def replace_current_session(self, session: AgentSession) -> None:
-        async with self._session_host.transition():
-            await self._replace_current_session_unlocked(session)
-
-    async def _replace_current_session_unlocked(self, session: AgentSession) -> None:
-        shutdown_event = SessionShutdownEvent(
-            reason="resume",
-            target_session_file=_session_file_from_session(session),
-        )
-        await self._session_host.replace(
+        await self._lifecycle.replace(
             session,
-            prepare=self._prepare_session_for_replacement,
-            before_release=lambda previous: self._prepare_session_shutdown(
-                previous, shutdown_event
+            metadata=self._lifecycle_metadata(
+                operation="replace_current_session",
+                activate_extensions=False,
+                emit_before_transition=False,
+                schedule_index=False,
             ),
-            activate=self._open_session_approvals,
         )
 
     def get_current_session(self) -> AgentSession | None:
@@ -819,100 +769,175 @@ class AgentSessionRuntime:
         return result
 
     async def dispose(self) -> None:
-        async with self._session_host.transition():
-            await self.drain_session_index_flush()
-            shutdown_event = SessionShutdownEvent(reason="quit")
-            await self._session_host.dispose_current(
-                before_release=lambda session: self._prepare_session_shutdown(
-                    session, shutdown_event
-                )
-            )
+        await self.drain_session_index_flush()
+        await self._lifecycle.dispose(
+            reason="quit",
+            metadata=self._lifecycle_metadata(operation="dispose"),
+        )
 
     async def drain_session_index_flush(self) -> None:
         await self._session_index_flush.drain()
 
-    async def _execute_session_operation(
+    def _lifecycle_metadata(
         self,
-        prepare: _SessionPrepare,
         *,
-        reason: str,
+        operation: str,
         options: dict[str, object] | None = None,
-        include_setup: bool = False,
-        on_failure: Callable[
-            [SessionOperationFailure[AgentSession]], Awaitable[None] | None
-        ]
-        | None = None,
-    ) -> _SessionOperationResult:
-        async def _activate(
-            candidate: SessionOperationCandidate[AgentSession, str | None],
-            previous: AgentSession | None,
-        ) -> None:
-            session = candidate.session
-            self._open_session_approvals(session)
-            starter = getattr(session, "start_extension_runtime", None)
-            if callable(starter):
-                start_reason = (
-                    "startup" if previous is None and reason == "new" else reason
-                )
-                await starter(reason=start_reason)
+        **details: object,
+    ) -> dict[str, object]:
+        metadata: dict[str, object] = {"operation": operation, **details}
+        if options is not None:
+            metadata["options"] = options
+        return metadata
 
-        async def _after_commit(
-            result: _SessionOperationResult,
-        ) -> None:
-            session = _require_operation_session(result)
-            if self.auto_refresh_session_index:
-                self._schedule_session_index_flush()
-            if options is not None:
-                await self._run_replacement_callbacks(
-                    session,
-                    options,
-                    include_setup=include_setup,
+    async def _before_lifecycle_transition(
+        self,
+        current: AgentSession | None,
+        transition: SessionLifecycleTransition,
+    ) -> SessionLifecycleDecision | None:
+        if (
+            current is None
+            or transition.metadata.get("emit_before_transition", True) is False
+        ):
+            return None
+        runner = self._get_extension_runner(current)
+        if runner is None:
+            return None
+        if transition.reason == "fork":
+            entry_id = transition.fork_entry_id
+            position = transition.fork_position
+            if entry_id is None or position is None:
+                raise ValueError("Fork transitions require entry_id and position")
+            decision = await runner.before_session_fork(
+                SessionBeforeForkEvent(
+                    entry_id=entry_id,
+                    cwd=current.session_manager.get_cwd(),
+                    position=position,
                 )
-
-        return await self._session_operations.run(
-            prepare,
-            prepare_session=lambda candidate, _previous: (
-                self._prepare_session_for_replacement(candidate.session)
-            ),
-            before_release=lambda previous, candidate: self._prepare_session_shutdown(
-                previous,
-                SessionShutdownEvent(
-                    reason=reason,
-                    target_session_file=_session_file_from_session(candidate.session),
-                ),
-            ),
-            activate=_activate,
-            after_commit=_after_commit,
-            on_failure=on_failure,
+            )
+        else:
+            decision = await runner.before_session_switch(
+                SessionBeforeSwitchEvent(
+                    reason=transition.reason,
+                    cwd=transition.cwd or current.session_manager.get_cwd(),
+                    target_session_file=transition.target_session_ref,
+                )
+            )
+        self._sync_session_extension_diagnostics(current)
+        return SessionLifecycleDecision(
+            cancelled=decision is not None and decision.cancel
         )
 
-    def _create_session_candidate(
+    def _prepare_lifecycle_session(
+        self,
+        session: AgentSession,
+        _previous: AgentSession | None,
+        _transition: SessionLifecycleTransition,
+    ) -> None:
+        self._prepare_session_for_replacement(session)
+
+    async def _activate_lifecycle_session(
+        self,
+        session: AgentSession,
+        previous: AgentSession | None,
+        transition: SessionLifecycleTransition,
+    ) -> None:
+        self._open_session_approvals(session)
+        if transition.metadata.get("activate_extensions", True) is False:
+            return
+        starter = getattr(session, "start_extension_runtime", None)
+        if callable(starter):
+            start_reason = (
+                "startup"
+                if previous is None and transition.reason == "new"
+                else transition.reason
+            )
+            await starter(reason=start_reason)
+
+    async def _before_lifecycle_release(
+        self,
+        session: AgentSession,
+        target_session: AgentSession | None,
+        transition: SessionLifecycleTransition,
+    ) -> None:
+        await self._prepare_session_shutdown(
+            session,
+            SessionShutdownEvent(
+                reason=transition.reason,
+                target_session_file=_session_file_from_session(target_session),
+            ),
+        )
+
+    async def _after_lifecycle_commit(
+        self,
+        result: _SessionOperationResult,
+        transition: SessionLifecycleTransition,
+    ) -> None:
+        session = _require_operation_session(result)
+        if (
+            self.auto_refresh_session_index
+            and transition.metadata.get("schedule_index", True) is not False
+        ):
+            self._schedule_session_index_flush()
+        options = transition.metadata.get("options")
+        if isinstance(options, dict):
+            await self._run_replacement_callbacks(
+                session,
+                options,
+                include_setup=transition.metadata.get("include_setup") is True,
+            )
+
+    def _on_lifecycle_failure(
+        self,
+        failure: SessionOperationFailure[AgentSession],
+        transition: SessionLifecycleTransition,
+    ) -> None:
+        if failure.phase is SessionOperationPhase.AFTER_COMMIT:
+            return
+        operation = transition.metadata.get("operation")
+        if operation == "restore_session":
+            self._record_session_operation_failure(
+                code="session_restore_failed",
+                exc=failure.error,
+                details={
+                    "operation": operation,
+                    "session_ref": transition.metadata.get("session_ref"),
+                    "target_session_file": transition.target_session_ref,
+                    "fallback_cwd": transition.metadata.get("fallback_cwd"),
+                    "missing_cwd": transition.metadata.get("missing_cwd"),
+                },
+            )
+        elif operation == "import_from_jsonl":
+            self._record_session_operation_failure(
+                code="session_import_failed",
+                exc=failure.error,
+                details={
+                    "operation": operation,
+                    "input_path": transition.metadata.get("input_path"),
+                    "source_path": transition.metadata.get("source_path"),
+                    "target_session_file": transition.target_session_ref,
+                    "cwd_override": transition.metadata.get("cwd_override"),
+                },
+            )
+
+    def _create_session_for_transition(
         self,
         manager: SessionManager,
         *,
         current: AgentSession | None,
-        reason: str,
-        selected_text: str | None = None,
-        cleanup: Callable[[], None] | None = None,
-    ) -> SessionOperationCandidate[AgentSession, str | None]:
-        start_reason = "startup" if current is None and reason == "new" else reason
-        start_event = SessionStartEvent(
-            reason=start_reason,
-            previous_session_file=_session_file_from_session(current),
+        transition: SessionLifecycleTransition,
+    ) -> AgentSession:
+        start_reason = (
+            "startup"
+            if current is None and transition.reason == "new"
+            else transition.reason
         )
-        next_session = self._create_session(manager, start_event)
-
-        async def _rollback() -> None:
-            try:
-                await _dispose_session_only(next_session)
-            finally:
-                if cleanup is not None:
-                    cleanup()
-
-        return SessionOperationCandidate(
-            session=next_session,
-            payload=selected_text,
-            rollback=_rollback,
+        return self._create_session(
+            manager,
+            SessionStartEvent(
+                reason=start_reason,
+                previous_session_file=_session_file_from_session(current),
+            ),
         )
 
     async def _prepare_session_shutdown(
@@ -1160,20 +1185,6 @@ class AgentSessionRuntime:
             raise RuntimeError("No active session")
         return self._current_session
 
-    def _resolve_cwd(self, cwd: str | Path | None) -> str:
-        if cwd is None:
-            return self._require_current_session().session_manager.get_cwd()
-
-        candidate = Path(cwd).expanduser()
-        if not candidate.exists():
-            raise FileNotFoundError(
-                errno.ENOENT, "No such file or directory", str(candidate)
-            )
-        resolved = candidate.resolve()
-        if not resolved.is_dir():
-            raise NotADirectoryError(errno.ENOTDIR, "Not a directory", str(resolved))
-        return str(resolved)
-
     def _resolve_session_file(self, session_id: str | Path) -> Path:
         candidate = Path(session_id).expanduser()
         if candidate.exists():
@@ -1214,16 +1225,6 @@ class AgentSessionRuntime:
         return getattr(
             session, "extension_runner", getattr(session, "_extension_runner", None)
         )
-
-    def _raise_if_session_cwd_missing(
-        self,
-        manager: SessionManager,
-        *,
-        fallback_cwd: str | Path | None = None,
-    ) -> None:
-        issue = get_missing_session_cwd_issue(manager, fallback_cwd=fallback_cwd)
-        if issue is not None:
-            raise MissingSessionCwdError(issue)
 
 
 def _accepts_session_start_event(factory: SessionFactory) -> bool:
@@ -1344,6 +1345,32 @@ def _resolve_fork_target(
     ):
         raise ValueError("Fork position 'before' requires a user message entry.")
     return entry.parent_id, _user_message_text(entry.payload)
+
+
+def _resolve_coding_fork_target(
+    session: AgentSession,
+    entry_id: str,
+    position: str,
+) -> ForkSelection[str]:
+    target_entry_id, selected_text = _resolve_fork_target(
+        session.session_manager,
+        entry_id,
+        position=position,
+    )
+    return ForkSelection(target_entry_id=target_entry_id, payload=selected_text)
+
+
+def _coding_missing_cwd_error(
+    error: HarnessMissingSessionCwdError,
+) -> MissingSessionCwdError:
+    session_ref = error.issue.session_ref
+    return MissingSessionCwdError(
+        MissingSessionCwdIssue(
+            session_cwd=error.issue.session_cwd,
+            session_file=Path(session_ref) if session_ref is not None else None,
+            fallback_cwd=error.issue.fallback_cwd,
+        )
+    )
 
 
 def _user_message_text(message: UserMessage) -> str:

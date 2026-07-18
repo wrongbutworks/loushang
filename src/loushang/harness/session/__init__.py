@@ -9,6 +9,23 @@ from loushang.harness.session.application_input import (
     ApplicationInputDelivery,
     ApplicationInputRuntime,
 )
+from loushang.harness.session.lifecycle import (
+    DEFAULT_FORK_PROFILE,
+    FileCopy,
+    ForkProfile,
+    ForkSelection,
+    ForkTargetResolver,
+    MissingCwdPolicy,
+    MissingSessionCwdError,
+    SessionCwdIssue,
+    SessionLifecycleDecision,
+    SessionLifecycleHooks,
+    SessionLifecycleRuntime,
+    SessionLifecycleStore,
+    SessionLifecycleTransition,
+    TransitionCandidateCallback,
+    TransitionReleaseCallback,
+)
 from loushang.harness.session.prompt_controller import PromptController
 from loushang.harness.session.queue_controller import QueueController
 from loushang.harness.session.runtime import (
@@ -23,9 +40,24 @@ __all__ = [
     "AfterTurnPolicyPort",
     "ApplicationInputDelivery",
     "ApplicationInputRuntime",
+    "DEFAULT_FORK_PROFILE",
+    "FileCopy",
+    "ForkProfile",
+    "ForkSelection",
+    "ForkTargetResolver",
+    "MissingCwdPolicy",
+    "MissingSessionCwdError",
     "PromptController",
     "QueueController",
     "SessionRuntime",
+    "SessionCwdIssue",
+    "SessionLifecycleDecision",
+    "SessionLifecycleHooks",
+    "SessionLifecycleRuntime",
+    "SessionLifecycleStore",
+    "SessionLifecycleTransition",
+    "TransitionCandidateCallback",
+    "TransitionReleaseCallback",
     "TranscriptRuntimePort",
     "TurnPolicyPort",
 ]
