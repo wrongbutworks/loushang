@@ -108,11 +108,13 @@ def _delivery(
 def _visible_text(message: ApplicationMessage) -> str:
     if isinstance(message.content, str):
         return message.content
-    text_parts = [
-        part.text
-        for part in message.content
-        if getattr(part, "type", None) == "text" and isinstance(part.text, str)
-    ]
+    text_parts: list[str] = []
+    for part in message.content:
+        if getattr(part, "type", None) != "text":
+            continue
+        text = getattr(part, "text", None)
+        if isinstance(text, str):
+            text_parts.append(text)
     if text_parts:
         return "\n".join(text_parts)
     return "[image]" if message.content else ""

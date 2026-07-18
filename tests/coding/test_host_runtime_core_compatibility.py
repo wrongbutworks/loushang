@@ -16,6 +16,7 @@ from loushang.harness.session import (
     AgentEventRouter,
     PromptController,
     QueueController,
+    SessionRuntime,
 )
 
 
@@ -69,16 +70,18 @@ def test_agent_session_coordinates_public_lifecycle_through_host_runtime(
                 persist=False,
             ),
         )
-        assert isinstance(session._queue_controller, QueueController)
-        assert isinstance(session._prompt_controller, PromptController)
-        assert isinstance(session._agent_event_router, AgentEventRouter)
+        runtime = session._session_runtime
+        assert isinstance(runtime, SessionRuntime)
+        assert isinstance(runtime.queue, QueueController)
+        assert isinstance(runtime.prompt_controller, PromptController)
+        assert isinstance(runtime.agent_event_router, AgentEventRouter)
         host_events: list[HostLifecycleEvent] = []
-        session._host_runtime.subscribe(host_events.append)
+        runtime.host_runtime.subscribe(host_events.append)
 
         task = asyncio.create_task(session.prompt("prepare reference output"))
         await started.wait()
 
-        assert isinstance(session._host_runtime, HostRuntime)
+        assert isinstance(runtime.host_runtime, HostRuntime)
         assert session.get_state().run == RunState(status="running")
         session.abort()
         await task
@@ -94,6 +97,6 @@ def test_agent_session_coordinates_public_lifecycle_through_host_runtime(
         ]
 
         await session.dispose()
-        assert session._host_runtime.is_disposed is True
+        assert runtime.host_runtime.is_disposed is True
 
     asyncio.run(scenario())

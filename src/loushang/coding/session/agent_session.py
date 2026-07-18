@@ -4,14 +4,12 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
-from typing import cast
 
 from loushang.agent import (
     AbortController,
     AbortSignal,
     Agent,
     AgentEvent,
-    AgentMessage,
     ThinkingLevel,
 )
 from loushang.ai.api_registry import (
@@ -113,11 +111,7 @@ from loushang.coding.session.types import (
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager, SessionRecord
 from loushang.coding.tools import ToolRegistry
-from loushang.harness.agent_transcript import (
-    AgentTranscriptContext,
-    ApplicationMessage,
-    CommitResult,
-)
+from loushang.harness.agent_transcript import AgentTranscriptContext
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import (
     DiagnosticRecord,
@@ -127,28 +121,20 @@ from loushang.harness.diagnostics.types import (
 )
 from loushang.harness.events import (
     ConversationMetadataChanged,
-    OrderedEventBus,
     PackageProgressChanged,
-    QueueChanged,
     RuntimeEvent,
-    RuntimeEventPublisher,
     SessionRuntimeEventPayload,
-    ToolPolicyAuditEvent,
-    ToolPolicyAuditEventType,
-    TranscriptRecordCommitted,
-    session_runtime_event_kind,
 )
-from loushang.harness.host.runtime import HostRuntime
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
 )
 from loushang.harness.session import (
-    AgentEventRouter,
-    ApplicationInputRuntime,
-    PromptController,
-    QueueController,
+    AfterTurnPolicyPort,
+    SessionRuntime,
+    TranscriptRuntimePort,
+    TurnPolicyPort,
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import (
@@ -226,22 +212,7 @@ class AgentSession:
         self._base_prompt = (
             base_prompt if base_prompt is not None else self.agent.system_prompt
         )
-        self._runtime_event_bus = OrderedEventBus[RuntimeEvent[object]](
-            async_listener_error=(
-                "Async runtime event listeners require a running event loop."
-            )
-        )
         session_id = self.session_manager.get_header().conversation_id
-        self._runtime_event_publisher = RuntimeEventPublisher[object](
-            stream_id=f"session:{session_id}",
-            bus=self._runtime_event_bus,
-        )
-        self.session_manager.set_commit_observer(self._schedule_transcript_commit)
-        self._host_runtime: HostRuntime[None] = HostRuntime(
-            abort_driver=self.agent.abort,
-            wait_for_idle_driver=self.agent.wait_for_idle,
-            is_running_driver=lambda: self.agent.is_streaming,
-        )
         self._bind_package_progress_events()
         self._extension_ui_context: object | None = None
         self._extension_runtime_host: object | None = None
@@ -384,12 +355,6 @@ class AgentSession:
             get_extension_runner=lambda: self._extension_runner,
             get_cwd=self.session_manager.get_cwd,
         )
-        self._queue_controller = QueueController(
-            agent=self.agent,
-            preflight_user_input=self._preflight_user_input,
-            reject_extension_command=self._raise_if_queued_extension_command,
-            emit_queue_update=self._emit_queue_update,
-        )
         self._retry_controller = RetryController(
             agent=self.agent,
             get_settings=self._get_retry_settings,
@@ -399,17 +364,52 @@ class AgentSession:
             sleep_for_retry=lambda delay_ms, signal: _sleep_for_retry(delay_ms, signal),
             wait_for_idle=self.wait_for_idle,
         )
-        self._application_input_runtime = ApplicationInputRuntime(
-            commit_application_message=self.session_manager.commit_application_message,
-            queue=self._queue_controller,
-            project_direct=self._project_direct_application_message,
-            run_trigger_turn=lambda message: self._run_agent_prompt(message),
+        self._session_runtime = SessionRuntime(
+            agent=self.agent,
+            transcript=TranscriptRuntimePort(
+                session_id=session_id,
+                append_message=self.session_manager.append_message,
+                commit_application_message=(
+                    self.session_manager.commit_application_message
+                ),
+                refresh_context=lambda: self._apply_agent_transcript_context(
+                    self.session_manager.build_session_context()
+                ),
+                set_commit_observer=self.session_manager.set_commit_observer,
+            ),
+            turn_policy=TurnPolicyPort(
+                get_extension_runner=lambda: self._extension_runner,
+                get_cwd=self.session_manager.get_cwd,
+                extract_extension_command_invocation=(
+                    self._extract_extension_command_invocation
+                ),
+                execute_command_async=self.execute_command_async,
+                preflight_user_input=self._preflight_user_input,
+                reject_queued_extension_command=(
+                    self._raise_if_queued_extension_command
+                ),
+                preflight_user_input_async=self._preflight_user_input_async,
+                before_agent_start_system_prompt_options=(
+                    self._before_agent_start_system_prompt_options
+                ),
+                sync_extension_diagnostics=self._sync_extension_diagnostics,
+                compact_before_prompt_async=self._compact_before_prompt,
+            ),
+            after_turn_policy=AfterTurnPolicyPort(
+                emit_extension_agent_event=self._emit_extension_agent_event,
+                record_tool_execution_error=self._record_tool_execution_error,
+                retry_controller=self._retry_controller,
+                compaction_controller=self._compaction_controller,
+                sync_extension_diagnostics=self._sync_extension_diagnostics,
+                record_assistant_response_error=self._record_assistant_response_error,
+                check_auto_compaction=self._check_auto_compaction,
+            ),
         )
         self._extension_message_controller = ExtensionMessageController(
             agent=self.agent,
-            queue_controller=self._queue_controller,
-            application_inputs=self._application_input_runtime,
-            run_prompt=self._run_agent_prompt,
+            queue_controller=self._session_runtime.queue,
+            application_inputs=self._session_runtime.application_inputs,
+            run_prompt=self._session_runtime.run_agent_prompt,
         )
         self._extension_provider_controller = ExtensionProviderController(
             model_registry=self.model_registry,
@@ -496,7 +496,7 @@ class AgentSession:
             is_compacting=lambda: self.is_compacting,
             get_last_diagnostics=lambda limit=50: self.get_last_diagnostics(limit),
             get_model_selection=self.get_model_selection,
-            is_host_running=lambda: self._host_runtime.is_active,
+            is_host_running=lambda: self._session_runtime.is_active,
             get_compaction_reserve_tokens=lambda: (
                 self._get_compaction_settings().reserve_tokens
             ),
@@ -507,32 +507,6 @@ class AgentSession:
                 self._get_compaction_settings().keep_recent_tokens
             ),
         )
-        self._prompt_controller = PromptController(
-            agent=self.agent,
-            queue_controller=self._queue_controller,
-            get_extension_runner=lambda: self._extension_runner,
-            get_cwd=self.session_manager.get_cwd,
-            extract_extension_command_invocation=self._extract_extension_command_invocation,
-            execute_command_async=self.execute_command_async,
-            preflight_user_input_async=self._preflight_user_input_async,
-            before_agent_start_system_prompt_options=self._before_agent_start_system_prompt_options,
-            sync_extension_diagnostics=self._sync_extension_diagnostics,
-            compact_before_prompt_async=self._compact_before_prompt,
-            run_prompt=lambda messages: self._run_agent_prompt(messages),
-        )
-        self._agent_event_router = AgentEventRouter(
-            append_message=self.session_manager.append_message,
-            dispatch_event=self._dispatch_event,
-            emit_extension_agent_event=self._emit_extension_agent_event,
-            record_tool_execution_error=self._record_tool_execution_error,
-            retry_controller=self._retry_controller,
-            compaction_controller=self._compaction_controller,
-            sync_extension_diagnostics=self._sync_extension_diagnostics,
-            record_assistant_response_error=self._record_assistant_response_error,
-            check_auto_compaction=self._check_auto_compaction,
-            consume_user_message=self._queue_controller.mark_message_consumed,
-        )
-        self._unsubscribe_agent = self.agent.subscribe(self._handle_agent_event)
         session_context = self.session_manager.build_session_context()
         self._apply_agent_transcript_context(session_context)
         if self._tool_registry is not None:
@@ -573,8 +547,8 @@ class AgentSession:
 
     def get_state(self) -> AgentSessionState:
         return self._view_controller.get_state(
-            steering=self._queue_controller.get_steering_messages(),
-            follow_up=self._queue_controller.get_follow_up_messages(),
+            steering=self._session_runtime.queue.get_steering_messages(),
+            follow_up=self._session_runtime.queue.get_follow_up_messages(),
         )
 
     def get_session_context(self) -> AgentTranscriptContext:
@@ -919,13 +893,13 @@ class AgentSession:
                 return None
             return listener(projected)
 
-        return self._runtime_event_bus.subscribe(project)
+        return self._session_runtime.subscribe(project)
 
     def subscribe_runtime_events(
         self,
         listener: RuntimeEventListener,
     ) -> Callable[[], None]:
-        return self._runtime_event_bus.subscribe(listener)
+        return self._session_runtime.subscribe(listener)
 
     # Run entrypoint.
 
@@ -938,7 +912,7 @@ class AgentSession:
         source: str | None = None,
         preflight_result: Callable[[bool], None] | None = None,
     ) -> None:
-        await self._prompt_controller.prompt(
+        await self._session_runtime.prompt(
             user_input,
             images=images,
             streaming_behavior=streaming_behavior,
@@ -949,33 +923,33 @@ class AgentSession:
     # Public facade: queued steering and follow-up messages.
 
     def steer(self, user_input: str, images: list[ImagePart] | None = None) -> None:
-        self._queue_controller.steer(user_input, images=images)
+        self._session_runtime.steer(user_input, images=images)
 
     def follow_up(self, user_input: str, images: list[ImagePart] | None = None) -> None:
-        self._queue_controller.follow_up(user_input, images=images)
+        self._session_runtime.follow_up(user_input, images=images)
 
     @property
     def pending_message_count(self) -> int:
-        return self._queue_controller.pending_message_count
+        return self._session_runtime.queue.pending_message_count
 
     @property
     def pendingMessageCount(self) -> int:
         return self.pending_message_count
 
     def get_steering_messages(self) -> list[str]:
-        return self._queue_controller.get_steering_messages()
+        return self._session_runtime.queue.get_steering_messages()
 
     def getSteeringMessages(self) -> list[str]:
         return self.get_steering_messages()
 
     def get_follow_up_messages(self) -> list[str]:
-        return self._queue_controller.get_follow_up_messages()
+        return self._session_runtime.queue.get_follow_up_messages()
 
     def getFollowUpMessages(self) -> list[str]:
         return self.get_follow_up_messages()
 
     def clear_queue(self) -> dict[str, list[str]]:
-        return self._queue_controller.clear_queue()
+        return self._session_runtime.queue.clear_queue()
 
     def clearQueue(self) -> dict[str, list[str]]:
         return self.clear_queue()
@@ -1250,16 +1224,16 @@ class AgentSession:
     # Public facade: run controls, retry, compaction, and tree navigation.
 
     async def continue_run(self) -> None:
-        await self._host_runtime.run(self.agent.continue_run)
+        await self._session_runtime.continue_run()
 
     def abort(self) -> None:
-        self._host_runtime.abort()
+        self._session_runtime.abort()
 
     def abort_bash(self) -> None:
         self._bash_controller.abort()
 
     async def wait_for_idle(self) -> None:
-        await self._host_runtime.wait_for_idle()
+        await self._session_runtime.wait_for_idle()
 
     def abort_retry(self) -> None:
         self._retry_controller.abort()
@@ -1370,7 +1344,7 @@ class AgentSession:
         finally:
             self._close_session_approvals()
             try:
-                await self._host_runtime.dispose()
+                await self._session_runtime.dispose()
             finally:
                 try:
                     await self._dispose_session_runtime_profile()
@@ -1380,7 +1354,7 @@ class AgentSession:
     async def _dispose_after_session_shutdown(self) -> None:
         self._close_session_approvals()
         try:
-            await self._host_runtime.dispose()
+            await self._session_runtime.dispose()
         finally:
             try:
                 await self.stop_resource_watcher()
@@ -1408,9 +1382,6 @@ class AgentSession:
             self._invalidate_extension_contexts(
                 "Extension context is stale after session replacement or shutdown."
             )
-        self._unsubscribe_agent()
-        self.session_manager.set_commit_observer(None)
-        self._runtime_event_bus.clear()
         self.footer_data_provider.dispose()
 
     def _stage_session_approvals(self) -> None:
@@ -1795,46 +1766,10 @@ class AgentSession:
         ).install()
 
     async def _handle_agent_event(self, event: AgentEvent, signal: AbortSignal) -> None:
-        await self._agent_event_router.handle(event, signal)
-
-    async def _run_agent_prompt(
-        self,
-        prompt: object,
-        images: list[ImagePart] | None = None,
-    ) -> None:
-        normalized_prompt = cast(str | AgentMessage | list[AgentMessage], prompt)
-
-        async def operation() -> None:
-            if images is None:
-                await self.agent.prompt(normalized_prompt)
-            else:
-                await self.agent.prompt(normalized_prompt, images=images)
-
-        await self._host_runtime.run(operation)
-
-    async def _project_direct_application_message(
-        self,
-        message: ApplicationMessage,
-        record_id: str,
-    ) -> None:
-        self._apply_agent_transcript_context(
-            self.session_manager.build_session_context()
-        )
-        await self._dispatch_event({"type": "message_start", "message": message})
-        await self._dispatch_event(
-            {"type": "message_end", "message": message},
-            source_record_id=record_id,
-        )
+        await self._session_runtime.handle_agent_event(event, signal)
 
     async def _emit_extension_agent_event(self, event: AgentEvent) -> None:
         await self._extension_event_sink.emit_agent_event(event)
-
-    def _emit_queue_update(self) -> None:
-        event = QueueChanged(snapshot=self._queue_controller.get_queue_snapshot())
-        try:
-            self._schedule_event_dispatch(event)
-        except RuntimeError:
-            self._dispatch_event_without_loop(event)
 
     def _bind_package_progress_events(self) -> None:
         if self._package_materializer is None:
@@ -1852,9 +1787,9 @@ class AgentSession:
             ),
         )
         try:
-            self._schedule_event_dispatch(event)
+            self._session_runtime.schedule_event_dispatch(event)
         except RuntimeError:
-            self._dispatch_event_without_loop(event)
+            self._session_runtime.dispatch_event_without_loop(event)
 
     async def _dispatch_event(
         self,
@@ -1862,45 +1797,9 @@ class AgentSession:
         *,
         source_record_id: str | None = None,
     ) -> None:
-        kind, payload = _normalize_runtime_event(event)
-        await self._runtime_event_publisher.publish(
-            kind,
-            payload,
-            session_id=self.session_manager.get_header().conversation_id,
+        await self._session_runtime.dispatch_event(
+            event,
             source_record_id=source_record_id,
-        )
-
-    def _schedule_transcript_commit(self, result: CommitResult) -> None:
-        receipt = result.receipt
-        if result.disposition != "committed" or receipt is None:
-            return
-        conversation_id = self.session_manager.get_header().conversation_id
-        self._runtime_event_publisher.schedule(
-            "transcript.record_committed",
-            TranscriptRecordCommitted(
-                conversation_id=conversation_id,
-                record_id=result.record_id,
-                revision=receipt.revision,
-                committed_at=receipt.committed_at,
-            ),
-            session_id=conversation_id,
-            source_record_id=result.record_id,
-        )
-
-    def _schedule_event_dispatch(
-        self, event: SessionRuntimeEventPayload
-    ) -> asyncio.Task[None]:
-        return self._runtime_event_publisher.schedule(
-            _runtime_event_kind(event),
-            event,
-            session_id=self.session_manager.get_header().conversation_id,
-        )
-
-    def _dispatch_event_without_loop(self, event: SessionRuntimeEventPayload) -> None:
-        self._runtime_event_publisher.publish_without_loop(
-            _runtime_event_kind(event),
-            event,
-            session_id=self.session_manager.get_header().conversation_id,
         )
 
     # Internal compatibility shims for controller-owned state.
@@ -2066,46 +1965,6 @@ async def _sleep_for_retry(delay_ms: int, signal: AbortSignal) -> None:
         remaining -= interval
     if signal.aborted:
         raise asyncio.CancelledError
-
-
-_AGENT_EVENT_TYPES = {
-    "agent_start",
-    "agent_end",
-    "turn_start",
-    "turn_end",
-    "message_start",
-    "message_update",
-    "message_end",
-    "tool_execution_start",
-    "tool_execution_update",
-    "tool_execution_end",
-}
-_TOOL_POLICY_AUDIT_EVENT_TYPES = {
-    "tool_policy_evaluated",
-    "tool_approval_requested",
-    "tool_approval_resolved",
-}
-
-
-def _normalize_runtime_event(
-    event: AgentEvent | SessionRuntimeEventPayload | Mapping[str, object],
-) -> tuple[str, object]:
-    if isinstance(event, Mapping):
-        event_type = event.get("type")
-        if isinstance(event_type, str) and event_type in _AGENT_EVENT_TYPES:
-            return f"agent.{event_type}", event
-        if isinstance(event_type, str) and event_type in _TOOL_POLICY_AUDIT_EVENT_TYPES:
-            payload = ToolPolicyAuditEvent(
-                event_type=cast(ToolPolicyAuditEventType, event_type),
-                details={key: value for key, value in event.items() if key != "type"},
-            )
-            return session_runtime_event_kind(payload), payload
-        raise TypeError("Runtime event mapping has an unsupported type")
-    return session_runtime_event_kind(event), event
-
-
-def _runtime_event_kind(event: SessionRuntimeEventPayload) -> str:
-    return session_runtime_event_kind(event)
 
 
 def _normalize_extension_exec_command(
