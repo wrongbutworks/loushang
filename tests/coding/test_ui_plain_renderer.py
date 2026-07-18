@@ -38,6 +38,38 @@ def _assistant(
     )
 
 
+def test_plain_renderer_uses_shared_core_with_compatible_constructor() -> None:
+    from inspect import signature
+
+    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.harnesstui.plain.renderer import PlainConversationRenderer
+
+    assert issubclass(PlainCodingUiRenderer, PlainConversationRenderer)
+    assert tuple(signature(PlainCodingUiRenderer).parameters) == (
+        "stdout",
+        "stderr",
+        "max_payload_chars",
+        "verbose",
+        "use_transcript_view",
+        "transcript_theme",
+        "transcript_capabilities",
+        "code_highlighter",
+        "transcript_buffer",
+        "_assistant_deltas",
+    )
+
+
+def test_plain_renderer_preserves_extract_text_compatibility() -> None:
+    from loushang.coding.ui.plain_renderer import extract_text
+
+    message = UserMessage(
+        role="user",
+        content=[TextPart(type="text", text="hello")],
+        timestamp=0.0,
+    )
+    assert extract_text(message) == "hello"
+
+
 def test_plain_renderer_prints_header_and_user_message() -> None:
     from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
 
@@ -275,6 +307,30 @@ def test_event_renderer_prints_user_message_start() -> None:
     )
 
     assert stdout.getvalue() == "› hello\n"
+
+
+def test_event_renderer_can_suppress_user_messages() -> None:
+    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
+    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+
+    stdout = StringIO()
+    event_renderer = PlainCodingEventRenderer(
+        PlainCodingUiRenderer(stdout=stdout),
+        render_user_messages=False,
+    )
+
+    event_renderer.handle(
+        {
+            "type": "message_start",
+            "message": UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="hidden")],
+                timestamp=0.0,
+            ),
+        }
+    )
+
+    assert stdout.getvalue() == ""
 
 
 def test_event_renderer_aggregates_tool_lifecycle() -> None:

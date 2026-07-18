@@ -315,7 +315,9 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.conversation.reader`" in text
     assert "`loushang.harnesstui.conversation.source`" in text
     assert "`loushang.harnesstui.conversation.projection`" in text
+    assert "`loushang.harnesstui.conversation.plain_target`" in text
     assert "`loushang.harnesstui.conversation.tool_transcript`" in text
+    assert "`loushang.harnesstui.plain.renderer`" in text
     assert "`loushang.harnesstui.commands.presentation`" in text
     assert "`loushang.harnesstui.selection.catalog`" in text
     assert "`loushang.harnesstui.selection.model`" in text
@@ -334,8 +336,10 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
 
 def test_harnesstui_capability_entrypoints_exist() -> None:
     paths = (
+        Path("src/loushang/harnesstui/conversation/plain_target.py"),
         Path("src/loushang/harnesstui/conversation/projection.py"),
         Path("src/loushang/harnesstui/conversation/tool_transcript.py"),
+        Path("src/loushang/harnesstui/plain/renderer.py"),
         Path("src/loushang/harnesstui/commands/presentation.py"),
         Path("src/loushang/harnesstui/selection/catalog.py"),
         Path("src/loushang/harnesstui/selection/model.py"),
