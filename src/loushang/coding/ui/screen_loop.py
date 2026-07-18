@@ -1,30 +1,33 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
-import shutil
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager
-from typing import Any, TextIO
+from typing import Any, TextIO, cast
 
 from loushang.ai.types import ImagePart
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_input import ScreenInputRouter
+from loushang.harnesstui.conversation.screen_runner import (
+    ConversationInputRouterPort,
+    ConversationScreenPort,
+    abort_active,
+    configure_runtime_for_terminal_context,
+    elapsed_since,
+    finish_active_task,
+    maybe_await,
+    pop_interrupt_pending_steer,
+    run_conversation_screen,
+    run_surface_intent_handler,
+    supports_keyword,
+    terminal_size,
+    write_startup_welcome,
+)
 from loushang.tui import _runner_utils
-from loushang.tui.core import RenderConstraints
-from loushang.tui.input import InputIntent, InputReader
+from loushang.tui.input import InputIntent
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
-from loushang.tui.render_loop import RenderLoop
-from loushang.tui.runtime import TuiRuntime
-from loushang.tui.scheduler import RenderRequestKind
-from loushang.tui.terminal import ProcessTerminalPort, TerminalSize
-from loushang.tui.terminal_diagnostics import (
-    format_terminal_diagnostics as _format_terminal_diagnostics,
-)
-from loushang.tui.terminal_input import (
-    read_input_chunk_or_render_tick,
-)
-from loushang.tui.terminal_session import TerminalSession
+from loushang.tui.terminal import TerminalSize
+from loushang.tui.terminal_diagnostics import format_terminal_diagnostics
 
 PromptHandler = Callable[..., Awaitable[int | None] | int | None]
 TextHandler = Callable[..., Awaitable[int | None] | int | None]
@@ -41,6 +44,33 @@ _input_events_for_chunk = _runner_utils.input_events_for_chunk
 _poll_terminal_runtime = _runner_utils.poll_terminal_runtime
 _request_runtime_render = _runner_utils.request_runtime_render
 _terminal_runtime_wakeup_ms = _runner_utils.terminal_runtime_wakeup_ms
+_format_terminal_diagnostics = format_terminal_diagnostics
+
+_write_startup_welcome = write_startup_welcome
+_configure_runtime_for_terminal_context = configure_runtime_for_terminal_context
+_elapsed_since = elapsed_since
+_pop_interrupt_pending_steer = pop_interrupt_pending_steer
+_run_surface_intent_handler = run_surface_intent_handler
+_maybe_await = maybe_await
+_supports_keyword = supports_keyword
+_terminal_size = terminal_size
+
+
+async def _finish_coding_active_task(
+    *,
+    app: ScreenCodingTuiApp,
+    active_task: asyncio.Task[int | None],
+    started_at: float | None,
+) -> int | None:
+    return await finish_active_task(
+        app=app,
+        active_task=active_task,
+        started_at=started_at,
+        cancellation_message="Operation aborted",
+    )
+
+
+_finish_active_task = _finish_coding_active_task
 
 
 async def run_screen_coding_tui(
@@ -60,206 +90,75 @@ async def run_screen_coding_tui(
     terminal_mode_factory: TerminalModeFactory | None = None,
     terminal_size_provider: TerminalSizeProvider | None = None,
 ) -> int:
-    reader = InputReader()
-    size_provider = terminal_size_provider or _terminal_size
-    initial_size = size_provider()
-    router = ScreenInputRouter(
-        app,
+    """Adapt Coding payloads and product copy to the shared screen runner."""
+
+    return await run_conversation_screen(
+        app=app,
+        stdin=stdin,
+        stdout=stdout,
+        handle_prompt=_adapt_attachment_handler(handle_prompt),
+        handle_local=handle_local,
+        handle_steer=(
+            _adapt_attachment_handler(handle_steer)
+            if handle_steer is not None
+            else None
+        ),
+        handle_followup=(
+            _adapt_attachment_handler(handle_followup)
+            if handle_followup is not None
+            else None
+        ),
+        handle_surface_intent=handle_surface_intent,
+        on_abort=on_abort,
         should_exit=should_exit,
-        is_local_command=is_local_command or (lambda _text: False),
+        is_local_command=is_local_command,
         keybindings=keybindings,
-        width=initial_size.columns,
-        height=initial_size.rows,
+        terminal_mode_factory=terminal_mode_factory,
+        terminal_size_provider=terminal_size_provider or _terminal_size,
+        input_router_factory=_coding_input_router_factory,
+        interruption_message=(
+            "Conversation interrupted - tell the model what to do differently."
+        ),
+        cancellation_message="Operation aborted",
     )
-    runtime = TuiRuntime(
-        render_loop=RenderLoop(app),
-        terminal=ProcessTerminalPort(output=stdout, size_provider=size_provider, track_screen=False),
-    )
-    app.surface_host = runtime.overlay_host()
-    mode_factory = terminal_mode_factory or (lambda input_stream, output_stream: TerminalSession(stdin=input_stream, stdout=output_stream))
-    active_task: asyncio.Task[int | None] | None = None
-    active_prompt_started_at: float | None = None
-    queued_steers_while_running: list[str] = []
-    render_wakeup = asyncio.Event()
-    previous_render_requester = app.render_requester
-    previous_terminal_diagnostics_provider = app.terminal_diagnostics_provider
-    previous_terminal_capabilities = app.terminal_capabilities
-
-    def request_app_render(kind: RenderRequestKind) -> None:
-        if previous_render_requester is not None:
-            previous_render_requester(kind)
-        runtime.request_render(kind)
-        render_wakeup.set()
-
-    app.render_requester = request_app_render
-    try:
-        with mode_factory(stdin, stdout) as terminal_context:
-            app.terminal_diagnostics_provider = lambda context=terminal_context: _format_terminal_diagnostics(context)
-            _configure_runtime_for_terminal_context(runtime, app, terminal_context)
-            _write_startup_welcome(app=app, runtime=runtime, stdout=stdout)
-            runtime.render_now()
-            while True:
-                if active_task is not None and active_task.done():
-                    exit_code = await _finish_active_task(
-                        app=app,
-                        active_task=active_task,
-                        started_at=active_prompt_started_at,
-                    )
-                    active_task = None
-                    active_prompt_started_at = None
-                    queued_steers_while_running = []
-                    runtime.render_now()
-                    if exit_code is not None:
-                        return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=exit_code)
-
-                data = await read_input_chunk_or_render_tick(
-                    stdin,
-                    runtime=runtime,
-                    active_task=active_task,
-                    render_wakeup=render_wakeup,
-                    pending_input_idle_ms=10 if reader.has_pending else None,
-                    idle_wakeup_ms=_terminal_runtime_wakeup_ms(terminal_context),
-                )
-                input_events: tuple[Any, ...]
-                if data is None:
-                    _poll_terminal_runtime(terminal_context)
-                    if not reader.has_pending:
-                        continue
-                    input_events = _flush_pending_input(reader, terminal_context=terminal_context)
-                elif data == "" and reader.has_pending:
-                    input_events = _flush_pending_input(reader, terminal_context=terminal_context)
-                elif data == "":
-                    if active_task is not None:
-                        exit_code = await _finish_active_task(
-                            app=app,
-                            active_task=active_task,
-                            started_at=active_prompt_started_at,
-                        )
-                        runtime.render_now()
-                        return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=exit_code if exit_code is not None else 0)
-                    runtime.render_now()
-                    return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=0)
-                else:
-                    input_events = _input_events_for_chunk(reader, data, terminal_context=terminal_context)
-
-                for event in input_events:
-                    result = router.handle(event)
-                    if result.exit_code is not None:
-                        runtime.render_now()
-                        return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=result.exit_code)
-                    if result.abort_requested:
-                        queued_steers_while_running = []
-                        interrupt_pending_steer = _pop_interrupt_pending_steer(app)
-                        await _abort_active(app=app, active_task=active_task, on_abort=on_abort)
-                        active_task = None
-                        active_prompt_started_at = None
-                        runtime.render_now()
-                        if interrupt_pending_steer is not None:
-                            app.start_pending_prompt(interrupt_pending_steer)
-                            active_task = asyncio.create_task(_run_prompt_handler(handle_prompt, interrupt_pending_steer))
-                            active_prompt_started_at = app.state.active_started_at
-                            runtime.render_now()
-                        continue
-                    if result.prompt_text is not None:
-                        active_prompt_started_at = app.state.active_started_at
-                        active_task = asyncio.create_task(
-                            _run_prompt_handler(handle_prompt, result.prompt_text, images=result.prompt_images)
-                        )
-                        queued_steers_while_running = []
-                    if result.local_text is not None and handle_local is not None:
-                        exit_code = await _run_text_handler(handle_local, result.local_text)
-                        if exit_code is not None:
-                            runtime.render_now()
-                            return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=exit_code)
-                    if result.steer_text is not None and handle_steer is not None:
-                        was_running = active_task is not None
-                        exit_code = await _run_text_handler(handle_steer, result.steer_text, images=result.steer_images)
-                        if was_running:
-                            queued_steers_while_running.append(result.steer_text)
-                        if exit_code is not None:
-                            runtime.render_now()
-                            return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=exit_code)
-                    if result.followup_text is not None and handle_followup is not None:
-                        exit_code = await _run_text_handler(handle_followup, result.followup_text, images=result.followup_images)
-                        if exit_code is not None:
-                            runtime.render_now()
-                            return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=exit_code)
-                    if result.surface_intent is not None and handle_surface_intent is not None:
-                        exit_code = await _run_surface_intent_handler(handle_surface_intent, result.surface_intent)
-                        if exit_code is not None:
-                            runtime.render_now()
-                            return _finish_tui_exit(runtime=runtime, stdout=stdout, exit_code=exit_code)
-                    if result.render_requested:
-                        _request_runtime_render(runtime, "input")
-    finally:
-        app.surface_host = None
-        app.terminal_diagnostics_provider = previous_terminal_diagnostics_provider
-        app.terminal_capabilities = previous_terminal_capabilities
-        app.render_requester = previous_render_requester
 
 
-async def _finish_active_task(
+def _coding_input_router_factory(
     *,
-    app: ScreenCodingTuiApp,
-    active_task: asyncio.Task[int | None],
-    started_at: float | None,
-) -> int | None:
-    try:
-        result = await active_task
-    except asyncio.CancelledError:
-        app.state.abort(message="Operation aborted", elapsed_seconds=app.elapsed_seconds())
-        return None
-    except Exception as error:  # noqa: BLE001
-        app.add_error(str(error) or error.__class__.__name__)
-        app.complete_run(elapsed_seconds=_elapsed_since(app, started_at))
-        return 1
-    app.complete_run(elapsed_seconds=_elapsed_since(app, started_at))
-    return result if isinstance(result, int) else None
-
-
-def _write_startup_welcome(*, app: ScreenCodingTuiApp, runtime: TuiRuntime, stdout: TextIO) -> None:
-    if app.state.records or app.state.running or app.state.assistant_draft_buffer is not None:
-        return
-    size = runtime.terminal.size()
-    result = app.startup_welcome_panel().render(
-        RenderConstraints(width=size.columns, max_height=size.rows, visible_height=size.rows)
+    app: ConversationScreenPort,
+    should_exit: ShouldExit,
+    is_local_command: LocalCommandPredicate,
+    keybindings: KeybindingManager | KeybindingConfig | None,
+    width: int,
+    height: int,
+) -> ConversationInputRouterPort:
+    return cast(
+        ConversationInputRouterPort,
+        ScreenInputRouter(
+            app=cast(ScreenCodingTuiApp, app),
+            should_exit=should_exit,
+            is_local_command=is_local_command,
+            keybindings=keybindings,
+            width=width,
+            height=height,
+        ),
     )
-    if not result.lines:
-        return
-    stdout.write("\n".join(line.text for line in result.lines))
-    stdout.write("\n\n")
-    stdout.flush()
-
-
-def _configure_runtime_for_terminal_context(runtime: TuiRuntime, app: ScreenCodingTuiApp, terminal_context: object) -> None:
-    capabilities = getattr(terminal_context, "capabilities", None)
-    if capabilities is not None:
-        app.terminal_capabilities = capabilities
-    _runner_utils.configure_runtime_for_terminal_context(runtime, terminal_context)
 
 
 async def _abort_active(
     *,
     app: ScreenCodingTuiApp,
-    active_task: asyncio.Task[int | None] | None,
+    active_task: Any,
     on_abort: AbortHandler,
 ) -> None:
-    await _maybe_await(on_abort())
-    if active_task is not None and not active_task.done():
-        active_task.cancel()
-        try:
-            await active_task
-        except asyncio.CancelledError:
-            pass
-    elif active_task is not None:
-        await active_task
-    app.state.abort(message="Conversation interrupted - tell the model what to do differently.", elapsed_seconds=app.elapsed_seconds())
-
-
-def _elapsed_since(app: ScreenCodingTuiApp, started_at: float | None) -> float:
-    if started_at is None:
-        return app.elapsed_seconds()
-    return max(0.0, app.now() - started_at)
+    await abort_active(
+        app=app,
+        active_task=active_task,
+        on_abort=on_abort,
+        interruption_message=(
+            "Conversation interrupted - tell the model what to do differently."
+        ),
+    )
 
 
 async def _run_prompt_handler(
@@ -282,13 +181,6 @@ async def _run_text_handler(
     return result if isinstance(result, int) else None
 
 
-def _pop_interrupt_pending_steer(app: ScreenCodingTuiApp) -> str | None:
-    if not app.state.pending_steers:
-        return None
-    pending_steer = app.state.pending_steers.pop(0)
-    return pending_steer
-
-
 async def _call_text_handler(
     handler: Callable[..., object],
     text: str,
@@ -300,31 +192,16 @@ async def _call_text_handler(
     return await _maybe_await(handler(text))
 
 
-async def _run_surface_intent_handler(handler: SurfaceIntentHandler, intent: InputIntent) -> int | None:
-    result = await _maybe_await(handler(intent))
-    return result if isinstance(result, int) else None
+def _adapt_attachment_handler(handler: TextHandler) -> TextHandler:
+    async def adapted(
+        text: str,
+        *,
+        attachments: tuple[object, ...] | None = None,
+    ) -> int | None:
+        images = cast(tuple[ImagePart, ...] | None, attachments)
+        return await _run_text_handler(handler, text, images=images)
 
-
-async def _maybe_await(value: Any) -> Any:
-    if inspect.isawaitable(value):
-        return await value
-    return value
-
-
-def _supports_keyword(method: Any, keyword: str) -> bool:
-    try:
-        signature = inspect.signature(method)
-    except (TypeError, ValueError):
-        return False
-    return any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD or parameter.name == keyword
-        for parameter in signature.parameters.values()
-    )
-
-
-def _terminal_size() -> TerminalSize:
-    size = shutil.get_terminal_size((80, 24))
-    return TerminalSize(columns=size.columns, rows=size.lines)
+    return adapted
 
 
 __all__ = ["run_screen_coding_tui"]

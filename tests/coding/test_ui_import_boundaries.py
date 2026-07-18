@@ -71,7 +71,25 @@ def test_conversation_raw_event_dispatch_stays_in_coding_adapter() -> None:
 
 def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
     moved_definitions = {
+        Path("src/loushang/coding/ui/lifecycle.py"): ("class RunLifecycle",),
         Path("src/loushang/coding/ui/model_list.py"): ("class ModelChoice",),
+        Path("src/loushang/coding/ui/prompt_dispatch.py"): (
+            "class PromptDispatchOutcome",
+        ),
+        Path("src/loushang/coding/ui/run_context.py"): (
+            "def _stable_emit_factory",
+        ),
+        Path("src/loushang/coding/ui/screen_loop.py"): (
+            "async def _finish_active_task",
+            "def _write_startup_welcome",
+            "def _configure_runtime_for_terminal_context",
+            "def _elapsed_since",
+            "def _pop_interrupt_pending_steer",
+            "async def _run_surface_intent_handler",
+            "async def _maybe_await",
+            "def _supports_keyword",
+            "def _terminal_size",
+        ),
         Path("src/loushang/coding/ui/settings_common.py"): ("class ConfigRow",),
         Path("src/loushang/coding/ui/settings_config.py"): (
             "class ConfigSettingsPage",
@@ -111,6 +129,7 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
             "class CodingTuiStatusProvider",
             "class StatusSnapshot",
         ),
+        Path("src/loushang/coding/ui/steer.py"): ("class SteerHandler",),
         Path("src/loushang/coding/ui/transcript_source.py"): (
             "class ActiveWindowTranscriptSource",
             "def _active_window_records",
@@ -133,6 +152,54 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
     ]
 
     assert offenders == []
+
+
+def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() -> (
+    None
+):
+    shared = "\n".join(
+        Path(f"src/loushang/harnesstui/conversation/{module}.py").read_text(
+            encoding="utf-8"
+        )
+        for module in ("control", "dispatch", "input", "run_context", "screen_runner")
+    )
+
+    for token in (
+        "Follow-up is only available while a run is active.",
+        "Follow-up queued.",
+        "Conversation interrupted - tell the model what to do differently.",
+        "Operation aborted",
+        ".loushang/clipboard",
+        "ImagePart",
+        "PromptIntent",
+        "BashIntent",
+    ):
+        assert token not in shared
+
+    follow_up = Path("src/loushang/coding/ui/follow_up_queue.py").read_text(
+        encoding="utf-8"
+    )
+    screen_loop = Path("src/loushang/coding/ui/screen_loop.py").read_text(
+        encoding="utf-8"
+    )
+    screen_input = Path("src/loushang/coding/ui/screen_input.py").read_text(
+        encoding="utf-8"
+    )
+    prompt_dispatch = Path(
+        "src/loushang/coding/ui/prompt_dispatch.py"
+    ).read_text(encoding="utf-8")
+
+    assert "Follow-up is only available while a run is active." in follow_up
+    assert "Follow-up queued." in follow_up
+    assert (
+        "Conversation interrupted - tell the model what to do differently."
+        in screen_loop
+    )
+    assert "Operation aborted" in screen_loop
+    assert "ImagePart" in screen_input
+    assert 'Path(self.app.cwd) / ".loushang" / "clipboard"' in screen_input
+    assert "PromptIntent" in prompt_dispatch
+    assert "BashIntent" in prompt_dispatch
 
 
 def test_shared_status_provider_does_not_own_settings_manager_adaptation() -> None:
