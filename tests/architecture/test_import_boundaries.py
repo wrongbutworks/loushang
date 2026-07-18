@@ -406,6 +406,7 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.status.plain`" in text
     assert "`loushang.harnesstui.status.provider`" in text
     assert "`loushang.harnesstui.status.snapshot`" in text
+    assert "`loushang.harnesstui.surface.controller`" in text
     assert "`loushang.harnesstui.surface.factory`" in text
     assert "`loushang.harnesstui.surface.view`" in text
     assert "`loushang.harnesstui.testing.ports`" in text
@@ -444,6 +445,7 @@ def test_harnesstui_capability_entrypoints_exist() -> None:
         Path("src/loushang/harnesstui/status/provider.py"),
         Path("src/loushang/harnesstui/status/settings.py"),
         Path("src/loushang/harnesstui/status/snapshot.py"),
+        Path("src/loushang/harnesstui/surface/controller.py"),
         Path("src/loushang/harnesstui/surface/factory.py"),
         Path("src/loushang/harnesstui/surface/view.py"),
         Path("src/loushang/harnesstui/testing/ports.py"),
@@ -479,6 +481,35 @@ for module_name in (
 ):
     importlib.import_module(module_name)
 
+forbidden_prefixes = (
+    "loushang.agent",
+    "loushang.ai",
+    "loushang.coding",
+    "loushang.harness",
+)
+forbidden = sorted(
+    name
+    for name in sys.modules
+    if any(name == prefix or name.startswith(prefix + ".") for prefix in forbidden_prefixes)
+)
+assert forbidden == [], forbidden
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_importing_surface_controller_stays_product_neutral() -> None:
+    script = """
+import importlib
+import sys
+
+importlib.import_module("loushang.harnesstui.surface.controller")
 forbidden_prefixes = (
     "loushang.agent",
     "loushang.ai",

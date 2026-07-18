@@ -298,6 +298,9 @@ Harnesstui owns the reusable interaction assembled from those generic widgets:
 - `loushang.harnesstui.surface.factory` owns pure information and command
   surface builders over presentation-ready text and neutral `SelectItem`
   values;
+- `loushang.harnesstui.surface.controller` owns application-side surface intent
+  normalization, submit dispatch, bottom/overlay placement bookkeeping, and
+  transient approval-presentation serialization;
 - `loushang.harnesstui.selection.model` owns scoped/all model selection over
   product-supplied `SelectItem` values;
 - `loushang.harnesstui.selection.catalog` owns the opaque `ModelChoice` and its
@@ -307,14 +310,18 @@ Harnesstui owns the reusable interaction assembled from those generic widgets:
   completion, palette, matching, display ordering, and selector-row
   projection.
 
-These modules own interaction mechanics, layout, existing copy, and visual
-behavior, but not product data or decisions. Coding continues to own settings
-manager persistence, model and command discovery, model application, command
-catalog and slash-command policy, status-provider updates, approval routing,
-surface lifecycle, and adaptation of product data into neutral labels and
-choices. Generic
-`Surface`, `SurfaceHost`, `SelectionSurface`, and `SearchableList` mechanics
-remain in `loushang.tui`.
+These modules own reusable interaction mechanics, layout, existing shared copy,
+and visual behavior, but not product data or decisions. The surface coordinator
+normalizes UI intents and serializes approval presentations; it never resolves
+approval policy, executes a guarded action, or owns approval audit state.
+Coding continues to own settings-manager persistence, model and command
+discovery, model application, command-catalog and slash-command policy,
+status-provider updates, approval resolver/runtime binding and product copy,
+and adaptation of product data into neutral labels and choices. Generic
+`Surface`, `SurfaceHost`, `SelectionSurface`, and `SearchableList` mechanics,
+including actual focus, stack, geometry, and host lifetime, remain in
+`loushang.tui`. The coordinator does not participate in transcript rendering,
+render invalidation, cache management, frame composition, or terminal writes.
 
 The model settings page emits the shared UI intent
 `InputIntent(kind="setting", text="model.current", note=<choice value>)`.

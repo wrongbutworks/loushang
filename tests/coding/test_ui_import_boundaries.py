@@ -228,6 +228,7 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
         Path("src/loushang/coding/ui/screen_surfaces.py"): (
             "class ModelSelectorSurface",
             "class ScreenSurfaceView",
+            "class SurfaceEvent",
         ),
     }
 
@@ -287,6 +288,29 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
     assert 'Path(self.app.cwd) / ".loushang" / "clipboard"' in screen_input
     assert "PromptIntent" in prompt_dispatch
     assert "BashIntent" in prompt_dispatch
+
+
+def test_shared_surface_controller_does_not_own_coding_policy_or_copy() -> None:
+    shared = Path(
+        "src/loushang/harnesstui/surface/controller.py"
+    ).read_text(encoding="utf-8")
+    coding = Path("src/loushang/coding/ui/screen_surfaces.py").read_text(
+        encoding="utf-8"
+    )
+
+    for token in (
+        "CodingCommandCatalog",
+        "SettingsPageView",
+        "ScreenCodingTuiApp",
+        "select_available_model",
+        "parse_prompt_intent",
+        "Action confirmed:",
+        "Action rejected",
+        "Approval request is no longer pending",
+        "Command selected:",
+    ):
+        assert token not in shared
+        assert token in coding
 
 
 def test_shared_status_provider_does_not_own_settings_manager_adaptation() -> None:

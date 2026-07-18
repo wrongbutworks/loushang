@@ -1,0 +1,258 @@
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass, field
+from typing import Any, Literal, Protocol
+
+from loushang.harnesstui.surface.view import ScreenSurfaceView
+from loushang.tui import (
+    ApprovalSurface,
+    InputIntent,
+    Surface,
+    SurfaceHandle,
+    SurfaceHost,
+)
+
+SurfaceEventKind = Literal["surface_submit", "surface_close"]
+SurfaceEventSource = Literal["model", "command", "settings", "dialog", "approval"]
+SurfaceSubmitHandler = Callable[[Any], Awaitable[None]]
+
+
+class ScreenSurfaceAppPort(Protocol):
+    """Application state needed to coordinate framed screen surfaces."""
+
+    active_surface: object | None
+    surface_host: SurfaceHost | None
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovalSurfaceDecision:
+    """Product-neutral decision emitted by an approval presentation."""
+
+    action_id: str | None
+    action: str | None
+    approved: bool
+    raw_note: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class SurfaceEvent:
+    kind: SurfaceEventKind
+    source: SurfaceEventSource | None = None
+    payload: object | None = None
+
+
+@dataclass(slots=True)
+class ScreenSurfaceCoordinator:
+    """Coordinate reusable screen-surface interaction and placement.
+
+    The coordinator owns transient UI mechanics only. Products supply submit
+    handlers and retain command, model, settings, approval, and status policy.
+    The generic TUI ``SurfaceHost`` remains responsible for focus and overlay
+    stack mechanics.
+    """
+
+    app: ScreenSurfaceAppPort
+    handlers: Mapping[SurfaceEventSource, SurfaceSubmitHandler] = field(
+        default_factory=dict
+    )
+    _active_overlay_view: ScreenSurfaceView | None = field(
+        default=None, init=False, repr=False
+    )
+    _active_overlay_handle: SurfaceHandle | None = field(
+        default=None, init=False, repr=False
+    )
+    _approval_queue: list[ApprovalSurface] = field(default_factory=list, repr=False)
+    _approval_transitioning: bool = field(default=False, init=False, repr=False)
+
+    @property
+    def current(self) -> ScreenSurfaceView | object | None:
+        if self._active_overlay_view is not None:
+            return self._active_overlay_view
+        return self.app.active_surface
+
+    async def handle_intent(self, intent: InputIntent) -> int | None:
+        surface = self.current
+        if not isinstance(surface, ScreenSurfaceView):
+            return None
+
+        event = normalize_surface_intent(intent, surface)
+        if event is None:
+            return None
+        if event.kind == "surface_close":
+            self.close()
+            return None
+        if event.source is None:
+            return None
+        handler = self.handlers.get(event.source)
+        if handler is None:
+            return None
+        if event.source == "approval":
+            await self._handle_approval_transition(handler, event.payload)
+            return None
+        await handler(event.payload)
+        return None
+
+    def open(self, view: ScreenSurfaceView) -> None:
+        self.close()
+        surface_host = self.app.surface_host
+        if surface_host is None or view.exclusive_bottom:
+            self.app.active_surface = view
+            return
+        self.app.active_surface = None
+        self._active_overlay_view = view
+        self._active_overlay_handle = surface_host.open_surface(
+            Surface(
+                renderable=view,
+                focus_target=view,
+                presentation="overlay",
+                anchor="bottom-left",
+                width="100%",
+                max_height="80%",
+            )
+        )
+
+    def close(self) -> None:
+        if self._active_overlay_handle is not None:
+            self._active_overlay_handle.close("closed")
+        self._active_overlay_handle = None
+        self._active_overlay_view = None
+        self.app.active_surface = None
+
+    def present_approval(
+        self,
+        *,
+        action: str,
+        risk: str = "",
+        action_id: str | None = None,
+    ) -> None:
+        approval = ApprovalSurface(action=action, risk=risk, action_id=action_id)
+        current = self.current
+        if self._approval_transitioning or (
+            isinstance(current, ScreenSurfaceView) and current.purpose == "approval"
+        ):
+            self._approval_queue.append(approval)
+            return
+        self._open_approval(approval)
+
+    def clear_approvals(self) -> None:
+        self._approval_queue.clear()
+        current = self.current
+        if isinstance(current, ScreenSurfaceView) and current.purpose == "approval":
+            self.close()
+
+    def dismiss_approval(self, action_id: str) -> None:
+        current = self.current
+        if (
+            isinstance(current, ScreenSurfaceView)
+            and current.purpose == "approval"
+            and getattr(current.content, "action_id", None) == action_id
+        ):
+            self.close()
+            if not self._approval_transitioning:
+                self._open_next_approval()
+            return
+        self._approval_queue = [
+            approval
+            for approval in self._approval_queue
+            if approval.action_id != action_id
+        ]
+
+    async def _handle_approval_transition(
+        self,
+        handler: SurfaceSubmitHandler,
+        payload: object | None,
+    ) -> None:
+        self._approval_transitioning = True
+        self.close()
+        try:
+            await handler(payload)
+        finally:
+            self._approval_transitioning = False
+            self._open_next_approval()
+
+    def _open_approval(self, approval: ApprovalSurface) -> None:
+        self.open(
+            ScreenSurfaceView(
+                title="Approval",
+                purpose="approval",
+                content=approval,
+                footer="",
+                presentation="bottom-exclusive",
+            )
+        )
+
+    def _open_next_approval(self) -> None:
+        if self._approval_queue:
+            self._open_approval(self._approval_queue.pop(0))
+
+
+def normalize_surface_intent(
+    intent: InputIntent,
+    surface: ScreenSurfaceView,
+) -> SurfaceEvent | None:
+    """Convert generic TUI intent into a neutral framed-surface event."""
+
+    if intent.kind in {"surface_close", "dialog_cancel"}:
+        if surface.purpose == "approval":
+            return _approval_surface_event(surface, approved=False)
+        return SurfaceEvent(kind="surface_close")
+    if surface.purpose == "model" and intent.kind in {"command", "select"}:
+        return SurfaceEvent(
+            kind="surface_submit",
+            source="model",
+            payload=intent.text,
+        )
+    if surface.purpose == "command" and intent.kind in {"command", "select"}:
+        return SurfaceEvent(
+            kind="surface_submit",
+            source="command",
+            payload=intent.text,
+        )
+    if surface.purpose == "settings" and intent.kind == "setting":
+        return SurfaceEvent(
+            kind="surface_submit",
+            source="settings",
+            payload={"id": intent.text, "value": intent.note},
+        )
+    if surface.purpose == "dialog" and intent.kind == "dialog_confirm":
+        return SurfaceEvent(kind="surface_submit", source="dialog")
+    if surface.purpose == "approval" and intent.kind in {"approve", "reject"}:
+        return _approval_surface_event(
+            surface,
+            approved=intent.kind == "approve",
+            note=intent.note,
+        )
+    return None
+
+
+def _approval_surface_event(
+    surface: ScreenSurfaceView,
+    *,
+    approved: bool,
+    note: str | None = None,
+) -> SurfaceEvent:
+    action_id = getattr(surface.content, "action_id", None)
+    action = getattr(surface.content, "action", None)
+    return SurfaceEvent(
+        kind="surface_submit",
+        source="approval",
+        payload=ApprovalSurfaceDecision(
+            action_id=action_id if isinstance(action_id, str) else None,
+            action=action if isinstance(action, str) else None,
+            approved=approved,
+            raw_note=note or (action_id if isinstance(action_id, str) else None),
+        ),
+    )
+
+
+__all__ = [
+    "ApprovalSurfaceDecision",
+    "ScreenSurfaceAppPort",
+    "ScreenSurfaceCoordinator",
+    "SurfaceEvent",
+    "SurfaceEventKind",
+    "SurfaceEventSource",
+    "SurfaceSubmitHandler",
+    "normalize_surface_intent",
+]
