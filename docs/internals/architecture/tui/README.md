@@ -48,8 +48,10 @@ Product shells remain responsible for supplying values and applying decisions.
 
 Host clipboard-image acquisition lives in
 `loushang.tui.clipboard_image`. This generic capability owns platform fallback,
-neutral image bytes and MIME normalization. Product shells remain responsible
-for workspace persistence, composer markers, UI copy, and conversion into
+neutral image bytes and MIME normalization. Product-neutral persistence into a
+caller-supplied directory, composer-marker tracking, and prompt-order recovery
+live in `loushang.harnesstui.conversation.attachments`. Product shells remain
+responsible for workspace-directory policy, UI copy, and conversion into
 model-specific attachment values such as `ImagePart`.
 
 Clipboard-image acquisition resolves the host once into an ordered backend
