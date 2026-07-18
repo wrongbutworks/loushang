@@ -93,6 +93,27 @@ planning, work event persistence, or AI provider behavior.
   defines common create, restore, detached-copy, fork, disposal, and active
   Native-file deletion mechanics while Products retain binding and resume
   policy.
+- [Agent Transcript Interaction Runtime Boundary](agent-transcript-interaction-runtime-boundary.md)
+  defines standard branch navigation, selection persistence, transcript
+  inspection, and context replay while Products retain domain actions.
+- [Agent Transcript Maintenance Runtime Boundary](agent-transcript-maintenance-boundary.md)
+  defines common context accounting, compaction/retry lifecycle, checkpoint
+  persistence, and runtime events while Products retain strategy and policy.
+- [Session Capabilities Runtime Boundary](session-capabilities-boundary.md)
+  defines live tool activation, dynamic command composition and dispatch, and
+  selected command-tool execution while Products retain policy, command
+  implementations, extension semantics, prompts, and presentation.
+- [Session Facade Boundary](session-facade-boundary.md) defines the common
+  Product-facing operation surface over already-bound session runtimes while
+  Products retain model/auth, prompts, extension protocols, lifecycle policy,
+  and channel projection.
+- [Session Diagnostics Runtime Boundary](session-diagnostics-boundary.md)
+  defines common session-correlated diagnostic reads and Agent/Tool failure
+  projection while Products retain diagnostic selection and presentation.
+- [Session Resource Refresh Runtime Boundary](session-resource-refresh-boundary.md)
+  defines common session resource reload/discovery/activation/commit ordering
+  while Products retain loaders, roots, settings, diagnostics, and extension
+  protocol behavior.
 - [Store And Runtime Event Protocol Migration](store-event-protocol-migration.md)
   records the implemented protocol-based Store cutover, Memory/File reference
   adapters, Agent transcript persistence facade, common runtime-event envelope,

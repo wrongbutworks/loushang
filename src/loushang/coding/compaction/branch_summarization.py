@@ -9,7 +9,6 @@ from loushang.coding.compaction.compaction import (
     _collect_file_operation_details,
     _complete_text,
     _entry_to_agent_message,
-    _estimate_message_tokens,
     _format_file_operations,
     _serialize_conversation,
 )
@@ -23,7 +22,10 @@ from loushang.coding.compaction.types import (
     CollectEntriesResult,
 )
 from loushang.coding.store import SessionManager
-from loushang.harness.agent_transcript import context_item_to_model_message
+from loushang.harness.agent_transcript import (
+    context_item_to_model_message,
+    estimate_message_tokens,
+)
 from loushang.harness.context import build_summary_prompt
 
 BRANCH_SUMMARY_PREAMBLE = """The user explored a different conversation branch before returning here.
@@ -57,7 +59,7 @@ def prepare_branch_entries(
         message = _entry_to_agent_message(entry)
         if message is None:
             continue
-        tokens = _estimate_message_tokens(message)
+        tokens = estimate_message_tokens(message)
         if (
             token_budget > 0
             and prepared_messages
@@ -74,7 +76,7 @@ def prepare_branch_entries(
         if last_message is not None:
             prepared_messages = [last_message]
             prepared_entry_ids = [last_entry.record_id]
-            total_tokens = _estimate_message_tokens(last_message)
+            total_tokens = estimate_message_tokens(last_message)
 
     return BranchPreparation(
         messages=prepared_messages,

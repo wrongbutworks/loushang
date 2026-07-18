@@ -7318,6 +7318,7 @@ def test_run_cli_lists_package_roots_and_plugin_packages_as_json(tmp_path) -> No
             "extensions": 0,
             "themes": 0,
             "diagnostics": 0,
+            "description": "",
         },
         {
             "name": "debug-pack",
@@ -7333,6 +7334,7 @@ def test_run_cli_lists_package_roots_and_plugin_packages_as_json(tmp_path) -> No
             "extensions": 0,
             "themes": 1,
             "diagnostics": 0,
+            "description": "",
         },
     ]
     assert stderr.getvalue() == ""

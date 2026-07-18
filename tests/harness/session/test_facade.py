@@ -1,0 +1,269 @@
+from __future__ import annotations
+
+import asyncio
+from dataclasses import dataclass
+
+from loushang.harness.session import SessionFacade
+from loushang.harness.workspace.exec import ExecOutputChunk
+
+
+class _Queue:
+    def __init__(self) -> None:
+        self.steering = ["steer"]
+        self.follow_up = ["follow"]
+
+    @property
+    def pending_message_count(self) -> int:
+        return len(self.steering) + len(self.follow_up)
+
+    def get_steering_messages(self) -> list[str]:
+        return list(self.steering)
+
+    def get_follow_up_messages(self) -> list[str]:
+        return list(self.follow_up)
+
+    def clear_queue(self) -> dict[str, list[str]]:
+        cleared = {
+            "steering": self.get_steering_messages(),
+            "follow_up": self.get_follow_up_messages(),
+        }
+        self.steering.clear()
+        self.follow_up.clear()
+        return cleared
+
+
+class _Runtime:
+    def __init__(self) -> None:
+        self.queue = _Queue()
+        self.prompt_calls: list[tuple[str, str | None]] = []
+        self.steer_calls: list[str] = []
+        self.follow_up_calls: list[str] = []
+        self.continued = False
+        self.aborted = False
+        self.waited = False
+        self.listener = None
+
+    def subscribe(self, listener):
+        self.listener = listener
+
+        def unsubscribe() -> None:
+            self.listener = None
+
+        return unsubscribe
+
+    async def prompt(self, user_input, *, source=None, **kwargs) -> None:
+        del kwargs
+        self.prompt_calls.append((user_input, source))
+
+    def steer(self, user_input, **kwargs) -> None:
+        del kwargs
+        self.steer_calls.append(user_input)
+
+    def follow_up(self, user_input, **kwargs) -> None:
+        del kwargs
+        self.follow_up_calls.append(user_input)
+
+    async def continue_run(self) -> None:
+        self.continued = True
+
+    def abort(self) -> bool:
+        self.aborted = True
+        return True
+
+    async def wait_for_idle(self) -> None:
+        self.waited = True
+
+
+@dataclass(frozen=True)
+class _Context:
+    value: str
+
+
+@dataclass(frozen=True)
+class _Record:
+    session_id: str
+
+
+class _Transcript:
+    def build_session_context(self) -> _Context:
+        return _Context("context")
+
+    def get_session_record(self) -> _Record:
+        return _Record("session-1")
+
+    def get_session_file(self) -> object | None:
+        return "/tmp/session.jsonl"
+
+
+@dataclass(frozen=True)
+class _Tool:
+    name: str
+
+
+class _Tools:
+    def get_active_tool_names(self) -> list[str]:
+        return ["read"]
+
+    def get_all_tools(self) -> list[_Tool]:
+        return [_Tool("read")]
+
+    def get_tool_definition(self, name: str) -> _Tool | None:
+        return _Tool(name) if name == "read" else None
+
+
+class _Commands:
+    def list_commands(self) -> list[str]:
+        return ["review"]
+
+    async def execute_command_async(self, invocation_name: str, args: str) -> str:
+        return f"{invocation_name}:{args}"
+
+
+class _CommandExecution:
+    is_running = False
+    has_pending_messages = False
+
+    def __init__(self) -> None:
+        self.commands: list[str] = []
+        self.aborted = False
+
+    async def execute(self, command: str, **kwargs) -> dict[str, object]:
+        on_output = kwargs.get("on_output")
+        if on_output is not None:
+            result = on_output(ExecOutputChunk(stream="stdout", text="partial"))
+            if asyncio.iscoroutine(result):
+                await result
+        self.commands.append(command)
+        return {"output": "complete", "exit_code": 0}
+
+    def abort(self) -> None:
+        self.aborted = True
+
+
+class _View:
+    def get_state(
+        self, *, steering: list[str], follow_up: list[str]
+    ) -> dict[str, object]:
+        return {"steering": steering, "follow_up": follow_up}
+
+    def get_context_usage(self) -> dict[str, int]:
+        return {"tokens": 12}
+
+    def get_user_messages_for_forking(self) -> list[dict[str, str]]:
+        return [{"entry_id": "user-1", "text": "hello"}]
+
+    def get_entry_text(self, entry_id: str) -> str | None:
+        return "hello" if entry_id == "user-1" else None
+
+    def get_last_assistant_text(self) -> str | None:
+        return "done"
+
+    def get_recent_assistant_texts(self) -> tuple[str, ...]:
+        return ("done", "previous")
+
+
+class _Retry:
+    is_retrying = True
+
+    def __init__(self) -> None:
+        self.aborted = False
+        self.waited = False
+
+    def abort(self) -> None:
+        self.aborted = True
+
+    async def wait(self) -> None:
+        self.waited = True
+
+
+def _facade():
+    runtime = _Runtime()
+    command_execution = _CommandExecution()
+    retry = _Retry()
+    return (
+        SessionFacade(
+            runtime=runtime,
+            transcript=_Transcript(),
+            tools=_Tools(),
+            commands=_Commands(),
+            command_execution=command_execution,
+            view=_View(),
+            retry=retry,
+        ),
+        runtime,
+        command_execution,
+        retry,
+    )
+
+
+def test_session_facade_composes_standard_read_and_queue_operations() -> None:
+    facade, runtime, _, _ = _facade()
+
+    assert facade.get_state() == {"steering": ["steer"], "follow_up": ["follow"]}
+    assert facade.get_session_context() == _Context("context")
+    assert facade.get_session_record() == _Record("session-1")
+    assert facade.get_session_file() == "/tmp/session.jsonl"
+    assert facade.get_active_tool_names() == ["read"]
+    assert facade.get_all_tools() == [_Tool("read")]
+    assert facade.get_tool_definition("missing") is None
+    assert facade.list_commands() == ["review"]
+    assert facade.get_context_usage() == {"tokens": 12}
+    assert facade.get_user_messages_for_forking() == [
+        {"entry_id": "user-1", "text": "hello"}
+    ]
+    assert facade.get_entry_text("user-1") == "hello"
+    assert facade.get_last_assistant_text() == "done"
+    assert facade.get_recent_assistant_texts() == ("done", "previous")
+
+    facade.steer("second steer")
+    facade.follow_up("second follow")
+
+    assert runtime.steer_calls == ["second steer"]
+    assert runtime.follow_up_calls == ["second follow"]
+    assert facade.pending_message_count == 2
+    assert facade.clear_queue() == {
+        "steering": ["steer"],
+        "follow_up": ["follow"],
+    }
+
+
+def test_session_facade_forwards_execution_events_and_controls() -> None:
+    facade, runtime, command_execution, retry = _facade()
+    chunks: list[ExecOutputChunk] = []
+    received: list[str] = []
+
+    async def scenario() -> None:
+        await facade.prompt("hello", source="extension")
+        assert await facade.execute_command_async("review", "diff") == "review:diff"
+        assert await facade.execute_command_tool(
+            "echo ok", on_output=chunks.append
+        ) == {
+            "output": "complete",
+            "exit_code": 0,
+        }
+        await facade.continue_run()
+        await facade.wait_for_idle()
+        await facade.wait_for_retry()
+
+    unsubscribe = facade.subscribe(received.append, project=lambda event: event)
+    asyncio.run(scenario())
+    assert runtime.listener is not None
+    runtime.listener("event-1")
+    unsubscribe()
+
+    assert runtime.prompt_calls == [("hello", "extension")]
+    assert command_execution.commands == ["echo ok"]
+    assert chunks == [ExecOutputChunk(stream="stdout", text="partial")]
+    assert runtime.continued is True
+    assert runtime.waited is True
+    assert retry.waited is True
+    assert received == ["event-1"]
+
+    assert facade.abort() is True
+    facade.abort_command()
+    facade.abort_retry()
+
+    assert runtime.aborted is True
+    assert command_execution.aborted is True
+    assert retry.aborted is True
+    assert facade.is_retrying is True

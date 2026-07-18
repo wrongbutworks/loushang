@@ -1,11 +1,18 @@
+"""Session-scoped diagnostics over Product-bound transcript and extension ports.
+
+The diagnostics service owns durable diagnostic records. This optional session
+runtime adds common correlation and Agent/Tool fact projections while keeping
+transcript identity and extension ownership in bound Product ports.
+"""
+
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from typing import Protocol
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import AssistantMessage
-from loushang.coding.store import SessionManager
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import (
     DiagnosticLevel,
@@ -29,11 +36,31 @@ _EXTENSION_ERROR_DIAGNOSTIC_CODES: frozenset[str] = frozenset(
 )
 
 
+@dataclass(frozen=True)
+class SessionDiagnosticScope:
+    """Stable correlation values supplied by the bound Product session."""
+
+    session_id: str
+    entry_id: str | None = None
+
+
+class ExtensionDiagnosticsPort(Protocol):
+    """Minimal extension observation required for diagnostic syncing."""
+
+    def get_diagnostics(self) -> Sequence[ResourceDiagnostic]: ...
+
+
+SessionDiagnosticScopeProvider = Callable[[], SessionDiagnosticScope]
+ExtensionDiagnosticsProvider = Callable[[], ExtensionDiagnosticsPort | None]
+
+
 @dataclass
-class SessionDiagnosticsBridge:
+class SessionDiagnosticsRuntime:
+    """Record and query common session diagnostics without Product imports."""
+
     diagnostics_service: DiagnosticsService | None
-    session_manager: SessionManager
-    get_extension_runner: Callable[[], object | None]
+    get_scope: SessionDiagnosticScopeProvider
+    get_extension_diagnostics: ExtensionDiagnosticsProvider
     recorded_extension_diagnostics: int = 0
 
     def get_last_diagnostics(self, limit: int = 50) -> list[DiagnosticRecord]:
@@ -54,9 +81,7 @@ class SessionDiagnosticsBridge:
         if self.diagnostics_service is None:
             return []
         return self.diagnostics_service.get_diagnostics(
-            query=_diagnostics_query_for_session(
-                query, self.session_manager.get_header().conversation_id
-            )
+            query=_diagnostics_query_for_scope(query, self.get_scope())
         )
 
     def get_diagnostics_summary(
@@ -70,9 +95,7 @@ class SessionDiagnosticsBridge:
     ) -> DiagnosticSummary:
         service = self.diagnostics_service or DiagnosticsService()
         return service.get_diagnostics_summary(
-            query=_diagnostics_query_for_session(
-                query, self.session_manager.get_header().conversation_id
-            )
+            query=_diagnostics_query_for_scope(query, self.get_scope())
         )
 
     def get_last_error_report(self) -> ErrorReport | None:
@@ -83,13 +106,14 @@ class SessionDiagnosticsBridge:
     def record_runtime_exception(self, *, code: str, exc: Exception | str) -> None:
         if self.diagnostics_service is None:
             return
+        scope = self.get_scope()
         self.diagnostics_service.capture_failure(
             code=code,
             error=exc,
             phase="runtime",
             source="session",
-            session_id=self.session_manager.get_header().conversation_id,
-            entry_id=self.session_manager.get_leaf_id(),
+            session_id=scope.session_id,
+            entry_id=scope.entry_id,
         )
 
     def record_extension_runtime_diagnostic(
@@ -97,13 +121,14 @@ class SessionDiagnosticsBridge:
     ) -> None:
         if self.diagnostics_service is None:
             return
+        scope = self.get_scope()
         self.diagnostics_service.record(
             self.diagnostics_service.normalize_resource_diagnostic(
                 diagnostic,
                 phase="runtime",
                 source="extensions",
-                session_id=self.session_manager.get_header().conversation_id,
-                entry_id=self.session_manager.get_leaf_id(),
+                session_id=scope.session_id,
+                entry_id=scope.entry_id,
                 level=_extension_diagnostic_level(diagnostic.code),
             )
         )
@@ -111,23 +136,21 @@ class SessionDiagnosticsBridge:
     def sync_extension_diagnostics(self, *, phase: DiagnosticPhase) -> None:
         if self.diagnostics_service is None:
             return
-        extension_runner = self.get_extension_runner()
-        if extension_runner is None:
+        extension_port = self.get_extension_diagnostics()
+        if extension_port is None:
             return
-        get_diagnostics = getattr(extension_runner, "get_diagnostics", None)
-        if not callable(get_diagnostics):
-            return
-        diagnostics = get_diagnostics()
+        diagnostics = extension_port.get_diagnostics()
         if self.recorded_extension_diagnostics >= len(diagnostics):
             return
+        scope = self.get_scope()
         new_diagnostics = diagnostics[self.recorded_extension_diagnostics :]
         self.diagnostics_service.record_many(
             self.diagnostics_service.normalize_resource_diagnostic(
                 diagnostic,
                 phase=phase,
                 source="extensions",
-                session_id=self.session_manager.get_header().conversation_id,
-                entry_id=self.session_manager.get_leaf_id(),
+                session_id=scope.session_id,
+                entry_id=scope.entry_id,
                 level=_extension_diagnostic_level(diagnostic.code),
             )
             for diagnostic in new_diagnostics
@@ -144,13 +167,14 @@ class SessionDiagnosticsBridge:
             or not assistant_message.error_message
         ):
             return
+        scope = self.get_scope()
         self.diagnostics_service.capture_failure(
             code="assistant_response_error",
             error=assistant_message.error_message,
             phase="runtime",
             source="provider",
-            session_id=self.session_manager.get_header().conversation_id,
-            entry_id=self.session_manager.get_leaf_id(),
+            session_id=scope.session_id,
+            entry_id=scope.entry_id,
             details={
                 "provider": assistant_message.provider,
                 "model_id": assistant_message.model,
@@ -170,13 +194,14 @@ class SessionDiagnosticsBridge:
         result = event.get("result")
         message = _tool_result_error_message(result)
         result_details = _tool_result_details(result)
+        scope = self.get_scope()
         self.diagnostics_service.capture_failure(
             code="tool_execution_failed",
             error=message,
             phase="runtime",
             source="tool",
-            session_id=self.session_manager.get_header().conversation_id,
-            entry_id=self.session_manager.get_leaf_id(),
+            session_id=scope.session_id,
+            entry_id=scope.entry_id,
             details={
                 "tool_call_id": tool_call_id,
                 "tool_name": tool_name,
@@ -191,8 +216,8 @@ class SessionDiagnosticsBridge:
                 phase="runtime",
                 source="policy",
                 level="warning",
-                session_id=self.session_manager.get_header().conversation_id,
-                entry_id=self.session_manager.get_leaf_id(),
+                session_id=scope.session_id,
+                entry_id=scope.entry_id,
                 details=_policy_diagnostic_details(
                     tool_call_id=tool_call_id,
                     tool_name=tool_name,
@@ -207,12 +232,13 @@ def _extension_diagnostic_level(code: str) -> DiagnosticLevel:
     return "warning"
 
 
-def _diagnostics_query_for_session(
-    query: DiagnosticsQuery | None, session_id: str
+def _diagnostics_query_for_scope(
+    query: DiagnosticsQuery | None,
+    scope: SessionDiagnosticScope,
 ) -> DiagnosticsQuery:
     if query is None:
-        return DiagnosticsQuery(session_id=session_id)
-    return replace(query, session_id=session_id)
+        return DiagnosticsQuery(session_id=scope.session_id)
+    return replace(query, session_id=scope.session_id)
 
 
 def _tool_result_error_message(result: object) -> str:
@@ -252,8 +278,8 @@ def _is_policy_result_details(details: object) -> bool:
     )
 
 
-def _policy_result_code(details: Mapping[str, object]) -> str:
-    code = details.get("policy_code")
+def _policy_result_code(result_details: Mapping[str, object]) -> str:
+    code = result_details.get("policy_code")
     return code if isinstance(code, str) and code else "tool_policy_denied"
 
 
@@ -263,12 +289,22 @@ def _policy_diagnostic_details(
     tool_name: str,
     result_details: Mapping[str, object],
 ) -> dict[str, object]:
-    details = {
-        key: value
-        for key, value in result_details.items()
-        if isinstance(value, str | bool | int | float | list | tuple | dict)
-        or value is None
-    }
+    details: dict[str, object] = {}
+    for key, value in result_details.items():
+        if (
+            isinstance(value, str | bool | int | float | list | tuple | dict)
+            or value is None
+        ):
+            details[key] = value
     details["tool_call_id"] = tool_call_id
     details["tool_name"] = tool_name
     return details
+
+
+__all__ = [
+    "ExtensionDiagnosticsPort",
+    "ExtensionDiagnosticsProvider",
+    "SessionDiagnosticScope",
+    "SessionDiagnosticScopeProvider",
+    "SessionDiagnosticsRuntime",
+]
