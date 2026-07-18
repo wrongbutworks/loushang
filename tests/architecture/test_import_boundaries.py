@@ -123,6 +123,7 @@ def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> 
     harness_root = Path("src/loushang/harness")
     profile_allowlists = {
         harness_root / "agent_transcript": (
+            "loushang.ai.model",
             "loushang.ai.types",
             "loushang.ai.json_codec",
             "loushang.agent.types",
@@ -292,6 +293,31 @@ def test_coding_agent_session_delegates_shared_turn_runtime_to_harness() -> None
     assert all(owner not in source for owner in forbidden_owners)
 
 
+def test_agent_transcript_interaction_runtime_is_neutral_and_adopted() -> None:
+    interaction_source = Path(
+        "src/loushang/harness/agent_transcript/interaction.py"
+    ).read_text(encoding="utf-8")
+    selection_source = Path(
+        "src/loushang/coding/session/selection_controller.py"
+    ).read_text(encoding="utf-8")
+    tree_source = Path(
+        "src/loushang/coding/session/tree_controller.py"
+    ).read_text(encoding="utf-8")
+    view_source = Path(
+        "src/loushang/coding/session/session_view_controller.py"
+    ).read_text(encoding="utf-8")
+    boundary = Path(
+        "docs/internals/architecture/harness/agent-transcript-interaction-runtime-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in interaction_source
+    assert "AgentTranscriptNavigationRuntime" in tree_source
+    assert "AgentTranscriptSelectionRuntime" in selection_source
+    assert "AgentTranscriptInspector" in view_source
+    assert "Product-supplied" in boundary
+    assert "Coding keeps" in boundary
+
+
 def test_extension_message_controller_is_a_product_api_adapter() -> None:
     source = Path(
         "src/loushang/coding/session/extension_message_controller.py"
@@ -325,15 +351,38 @@ def test_tui_and_harness_do_not_import_harnesstui() -> None:
     assert offenders == []
 
 
+def test_tui_does_not_import_runtime_product_or_model_layers() -> None:
+    boundary = ImportBoundary(
+        name="tui",
+        root=Path("src/loushang/tui"),
+        forbidden_prefixes=(
+            "loushang.agent",
+            "loushang.ai",
+            "loushang.coding",
+            "loushang.harness",
+            "loushang.harnesstui",
+            "loushang.method",
+            "loushang.work",
+        ),
+    )
+
+    assert _find_forbidden_imports(boundary) == []
+
+
 def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     path = Path("docs/internals/architecture/harnesstui/README.md")
     text = path.read_text(encoding="utf-8")
 
     assert "`loushang.coding.ui` -> `loushang.harnesstui`" in text
+    assert "`loushang.harnesstui.conversation.queue`" in text
     assert "`loushang.harnesstui.conversation.reader`" in text
+    assert "`loushang.harnesstui.conversation.screen_state`" in text
     assert "`loushang.harnesstui.conversation.source`" in text
+    assert "`loushang.harnesstui.conversation.attachments`" in text
     assert "`loushang.harnesstui.conversation.projection`" in text
+    assert "`loushang.harnesstui.conversation.plain_target`" in text
     assert "`loushang.harnesstui.conversation.tool_transcript`" in text
+    assert "`loushang.harnesstui.plain.renderer`" in text
     assert "`loushang.harnesstui.commands.presentation`" in text
     assert "`loushang.harnesstui.selection.catalog`" in text
     assert "`loushang.harnesstui.selection.model`" in text
@@ -352,8 +401,15 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
 
 def test_harnesstui_capability_entrypoints_exist() -> None:
     paths = (
+        Path("src/loushang/harnesstui/conversation/attachments.py"),
+        Path("src/loushang/harnesstui/conversation/plain_target.py"),
         Path("src/loushang/harnesstui/conversation/projection.py"),
+        Path("src/loushang/harnesstui/conversation/queue.py"),
+        Path("src/loushang/harnesstui/conversation/reader.py"),
+        Path("src/loushang/harnesstui/conversation/screen_state.py"),
+        Path("src/loushang/harnesstui/conversation/source.py"),
         Path("src/loushang/harnesstui/conversation/tool_transcript.py"),
+        Path("src/loushang/harnesstui/plain/renderer.py"),
         Path("src/loushang/harnesstui/commands/presentation.py"),
         Path("src/loushang/harnesstui/selection/catalog.py"),
         Path("src/loushang/harnesstui/selection/model.py"),
@@ -2144,7 +2200,7 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
             "loushang.harness.host.retry.RetryCoordinator",
         },
         Path("src/loushang/coding/session/tree_controller.py"): {
-            "loushang.harness.runtime.NavigationTransactionCoordinator",
+            "loushang.harness.agent_transcript.AgentTranscriptNavigationRuntime",
         },
     }
     missing: list[str] = []

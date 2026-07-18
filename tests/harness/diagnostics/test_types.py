@@ -19,6 +19,7 @@ def test_diagnostic_vocabularies_are_stable() -> None:
     assert get_args(DiagnosticSource) == (
         "bootstrap",
         "loader",
+        "package",
         "extensions",
         "session",
         "policy",

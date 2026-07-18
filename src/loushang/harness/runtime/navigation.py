@@ -9,6 +9,27 @@ P = TypeVar("P")
 R = TypeVar("R")
 A = TypeVar("A")
 
+
+@dataclass
+class CancellationSignal:
+    """Small neutral cancellation signal for Harness-owned operations."""
+
+    aborted: bool = False
+
+
+class CancellationController:
+    """Mutable owner for one neutral cancellation signal."""
+
+    def __init__(self) -> None:
+        self._signal = CancellationSignal()
+
+    @property
+    def signal(self) -> CancellationSignal:
+        return self._signal
+
+    def abort(self) -> None:
+        self._signal.aborted = True
+
 NavigationCallback = Callable[[P], Awaitable[None] | None]
 NavigationCommit = Callable[[P, A], Awaitable[R] | R]
 NavigationSuccessCallback = Callable[[P, R], Awaitable[None] | None]
@@ -82,6 +103,8 @@ async def _maybe_await(value: Awaitable[R] | R) -> R:
 
 
 __all__ = [
+    "CancellationController",
+    "CancellationSignal",
     "NavigationFailure",
     "NavigationTransactionCoordinator",
 ]

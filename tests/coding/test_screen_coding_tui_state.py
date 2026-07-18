@@ -4,6 +4,10 @@ from loushang.coding.ui.screen_state import (
     ScreenCodingTuiState,
     ScreenTranscriptWindow,
 )
+from loushang.harnesstui.conversation.screen_state import (
+    ActiveTranscriptWindow,
+    ScreenConversationState,
+)
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     ToolExecutionRecord,
@@ -13,6 +17,11 @@ from loushang.tui.transcript import (
 
 def _state() -> ScreenCodingTuiState:
     return ScreenCodingTuiState(model_label="model", cwd="/repo", branch="main", session_label="session")
+
+
+def test_coding_screen_state_names_are_shared_compatibility_aliases() -> None:
+    assert ScreenCodingTuiState is ScreenConversationState
+    assert ScreenTranscriptWindow is ActiveTranscriptWindow
 
 
 def test_records_revision_tracks_record_appends_only_when_they_happen() -> None:
