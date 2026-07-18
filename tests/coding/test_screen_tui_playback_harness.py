@@ -10,7 +10,9 @@ from loushang.coding.testing.tui.playback import (
     ScreenTuiLoopScenario,
     ScreenTuiScenario,
 )
-from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
+from loushang.harnesstui.testing.performance import (
+    build_synthetic_long_transcript_records,
+)
 from loushang.tui import (
     PLAYBACK_ARTIFACTS_ENV,
     PlaybackFrameBudget,

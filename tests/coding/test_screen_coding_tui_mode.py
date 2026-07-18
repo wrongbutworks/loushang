@@ -18,7 +18,6 @@ from loushang.ai import (
     UserMessage,
 )
 from loushang.coding.types import ModelSelection
-from loushang.coding.ui.perf_probe import characterize_long_transcript_rendering
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
@@ -28,6 +27,9 @@ from loushang.harness.agent_transcript import (
     ContextCompactionCheckpoint,
 )
 from loushang.harness.conversation import ConversationRecord
+from loushang.harnesstui.testing.performance import (
+    characterize_long_transcript_rendering,
+)
 from loushang.observability import configure_debug_logging, reset_observability
 from loushang.tui import RenderLoop, TerminalSize
 from loushang.tui.transcript import (

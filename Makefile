@@ -37,6 +37,7 @@ HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/ui/lifecycle.py \
 	src/loushang/coding/ui/model_list.py \
 	src/loushang/coding/ui/pending_queue.py \
+	src/loushang/coding/ui/perf_probe.py \
 	src/loushang/coding/ui/plain_app.py \
 	src/loushang/coding/ui/plain_events.py \
 	src/loushang/coding/ui/plain_renderer.py \
@@ -63,6 +64,7 @@ HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/ui/steer.py \
 	src/loushang/coding/ui/tool_blocks.py \
 	src/loushang/coding/ui/transcript_projection.py \
+	src/loushang/coding/ui/transcript_style.py \
 	src/loushang/coding/ui/transcript_reader.py \
 	src/loushang/coding/ui/transcript_source.py
 HARNESSTUI_TEST_PATHS := \
@@ -84,6 +86,7 @@ HARNESSTUI_TEST_PATHS := \
 	tests/coding/test_ui_lifecycle.py \
 	tests/coding/test_ui_pending_queue.py \
 	tests/coding/test_ui_pending_queue_compatibility.py \
+	tests/coding/test_ui_perf_probe_compatibility.py \
 	tests/coding/test_ui_prompt_dispatch.py \
 	tests/coding/test_ui_prompt_result.py \
 	tests/coding/test_ui_run_context.py \
@@ -94,6 +97,7 @@ HARNESSTUI_TEST_PATHS := \
 	tests/coding/test_screen_coding_tui_input.py \
 	tests/coding/test_screen_coding_tui_loop.py \
 	tests/coding/test_screen_coding_tui_mode.py \
+	tests/coding/test_screen_coding_tui_perf_probe.py \
 	tests/coding/test_screen_coding_tui_state.py \
 	tests/coding/test_screen_coding_tui_surfaces.py \
 	tests/coding/test_screen_settings_page.py \
@@ -112,6 +116,7 @@ HARNESSTUI_TEST_PATHS := \
 	tests/coding/test_ui_status_line.py \
 	tests/coding/test_ui_status_provider.py \
 	tests/coding/test_ui_transcript_projection.py \
+	tests/coding/test_ui_transcript_style_compatibility.py \
 	tests/coding/test_ui_transcript_source.py \
 	tests/coding/ui/test_screen_input.py
 
@@ -160,7 +165,7 @@ test-tui:
 	. .venv/bin/activate && python -m pytest tests/tui -q
 
 test-tui-render-contract:
-	uv --cache-dir .uv-cache run pytest tests/tui tests/coding -m tui_render_contract -q
+	uv --cache-dir .uv-cache run pytest tests/tui tests/harnesstui tests/coding -m tui_render_contract -q
 
 lint-ai:
 	. .venv/bin/activate && uv run ruff check src/loushang/ai tests/ai tests/providers

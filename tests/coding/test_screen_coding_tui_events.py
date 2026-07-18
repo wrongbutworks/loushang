@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from loushang.agent import AgentToolResult
 from loushang.ai import TextPart, UserMessage
 from loushang.tui.transcript import (
@@ -47,6 +49,48 @@ def test_screen_event_projector_streams_assistant_to_draft_then_commits_once() -
     assert [record for record in app.state.records if isinstance(record, AssistantMessageRecord)] == [
         AssistantMessageRecord("你好，世界")
     ]
+
+
+@pytest.mark.tui_render_contract
+def test_screen_event_projector_promotes_streaming_cache_through_shared_target() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_events import ScreenCodingEventProjector
+    from loushang.tui import RenderConstraints
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=lambda: 1.0,
+    )
+    projector = ScreenCodingEventProjector(app)
+    text = "\n".join(
+        f"- **Line {line}**: `code-{line}`" for line in range(100)
+    )
+
+    projector.handle({"type": "message_start", "message": _assistant()})
+    projector.handle(
+        {
+            "type": "message_update",
+            "message": _assistant(text),
+            "assistant_message_event": {"type": "text_delta", "delta": text},
+        }
+    )
+    app.render(
+        RenderConstraints(width=100, max_height=1_000, visible_height=1_000)
+    )
+    transient_lines = tuple(
+        line.text
+        for segment in app._transcript_region._segmented_transient_content_segments
+        for line in segment.lines
+    )
+
+    projector.handle({"type": "message_end", "message": _assistant(text)})
+
+    assert transient_lines
+    assert transient_lines in app._transcript_region._stable_line_cache.values()
+    assert app._transcript_region._transient_line_cache_lines is None
 
 
 def test_screen_event_projector_requires_assistant_message_for_delta() -> None:
@@ -304,6 +348,40 @@ def test_screen_event_projector_syncs_pending_queues() -> None:
     assert app.state.pending_followups == ["继续"]
 
 
+def test_screen_event_projector_preserves_coding_status_copy() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_events import ScreenCodingEventProjector
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=lambda: 1.0,
+    )
+    projector = ScreenCodingEventProjector(app)
+
+    projector.handle(
+        {
+            "type": "auto_retry_start",
+            "attempt": 2,
+            "max_attempts": 3,
+            "delay_ms": 1000,
+            "error_message": "rate limit",
+        }
+    )
+    assert app.state.status_message == "retry 2/3 in 1000ms: rate limit"
+
+    projector.handle({"type": "compaction_start", "reason": "threshold"})
+    assert app.state.status_message == "compact start: threshold"
+
+    projector.handle({"type": "compaction_end", "error_message": "failed"})
+    assert app.state.status_message == "compact error: failed"
+
+    projector.handle({"type": "compaction_end"})
+    assert app.state.status_message == "compact done"
+
+
 def test_screen_event_projector_renders_queued_steer_into_transcript() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_events import ScreenCodingEventProjector
@@ -405,3 +483,28 @@ def test_screen_event_projector_appends_compaction_record_and_tracks_baseline_re
     assert all(not getattr(record, "text", "").startswith("old prompt 0") for record in app.state.records)
     assert UserPromptRecord("recent prompt") in app.state.records
     assert app.consume_render_baseline_reset_reason() == "transcript_window_trimmed:context_compaction"
+
+
+def test_screen_event_projector_does_not_reset_baseline_without_compaction_eviction() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.coding.ui.screen_events import ScreenCodingEventProjector
+
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=lambda: 1.0,
+    )
+    app.state.records.extend(UserPromptRecord(str(index)) for index in range(79))
+
+    ScreenCodingEventProjector(app).handle(
+        {
+            "type": "compaction_end",
+            "result": {"summary": "condensed", "tokens_before": 1_000},
+        }
+    )
+
+    assert len(app.state.records) == 80
+    assert app.state.evicted_prefix_record_count == 0
+    assert app.consume_render_baseline_reset_reason() is None
