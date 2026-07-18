@@ -2430,10 +2430,10 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
             "loushang.harness.capabilities.prompt.PromptSectionComposer",
         },
         Path("src/loushang/coding/session/command_controller.py"): {
-            "loushang.harness.capabilities.commands.dispatch_command_async",
+            "loushang.harness.session.SessionCommandRuntime",
         },
         Path("src/loushang/coding/session/tool_controller.py"): {
-            "loushang.harness.capabilities.tools.ToolActivationCoordinator",
+            "loushang.harness.session.SessionToolRuntime",
         },
     }
     missing: list[str] = []
