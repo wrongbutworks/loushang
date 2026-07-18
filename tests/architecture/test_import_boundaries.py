@@ -383,6 +383,26 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     assert "Pi-style" in boundary
 
 
+def test_session_diagnostics_runtime_is_neutral_and_adopted() -> None:
+    runtime_source = Path("src/loushang/harness/session/diagnostics.py").read_text(
+        encoding="utf-8"
+    )
+    session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
+        encoding="utf-8"
+    )
+    boundary = Path(
+        "docs/internals/architecture/harness/session-diagnostics-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in runtime_source
+    assert "SessionDiagnosticsRuntime" in session_source
+    assert not Path(
+        "src/loushang/coding/session/session_diagnostics_bridge.py"
+    ).exists()
+    assert "Product Binding" in boundary
+    assert "Coding Binding" in boundary
+
+
 def test_extension_message_controller_is_a_product_api_adapter() -> None:
     source = Path(
         "src/loushang/coding/session/extension_message_controller.py"

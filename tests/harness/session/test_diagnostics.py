@@ -1,0 +1,182 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from types import SimpleNamespace
+
+from loushang.ai.types import AssistantMessage, TextPart, Usage
+from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.diagnostics.types import DiagnosticsQuery
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.session import (
+    SessionDiagnosticScope,
+    SessionDiagnosticsRuntime,
+)
+
+
+@dataclass
+class _ExtensionDiagnostics:
+    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+
+    def get_diagnostics(self) -> list[ResourceDiagnostic]:
+        return list(self.diagnostics)
+
+
+def _runtime(
+    diagnostics: DiagnosticsService,
+    extension: _ExtensionDiagnostics | None = None,
+    *,
+    recorded_extension_diagnostics: int = 0,
+) -> SessionDiagnosticsRuntime:
+    return SessionDiagnosticsRuntime(
+        diagnostics_service=diagnostics,
+        get_scope=lambda: SessionDiagnosticScope("session-1", "entry-1"),
+        get_extension_diagnostics=lambda: extension,
+        recorded_extension_diagnostics=recorded_extension_diagnostics,
+    )
+
+
+def test_session_diagnostics_scopes_queries_and_syncs_extensions_once() -> None:
+    diagnostics = DiagnosticsService()
+    extension = _ExtensionDiagnostics(
+        diagnostics=[
+            ResourceDiagnostic(code="already_seen", message="old"),
+            ResourceDiagnostic(
+                code="extension_session_refresh_failed",
+                message="refresh failed",
+                source_path=Path("/tmp/extensions/demo.py"),
+            ),
+        ]
+    )
+    runtime = _runtime(diagnostics, extension, recorded_extension_diagnostics=1)
+    diagnostics.capture_failure(
+        code="current_session_error",
+        error="boom",
+        phase="runtime",
+        source="session",
+        session_id="session-1",
+    )
+    diagnostics.capture_failure(
+        code="other_session_error",
+        error="other",
+        phase="runtime",
+        source="session",
+        session_id="other-session",
+    )
+
+    runtime.sync_extension_diagnostics(phase="runtime")
+    runtime.sync_extension_diagnostics(phase="runtime")
+
+    records = runtime.get_session_diagnostics()
+    assert [record.code for record in records] == [
+        "current_session_error",
+        "extension_session_refresh_failed",
+    ]
+    assert runtime.get_session_diagnostics(
+        DiagnosticsQuery(code="current_session_error")
+    ) == [records[0]]
+    assert runtime.get_session_diagnostics_summary().total_count == 2
+    assert records[1].type == "error"
+    assert records[1].source == "extensions"
+    assert records[1].entry_id == "entry-1"
+
+
+def test_session_diagnostics_records_agent_and_policy_tool_failures() -> None:
+    diagnostics = DiagnosticsService()
+    runtime = _runtime(diagnostics)
+    assistant_message = AssistantMessage(
+        role="assistant",
+        content=[],
+        api="responses",
+        provider="demo",
+        model="demo-model",
+        response_id="resp_1",
+        usage=Usage(
+            input=0,
+            output=0,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=0,
+            cost={},
+        ),
+        stop_reason="error",
+        error_message="provider failed",
+        timestamp=0.0,
+    )
+
+    runtime.record_runtime_exception(code="runtime_failed", exc="runtime boom")
+    runtime.record_assistant_response_error(assistant_message)
+    runtime.record_tool_execution_error(
+        {
+            "tool_call_id": "tc-policy-1",
+            "tool_name": "write",
+            "result": SimpleNamespace(
+                content=[TextPart(type="text", text="Tool write is blocked by policy")],
+                details={
+                    "policy_disposition": "deny",
+                    "policy_code": "tool_blocked",
+                    "policy_reason": "Tool write is blocked by policy",
+                    "path": "/tmp/project/blocked.txt",
+                },
+            ),
+        }
+    )
+
+    records = diagnostics.get_diagnostics()
+    assert [record.code for record in records] == [
+        "runtime_failed",
+        "assistant_response_error",
+        "tool_execution_failed",
+        "tool_blocked",
+    ]
+    assert {record.session_id for record in records} == {"session-1"}
+    assert records[1].details["response_id"] == "resp_1"
+    assert records[2].details["tool_call_id"] == "tc-policy-1"
+    assert records[3].type == "warning"
+    assert records[3].details["path"] == "/tmp/project/blocked.txt"
+
+
+def test_session_diagnostics_uses_tool_event_projection_and_rejects_unsafe_details() -> (
+    None
+):
+    from loushang.agent import AgentToolResult, FunctionalToolOutputProjector
+
+    diagnostics = DiagnosticsService()
+    runtime = _runtime(diagnostics)
+    raw_details = object()
+    projected = AgentToolResult(
+        content=[TextPart(type="text", text="tool failed")],
+        details=raw_details,
+        projector=FunctionalToolOutputProjector(
+            transcript=lambda details: {"surface": "transcript"},
+            event=lambda details: {
+                "surface": "event",
+                "policy_disposition": "deny",
+                "policy_code": "tool_blocked",
+            },
+        ),
+    )
+    runtime.record_tool_execution_error(
+        {"tool_call_id": "tc-rich", "tool_name": "write", "result": projected}
+    )
+    runtime.record_tool_execution_error(
+        {
+            "tool_call_id": "tc-unsafe",
+            "tool_name": "legacy",
+            "result": SimpleNamespace(
+                content=[TextPart(type="text", text="tool failed")],
+                details={"path": Path("notes.txt")},
+            ),
+        }
+    )
+
+    records = diagnostics.get_diagnostics()
+    assert records[0].details["result_details"] == {
+        "surface": "event",
+        "policy_disposition": "deny",
+        "policy_code": "tool_blocked",
+    }
+    assert records[1].details["surface"] == "event"
+    assert repr(raw_details) not in repr(records[0].details)
+    assert records[2].details["result_details"] == {}
+    assert "notes.txt" not in repr(records[2].details)

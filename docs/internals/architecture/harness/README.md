@@ -106,6 +106,9 @@ planning, work event persistence, or AI provider behavior.
   Product-facing operation surface over already-bound session runtimes while
   Products retain model/auth, prompts, extension protocols, lifecycle policy,
   and channel projection.
+- [Session Diagnostics Runtime Boundary](session-diagnostics-boundary.md)
+  defines common session-correlated diagnostic reads and Agent/Tool failure
+  projection while Products retain diagnostic selection and presentation.
 - [Store And Runtime Event Protocol Migration](store-event-protocol-migration.md)
   records the implemented protocol-based Store cutover, Memory/File reference
   adapters, Agent transcript persistence facade, common runtime-event envelope,
