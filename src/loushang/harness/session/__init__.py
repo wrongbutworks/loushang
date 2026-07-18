@@ -40,6 +40,15 @@ from loushang.harness.session.facade import (
     SessionTranscriptPort,
     SessionViewPort,
 )
+from loushang.harness.session.inspection import (
+    AgentInspectionPort,
+    AgentSessionInspector,
+    AgentSessionState,
+    AgentStateInspectionPort,
+    ContextUsage,
+    SessionStats,
+    TokenUsageTotals,
+)
 from loushang.harness.session.lifecycle import (
     DEFAULT_FORK_PROFILE,
     FileCopy,
@@ -68,11 +77,16 @@ from loushang.harness.session.runtime import (
 
 __all__ = [
     "AgentEventRouter",
+    "AgentInspectionPort",
     "AfterTurnPolicyPort",
     "AgentToolPort",
+    "AgentSessionInspector",
+    "AgentSessionState",
+    "AgentStateInspectionPort",
     "ApplicationInputDelivery",
     "ApplicationInputRuntime",
     "CommandRuntimeSource",
+    "ContextUsage",
     "DEFAULT_FORK_PROFILE",
     "ExtensionDiagnosticsPort",
     "ExtensionDiagnosticsProvider",
@@ -98,6 +112,7 @@ __all__ = [
     "SessionDiagnosticScopeProvider",
     "SessionDiagnosticsRuntime",
     "SessionRuntime",
+    "SessionStats",
     "SessionToolRuntime",
     "SessionToolsPort",
     "SessionCwdIssue",
@@ -111,6 +126,7 @@ __all__ = [
     "TranscriptRuntimePort",
     "SessionTranscriptPort",
     "ToolRegistryPort",
+    "TokenUsageTotals",
     "TurnPolicyPort",
     "UserCommandHookResult",
     "UserCommandRequest",
