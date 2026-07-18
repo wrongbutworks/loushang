@@ -20,6 +20,13 @@ from loushang.harness.session.capabilities import (
     UserCommandRequest,
     command_result_from_tool_result,
 )
+from loushang.harness.session.diagnostics import (
+    ExtensionDiagnosticsPort,
+    ExtensionDiagnosticsProvider,
+    SessionDiagnosticScope,
+    SessionDiagnosticScopeProvider,
+    SessionDiagnosticsRuntime,
+)
 from loushang.harness.session.lifecycle import (
     DEFAULT_FORK_PROFILE,
     FileCopy,
@@ -54,6 +61,8 @@ __all__ = [
     "ApplicationInputRuntime",
     "CommandRuntimeSource",
     "DEFAULT_FORK_PROFILE",
+    "ExtensionDiagnosticsPort",
+    "ExtensionDiagnosticsProvider",
     "FileCopy",
     "ForkProfile",
     "ForkSelection",
@@ -64,6 +73,9 @@ __all__ = [
     "QueueController",
     "SessionCommandExecutionRuntime",
     "SessionCommandRuntime",
+    "SessionDiagnosticScope",
+    "SessionDiagnosticScopeProvider",
+    "SessionDiagnosticsRuntime",
     "SessionRuntime",
     "SessionToolRuntime",
     "SessionCwdIssue",

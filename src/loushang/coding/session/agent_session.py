@@ -91,7 +91,6 @@ from loushang.coding.session.resource_refresh_controller import (
 from loushang.coding.session.resource_watcher import ResourceChangeWatcher
 from loushang.coding.session.retry_controller import RetryController
 from loushang.coding.session.selection_controller import SelectionController
-from loushang.coding.session.session_diagnostics_bridge import SessionDiagnosticsBridge
 from loushang.coding.session.session_settings_controller import (
     SessionSettingsController,
 )
@@ -134,6 +133,8 @@ from loushang.harness.resources.types import (
 from loushang.harness.runtime import CancellationController, CancellationSignal
 from loushang.harness.session import (
     AfterTurnPolicyPort,
+    SessionDiagnosticScope,
+    SessionDiagnosticsRuntime,
     SessionRuntime,
     TranscriptRuntimePort,
     TurnPolicyPort,
@@ -225,10 +226,13 @@ class AgentSession:
         self._approval_session_state = (
             "active" if approval_resolver is not None else "closed"
         )
-        self._diagnostics_bridge = SessionDiagnosticsBridge(
+        self._diagnostics_bridge = SessionDiagnosticsRuntime(
             diagnostics_service=self.diagnostics_service,
-            session_manager=self.session_manager,
-            get_extension_runner=lambda: self._extension_runner,
+            get_scope=lambda: SessionDiagnosticScope(
+                session_id=self.session_manager.get_header().conversation_id,
+                entry_id=self.session_manager.get_leaf_id(),
+            ),
+            get_extension_diagnostics=lambda: self._extension_runner,
             recorded_extension_diagnostics=len(extension_runner.get_diagnostics())
             if extension_runner is not None
             else 0,
