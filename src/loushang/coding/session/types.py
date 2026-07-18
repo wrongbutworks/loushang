@@ -5,6 +5,9 @@ from typing import Literal
 
 from loushang.coding.commands import CommandSourceInfo, SessionCommandDescriptor
 from loushang.coding.types import ModelSelection
+from loushang.harness.agent_transcript import (
+    TranscriptNavigationResult as TreeNavigationResult,
+)
 from loushang.harness.host.types import RunState as RunState
 
 
@@ -100,14 +103,6 @@ class SessionStats:
     last_model_selection: ModelSelection | None
     context_usage: ContextUsage | None
     tokens: TokenUsageTotals = field(default_factory=TokenUsageTotals)
-
-
-@dataclass(frozen=True)
-class TreeNavigationResult:
-    cancelled: bool
-    aborted: bool = False
-    editor_text: str | None = None
-    summary_entry_id: str | None = None
 
 
 @dataclass(frozen=True)

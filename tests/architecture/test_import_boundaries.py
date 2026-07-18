@@ -123,6 +123,7 @@ def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> 
     harness_root = Path("src/loushang/harness")
     profile_allowlists = {
         harness_root / "agent_transcript": (
+            "loushang.ai.model",
             "loushang.ai.types",
             "loushang.ai.json_codec",
             "loushang.agent.types",
@@ -290,6 +291,31 @@ def test_coding_agent_session_delegates_shared_turn_runtime_to_harness() -> None
         "AgentEventRouter",
     )
     assert all(owner not in source for owner in forbidden_owners)
+
+
+def test_agent_transcript_interaction_runtime_is_neutral_and_adopted() -> None:
+    interaction_source = Path(
+        "src/loushang/harness/agent_transcript/interaction.py"
+    ).read_text(encoding="utf-8")
+    selection_source = Path(
+        "src/loushang/coding/session/selection_controller.py"
+    ).read_text(encoding="utf-8")
+    tree_source = Path(
+        "src/loushang/coding/session/tree_controller.py"
+    ).read_text(encoding="utf-8")
+    view_source = Path(
+        "src/loushang/coding/session/session_view_controller.py"
+    ).read_text(encoding="utf-8")
+    boundary = Path(
+        "docs/internals/architecture/harness/agent-transcript-interaction-runtime-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in interaction_source
+    assert "AgentTranscriptNavigationRuntime" in tree_source
+    assert "AgentTranscriptSelectionRuntime" in selection_source
+    assert "AgentTranscriptInspector" in view_source
+    assert "Product-supplied" in boundary
+    assert "Coding keeps" in boundary
 
 
 def test_extension_message_controller_is_a_product_api_adapter() -> None:
@@ -2174,7 +2200,7 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
             "loushang.harness.host.retry.RetryCoordinator",
         },
         Path("src/loushang/coding/session/tree_controller.py"): {
-            "loushang.harness.runtime.NavigationTransactionCoordinator",
+            "loushang.harness.agent_transcript.AgentTranscriptNavigationRuntime",
         },
     }
     missing: list[str] = []

@@ -118,6 +118,11 @@ class AgentTranscriptSession:
     def get_children(self, parent_id: str) -> list[AgentTranscriptRecord]:
         return list(self._transcript.children(parent_id))
 
+    def get_tree(self) -> list[object]:
+        """Return the current record tree for product-neutral inspection."""
+
+        return list(self._transcript.tree())
+
     def get_label(self, entry_id: str) -> str | None:
         return self.labels_by_target_id.get(entry_id)
 

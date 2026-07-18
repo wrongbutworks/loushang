@@ -89,6 +89,7 @@ planning, work event persistence, or AI provider behavior.
   index, and branch-label read model while Products retain roots and
   presentation policy.
 - [Agent Transcript Lifecycle Boundary](agent-transcript-lifecycle-boundary.md)
+- [Agent Transcript Interaction Runtime Boundary](agent-transcript-interaction-runtime-boundary.md)
   defines common create, restore, detached-copy, fork, disposal, and active
   Native-file deletion mechanics while Products retain binding and resume
   policy.
