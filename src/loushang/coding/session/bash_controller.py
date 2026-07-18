@@ -89,6 +89,33 @@ class BashController:
             operations=operations,
         )
 
+    async def execute(
+        self,
+        command: str,
+        *,
+        cwd: str | None = None,
+        env: list[list[str] | tuple[str, str]]
+        | tuple[tuple[str, str], ...]
+        | None = None,
+        timeout_seconds: float | None = None,
+        stdin: str | None = None,
+        exclude_from_context: bool = False,
+        on_output: OutputCallback | None = None,
+        operations: object | None = None,
+    ) -> dict[str, object]:
+        """Expose the selected command-tool execution port to Harness."""
+
+        return await self.execute_bash(
+            command,
+            cwd=cwd,
+            env=env,
+            timeout_seconds=timeout_seconds,
+            stdin=stdin,
+            exclude_from_context=exclude_from_context,
+            on_output=on_output,
+            operations=operations,
+        )
+
     async def execute_pi_style(
         self,
         command: str,

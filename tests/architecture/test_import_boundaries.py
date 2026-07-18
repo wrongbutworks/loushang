@@ -300,9 +300,9 @@ def test_agent_transcript_interaction_runtime_is_neutral_and_adopted() -> None:
     selection_source = Path(
         "src/loushang/coding/session/selection_controller.py"
     ).read_text(encoding="utf-8")
-    tree_source = Path(
-        "src/loushang/coding/session/tree_controller.py"
-    ).read_text(encoding="utf-8")
+    tree_source = Path("src/loushang/coding/session/tree_controller.py").read_text(
+        encoding="utf-8"
+    )
     view_source = Path(
         "src/loushang/coding/session/session_view_controller.py"
     ).read_text(encoding="utf-8")
@@ -325,9 +325,9 @@ def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
     compaction_source = Path(
         "src/loushang/coding/session/compaction_controller.py"
     ).read_text(encoding="utf-8")
-    retry_source = Path(
-        "src/loushang/coding/session/retry_controller.py"
-    ).read_text(encoding="utf-8")
+    retry_source = Path("src/loushang/coding/session/retry_controller.py").read_text(
+        encoding="utf-8"
+    )
     boundary = Path(
         "docs/internals/architecture/harness/agent-transcript-maintenance-boundary.md"
     ).read_text(encoding="utf-8")
@@ -343,15 +343,15 @@ def test_session_capabilities_runtime_is_neutral_and_adopted() -> None:
     capabilities_source = Path(
         "src/loushang/harness/session/capabilities.py"
     ).read_text(encoding="utf-8")
-    tool_source = Path(
-        "src/loushang/coding/session/tool_controller.py"
-    ).read_text(encoding="utf-8")
+    tool_source = Path("src/loushang/coding/session/tool_controller.py").read_text(
+        encoding="utf-8"
+    )
     command_source = Path(
         "src/loushang/coding/session/command_controller.py"
     ).read_text(encoding="utf-8")
-    bash_source = Path(
-        "src/loushang/coding/session/bash_controller.py"
-    ).read_text(encoding="utf-8")
+    bash_source = Path("src/loushang/coding/session/bash_controller.py").read_text(
+        encoding="utf-8"
+    )
     boundary = Path(
         "docs/internals/architecture/harness/session-capabilities-boundary.md"
     ).read_text(encoding="utf-8")
@@ -362,6 +362,25 @@ def test_session_capabilities_runtime_is_neutral_and_adopted() -> None:
     assert "SessionCommandExecutionRuntime" in bash_source
     assert "Product Binding" in boundary
     assert "Coding keeps" in boundary
+
+
+def test_session_facade_is_neutral_and_adopted() -> None:
+    facade_source = Path("src/loushang/harness/session/facade.py").read_text(
+        encoding="utf-8"
+    )
+    session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
+        encoding="utf-8"
+    )
+    boundary = Path(
+        "docs/internals/architecture/harness/session-facade-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in facade_source
+    assert "execute_pi_style" not in facade_source
+    assert "SessionFacade" in session_source
+    assert "Product Binding" in boundary
+    assert "Coding Binding" in boundary
+    assert "Pi-style" in boundary
 
 
 def test_extension_message_controller_is_a_product_api_adapter() -> None:
@@ -487,9 +506,7 @@ def test_harnesstui_capability_entrypoints_exist() -> None:
     assert missing == []
 
 
-def test_importing_conversation_interaction_entrypoints_stays_product_neutral() -> (
-    None
-):
+def test_importing_conversation_interaction_entrypoints_stays_product_neutral() -> None:
     script = """
 import importlib
 import sys
