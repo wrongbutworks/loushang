@@ -85,10 +85,6 @@ from loushang.coding.session.extension_runtime_controller import (
     ExtensionRuntimeController,
 )
 from loushang.coding.session.package_controller import PackageController
-from loushang.coding.session.resource_refresh_controller import (
-    ResourceRefreshController,
-)
-from loushang.coding.session.resource_watcher import ResourceChangeWatcher
 from loushang.coding.session.retry_controller import RetryController
 from loushang.coding.session.selection_controller import SelectionController
 from loushang.coding.session.session_settings_controller import (
@@ -130,12 +126,14 @@ from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
 )
+from loushang.harness.resources.watcher import ResourceChangeWatcher
 from loushang.harness.runtime import CancellationController, CancellationSignal
 from loushang.harness.session import (
     AfterTurnPolicyPort,
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
     SessionFacade,
+    SessionResourceRefreshRuntime,
     SessionRuntime,
     TranscriptRuntimePort,
     TurnPolicyPort,
@@ -261,16 +259,25 @@ class AgentSession:
             resource_activation_runtime=capability_runtime.resource_runtime,
             prompt_section_composer=capability_runtime.prompt_section_composer,
         )
-        self._resource_refresh_controller = ResourceRefreshController(
+        self._resource_refresh_runtime = SessionResourceRefreshRuntime(
             get_resource_loader=lambda: self._resource_loader,
             get_resource_bundle=lambda: self.resource_bundle,
             get_cwd=self.session_manager.get_cwd,
-            get_extension_runner=lambda: self._extension_runner,
-            get_settings_manager=self._settings_controller.get_settings_manager,
+            get_extension_runtime=lambda: self._extension_runner,
+            get_settings=self._settings_controller.get_settings_manager,
             set_resource_bundle=self._set_resource_bundle,
             rebuild_prompt_and_tools_view=self._rebuild_prompt_and_tools_view,
-            record_runtime_diagnostic=self._record_extension_runtime_diagnostic,
-            sync_extension_diagnostics=self._sync_extension_diagnostics,
+            record_refresh_failure=lambda error: (
+                self._record_extension_runtime_diagnostic(
+                    ResourceDiagnostic(
+                        code="extension_resource_refresh_failed",
+                        message=f"Extension resource refresh failed: {error}",
+                    )
+                )
+            ),
+            sync_extension_diagnostics=lambda: self._sync_extension_diagnostics(
+                phase="resource_loading"
+            ),
             prepare_resource_refresh=self._prepare_resource_refresh,
             skill_activation_runtime=capability_runtime.skill_activation,
         )
@@ -881,7 +888,7 @@ class AgentSession:
 
     @property
     def promptTemplates(self) -> list[PromptFragmentDescriptor]:
-        return self._resource_refresh_controller.get_prompt_templates()
+        return self._resource_refresh_runtime.get_prompt_templates()
 
     @property
     def settings_manager(self) -> SettingsManager | None:
@@ -1509,17 +1516,13 @@ class AgentSession:
         self.resource_bundle = resource_bundle
 
     def _refresh_resources_for_extension_runtime(self) -> None:
-        self._resource_refresh_controller.refresh_resources_for_extension_runtime()
+        self._resource_refresh_runtime.refresh()
 
     async def _refresh_resources_for_extension_runtime_async(self) -> None:
-        await self._resource_refresh_controller.refresh_resources_for_extension_runtime_async(
-            reason="reload"
-        )
+        await self._resource_refresh_runtime.refresh_async(reason="reload")
 
     async def _reload_resources_from_watch(self) -> None:
-        await self._resource_refresh_controller.refresh_resources_for_extension_runtime_async(
-            reason="watch"
-        )
+        await self._resource_refresh_runtime.refresh_async(reason="watch")
         if self._extension_runner is not None:
             await self._refresh_extension_runtime(reason="resource_watch")
 
@@ -1592,7 +1595,7 @@ class AgentSession:
         await self.session_manager.append_label(target_id, label)
 
     def _request_resource_refresh(self) -> None:
-        self._resource_refresh_controller.request_resource_refresh()
+        self._resource_refresh_runtime.request_refresh()
 
     # Extension API bridge.
 

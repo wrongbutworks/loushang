@@ -403,6 +403,27 @@ def test_session_diagnostics_runtime_is_neutral_and_adopted() -> None:
     assert "Coding Binding" in boundary
 
 
+def test_session_resource_refresh_runtime_is_neutral_and_adopted() -> None:
+    runtime_source = Path("src/loushang/harness/session/resource_refresh.py").read_text(
+        encoding="utf-8"
+    )
+    session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
+        encoding="utf-8"
+    )
+    boundary = Path(
+        "docs/internals/architecture/harness/session-resource-refresh-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in runtime_source
+    assert "SessionResourceRefreshRuntime" in session_source
+    assert not Path(
+        "src/loushang/coding/session/resource_refresh_controller.py"
+    ).exists()
+    assert not Path("src/loushang/coding/session/resource_watcher.py").exists()
+    assert "Product Binding" in boundary
+    assert "Coding Binding" in boundary
+
+
 def test_extension_message_controller_is_a_product_api_adapter() -> None:
     source = Path(
         "src/loushang/coding/session/extension_message_controller.py"
@@ -2325,7 +2346,7 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
         Path("src/loushang/harness/session/queue_controller.py"): {
             "loushang.harness.host.turn.TurnInputQueue",
         },
-        Path("src/loushang/coding/session/resource_refresh_controller.py"): {
+        Path("src/loushang/harness/session/resource_refresh.py"): {
             "loushang.harness.resources.refresh.ResourceRefreshCoordinator",
         },
         Path("src/loushang/coding/session/retry_controller.py"): {
@@ -2343,13 +2364,8 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
         )
     assert missing == []
 
-    from loushang.coding.session.resource_watcher import (
-        ResourceChangeWatcher as CodingResourceChangeWatcher,
-    )
     from loushang.harness import __all__ as harness_exports
-    from loushang.harness.resources.watcher import ResourceChangeWatcher
 
-    assert CodingResourceChangeWatcher is ResourceChangeWatcher
     assert "RetryCoordinator" not in harness_exports
     assert "SessionOperationCoordinator" not in harness_exports
     assert "TurnOrchestrator" not in harness_exports
