@@ -5,22 +5,21 @@ import sys
 
 import pytest
 
-from loushang.coding.ui import playback_runner
-from loushang.coding.ui.playback_fakes import SessionCommandPlaybackSession
-from loushang.coding.ui.playback_runner import (
+from loushang.coding.testing.tui import runner as playback_runner
+from loushang.coding.testing.tui.fakes import SessionCommandPlaybackSession
+from loushang.coding.testing.tui.runner import (
     ScreenPlaybackScenarioSpec,
     ScreenPlaybackSuite,
     run_playback_cli,
     run_playback_scenarios,
 )
-from loushang.coding.ui.playback_scenarios.command import COMMAND_ROUTING_SCENARIOS
-from loushang.coding.ui.playback_scenarios.composer import COMPOSER_SCENARIOS
-from loushang.coding.ui.playback_scenarios.lifecycle import LIFECYCLE_SCENARIOS
-from loushang.coding.ui.playback_scenarios.product import PRODUCT_SCENARIOS
-from loushang.coding.ui.playback_scenarios.surface import SURFACE_SCENARIOS
-from loushang.coding.ui.playback_scenarios.terminal import TERMINAL_SCENARIOS
-from loushang.coding.ui.playback_scenarios.transcript import TRANSCRIPT_SCENARIOS
-from loushang.coding.ui.playback_suite import ScreenPlaybackSuite as SuiteFromModule
+from loushang.coding.testing.tui.scenarios.command import COMMAND_ROUTING_SCENARIOS
+from loushang.coding.testing.tui.scenarios.composer import COMPOSER_SCENARIOS
+from loushang.coding.testing.tui.scenarios.lifecycle import LIFECYCLE_SCENARIOS
+from loushang.coding.testing.tui.scenarios.product import PRODUCT_SCENARIOS
+from loushang.coding.testing.tui.scenarios.surface import SURFACE_SCENARIOS
+from loushang.coding.testing.tui.scenarios.terminal import TERMINAL_SCENARIOS
+from loushang.coding.testing.tui.scenarios.transcript import TRANSCRIPT_SCENARIOS
 from loushang.tui import (
     FakeTerminalPort,
     PlaybackEvent,
@@ -30,12 +29,21 @@ from loushang.tui import (
     TerminalOperation,
     TerminalSize,
 )
+from loushang.tui.playback_suite import PlaybackSuite as SuiteFromModule
 
 
 def test_screen_tui_playback_runner_reexports_suite_types_from_playback_suite_module() -> (
     None
 ):
     assert ScreenPlaybackSuite is SuiteFromModule
+
+
+def test_screen_tui_playback_runner_help_names_canonical_module(capsys) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        run_playback_cli(["--help"])
+
+    captured = capsys.readouterr()
+    assert "python -m loushang.coding.testing.tui.runner" in captured.out
 
 
 def test_screen_tui_playback_fake_session_lists_command_sources() -> None:

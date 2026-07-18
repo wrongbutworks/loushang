@@ -68,6 +68,15 @@ from loushang.harness.session.lifecycle import (
 )
 from loushang.harness.session.prompt_controller import PromptController
 from loushang.harness.session.queue_controller import QueueController
+from loushang.harness.session.resource_refresh import (
+    RefreshFailureRecorder,
+    ResourceBundleProvider,
+    ResourceLoaderPort,
+    ResourceLoaderProvider,
+    ResourceSettingsPort,
+    ResourceSettingsProvider,
+    SessionResourceRefreshRuntime,
+)
 from loushang.harness.session.runtime import (
     AfterTurnPolicyPort,
     SessionRuntime,
@@ -98,6 +107,12 @@ __all__ = [
     "MissingSessionCwdError",
     "PromptController",
     "QueueController",
+    "RefreshFailureRecorder",
+    "ResourceBundleProvider",
+    "ResourceLoaderPort",
+    "ResourceLoaderProvider",
+    "ResourceSettingsPort",
+    "ResourceSettingsProvider",
     "OutputCallback",
     "RuntimeEventListener",
     "SessionCommandExecutionPort",
@@ -113,6 +128,7 @@ __all__ = [
     "SessionDiagnosticsRuntime",
     "SessionRuntime",
     "SessionStats",
+    "SessionResourceRefreshRuntime",
     "SessionToolRuntime",
     "SessionToolsPort",
     "SessionCwdIssue",

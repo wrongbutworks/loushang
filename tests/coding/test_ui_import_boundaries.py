@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import os
 import subprocess
 import sys
@@ -67,6 +68,92 @@ def test_conversation_raw_event_dispatch_stays_in_coding_adapter() -> None:
         Path("src/loushang/coding/ui/screen_events.py"),
     ):
         assert 'event.get("type")' not in path.read_text(encoding="utf-8")
+
+
+def test_coding_ui_playback_modules_are_compatibility_facades() -> None:
+    facade_functions = {
+        Path("src/loushang/coding/ui/playback.py"): {"__getattr__", "__dir__"},
+        Path("src/loushang/coding/ui/playback_fakes.py"): set(),
+        Path("src/loushang/coding/ui/playback_runner.py"): {"main"},
+        Path("src/loushang/coding/ui/playback_suite.py"): set(),
+    }
+    implementation_imports = {
+        Path("src/loushang/coding/ui/playback.py"): (
+            "loushang.coding.testing.tui.playback"
+        ),
+        Path("src/loushang/coding/ui/playback_fakes.py"): (
+            "loushang.coding.testing.tui.fakes"
+        ),
+        Path("src/loushang/coding/ui/playback_runner.py"): (
+            "loushang.coding.testing.tui.runner"
+        ),
+        Path("src/loushang/coding/ui/playback_suite.py"): "loushang.tui.playback_suite",
+    }
+
+    offenders: list[str] = []
+    for path, allowed_functions in facade_functions.items():
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        definitions = {
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        unexpected = definitions - allowed_functions
+        offenders.extend(f"{path}:{name}" for name in sorted(unexpected))
+        if implementation_imports[path] not in source:
+            offenders.append(f"{path}:missing implementation facade import")
+
+    scenario_root = Path("src/loushang/coding/ui/playback_scenarios")
+    for path in sorted(scenario_root.glob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        definitions = [
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+        offenders.extend(f"{path}:{name}" for name in definitions)
+        if path.name != "__init__.py":
+            owner = f"loushang.coding.testing.tui.scenarios.{path.stem}"
+            if owner not in source:
+                offenders.append(f"{path}:missing {owner} facade import")
+
+    assert offenders == []
+
+
+def test_shared_playback_support_does_not_own_coding_copy_or_budgets() -> None:
+    shared = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(Path("src/loushang/harnesstui/testing").rglob("*.py"))
+    )
+    for token in (
+        "Conversation interrupted",
+        "Operation aborted",
+        ".loushang",
+        "INTERACTION_FRAME_BUDGET",
+        "LONG_TRANSCRIPT_FRAME_BUDGET",
+        "PRODUCT_COMPOSED_FRAME_BUDGET",
+        "PRODUCT_STREAMING_CONTROL_FRAME_BUDGET",
+    ):
+        assert token not in shared
+
+    budgets = Path(
+        "src/loushang/coding/testing/tui/scenarios/budgets.py"
+    ).read_text(encoding="utf-8")
+    binding = Path(
+        "src/loushang/coding/testing/tui/scenario_binding.py"
+    ).read_text(encoding="utf-8")
+    product = Path(
+        "src/loushang/coding/testing/tui/scenarios/product.py"
+    ).read_text(encoding="utf-8")
+
+    assert "INTERACTION_FRAME_BUDGET" in budgets
+    assert "LONG_TRANSCRIPT_FRAME_BUDGET" in budgets
+    assert "Conversation interrupted" in binding
+    assert "Operation aborted" in binding
+    assert "PRODUCT_COMPOSED_FRAME_BUDGET" in product
+    assert "PRODUCT_STREAMING_CONTROL_FRAME_BUDGET" in product
 
 
 def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
@@ -141,6 +228,7 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
         Path("src/loushang/coding/ui/screen_surfaces.py"): (
             "class ModelSelectorSurface",
             "class ScreenSurfaceView",
+            "class SurfaceEvent",
         ),
     }
 
@@ -200,6 +288,29 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
     assert 'Path(self.app.cwd) / ".loushang" / "clipboard"' in screen_input
     assert "PromptIntent" in prompt_dispatch
     assert "BashIntent" in prompt_dispatch
+
+
+def test_shared_surface_controller_does_not_own_coding_policy_or_copy() -> None:
+    shared = Path(
+        "src/loushang/harnesstui/surface/controller.py"
+    ).read_text(encoding="utf-8")
+    coding = Path("src/loushang/coding/ui/screen_surfaces.py").read_text(
+        encoding="utf-8"
+    )
+
+    for token in (
+        "CodingCommandCatalog",
+        "SettingsPageView",
+        "ScreenCodingTuiApp",
+        "select_available_model",
+        "parse_prompt_intent",
+        "Action confirmed:",
+        "Action rejected",
+        "Approval request is no longer pending",
+        "Command selected:",
+    ):
+        assert token not in shared
+        assert token in coding
 
 
 def test_shared_status_provider_does_not_own_settings_manager_adaptation() -> None:

@@ -178,6 +178,36 @@ def test_harnesstui_does_not_import_product_or_model_layers() -> None:
     assert offenders == []
 
 
+def test_harnesstui_testing_does_not_import_runtime_or_product_layers() -> None:
+    offenders = _find_forbidden_imports(
+        ImportBoundary(
+            name="harnesstui.testing",
+            root=Path("src/loushang/harnesstui/testing"),
+            forbidden_prefixes=(
+                "loushang.agent",
+                "loushang.ai",
+                "loushang.coding",
+                "loushang.harness",
+            ),
+        )
+    )
+
+    assert offenders == []
+
+
+def test_production_harnesstui_does_not_import_testing_support() -> None:
+    testing_root = Path("src/loushang/harnesstui/testing")
+    offenders = [
+        f"{path.as_posix()} imports {imported}"
+        for path in sorted(Path("src/loushang/harnesstui").rglob("*.py"))
+        if testing_root not in path.parents
+        for imported in _absolute_imports(path)
+        if _matches_any(imported, ("loushang.harnesstui.testing",))
+    ]
+
+    assert offenders == []
+
+
 def test_neutral_conversation_core_does_not_import_agent_ai_or_products() -> None:
     boundary = ImportBoundary(
         name="conversation",
@@ -425,6 +455,27 @@ def test_session_diagnostics_runtime_is_neutral_and_adopted() -> None:
     assert "Coding Binding" in boundary
 
 
+def test_session_resource_refresh_runtime_is_neutral_and_adopted() -> None:
+    runtime_source = Path("src/loushang/harness/session/resource_refresh.py").read_text(
+        encoding="utf-8"
+    )
+    session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
+        encoding="utf-8"
+    )
+    boundary = Path(
+        "docs/internals/architecture/harness/session-resource-refresh-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in runtime_source
+    assert "SessionResourceRefreshRuntime" in session_source
+    assert not Path(
+        "src/loushang/coding/session/resource_refresh_controller.py"
+    ).exists()
+    assert not Path("src/loushang/coding/session/resource_watcher.py").exists()
+    assert "Product Binding" in boundary
+    assert "Coding Binding" in boundary
+
+
 def test_extension_message_controller_is_a_product_api_adapter() -> None:
     source = Path(
         "src/loushang/coding/session/extension_message_controller.py"
@@ -481,6 +532,9 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     text = path.read_text(encoding="utf-8")
 
     assert "`loushang.coding.ui` -> `loushang.harnesstui`" in text
+    assert (
+        "`loushang.coding.testing.tui` -> `loushang.harnesstui.testing`" in text
+    )
     assert "`loushang.harnesstui.conversation.queue`" in text
     assert "`loushang.harnesstui.conversation.reader`" in text
     assert "`loushang.harnesstui.conversation.screen_state`" in text
@@ -506,8 +560,15 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.status.plain`" in text
     assert "`loushang.harnesstui.status.provider`" in text
     assert "`loushang.harnesstui.status.snapshot`" in text
+    assert "`loushang.harnesstui.surface.controller`" in text
     assert "`loushang.harnesstui.surface.factory`" in text
     assert "`loushang.harnesstui.surface.view`" in text
+    assert "`loushang.harnesstui.testing.ports`" in text
+    assert "`loushang.harnesstui.testing.input_playback`" in text
+    assert "`loushang.harnesstui.testing.screen_loop_playback`" in text
+    assert "`loushang.harnesstui.testing.scenarios.factory`" in text
+    assert "`loushang.harnesstui.testing.scenarios`" in text
+    assert "`loushang.coding.testing.tui.scenarios`" in text
     assert "`loushang.tui.settings`" in text
 
 
@@ -538,8 +599,18 @@ def test_harnesstui_capability_entrypoints_exist() -> None:
         Path("src/loushang/harnesstui/status/provider.py"),
         Path("src/loushang/harnesstui/status/settings.py"),
         Path("src/loushang/harnesstui/status/snapshot.py"),
+        Path("src/loushang/harnesstui/surface/controller.py"),
         Path("src/loushang/harnesstui/surface/factory.py"),
         Path("src/loushang/harnesstui/surface/view.py"),
+        Path("src/loushang/harnesstui/testing/ports.py"),
+        Path("src/loushang/harnesstui/testing/input_playback.py"),
+        Path("src/loushang/harnesstui/testing/screen_loop_playback.py"),
+        Path("src/loushang/harnesstui/testing/scenarios/factory.py"),
+        Path("src/loushang/harnesstui/testing/scenarios/composer.py"),
+        Path("src/loushang/harnesstui/testing/scenarios/lifecycle.py"),
+        Path("src/loushang/harnesstui/testing/scenarios/terminal.py"),
+        Path("src/loushang/harnesstui/testing/scenarios/transcript.py"),
+        Path("src/loushang/harnesstui/testing/scenarios/surface.py"),
         Path("src/loushang/tui/settings.py"),
     )
 
@@ -559,6 +630,76 @@ for module_name in (
     "loushang.harnesstui.conversation.input",
     "loushang.harnesstui.conversation.run_context",
     "loushang.harnesstui.conversation.screen_runner",
+):
+    importlib.import_module(module_name)
+
+forbidden_prefixes = (
+    "loushang.agent",
+    "loushang.ai",
+    "loushang.coding",
+    "loushang.harness",
+)
+forbidden = sorted(
+    name
+    for name in sys.modules
+    if any(name == prefix or name.startswith(prefix + ".") for prefix in forbidden_prefixes)
+)
+assert forbidden == [], forbidden
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_importing_surface_controller_stays_product_neutral() -> None:
+    script = """
+import importlib
+import sys
+
+importlib.import_module("loushang.harnesstui.surface.controller")
+forbidden_prefixes = (
+    "loushang.agent",
+    "loushang.ai",
+    "loushang.coding",
+    "loushang.harness",
+)
+forbidden = sorted(
+    name
+    for name in sys.modules
+    if any(name == prefix or name.startswith(prefix + ".") for prefix in forbidden_prefixes)
+)
+assert forbidden == [], forbidden
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_importing_harnesstui_testing_entrypoints_stays_product_neutral() -> None:
+    script = """
+import importlib
+import sys
+
+for module_name in (
+    "loushang.harnesstui.testing.ports",
+    "loushang.harnesstui.testing.input_playback",
+    "loushang.harnesstui.testing.screen_loop_playback",
+    "loushang.harnesstui.testing.scenarios.factory",
+    "loushang.harnesstui.testing.scenarios.composer",
+    "loushang.harnesstui.testing.scenarios.lifecycle",
+    "loushang.harnesstui.testing.scenarios.terminal",
+    "loushang.harnesstui.testing.scenarios.transcript",
+    "loushang.harnesstui.testing.scenarios.surface",
 ):
     importlib.import_module(module_name)
 
@@ -2347,7 +2488,7 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
         Path("src/loushang/harness/session/queue_controller.py"): {
             "loushang.harness.host.turn.TurnInputQueue",
         },
-        Path("src/loushang/coding/session/resource_refresh_controller.py"): {
+        Path("src/loushang/harness/session/resource_refresh.py"): {
             "loushang.harness.resources.refresh.ResourceRefreshCoordinator",
         },
         Path("src/loushang/coding/session/retry_controller.py"): {
@@ -2365,13 +2506,8 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
         )
     assert missing == []
 
-    from loushang.coding.session.resource_watcher import (
-        ResourceChangeWatcher as CodingResourceChangeWatcher,
-    )
     from loushang.harness import __all__ as harness_exports
-    from loushang.harness.resources.watcher import ResourceChangeWatcher
 
-    assert CodingResourceChangeWatcher is ResourceChangeWatcher
     assert "RetryCoordinator" not in harness_exports
     assert "SessionOperationCoordinator" not in harness_exports
     assert "TurnOrchestrator" not in harness_exports

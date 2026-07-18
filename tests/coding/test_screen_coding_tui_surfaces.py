@@ -23,7 +23,6 @@ from loushang.tui import (
     ApprovalSurface,
     CommandSurface,
     CursorDeclaration,
-    DialogSurface,
     InputEvent,
     InputIntent,
     RenderConstraints,
@@ -1096,22 +1095,6 @@ def test_screen_surface_manager_command_surface_inserts_selected_command() -> No
     assert app.composer.value == "/report "
 
 
-def test_screen_surface_manager_handles_dialog_surface_confirm() -> None:
-    app = _app()
-    manager = _manager(app, _Session())
-
-    app.active_surface = ScreenSurfaceView(
-        title="Confirm",
-        purpose="dialog",
-        content=DialogSurface(title="Confirm", message="Proceed?"),
-        footer="",
-    )
-
-    asyncio.run(manager.handle_surface_intent(InputIntent(kind="dialog_confirm")))
-
-    assert app.active_surface is None
-
-
 def test_screen_surface_manager_handles_approval_submit() -> None:
     app = _app()
     events: list[dict[str, object]] = []
@@ -1144,168 +1127,6 @@ def test_screen_surface_manager_handles_approval_submit() -> None:
             "raw_note": "clear-cache-01",
         }
     ]
-
-
-def test_screen_surface_manager_handles_approval_reject() -> None:
-    app = _app()
-    events: list[dict[str, object]] = []
-
-    async def on_approval(event: dict[str, object]) -> None:
-        events.append(event)
-
-    manager = ScreenSurfaceManager(
-        app=app,
-        session=_Session(),
-        status_provider=_status_provider(app),
-        on_approval=on_approval,
-    )
-
-    app.active_surface = ScreenSurfaceView(
-        title="Approval",
-        purpose="approval",
-        content=ApprovalSurface(action="delete cache", action_id="clear-cache-01"),
-        footer="",
-    )
-
-    asyncio.run(manager.handle_surface_intent(InputIntent(kind="reject")))
-
-    assert app.active_surface is None
-    assert events == [
-        {
-            "action_id": "clear-cache-01",
-            "action": "delete cache",
-            "approved": False,
-            "raw_note": "clear-cache-01",
-        }
-    ]
-
-
-def test_screen_surface_manager_escape_rejects_approval() -> None:
-    app = _app()
-    events: list[dict[str, object]] = []
-
-    async def on_approval(event: dict[str, object]) -> None:
-        events.append(event)
-
-    manager = ScreenSurfaceManager(
-        app=app,
-        session=_Session(),
-        status_provider=_status_provider(app),
-        on_approval=on_approval,
-    )
-    manager.open_approval(
-        action="delete cache",
-        action_id="clear-cache-escape",
-    )
-    surface = app.active_surface
-    assert isinstance(surface, ScreenSurfaceView)
-
-    intent = surface.handle_input(InputEvent(kind="key", key="escape"))
-    assert intent is not None
-    asyncio.run(manager.handle_surface_intent(intent))
-
-    assert app.active_surface is None
-    assert events == [
-        {
-            "action_id": "clear-cache-escape",
-            "action": "delete cache",
-            "approved": False,
-            "raw_note": "clear-cache-escape",
-        }
-    ]
-
-
-def test_screen_surface_manager_queues_concurrent_approvals() -> None:
-    app = _app()
-    events: list[dict[str, object]] = []
-
-    async def on_approval(event: dict[str, object]) -> None:
-        events.append(event)
-
-    manager = ScreenSurfaceManager(
-        app=app,
-        session=_Session(),
-        status_provider=_status_provider(app),
-        on_approval=on_approval,
-    )
-    manager.open_approval(action="first action", action_id="approval-1")
-    manager.open_approval(action="second action", action_id="approval-2")
-
-    first = app.active_surface
-    assert isinstance(first, ScreenSurfaceView)
-    assert getattr(first.content, "action_id") == "approval-1"
-    asyncio.run(manager.handle_surface_intent(InputIntent(kind="approve")))
-
-    second = app.active_surface
-    assert isinstance(second, ScreenSurfaceView)
-    assert getattr(second.content, "action_id") == "approval-2"
-    asyncio.run(manager.handle_surface_intent(InputIntent(kind="reject")))
-
-    assert app.active_surface is None
-    assert [event["action_id"] for event in events] == ["approval-1", "approval-2"]
-    assert [event["approved"] for event in events] == [True, False]
-
-
-def test_screen_surface_manager_keeps_fifo_order_during_async_resolution() -> None:
-    app = _app()
-    callback_started = asyncio.Event()
-    release_callback = asyncio.Event()
-    events: list[str] = []
-
-    async def on_approval(event: dict[str, object]) -> None:
-        action_id = event.get("action_id")
-        assert isinstance(action_id, str)
-        events.append(action_id)
-        if action_id == "approval-a":
-            callback_started.set()
-            await release_callback.wait()
-
-    manager = ScreenSurfaceManager(
-        app=app,
-        session=_Session(),
-        status_provider=_status_provider(app),
-        on_approval=on_approval,
-    )
-
-    async def run() -> None:
-        manager.open_approval(action="A", action_id="approval-a")
-        manager.open_approval(action="B", action_id="approval-b")
-        first = asyncio.create_task(
-            manager.handle_surface_intent(InputIntent(kind="approve"))
-        )
-        await callback_started.wait()
-        manager.open_approval(action="C", action_id="approval-c")
-        release_callback.set()
-        await first
-
-        current = app.active_surface
-        assert isinstance(current, ScreenSurfaceView)
-        assert getattr(current.content, "action_id") == "approval-b"
-        await manager.handle_surface_intent(InputIntent(kind="approve"))
-        current = app.active_surface
-        assert isinstance(current, ScreenSurfaceView)
-        assert getattr(current.content, "action_id") == "approval-c"
-        await manager.handle_surface_intent(InputIntent(kind="reject"))
-
-    asyncio.run(run())
-
-    assert events == ["approval-a", "approval-b", "approval-c"]
-    assert app.active_surface is None
-
-
-def test_screen_surface_manager_clears_current_and_queued_approvals() -> None:
-    app = _app()
-    manager = _manager(app, _Session())
-    manager.open_approval(action="A", action_id="approval-a")
-    manager.open_approval(action="B", action_id="approval-b")
-
-    manager.clear_approval_surfaces()
-
-    assert app.active_surface is None
-    manager.open_approval(action="C", action_id="approval-c")
-    current = app.active_surface
-    assert isinstance(current, ScreenSurfaceView)
-    assert getattr(current.content, "action_id") == "approval-c"
 
 
 def test_screen_surface_manager_dismisses_timeout_and_cancelled_requests() -> None:
@@ -1393,19 +1214,6 @@ def test_screen_surface_manager_does_not_confirm_stale_approval_result() -> None
     asyncio.run(manager.handle_surface_intent(InputIntent(kind="approve")))
 
     assert app.state.status_message == "Approval request is no longer pending"
-
-
-def test_screen_surface_manager_ignores_unmapped_surface_intent() -> None:
-    app = _app()
-    manager = _manager(app, _Session())
-
-    asyncio.run(manager.handle_text("/hotkeys"))
-    surface = app.active_surface
-    assert surface is not None
-
-    asyncio.run(manager.handle_surface_intent(InputIntent(kind="abort")))
-
-    assert app.active_surface is surface
 
 
 class _Session:

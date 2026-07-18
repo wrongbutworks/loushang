@@ -112,6 +112,10 @@ planning, work event persistence, or AI provider behavior.
 - [Session Diagnostics Runtime Boundary](session-diagnostics-boundary.md)
   defines common session-correlated diagnostic reads and Agent/Tool failure
   projection while Products retain diagnostic selection and presentation.
+- [Session Resource Refresh Runtime Boundary](session-resource-refresh-boundary.md)
+  defines common session resource reload/discovery/activation/commit ordering
+  while Products retain loaders, roots, settings, diagnostics, and extension
+  protocol behavior.
 - [Store And Runtime Event Protocol Migration](store-event-protocol-migration.md)
   records the implemented protocol-based Store cutover, Memory/File reference
   adapters, Agent transcript persistence facade, common runtime-event envelope,
