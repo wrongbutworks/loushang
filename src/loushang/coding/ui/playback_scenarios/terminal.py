@@ -11,12 +11,14 @@ from loushang.coding.ui.playback_fakes import (
     RecordingTerminalMode as _RecordingTerminalMode,
 )
 from loushang.coding.ui.playback_fakes import recording_drain as _recording_drain
-from loushang.coding.ui.playback_suite import ScreenPlaybackScenarioSpec
 from loushang.tui.input import BRACKETED_PASTE_END, BRACKETED_PASTE_START
 from loushang.tui.keyboard_protocol import (
     KITTY_DISABLE_SEQUENCE,
     KITTY_ENABLE_FLAGS_SEQUENCE,
     KITTY_QUERY_SEQUENCE,
+)
+from loushang.tui.playback_suite import (
+    PlaybackScenarioSpec as ScreenPlaybackScenarioSpec,
 )
 from loushang.tui.terminal_capabilities import TerminalRuntimeCapabilities
 from loushang.tui.terminal_session import (

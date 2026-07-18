@@ -37,6 +37,10 @@ def test_loushang_tui_public_models_are_not_owned_by_compat_module() -> None:
         "CommandPaletteItem": "loushang.tui.command_palette",
         "CommandPalette": "loushang.tui.command_palette",
         "InfoPanel": "loushang.tui.info_panel",
+        "PlaybackScenarioResult": "loushang.tui.playback_suite",
+        "PlaybackScenarioSpec": "loushang.tui.playback_suite",
+        "PlaybackSuite": "loushang.tui.playback_suite",
+        "format_terminal_diagnostics": "loushang.tui.terminal_diagnostics",
     }
 
     assert not Path("src/loushang/tui/compat.py").exists()

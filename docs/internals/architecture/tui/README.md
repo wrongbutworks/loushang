@@ -57,3 +57,13 @@ model-specific attachment values such as `ImagePart`.
 Clipboard-image acquisition resolves the host once into an ordered backend
 plan behind a common protocol. On macOS, the system `NSPasteboard` adapter is
 preferred, with `pngpaste` retained only as a compatibility fallback.
+
+Generic terminal diagnostics aggregation lives in
+`loushang.tui.terminal_diagnostics`. It combines terminal environment,
+capability, and live runtime facts without knowing which product presents the
+result. Products decide when and where to expose the formatted text.
+
+Generic playback-suite orchestration lives in `loushang.tui.playback_suite`.
+It owns neutral scenario specifications and results, scenario selection,
+timing, and artifact dispatch. Product scenario catalogs, command-line runners,
+and product-specific playback hosts remain in their product adapter packages.

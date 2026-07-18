@@ -19,7 +19,9 @@ AI_OFFLINE_ENV := env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_
 
 HARNESSTUI_SHARED_SOURCES := \
 	src/loushang/tui/clipboard_image.py \
+	src/loushang/tui/playback_suite.py \
 	src/loushang/tui/settings.py \
+	src/loushang/tui/terminal_diagnostics.py \
 	src/loushang/harnesstui
 HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/platform/__init__.py \
@@ -32,6 +34,8 @@ HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/ui/plain_events.py \
 	src/loushang/coding/ui/plain_renderer.py \
 	src/loushang/coding/ui/plain_toolbar.py \
+	src/loushang/coding/ui/playback_runner.py \
+	src/loushang/coding/ui/playback_suite.py \
 	src/loushang/coding/ui/playback_scenarios/surface.py \
 	src/loushang/coding/ui/screen_app.py \
 	src/loushang/coding/ui/screen_events.py \
@@ -51,9 +55,13 @@ HARNESSTUI_TEST_PATHS := \
 	tests/harnesstui \
 	tests/tui/test_clipboard_image.py \
 	tests/tui/test_import_boundaries.py \
+	tests/tui/test_playback_suite.py \
 	tests/tui/test_settings.py \
+	tests/tui/test_terminal_diagnostics.py \
 	tests/architecture/test_import_boundaries.py \
+	tests/coding/test_playback_suite_compatibility.py \
 	tests/coding/test_platform_utils.py \
+	tests/coding/test_terminal_diagnostics_compatibility.py \
 	tests/coding/test_ui_import_boundaries.py \
 	tests/coding/test_screen_coding_tui_app.py \
 	tests/coding/test_screen_coding_tui_events.py \
@@ -62,6 +70,7 @@ HARNESSTUI_TEST_PATHS := \
 	tests/coding/test_screen_coding_tui_state.py \
 	tests/coding/test_screen_coding_tui_surfaces.py \
 	tests/coding/test_screen_settings_page.py \
+	tests/coding/test_screen_tui_playback_runner.py \
 	tests/coding/test_screen_tui_transcript_reader.py \
 	tests/coding/test_tool_transcript_blocks.py \
 	tests/coding/test_ui_command_list.py \
