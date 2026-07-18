@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -23,14 +23,6 @@ from loushang.coding.runtime_profile import (
     selected_transcript_profile,
     validate_coding_runtime_snapshot,
 )
-from loushang.coding.store.backend import (
-    CodingSessionFileLayout,
-    create_coding_file_store,
-)
-from loushang.coding.store.file_codec import (
-    load_current_session_header,
-    load_session_repository,
-)
 from loushang.coding.store.types import (
     SessionMetadata,
     SessionQuery,
@@ -42,25 +34,23 @@ from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
     EXTENSION_DATA_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
-    AgentTranscriptCommit,
     AgentTranscriptContext,
     AgentTranscriptProfile,
     AgentTranscriptRecord,
+    AgentTranscriptSession,
     AgentTranscriptSessionStore,
     ApplicationMessage,
-    BranchContextSummary,
-    CommitResult,
-    ContextCompactionCheckpoint,
-    ConversationMetadataPatch,
     ExtensionData,
-    ModelSelectionSnapshot,
     RecordAnnotationPatch,
-    ThinkingSelectionSnapshot,
-    TranscriptCommitter,
 )
+from loushang.harness.agent_transcript.file_store import (
+    AgentTranscriptFileLayout,
+    create_agent_transcript_file_store,
+    load_agent_transcript_repository,
+    load_current_agent_transcript_header,
+)
+from loushang.harness.agent_transcript.migration import NATIVE_CONVERSATION_VERSION
 from loushang.harness.conversation import (
-    BranchDelta,
-    CommandExecutionRecord,
     ConversationCatalog,
     ConversationHeader,
     ConversationRepository,
@@ -82,7 +72,7 @@ from loushang.harness.storage import (
 from loushang.observability import get_log
 from loushang.protocol import require_json_value
 
-CURRENT_SESSION_VERSION = 1
+CURRENT_SESSION_VERSION = NATIVE_CONVERSATION_VERSION
 _LEAF_UNSET = object()
 _SESSION_INDEX_VERSION = 1
 _SESSION_INDEX_FILENAME = ".session-index.json"
@@ -530,7 +520,7 @@ def _discover_session_repositories(
         if session_file.name.endswith("-export.jsonl"):
             continue
         try:
-            yield load_session_repository(
+            yield load_agent_transcript_repository(
                 session_file,
                 writable=False,
                 persist=False,
@@ -586,7 +576,7 @@ async def _new_session_backend(
     )
 
 
-class SessionManager:
+class SessionManager(AgentTranscriptSession):
     def __init__(
         self,
         *,
@@ -602,44 +592,14 @@ class SessionManager:
         self.session_dir = session_dir
         self.cwd = cwd
         self.persist = persist
-        self._transcript = transcript
         self._runtime_binding = runtime_binding
         self.session_file = session_file
-        self.labels_by_target_id = dict(labels_by_target_id or {})
-        self.label_timestamps_by_target_id = dict(label_timestamps_by_target_id or {})
-        self._committer = TranscriptCommitter(transcript)
-        self._commit_observer: Callable[[CommitResult], None] | None = None
-
-    def set_commit_observer(
-        self,
-        observer: Callable[[CommitResult], None] | None,
-    ) -> None:
-        """Observe newly durable commits without participating in commit success."""
-
-        self._commit_observer = observer
-
-    def _complete_commit(self, commit: AgentTranscriptCommit) -> str:
-        result = CommitResult(
-            record_id=commit.record.record_id,
-            disposition="committed",
-            receipt=commit.receipt,
+        super().__init__(
+            transcript=transcript,
+            labels_by_target_id=labels_by_target_id,
+            label_timestamps_by_target_id=label_timestamps_by_target_id,
+            application_message_id_factory=_generate_id,
         )
-        self._notify_commit(result)
-        return result.record_id
-
-    def _complete_application_commit(self, result: CommitResult) -> str:
-        if result.disposition == "committed":
-            self._notify_commit(result)
-        return result.record_id
-
-    def _notify_commit(self, result: CommitResult) -> None:
-        observer = self._commit_observer
-        if observer is not None:
-            observer(result)
-
-    @property
-    def header(self) -> ConversationHeader:
-        return self._transcript.header
 
     @property
     def runtime_profile(self) -> ResolvedRuntimeProfile:
@@ -650,25 +610,6 @@ class SessionManager:
 
     async def dispose_runtime_profile(self) -> None:
         await self._runtime_binding.dispose()
-
-    @property
-    def entries(self) -> list[AgentTranscriptRecord]:
-        return list(self._transcript.records)
-
-    @property
-    def by_id(self) -> dict[str, AgentTranscriptRecord]:
-        return {entry.record_id: entry for entry in self._transcript.records}
-
-    @property
-    def leaf_id(self) -> str | None:
-        return self._transcript.leaf_id
-
-    @leaf_id.setter
-    def leaf_id(self, value: str | None) -> None:
-        if value is None:
-            self._transcript.reset_branch()
-        else:
-            self._transcript.branch(value)
 
     @classmethod
     async def new(
@@ -727,7 +668,7 @@ class SessionManager:
     @classmethod
     async def load(cls, session_file: Path, persist: bool = True) -> SessionManager:
         path = Path(session_file).expanduser().resolve(strict=False)
-        header = load_current_session_header(path)
+        header = load_current_agent_transcript_header(path)
         snapshot = validate_coding_runtime_snapshot(header)
         capability_snapshot = validate_coding_capability_snapshot(header)
         runtime_profile = resolve_coding_runtime_profile(persist=persist)
@@ -766,9 +707,9 @@ class SessionManager:
                     profile=transcript_profile,
                 )
             else:
-                layout = CodingSessionFileLayout(path.parent)
+                layout = AgentTranscriptFileLayout(path.parent)
                 layout.bind_existing_path(path)
-                source_backend = create_coding_file_store(layout)
+                source_backend = create_agent_transcript_file_store(layout)
                 source_key = layout.key(header.conversation_id)
                 source_snapshot = await source_backend.load(source_key)
                 transcript = await AgentTranscriptSessionStore.create(
@@ -904,27 +845,6 @@ class SessionManager:
             label_timestamps_by_target_id=label_timestamps_by_target_id,
         )
 
-    def get_header(self) -> ConversationHeader:
-        return self.header
-
-    def get_leaf_id(self) -> str | None:
-        return self.leaf_id
-
-    def get_entry(self, entry_id: str) -> AgentTranscriptRecord | None:
-        return self._transcript.get(entry_id)
-
-    def get_leaf_entry(self) -> AgentTranscriptRecord | None:
-        return self._transcript.leaf()
-
-    def get_entries(self) -> list[AgentTranscriptRecord]:
-        return list(self.entries)
-
-    def get_children(self, parent_id: str) -> list[AgentTranscriptRecord]:
-        return list(self._transcript.children(parent_id))
-
-    def get_label(self, entry_id: str) -> str | None:
-        return self.labels_by_target_id.get(entry_id)
-
     def get_session_dir(self) -> Path:
         return self.session_dir
 
@@ -958,58 +878,6 @@ class SessionManager:
             self.session_file,
         )
 
-    def get_branch(
-        self, leaf_id: str | None | object = _LEAF_UNSET
-    ) -> list[AgentTranscriptRecord]:
-        if leaf_id is _LEAF_UNSET:
-            return list(self._transcript.active_path())
-        if not isinstance(leaf_id, str):
-            return []
-        if self._transcript.get(leaf_id) is None:
-            raise ValueError(f"Entry {leaf_id} not found")
-        return list(self._transcript.records_to(leaf_id))
-
-    def get_branch_delta(
-        self,
-        from_id: str,
-        target_id: str,
-    ) -> BranchDelta[AgentTranscriptRecord]:
-        return self._transcript.branch_delta(from_id, target_id)
-
-    def branch(self, branch_from_id: str) -> None:
-        if self._transcript.get(branch_from_id) is None:
-            raise ValueError(f"Entry {branch_from_id} not found")
-        self._transcript.branch(branch_from_id)
-
-    def reset_leaf(self) -> None:
-        self._transcript.reset_branch()
-
-    async def branch_with_summary(
-        self,
-        branch_from_id: str | None,
-        summary: str,
-        details: object | None = None,
-        from_hook: bool | None = None,
-    ) -> str:
-        if branch_from_id is not None and self._transcript.get(branch_from_id) is None:
-            raise ValueError(f"Entry {branch_from_id} not found")
-        details = require_json_value(details, name="branch_summary.details")
-        previous_leaf_id = self.leaf_id
-        self.leaf_id = branch_from_id
-        try:
-            commit = await self._transcript.append_branch_summary(
-                BranchContextSummary(
-                    from_record_id=branch_from_id or "root",
-                    summary=summary,
-                    details=details,
-                    from_hook=from_hook,
-                )
-            )
-            return self._complete_commit(commit)
-        except Exception:
-            self.leaf_id = previous_leaf_id
-            raise
-
     def get_tree(self) -> list[SessionTreeNode[AgentTranscriptRecord]]:
         def build_node(
             node: ConversationTreeNode[AgentTranscriptRecord],
@@ -1024,99 +892,12 @@ class SessionManager:
 
         return [build_node(node) for node in self._transcript.tree()]
 
-    def _record_label_entry(self, entry: AgentTranscriptRecord) -> None:
-        patch = entry.payload
-        if not isinstance(patch, RecordAnnotationPatch):
-            return
-        if patch.operation == "set" and isinstance(patch.value, str):
-            self.labels_by_target_id[patch.target_record_id] = patch.value
-            self.label_timestamps_by_target_id[patch.target_record_id] = (
-                entry.created_at
-            )
-            return
-        self.labels_by_target_id.pop(patch.target_record_id, None)
-        self.label_timestamps_by_target_id.pop(patch.target_record_id, None)
-
-    async def append_entry(self, entry: AgentTranscriptRecord) -> str:
-        commit = await self._transcript.commit(entry)
-        if entry.kind == RECORD_ANNOTATION_PATCH_KIND:
-            self._record_label_entry(entry)
-        return self._complete_commit(commit)
-
-    async def append_message(self, message: object) -> str:
-        if isinstance(message, ApplicationMessage):
-            return (await self.commit_application_message(message)).record_id
-        if isinstance(message, CommandExecutionRecord):
-            return self._complete_commit(
-                await self._transcript.append_command_execution(message)
-            )
-        if isinstance(message, UserMessage | AssistantMessage | ToolResultMessage):
-            return self._complete_commit(
-                await self._transcript.append_agent_message(message)
-            )
-        raise TypeError(f"Unsupported transcript message: {type(message)!r}")
-
-    async def commit_application_message(
-        self, message: ApplicationMessage
-    ) -> CommitResult:
-        result = await self._committer.commit_application_message(message)
-        if result.disposition == "committed":
-            self._notify_commit(result)
-        return result
-
-    async def append_thinking_level_change(self, thinking_level: str) -> str:
-        return self._complete_commit(
-            await self._transcript.append_thinking_selection(
-                ThinkingSelectionSnapshot(level=thinking_level)
-            )
-        )
-
-    async def append_model_change(
-        self,
-        provider: str,
-        model_id: str,
-        *,
-        endpoint_id: str | None = None,
-    ) -> str:
-        return self._complete_commit(
-            await self._transcript.append_model_selection(
-                ModelSelectionSnapshot(
-                    provider=provider,
-                    model_id=model_id,
-                    endpoint_id=endpoint_id,
-                )
-            )
-        )
-
-    async def append_compaction(
-        self,
-        summary: str,
-        first_kept_entry_id: str,
-        tokens_before: int,
-        details: object | None = None,
-        from_hook: bool | None = None,
-    ) -> str:
-        details = require_json_value(details, name="compaction.details")
-        return self._complete_commit(
-            await self._transcript.append_compaction_checkpoint(
-                ContextCompactionCheckpoint(
-                    summary=summary,
-                    first_kept_record_id=first_kept_entry_id,
-                    tokens_before=tokens_before,
-                    details=details,
-                    from_hook=from_hook,
-                )
-            )
-        )
-
     async def append_custom_entry(
         self, custom_type: str, data: object | None = None
     ) -> str:
-        data = require_json_value(data, name="custom_entry.data")
-        return self._complete_commit(
-            await self._transcript.append_extension_data(
-                ExtensionData(extension_type=custom_type, data=data)
-            )
+        return await self.append_extension_data(
+            custom_type,
+            require_json_value(data, name="custom_entry.data"),
         )
 
     async def append_diagnostic_metadata(
@@ -1134,55 +915,8 @@ class SessionManager:
             payload["details"] = details
         return await self.append_custom_entry("diagnostic", payload)
 
-    async def append_custom_message_entry(
-        self,
-        custom_type: str,
-        content: str | list[object],
-        display: bool,
-        details: object | None = None,
-    ) -> str:
-        details = require_json_value(
-            details,
-            name="custom_message.details",
-        )
-        message = ApplicationMessage(
-            application_message_id=_generate_id(),
-            custom_type=custom_type,
-            content=content,  # type: ignore[arg-type]
-            details=details,
-            display=display,
-            timestamp=datetime.now(UTC).timestamp(),
-        )
-        return self._complete_application_commit(
-            await self._committer.commit_application_message(message)
-        )
-
-    async def append_label(self, target_id: str, label: str | None) -> str:
-        if self._transcript.get(target_id) is None:
-            raise ValueError(f"Entry {target_id} not found")
-        normalized = _normalize_label(label)
-        commit = await self._transcript.append_annotation_patch(
-            RecordAnnotationPatch(
-                target_record_id=target_id,
-                namespace="display.label",
-                operation="set" if normalized is not None else "remove",
-                value=normalized,
-            )
-        )
-        record = commit.record
-        self._record_label_entry(record)
-        return self._complete_commit(commit)
-
     async def append_session_info(self, name: str | None) -> str:
-        normalized = _normalize_session_name(name)
-        patch = (
-            ConversationMetadataPatch(values={"name": normalized})
-            if normalized is not None
-            else ConversationMetadataPatch(removed_keys=("name",))
-        )
-        return self._complete_commit(
-            await self._transcript.append_metadata_patch(patch)
-        )
+        return await self.append_conversation_name(name)
 
     async def fork(self, leaf_id: str) -> SessionManager:
         branch_entries = self.get_branch(leaf_id)
@@ -1272,10 +1006,10 @@ class SessionManager:
             raise ValueError("Cannot delete the currently active session")
         if not target.is_file():
             return False
-        layout = CodingSessionFileLayout(target.parent)
+        layout = AgentTranscriptFileLayout(target.parent)
         key = layout.bind_existing_path(target)
         try:
-            await create_coding_file_store(layout).delete(key)
+            await create_agent_transcript_file_store(layout).delete(key)
         except StoreNotFoundError:
             return False
         cls._refresh_index_if_present(target.parent)
@@ -1300,7 +1034,7 @@ class SessionManager:
             if session_file.name.endswith("-export.jsonl"):
                 continue
             try:
-                conversation = load_session_repository(
+                conversation = load_agent_transcript_repository(
                     session_file,
                     writable=False,
                     persist=False,
