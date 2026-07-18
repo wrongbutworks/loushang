@@ -4,13 +4,13 @@ default_compaction_reserve_tokens = 256
 default_compaction_keep_recent_tokens = 256
 
 [profiles.coding_primary]
-provider = "moonshot"
-endpoint = "anthropic-messages"
+provider = "kimi-code"
+endpoint = "kimi-code-anthropic"
 model = "kimi-for-coding"
 
 [profiles.coding_tooling]
-provider = "moonshot"
-endpoint = "anthropic-messages"
+provider = "kimi-code"
+endpoint = "kimi-code-anthropic"
 model = "kimi-for-coding"
 
 [profiles.openai_frontier]
@@ -292,7 +292,7 @@ id = "legacy-023"
 slug = "23_kimi_weekly_usage_ledger.py"
 title = "23_kimi_weekly_usage_ledger.py - 周用量本地账本"
 category = "sdk"
-description = "调用后记录每次 usage 到本地 ledger，按本周窗口聚合输出累计消耗与剩余比例（可选提供周额度）。"
+description = "基于模型响应 usage 记录本地 ledger，按本周窗口聚合累计消耗与剩余比例（可选提供本地周预算）。"
 runtime = "online"
 entrypoint = "23_kimi_weekly_usage_ledger.py"
 model_profile = "coding_primary"

@@ -105,17 +105,28 @@ def test_minimax_anthropic_catalog_uses_sdk_base_url_and_short_cache() -> None:
 def test_kimi_code_catalog_uses_its_own_api_key_not_moonshot_platform_key() -> None:
     registry = _load_curated_registry()
     provider = registry.get_provider("kimi-code")
-    endpoint = registry.get_endpoint("kimi-code", "kimi-code-anthropic")
-    model = registry.get_model("kimi-code", "kimi-code-anthropic", "kimi-for-coding")
+    anthropic_endpoint = registry.get_endpoint("kimi-code", "kimi-code-anthropic")
+    anthropic_model = registry.get_model(
+        "kimi-code", "kimi-code-anthropic", "kimi-for-coding"
+    )
+    openai_endpoint = registry.get_endpoint("kimi-code", "kimi-code-openai")
+    openai_model = registry.get_model(
+        "kimi-code", "kimi-code-openai", "kimi-for-coding"
+    )
 
     assert provider is not None
-    assert endpoint is not None
-    assert model.auth is not None
-    assert model.auth.kind == "apiKey"
-    assert model.auth.api_key_env == "KIMI_CODE_API_KEY"
-    assert model.auth.header == "Authorization"
-    assert model.auth.prefix == "Bearer "
-    assert endpoint.base_url == "https://api.kimi.com/coding"
+    assert anthropic_endpoint is not None
+    assert openai_endpoint is not None
+    for model in (anthropic_model, openai_model):
+        assert model.auth is not None
+        assert model.auth.kind == "apiKey"
+        assert model.auth.api_key_env == "KIMI_CODE_API_KEY"
+        assert model.auth.header == "Authorization"
+        assert model.auth.prefix == "Bearer "
+        assert model.pricing is None
+        assert model.supports_temperature is False
+    assert anthropic_endpoint.base_url == "https://api.kimi.com/coding"
+    assert openai_endpoint.base_url == "https://api.kimi.com/coding/v1"
 
 
 def test_curated_openai_style_custom_base_urls_declare_adapter() -> None:

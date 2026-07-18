@@ -44,7 +44,7 @@ async def _run_offline_simulation() -> bool:
     for step, (key_name, status) in enumerate(steps, start=1):
         print_event(
             "model.start",
-            {"step": step, "key": key_name, "status": "start", "provider": "moonshot", "endpoint": "kimi-code-anthropic"},
+            {"step": step, "key": key_name, "status": "start", "provider": "kimi-code", "endpoint": "kimi-code-anthropic"},
         )
         print_event("tool.start", {"name": "http_request", "step": step, "key": key_name})
 

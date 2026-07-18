@@ -51,10 +51,10 @@ def test_minimal_coding_example_reports_agent_error_message(
         module,
         "describe_model",
         lambda model: {
-            "provider": "moonshot",
-            "model": "kimi-k2.5",
+            "provider": "kimi-code",
+            "model": "kimi-for-coding",
             "api": "anthropic-messages",
-            "base_url": "https://api.moonshot.cn/anthropic",
+            "base_url": "https://api.kimi.com/coding",
         },
     )
     monkeypatch.setattr(module, "create_kimi_session", lambda **kwargs: _FakeSession())
@@ -134,14 +134,22 @@ def test_weekly_usage_ledger_preserves_known_cost() -> None:
     assert payload.cost_total == pytest.approx(0.0075)
 
 
-def test_kimi_code_example_catalog_keeps_unknown_cost_and_fixed_temperature() -> None:
-    raw = json.loads(Path("examples/coding/models/models.kimi-code.json").read_text())
-    endpoints = raw["providers"]["moonshot"]["endpoints"]
+def test_kimi_code_examples_use_the_builtin_catalog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("LOUSHANG_EXAMPLES_MODEL_CATALOG", raising=False)
+    monkeypatch.delenv("LOUSHANG_EXAMPLES_ARTIFACT_ROOT", raising=False)
+    module = _load_module(
+        Path("examples/coding/_support.py"),
+        "examples_coding_support_builtin_catalog",
+    )
 
+    assert module._resolve_model_catalog() is None
     for endpoint_id in ("kimi-code-openai", "kimi-code-anthropic"):
-        for model in endpoints[endpoint_id]["models"].values():
-            assert "pricing" not in model
-            assert model["capabilities"]["temperature"] is False
+        model = module.build_kimi_model(endpoint_id=endpoint_id)
+        assert model.provider_id == "kimi-code"
+        assert model.endpoint_id == endpoint_id
+        assert model.id == "kimi-for-coding"
 
 
 def test_usage_inspect_example_marks_unknown_cost(
@@ -162,7 +170,7 @@ def test_usage_inspect_example_marks_unknown_cost(
             role="assistant",
             content=[TextPart(type="text", text="ok")],
             api="anthropic-messages",
-            provider="moonshot",
+            provider="kimi-code",
             model="kimi-for-coding",
             response_id=None,
             usage=Usage(
@@ -185,10 +193,10 @@ def test_usage_inspect_example_marks_unknown_cost(
         module,
         "describe_model",
         lambda model: {
-            "provider": "moonshot",
+            "provider": "kimi-code",
             "endpoint": "kimi-code-anthropic",
             "api": "anthropic-messages",
-            "base_url": "https://api.moonshot.cn/anthropic",
+            "base_url": "https://api.kimi.com/coding",
             "model": "kimi-for-coding",
         },
     )

@@ -139,6 +139,7 @@ check-ai-imports:
 
 check-ai-examples:
 	$(AI_OFFLINE_ENV) uv run python scripts/ai/check_examples.py
+	$(AI_OFFLINE_ENV) uv run pytest tests/examples -q
 
 check-ai-coverage:
 	mkdir -p .artifacts/ai

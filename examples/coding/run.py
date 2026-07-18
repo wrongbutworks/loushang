@@ -91,6 +91,8 @@ def _provider_default_key_envs(provider: str) -> list[str]:
         if key_name is None:
             return []
         return [key_name] if isinstance(key_name, str) else key_name
+    if provider == "kimi-code":
+        return ["KIMI_CODE_API_KEY"]
     return []
 
 

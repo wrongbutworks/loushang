@@ -106,10 +106,10 @@ def main() -> None:
     print_event("message.end", {"result": "pass", "resolved_endpoints": len(entries)})
 
     print("=== offline expected sample ===")
-    print("resolved catalog: .../examples/coding/models/models.kimi-code.json")
+    print("resolved catalog: <unset>; using built-in catalog")
     print("event: message.start")
-    print("- endpoint[moonshot:kimi-code-openai] api=openai-completions base_url=https://api.kimi.com/coding/v1")
-    print("- endpoint[moonshot:kimi-code-anthropic] api=anthropic-messages base_url=https://api.kimi.com/coding/")
+    print("- endpoint[kimi-code:kimi-code-openai] api=openai-completions base_url=https://api.kimi.com/coding/v1")
+    print("- endpoint[kimi-code:kimi-code-anthropic] api=anthropic-messages base_url=https://api.kimi.com/coding")
     print("message.end result=pass")
 
 

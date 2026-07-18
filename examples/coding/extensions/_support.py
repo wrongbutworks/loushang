@@ -83,6 +83,7 @@ def _resolve_model_registry() -> ModelRegistry | None:
 
 
 MODEL_ID = "kimi-for-coding"
+KIMI_PROVIDER_ID = "kimi-code"
 DEFAULT_SYSTEM_PROMPT = (
     "You are Kimi, an AI assistant provided by Moonshot AI. "
     "You are better at Chinese and English conversations and provide helpful, accurate answers."
@@ -107,7 +108,7 @@ def offline_model() -> Model:
 def resolve_kimi_model_id(
     *, default: str = MODEL_ID, endpoint_id: str = "kimi-code-anthropic"
 ) -> str:
-    if endpoint_id in {"anthropic-messages", "kimi-code-anthropic", "kimi-code-openai"}:
+    if endpoint_id in {"kimi-code-anthropic", "kimi-code-openai"}:
         return default
     return os.getenv("KIMI_MODEL_NAME", "").strip() or default
 
@@ -121,10 +122,10 @@ def build_kimi_model(
         else resolve_kimi_model_id(endpoint_id=endpoint_id)
     )
     try:
-        return _resolve_model("moonshot", endpoint_id, resolved_model_id)
+        return _resolve_model(KIMI_PROVIDER_ID, endpoint_id, resolved_model_id)
     except Exception:
         if resolved_model_id != MODEL_ID:
-            return _resolve_model("moonshot", endpoint_id, MODEL_ID)
+            return _resolve_model(KIMI_PROVIDER_ID, endpoint_id, MODEL_ID)
         raise
 
 
@@ -140,15 +141,9 @@ def describe_model(model: Model) -> dict[str, str | None]:
 
 
 def resolve_api_key() -> str:
-    api_key = (
-        os.environ.get("KIMI_API_KEY")
-        or os.environ.get("KIMI_AUTH_TOKEN")
-        or os.environ.get("MOONSHOT_API_KEY")
-        or os.environ.get("ANTHROPIC_API_KEY")
-        or os.environ.get("OPENAI_API_KEY")
-    )
+    api_key = os.environ.get("KIMI_CODE_API_KEY")
     if not api_key:
-        raise RuntimeError("Please export KIMI_API_KEY or MOONSHOT_API_KEY before running online extension examples.")
+        raise RuntimeError("Please export KIMI_CODE_API_KEY before running online extension examples.")
     return api_key
 
 

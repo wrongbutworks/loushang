@@ -479,6 +479,52 @@
         "prefix": "Bearer "
       },
       "endpoints": {
+        "kimi-code-openai": {
+          "displayName": "Kimi Code OpenAI Completions",
+          "api": "openai-completions",
+          "baseUrl": "https://api.kimi.com/coding/v1",
+          "region": "cn",
+          "lane": "coding",
+          "docs": "https://www.kimi.com/code/docs/en/third-party-tools/other-coding-agents",
+          "models": {
+            "kimi-for-coding": {
+              "displayName": "Kimi for Coding",
+              "family": "kimi-coding",
+              "alias": "default-coding",
+              "knowledge": "2025-01",
+              "releaseDate": "2026-01",
+              "lastUpdated": "2026-01",
+              "defaults": {
+                "maxOutputTokens": 32768
+              },
+              "capabilities": {
+                "contextWindow": 262144,
+                "maxTokens": 32768,
+                "input": [
+                  "text"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              },
+              "adapter": {
+                "streamingUsage": false,
+                "reasoningEffort": false,
+                "strictSchema": true
+              }
+            }
+          },
+          "adapter": {
+            "reasoningFormat": "moonshot",
+            "developerRole": false
+          }
+        },
         "kimi-code-anthropic": {
           "displayName": "Kimi Code Anthropic Messages",
           "api": "anthropic-messages",
@@ -513,14 +559,7 @@
                 "toolUse": true,
                 "structuredOutput": false,
                 "attachment": false,
-                "temperature": true
-              },
-              "pricing": {
-                "currency": "CNY",
-                "input": 0,
-                "output": 0,
-                "cacheRead": 0,
-                "cacheWrite": 0
+                "temperature": false
               }
             }
           },
