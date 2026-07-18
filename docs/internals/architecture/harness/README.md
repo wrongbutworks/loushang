@@ -102,6 +102,9 @@ planning, work event persistence, or AI provider behavior.
   defines live tool activation, dynamic command composition and dispatch, and
   selected command-tool execution while Products retain policy, command
   implementations, extension semantics, prompts, and presentation.
+- [Session Diagnostics Runtime Boundary](session-diagnostics-boundary.md)
+  defines common session-correlated diagnostic reads and Agent/Tool failure
+  projection while Products retain diagnostic selection and presentation.
 - [Store And Runtime Event Protocol Migration](store-event-protocol-migration.md)
   records the implemented protocol-based Store cutover, Memory/File reference
   adapters, Agent transcript persistence facade, common runtime-event envelope,
