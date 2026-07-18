@@ -98,6 +98,10 @@ planning, work event persistence, or AI provider behavior.
 - [Agent Transcript Maintenance Runtime Boundary](agent-transcript-maintenance-boundary.md)
   defines common context accounting, compaction/retry lifecycle, checkpoint
   persistence, and runtime events while Products retain strategy and policy.
+- [Session Capabilities Runtime Boundary](session-capabilities-boundary.md)
+  defines live tool activation, dynamic command composition and dispatch, and
+  selected command-tool execution while Products retain policy, command
+  implementations, extension semantics, prompts, and presentation.
 - [Store And Runtime Event Protocol Migration](store-event-protocol-migration.md)
   records the implemented protocol-based Store cutover, Memory/File reference
   adapters, Agent transcript persistence facade, common runtime-event envelope,

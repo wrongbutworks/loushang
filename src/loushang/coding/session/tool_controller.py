@@ -5,27 +5,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-from loushang.agent.types import AgentTool, ensure_agent_tool, is_agent_tool_like
+from loushang.agent.types import AgentTool
 from loushang.coding.prompt import assemble_prompt
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
 from loushang.harness.capabilities.prompt import PromptSectionComposer
-from loushang.harness.capabilities.tools import (
-    ToolActivationChange,
-    ToolActivationCoordinator,
-)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.activation import ResourceActivationRuntime
 from loushang.harness.resources.types import ResourceBundle
-from loushang.harness.tools.contribution import (
-    ToolContribution,
-    ToolResolutionResult,
-    resolve_tool_contributions,
-)
+from loushang.harness.session import SessionToolRuntime
+from loushang.harness.tools.contribution import resolve_tool_contributions
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.context import ToolContext
-from loushang.harness.tools.workspace.normalize import tool_to_definition
-from loushang.harness.tools.workspace.wrapper import create_tool_definition_from_tool
 
 _DEFAULT_ACTIVE_TOOL_NAMES: tuple[str, ...] = (
     "read",
@@ -57,6 +48,8 @@ class AgentPort(Protocol):
 
 @dataclass
 class ToolController:
+    """Coding prompt and policy adapter for ``SessionToolRuntime``."""
+
     agent: AgentPort
     session_manager: SessionManager
     tool_registry: ToolRegistry | None
@@ -74,25 +67,26 @@ class ToolController:
     prompt_section_composer: PromptSectionComposer = field(
         default_factory=PromptSectionComposer
     )
-    _activation: ToolActivationCoordinator[ToolDefinition] = field(
-        init=False,
-        repr=False,
-    )
+    _runtime: SessionToolRuntime = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        self._activation = ToolActivationCoordinator(
-            available=self._available_definitions(),
-            requested_names=self.initial_active_tool_names,
-            allowed_names=self.allowed_tool_names,
-            should_activate_new=self._should_activate_new_tool,
-            rebind=self._rebind_active_tools,
+        self._runtime = SessionToolRuntime(
+            agent=self.agent,
+            tool_registry=self.tool_registry,
+            allowed_tool_names=self.allowed_tool_names,
+            initial_active_tool_names=self.initial_active_tool_names,
+            default_active_tool_names=self._default_active_tool_names,
+            should_activate_new_tool=self._should_activate_new_tool,
+            build_tool_context=self.build_tool_context,
+            rebuild_prompt=self._rebuild_prompt,
+            resolve_contributions=resolve_tool_contributions,
         )
 
     def get_active_tool_names(self) -> list[str]:
-        return list(self._activation.snapshot().active_names)
+        return self._runtime.get_active_tool_names()
 
     def get_all_tools(self) -> list[ToolDefinition]:
-        return list(self._activation.filter_items(self._available_definitions()))
+        return self._runtime.get_all_tools()
 
     def get_all_tool_infos(self) -> list[dict[str, object]]:
         return [
@@ -104,23 +98,10 @@ class ToolController:
         ]
 
     def get_tool_definition(self, name: str) -> ToolDefinition | None:
-        if not self.is_tool_allowed(name):
-            return None
-        if self.tool_registry is not None:
-            try:
-                return self.tool_registry.get_definition(name)
-            except KeyError:
-                return None
-        for definition in self.get_all_tools():
-            if definition.name == name:
-                return definition
-        return None
+        return self._runtime.get_tool_definition(name)
 
     def apply_active_tools(self, tool_names: list[str]) -> None:
-        if self.tool_registry is None:
-            raise RuntimeError("Active tool selection requires a tool registry")
-        self._sync_available(activate_new=False, rebind=False)
-        self._activation.request(tool_names)
+        self._runtime.apply_active_tools(tool_names)
 
     def build_tool_context(self, *, tool_call_id: str) -> ToolContext:
         return ToolContext(
@@ -138,32 +119,41 @@ class ToolController:
     def resolve_active_tool_definitions(
         self, tool_names: list[str]
     ) -> tuple[list[ToolDefinition], list[str]]:
-        if self.tool_registry is None:
-            raise RuntimeError("Active tool selection requires a tool registry")
-        self._sync_available(activate_new=False, rebind=False)
-        resolution = self._activation.resolve(tool_names)
-        return list(resolution.items), list(resolution.names)
+        return self._runtime.resolve_active_tool_definitions(tool_names)
 
     def is_tool_allowed(self, name: str) -> bool:
-        return self._activation.is_allowed(name)
+        return self._runtime.is_tool_allowed(name)
 
     def filter_allowed_tool_names(self, tool_names: list[str]) -> list[str]:
-        return list(self._activation.filter_names(tool_names))
+        return self._runtime.filter_allowed_tool_names(tool_names)
 
     def filter_allowed_tool_definitions(
         self, definitions: list[ToolDefinition]
     ) -> list[ToolDefinition]:
-        return list(self._activation.filter_items(definitions))
+        return self._runtime.filter_allowed_tool_definitions(definitions)
 
     def tool_source_info(self, name: str) -> object | None:
-        if self.tool_registry is None:
-            return None
-        try:
-            return self.tool_registry.get_source_info(name)
-        except KeyError:
-            return None
+        return self._runtime.tool_source_info(name)
 
     def default_active_tool_names(self) -> list[str]:
+        return self._runtime.default_active_names()
+
+    def ensure_tool_registry(self) -> ToolRegistry:
+        if self.tool_registry is None:
+            self.tool_registry = ToolRegistry()
+            self._runtime.set_tool_registry(self.tool_registry)
+        return self.tool_registry
+
+    def register_runtime_tool(
+        self, tool: object, *, source_info: object | None = None
+    ) -> ToolDefinition:
+        self.ensure_tool_registry()
+        return self._runtime.register_runtime_tool(tool, source_info=source_info)
+
+    def rebuild_prompt_and_tools_view(self) -> None:
+        self._runtime.rebuild_prompt_and_tools_view()
+
+    def _default_active_tool_names(self) -> list[str]:
         if self.tool_registry is None:
             return []
         enabled_names = [
@@ -183,48 +173,20 @@ class ToolController:
         )
         return active_names
 
-    def ensure_tool_registry(self) -> ToolRegistry:
-        if self.tool_registry is None:
-            self.tool_registry = ToolRegistry()
-        return self.tool_registry
+    def _should_activate_new_tool(self, name: str, definition: ToolDefinition) -> bool:
+        del definition
+        return self.default_activate_new_tools and name not in _BUILTIN_TOOL_NAMES
 
-    def register_runtime_tool(
-        self, tool: object, *, source_info: object | None = None
-    ) -> ToolDefinition:
-        registry = self.ensure_tool_registry()
-        contribution = _runtime_tool_contribution(tool, source_info=source_info)
-        resolution = resolve_tool_contributions(
-            (
-                *registry.list_contributions(),
-                contribution,
-            ),
-            fail_on_errors=False,
-        )
-        registration_contribution = _runtime_tool_registration_contribution(
-            resolution,
-            fallback=contribution,
-        )
-        definition = registry.register_tool(
-            registration_contribution.definition,
-            source_info=registration_contribution.source_info,
-        )
-        if not self.is_tool_allowed(definition.name):
-            self.rebuild_prompt_and_tools_view()
-            return definition
-
-        self._sync_available(activate_new=True, rebind=True)
-        return definition
-
-    def rebuild_prompt_and_tools_view(self) -> None:
-        active_definitions: list[ToolDefinition] | None = None
-        tool_prompt: str | None = None
-        if self.tool_registry is not None:
-            self._sync_available(activate_new=False, rebind=False)
-            active_definitions = list(self._activation.active_items())
-        elif self.show_empty_tool_prompt:
+    def _rebuild_prompt(
+        self, active_definitions: list[ToolDefinition] | None
+    ) -> None:
+        if self.show_empty_tool_prompt and active_definitions is None:
             active_definitions = []
-        if self.show_empty_tool_prompt and active_definitions == []:
-            tool_prompt = "Available tools:\n(none)"
+        tool_prompt = (
+            "Available tools:\n(none)"
+            if self.show_empty_tool_prompt and active_definitions == []
+            else None
+        )
         prompt_assembly = assemble_prompt(
             base_prompt=self.base_prompt,
             resource_bundle=self.get_resource_bundle(),
@@ -236,38 +198,6 @@ class ToolController:
             prompt_section_composer=self.prompt_section_composer,
         )
         self.agent.system_prompt = prompt_assembly.system_prompt
-
-    def _available_definitions(self) -> list[ToolDefinition]:
-        if self.tool_registry is not None:
-            return self.tool_registry.list_definitions()
-        return [
-            create_tool_definition_from_tool(tool)
-            if isinstance(tool, AgentTool)
-            else tool_to_definition(tool)
-            for tool in self.agent.tools
-        ]
-
-    def _sync_available(self, *, activate_new: bool, rebind: bool) -> None:
-        self._activation.refresh(
-            self._available_definitions(),
-            activate_new=activate_new,
-            rebind=rebind,
-        )
-
-    def _should_activate_new_tool(self, name: str, definition: ToolDefinition) -> bool:
-        del definition
-        return self.default_activate_new_tools and name not in _BUILTIN_TOOL_NAMES
-
-    def _rebind_active_tools(
-        self,
-        change: ToolActivationChange[ToolDefinition],
-    ) -> None:
-        if self.tool_registry is not None:
-            self.agent.tools = self.tool_registry.materialize_definitions(
-                list(change.active_items),
-                context_provider=self.build_tool_context,
-            )
-        self.rebuild_prompt_and_tools_view()
 
     async def _emit_tool_audit_event(
         self,
@@ -288,41 +218,6 @@ def _tool_info_from_definition(
         if source_info is not None
         else _synthetic_tool_source_info(definition.name),
     }
-
-
-def _runtime_tool_contribution(
-    tool: object, *, source_info: object | None = None
-) -> ToolContribution:
-    definition = _runtime_tool_definition(tool)
-    return ToolContribution(
-        definition,
-        source_info=source_info,
-        metadata={
-            "kind": "runtime_tool",
-            "runtime_tool": definition.name,
-        },
-    )
-
-
-def _runtime_tool_definition(tool: object) -> ToolDefinition:
-    if isinstance(tool, ToolDefinition):
-        return tool
-    if is_agent_tool_like(tool):
-        return create_tool_definition_from_tool(ensure_agent_tool(tool))
-    return tool_to_definition(tool)
-
-
-def _runtime_tool_registration_contribution(
-    resolution: ToolResolutionResult,
-    *,
-    fallback: ToolContribution,
-) -> ToolContribution:
-    for contribution in resolution.contributions:
-        if contribution.definition.name != fallback.definition.name:
-            continue
-        if contribution.metadata.get("kind") == "runtime_tool":
-            return contribution
-    return fallback
 
 
 def _synthetic_tool_source_info(name: str) -> dict[str, object]:

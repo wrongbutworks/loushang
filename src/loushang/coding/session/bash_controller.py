@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from loushang.agent import AbortController, Agent
+from loushang.agent import Agent
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
-from loushang.harness.conversation import CommandExecutionRecord
+from loushang.harness.session import (
+    SessionCommandExecutionRuntime,
+    UserCommandHookResult,
+    UserCommandRequest,
+)
+from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.protocol import (
     normalize_bash_result_from_protocol,
     project_bash_result_for_protocol,
@@ -28,6 +33,8 @@ def _noop_sync_extension_diagnostics(*, phase: str) -> None:
 
 @dataclass
 class BashController:
+    """Coding extension and protocol adapter for Harness command execution."""
+
     agent: Agent
     session_manager: SessionManager
     get_extension_runner: ExtensionRunnerProvider
@@ -35,12 +42,23 @@ class BashController:
     sync_extension_diagnostics: ExtensionDiagnosticsSync = (
         _noop_sync_extension_diagnostics
     )
+    _runtime: SessionCommandExecutionRuntime = field(init=False, repr=False)
 
-    _bash_abort_controller: AbortController | None = None
+    def __post_init__(self) -> None:
+        self._runtime = SessionCommandExecutionRuntime(
+            command_name="Bash",
+            get_cwd=self.session_manager.get_cwd,
+            get_definition=self._get_bash_definition,
+            build_execution_params=_build_bash_execution_params,
+            create_call_id=self._create_call_id,
+            append_record=self.session_manager.append_message,
+            refresh_context=self._refresh_context,
+            before_execute=self._before_bash,
+        )
 
     @property
     def is_running(self) -> bool:
-        return self._bash_abort_controller is not None
+        return self._runtime.is_running
 
     @property
     def has_pending_messages(self) -> bool:
@@ -60,111 +78,16 @@ class BashController:
         on_output: OutputCallback | None = None,
         operations: object | None = None,
     ) -> dict[str, object]:
-        if self._bash_abort_controller is not None:
-            raise RuntimeError("Bash execution already in progress")
-        effective_cwd = cwd or self.session_manager.get_cwd()
-        selected_operations = operations
-        extension_runner = self.get_extension_runner()
-        if extension_runner is not None and extension_runner.has_handlers("user_bash"):
-            event_result = await extension_runner.emit_user_bash(
-                {
-                    "type": "user_bash",
-                    "command": command,
-                    "exclude_from_context": exclude_from_context,
-                    "cwd": effective_cwd,
-                },
-                cwd=effective_cwd,
-            )
-            bash_result = _bash_result_from_extension_user_bash_result(event_result)
-            if bash_result is not None:
-                await self.record_result(
-                    command=command,
-                    result=bash_result,
-                    exclude_from_context=exclude_from_context,
-                )
-                self.sync_extension_diagnostics(phase="runtime")
-                return bash_result
-            extension_operations = _bash_operations_from_extension_user_bash_result(
-                event_result
-            )
-            if extension_operations is not None:
-                selected_operations = extension_operations
-            self.sync_extension_diagnostics(phase="runtime")
-
-        tool_registry = self.get_tool_registry()
-        if tool_registry is None:
-            raise RuntimeError("Bash execution requires a tool registry")
-
-        try:
-            bash_definition = tool_registry.get_definition("bash")
-        except KeyError as exc:
-            raise RuntimeError("Bash tool is not registered") from exc
-
-        controller = AbortController()
-        self._bash_abort_controller = controller
-        streamed_chunks: list[str] = []
-
-        async def _forward_update(partial_result) -> None:
-            details = getattr(partial_result, "details", None)
-            stream = details.get("stream") if isinstance(details, dict) else None
-            if stream not in {"stdout", "stderr"}:
-                return
-            text = "".join(
-                block.text
-                for block in partial_result.content
-                if getattr(block, "type", None) == "text"
-            )
-            if not text:
-                return
-            streamed_chunks.append(text)
-            if on_output is None:
-                return
-            forwarded = on_output(ExecOutputChunk(stream=stream, text=text))
-            if inspect.isawaitable(forwarded):
-                await forwarded
-
-        params: dict[str, object] = {
-            "command": ["/bin/bash", "-lc", command],
-            "cwd": effective_cwd,
-        }
-        if env is not None:
-            params["env"] = [list(pair) for pair in env]
-        if timeout_seconds is not None:
-            params["timeout_seconds"] = timeout_seconds
-        if stdin is not None:
-            params["stdin"] = stdin
-        if selected_operations is not None:
-            params["__operations"] = selected_operations
-
-        try:
-            tool_result = await bash_definition.execute(
-                f"bash-{self.session_manager.get_session_record().session_id}-{len(self.session_manager.get_entries())}",
-                params,
-                controller.signal,
-                _forward_update,
-            )
-            bash_result = _bash_result_from_tool_result(tool_result)
-        except RuntimeError as exc:
-            if "Command aborted" not in str(exc) or not getattr(
-                controller.signal, "aborted", False
-            ):
-                raise
-            bash_result = {
-                "output": "".join(streamed_chunks),
-                "exit_code": None,
-                "cancelled": True,
-                "truncated": False,
-                "full_output_path": None,
-            }
-        finally:
-            self._bash_abort_controller = None
-
-        await self.record_result(
-            command=command,
-            result=bash_result,
+        return await self._runtime.execute(
+            command,
+            cwd=cwd,
+            env=env,
+            timeout_seconds=timeout_seconds,
+            stdin=stdin,
             exclude_from_context=exclude_from_context,
+            on_output=on_output,
+            operations=operations,
         )
-        return bash_result
 
     async def execute_pi_style(
         self,
@@ -180,21 +103,15 @@ class BashController:
                 await result
 
         options = dict(options or {})
+        cwd = options.get("cwd")
+        stdin = options.get("stdin")
         result = await self.execute_bash(
             command,
-            cwd=options.get("cwd") if isinstance(options.get("cwd"), str) else None,
-            timeout_seconds=(
-                float(options["timeout_seconds"])
-                if isinstance(options.get("timeout_seconds"), int | float)
-                else (
-                    float(options["timeoutSeconds"])
-                    if isinstance(options.get("timeoutSeconds"), int | float)
-                    else None
-                )
+            cwd=cwd if isinstance(cwd, str) else None,
+            timeout_seconds=_option_float(
+                options.get("timeout_seconds", options.get("timeoutSeconds"))
             ),
-            stdin=options.get("stdin")
-            if isinstance(options.get("stdin"), str)
-            else None,
+            stdin=stdin if isinstance(stdin, str) else None,
             exclude_from_context=bool(
                 options.get(
                     "excludeFromContext", options.get("exclude_from_context", False)
@@ -206,8 +123,7 @@ class BashController:
         return project_bash_result_for_protocol(result)
 
     def abort(self) -> None:
-        if self._bash_abort_controller is not None:
-            self._bash_abort_controller.abort()
+        self._runtime.abort()
 
     async def record_result(
         self,
@@ -216,25 +132,11 @@ class BashController:
         result: dict[str, object],
         exclude_from_context: bool,
     ) -> None:
-        exit_code = result.get("exit_code")
-        await self.session_manager.append_message(
-            CommandExecutionRecord(
-                command=command,
-                output=str(result.get("output") or ""),
-                exit_code=exit_code if type(exit_code) is int else None,
-                cancelled=bool(result.get("cancelled", False)),
-                truncated=bool(result.get("truncated", False)),
-                full_output_path=(
-                    str(result["full_output_path"])
-                    if isinstance(result.get("full_output_path"), str)
-                    and result.get("full_output_path")
-                    else None
-                ),
-                exclude_from_context=exclude_from_context,
-            )
+        await self._runtime.record_result(
+            command=command,
+            result=result,
+            exclude_from_context=exclude_from_context,
         )
-        session_context = self.session_manager.build_session_context()
-        self.agent.state.set_messages(session_context.messages)
 
     async def record_pi_style_result(
         self,
@@ -243,10 +145,9 @@ class BashController:
         options: dict[str, object] | None = None,
     ) -> None:
         options = dict(options or {})
-        normalized = normalize_bash_result_from_protocol(result)
         await self.record_result(
             command=command,
-            result=normalized,
+            result=normalize_bash_result_from_protocol(result),
             exclude_from_context=bool(
                 options.get(
                     "excludeFromContext", options.get("exclude_from_context", False)
@@ -254,27 +155,49 @@ class BashController:
             ),
         )
 
+    def _get_bash_definition(self) -> ToolDefinition | None:
+        tool_registry = self.get_tool_registry()
+        if tool_registry is None:
+            raise RuntimeError("Bash execution requires a tool registry")
+        try:
+            return tool_registry.get_definition("bash")
+        except KeyError as exc:
+            raise RuntimeError("Bash tool is not registered") from exc
 
-def _bash_result_from_tool_result(tool_result) -> dict[str, object]:
-    details = tool_result.details if isinstance(tool_result.details, dict) else {}
-    output = "".join(
-        block.text
-        for block in tool_result.content
-        if getattr(block, "type", None) == "text"
-    )
-    stderr = details.get("stderr")
-    if isinstance(stderr, str) and stderr and not output.endswith(stderr):
-        output = output + stderr
-    return {
-        "output": output,
-        "exit_code": details.get("exit_code"),
-        "cancelled": bool(details.get("cancelled", False)),
-        "truncated": bool(
-            details.get("truncated", False) or details.get("stderr_truncated", False)
-        ),
-        "full_output_path": details.get("stdout_artifact_path")
-        or details.get("stderr_artifact_path"),
-    }
+    def _create_call_id(self) -> str:
+        return (
+            f"bash-{self.session_manager.get_session_record().session_id}-"
+            f"{len(self.session_manager.get_entries())}"
+        )
+
+    def _refresh_context(self) -> None:
+        self.agent.state.set_messages(
+            list(self.session_manager.build_session_context().messages)
+        )
+
+    async def _before_bash(
+        self,
+        request: UserCommandRequest,
+    ) -> UserCommandHookResult | None:
+        extension_runner = self.get_extension_runner()
+        if extension_runner is None or not extension_runner.has_handlers("user_bash"):
+            return None
+        event_result = await extension_runner.emit_user_bash(
+            {
+                "type": "user_bash",
+                "command": request.command,
+                "exclude_from_context": request.exclude_from_context,
+                "cwd": request.cwd,
+            },
+            cwd=request.cwd,
+        )
+        self.sync_extension_diagnostics(phase="runtime")
+        result = _bash_result_from_extension_user_bash_result(event_result)
+        if result is not None:
+            return UserCommandHookResult(result=result)
+        return UserCommandHookResult(
+            operations=_bash_operations_from_extension_user_bash_result(event_result)
+        )
 
 
 def _bash_result_from_extension_user_bash_result(
@@ -292,6 +215,10 @@ def _bash_result_from_extension_user_bash_result(
     return normalize_bash_result_from_protocol(result)
 
 
+def _build_bash_execution_params(command: str, cwd: str) -> dict[str, object]:
+    return {"command": ["/bin/bash", "-lc", command], "cwd": cwd}
+
+
 def _bash_operations_from_extension_user_bash_result(
     event_result: object | None,
 ) -> object | None:
@@ -300,3 +227,7 @@ def _bash_operations_from_extension_user_bash_result(
     if isinstance(event_result, dict):
         return event_result.get("operations")
     return getattr(event_result, "operations", None)
+
+
+def _option_float(value: object) -> float | None:
+    return float(value) if isinstance(value, int | float) else None
