@@ -104,7 +104,7 @@
 - 对 provider adapter layer 有明确约束价值
 - 若不保留，会削弱边界稳定性
 
-### 5. Provider Adapter Component (`loushang.ai.providers.*`)
+### 5. Provider Adapter Component (`loushang.ai.protocols.*`)
 
 **动作：**
 

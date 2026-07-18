@@ -32,7 +32,7 @@
   - provider: "anthropic" | "openai" | "kimi" | ...
   - api: "anthropic-messages" | "openai-completions" | ...
   - model: "kimi-k2.5"
-  - compat: { betaFeatures: [...], providerTransport: "httpx" | "sdk" }
+  - adapter: { protocol: "anthropic-messages" | "openai-completions" | "openai-responses" }
   - timebase: "monotonic" | "wallclock"
   - redaction: { pii: true, secrets: true }
   - hashing: { algorithm: "sha256", requestKey: "..." }
@@ -83,7 +83,7 @@
 - Anthropic（httpx/SDK）
   - 录制 vendor_event：`message_start/content_block_* /message_delta/message_stop/error`
   - 同时录制 raw_part：`response_start/text_delta/thinking_delta/tool_call_* /usage_delta/stop_reason/response_done`
-  - Headers：透传/记录 `anthropic-version`、betaFeatures（fine-grained-tool-streaming、interleaved-thinking）
+  - 记录已脱敏的协议语义：版本标识、fine-grained tools、interleaved thinking
 - OpenAI Completions/Responses
   - 录制 SDK 事件或 SSE 行（Completions）
   - 同步生成 raw_part；在 `responses` 兼容代理缺失结束块时由 finally 补齐

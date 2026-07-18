@@ -30,7 +30,7 @@ This directory keeps the current architecture notes for the frozen
 - `src/loushang/ai/auth/`
 - `src/loushang/ai/event_stream/`
 - `src/loushang/ai/tool/`
-- `src/loushang/ai/providers/`
+- `src/loushang/ai/protocols/`
 - `src/loushang/ai/messages.py`
 - `src/loushang/ai/context.py`
 - `src/loushang/ai/pricing.py`
@@ -42,12 +42,11 @@ This directory keeps the current architecture notes for the frozen
 - `api/` owns public `complete`, `stream`, and `complete_structured`.
 - `provider/` owns `ProviderRequest`, request resolution, invocation guards,
   retry, cancellation, and provider request validation.
-- `providers/` owns the three core protocol adapters:
+- `protocols/` owns the three core protocol adapters:
   `openai-completions`, `openai-responses`, and `anthropic-messages`.
 - `auth/` resolves catalog API-key defaults or typed request auth such as
-  `OAuthBearerAuth` into request headers. The same AI-owned package contains
-  explicit OAuth lifecycle and credential-storage support, but model invocation
-  never performs login, refresh, persistence, or account selection implicitly.
+  `OAuthBearerAuth` into request headers. OAuth lifecycle and credential storage
+  remain outside the package.
 - Product-backed routes reuse the three protocol adapters through catalog data;
   they do not introduce product-specific provider modules.
 - `usage.py` owns response usage payload helpers only; account or platform quota

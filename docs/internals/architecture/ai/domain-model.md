@@ -84,28 +84,30 @@ Provider 下的接入端点对象，位于 `providers.{providerKey}.endpoints.{e
 - `region`
 - `lane`
 - `docs`
-- `authOverride`
+- `auth`
+- `headers`
+- `adapter`
 - `models`
 
 语义：
 
 - Endpoint 是实际可接入的协议/地址单元
 - Endpoint 决定该通道使用哪种 API 协议
-- Endpoint 可以对 Provider 的认证进行覆盖
+- Endpoint 可以定义自己的完整认证声明
 - Endpoint 是模型清单的直接挂载点
 
 当前可以明确确认的关系：
 
 - 一个 Endpoint 属于一个 Provider
 - 一个 Endpoint 包含多个 EndpointModel
-- 一个 Endpoint 可选定义一个 endpoint-level `authOverride`
+- 一个 Endpoint 可选定义一个 endpoint-level `auth`
 
 注意：
 
 - `region`、`lane` 目前都只是 Endpoint 的属性
-- `providerTransport` 已收进 `compat.providerTransport`
 - 当前 `models.json` 中没有独立的 `Region` 对象
-- 当前 `models.json` 中也没有独立的 `Compat`、`Defaults`、`Binding` 对象
+- `headers` 是端点静态 header；`adapter` 是协议适配配置
+- 当前 `models.json` 中没有独立的 `Binding` 对象
 
 
 ## 3. Model
@@ -151,7 +153,8 @@ Endpoint 下的模型对象，位于 `providers.{providerKey}.endpoints.{endpoin
 当前明确存在两种位置：
 
 - Provider 级 `auth`
-- Endpoint 级 `authOverride`
+- Endpoint 级 `auth`
+- Model 级 `auth`（schema 支持，当前目录可按需使用）
 
 示例字段：
 
@@ -159,18 +162,18 @@ Endpoint 下的模型对象，位于 `providers.{providerKey}.endpoints.{endpoin
 - `apiKeyEnv`
 - `header`
 - `prefix`
-- `extraHeaders`
 
 语义：
 
-- Auth 用来声明如何从环境或调用上下文中取认证材料
+- Auth 用来声明调用所需的认证种类和 header 绑定规则
 - Provider 级 `auth` 表示默认认证方式
-- Endpoint 级 `authOverride` 表示对 Provider 默认认证的覆盖
+- Endpoint 或 Model 级 `auth` 是完整替换，不与上级字段合并
+- 生效优先级是 Model > Endpoint > Provider
 
 注意：
 
 - 当前 JSON 中不存在独立的 OAuth 领域对象
-- OAuth 相关能力属于运行时认证系统，而不是 `models.json` 的原生领域模型
+- OAuth 登录、刷新和凭据存储不属于 `loushang.ai` 模型调用边界
 
 
 ## 值对象与内嵌结构
@@ -235,7 +238,8 @@ Endpoint 下的模型对象，位于 `providers.{providerKey}.endpoints.{endpoin
 - `Provider` 1..* `Endpoint`
 - `Endpoint` 1..* `Model`
 - `Provider` 0..1 `auth`
-- `Endpoint` 0..1 `authOverride`
+- `Endpoint` 0..1 `auth`
+- `Model` 0..1 `auth`
 - `Model` 0..1 `pricing`
 
 从这套关系可以得出的结论是：
@@ -249,7 +253,7 @@ Endpoint 下的模型对象，位于 `providers.{providerKey}.endpoints.{endpoin
 
 如果只从 `models.json` 出发，可以把底层领域模型压缩成一句话：
 
-> `Provider` 通过一个或多个 `Endpoint` 暴露模型接入能力；每个 `Endpoint` 使用一种 API 协议、可选覆盖认证方式，并直接持有一组可调用的 `EndpointModel` 定义。
+> `Provider` 通过一个或多个 `Endpoint` 暴露模型接入能力；每个 `Endpoint` 使用一种 API 协议、可选定义完整认证声明，并直接持有一组可调用的 `Model` 定义。
 
 
 ## 对后续重构的约束
