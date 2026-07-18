@@ -101,6 +101,10 @@ planning, work event persistence, or AI provider behavior.
   common queue, compaction, retry, branch, metadata, package-progress, and
   transcript-commit facts, the single ordered Session stream, and Product event
   projection ownership.
+- [Session Lifecycle Runtime Boundary](session-lifecycle-runtime-boundary.md)
+  defines active Product-session replacement, Product-selected store/hooks,
+  staged import, configurable fork profiles, and Harness's conservative
+  default `at` fork profile.
 - [Application Input Runtime Boundary](application-input-runtime-boundary.md)
   defines common direct and queued ApplicationMessage delivery, one durable
   commit owner, direct projection retry semantics, and Product Extension/API

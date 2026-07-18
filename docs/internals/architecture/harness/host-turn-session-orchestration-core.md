@@ -90,6 +90,13 @@ failure or cancellation therefore propagates without republishing an object
 that may already be partly or fully finalized; an uncommitted candidate is
 still rolled back by `SessionOperationCoordinator`.
 
+`loushang.harness.session.SessionLifecycleRuntime` is the higher-level active
+session profile over those two primitives. It supplies the common
+new/restore/fork/import/dispose transaction and accepts Product store/hooks.
+Its default `ForkProfile` supports only `at`; a Product can inject extra fork
+positions and a resolver without putting Product transcript semantics into
+Harness. See [Session Lifecycle Runtime Boundary](session-lifecycle-runtime-boundary.md).
+
 ## Product Ownership
 
 Coding and future Product adapters retain:
@@ -109,9 +116,10 @@ Coding and future Product adapters retain:
   commands, control/model/auth, channels, and UI.
 
 `AgentSession` remains the Coding composition root and public Product facade.
-`AgentSessionRuntime` remains the Product adapter for concrete
-new/restore/fork/clone/import semantics. The reusable transaction and lifecycle
-state no longer lives in those Product classes.
+`AgentSessionRuntime` remains the Product adapter for concrete fork payload
+interpretation, extension events, diagnostics, roots, and presentation. The
+reusable active-session transaction and lifecycle state now live in
+`harness.session.SessionLifecycleRuntime`.
 
 ## Non-Goals
 
