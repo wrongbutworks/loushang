@@ -34,7 +34,8 @@ This layer owns reusable Harness-oriented terminal interaction, including:
   approval lifecycle has defined the corresponding ports.
 
 `loushang.tui` continues to own terminal mechanics, rendering, layout, input
-decoding, generic widgets, and transcript presentation primitives.
+decoding, host clipboard-image acquisition, generic widgets, and transcript
+presentation primitives.
 `loushang.harness` continues to own neutral runtime and durable conversation
 contracts. Product adapters such as `loushang.coding.ui` continue to own raw
 product-event interpretation, commands, policy, branding, and runtime assembly.

@@ -208,9 +208,9 @@ def test_screen_input_router_resize_updates_visual_movement_width() -> None:
 
 
 def test_screen_input_router_pastes_clipboard_image_as_attachment(tmp_path) -> None:
-    from loushang.coding.platform.clipboard_image import ClipboardImage
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import ScreenInputRouter
+    from loushang.tui.clipboard_image import ClipboardImage
 
     payload = b"fake png bytes"
     app = ScreenCodingTuiApp(model_label="kimi", cwd=str(tmp_path), branch="main", session_label="abcd", now=lambda: 12.0)
@@ -283,9 +283,9 @@ def test_screen_input_router_reports_clipboard_image_read_failure_without_crashi
 
 
 def test_screen_input_router_reports_clipboard_image_write_failure_without_crashing(tmp_path) -> None:
-    from loushang.coding.platform.clipboard_image import ClipboardImage
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import ScreenInputRouter
+    from loushang.tui.clipboard_image import ClipboardImage
 
     blocked_path = tmp_path / "not-a-directory"
     blocked_path.write_text("file", encoding="utf-8")
@@ -305,9 +305,9 @@ def test_screen_input_router_reports_clipboard_image_write_failure_without_crash
 
 
 def test_screen_input_router_sanitizes_clipboard_image_filename_token(tmp_path) -> None:
-    from loushang.coding.platform.clipboard_image import ClipboardImage
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import ScreenInputRouter
+    from loushang.tui.clipboard_image import ClipboardImage
 
     payload = b"PNG"
     app = ScreenCodingTuiApp(model_label="kimi", cwd=str(tmp_path), branch="main", session_label="abcd", now=lambda: 12.0)
@@ -329,9 +329,9 @@ def test_screen_input_router_sanitizes_clipboard_image_filename_token(tmp_path) 
 
 
 def test_screen_input_router_orders_clipboard_images_by_marker_position(tmp_path) -> None:
-    from loushang.coding.platform.clipboard_image import ClipboardImage
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import ScreenInputRouter
+    from loushang.tui.clipboard_image import ClipboardImage
 
     images = iter(
         [

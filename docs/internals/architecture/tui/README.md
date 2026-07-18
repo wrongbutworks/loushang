@@ -45,3 +45,9 @@ Generic settings rows, themes, formatting, and input helpers live in
 `loushang.tui.settings`. Reusable Harness-oriented settings pages, model
 selection, and surface framing live one layer outward in `loushang.harnesstui`.
 Product shells remain responsible for supplying values and applying decisions.
+
+Host clipboard-image acquisition lives in
+`loushang.tui.clipboard_image`. This generic capability owns platform fallback,
+neutral image bytes and MIME normalization. Product shells remain responsible
+for workspace persistence, composer markers, UI copy, and conversion into
+model-specific attachment values such as `ImagePart`.
