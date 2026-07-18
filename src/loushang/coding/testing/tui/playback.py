@@ -303,7 +303,9 @@ class ScreenTuiLoopPlayback(CodingScenarioScreenLoopPlayback):
                 now=now,
             )
 
-        super().__init__(
+        # ``dataclass(slots=True)`` replaces the class object on Python 3.11,
+        # so zero-argument ``super()`` can retain the pre-decoration class.
+        super(ScreenTuiLoopPlayback, self).__init__(
             app_factory=app_factory,
             interruption_message=CODING_INTERRUPTION_MESSAGE,
             cancellation_message=CODING_CANCELLATION_MESSAGE,
@@ -331,7 +333,7 @@ class ScreenTuiLoopPlayback(CodingScenarioScreenLoopPlayback):
         is_local_command: LocalCommandPredicate | None = None,
         terminal_mode_factory: TerminalModeFactory | None = None,
     ) -> ScreenTuiLoopPlaybackResult:
-        result = super().run(
+        result = super(ScreenTuiLoopPlayback, self).run(
             *chunks,
             handle_prompt=handle_prompt,
             handle_local=handle_local,
