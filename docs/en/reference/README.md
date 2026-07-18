@@ -83,6 +83,20 @@ Built-in interactive commands include:
 /new /compact /resume /reload /quit
 ```
 
+## Authentication Migration
+
+Coding no longer owns an authentication lifecycle. API key models resolve the
+environment variables declared by their model catalog entries when AI requests
+are executed. The Coding CLI no longer accepts `--api-key`, and the built-in
+command catalog no longer includes `/login` or `/logout`.
+
+SDK callers must remove uses of `loushang.coding.control.AuthManager`,
+`AuthResolution`, the `auth_manager=` service/session argument, and the
+`oauth_provider_registry=` session argument. Coding does not acquire, refresh,
+persist, or select OAuth credentials. Applications that require OAuth must
+provide a current request-ready credential through the AI or Agent API rather
+than through Coding.
+
 ## TUI
 
 - [TUI Runner](tui-runner.md): public lifecycle entry point for terminal apps built with `loushang.tui`.
