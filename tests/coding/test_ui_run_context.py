@@ -236,6 +236,22 @@ def test_coding_tui_run_context_close_is_idempotent() -> None:
     assert calls == ["tui.end", "unsubscribe", "observability.exit"]
 
 
+def test_coding_tui_run_context_preserves_legacy_constructor_and_context_field() -> None:
+    from loushang.coding.ui.run_context import CodingTuiRunContext
+
+    observability_context = _ObservabilityContext()
+    context = CodingTuiRunContext(
+        _emit_in_terminal,
+        lambda: None,
+        observability_context,
+        _noop_trace,
+        True,
+    )
+
+    assert context._observability_context is observability_context
+    assert context._closed is True
+
+
 class _EventRenderer:
     def handle(self, _event: dict[str, object]) -> None:
         pass

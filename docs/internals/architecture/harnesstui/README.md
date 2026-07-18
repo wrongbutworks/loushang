@@ -7,6 +7,10 @@ direction is:
 ```text
 `loushang.coding.ui` -> `loushang.harnesstui` -> `loushang.tui`
                                              -> `loushang.harness`
+
+`loushang.coding.testing.tui` -> `loushang.harnesstui.testing`
+                              -> `loushang.harnesstui`
+                              -> `loushang.tui`
 ```
 
 The reverse dependencies are forbidden. In particular, `loushang.harnesstui`
@@ -179,6 +183,73 @@ existing `make test-tui-render-contract` gate covers this new boundary.
 The explicit module path above is the stable import for this capability. The
 package initializer does not provide a convenience re-export.
 
+## Conversation Interaction Control
+
+The reusable control plane for a full-screen conversation lives behind five
+explicit entrypoints:
+
+- `loushang.harnesstui.conversation.input` coordinates decoded input,
+  completion, surfaces, running-submit modes, and neutral attachments;
+- `loushang.harnesstui.conversation.control` coordinates abort, steer, and
+  follow-up actions over caller-supplied controllers and status callbacks;
+- `loushang.harnesstui.conversation.dispatch` owns product-neutral dispatch,
+  result-presentation, and stable event-stream lifecycles;
+- `loushang.harnesstui.conversation.run_context` owns UI subscription cleanup,
+  stable emission, tracing, and context-exit ordering;
+- `loushang.harnesstui.conversation.screen_runner` owns the reusable terminal
+  read/route/run loop over explicit screen, router, and result ports.
+
+These modules build conversation interaction from neutral UI values. They do
+not own a Harness Session, persistence, runtime construction, raw product
+events, Coding intents, model-facing image types, workspace paths, command
+policy, or product copy. A product facade supplies those decisions and adapts
+neutral attachments to its runtime-facing values. In particular, Coding keeps
+`PromptIntent` and `BashIntent`, `ImagePart`, Session and observability setup,
+raw-event interpretation, `.loushang` storage policy, and its interruption,
+queue, and error messages.
+
+The screen runner coordinates existing rendering calls but does not move or
+replace transcript segmentation, invalidation, render caches, frame
+composition, or terminal writes. Those hot-path responsibilities and the
+independent render-performance contract remain unchanged. The conversation
+package initializer intentionally does not re-export these entrypoints.
+
+## Conversation Playback Testing
+
+`loushang.harnesstui.testing` is opt-in test support for exercising the
+product-neutral interaction ports above. Its dependency direction is
+`loushang.coding.testing.tui` -> `loushang.harnesstui.testing` ->
+`loushang.harnesstui` / `loushang.tui`. The reverse direction is forbidden:
+production Harnesstui must never import its testing package, and the generic
+TUI remains independent of both Harnesstui layers.
+
+The shared testing package must not import Coding, AI, Agent, or Harness
+runtime packages. It owns only reusable terminal test mechanics over neutral
+ports:
+
+- `loushang.harnesstui.testing.ports` defines the application, router,
+  snapshot, result, and factory protocols used by playback drivers;
+- `loushang.harnesstui.testing.input_playback` owns decoded-input playback,
+  neutral routed results, state snapshots, artifacts, and the fluent input
+  scenario;
+- `loushang.harnesstui.testing.screen_loop_playback` owns scripted TTY chunks,
+  real screen-loop playback, captured output and state artifacts, and the
+  fluent loop scenario;
+- `loushang.harnesstui.testing.scenarios.factory` binds those drivers to a
+  product-supplied app, router, screen runner, artifact adapters, and frame
+  contracts;
+- the `composer`, `lifecycle`, `terminal`, `transcript`, and `surface` modules
+  under `loushang.harnesstui.testing.scenarios` provide reusable recipe
+  builders. They do not construct a product catalog at import time.
+
+These explicit modules are the stable testing entrypoints. The testing package
+initializer intentionally does not re-export them. Coding binds the neutral
+recipes into its concrete catalog under `loushang.coding.testing.tui.scenarios`
+and retains the app/router adapters, product-only scenarios, fakes, CLI runner,
+product copy, fixture volumes, and render-performance budgets. The former
+`loushang.coding.ui.playback*` modules remain temporary compatibility facades
+only; production UI modules do not own playback implementations.
+
 ## Plain Conversation Presentation
 
 `loushang.harnesstui.plain.renderer` owns the reusable plain-terminal renderer:
@@ -227,6 +298,9 @@ Harnesstui owns the reusable interaction assembled from those generic widgets:
 - `loushang.harnesstui.surface.factory` owns pure information and command
   surface builders over presentation-ready text and neutral `SelectItem`
   values;
+- `loushang.harnesstui.surface.controller` owns application-side surface intent
+  normalization, submit dispatch, bottom/overlay placement bookkeeping, and
+  transient approval-presentation serialization;
 - `loushang.harnesstui.selection.model` owns scoped/all model selection over
   product-supplied `SelectItem` values;
 - `loushang.harnesstui.selection.catalog` owns the opaque `ModelChoice` and its
@@ -236,14 +310,18 @@ Harnesstui owns the reusable interaction assembled from those generic widgets:
   completion, palette, matching, display ordering, and selector-row
   projection.
 
-These modules own interaction mechanics, layout, existing copy, and visual
-behavior, but not product data or decisions. Coding continues to own settings
-manager persistence, model and command discovery, model application, command
-catalog and slash-command policy, status-provider updates, approval routing,
-surface lifecycle, and adaptation of product data into neutral labels and
-choices. Generic
-`Surface`, `SurfaceHost`, `SelectionSurface`, and `SearchableList` mechanics
-remain in `loushang.tui`.
+These modules own reusable interaction mechanics, layout, existing shared copy,
+and visual behavior, but not product data or decisions. The surface coordinator
+normalizes UI intents and serializes approval presentations; it never resolves
+approval policy, executes a guarded action, or owns approval audit state.
+Coding continues to own settings-manager persistence, model and command
+discovery, model application, command-catalog and slash-command policy,
+status-provider updates, approval resolver/runtime binding and product copy,
+and adaptation of product data into neutral labels and choices. Generic
+`Surface`, `SurfaceHost`, `SelectionSurface`, and `SearchableList` mechanics,
+including actual focus, stack, geometry, and host lifetime, remain in
+`loushang.tui`. The coordinator does not participate in transcript rendering,
+render invalidation, cache management, frame composition, or terminal writes.
 
 The model settings page emits the shared UI intent
 `InputIntent(kind="setting", text="model.current", note=<choice value>)`.

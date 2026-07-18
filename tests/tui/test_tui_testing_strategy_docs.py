@@ -44,7 +44,8 @@ def test_testing_strategy_documents_composer_selection_manual_smoke() -> None:
 
     assert "composer-selection-stress" in text
     assert (
-        "python -m loushang.coding.ui.playback_runner composer-selection-stress" in text
+        "python -m loushang.coding.testing.tui.runner composer-selection-stress"
+        in text
     )
     assert "Shift+Left" in text
     assert "Shift+Home" in text

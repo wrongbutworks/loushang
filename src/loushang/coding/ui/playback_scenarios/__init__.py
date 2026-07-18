@@ -1,2 +1,1 @@
-"""Grouped screen TUI playback scenario definitions."""
-
+"""Compatibility package for Coding TUI playback scenarios."""

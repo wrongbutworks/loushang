@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import os
 import subprocess
 import sys
@@ -69,9 +70,113 @@ def test_conversation_raw_event_dispatch_stays_in_coding_adapter() -> None:
         assert 'event.get("type")' not in path.read_text(encoding="utf-8")
 
 
+def test_coding_ui_playback_modules_are_compatibility_facades() -> None:
+    facade_functions = {
+        Path("src/loushang/coding/ui/playback.py"): {"__getattr__", "__dir__"},
+        Path("src/loushang/coding/ui/playback_fakes.py"): set(),
+        Path("src/loushang/coding/ui/playback_runner.py"): {"main"},
+        Path("src/loushang/coding/ui/playback_suite.py"): set(),
+    }
+    implementation_imports = {
+        Path("src/loushang/coding/ui/playback.py"): (
+            "loushang.coding.testing.tui.playback"
+        ),
+        Path("src/loushang/coding/ui/playback_fakes.py"): (
+            "loushang.coding.testing.tui.fakes"
+        ),
+        Path("src/loushang/coding/ui/playback_runner.py"): (
+            "loushang.coding.testing.tui.runner"
+        ),
+        Path("src/loushang/coding/ui/playback_suite.py"): "loushang.tui.playback_suite",
+    }
+
+    offenders: list[str] = []
+    for path, allowed_functions in facade_functions.items():
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        definitions = {
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        unexpected = definitions - allowed_functions
+        offenders.extend(f"{path}:{name}" for name in sorted(unexpected))
+        if implementation_imports[path] not in source:
+            offenders.append(f"{path}:missing implementation facade import")
+
+    scenario_root = Path("src/loushang/coding/ui/playback_scenarios")
+    for path in sorted(scenario_root.glob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        definitions = [
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+        offenders.extend(f"{path}:{name}" for name in definitions)
+        if path.name != "__init__.py":
+            owner = f"loushang.coding.testing.tui.scenarios.{path.stem}"
+            if owner not in source:
+                offenders.append(f"{path}:missing {owner} facade import")
+
+    assert offenders == []
+
+
+def test_shared_playback_support_does_not_own_coding_copy_or_budgets() -> None:
+    shared = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(Path("src/loushang/harnesstui/testing").rglob("*.py"))
+    )
+    for token in (
+        "Conversation interrupted",
+        "Operation aborted",
+        ".loushang",
+        "INTERACTION_FRAME_BUDGET",
+        "LONG_TRANSCRIPT_FRAME_BUDGET",
+        "PRODUCT_COMPOSED_FRAME_BUDGET",
+        "PRODUCT_STREAMING_CONTROL_FRAME_BUDGET",
+    ):
+        assert token not in shared
+
+    budgets = Path(
+        "src/loushang/coding/testing/tui/scenarios/budgets.py"
+    ).read_text(encoding="utf-8")
+    binding = Path(
+        "src/loushang/coding/testing/tui/scenario_binding.py"
+    ).read_text(encoding="utf-8")
+    product = Path(
+        "src/loushang/coding/testing/tui/scenarios/product.py"
+    ).read_text(encoding="utf-8")
+
+    assert "INTERACTION_FRAME_BUDGET" in budgets
+    assert "LONG_TRANSCRIPT_FRAME_BUDGET" in budgets
+    assert "Conversation interrupted" in binding
+    assert "Operation aborted" in binding
+    assert "PRODUCT_COMPOSED_FRAME_BUDGET" in product
+    assert "PRODUCT_STREAMING_CONTROL_FRAME_BUDGET" in product
+
+
 def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
     moved_definitions = {
+        Path("src/loushang/coding/ui/lifecycle.py"): ("class RunLifecycle",),
         Path("src/loushang/coding/ui/model_list.py"): ("class ModelChoice",),
+        Path("src/loushang/coding/ui/prompt_dispatch.py"): (
+            "class PromptDispatchOutcome",
+        ),
+        Path("src/loushang/coding/ui/run_context.py"): (
+            "def _stable_emit_factory",
+        ),
+        Path("src/loushang/coding/ui/screen_loop.py"): (
+            "async def _finish_active_task",
+            "def _write_startup_welcome",
+            "def _configure_runtime_for_terminal_context",
+            "def _elapsed_since",
+            "def _pop_interrupt_pending_steer",
+            "async def _run_surface_intent_handler",
+            "async def _maybe_await",
+            "def _supports_keyword",
+            "def _terminal_size",
+        ),
         Path("src/loushang/coding/ui/settings_common.py"): ("class ConfigRow",),
         Path("src/loushang/coding/ui/settings_config.py"): (
             "class ConfigSettingsPage",
@@ -111,6 +216,7 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
             "class CodingTuiStatusProvider",
             "class StatusSnapshot",
         ),
+        Path("src/loushang/coding/ui/steer.py"): ("class SteerHandler",),
         Path("src/loushang/coding/ui/transcript_source.py"): (
             "class ActiveWindowTranscriptSource",
             "def _active_window_records",
@@ -122,6 +228,7 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
         Path("src/loushang/coding/ui/screen_surfaces.py"): (
             "class ModelSelectorSurface",
             "class ScreenSurfaceView",
+            "class SurfaceEvent",
         ),
     }
 
@@ -133,6 +240,77 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
     ]
 
     assert offenders == []
+
+
+def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() -> (
+    None
+):
+    shared = "\n".join(
+        Path(f"src/loushang/harnesstui/conversation/{module}.py").read_text(
+            encoding="utf-8"
+        )
+        for module in ("control", "dispatch", "input", "run_context", "screen_runner")
+    )
+
+    for token in (
+        "Follow-up is only available while a run is active.",
+        "Follow-up queued.",
+        "Conversation interrupted - tell the model what to do differently.",
+        "Operation aborted",
+        ".loushang/clipboard",
+        "ImagePart",
+        "PromptIntent",
+        "BashIntent",
+    ):
+        assert token not in shared
+
+    follow_up = Path("src/loushang/coding/ui/follow_up_queue.py").read_text(
+        encoding="utf-8"
+    )
+    screen_loop = Path("src/loushang/coding/ui/screen_loop.py").read_text(
+        encoding="utf-8"
+    )
+    screen_input = Path("src/loushang/coding/ui/screen_input.py").read_text(
+        encoding="utf-8"
+    )
+    prompt_dispatch = Path(
+        "src/loushang/coding/ui/prompt_dispatch.py"
+    ).read_text(encoding="utf-8")
+
+    assert "Follow-up is only available while a run is active." in follow_up
+    assert "Follow-up queued." in follow_up
+    assert (
+        "Conversation interrupted - tell the model what to do differently."
+        in screen_loop
+    )
+    assert "Operation aborted" in screen_loop
+    assert "ImagePart" in screen_input
+    assert 'Path(self.app.cwd) / ".loushang" / "clipboard"' in screen_input
+    assert "PromptIntent" in prompt_dispatch
+    assert "BashIntent" in prompt_dispatch
+
+
+def test_shared_surface_controller_does_not_own_coding_policy_or_copy() -> None:
+    shared = Path(
+        "src/loushang/harnesstui/surface/controller.py"
+    ).read_text(encoding="utf-8")
+    coding = Path("src/loushang/coding/ui/screen_surfaces.py").read_text(
+        encoding="utf-8"
+    )
+
+    for token in (
+        "CodingCommandCatalog",
+        "SettingsPageView",
+        "ScreenCodingTuiApp",
+        "select_available_model",
+        "parse_prompt_intent",
+        "Action confirmed:",
+        "Action rejected",
+        "Approval request is no longer pending",
+        "Command selected:",
+    ):
+        assert token not in shared
+        assert token in coding
 
 
 def test_shared_status_provider_does_not_own_settings_manager_adaptation() -> None:

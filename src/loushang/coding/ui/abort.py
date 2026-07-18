@@ -1,36 +1,28 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from typing import Any, Protocol
 
 from loushang.coding.ui.intent import AbortIntent
+from loushang.harnesstui.conversation.control import (
+    AbortActionHandler,
+    InterruptionRenderer,
+    RunControl,
+    StableEmit,
+    TraceFn,
+)
 
-
-class Lifecycle(Protocol):
-    active: bool
-    active_id: int
-    aborted_id: int | None
-
-    def mark_abort_requested(self) -> None: ...
+Lifecycle = RunControl
+Renderer = InterruptionRenderer
 
 
 class Controller(Protocol):
     async def dispatch(self, intent: AbortIntent) -> Any: ...
 
 
-class Renderer(Protocol):
-    def render_interruption(self) -> None: ...
-
-
-class StableEmit(Protocol):
-    def __call__(self, write_callable: Callable[[], None], *, label: str) -> Awaitable[None]: ...
-
-
-class TraceFn(Protocol):
-    def __call__(self, name: str, **data: Any) -> None: ...
-
-
 class AbortHandler:
+    """Adapt Coding's ``AbortIntent`` to shared abort action control."""
+
     def __init__(
         self,
         *,
@@ -41,6 +33,7 @@ class AbortHandler:
         session_running: Callable[[], bool],
         trace: TraceFn,
     ) -> None:
+        # Preserve the historical Coding attributes as adapter seams.
         self._lifecycle = lifecycle
         self._controller = controller
         self._renderer = renderer
@@ -49,23 +42,18 @@ class AbortHandler:
         self._trace = trace
 
     async def abort(self) -> None:
-        self._trace(
-            "abort.start",
-            active_run=self._lifecycle.active,
-            active_run_id=self._lifecycle.active_id,
-            aborted_run_id=self._lifecycle.aborted_id,
-            session_running=self._session_running(),
+        async def dispatch_abort() -> Any:
+            return await self._controller.dispatch(AbortIntent())
+
+        handler = AbortActionHandler(
+            run_control=self._lifecycle,
+            abort_action=dispatch_abort,
+            renderer=self._renderer,
+            emit=self._emit,
+            session_running=self._session_running,
+            trace=self._trace,
         )
-        self._lifecycle.mark_abort_requested()
-        await self._emit(self._renderer.render_interruption, label="abort:interruption")
-        await self._controller.dispatch(AbortIntent())
-        self._trace(
-            "abort.end",
-            active_run=self._lifecycle.active,
-            active_run_id=self._lifecycle.active_id,
-            aborted_run_id=self._lifecycle.aborted_id,
-            session_running=self._session_running(),
-        )
+        await handler.abort()
 
 
 __all__ = ["AbortHandler"]
