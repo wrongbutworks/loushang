@@ -107,6 +107,9 @@ planning, work event persistence, or AI provider behavior.
   Product-facing operation surface over already-bound session runtimes while
   Products retain model/auth, prompts, extension protocols, lifecycle policy,
   and channel projection.
+- [Session Inspection Boundary](session-inspection-boundary.md) defines
+  Product-neutral Agent/transcript state, context usage, and statistics while
+  Products retain display and wire-format projection.
 - [Session Diagnostics Runtime Boundary](session-diagnostics-boundary.md)
   defines common session-correlated diagnostic reads and Agent/Tool failure
   projection while Products retain diagnostic selection and presentation.

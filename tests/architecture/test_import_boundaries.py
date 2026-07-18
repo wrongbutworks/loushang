@@ -130,6 +130,7 @@ def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> 
             "loushang.agent.json_codec",
         ),
         harness_root / "session": (
+            "loushang.ai.model",
             "loushang.ai.types",
             "loushang.agent",
         ),
@@ -343,7 +344,7 @@ def test_agent_transcript_interaction_runtime_is_neutral_and_adopted() -> None:
     assert "loushang.coding" not in interaction_source
     assert "AgentTranscriptNavigationRuntime" in tree_source
     assert "AgentTranscriptSelectionRuntime" in selection_source
-    assert "AgentTranscriptInspector" in view_source
+    assert "AgentSessionInspector" in view_source
     assert "Product-supplied" in boundary
     assert "Coding keeps" in boundary
 
@@ -411,6 +412,27 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     assert "Product Binding" in boundary
     assert "Coding Binding" in boundary
     assert "Pi-style" in boundary
+
+
+def test_session_inspection_is_neutral_and_adopted() -> None:
+    inspection_source = Path(
+        "src/loushang/harness/session/inspection.py"
+    ).read_text(encoding="utf-8")
+    view_source = Path(
+        "src/loushang/coding/session/session_view_controller.py"
+    ).read_text(encoding="utf-8")
+    types_source = Path("src/loushang/coding/session/types.py").read_text(
+        encoding="utf-8"
+    )
+    boundary = Path(
+        "docs/internals/architecture/harness/session-inspection-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in inspection_source
+    assert "AgentSessionInspector" in view_source
+    assert "loushang.harness.session.inspection" in types_source
+    assert "Product Binding" in boundary
+    assert "Coding Binding" in boundary
 
 
 def test_session_diagnostics_runtime_is_neutral_and_adopted() -> None:

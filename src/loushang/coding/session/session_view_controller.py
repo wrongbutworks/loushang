@@ -14,13 +14,10 @@ from loushang.coding.session.usage_payload import serialize_context_usage_payloa
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
-    AgentTranscriptInspector,
     AgentTranscriptRecord,
     ContextCompactionCheckpoint,
-    build_context_usage_snapshot,
-    estimate_context_tokens,
 )
-from loushang.harness.host.types import RunState
+from loushang.harness.session.inspection import AgentSessionInspector
 
 
 @dataclass
@@ -36,96 +33,37 @@ class SessionViewController:
     get_compaction_reserve_tokens: Callable[[], int] = lambda: 0
     get_compaction_compact_percent: Callable[[], float] = lambda: 100.0
     get_compaction_keep_recent_tokens: Callable[[], int | None] = lambda: None
-    _inspector: AgentTranscriptInspector = field(init=False, repr=False)
+    _runtime: AgentSessionInspector = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        self._inspector = AgentTranscriptInspector(self.session_manager)
+        self._runtime = AgentSessionInspector(
+            agent=self.agent,
+            session=self.session_manager,
+            get_session_id=lambda: self.session_manager.get_session_record().session_id,
+            get_session_name=lambda: (
+                self.session_manager.get_session_record().metadata.name
+            ),
+            get_active_tool_names=self.get_active_tool_names,
+            is_retrying=self.is_retrying,
+            is_compacting=self.is_compacting,
+            get_last_diagnostics=self.get_last_diagnostics,
+            get_model_selection=self.get_model_selection,
+            is_host_running=self.is_host_running,
+            get_compaction_reserve_tokens=self.get_compaction_reserve_tokens,
+            get_compaction_compact_percent=self.get_compaction_compact_percent,
+            get_compaction_keep_recent_tokens=self.get_compaction_keep_recent_tokens,
+        )
 
     def get_state(
         self, *, steering: list[str], follow_up: list[str]
     ) -> AgentSessionState:
-        is_running = (
-            self.is_host_running()
-            if self.is_host_running is not None
-            else self.agent.state.is_streaming
-        )
-        return AgentSessionState(
-            run=RunState(status="running" if is_running else "idle"),
-            steering=steering,
-            follow_up=follow_up,
-            active_tool_names=self.get_active_tool_names(),
-            is_compacting=self.is_compacting(),
-            is_retrying=self.is_retrying(),
-            thinking_level=self.agent.thinking_level,
-            model_selection=self.get_model_selection(),
-        )
+        return self._runtime.get_state(steering=steering, follow_up=follow_up)
 
     def get_context_usage(self) -> ContextUsage | None:
-        session_context = self.session_manager.build_session_context()
-        messages = list(session_context.messages)
-        branch_entries: list[object] = list(self.session_manager.get_branch())
-        counts = self._inspector.message_counts()
-
-        estimated_context_tokens = (
-            estimate_context_tokens(messages).tokens if messages else 0
-        )
-        snapshot = build_context_usage_snapshot(
-            messages,
-            branch_entries,
-            self.agent.model,
-            reserve_tokens=self.get_compaction_reserve_tokens(),
-            compact_percent=self.get_compaction_compact_percent(),
-            keep_recent_tokens=self.get_compaction_keep_recent_tokens(),
-        )
-        return ContextUsage(
-            message_count=counts.message_count,
-            assistant_message_count=counts.assistant_message_count,
-            user_message_count=counts.user_message_count,
-            tool_call_count=counts.tool_call_count,
-            tool_result_count=counts.tool_result_count,
-            custom_message_count=counts.application_message_count,
-            estimated_context_tokens=estimated_context_tokens,
-            has_compaction=self._inspector.has_compaction_checkpoint(),
-            branch_depth=len(branch_entries),
-            leaf_entry_id=self.session_manager.get_leaf_id(),
-            tokens=snapshot.tokens,
-            context_window=snapshot.context_window,
-            percent=snapshot.percent,
-            reserve_tokens=snapshot.reserve_tokens,
-            compact_percent=snapshot.compact_percent,
-            keep_recent_tokens=snapshot.keep_recent_tokens,
-            percent_threshold_tokens=snapshot.percent_threshold_tokens,
-            reserve_threshold_tokens=snapshot.reserve_threshold_tokens,
-            threshold_tokens=snapshot.threshold_tokens,
-            threshold_reason=snapshot.threshold_reason,
-            source=snapshot.source,
-            last_usage_index=snapshot.last_usage_index,
-            stale_after_compaction=snapshot.stale_after_compaction,
-            compactable=snapshot.compactable,
-            reason=snapshot.reason,
-        )
+        return self._runtime.get_context_usage()
 
     def build_session_stats(self) -> SessionStats:
-        entries = self.session_manager.get_entries()
-        context_usage = self.get_context_usage()
-        record = self.session_manager.get_session_record()
-        counts = self._inspector.message_counts()
-        return SessionStats(
-            session_id=record.session_id,
-            session_name=record.metadata.name,
-            entry_count=len(entries),
-            message_count=context_usage.message_count
-            if context_usage is not None
-            else 0,
-            custom_message_count=counts.application_message_count,
-            active_tool_count=len(self.get_active_tool_names()),
-            is_retrying=self.is_retrying(),
-            is_compacting=self.is_compacting(),
-            has_diagnostics=bool(self.get_last_diagnostics(1)),
-            branch_count=self._inspector.branch_leaf_count(),
-            last_model_selection=self.get_model_selection(),
-            context_usage=context_usage,
-        )
+        return self._runtime.build_session_stats()
 
     def get_pi_style_stats(self) -> dict[str, object]:
         user_messages = 0
@@ -198,10 +136,7 @@ class SessionViewController:
         }
 
     def get_user_messages_for_forking(self) -> list[dict[str, str]]:
-        return [
-            {"entry_id": candidate.record_id, "text": candidate.text}
-            for candidate in self._inspector.fork_candidates()
-        ]
+        return self._runtime.get_user_messages_for_forking()
 
     def get_pi_style_user_messages_for_forking(self) -> list[dict[str, str]]:
         return [
@@ -210,23 +145,21 @@ class SessionViewController:
         ]
 
     def get_entry_text(self, entry_id: str) -> str | None:
-        return self._inspector.entry_text(entry_id)
+        return self._runtime.get_entry_text(entry_id)
 
     def get_last_assistant_text(self) -> str | None:
-        texts = self.get_recent_assistant_texts()
-        return texts[0] if texts else None
+        return self._runtime.get_last_assistant_text()
 
     def get_recent_assistant_texts(self) -> tuple[str, ...]:
-        return self._inspector.recent_assistant_texts(self.agent.state.messages)
+        return self._runtime.get_recent_assistant_texts()
 
 
 def _latest_compaction_payload(
     entries: Sequence[AgentTranscriptRecord],
 ) -> dict[str, object] | None:
     for entry in reversed(entries):
-        if (
-            entry.kind != CONTEXT_COMPACTION_CHECKPOINT_KIND
-            or not isinstance(entry.payload, ContextCompactionCheckpoint)
+        if entry.kind != CONTEXT_COMPACTION_CHECKPOINT_KIND or not isinstance(
+            entry.payload, ContextCompactionCheckpoint
         ):
             continue
         checkpoint = entry.payload
