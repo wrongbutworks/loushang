@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from loushang.coding.store.file_codec import write_session_file
+from loushang.harness.agent_transcript import write_agent_transcript_file
 
 if TYPE_CHECKING:
     from loushang.coding.session.agent_session import AgentSession
@@ -18,7 +18,7 @@ def export_session_to_jsonl(session: AgentSession, output_path: str | None = Non
         else _default_export_path(session)
     )
     path.parent.mkdir(parents=True, exist_ok=True)
-    write_session_file(
+    write_agent_transcript_file(
         path,
         session.session_manager.header,
         _linearize_branch(session.session_manager.get_branch()),

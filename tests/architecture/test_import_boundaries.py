@@ -2926,6 +2926,48 @@ def test_coding_internal_session_type_imports_use_owners() -> None:
     assert offenders == []
 
 
+def test_coding_internal_store_alias_imports_use_harness_owners() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/__init__.py",
+        "src/loushang/coding/store/__init__.py",
+        "src/loushang/coding/store/backend.py",
+        "src/loushang/coding/store/file_codec.py",
+        "src/loushang/coding/store/file_lock.py",
+        "src/loushang/coding/store/types.py",
+    }
+    legacy_symbols = (
+        "loushang.coding.store.CodingSessionFileLayout",
+        "loushang.coding.store.SessionFileError",
+        "loushang.coding.store.SessionMetadata",
+        "loushang.coding.store.SessionQuery",
+        "loushang.coding.store.SessionRecord",
+        "loushang.coding.store.SessionSummary",
+        "loushang.coding.store.SessionTreeNode",
+        "loushang.coding.store.append_session_entry",
+        "loushang.coding.store.create_coding_file_store",
+        "loushang.coding.store.create_session_repository",
+        "loushang.coding.store.load_current_session_header",
+        "loushang.coding.store.load_session_file",
+        "loushang.coding.store.load_session_repository",
+        "loushang.coding.store.session_file_lock",
+        "loushang.coding.store.session_journal",
+        "loushang.coding.store.write_session_file",
+        "loushang.coding.store.backend",
+        "loushang.coding.store.file_codec",
+        "loushang.coding.store.file_lock",
+        "loushang.coding.store.types",
+    )
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if _matches_any(imported, legacy_symbols):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
 def test_harness_product_kernel_ownership_is_documented() -> None:
     path = Path("docs/internals/architecture/harness/shared-capability-boundaries.md")
     text = " ".join(path.read_text(encoding="utf-8").split())
