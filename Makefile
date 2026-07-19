@@ -115,7 +115,7 @@ HARNESSTUI_TEST_PATHS := \
 	tests/coding/test_ui_transcript_source.py \
 	tests/coding/ui/test_screen_input.py
 
-.PHONY: bootstrap test test-ai check-ai test-tui test-tui-render-contract lint-ai fmt-ai typecheck-ai typecheck-tui build-binary install-binary clean-binary vendor-ai-moonshot-anthropic-stream vendor-ai-moonshot-anthropic-complete vendor-ai-moonshot-anthropic-tools vendor-ai-moonshot-openai-stream vendor-ai-moonshot-openai-complete vendor-ai-moonshot-openai-tools vendor-ai-dashscope-openai-responses-stream vendor-ai-dashscope-openai-responses-tools vendor-ai-openai-codex-complete example-ai-model-lookup example-ai-complete example-ai-stream example-ai-tools example-ai-typed-context example-ai-advanced-faux-stream example-ai-advanced-context-tools example-ai-advanced-tool-result-roundtrip example-ai-advanced-openai-codex-login example-ai-kimi-anthropic-stream example-ai-kimi-anthropic-complete example-ai-kimi-anthropic-tools example-ai-kimi-openai-stream example-ai-kimi-openai-complete example-ai-kimi-openai-tools example-ai-dashscope-openai-responses-stream example-ai-dashscope-openai-responses-tools example-ai-custom-base-url-openai-advanced example-ai-faux-stream example-ai-context-tools-minimal example-ai-tool-result-roundtrip
+.PHONY: bootstrap test test-ai check-ai test-tui test-tui-render-contract lint-ai fmt-ai typecheck-ai typecheck-tui build-binary install-binary clean-binary vendor-ai-moonshot-anthropic-stream vendor-ai-moonshot-anthropic-complete vendor-ai-moonshot-anthropic-tools vendor-ai-moonshot-openai-stream vendor-ai-moonshot-openai-complete vendor-ai-moonshot-openai-tools vendor-ai-dashscope-openai-responses-stream vendor-ai-dashscope-openai-responses-tools example-ai-model-lookup example-ai-complete example-ai-stream example-ai-tools example-ai-typed-context example-ai-advanced-faux-stream example-ai-advanced-context-tools example-ai-advanced-tool-result-roundtrip example-ai-kimi-anthropic-stream example-ai-kimi-anthropic-complete example-ai-kimi-anthropic-tools example-ai-kimi-openai-stream example-ai-kimi-openai-complete example-ai-kimi-openai-tools example-ai-dashscope-openai-responses-stream example-ai-dashscope-openai-responses-tools example-ai-custom-base-url-openai-advanced example-ai-faux-stream example-ai-context-tools-minimal example-ai-tool-result-roundtrip
 .PHONY: check-ai-catalog check-ai-examples check-ai-imports check-ai-coverage
 .PHONY: check-harnesstui lint-harnesstui typecheck-harnesstui test-harnesstui
 
@@ -127,7 +127,7 @@ test:
 	. .venv/bin/activate && uv run pytest tests -q
 
 test-ai:
-	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run pytest tests/ai tests/providers -m "not live" -q
+	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run pytest tests/ai tests/protocols tests/examples/test_ai_examples.py -m "not live" -q
 
 check-ai: lint-ai typecheck-ai check-ai-catalog check-ai-imports check-ai-examples check-ai-coverage
 
@@ -139,10 +139,11 @@ check-ai-imports:
 
 check-ai-examples:
 	$(AI_OFFLINE_ENV) uv run python scripts/ai/check_examples.py
+	$(AI_OFFLINE_ENV) uv run pytest tests/examples -q
 
 check-ai-coverage:
 	mkdir -p .artifacts/ai
-	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run pytest tests/ai tests/providers -m "not live" --cov=src/loushang/ai --cov-report=term-missing:skip-covered --cov-report=xml:.artifacts/ai/coverage.xml --cov-fail-under=80 -q
+	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run pytest tests/ai tests/protocols tests/examples/test_ai_examples.py -m "not live" --cov=src/loushang/ai --cov-report=term-missing:skip-covered --cov-report=xml:.artifacts/ai/coverage.xml --cov-fail-under=90 -q
 	uv run python scripts/ai/check_coverage_targets.py .artifacts/ai/coverage.xml
 
 check-harnesstui: lint-harnesstui typecheck-harnesstui test-harnesstui
@@ -163,16 +164,16 @@ test-tui-render-contract:
 	uv --cache-dir .uv-cache run pytest tests/tui tests/coding -m tui_render_contract -q
 
 lint-ai:
-	. .venv/bin/activate && uv run ruff check src/loushang/ai tests/ai tests/providers
+	. .venv/bin/activate && uv run ruff check src/loushang/ai examples/ai tests/ai tests/protocols scripts/ai
 
 fmt-ai:
-	. .venv/bin/activate && uv run ruff format src/loushang/ai tests/ai tests/providers
+	. .venv/bin/activate && uv run ruff format src/loushang/ai examples/ai tests/ai tests/protocols scripts/ai
 
 typecheck-ai:
-	. .venv/bin/activate && uv run mypy
+	. .venv/bin/activate && uv run mypy src/loushang/ai
 
 vendor-ai-moonshot-anthropic-stream:
-	uv run pytest tests/ai/vendors/moonshot/test_kimi_anthropic_stream_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_anthropic_stream_live.py -q -s
 
 typecheck-tui:
 	. .venv/bin/activate && mypy src/loushang/tui
@@ -181,28 +182,25 @@ example-ai-kimi-anthropic-stream:
 	uv run python examples/ai/kimi_anthropic_stream.py
 
 vendor-ai-moonshot-anthropic-complete:
-	uv run pytest tests/ai/vendors/moonshot/test_kimi_anthropic_complete_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_anthropic_complete_live.py -q -s
 
 vendor-ai-moonshot-anthropic-tools:
-	uv run pytest tests/ai/vendors/moonshot/test_kimi_anthropic_tools_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_anthropic_tools_live.py -q -s
 
 vendor-ai-moonshot-openai-complete:
-	uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_complete_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_complete_live.py -q -s
 
 vendor-ai-moonshot-openai-stream:
-	uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_stream_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_stream_live.py -q -s
 
 vendor-ai-moonshot-openai-tools:
-	uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_tools_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/moonshot/test_kimi_openai_tools_live.py -q -s
 
 vendor-ai-dashscope-openai-responses-stream:
-	uv run pytest tests/ai/vendors/dashscope/test_openai_responses_stream_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/dashscope/test_openai_responses_stream_live.py -q -s
 
 vendor-ai-dashscope-openai-responses-tools:
-	uv run pytest tests/ai/vendors/dashscope/test_openai_responses_tools_live.py -q -s
-
-vendor-ai-openai-codex-complete:
-	uv run pytest tests/ai/vendors/openai_codex/test_complete_live.py -q -s
+	LOUSHANG_AI_LIVE=1 uv run pytest tests/ai/vendors/dashscope/test_openai_responses_tools_live.py -q -s
 
 .PHONY: example-ai-offline example-ai-provider-matrix example-ai-provider-smoke
 
@@ -237,9 +235,6 @@ example-ai-advanced-context-tools:
 
 example-ai-advanced-tool-result-roundtrip:
 	uv run python examples/ai/advanced/tool_result_roundtrip.py
-
-example-ai-advanced-openai-codex-login:
-	uv run python examples/ai/advanced/openai_codex_login.py
 
 # ---------------------------------------------------------------------------
 # Binary build / install (cross-platform)

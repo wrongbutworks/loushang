@@ -214,7 +214,6 @@ class TreeController:
             result = await generate(
                 entries,
                 model=self.agent.model,
-                api_key="",
                 signal=signal,
                 custom_instructions=custom_instructions,
                 replace_instructions=replace_instructions,

@@ -6,10 +6,10 @@ Accepted
 
 ## Context
 
-`loushang-ai` 在早期设计中一度参考 `reference AI SDK`，倾向采用：
+`loushang-ai` 在早期设计中一度参考 `reference AI SDK`，倾向采用同步返回
+stream handle，并额外提供一层简化调用包装。
 
 - `stream(...) -> AssistantMessageEventStream`
-- `stream_simple(...) -> AssistantMessageEventStream`
 
 也就是同步返回 stream handle，再由调用方异步消费。
 
@@ -114,8 +114,8 @@ Accepted
 
 - `src/loushang/ai/api/streaming.py`
 - `src/loushang/ai/api_registry.py`
-- `src/loushang/ai/providers/faux.py`
-- `src/loushang/ai/providers/anthropic.py`
+- `src/loushang/ai/protocols/faux.py`
+- `src/loushang/ai/protocols/anthropic_messages.py`
 
 ## Follow-up
 

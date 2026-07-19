@@ -38,9 +38,9 @@ Coding retains:
 - workspace root/sandbox selection and product explanations;
 - Coding protocol, command, session, UI, and transcript projections.
 
-`coding.control` is frozen for this consolidation. Auth resolution, credentials,
-model registries, provider registration, settings, and persisted model
-selection do not move into Harness.
+`coding.control` is frozen for this consolidation. Model registries, provider
+registration, settings, and persisted model selection do not move into Harness.
+Request authentication remains AI-owned and does not move into Harness.
 
 ## Compatibility
 

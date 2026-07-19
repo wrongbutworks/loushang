@@ -22,11 +22,6 @@ from loushang.agent.types import (
     ToolExecutionMode,
 )
 from loushang.ai.api import stream
-from loushang.ai.api_registry import (
-    ApiProviderRegistry,
-    get_default_api_provider_registry,
-)
-from loushang.ai.bootstrap import register_builtin_ai_providers
 from loushang.ai.messages import canonicalize_user_message
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.model.registry import resolve_model_api
@@ -49,19 +44,8 @@ class AgentStateError(RuntimeError):
     pass
 
 
-def _get_default_agent_api_registry() -> ApiProviderRegistry:
-    """Get the shared default API provider registry used by loushang.ai."""
-    registry = get_default_api_provider_registry()
-    if not registry.list_api_providers():
-        register_builtin_ai_providers(registry)
-    return registry
-
-
-async def _stream_with_registry(model, context, options=None):
-    """Wrapper for stream that includes the default registry."""
-    return await stream(
-        model, context, options, provider_registry=_get_default_agent_api_registry()
-    )
+async def _default_stream(model, context, options=None):
+    return await stream(model, context, options)
 
 
 def _default_model() -> Model:
@@ -72,9 +56,9 @@ def _default_model() -> Model:
         endpoint="unknown",
         capabilities=Capabilities(
             reasoning=False,
-            input=(),
-            context_window=0,
-            max_tokens=0,
+            input=("text",),
+            context_window=None,
+            max_tokens=None,
         ),
     )
 
@@ -132,7 +116,7 @@ class Agent:
         self._state = _create_agent_state(options.initial_state)
         self.convert_to_llm = options.convert_to_llm or _default_convert_to_llm
         self.transform_context = options.transform_context
-        self.stream_fn = options.stream_fn or _stream_with_registry
+        self.stream_fn = options.stream_fn or _default_stream
         self.get_api_key = options.get_api_key
         self.before_tool_call = options.before_tool_call
         self.after_tool_call = options.after_tool_call
@@ -520,7 +504,7 @@ class Agent:
         return AgentLoopConfig(
             model=self._state.model,
             call_options=CallOptions(
-                session_id=self.session_id,
+                cache_key=self.session_id,
                 reasoning=_reasoning_options(
                     self._state.thinking_level, self.thinking_budgets
                 ),

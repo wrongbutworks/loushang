@@ -13,10 +13,9 @@ import asyncio
 from collections.abc import Iterable
 
 from loushang.ai import Context, Model, Tool, UserMessage, stream
-from loushang.ai.advanced.registry import ApiProviderRegistry
-from loushang.ai.model import Capabilities, Endpoint
-from loushang.ai.model.registry import get_default_model_registry
-from loushang.ai.providers.faux import FauxProvider
+from loushang.ai.advanced.registry import clear_api_providers, register_api_provider
+from loushang.ai.model import Auth, Capabilities
+from loushang.ai.protocols.faux import FauxProvider
 
 
 def _build_model() -> Model:
@@ -25,20 +24,10 @@ def _build_model() -> Model:
         id="faux-model",
         provider="faux",
         endpoint="anthropic-messages",
+        api="anthropic-messages",
+        base_url="https://example.invalid/v1",
+        auth=Auth(kind="none"),
         capabilities=Capabilities(stream=True, tool_use=True),
-    )
-
-
-def _register_model() -> None:
-    # 这个示例依赖本地 faux 模型，因此需要先把模型注册进默认模型目录。
-    get_default_model_registry().register_endpoint(
-        "faux",
-        Endpoint(
-            id="anthropic-messages",
-            provider="faux",
-            api="anthropic-messages",
-            models={"faux-model": _build_model()},
-        ),
     )
 
 
@@ -74,15 +63,13 @@ def _iter_text(parts: Iterable[object]) -> str:
 
 
 async def _main() -> None:
-    # 这是高级场景：本地注册 faux 模型并手动注入 faux provider。
-    _register_model()
-    registry = ApiProviderRegistry()
-    registry.register_api_provider(FauxProvider())
+    # 这是高级场景：本地构造 faux 模型并手动注入 faux provider。
+    clear_api_providers()
+    register_api_provider(FauxProvider())
 
     event_stream = await stream(
         _build_model(),
         _build_context(),
-        provider_registry=registry,
     )
 
     # 运行时主要观察 event 类型，确认 context 和 tools 已被正确消费。

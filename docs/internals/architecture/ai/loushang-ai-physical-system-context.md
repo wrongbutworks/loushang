@@ -231,11 +231,7 @@
 - `openai-responses`
 - `anthropic-messages`
 
-后续可继续扩展：
-
-- `openai-codex-responses`
-- `google-*`
-- other provider-specific families
+后续只有在现有协议 adapter 无法表达真实协议差异时才扩展新的 family。
 
 这层回答的是：
 

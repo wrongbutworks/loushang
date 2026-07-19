@@ -403,7 +403,7 @@ def test_event_stream_result_raises_typed_error_for_error_terminal() -> None:
 
     message = asyncio.run(stream.final_message())
     assert message.stop_reason == "error"
-    assert message.error_message == "rate limited"
+    assert message.error_message == "Provider rate limit exceeded."
 
 
 def test_event_stream_result_raises_cancelled_for_aborted_terminal() -> None:

@@ -27,11 +27,16 @@ def test_error_info_serializes_stable_shape_and_redacts_secrets() -> None:
         details={
             "hint": "Set MOONSHOT_API_KEY.",
             "Authorization": "Bearer secret-token",
-            "headers": {"x-request-id": "req_123", "api_key": "secret-key"},
+            "headers": {
+                "x-request-id": "req_123",
+                "api_key": "secret-key",
+                "chatgpt-account-id": "account-secret",
+            },
+            "account_id": "account-secret",
             "session_cookie": "cookie-secret",
             "total_tokens": 42,
             "x-amz-security-token": "aws-secret",
-            "oauth": [{"refresh_token": "refresh-secret"}],
+            "oauth": [{"private_value": "secret-value"}],
         },
     )
 
@@ -50,7 +55,12 @@ def test_error_info_serializes_stable_shape_and_redacts_secrets() -> None:
         "details": {
             "hint": "Set MOONSHOT_API_KEY.",
             "Authorization": "[redacted]",
-            "headers": {"x-request-id": "req_123", "api_key": "[redacted]"},
+            "headers": {
+                "x-request-id": "[redacted]",
+                "api_key": "[redacted]",
+                "chatgpt-account-id": "[redacted]",
+            },
+            "account_id": "[redacted]",
             "session_cookie": "[redacted]",
             "total_tokens": 42,
             "x-amz-security-token": "[redacted]",
@@ -87,7 +97,7 @@ def test_root_error_exports_are_stable_base_entries() -> None:
     assert AIError is errors.AIError
     error = AIError(
         AIErrorInfo(
-            code="provider",
+            code=AIErrorCode.PROVIDER,
             message="Provider failed.",
             source="provider",
             retryable=True,

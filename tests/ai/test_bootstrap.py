@@ -1,20 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 
 import pytest
 
 from loushang.ai.api_registry import ApiProviderRegistry
-from loushang.ai.auth.registry import OAuthProviderRegistry
 from loushang.ai.bootstrap import register_builtin_ai_providers
-from loushang.ai.contrib.openai_codex import register_openai_codex_contrib
-from loushang.ai.model import Endpoint, Model
-from loushang.ai.model.registry import (
-    ModelRegistry,
-    clear_default_model_registry,
-    get_default_model_registry,
-)
 from loushang.ai.provider import ProviderRequest, ProviderRequestValidator
 
 
@@ -128,70 +119,23 @@ def test_api_provider_registry_rejects_invalid_request_validator_shape(
         registry.register_api_provider(provider)  # type: ignore[arg-type]
 
 
-def test_register_builtin_ai_providers_excludes_removed_adapters(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    clear_default_model_registry()
-    try:
-        model_registry = get_default_model_registry()
-        model_registry.register_endpoint(
-            "amazon-bedrock",
-            Endpoint(
-                id="bedrock-converse-stream",
-                provider="amazon-bedrock",
-                api="bedrock-converse-stream",
-                models={
-                    "claude": Model(
-                        id="claude",
-                        provider="amazon-bedrock",
-                        endpoint="bedrock-converse-stream",
-                    )
-                },
-            ),
-        )
-        registry = ApiProviderRegistry()
+def test_register_builtin_ai_providers_registers_only_core_protocol_adapters() -> None:
+    registry = ApiProviderRegistry()
 
-        register_builtin_ai_providers(registry)
+    register_builtin_ai_providers(registry)
 
-        apis = {provider.api for provider in registry.list_api_providers()}
-        assert "azure-openai-responses" not in apis
-        assert "bedrock-converse-stream" not in apis
-        assert "openai-codex-responses" not in apis
-    finally:
-        clear_default_model_registry()
+    assert {provider.api for provider in registry.list_api_providers()} == {
+        "anthropic-messages",
+        "openai-completions",
+        "openai-responses",
+    }
 
 
 def test_azure_openai_provider_module_is_not_in_core() -> None:
     assert (
-        importlib.util.find_spec("loushang.ai.providers.azure_openai_responses") is None
+        importlib.util.find_spec("loushang.ai.protocols.azure_openai_responses") is None
     )
 
 
 def test_bedrock_provider_module_is_not_in_core() -> None:
-    assert importlib.util.find_spec("loushang.ai.providers.bedrock_converse") is None
-
-
-def test_openai_codex_contrib_registers_api_and_catalog_explicitly() -> None:
-    api_registry = ApiProviderRegistry()
-    model_registry = ModelRegistry()
-    oauth_registry = OAuthProviderRegistry()
-
-    register_openai_codex_contrib(
-        api_registry=api_registry,
-        oauth_registry=oauth_registry,
-        model_registry=model_registry,
-    )
-
-    apis = {provider.api for provider in api_registry.list_api_providers()}
-    assert "openai-codex-responses" in apis
-    assert model_registry.get_provider("openai-codex") is not None
-    assert (
-        model_registry.get_model(
-            "openai-codex",
-            "openai-codex-responses",
-            "gpt-5.3-codex",
-        ).id
-        == "gpt-5.3-codex"
-    )
+    assert importlib.util.find_spec("loushang.ai.protocols.bedrock_converse") is None

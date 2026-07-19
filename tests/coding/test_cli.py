@@ -803,8 +803,6 @@ def test_parse_args_supports_pi_style_aliases_and_noop_fields() -> None:
             "--no-themes",
             "--verbose",
             "--offline",
-            "--api-key",
-            "top-secret",
             "--system-prompt",
             "sys",
             "--append-system-prompt",
@@ -845,7 +843,6 @@ def test_parse_args_supports_pi_style_aliases_and_noop_fields() -> None:
     assert args.no_themes is True
     assert args.verbose is True
     assert args.offline is True
-    assert args.api_key == "top-secret"
     assert args.system_prompt == "sys"
     assert args.append_system_prompt == ("A", "B")
     assert args.export == "/tmp/out.html"
@@ -855,6 +852,13 @@ def test_parse_args_supports_pi_style_aliases_and_noop_fields() -> None:
     assert args.prompt == "hi"
     assert args.no_context_files is True
     assert args.messages == ("hello",)
+
+
+def test_parse_args_rejects_removed_api_key_flag() -> None:
+    from loushang.coding.cli.args import parse_args
+
+    with pytest.raises(SystemExit):
+        parse_args(["--api-key", "top-secret"])
 
 
 def test_parse_args_supports_prompt_alias_and_print_mode() -> None:

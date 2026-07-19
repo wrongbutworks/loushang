@@ -45,14 +45,7 @@ def get_structured_output_options(
     if options is None:
         return None
     output = getattr(options, "output", None)
-    if isinstance(output, StructuredOutputOptions):
-        return output
-    structured_output = getattr(options, "structured_output", None)
-    return (
-        structured_output
-        if isinstance(structured_output, StructuredOutputOptions)
-        else None
-    )
+    return output if isinstance(output, StructuredOutputOptions) else None
 
 
 def with_structured_output_options(

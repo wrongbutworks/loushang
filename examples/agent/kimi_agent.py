@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from loushang.agent import (
@@ -28,7 +28,6 @@ from loushang.ai import (
     TextPart,
     get_model,
 )
-from loushang.ai.advanced.registry import reset_api_providers
 
 BASE_URL = "https://api.moonshot.cn/v1"
 MODEL_ID = "kimi-k2.6"
@@ -88,13 +87,13 @@ def _resolve_api_key() -> str:
 
 def _build_model() -> Model:
     """Build public Model for Kimi via Moonshot OpenAI-compatible API."""
-    return get_model("moonshot", "openai-completions", MODEL_ID)
+    return replace(
+        get_model("moonshot", "openai-completions", MODEL_ID),
+        base_url=BASE_URL,
+    )
 
 
 async def main() -> None:
-    # Register providers with Moonshot base URL
-    reset_api_providers(openai_base_url=BASE_URL)
-
     model = _build_model()
 
     # Create agent with system prompt and API key resolver

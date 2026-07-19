@@ -399,6 +399,7 @@ def test_navigate_tree_with_summary_appends_branch_summary_and_emits_events(
 
     async def _fake_generate(entries_or_messages, **kwargs):
         assert len(entries_or_messages) == 2
+        assert "api_key" not in kwargs
         return BranchSummaryResult(
             summary="branch return summary",
             details=BranchSummaryDetails(

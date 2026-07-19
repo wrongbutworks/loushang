@@ -321,9 +321,6 @@ provider adapter strategy 需要明确承接当前已冻结的 cancellation 方�
 - `openai-completions`
 - `openai-responses`
 - `anthropic-messages`
-- `openai-codex-responses`
-- `azure-openai-responses`
-- `bedrock-converse-stream`
 
 其中：
 
@@ -331,8 +328,8 @@ provider adapter strategy 需要明确承接当前已冻结的 cancellation 方�
 - Google Gemini API 通过 OpenAI-compatible endpoint 接入 `openai-completions`
 - Google Vertex 通过 OpenAI-compatible endpoint 接入 `openai-completions`
 - Cloudflare AI Gateway / Workers AI 通过 OpenAI-compatible 或 Anthropic passthrough 接入
-- Azure OpenAI Responses 使用 OpenAI SDK 的 Azure client，但只在 adapter 内部暴露
-- Amazon Bedrock 使用 `httpx-thin + SigV4 + Converse`，先覆盖基础文本调用
+- ChatGPT Coding Plan 等产品场景通过 catalog route 复用 `openai-responses`，
+  不形成新的 adapter family
 
 ### Model ID Normalization
 

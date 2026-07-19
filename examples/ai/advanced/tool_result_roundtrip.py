@@ -21,10 +21,9 @@ from loushang.ai import (
     Usage,
     complete,
 )
-from loushang.ai.advanced.registry import ApiProviderRegistry
-from loushang.ai.model import Endpoint
-from loushang.ai.model.registry import get_default_model_registry
-from loushang.ai.providers.faux import FauxProvider
+from loushang.ai.advanced.registry import clear_api_providers, register_api_provider
+from loushang.ai.model import Auth
+from loushang.ai.protocols.faux import FauxProvider
 
 
 def _build_model() -> Model:
@@ -33,19 +32,9 @@ def _build_model() -> Model:
         id="faux-model",
         provider="faux",
         endpoint="anthropic-messages",
-    )
-
-
-def _register_model() -> None:
-    # 这个示例依赖本地 faux 模型，因此需要先注册模型定义。
-    get_default_model_registry().register_endpoint(
-        "faux",
-        Endpoint(
-            id="anthropic-messages",
-            provider="faux",
-            api="anthropic-messages",
-            models={"faux-model": _build_model()},
-        ),
+        api="anthropic-messages",
+        base_url="https://example.invalid/v1",
+        auth=Auth(kind="none"),
     )
 
 
@@ -84,9 +73,8 @@ def _previous_tool_call_message() -> AssistantMessage:
 
 async def _main() -> None:
     # 高级路径：显式注册 faux provider，避免依赖真实厂商网络。
-    _register_model()
-    registry = ApiProviderRegistry()
-    registry.register_api_provider(FauxProvider())
+    clear_api_providers()
+    register_api_provider(FauxProvider())
 
     model = _build_model()
 
@@ -112,7 +100,6 @@ async def _main() -> None:
                 ),
             ]
         },
-        provider_registry=registry,
     )
 
     print("ROUND 2")

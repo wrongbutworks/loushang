@@ -11,9 +11,10 @@ from loushang.ai import (
     StructuredOutputOptions,
     complete_structured,
 )
-from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.api_registry import get_default_api_provider_registry
+from loushang.ai.context import NormalizedContext
 from loushang.ai.errors import UnsupportedCapabilityError
-from loushang.ai.model import Capabilities
+from loushang.ai.model import Capabilities, Endpoint, Model, ModelRegistry, Provider
 from loushang.ai.provider import ProviderRequest
 from loushang.ai.structured import (
     openai_chat_response_format,
@@ -130,7 +131,8 @@ def test_complete_structured_returns_raw_and_parsed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = _StructuredProvider()
-    registry = ApiProviderRegistry()
+    registry = get_default_api_provider_registry()
+    registry.clear_api_providers()
     registry.register_api_provider(provider)
     _patch_resolved_request(monkeypatch, api="openai-responses")
 
@@ -140,7 +142,6 @@ def test_complete_structured_returns_raw_and_parsed(
             {"messages": []},
             StructuredOutputOptions(mode="json_object"),
             options=CallOptions(),
-            provider_registry=registry,
         )
     )
 
@@ -153,7 +154,8 @@ def test_complete_structured_uses_provider_declared_mapping_support(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = _StructuredProvider(api="custom-structured")
-    registry = ApiProviderRegistry()
+    registry = get_default_api_provider_registry()
+    registry.clear_api_providers()
     registry.register_api_provider(provider)
     _patch_resolved_request(monkeypatch, api="custom-structured")
 
@@ -163,7 +165,6 @@ def test_complete_structured_uses_provider_declared_mapping_support(
             {"messages": []},
             StructuredOutputOptions(mode="json_object"),
             options=CallOptions(),
-            provider_registry=registry,
         )
     )
 
@@ -175,7 +176,8 @@ def test_complete_structured_rejects_provider_without_mapping_support(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = _StructuredProvider(api="openai-responses", supports_mapping=False)
-    registry = ApiProviderRegistry()
+    registry = get_default_api_provider_registry()
+    registry.clear_api_providers()
     registry.register_api_provider(provider)
     _patch_resolved_request(monkeypatch, api="openai-responses")
 
@@ -189,7 +191,6 @@ def test_complete_structured_rejects_provider_without_mapping_support(
                 {"messages": []},
                 StructuredOutputOptions(mode="json_object"),
                 options=CallOptions(),
-                provider_registry=registry,
             )
         )
 
@@ -217,18 +218,37 @@ class _StructuredProvider:
 
 def _patch_resolved_request(monkeypatch: pytest.MonkeyPatch, *, api: str) -> None:
     def _resolve_request(_model, options=None):
-        del options
-        return ProviderRequest(
-            api=api,
+        endpoint = Endpoint(
+            id=api,
             provider="test-provider",
-            endpoint=api,
-            base_url=None,
-            model=_model,
-            capabilities=Capabilities(
-                input=("text",),
-                stream=True,
-                structured_output=True,
-            ),
+            api=api,
+            base_url="https://provider.test/v1",
+            models={
+                _model.id: Model(
+                    id=_model.id,
+                    provider="test-provider",
+                    endpoint=api,
+                    capabilities=Capabilities(
+                        input=("text",),
+                        stream=True,
+                        structured_output=True,
+                    ),
+                )
+            },
+        )
+        request_model = ModelRegistry.from_providers(
+            {
+                "test-provider": Provider(
+                    id="test-provider",
+                    endpoints={api: endpoint},
+                )
+            }
+        ).get_model("test-provider", api, _model.id)
+        return ProviderRequest(
+            base_url="https://provider.test/v1",
+            model=request_model,
+            context=NormalizedContext(system_prompt=None),
+            options=options,
         )
 
     monkeypatch.setattr(

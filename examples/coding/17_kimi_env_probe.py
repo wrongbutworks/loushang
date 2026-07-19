@@ -15,11 +15,7 @@ from _support import (
 )
 
 _KIMI_API_KEY_PRIORITY = (
-    "KIMI_API_KEY",
-    "KIMI_AUTH_TOKEN",
-    "MOONSHOT_API_KEY",
-    "ANTHROPIC_API_KEY",
-    "OPENAI_API_KEY",
+    "KIMI_CODE_API_KEY",
 )
 
 

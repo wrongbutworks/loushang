@@ -33,9 +33,14 @@ class ApiProviderRegistry:
         for name in ("invoke_raw",):
             if not callable(getattr(provider_any, name)):
                 raise TypeError(f"Provider attribute must be callable: {name}")
+        api = provider_any.api
+        if not isinstance(api, str) or not api:
+            raise TypeError("Provider api must be a non-empty string")
+        if api in self._providers:
+            raise ValueError(f"API provider already registered: {api}")
         validate_provider_invoke_raw_contract(provider_any)
         validate_provider_request_validator_contract(provider_any)
-        self._providers[provider_any.api] = (provider_any, source_id)
+        self._providers[api] = (provider_any, source_id)
 
     def get_api_provider(self, api: str) -> ApiProvider:
         return self._providers[api][0]

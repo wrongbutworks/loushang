@@ -4,7 +4,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
 from loushang.ai.api_registry import ApiProviderRegistry
-from loushang.ai.auth.registry import OAuthProviderRegistry
 from loushang.ai.model import (
     Auth,
     Capabilities,
@@ -23,7 +22,6 @@ from loushang.ai.model import (
 class ExtensionProviderController:
     model_registry: object | None
     api_provider_registry: ApiProviderRegistry
-    oauth_provider_registry: OAuthProviderRegistry
 
     def register_provider(self, name: str, config: object) -> None:
         registrar = getattr(self.model_registry, "register_provider", None)
@@ -38,7 +36,6 @@ class ExtensionProviderController:
             remover(name)
         source_id = _extension_provider_source_id(name)
         self.api_provider_registry.unregister_api_providers(source_id)
-        self.oauth_provider_registry.unregister_source(source_id)
 
     def get_registered_provider(self, name: str) -> Provider | None:
         ai_registry = getattr(self.model_registry, "ai_registry", None)

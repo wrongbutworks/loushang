@@ -8,9 +8,9 @@ import pytest
 from loushang.ai.model import (
     AnthropicMessagesConfig,
     Auth,
+    Capabilities,
+    Defaults,
     Endpoint,
-    EndpointRouting,
-    EndpointTransport,
     Model,
     ModelRegistry,
     OpenAICompletionsConfig,
@@ -18,6 +18,52 @@ from loushang.ai.model import (
     Pricing,
     Provider,
 )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"stream": "false"},
+        {"tool_use": 1},
+        {"reasoning": None},
+        {"max_tokens": True},
+        {"context_window": 0},
+        {"context_window": 1.5},
+        {"input": ()},
+        {"input": ("text", "text")},
+        {"output": ("audio",)},
+    ],
+)
+def test_capabilities_reject_invalid_programmatic_values(
+    kwargs: dict[str, object],
+) -> None:
+    with pytest.raises(ValueError, match="capability field"):
+        Capabilities(**kwargs)  # type: ignore[arg-type]
+
+
+def test_capabilities_from_raw_rejects_lossy_coercion() -> None:
+    with pytest.raises(ValueError, match="must be a boolean"):
+        Capabilities.from_raw({"stream": "false"})
+    with pytest.raises(ValueError, match="invalid modalities"):
+        Capabilities.from_raw({"input": ["text", "audio"]})
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {"contextWindow": True},
+        {"contextWindow": None},
+        {"maxTokens": 0},
+        {"maxOutputTokens": 1.5},
+        {"temperature": float("inf")},
+        {"temperature": None},
+        {"reasoningEffort": " "},
+        {"reasoningEffort": None},
+    ],
+)
+def test_defaults_reject_invalid_programmatic_values(raw: dict[str, object]) -> None:
+    with pytest.raises(ValueError, match="model default"):
+        Defaults.from_raw(raw)
 
 
 def test_openai_completions_adapter_round_trip() -> None:
@@ -30,17 +76,8 @@ def test_openai_completions_adapter_round_trip() -> None:
             "reasoningEffort": True,
             "reasoningEffortMap": {"off": None, "minimal": "low"},
             "strictSchema": True,
-            "promptCacheKey": True,
-            "longCacheRetention": False,
-            "sessionAffinityHeaders": True,
-            "toolResultName": True,
-            "assistantAfterToolResult": True,
-            "thinkingAsText": True,
             "assistantReasoningContent": True,
-            "toolStream": True,
             "reasoningFormat": "moonshot",
-            "cacheControlFormat": "anthropic",
-            "extraBody": {"metadata": {"owner": "tests"}},
         }
     )
     endpoint = Endpoint(
@@ -60,17 +97,8 @@ def test_openai_completions_adapter_round_trip() -> None:
         "reasoningEffort": True,
         "reasoningEffortMap": {"off": None, "minimal": "low"},
         "strictSchema": True,
-        "promptCacheKey": True,
-        "longCacheRetention": False,
-        "sessionAffinityHeaders": True,
-        "toolResultName": True,
-        "assistantAfterToolResult": True,
-        "thinkingAsText": True,
         "assistantReasoningContent": True,
-        "toolStream": True,
         "reasoningFormat": "moonshot",
-        "cacheControlFormat": "anthropic",
-        "extraBody": {"metadata": {"owner": "tests"}},
     }
     assert OpenAICompletionsConfig.from_raw(raw) == adapter
 
@@ -86,22 +114,18 @@ def test_openai_completions_adapter_rejects_invalid_values() -> None:
         OpenAICompletionsConfig.from_raw({"futureFlag": True})
 
 
-def test_openai_completions_extra_body_rejects_sdk_fields() -> None:
-    with pytest.raises(ValueError, match="cannot override SDK field"):
-        OpenAICompletionsConfig.from_raw({"extraBody": {"model": "other"}})
-    with pytest.raises(ValueError, match="JSON-safe"):
-        OpenAICompletionsConfig.from_raw({"extraBody": {"bad": object()}})
+def test_openai_completions_adapter_rejects_removed_escape_hatches() -> None:
+    with pytest.raises(ValueError, match="unknown keys"):
+        OpenAICompletionsConfig.from_raw({"extra" + "Body": {"model": "other"}})
 
 
 def test_openai_responses_adapter_round_trip() -> None:
     adapter = OpenAIResponsesConfig.from_raw(
         {
             "developerRole": False,
-            "assistantAfterToolResult": True,
+            "maxOutputTokens": False,
             "promptCacheKey": False,
             "longCacheRetention": False,
-            "sessionIdHeader": False,
-            "sessionAffinityHeaders": True,
         }
     )
     endpoint = Endpoint(
@@ -115,11 +139,9 @@ def test_openai_responses_adapter_round_trip() -> None:
 
     assert raw == {
         "developerRole": False,
-        "assistantAfterToolResult": True,
+        "maxOutputTokens": False,
         "promptCacheKey": False,
         "longCacheRetention": False,
-        "sessionIdHeader": False,
-        "sessionAffinityHeaders": True,
     }
     assert OpenAIResponsesConfig.from_raw(raw) == adapter
 
@@ -136,7 +158,6 @@ def test_anthropic_messages_adapter_round_trip() -> None:
         {
             "fineGrainedTools": True,
             "interleavedThinking": False,
-            "sessionAffinityHeaders": True,
             "longCacheRetention": False,
         }
     )
@@ -150,7 +171,6 @@ def test_anthropic_messages_adapter_round_trip() -> None:
     raw = endpoint.to_raw()["adapter"]
 
     assert raw == {
-        "sessionAffinityHeaders": True,
         "longCacheRetention": False,
         "fineGrainedTools": True,
         "interleavedThinking": False,
@@ -223,83 +243,6 @@ def test_model_adapter_raw_override_can_restore_default_value() -> None:
     assert bound.adapter.developer_role is True
 
 
-def test_endpoint_transport_round_trip() -> None:
-    transport = EndpointTransport.from_raw(
-        {
-            "kind": "httpx",
-            "stream": "sse",
-            "fallback": True,
-            "timeout": 30,
-        }
-    )
-    endpoint = Endpoint(
-        id="anthropic-messages",
-        provider="custom",
-        api="anthropic-messages",
-        transport=transport,
-    )
-
-    raw = endpoint.to_raw()["transport"]
-
-    assert raw == {
-        "kind": "httpx",
-        "stream": "sse",
-        "fallback": True,
-        "timeout": 30,
-    }
-    assert EndpointTransport.from_raw(raw) == transport
-
-
-def test_endpoint_transport_rejects_invalid_values() -> None:
-    with pytest.raises(ValueError, match="transport field must be a non-empty string"):
-        EndpointTransport(kind="")
-    with pytest.raises(ValueError, match="transport field must be a boolean"):
-        EndpointTransport(fallback="yes")
-
-
-@pytest.mark.parametrize("timeout", [0, float("nan"), float("inf"), float("-inf")])
-def test_endpoint_transport_rejects_invalid_timeout(timeout: float) -> None:
-    with pytest.raises(ValueError, match="transport field must be a positive number"):
-        EndpointTransport(timeout=timeout)
-    with pytest.raises(ValueError, match="transport field must be a positive number"):
-        EndpointTransport.from_raw({"timeout": timeout})
-
-
-def test_endpoint_routing_round_trip_defensively_copies_raw() -> None:
-    routing = EndpointRouting.from_raw(
-        {
-            "requestOverrides": {
-                "openrouter": {"only": ["anthropic"]},
-                "vercelGateway": {"order": ["openai", "anthropic"]},
-            }
-        }
-    )
-    endpoint = Endpoint(
-        id="openai-completions",
-        provider="custom",
-        api="openai-completions",
-        routing=routing,
-    )
-
-    raw = endpoint.to_raw()["routing"]
-    raw["requestOverrides"]["openrouter"]["only"].append("openai")
-
-    assert routing.to_raw() == {
-        "requestOverrides": {
-            "openrouter": {"only": ["anthropic"]},
-            "vercelGateway": {"order": ["openai", "anthropic"]},
-        }
-    }
-    assert EndpointRouting.from_raw(endpoint.to_raw()["routing"]) == routing
-
-
-def test_endpoint_routing_rejects_invalid_request_overrides() -> None:
-    with pytest.raises(ValueError, match="routing field must be an object"):
-        EndpointRouting.from_raw({"requestOverrides": True})
-    with pytest.raises(ValueError, match="requestOverrides entries must be objects"):
-        EndpointRouting.from_raw({"requestOverrides": {"openrouter": True}})
-
-
 def test_model_omits_unknown_pricing_from_raw() -> None:
     model = Model(id="public-model", provider="custom", endpoint="openai-completions")
 
@@ -323,10 +266,6 @@ def test_provider_endpoint_and_model_to_raw_include_optional_fields() -> None:
         auth=Auth(api_key_env="MODEL_KEY"),
         adapter=OpenAICompletionsConfig(reasoning_format="moonshot"),
         pricing=Pricing(input=1, output=2),
-        transport=EndpointTransport(kind="httpx"),
-        routing=EndpointRouting.from_raw(
-            {"requestOverrides": {"openrouter": {"order": ["moonshot"]}}}
-        ),
     )
     endpoint = Endpoint(
         id="openai-completions",
@@ -371,30 +310,22 @@ def test_provider_endpoint_and_model_to_raw_include_optional_fields() -> None:
     assert model_raw["adapter"]["reasoningFormat"] == "moonshot"
     assert model_raw["pricing"] == {"input": 1, "output": 2}
     assert model_raw["auth"]["apiKeyEnv"] == "MODEL_KEY"
-    assert model_raw["transport"] == {"kind": "httpx"}
-    assert model_raw["routing"] == {
-        "requestOverrides": {"openrouter": {"order": ["moonshot"]}}
-    }
 
 
 def test_auth_to_raw_omits_empty_optional_fields() -> None:
     assert Auth(kind="oauth").to_raw() == {"kind": "oauth"}
-    partial = Auth.from_raw({"extraHeaders": {"x-extra": "yes"}})
-    assert partial is not None
-    assert partial.to_raw() == {"extraHeaders": {"x-extra": "yes"}}
     assert Auth(
         kind="apiKey",
         api_key_env="PRIMARY_KEY",
         api_key_envs=("SECONDARY_KEY",),
         header="X-Key",
         prefix="",
-        extra_headers={"x-extra": "yes"},
     ).to_raw() == {
+        "kind": "apiKey",
         "apiKeyEnv": "PRIMARY_KEY",
         "apiKeyEnvs": ["SECONDARY_KEY"],
         "header": "X-Key",
         "prefix": "",
-        "extraHeaders": {"x-extra": "yes"},
     }
 
 
@@ -425,7 +356,6 @@ def test_model_constructor_keeps_existing_fields_before_upstream_id() -> None:
     parameters = list(inspect.signature(Model).parameters)
 
     assert parameters.index("knowledge") < parameters.index("upstream_id")
-    assert parameters.index("routing") < parameters.index("upstream_id")
 
 
 def test_model_rejects_invalid_upstream_id() -> None:

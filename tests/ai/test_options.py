@@ -7,16 +7,15 @@ from types import SimpleNamespace
 import pytest
 
 import loushang.ai as ai
-import loushang.ai.contrib.openai_codex as openai_codex_module
 import loushang.ai.options as options_module
+from loushang.ai import ApiKeyAuth, OAuthBearerAuth
 from loushang.ai import CallOptions as PublicCallOptions
 from loushang.ai.advanced.registry import ApiProviderRegistry
-from loushang.ai.contrib.openai_codex import OpenAICodexResponsesOptions
 from loushang.ai.options import (
     CallOptions,
     ReasoningOptions,
     RetryOptions,
-    TimeoutOptions,
+    get_idle_timeout_seconds,
     get_max_output_tokens,
     get_reasoning_budget_tokens,
     get_reasoning_effort,
@@ -34,6 +33,7 @@ REMOVED_OPTION_NAMES = {
     "SimpleStreamOptions",
     "StreamOptions",
     "ThinkingBudgets",
+    "Timeout" + "Options",
     "Transport",
     "simple_options_to_call_options",
 }
@@ -55,11 +55,10 @@ def test_call_options_is_the_single_public_call_contract() -> None:
         assert name not in options_module.__all__
         assert not hasattr(options_module, name)
 
-    options = CallOptions(api_key="key", headers={"x-trace": "1"})
+    options = CallOptions(auth=ApiKeyAuth("key"))
 
     assert isinstance(options, CallOptions)
-    assert options.api_key == "key"
-    assert options.headers == {"x-trace": "1"}
+    assert options.auth == ApiKeyAuth("key")
 
 
 def test_call_options_fields_are_canonical_and_consumed() -> None:
@@ -67,17 +66,16 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
 
     assert field_names == {
         "cancellation",
-        "api_key",
+        "auth",
         "headers",
         "cache_retention",
-        "session_id",
+        "cache_key",
         "max_output_tokens",
         "temperature",
-        "timeout",
+        "timeout_seconds",
+        "idle_timeout_seconds",
         "retry",
         "trace",
-        "oauth_credentials",
-        "region",
         "pairing_mode",
         "reasoning",
         "tool_choice",
@@ -97,6 +95,134 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
         "text_verbosity",
     }.isdisjoint(field_names)
 
+    options = CallOptions(auth=OAuthBearerAuth("oauth-token"))
+
+    assert options.auth == OAuthBearerAuth("oauth-token")
+    assert "api_key" not in field_names
+    assert "oauth_credentials" not in field_names
+
+
+def test_call_options_rejects_invalid_non_auth_fields() -> None:
+    with pytest.raises(TypeError, match="cache_key"):
+        CallOptions(cache_key=123)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="cache_key"):
+        CallOptions(cache_key="   ")
+    with pytest.raises(ValueError, match="control characters"):
+        CallOptions(cache_key="cache\nkey")
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("max_output_tokens", True, "positive integer"),
+        ("max_output_tokens", 0, "positive integer"),
+        ("temperature", True, "finite number"),
+        ("temperature", float("nan"), "finite number"),
+        ("timeout_seconds", 0, "finite positive number"),
+        ("timeout_seconds", float("inf"), "finite positive number"),
+        ("idle_timeout_seconds", True, "finite positive number"),
+        ("cache_retention", "forever", "cache_retention"),
+        ("pairing_mode", "loose", "pairing_mode"),
+        ("tool_choice", "sometimes", "tool_choice"),
+        ("tool_choice", {"type": "tool", "name": ""}, "tool_choice"),
+    ],
+)
+def test_call_options_rejects_invalid_values(
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    with pytest.raises((TypeError, ValueError), match=message):
+        CallOptions(**{field: value})  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "tool_choice",
+    [
+        "auto",
+        "none",
+        "required",
+        "any",
+        {"type": "tool", "name": "lookup"},
+        {"type": "function", "name": "lookup"},
+        {"type": "function", "function": {"name": "lookup"}},
+    ],
+)
+def test_call_options_accepts_supported_tool_choices(tool_choice: object) -> None:
+    assert CallOptions(tool_choice=tool_choice).tool_choice == tool_choice  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"enabled": "false"},
+        {"effort": "extreme"},
+        {"budget_tokens": True},
+        {"budget_tokens": 0},
+        {"expose_summary": 1},
+    ],
+)
+def test_reasoning_options_rejects_invalid_values(kwargs: dict[str, object]) -> None:
+    with pytest.raises((TypeError, ValueError)):
+        ReasoningOptions(**kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"max_attempts": True},
+        {"max_attempts": 0},
+        {"max_delay_seconds": True},
+        {"max_delay_seconds": -1},
+        {"max_delay_seconds": float("nan")},
+    ],
+)
+def test_retry_options_rejects_invalid_values(kwargs: dict[str, object]) -> None:
+    with pytest.raises(ValueError):
+        RetryOptions(**kwargs)  # type: ignore[arg-type]
+
+
+def test_call_options_retains_typed_auth() -> None:
+    auth = ApiKeyAuth("typed-secret")
+
+    options = CallOptions(auth=auth)
+
+    assert options.auth is auth
+
+
+def test_call_options_repr_does_not_expose_secrets_or_headers() -> None:
+    options = CallOptions(
+        auth=ApiKeyAuth("api-secret"),
+        headers={"x-provider-token": "header-secret"},
+    )
+
+    rendered = repr(options)
+
+    assert "api-secret" not in rendered
+    assert "header-secret" not in rendered
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"": "value"},
+        {"x-header": ""},
+        {"x-header": "line\nfeed"},
+        {"x-header": "one", "X-Header": "two"},
+    ],
+)
+def test_call_options_rejects_invalid_headers(headers: dict[str, str]) -> None:
+    with pytest.raises(ValueError, match="headers"):
+        CallOptions(headers=headers)
+
+
+def test_call_options_preserves_opaque_cache_key() -> None:
+    options = CallOptions(cache_key="  cache key / opaque  ")
+
+    assert options.cache_key == "  cache key / opaque  "
+    assert not hasattr(options, "session_id")
+    assert not hasattr(options, "region")
+
 
 def test_call_option_helpers_support_canonical_shapes_only() -> None:
     options = CallOptions(
@@ -108,7 +234,8 @@ def test_call_option_helpers_support_canonical_shapes_only() -> None:
             expose_summary=True,
         ),
         retry=RetryOptions(max_attempts=4, max_delay_seconds=2.5),
-        timeout=TimeoutOptions(total_seconds=30),
+        timeout_seconds=30,
+        idle_timeout_seconds=5,
     )
 
     assert get_max_output_tokens(options) == 123
@@ -119,6 +246,7 @@ def test_call_option_helpers_support_canonical_shapes_only() -> None:
     assert get_retry_attempts(options) == 4
     assert get_retry_max_delay_ms(options) == 2500
     assert get_timeout_seconds(options) == 30
+    assert get_idle_timeout_seconds(options) == 5
 
     legacy = SimpleNamespace(
         max_tokens=64,
@@ -156,23 +284,3 @@ def test_provider_specific_options_are_removed_from_core() -> None:
     for name in REMOVED_PROVIDER_OPTIONS:
         assert name not in advanced_module.__all__
         assert not hasattr(advanced_module, name)
-
-
-def test_contrib_options_remain_isolated_from_root_api() -> None:
-    assert OpenAICodexResponsesOptions.__module__ == (
-        "loushang.ai.contrib.openai_codex.options"
-    )
-    assert OpenAICodexResponsesOptions.__annotations__ == {
-        "text_verbosity": "str | None",
-        "transport": "CodexTransport | None",
-    }
-    assert isinstance(OpenAICodexResponsesOptions(text_verbosity="low"), CallOptions)
-    with pytest.raises(TypeError, match="reasoning must be ReasoningOptions"):
-        OpenAICodexResponsesOptions(reasoning="low")  # type: ignore[arg-type]
-    assert not hasattr(OpenAICodexResponsesOptions(), "on_payload")
-    assert not hasattr(OpenAICodexResponsesOptions(), "on_response")
-    assert not hasattr(OpenAICodexResponsesOptions(), "reasoning_summary")
-    assert "OpenAICodexResponsesOptions" not in ai.__all__
-    assert not hasattr(ai, "OpenAICodexResponsesOptions")
-    assert "resolve_openai_codex_runtime_config" not in openai_codex_module.__all__
-    assert not hasattr(openai_codex_module, "resolve_openai_codex_runtime_config")

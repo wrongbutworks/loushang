@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from loushang.ai.auth.support import merge_auth_config
 from loushang.ai.model import (
     AnthropicMessagesConfig,
     ModelRegistry,
@@ -88,6 +87,7 @@ def test_curated_catalog_uses_core_adapter_configs() -> None:
 
     assert adapters[("anthropic", "anthropic-messages")] is AnthropicMessagesConfig
     assert adapters[("openai", "openai-responses")] is OpenAIResponsesConfig
+    assert adapters[("openai", "coding-responses")] is OpenAIResponsesConfig
     assert adapters[("deepseek", "openai-completions")] is OpenAICompletionsConfig
     assert adapters[("moonshot", "openai-completions")] is OpenAICompletionsConfig
 
@@ -105,18 +105,28 @@ def test_minimax_anthropic_catalog_uses_sdk_base_url_and_short_cache() -> None:
 def test_kimi_code_catalog_uses_its_own_api_key_not_moonshot_platform_key() -> None:
     registry = _load_curated_registry()
     provider = registry.get_provider("kimi-code")
-    endpoint = registry.get_endpoint("kimi-code", "kimi-code-anthropic")
-    model = registry.get_model("kimi-code", "kimi-code-anthropic", "kimi-for-coding")
+    anthropic_endpoint = registry.get_endpoint("kimi-code", "kimi-code-anthropic")
+    anthropic_model = registry.get_model(
+        "kimi-code", "kimi-code-anthropic", "kimi-for-coding"
+    )
+    openai_endpoint = registry.get_endpoint("kimi-code", "kimi-code-openai")
+    openai_model = registry.get_model(
+        "kimi-code", "kimi-code-openai", "kimi-for-coding"
+    )
 
     assert provider is not None
-    assert endpoint is not None
-    merged_auth = merge_auth_config(provider.auth, endpoint.auth, model.auth)
-
-    assert merged_auth.kind == "apiKey"
-    assert merged_auth.api_key_env == "KIMI_CODE_API_KEY"
-    assert merged_auth.header == "Authorization"
-    assert merged_auth.prefix == "Bearer "
-    assert endpoint.base_url == "https://api.kimi.com/coding"
+    assert anthropic_endpoint is not None
+    assert openai_endpoint is not None
+    for model in (anthropic_model, openai_model):
+        assert model.auth is not None
+        assert model.auth.kind == "apiKey"
+        assert model.auth.api_key_env == "KIMI_CODE_API_KEY"
+        assert model.auth.header == "Authorization"
+        assert model.auth.prefix == "Bearer "
+        assert model.pricing is None
+        assert model.supports_temperature is False
+    assert anthropic_endpoint.base_url == "https://api.kimi.com/coding"
+    assert openai_endpoint.base_url == "https://api.kimi.com/coding/v1"
 
 
 def test_curated_openai_style_custom_base_urls_declare_adapter() -> None:
@@ -137,6 +147,7 @@ def test_curated_catalog_keeps_key_model_defaults() -> None:
     kimi_code = registry.get_model("moonshot", "openai-completions", "kimi-k2.7-code")
     minimax = registry.get_model("minimax", "anthropic-messages", "MiniMax-M3")
     gpt = registry.get_model("openai", "openai-responses", "gpt-5.5")
+    coding = registry.get_model("openai", "coding-responses", "gpt-5.5")
     claude = registry.get_model("anthropic", "anthropic-messages", "claude-sonnet-4-6")
 
     assert kimi.supports_temperature is False
@@ -144,21 +155,46 @@ def test_curated_catalog_keeps_key_model_defaults() -> None:
     assert kimi_code.defaults["reasoningEffort"] == "medium"
     assert minimax.pricing is None
     assert gpt.capabilities.context_window == 1000000
+    assert coding.capabilities.context_window == 272000
+    assert coding.defaults["reasoningEffort"] == "medium"
+    assert coding.pricing is None
     assert claude.pricing is not None
     assert claude.pricing.output == 15
 
 
-def test_cli_catalog_commands_show_adapter(monkeypatch, capsys) -> None:
-    from loushang.ai.cli.__main__ import main
+def test_coding_route_is_oauth_openai_responses_without_product_adapter() -> None:
+    registry = _load_curated_registry()
+    provider = registry.get_provider("openai")
+    endpoint = registry.get_endpoint("openai", "coding-responses")
+    model = registry.get_model("openai", "coding-responses", "gpt-5.5")
 
-    monkeypatch.setattr(
-        "loushang.ai.cli.__main__.get_default_model_registry",
-        load_builtin_model_registry,
-    )
+    assert provider is not None
+    assert provider.auth is None
+    assert endpoint is not None
+    assert endpoint.api == "openai-responses"
+    assert endpoint.base_url == "https://chatgpt.com/backend-api/codex"
+    assert endpoint.preferred is False
+    assert endpoint.auth is not None
+    assert endpoint.auth.kind == "oauth"
+    assert endpoint.auth.api_key_env is None
+    assert endpoint.auth.api_key_envs == ()
+    assert dict(endpoint.headers) == {
+        "originator": "loushang",
+        "OpenAI-Beta": "responses=experimental",
+    }
+    assert model.provider_id == "openai"
+    assert model.upstream_id is None
+    assert "codex" not in model.api
 
-    main(["--json", "models", "show", "moonshot:openai-completions:kimi-k2.7-code"])
-    payload = json.loads(capsys.readouterr().out)
 
-    assert payload["provider"] == "moonshot"
-    assert payload["adapter"]["reasoningFormat"] == "moonshot"
-    assert "compat" not in payload
+def test_openai_api_key_auth_is_scoped_to_the_public_api_endpoint() -> None:
+    registry = _load_curated_registry()
+    endpoint = registry.get_endpoint("openai", "openai-responses")
+    model = registry.get_model("openai", "openai-responses", "gpt-5.5")
+
+    assert endpoint is not None
+    assert endpoint.auth is not None
+    assert endpoint.auth.kind == "apiKey"
+    assert endpoint.auth.api_key_env == "OPENAI_API_KEY"
+    assert model.auth is not None
+    assert model.auth.api_key_env == "OPENAI_API_KEY"

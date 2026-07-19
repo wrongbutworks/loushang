@@ -6,10 +6,10 @@ from typing import NamedTuple
 
 from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.bootstrap import register_builtin_ai_providers
+from loushang.ai.protocols.anthropic_messages import AnthropicMessagesAdapter
+from loushang.ai.protocols.openai_chat_completions import OpenAIChatCompletionsAdapter
+from loushang.ai.protocols.openai_responses import OpenAIResponsesAdapter
 from loushang.ai.provider.protocol import ApiProvider
-from loushang.ai.providers.anthropic import AnthropicProvider
-from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
-from loushang.ai.providers.openai_responses import OpenAIResponsesProvider
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -24,21 +24,21 @@ class CoreAdapterCase(NamedTuple):
 CORE_ADAPTER_MATRIX = (
     CoreAdapterCase(
         "anthropic-messages",
-        "loushang.ai.providers.anthropic",
-        "AnthropicProvider",
-        AnthropicProvider,
+        "loushang.ai.protocols.anthropic_messages",
+        "AnthropicMessagesAdapter",
+        AnthropicMessagesAdapter,
     ),
     CoreAdapterCase(
         "openai-completions",
-        "loushang.ai.providers.openai_completions",
-        "OpenAICompletionsProvider",
-        OpenAICompletionsProvider,
+        "loushang.ai.protocols.openai_chat_completions",
+        "OpenAIChatCompletionsAdapter",
+        OpenAIChatCompletionsAdapter,
     ),
     CoreAdapterCase(
         "openai-responses",
-        "loushang.ai.providers.openai_responses",
-        "OpenAIResponsesProvider",
-        OpenAIResponsesProvider,
+        "loushang.ai.protocols.openai_responses",
+        "OpenAIResponsesAdapter",
+        OpenAIResponsesAdapter,
     ),
 )
 
@@ -74,5 +74,4 @@ def test_contract_matrix_document_matches_core_adapters() -> None:
         assert f"`{case.api}`" in docs
         assert f"`{case.module}`" in docs
         assert f"`{case.class_name}`" in docs
-    assert "`loushang.ai.providers.faux`" in docs
-    assert "`loushang.ai.contrib.openai_codex`" in docs
+    assert "`loushang.ai.protocols.faux`" in docs
