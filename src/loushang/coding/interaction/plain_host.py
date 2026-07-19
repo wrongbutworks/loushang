@@ -15,11 +15,14 @@ from loushang.coding.interaction.intent import (
     QuitIntent,
     parse_prompt_intent,
 )
-from loushang.coding.ui.prompt_dispatch import PromptDispatchOutcome
-from loushang.coding.ui.prompt_routing import PromptRoute, route_prompt_intent
+from loushang.coding.interaction.plain_dispatch import PromptDispatchOutcome
+from loushang.coding.interaction.routing import PromptRoute, route_prompt_intent
 from loushang.harness.commands import CommandEffect, CommandEffectKind
 from loushang.harnesstui.conversation.control import (
     ConversationRunControl as RunLifecycle,
+)
+from loushang.harnesstui.conversation.control import (
+    ConversationTextAction,
 )
 from loushang.harnesstui.conversation.queue import (
     pending_queue_view,
@@ -76,7 +79,9 @@ class InfoPanelPresenter(Protocol):
     def __call__(self, panel: InfoPanel) -> bool | Awaitable[bool]: ...
 
 
-class CodingTuiHandlers:
+class PlainCodingConversationActionHost:
+    """Own Coding's product-specific actions for the plain conversation UI."""
+
     def __init__(
         self,
         *,
@@ -132,7 +137,8 @@ class CodingTuiHandlers:
         self._session_running = session_running
         self._trace = trace
 
-    async def handle_prompt(self, text: str) -> int | None:
+    async def submit(self, action: ConversationTextAction) -> int | None:
+        text = action.text
         prompt_started = self._now()
         self._trace(
             "prompt.start",
@@ -237,10 +243,16 @@ class CodingTuiHandlers:
     async def queue_follow_up(self, text: str, *, source: str) -> int | None:
         return await self._follow_up(text, source=source)
 
-    async def handle_follow_up(self, text: str) -> int | None:
-        return await self.queue_follow_up(text, source="keybinding")
+    async def steer(self, action: ConversationTextAction) -> int | None:
+        return await self._steer(action.text)
 
-    async def handle_abort(self) -> None:
+    async def follow_up(self, action: ConversationTextAction) -> int | None:
+        return await self.queue_follow_up(
+            action.text,
+            source=action.source or "keybinding",
+        )
+
+    async def abort(self) -> None:
         await self._abort()
 
     async def restore_queue_to_composer(self, current_text: str) -> str | None:
@@ -312,4 +324,7 @@ async def _resolve(value):
     return value
 
 
-__all__ = ["CodingTuiHandlers"]
+__all__ = [
+    "InfoPanelPresenter",
+    "PlainCodingConversationActionHost",
+]

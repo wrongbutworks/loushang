@@ -5,14 +5,12 @@ import shlex
 import time
 import traceback
 from collections.abc import Callable
-from typing import Any, TextIO
+from typing import Any, TextIO, cast
 
-from loushang.ai.types import ImagePart
-from loushang.coding.interaction.controller import CodingUiController, ControllerResult
-from loushang.coding.interaction.intent import (
-    AbortIntent,
-    QuitIntent,
-    parse_prompt_intent,
+from loushang.coding.interaction.controller import CodingUiController
+from loushang.coding.interaction.intent import QuitIntent, parse_prompt_intent
+from loushang.coding.interaction.screen_host import (
+    ScreenCodingConversationActionHost,
 )
 from loushang.coding.observability import disable_session_debug, enable_session_debug
 from loushang.coding.presentation.session import (
@@ -45,6 +43,7 @@ from loushang.harnesstui.status.persistence import (
 from loushang.harnesstui.status.provider import StatusProvider
 from loushang.observability import get_log, log_context
 from loushang.tui import CompletionProvider
+from loushang.tui.keybindings import KeybindingConfig
 from loushang.tui.prompt import run_non_interactive_prompt_loop
 
 log = get_log(__name__).bind(component="CodingUiMode")
@@ -126,6 +125,12 @@ async def _run_screen_interactive_tui(
     completion_provider = await _load_completion_provider(session)
     app.composer.set_completion_provider(completion_provider)
     controller = CodingUiController(runtime=runtime, session=session, verbose=verbose)
+    action_host = ScreenCodingConversationActionHost(
+        presenter=app,
+        controller=controller,
+        stderr=stderr,
+        verbose=verbose,
+    )
 
     async def _handle_approval(event: dict[str, object]) -> bool:
         sink = getattr(session, "handle_screen_approval", None)
@@ -189,25 +194,9 @@ async def _run_screen_interactive_tui(
                     app=app,
                     stdin=stdin,
                     stdout=stdout,
-                    handle_prompt=_screen_prompt_handler(
-                        app=app,
-                        controller=controller,
-                        stderr=stderr,
-                        verbose=verbose,
-                    ),
+                    action_host=action_host,
                     handle_local=surface_manager.handle_text,
-                    handle_steer=_screen_text_handler(
-                        app=app,
-                        dispatch=controller.steer,
-                        label="Steering failed",
-                    ),
-                    handle_followup=_screen_text_handler(
-                        app=app,
-                        dispatch=controller.follow_up,
-                        label="Follow-up failed",
-                    ),
                     handle_surface_intent=surface_manager.handle_surface_intent,
-                    on_abort=_screen_abort_handler(controller),
                     should_exit=_screen_should_exit,
                     is_local_command=surface_manager.is_local_command,
                     keybindings=_session_keybindings(session),
@@ -347,87 +336,13 @@ async def _run_plain_tui(
             model_label=snapshot.model_label,
         )
         return await run_non_interactive_prompt_loop(
-            stdin=stdin, stdout=stdout, handle_prompt=app.handlers.handle_prompt
+            stdin=stdin,
+            stdout=stdout,
+            handle_prompt=app.handle_prompt,
         )
     finally:
         if run_context is not None:
             run_context.close()
-
-
-def _screen_prompt_handler(
-    *,
-    app: ScreenCodingTuiApp,
-    controller: CodingUiController,
-    stderr: TextIO,
-    verbose: bool,
-):
-    async def handle(
-        text: str, *, images: tuple[ImagePart, ...] | None = None
-    ) -> int | None:
-        intent = parse_prompt_intent(text)
-        if intent is None:
-            return None
-        if isinstance(intent, QuitIntent):
-            return 0
-        if images is not None and hasattr(intent, "images"):
-            intent = type(intent)(intent.text, images=images)
-        result = await controller.dispatch(intent)
-        _record_controller_result(
-            app=app, result=result, stderr=stderr, verbose=verbose
-        )
-        return result.exit_code
-
-    return handle
-
-
-def _screen_text_handler(
-    *,
-    app: ScreenCodingTuiApp,
-    dispatch: Any,
-    label: str,
-):
-    async def handle(
-        text: str, *, images: tuple[ImagePart, ...] | None = None
-    ) -> int | None:
-        if images is not None and _supports_keyword(dispatch, "images"):
-            result = await _maybe_await(dispatch(text, images=images))
-        else:
-            result = await _maybe_await(dispatch(text))
-        if isinstance(result, ControllerResult):
-            _record_controller_result(
-                app=app, result=result, stderr=None, verbose=False, status_label=label
-            )
-            return result.exit_code
-        return result if isinstance(result, int) else None
-
-    return handle
-
-
-def _screen_abort_handler(controller: CodingUiController):
-    async def handle() -> None:
-        await controller.dispatch(AbortIntent())
-        await controller.wait_for_idle()
-
-    return handle
-
-
-def _record_controller_result(
-    *,
-    app: ScreenCodingTuiApp,
-    result: ControllerResult,
-    stderr: TextIO | None,
-    verbose: bool,
-    status_label: str = "Request failed",
-) -> None:
-    if result.error_message:
-        app.add_error(result.error_message)
-        app.set_status(f"{status_label}: {result.error_message}")
-    elif result.status_message:
-        app.add_status(result.status_message)
-        app.set_status(result.status_message)
-    if verbose and stderr is not None and result.traceback_text:
-        stderr.write(result.traceback_text)
-        stderr.flush()
 
 
 def _screen_should_exit(text: str) -> bool:
@@ -487,16 +402,19 @@ def _session_file_for_resume(session: Any) -> object | None:
     return getattr(session, "session_file", None)
 
 
-def _session_keybindings(session: Any) -> object | None:
+def _session_keybindings(session: Any) -> KeybindingConfig | None:
     settings_manager = getattr(session, "settings_manager", None)
     if settings_manager is None:
         return None
     get_keybindings = getattr(settings_manager, "get_keybindings", None)
     if callable(get_keybindings):
-        return get_keybindings()
+        return cast(KeybindingConfig | None, get_keybindings())
     get_settings = getattr(settings_manager, "get_settings", None)
     if callable(get_settings):
-        return getattr(get_settings(), "keybindings", None)
+        return cast(
+            KeybindingConfig | None,
+            getattr(get_settings(), "keybindings", None),
+        )
     return None
 
 
@@ -562,14 +480,3 @@ async def _maybe_await(value: Any) -> Any:
     if inspect.isawaitable(value):
         return await value
     return value
-
-
-def _supports_keyword(method: Any, keyword: str) -> bool:
-    try:
-        signature = inspect.signature(method)
-    except (TypeError, ValueError):
-        return False
-    return any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD or parameter.name == keyword
-        for parameter in signature.parameters.values()
-    )

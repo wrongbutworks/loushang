@@ -3,6 +3,9 @@ from __future__ import annotations
 from io import StringIO
 
 from loushang.coding.interaction.controller import CodingUiController
+from loushang.coding.testing.tui.action_host import (
+    coding_screen_prompt_handler,
+)
 from loushang.coding.testing.tui.fakes import SessionCommandPlaybackSession
 from loushang.coding.testing.tui.playback import (
     ScreenTuiInputPlaybackResult,
@@ -10,7 +13,6 @@ from loushang.coding.testing.tui.playback import (
     ScreenTuiLoopPlayback,
 )
 from loushang.coding.testing.tui.scenarios.budgets import INTERACTION_FRAME_BUDGET
-from loushang.coding.ui.mode import _screen_prompt_handler
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.harnesstui.status.provider import StatusProvider
@@ -49,8 +51,8 @@ def _run_session_name_command() -> object:
     result = playback.run(
         (0.00, "/name Project Alpha\r"),
         (0.03, ""),
-        handle_prompt=_screen_prompt_handler(
-            app=playback.app,
+        handle_prompt=coding_screen_prompt_handler(
+            presenter=playback.app,
             controller=controller,
             stderr=StringIO(),
             verbose=False,
@@ -80,8 +82,8 @@ def _run_session_command_error() -> object:
     result = playback.run(
         (0.00, "/export /root/out.jsonl\r"),
         (0.03, ""),
-        handle_prompt=_screen_prompt_handler(
-            app=playback.app,
+        handle_prompt=coding_screen_prompt_handler(
+            presenter=playback.app,
             controller=controller,
             stderr=StringIO(),
             verbose=False,
@@ -111,8 +113,8 @@ def _run_unknown_slash_prompt() -> object:
     result = playback.run(
         (0.00, "/unknown keep me\r"),
         (0.03, ""),
-        handle_prompt=_screen_prompt_handler(
-            app=playback.app,
+        handle_prompt=coding_screen_prompt_handler(
+            presenter=playback.app,
             controller=controller,
             stderr=StringIO(),
             verbose=False,
@@ -142,8 +144,8 @@ def _run_non_executable_session_command() -> object:
         (0.00, "/review check dispatch\r"),
         (0.04, "/debugging trace queue\r"),
         (0.08, ""),
-        handle_prompt=_screen_prompt_handler(
-            app=playback.app,
+        handle_prompt=coding_screen_prompt_handler(
+            presenter=playback.app,
             controller=controller,
             stderr=StringIO(),
             verbose=False,

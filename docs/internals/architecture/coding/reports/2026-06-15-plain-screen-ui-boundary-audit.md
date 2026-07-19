@@ -58,7 +58,7 @@ Evidence:
 
 - `plain_events.py` imports `PlainCodingUiRenderer` and calls only plain rendering
   methods.
-- `plain_app.py` requires `PlainCodingUiRenderer`, wires `CodingTuiHandlers`, and is
+- `plain_app.py` requires `PlainCodingUiRenderer`, wires `PlainCodingConversationActionHost`, and is
   used by `_run_plain_tui`.
 - `prompt_command.py` directly uses `PlainCodingUiRenderer` plus
   `PlainCodingEventRenderer` to render one-shot prompt output.

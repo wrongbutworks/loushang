@@ -33,7 +33,7 @@ class _Controller:
 
 
 def test_abort_handler_marks_and_renders_interruption_before_dispatch() -> None:
-    from loushang.coding.ui.abort import AbortHandler
+    from loushang.coding.interaction.plain_abort import AbortHandler
 
     calls: list[str] = []
     traces: list[tuple[str, dict[str, object]]] = []

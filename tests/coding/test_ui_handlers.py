@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
+from loushang.harnesstui.conversation.control import ConversationTextAction
+
 
 class _Lifecycle:
     active = False
@@ -13,7 +15,7 @@ class _Lifecycle:
 
 
 def test_coding_tui_handlers_ignore_empty_prompt() -> None:
-    from loushang.coding.ui.handlers import CodingTuiHandlers
+    from loushang.coding.interaction.plain_host import PlainCodingConversationActionHost
 
     traces: list[tuple[str, dict[str, object]]] = []
     dispatched: list[str] = []
@@ -21,7 +23,7 @@ def test_coding_tui_handlers_ignore_empty_prompt() -> None:
     async def dispatch(_intent):
         dispatched.append("dispatch")
 
-    handlers = CodingTuiHandlers(
+    handlers = PlainCodingConversationActionHost(
         lifecycle=_Lifecycle(),
         parse_prompt=lambda _text: None,
         route_prompt=lambda _intent, _lifecycle: None,
@@ -39,7 +41,7 @@ def test_coding_tui_handlers_ignore_empty_prompt() -> None:
         trace=lambda name, **data: traces.append((name, data)),
     )
 
-    result = asyncio.run(handlers.handle_prompt("   "))
+    result = asyncio.run(handlers.submit(ConversationTextAction("   ")))
 
     assert result is None
     assert dispatched == []
@@ -60,8 +62,8 @@ def test_coding_tui_handlers_ignore_empty_prompt() -> None:
 
 def test_coding_tui_handlers_block_abort_settling_input() -> None:
     from loushang.coding.interaction.intent import PromptIntent
-    from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.prompt_routing import PromptRoute
+    from loushang.coding.interaction.plain_host import PlainCodingConversationActionHost
+    from loushang.coding.interaction.routing import PromptRoute
 
     emitted: list[str] = []
     statuses: list[str] = []
@@ -70,7 +72,7 @@ def test_coding_tui_handlers_block_abort_settling_input() -> None:
         emitted.append(label)
         write()
 
-    handlers = CodingTuiHandlers(
+    handlers = PlainCodingConversationActionHost(
         lifecycle=_Lifecycle(),
         parse_prompt=lambda text: PromptIntent(text),
         route_prompt=lambda _intent, _lifecycle: PromptRoute.ABORT_SETTLING,
@@ -88,7 +90,7 @@ def test_coding_tui_handlers_block_abort_settling_input() -> None:
         trace=lambda _name, **_data: None,
     )
 
-    result = asyncio.run(handlers.handle_prompt("hello"))
+    result = asyncio.run(handlers.submit(ConversationTextAction("hello")))
 
     assert result is None
     assert emitted == ["abort:pending_input"]
@@ -97,8 +99,8 @@ def test_coding_tui_handlers_block_abort_settling_input() -> None:
 
 def test_coding_tui_handlers_prefers_local_info_panel_presenter_for_hotkeys() -> None:
     from loushang.coding.interaction.intent import HotkeysIntent
-    from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.prompt_routing import PromptRoute
+    from loushang.coding.interaction.plain_host import PlainCodingConversationActionHost
+    from loushang.coding.interaction.routing import PromptRoute
 
     emitted: list[str] = []
     rendered: list[str] = []
@@ -112,7 +114,7 @@ def test_coding_tui_handlers_prefers_local_info_panel_presenter_for_hotkeys() ->
         presented.append((panel.title, tuple(panel.lines), panel.footer))
         return True
 
-    handlers = CodingTuiHandlers(
+    handlers = PlainCodingConversationActionHost(
         lifecycle=_Lifecycle(),
         parse_prompt=lambda _text: HotkeysIntent(),
         route_prompt=lambda _intent, _lifecycle: PromptRoute.HOTKEYS,
@@ -132,7 +134,7 @@ def test_coding_tui_handlers_prefers_local_info_panel_presenter_for_hotkeys() ->
         trace=lambda _name, **_data: None,
     )
 
-    result = asyncio.run(handlers.handle_prompt("/hotkeys"))
+    result = asyncio.run(handlers.submit(ConversationTextAction("/hotkeys")))
 
     assert result is None
     assert emitted == []
@@ -142,8 +144,8 @@ def test_coding_tui_handlers_prefers_local_info_panel_presenter_for_hotkeys() ->
 
 def test_coding_tui_handlers_renders_models_command() -> None:
     from loushang.coding.interaction.intent import ModelsIntent
-    from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.prompt_routing import PromptRoute
+    from loushang.coding.interaction.plain_host import PlainCodingConversationActionHost
+    from loushang.coding.interaction.routing import PromptRoute
 
     emitted: list[str] = []
     statuses: list[str] = []
@@ -155,7 +157,7 @@ def test_coding_tui_handlers_renders_models_command() -> None:
     async def models(query: str) -> str:
         return f"models:{query}"
 
-    handlers = CodingTuiHandlers(
+    handlers = PlainCodingConversationActionHost(
         lifecycle=_Lifecycle(),
         parse_prompt=lambda _text: ModelsIntent(query="kimi"),
         route_prompt=lambda _intent, _lifecycle: PromptRoute.MODELS,
@@ -174,7 +176,7 @@ def test_coding_tui_handlers_renders_models_command() -> None:
         trace=lambda _name, **_data: None,
     )
 
-    result = asyncio.run(handlers.handle_prompt("/models kimi"))
+    result = asyncio.run(handlers.submit(ConversationTextAction("/models kimi")))
 
     assert result is None
     assert emitted == ["models:show"]
@@ -183,8 +185,8 @@ def test_coding_tui_handlers_renders_models_command() -> None:
 
 def test_coding_tui_handlers_handles_model_select_command() -> None:
     from loushang.coding.interaction.intent import ModelSelectIntent
-    from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.prompt_routing import PromptRoute
+    from loushang.coding.interaction.plain_host import PlainCodingConversationActionHost
+    from loushang.coding.interaction.routing import PromptRoute
 
     emitted: list[str] = []
     statuses: list[str] = []
@@ -196,7 +198,7 @@ def test_coding_tui_handlers_handles_model_select_command() -> None:
     async def model_select(query: str) -> str:
         return f"selected:{query}"
 
-    handlers = CodingTuiHandlers(
+    handlers = PlainCodingConversationActionHost(
         lifecycle=_Lifecycle(),
         parse_prompt=lambda _text: ModelSelectIntent(query="kimi"),
         route_prompt=lambda _intent, _lifecycle: PromptRoute.MODEL_SELECT,
@@ -215,7 +217,7 @@ def test_coding_tui_handlers_handles_model_select_command() -> None:
         trace=lambda _name, **_data: None,
     )
 
-    result = asyncio.run(handlers.handle_prompt("/model kimi"))
+    result = asyncio.run(handlers.submit(ConversationTextAction("/model kimi")))
 
     assert result is None
     assert emitted == ["model:select"]
@@ -224,8 +226,8 @@ def test_coding_tui_handlers_handles_model_select_command() -> None:
 
 def test_coding_tui_handlers_renders_hotkeys_command() -> None:
     from loushang.coding.interaction.intent import HotkeysIntent
-    from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.prompt_routing import PromptRoute
+    from loushang.coding.interaction.plain_host import PlainCodingConversationActionHost
+    from loushang.coding.interaction.routing import PromptRoute
 
     emitted: list[str] = []
     statuses: list[str] = []
@@ -234,7 +236,7 @@ def test_coding_tui_handlers_renders_hotkeys_command() -> None:
         emitted.append(label)
         write()
 
-    handlers = CodingTuiHandlers(
+    handlers = PlainCodingConversationActionHost(
         lifecycle=_Lifecycle(),
         parse_prompt=lambda _text: HotkeysIntent(),
         route_prompt=lambda _intent, _lifecycle: PromptRoute.HOTKEYS,
@@ -253,7 +255,7 @@ def test_coding_tui_handlers_renders_hotkeys_command() -> None:
         trace=lambda _name, **_data: None,
     )
 
-    result = asyncio.run(handlers.handle_prompt("/hotkeys"))
+    result = asyncio.run(handlers.submit(ConversationTextAction("/hotkeys")))
 
     assert result is None
     assert emitted == ["hotkeys:show"]
@@ -262,8 +264,8 @@ def test_coding_tui_handlers_renders_hotkeys_command() -> None:
 
 def test_coding_tui_handlers_renders_settings_command() -> None:
     from loushang.coding.interaction.intent import SettingsIntent
-    from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.prompt_routing import PromptRoute
+    from loushang.coding.interaction.plain_host import PlainCodingConversationActionHost
+    from loushang.coding.interaction.routing import PromptRoute
 
     emitted: list[str] = []
     statuses: list[str] = []
@@ -272,7 +274,7 @@ def test_coding_tui_handlers_renders_settings_command() -> None:
         emitted.append(label)
         write()
 
-    handlers = CodingTuiHandlers(
+    handlers = PlainCodingConversationActionHost(
         lifecycle=_Lifecycle(),
         parse_prompt=lambda _text: SettingsIntent(),
         route_prompt=lambda _intent, _lifecycle: PromptRoute.SETTINGS,
@@ -291,7 +293,7 @@ def test_coding_tui_handlers_renders_settings_command() -> None:
         trace=lambda _name, **_data: None,
     )
 
-    result = asyncio.run(handlers.handle_prompt("/settings"))
+    result = asyncio.run(handlers.submit(ConversationTextAction("/settings")))
 
     assert result is None
     assert emitted == ["settings:show"]
@@ -300,8 +302,8 @@ def test_coding_tui_handlers_renders_settings_command() -> None:
 
 def test_coding_tui_handlers_renders_commands_command() -> None:
     from loushang.coding.interaction.intent import CommandsIntent
-    from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.prompt_routing import PromptRoute
+    from loushang.coding.interaction.plain_host import PlainCodingConversationActionHost
+    from loushang.coding.interaction.routing import PromptRoute
 
     emitted: list[str] = []
     statuses: list[str] = []
@@ -313,7 +315,7 @@ def test_coding_tui_handlers_renders_commands_command() -> None:
     async def commands(query: str) -> str:
         return f"commands:{query}"
 
-    handlers = CodingTuiHandlers(
+    handlers = PlainCodingConversationActionHost(
         lifecycle=_Lifecycle(),
         parse_prompt=lambda _text: CommandsIntent(query="model"),
         route_prompt=lambda _intent, _lifecycle: PromptRoute.COMMANDS,
@@ -332,7 +334,7 @@ def test_coding_tui_handlers_renders_commands_command() -> None:
         trace=lambda _name, **_data: None,
     )
 
-    result = asyncio.run(handlers.handle_prompt("/commands model"))
+    result = asyncio.run(handlers.submit(ConversationTextAction("/commands model")))
 
     assert result is None
     assert emitted == ["commands:show"]
@@ -341,8 +343,8 @@ def test_coding_tui_handlers_renders_commands_command() -> None:
 
 def test_coding_tui_handlers_handles_command_select_command() -> None:
     from loushang.coding.interaction.intent import CommandSelectIntent
-    from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.prompt_routing import PromptRoute
+    from loushang.coding.interaction.plain_host import PlainCodingConversationActionHost
+    from loushang.coding.interaction.routing import PromptRoute
 
     emitted: list[str] = []
     statuses: list[str] = []
@@ -354,7 +356,7 @@ def test_coding_tui_handlers_handles_command_select_command() -> None:
     async def command_select(query: str) -> str:
         return f"selected:{query}"
 
-    handlers = CodingTuiHandlers(
+    handlers = PlainCodingConversationActionHost(
         lifecycle=_Lifecycle(),
         parse_prompt=lambda _text: CommandSelectIntent(query="demo"),
         route_prompt=lambda _intent, _lifecycle: PromptRoute.COMMAND_SELECT,
@@ -373,7 +375,7 @@ def test_coding_tui_handlers_handles_command_select_command() -> None:
         trace=lambda _name, **_data: None,
     )
 
-    result = asyncio.run(handlers.handle_prompt("/command demo"))
+    result = asyncio.run(handlers.submit(ConversationTextAction("/command demo")))
 
     assert result is None
     assert emitted == ["command:select"]
@@ -386,8 +388,8 @@ def test_coding_tui_handlers_routes_follow_up_steer_debug_dispatch_abort_and_res
         FollowUpIntent,
         PromptIntent,
     )
-    from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.prompt_routing import PromptRoute
+    from loushang.coding.interaction.plain_host import PlainCodingConversationActionHost
+    from loushang.coding.interaction.routing import PromptRoute
 
     calls: list[tuple[str, object]] = []
     routes = {
@@ -438,7 +440,7 @@ def test_coding_tui_handlers_routes_follow_up_steer_debug_dispatch_abort_and_res
             return PromptRoute.DEBUG
         return routes[intent.text]
 
-    handlers = CodingTuiHandlers(
+    handlers = PlainCodingConversationActionHost(
         lifecycle=_Lifecycle(),
         parse_prompt=parse,
         route_prompt=route,
@@ -456,12 +458,19 @@ def test_coding_tui_handlers_routes_follow_up_steer_debug_dispatch_abort_and_res
         trace=lambda _name, **_data: None,
     )
 
-    assert asyncio.run(handlers.handle_prompt("follow")) == 1
-    assert asyncio.run(handlers.handle_follow_up("inline")) == 1
-    assert asyncio.run(handlers.handle_prompt("steer")) == 2
-    assert asyncio.run(handlers.handle_prompt("debug")) == 3
-    assert asyncio.run(handlers.handle_prompt("dispatch")) == 4
-    assert asyncio.run(handlers.handle_abort()) is None
+    assert asyncio.run(handlers.submit(ConversationTextAction("follow"))) == 1
+    assert (
+        asyncio.run(
+            handlers.follow_up(
+                ConversationTextAction("inline", source="keybinding")
+            )
+        )
+        == 1
+    )
+    assert asyncio.run(handlers.submit(ConversationTextAction("steer"))) == 2
+    assert asyncio.run(handlers.submit(ConversationTextAction("debug"))) == 3
+    assert asyncio.run(handlers.submit(ConversationTextAction("dispatch"))) == 4
+    assert asyncio.run(handlers.abort()) is None
     assert asyncio.run(handlers.restore_queue_to_composer("draft")) == "restored"
     assert calls == [
         ("follow:command", "later"),

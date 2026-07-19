@@ -10,7 +10,16 @@ from loushang.coding.commands.tui import (
     format_coding_commands,
     select_coding_command,
 )
+from loushang.coding.diagnostics.tui import DebugCommandHandler
 from loushang.coding.interaction.controller import CodingUiController
+from loushang.coding.interaction.plain_abort import AbortHandler
+from loushang.coding.interaction.plain_dispatch import PromptDispatchHandler
+from loushang.coding.interaction.plain_follow_up import FollowUpQueueHandler
+from loushang.coding.interaction.plain_host import (
+    InfoPanelPresenter,
+    PlainCodingConversationActionHost,
+)
+from loushang.coding.interaction.plain_result import PromptResultHandler
 from loushang.coding.model_selection_tui import (
     ModelPaletteChooser,
     format_available_models,
@@ -22,17 +31,12 @@ from loushang.coding.presentation.session import (
     session_label,
     thinking_level,
 )
-from loushang.coding.ui.abort import AbortHandler
-from loushang.coding.ui.debug_command import DebugCommandHandler
-from loushang.coding.ui.follow_up_queue import FollowUpQueueHandler
-from loushang.coding.ui.handlers import (
-    CodingTuiHandlers,
-    InfoPanelPresenter,
-)
 from loushang.coding.ui.hotkeys import format_hotkeys
 from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
-from loushang.coding.ui.prompt_dispatch import PromptDispatchHandler
-from loushang.coding.ui.prompt_result import PromptResultHandler
+from loushang.harnesstui.conversation.control import (
+    ConversationActionHost,
+    ConversationTextAction,
+)
 from loushang.harnesstui.conversation.control import (
     ConversationRunControl as RunLifecycle,
 )
@@ -60,8 +64,13 @@ DisableDebug = Callable[[], None]
 @dataclass(frozen=True)
 class PlainCodingTuiApp:
     lifecycle: RunLifecycle
-    handlers: CodingTuiHandlers
+    action_host: ConversationActionHost
     completion_provider: CompletionProvider | None = None
+
+    async def handle_prompt(self, text: str) -> int | None:
+        return await self.action_host.submit(
+            ConversationTextAction(text=text, source="plain_prompt")
+        )
 
 
 def build_plain_coding_tui_app(
@@ -147,7 +156,7 @@ def build_plain_coding_tui_app(
         statusline_settings=statusline_settings_from_store(settings_manager),
         on_statusline_settings_changed=statusline_settings_persistence_callback(settings_manager),
     )
-    handlers = CodingTuiHandlers(
+    action_host = PlainCodingConversationActionHost(
         lifecycle=lifecycle,
         follow_up=follow_up_queue.queue,
         steer=steer_handler.steer,
@@ -172,7 +181,7 @@ def build_plain_coding_tui_app(
     )
     return PlainCodingTuiApp(
         lifecycle=lifecycle,
-        handlers=handlers,
+        action_host=action_host,
         completion_provider=completion_provider,
     )
 

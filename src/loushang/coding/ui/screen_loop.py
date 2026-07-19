@@ -1,26 +1,27 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import TextIO, cast
 
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_input import (
     build_screen_input_router,
-    image_parts_from_prompt_attachments,
+)
+from loushang.harnesstui.conversation.attachments import PromptImageAttachment
+from loushang.harnesstui.conversation.control import (
+    ConversationActionHost,
+    ConversationTextAction,
 )
 from loushang.harnesstui.conversation.screen_runner import (
-    AbortHandler,
     ConversationInputRouterPort,
     ConversationScreenPort,
     LocalCommandPredicate,
-    PromptHandler,
     ShouldExit,
     SurfaceIntentHandler,
     TerminalModeFactory,
     TerminalSizeProvider,
     TextHandler,
-    maybe_await,
     run_conversation_screen,
-    supports_keyword,
 )
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
 
@@ -30,12 +31,9 @@ async def run_screen_coding_tui(
     app: ScreenCodingTuiApp,
     stdin: TextIO,
     stdout: TextIO,
-    handle_prompt: PromptHandler,
+    action_host: ConversationActionHost,
     handle_local: TextHandler | None = None,
-    handle_steer: TextHandler | None = None,
-    handle_followup: TextHandler | None = None,
     handle_surface_intent: SurfaceIntentHandler | None = None,
-    on_abort: AbortHandler,
     should_exit: ShouldExit,
     is_local_command: LocalCommandPredicate | None = None,
     keybindings: KeybindingManager | KeybindingConfig | None = None,
@@ -48,20 +46,15 @@ async def run_screen_coding_tui(
         app=app,
         stdin=stdin,
         stdout=stdout,
-        handle_prompt=_adapt_attachment_handler(handle_prompt),
+        handle_prompt=_bind_text_action(action_host.submit, source="prompt"),
         handle_local=handle_local,
-        handle_steer=(
-            _adapt_attachment_handler(handle_steer)
-            if handle_steer is not None
-            else None
-        ),
-        handle_followup=(
-            _adapt_attachment_handler(handle_followup)
-            if handle_followup is not None
-            else None
+        handle_steer=_bind_text_action(action_host.steer, source="steer"),
+        handle_followup=_bind_text_action(
+            action_host.follow_up,
+            source="follow_up",
         ),
         handle_surface_intent=handle_surface_intent,
-        on_abort=on_abort,
+        on_abort=action_host.abort,
         should_exit=should_exit,
         is_local_command=is_local_command,
         keybindings=keybindings,
@@ -94,20 +87,34 @@ def _coding_input_router_factory(
     )
 
 
-def _adapt_attachment_handler(handler: TextHandler) -> TextHandler:
+TextActionHandler = Callable[[ConversationTextAction], Awaitable[int | None]]
+
+
+def _bind_text_action(handler: TextActionHandler, *, source: str) -> TextHandler:
     async def adapted(
         text: str,
         *,
         attachments: tuple[object, ...] | None = None,
     ) -> int | None:
-        images = image_parts_from_prompt_attachments(attachments)
-        if images is not None and supports_keyword(handler, "images"):
-            result = await maybe_await(handler(text, images=images))
-        else:
-            result = await maybe_await(handler(text))
-        return result if isinstance(result, int) else None
+        prompt_attachments = tuple(
+            _require_prompt_image_attachment(attachment)
+            for attachment in attachments or ()
+        )
+        return await handler(
+            ConversationTextAction(
+                text=text,
+                attachments=prompt_attachments,
+                source=source,
+            )
+        )
 
     return adapted
+
+
+def _require_prompt_image_attachment(value: object) -> PromptImageAttachment:
+    if not isinstance(value, PromptImageAttachment):
+        raise TypeError("Coding prompt attachments must be prompt images")
+    return value
 
 
 __all__ = ["run_screen_coding_tui"]

@@ -59,6 +59,9 @@ RETIRED_CODING_UI_COMPATIBILITY_MODULES: dict[str, tuple[str, ...]] = {
 }
 
 MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
+    "loushang.coding.ui.abort": (
+        "loushang.coding.interaction.plain_abort",
+    ),
     "loushang.coding.ui.command_list": (
         "loushang.coding.commands.tui",
     ),
@@ -68,13 +71,31 @@ MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
     "loushang.coding.ui.debug_status": (
         "loushang.coding.diagnostics.debug_status",
     ),
+    "loushang.coding.ui.debug_command": (
+        "loushang.coding.diagnostics.tui",
+    ),
     "loushang.coding.ui.event_policy": (
         "loushang.coding.event.presentation_policy",
     ),
     "loushang.coding.ui.intent": ("loushang.coding.interaction.intent",),
+    "loushang.coding.ui.follow_up_queue": (
+        "loushang.coding.interaction.plain_follow_up",
+    ),
+    "loushang.coding.ui.handlers": (
+        "loushang.coding.interaction.plain_host",
+    ),
     "loushang.coding.ui.model": ("loushang.coding.model_selection",),
     "loushang.coding.ui.model_list": (
         "loushang.coding.model_selection_tui",
+    ),
+    "loushang.coding.ui.prompt_dispatch": (
+        "loushang.coding.interaction.plain_dispatch",
+    ),
+    "loushang.coding.ui.prompt_result": (
+        "loushang.coding.interaction.plain_result",
+    ),
+    "loushang.coding.ui.prompt_routing": (
+        "loushang.coding.interaction.routing",
     ),
     "loushang.coding.ui.session_view": (
         "loushang.coding.presentation.session",
@@ -96,22 +117,15 @@ RETIRED_CODING_UI_MODULES = {
 }
 
 RETAINED_CODING_UI_PRODUCT_ADAPTER_MODULES = {
-    "abort",
     "cli",
     "completion",
     "conversation_event_adapter",
-    "debug_command",
     "event_stream",
-    "follow_up_queue",
-    "handlers",
     "hotkeys",
     "mode",
     "plain_app",
     "plain_events",
     "plain_renderer",
-    "prompt_dispatch",
-    "prompt_result",
-    "prompt_routing",
     "run_context",
     "screen_app",
     "screen_events",
@@ -138,6 +152,14 @@ NON_UI_CODING_OWNERS = (
 
 CODING_TUI_FEATURE_OWNERS = (
     "loushang.coding.commands.tui",
+    "loushang.coding.diagnostics.tui",
+    "loushang.coding.interaction.plain_abort",
+    "loushang.coding.interaction.plain_dispatch",
+    "loushang.coding.interaction.plain_follow_up",
+    "loushang.coding.interaction.plain_host",
+    "loushang.coding.interaction.plain_result",
+    "loushang.coding.interaction.routing",
+    "loushang.coding.interaction.screen_host",
     "loushang.coding.model_selection_tui",
 )
 
@@ -426,7 +448,7 @@ def test_shared_playback_support_does_not_own_coding_copy_or_budgets() -> None:
 def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
     moved_definitions = {
         Path("src/loushang/coding/model_selection_tui.py"): ("class ModelChoice",),
-        Path("src/loushang/coding/ui/prompt_dispatch.py"): (
+        Path("src/loushang/coding/interaction/plain_dispatch.py"): (
             "class PromptDispatchOutcome",
         ),
         Path("src/loushang/coding/ui/run_context.py"): ("def _stable_emit_factory",),
@@ -509,7 +531,7 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
     ):
         assert token not in shared
 
-    follow_up = Path("src/loushang/coding/ui/follow_up_queue.py").read_text(
+    follow_up = Path("src/loushang/coding/interaction/plain_follow_up.py").read_text(
         encoding="utf-8"
     )
     screen_loop = Path("src/loushang/coding/ui/screen_loop.py").read_text(
@@ -518,9 +540,12 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
     screen_input = Path("src/loushang/coding/ui/screen_input.py").read_text(
         encoding="utf-8"
     )
-    prompt_dispatch = Path("src/loushang/coding/ui/prompt_dispatch.py").read_text(
+    screen_host = Path("src/loushang/coding/interaction/screen_host.py").read_text(
         encoding="utf-8"
     )
+    prompt_dispatch = Path(
+        "src/loushang/coding/interaction/plain_dispatch.py"
+    ).read_text(encoding="utf-8")
 
     assert "Follow-up is only available while a run is active." in follow_up
     assert "Follow-up queued." in follow_up
@@ -529,7 +554,8 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
         in screen_loop
     )
     assert "Operation aborted" in screen_loop
-    assert "ImagePart" in screen_input
+    assert "ImagePart" not in screen_input
+    assert "ImagePart" in screen_host
     assert '".loushang" / "clipboard"' in screen_input
     assert "class ScreenInputResult" not in screen_input
     assert "class ScreenInputRouter" not in screen_input

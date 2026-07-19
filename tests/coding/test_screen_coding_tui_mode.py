@@ -27,6 +27,7 @@ from loushang.harness.agent_transcript import (
     ContextCompactionCheckpoint,
 )
 from loushang.harness.conversation import ConversationRecord
+from loushang.harnesstui.conversation.control import ConversationTextAction
 from loushang.harnesstui.testing.performance import (
     characterize_long_transcript_rendering,
 )
@@ -184,7 +185,7 @@ def test_run_coding_tui_interactive_uses_screen_loop(monkeypatch) -> None:
 
     async def fake_screen_loop(**kwargs):
         captured.update(kwargs)
-        await kwargs["handle_prompt"]("hello")
+        await kwargs["action_host"].submit(ConversationTextAction("hello"))
         return 0
 
     monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
@@ -657,8 +658,10 @@ def test_run_coding_tui_interactive_screen_loop_dispatches_steer_and_followup(
 
     async def fake_screen_loop(**kwargs):
         captured.update(kwargs)
-        await kwargs["handle_steer"]("steer this")
-        await kwargs["handle_followup"]("follow this")
+        await kwargs["action_host"].steer(ConversationTextAction("steer this"))
+        await kwargs["action_host"].follow_up(
+            ConversationTextAction("follow this")
+        )
         return 0
 
     monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
@@ -1182,7 +1185,7 @@ def test_screen_event_projection_skips_duplicate_user_messages(monkeypatch) -> N
         captured.update(kwargs)
         app = kwargs["app"]
         app.start_prompt("hello")
-        await kwargs["handle_prompt"]("hello")
+        await kwargs["action_host"].submit(ConversationTextAction("hello"))
         return 0
 
     monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)

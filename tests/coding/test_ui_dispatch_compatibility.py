@@ -4,7 +4,7 @@ from typing import Protocol
 
 
 def test_prompt_dispatch_compatibility_exports_share_neutral_owner() -> None:
-    from loushang.coding.ui.prompt_dispatch import (
+    from loushang.coding.interaction.plain_dispatch import (
         Lifecycle,
         PromptDispatchOutcome,
     )
@@ -20,7 +20,7 @@ def test_prompt_dispatch_compatibility_exports_share_neutral_owner() -> None:
 def test_prompt_result_renderer_compatibility_export_shares_neutral_owner() -> (
     None
 ):
-    from loushang.coding.ui.prompt_result import Renderer
+    from loushang.coding.interaction.plain_result import Renderer
     from loushang.harnesstui.conversation.dispatch import ResultRenderer
 
     assert Renderer is ResultRenderer

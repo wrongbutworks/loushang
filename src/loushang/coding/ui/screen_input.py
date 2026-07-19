@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import base64
 from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol, cast
 
-from loushang.ai.types import ImagePart
 from loushang.harnesstui.conversation.attachments import (
     ClipboardImageNameFactory,
     ClipboardImageReader,
-    PromptImageAttachment,
     PromptImageAttachmentOutcome,
     new_prompt_image_name_token,
     stage_clipboard_image,
@@ -82,27 +79,6 @@ def build_screen_input_router(
     return router
 
 
-def image_parts_from_prompt_attachments(
-    attachments: tuple[object, ...] | None,
-) -> tuple[ImagePart, ...] | None:
-    """Adapt neutral prompt attachments at the Coding model boundary."""
-
-    if attachments is None:
-        return None
-    parts: list[ImagePart] = []
-    for attachment in attachments:
-        if not isinstance(attachment, PromptImageAttachment):
-            raise TypeError("Coding prompt attachments must be prompt images")
-        parts.append(
-            ImagePart(
-                type="image",
-                data=base64.b64encode(attachment.bytes).decode("ascii"),
-                mime_type=attachment.mime_type,
-            )
-        )
-    return tuple(parts)
-
-
 def _present_clipboard_outcome(
     app: CodingScreenInputPort,
     outcome: PromptImageAttachmentOutcome,
@@ -129,5 +105,4 @@ def _present_clipboard_outcome(
 __all__ = [
     "CodingScreenInputPort",
     "build_screen_input_router",
-    "image_parts_from_prompt_attachments",
 ]

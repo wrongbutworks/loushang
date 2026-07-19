@@ -13,7 +13,7 @@ class _Renderer:
 
 
 def test_debug_command_handler_disables_debug_logging() -> None:
-    from loushang.coding.ui.debug_command import DebugCommandHandler
+    from loushang.coding.diagnostics.tui import DebugCommandHandler
     from loushang.coding.interaction.intent import DebugIntent
 
     renderer = _Renderer()
@@ -49,7 +49,7 @@ def test_debug_command_handler_disables_debug_logging() -> None:
 
 
 def test_debug_command_handler_enables_debug_logging_with_scopes() -> None:
-    from loushang.coding.ui.debug_command import DebugCommandHandler
+    from loushang.coding.diagnostics.tui import DebugCommandHandler
     from loushang.coding.interaction.intent import DebugIntent
 
     session = object()

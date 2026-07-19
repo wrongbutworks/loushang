@@ -4,14 +4,44 @@ import asyncio
 import os
 import threading
 import time
+from collections.abc import Awaitable, Callable
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 
-from loushang.ai.types import ImagePart
 from loushang.coding.types import ModelSelection
 from loushang.harnesstui.conversation.attachments import PromptImageAttachment
+from loushang.harnesstui.conversation.control import ConversationTextAction
+from loushang.harnesstui.testing.action_host import (
+    CallbackConversationActionHost,
+)
 from loushang.tui import strip_control_sequences
+
+
+def _action_host(
+    *,
+    submit: Callable[[str], object] = lambda _text: None,
+    steer: Callable[[str], object] = lambda _text: None,
+    follow_up: Callable[[str], object] = lambda _text: None,
+    abort: Callable[[], object] = lambda: None,
+) -> CallbackConversationActionHost:
+    return CallbackConversationActionHost(
+        submit=submit,
+        steer=steer,
+        follow_up=follow_up,
+        abort=abort,
+    )
+
+
+def _bind_host_action(
+    action: Callable[[ConversationTextAction], Awaitable[int | None]],
+    *,
+    source: str,
+) -> Callable[[str], Awaitable[int | None]]:
+    async def handle(text: str) -> int | None:
+        return await action(ConversationTextAction(text=text, source=source))
+
+    return handle
 
 
 def test_screen_loop_prints_welcome_panel_to_scrollback_once() -> None:
@@ -32,8 +62,7 @@ def test_screen_loop_prints_welcome_panel_to_scrollback_once() -> None:
             app=app,
             stdin=StringIO("/quit\r"),
             stdout=stdout,
-            handle_prompt=lambda _text: None,
-            on_abort=lambda: None,
+            action_host=_action_host(),
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
@@ -66,9 +95,8 @@ def test_screen_loop_enters_terminal_mode_before_welcome_panel() -> None:
             app=app,
             stdin=StringIO("/quit\r"),
             stdout=stdout,
-            handle_prompt=lambda _text: None,
+            action_host=_action_host(),
             terminal_mode_factory=lambda _stdin, _stdout: _OrderingTerminalMode(stdout),
-            on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
@@ -97,8 +125,7 @@ def test_screen_loop_runs_prompt_to_worked_divider_without_stale_working() -> No
             app=app,
             stdin=StringIO("你好\r"),
             stdout=stdout,
-            handle_prompt=handle_prompt,
-            on_abort=lambda: None,
+            action_host=_action_host(submit=handle_prompt),
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
@@ -111,8 +138,8 @@ def test_screen_loop_runs_prompt_to_worked_divider_without_stale_working() -> No
     assert rendered.rfind("Working") < rendered.rfind("Worked for")
 
 
-def test_screen_loop_adapts_neutral_attachments_to_coding_images() -> None:
-    from loushang.coding.ui.screen_loop import _adapt_attachment_handler
+def test_screen_loop_binds_neutral_attachments_to_a_conversation_action() -> None:
+    from loushang.coding.ui.screen_loop import _bind_text_action
 
     seen: dict[str, object] = {}
     attachment = PromptImageAttachment(
@@ -123,23 +150,19 @@ def test_screen_loop_adapts_neutral_attachments_to_coding_images() -> None:
         marker="@image.png",
     )
 
-    async def handle_prompt(
-        text: str,
-        *,
-        images: tuple[ImagePart, ...] | None = None,
-    ) -> int:
-        seen["text"] = text
-        seen["images"] = images
+    async def handle_prompt(action: ConversationTextAction) -> int:
+        seen["action"] = action
         return 9
 
-    adapted = _adapt_attachment_handler(handle_prompt)
+    adapted = _bind_text_action(handle_prompt, source="prompt")
     result = asyncio.run(adapted("describe", attachments=(attachment,)))
 
     assert result == 9
-    images = seen["images"]
-    assert isinstance(images, tuple)
-    assert images[0].mime_type == "image/png"
-    assert images[0].data == "cG5n"
+    action = seen["action"]
+    assert isinstance(action, ConversationTextAction)
+    assert action.text == "describe"
+    assert action.attachments == (attachment,)
+    assert action.source == "prompt"
 
 
 def test_screen_loop_scripted_prompt_then_quit_exits_without_status_residue() -> None:
@@ -166,8 +189,7 @@ def test_screen_loop_scripted_prompt_then_quit_exits_without_status_residue() ->
             app=app,
             stdin=StringIO("你好\r/quit\r"),
             stdout=stdout,
-            handle_prompt=handle_prompt,
-            on_abort=lambda: None,
+            action_host=_action_host(submit=handle_prompt),
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
@@ -196,8 +218,7 @@ def test_screen_loop_exits_on_quit_command() -> None:
             app=app,
             stdin=StringIO("/quit\r"),
             stdout=stdout,
-            handle_prompt=lambda _text: None,
-            on_abort=lambda: None,
+            action_host=_action_host(),
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
@@ -219,8 +240,7 @@ def test_screen_loop_clears_completion_area_before_exit() -> None:
             app=app,
             stdin=StringIO("/quit\r"),
             stdout=stdout,
-            handle_prompt=lambda _text: None,
-            on_abort=lambda: None,
+            action_host=_action_host(),
             should_exit=lambda text: text in {"/quit", "/exit"},
             is_local_command=lambda text: text.startswith("/"),
         )
@@ -255,8 +275,7 @@ def test_screen_loop_escape_cancels_standalone_completion_chunk() -> None:
             app=app,
             stdin=StringIO("/\x1b"),
             stdout=stdout,
-            handle_prompt=lambda _text: None,
-            on_abort=lambda: None,
+            action_host=_action_host(),
             should_exit=lambda text: text in {"/quit", "/exit"},
             is_local_command=lambda text: text.startswith("/"),
         )
@@ -296,8 +315,7 @@ def test_screen_loop_enter_executes_selected_slash_completion() -> None:
             app=app,
             stdin=StringIO("/q\r"),
             stdout=stdout,
-            handle_prompt=lambda _text: None,
-            on_abort=lambda: None,
+            action_host=_action_host(),
             should_exit=should_exit,
             is_local_command=lambda text: text.startswith("/"),
         )
@@ -336,10 +354,9 @@ def test_screen_loop_routes_runtime_overlay_surface_input() -> None:
             app=app,
             stdin=StringIO("/surface\r\r"),
             stdout=stdout,
-            handle_prompt=lambda _text: None,
+            action_host=_action_host(),
             handle_local=handle_local,
             handle_surface_intent=handle_surface_intent,
-            on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
             is_local_command=lambda text: text == "/surface",
         )
@@ -377,11 +394,10 @@ def test_screen_loop_escape_closes_model_surface_and_restores_prompt() -> None:
             app=app,
             stdin=_TimedTtyChunkInput((0.0, "/model\r"), (0.01, "\x1b")),
             stdout=stdout,
-            handle_prompt=lambda _text: None,
+            action_host=_action_host(),
             handle_local=manager.handle_text,
             handle_surface_intent=manager.handle_surface_intent,
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
-            on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
             is_local_command=manager.is_local_command,
         )
@@ -439,9 +455,8 @@ def test_screen_loop_exposes_terminal_diagnostics_provider_while_running() -> No
             app=app,
             stdin=StringIO("/probe\r"),
             stdout=stdout,
-            handle_prompt=lambda _text: None,
+            action_host=_action_host(),
             handle_local=handle_local,
-            on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
             is_local_command=lambda text: text == "/probe",
             terminal_mode_factory=lambda _stdin, _stdout: _Mode(),
@@ -507,10 +522,11 @@ def test_screen_loop_dispatches_steer_and_followup_handlers() -> None:
             app=app,
             stdin=StringIO("start\rsteer\rfollow\x1b\r\x03"),
             stdout=stdout,
-            handle_prompt=handle_prompt,
-            handle_steer=handle_steer,
-            handle_followup=handle_followup,
-            on_abort=lambda: None,
+            action_host=_action_host(
+                submit=handle_prompt,
+                steer=handle_steer,
+                follow_up=handle_followup,
+            ),
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
@@ -540,9 +556,7 @@ def test_screen_loop_dispatches_pending_steer_from_escape_when_idle() -> None:
             app=app,
             stdin=StringIO("\x1b"),
             stdout=stdout,
-            handle_prompt=lambda _text: None,
-            handle_steer=handle_steer,
-            on_abort=lambda: None,
+            action_host=_action_host(steer=handle_steer),
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
@@ -573,8 +587,7 @@ def test_screen_loop_executes_queued_steer_after_running_escape() -> None:
             app=app,
             stdin=StringIO("开始\r\x1b"),
             stdout=stdout,
-            handle_prompt=handle_prompt,
-            on_abort=lambda: None,
+            action_host=_action_host(submit=handle_prompt),
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
@@ -621,10 +634,8 @@ def test_screen_loop_executes_queued_steer_after_running_escape_with_delay() -> 
                 (0.02, "\x1b"),
             ),
             stdout=stdout,
-            handle_prompt=handle_prompt,
-            handle_steer=handle_steer,
+            action_host=_action_host(submit=handle_prompt, steer=handle_steer),
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
-            on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
@@ -665,9 +676,8 @@ def test_screen_loop_escape_runs_pending_steer_before_unsubmitted_composer_text(
                 (0.02, "\x1b"),
             ),
             stdout=stdout,
-            handle_prompt=handle_prompt,
+            action_host=_action_host(submit=handle_prompt),
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
-            on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
@@ -706,9 +716,8 @@ def test_screen_loop_renders_pending_steer_stream_after_escape_interrupt() -> No
             app=app,
             stdin=_TimedTtyChunkInput((0.0, "start\r"), (0.01, "\x1b"), (0.2, "")),
             stdout=stdout,
-            handle_prompt=handle_prompt,
+            action_host=_action_host(submit=handle_prompt),
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
-            on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
@@ -744,10 +753,8 @@ def test_screen_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
             app=app,
             stdin=_TimedTtyChunkInput((0.0, "start\r"), (0.01, "follow\r"), (0.02, "\x1b")),
             stdout=stdout,
-            handle_prompt=handle_prompt,
-            handle_steer=handle_steer,
+            action_host=_action_host(submit=handle_prompt, steer=handle_steer),
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
-            on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
@@ -783,10 +790,8 @@ def test_screen_loop_abort_uses_first_pending_steer_before_running_steer() -> No
             app=app,
             stdin=_TimedTtyChunkInput((0.0, "start\r"), (0.01, "follow\r"), (0.02, "\x1b")),
             stdout=stdout,
-            handle_prompt=handle_prompt,
-            handle_steer=handle_steer,
+            action_host=_action_host(submit=handle_prompt, steer=handle_steer),
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
-            on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
@@ -799,16 +804,20 @@ def test_screen_loop_abort_uses_first_pending_steer_before_running_steer() -> No
 
 def test_screen_loop_waits_for_abort_settle_before_running_popped_pending_steer() -> None:
     from loushang.coding.interaction.controller import CodingUiController
-    from loushang.coding.testing.tui.playback import ScreenTuiLoopPlayback
-    from loushang.coding.ui.mode import (
-        _screen_abort_handler,
-        _screen_prompt_handler,
-        _screen_text_handler,
+    from loushang.coding.interaction.screen_host import (
+        ScreenCodingConversationActionHost,
     )
+    from loushang.coding.testing.tui.playback import ScreenTuiLoopPlayback
 
     playback = ScreenTuiLoopPlayback()
     session = _AbortSettlingSession()
     controller = CodingUiController(session=session)
+    host = ScreenCodingConversationActionHost(
+        presenter=playback.app,
+        controller=controller,
+        stderr=StringIO(),
+        verbose=False,
+    )
     fresh_prompt = "浪潮楼上平台介绍一下，只回答楼上平台，不要回答上一轮问题"
 
     result = playback.run(
@@ -816,9 +825,9 @@ def test_screen_loop_waits_for_abort_settle_before_running_popped_pending_steer(
         (0.01, f"{fresh_prompt}\r"),
         (0.02, "\x1b"),
         (0.12, ""),
-        handle_prompt=_screen_prompt_handler(app=playback.app, controller=controller, stderr=StringIO(), verbose=False),
-        handle_steer=_screen_text_handler(app=playback.app, dispatch=controller.steer, label="Steering failed"),
-        on_abort=_screen_abort_handler(controller),
+        handle_prompt=_bind_host_action(host.submit, source="prompt"),
+        handle_steer=_bind_host_action(host.steer, source="steer"),
+        on_abort=host.abort,
     )
 
     assert result.exit_code == 0
@@ -833,16 +842,24 @@ def test_screen_loop_waits_for_abort_settle_before_running_popped_pending_steer(
 
 def test_screen_loop_dispatches_session_command_without_prompting_agent() -> None:
     from loushang.coding.interaction.controller import CodingUiController
+    from loushang.coding.interaction.screen_host import (
+        ScreenCodingConversationActionHost,
+    )
     from loushang.coding.testing.tui.playback import ScreenTuiLoopPlayback
-    from loushang.coding.ui.mode import _screen_prompt_handler
 
     playback = ScreenTuiLoopPlayback()
     session = _NameCommandSession()
     controller = CodingUiController(session=session)
+    host = ScreenCodingConversationActionHost(
+        presenter=playback.app,
+        controller=controller,
+        stderr=StringIO(),
+        verbose=False,
+    )
 
     result = playback.run(
         (0.0, "/name Project Alpha\r"),
-        handle_prompt=_screen_prompt_handler(app=playback.app, controller=controller, stderr=StringIO(), verbose=False),
+        handle_prompt=_bind_host_action(host.submit, source="prompt"),
     )
 
     assert result.exit_code == 0
@@ -872,9 +889,8 @@ def test_screen_loop_renders_streaming_updates_without_waiting_for_keyboard() ->
             app=app,
             stdin=stdin,
             stdout=stdout,
-            handle_prompt=handle_prompt,
+            action_host=_action_host(submit=handle_prompt),
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
-            on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )
@@ -905,9 +921,8 @@ def test_screen_loop_wakes_stream_render_before_active_interval() -> None:
             app=app,
             stdin=stdin,
             stdout=stdout,
-            handle_prompt=handle_prompt,
+            action_host=_action_host(submit=handle_prompt),
             terminal_mode_factory=lambda _stdin, _stdout: _NoTerminalMode(),
-            on_abort=lambda: None,
             should_exit=lambda text: text in {"/quit", "/exit"},
         )
     )

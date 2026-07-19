@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from loushang.harnesstui.conversation.attachments import PromptImageAttachment
 from loushang.harnesstui.conversation.run_context import StableEmit, TraceFn
 
 
@@ -15,6 +16,27 @@ class ActionResult(Protocol):
 
     @property
     def error_message(self) -> str | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationTextAction:
+    """Product-neutral text and attachments submitted by a conversation UI."""
+
+    text: str
+    attachments: tuple[PromptImageAttachment, ...] = ()
+    source: str = ""
+
+
+class ConversationActionHost(Protocol):
+    """Product boundary for actions initiated by a conversation UI."""
+
+    async def submit(self, action: ConversationTextAction) -> int | None: ...
+
+    async def steer(self, action: ConversationTextAction) -> int | None: ...
+
+    async def follow_up(self, action: ConversationTextAction) -> int | None: ...
+
+    async def abort(self) -> None: ...
 
 
 class RunControl(Protocol):
@@ -240,7 +262,9 @@ __all__ = [
     "AbortActionHandler",
     "ActionResult",
     "ActiveRunControl",
+    "ConversationActionHost",
     "ConversationRunControl",
+    "ConversationTextAction",
     "FollowUpActionHandler",
     "FollowUpController",
     "InterruptionRenderer",

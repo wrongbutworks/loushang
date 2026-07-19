@@ -37,7 +37,7 @@ class _Controller:
 def test_prompt_dispatch_begins_and_ends_work_intents() -> None:
     from loushang.coding.interaction.controller import ControllerResult
     from loushang.coding.interaction.intent import PromptIntent
-    from loushang.coding.ui.prompt_dispatch import PromptDispatchHandler
+    from loushang.coding.interaction.plain_dispatch import PromptDispatchHandler
 
     lifecycle = _Lifecycle()
     result = ControllerResult()
@@ -68,7 +68,7 @@ def test_prompt_dispatch_begins_and_ends_work_intents() -> None:
 def test_prompt_dispatch_does_not_start_lifecycle_for_non_work_intents() -> None:
     from loushang.coding.interaction.controller import ControllerResult
     from loushang.coding.interaction.intent import QuitIntent
-    from loushang.coding.ui.prompt_dispatch import PromptDispatchHandler
+    from loushang.coding.interaction.plain_dispatch import PromptDispatchHandler
 
     lifecycle = _Lifecycle()
     intent = QuitIntent()
@@ -91,7 +91,7 @@ def test_prompt_dispatch_does_not_start_lifecycle_for_non_work_intents() -> None
 
 def test_prompt_dispatch_ends_work_when_controller_raises() -> None:
     from loushang.coding.interaction.intent import BashIntent
-    from loushang.coding.ui.prompt_dispatch import PromptDispatchHandler
+    from loushang.coding.interaction.plain_dispatch import PromptDispatchHandler
 
     lifecycle = _Lifecycle()
     error = RuntimeError("dispatch exploded")

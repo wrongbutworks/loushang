@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_input import (
-    build_screen_input_router,
+from loushang.coding.interaction.screen_host import (
     image_parts_from_prompt_attachments,
 )
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+from loushang.coding.ui.screen_input import build_screen_input_router
 from loushang.harnesstui.conversation.attachments import PromptImageAttachment
 from loushang.tui import InputEvent
 from loushang.tui.clipboard_image import ClipboardImage

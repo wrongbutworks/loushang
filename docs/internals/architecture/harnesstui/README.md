@@ -7,6 +7,7 @@ direction is:
 ```text
 `loushang.coding.ui` -> `loushang.harnesstui` -> `loushang.tui`
 `loushang.coding.commands.tui` -> `loushang.harnesstui`
+`loushang.coding.interaction.*` -> `loushang.harnesstui`
 `loushang.coding.model_selection_tui` -> `loushang.harnesstui`
 `loushang.harnesstui` -> `loushang.harness`
 
@@ -295,7 +296,9 @@ explicit entrypoints:
 - `loushang.harnesstui.conversation.input` coordinates decoded input,
   completion, surfaces, running-submit modes, and neutral attachments;
 - `loushang.harnesstui.conversation.control` coordinates abort, steer, and
-  follow-up actions over caller-supplied controllers and status callbacks;
+  follow-up actions over caller-supplied controllers and status callbacks. It
+  also defines the immutable `ConversationTextAction` and the structural
+  `ConversationActionHost` product port;
 - `loushang.harnesstui.conversation.dispatch` owns product-neutral dispatch,
   result-presentation, and stable event-stream lifecycles;
 - `loushang.harnesstui.conversation.run_context` owns UI subscription cleanup,
@@ -311,6 +314,13 @@ neutral attachments to its runtime-facing values. In particular, Coding keeps
 `PromptIntent` and `BashIntent`, `ImagePart`, Session and observability setup,
 raw-event interpretation, `.loushang` storage policy, and its interruption,
 queue, and error messages.
+
+The action host is a dependency-inversion seam, not a second lifecycle or
+dispatch engine. Plain products may compose the existing run-control,
+dispatch, and result presenter behind it. Screen products may keep lifecycle
+ownership in `screen_runner` and only bind the host's four action methods.
+`loushang.harnesstui.testing.action_host` provides the corresponding callback
+adapter for playback without introducing product policy into the shared layer.
 
 The screen runner coordinates existing rendering calls but does not move or
 replace transcript segmentation, invalidation, render caches, frame

@@ -29,17 +29,12 @@ HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/platform/__init__.py \
 	src/loushang/coding/platform/clipboard_image.py \
 	src/loushang/coding/testing/tui \
-	src/loushang/coding/ui/abort.py \
 	src/loushang/coding/ui/completion.py \
 	src/loushang/coding/ui/conversation_event_adapter.py \
 	src/loushang/coding/ui/event_stream.py \
-	src/loushang/coding/ui/follow_up_queue.py \
-	src/loushang/coding/ui/handlers.py \
 	src/loushang/coding/ui/plain_app.py \
 	src/loushang/coding/ui/plain_events.py \
 	src/loushang/coding/ui/plain_renderer.py \
-	src/loushang/coding/ui/prompt_dispatch.py \
-	src/loushang/coding/ui/prompt_result.py \
 	src/loushang/coding/ui/run_context.py \
 	src/loushang/coding/ui/screen_app.py \
 	src/loushang/coding/ui/screen_events.py \
@@ -55,9 +50,17 @@ CODING_TUI_PRODUCT_SOURCES := \
 	src/loushang/coding/model_selection_tui.py \
 	src/loushang/coding/model_selection.py \
 	src/loushang/coding/diagnostics/debug_status.py \
+	src/loushang/coding/diagnostics/tui.py \
 	src/loushang/coding/event/presentation_policy.py \
 	src/loushang/coding/interaction/controller.py \
 	src/loushang/coding/interaction/intent.py \
+	src/loushang/coding/interaction/plain_abort.py \
+	src/loushang/coding/interaction/plain_dispatch.py \
+	src/loushang/coding/interaction/plain_follow_up.py \
+	src/loushang/coding/interaction/plain_host.py \
+	src/loushang/coding/interaction/plain_result.py \
+	src/loushang/coding/interaction/routing.py \
+	src/loushang/coding/interaction/screen_host.py \
 	src/loushang/coding/presentation/session.py \
 	src/loushang/coding/presentation/settings.py
 HARNESSTUI_TEST_PATHS := \
