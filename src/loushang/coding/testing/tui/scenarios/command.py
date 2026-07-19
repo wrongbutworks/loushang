@@ -13,7 +13,7 @@ from loushang.coding.testing.tui.scenarios.budgets import INTERACTION_FRAME_BUDG
 from loushang.coding.ui.mode import _screen_prompt_handler
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
-from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+from loushang.harnesstui.status.provider import StatusProvider
 from loushang.tui.playback_suite import (
     PlaybackScenarioSpec as ScreenPlaybackScenarioSpec,
 )
@@ -174,9 +174,9 @@ def _surface_manager(
     )
 
 
-def _status_provider(app: ScreenCodingTuiApp) -> CodingTuiStatusProvider:
+def _status_provider(app: ScreenCodingTuiApp) -> StatusProvider:
     state = app.state
-    return CodingTuiStatusProvider(
+    return StatusProvider(
         model_label=state.model_label,
         cwd=state.cwd,
         branch=state.branch,

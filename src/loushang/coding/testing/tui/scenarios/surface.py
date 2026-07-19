@@ -15,7 +15,7 @@ from loushang.coding.testing.tui.scenario_binding import (
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
-from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+from loushang.harnesstui.status.provider import StatusProvider
 from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.harnesstui.testing.scenarios.surface import surface_scenarios
 from loushang.tui import DialogSurface
@@ -301,9 +301,9 @@ def _surface_manager(
     )
 
 
-def _status_provider(app: object) -> CodingTuiStatusProvider:
+def _status_provider(app: object) -> StatusProvider:
     state = getattr(app, "state")
-    return CodingTuiStatusProvider(
+    return StatusProvider(
         model_label=state.model_label,
         cwd=state.cwd,
         branch=state.branch,

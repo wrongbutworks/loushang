@@ -6,7 +6,9 @@ direction is:
 
 ```text
 `loushang.coding.ui` -> `loushang.harnesstui` -> `loushang.tui`
-                                             -> `loushang.harness`
+`loushang.coding.commands.tui` -> `loushang.harnesstui`
+`loushang.coding.model_selection_tui` -> `loushang.harnesstui`
+`loushang.harnesstui` -> `loushang.harness`
 
 `loushang.coding.testing.tui` -> `loushang.harnesstui.testing`
                               -> `loushang.harnesstui`
@@ -72,6 +74,25 @@ caller-supplied descriptors and choices.
 The explicit module paths `loushang.harnesstui.commands.interaction` and
 `loushang.harnesstui.selection.interaction` are the stable entrypoints for
 these workflows. Package initializers do not add convenience re-exports.
+
+## Settings and Prepared Surfaces
+
+`loushang.harnesstui.settings.workflow` owns the reusable settings-dashboard
+workflow: tab composition, focus, status and status-line refresh, model-page
+refresh, and structural apply effects. Products supply prepared `ConfigRow`
+and `ModelChoice` snapshots plus callbacks for applying configuration and model
+changes. The workflow never receives a raw Session or SettingsManager.
+
+Coding keeps its six setting ids, labels, getter/setter mapping, validation
+copy, model catalog acquisition, endpoint policy, model application, and
+default-model persistence. Those product facts live outside `coding.ui`; its
+remaining settings-page module is only the composition adapter that turns them
+into shared workflow ports.
+
+`loushang.harnesstui.surface.factory` builds framed surfaces from prepared
+palettes and neutral selection items. Titles, subtitles, footers, placement,
+and sizing remain caller-supplied policy. It does not parse Coding commands,
+load models, mutate a composer, or decide approval outcomes.
 
 ## Conversation Attachments
 
@@ -171,10 +192,12 @@ reach into those mechanics or introduce a second status-bar runtime.
 `loushang.harnesstui.status.snapshot` owns the neutral status facts.
 `loushang.harnesstui.status.provider` owns the callback-fed status profile and
 product-neutral status-line setting transitions.
+`loushang.harnesstui.status.persistence` adapts those settings to a
+caller-supplied duck-typed settings store without importing a product manager.
 `loushang.harnesstui.status.plain` owns the compact, line-oriented toolbar
 projection over presentation-ready status values. Coding continues to own live
-Session reads, SettingsManager adaptation and persistence, and provider update
-timing; its former status and toolbar imports are direct compatibility aliases.
+Session reads, the concrete settings store, scope choice, and provider update
+timing. Removed Coding status modules are not compatibility re-exported.
 
 These explicit module paths are the stable imports for this slice. The package
 initializers do not need to provide convenience re-exports.

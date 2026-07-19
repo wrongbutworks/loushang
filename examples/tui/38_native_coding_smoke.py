@@ -8,10 +8,10 @@ from types import SimpleNamespace
 from loushang.coding.session.builtin_commands import list_builtin_command_descriptors
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.completion import coding_inline_completion_provider
-from loushang.coding.ui.native_app import NativeCodingTuiApp
-from loushang.coding.ui.native_loop import run_native_coding_tui
-from loushang.coding.ui.native_surfaces import NativeSurfaceManager
-from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+from loushang.coding.ui.screen_loop import run_screen_coding_tui
+from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
+from loushang.harnesstui.status.provider import StatusProvider
 
 
 class SmokeSession:
@@ -48,14 +48,14 @@ class SmokeSession:
 async def main() -> int:
     cwd = Path.cwd()
     session = SmokeSession(cwd)
-    app = NativeCodingTuiApp(
+    app = ScreenCodingTuiApp(
         model_label="smoke/fast",
         cwd=str(cwd),
         branch="smoke",
         session_label="smoke",
     )
     app.composer.set_completion_provider(await coding_inline_completion_provider(session))
-    status_provider = CodingTuiStatusProvider(
+    status_provider = StatusProvider(
         model_label=app.state.model_label,
         cwd=app.state.cwd,
         branch=app.state.branch,
@@ -63,7 +63,11 @@ async def main() -> int:
         thinking_level=lambda: None,
         running=lambda: app.state.running,
     )
-    surface_manager = NativeSurfaceManager(app=app, session=session, status_provider=status_provider)
+    surface_manager = ScreenSurfaceManager(
+        app=app,
+        session=session,
+        status_provider=status_provider,
+    )
 
     async def handle_prompt(text: str) -> int | None:
         app.begin_assistant()
@@ -73,7 +77,7 @@ async def main() -> int:
         app.end_assistant()
         return None
 
-    return await run_native_coding_tui(
+    return await run_screen_coding_tui(
         app=app,
         stdin=sys.stdin,
         stdout=sys.stdout,

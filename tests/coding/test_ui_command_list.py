@@ -56,14 +56,14 @@ class _EmptyCatalog:
 
 
 def test_command_list_keeps_completion_item_compatibility_alias() -> None:
-    from loushang.coding.ui.command_list import CompletionItem as CodingCompletionItem
+    from loushang.coding.commands.tui import CompletionItem as CodingCompletionItem
     from loushang.tui import CompletionItem
 
     assert CodingCompletionItem is CompletionItem
 
 
 def test_format_session_commands_lists_sorted_commands() -> None:
-    from loushang.coding.ui.command_list import format_session_commands
+    from loushang.coding.commands.tui import format_session_commands
 
     text = asyncio.run(format_session_commands(_Session()))
 
@@ -75,7 +75,7 @@ def test_format_session_commands_lists_sorted_commands() -> None:
 
 
 def test_format_session_commands_filters_by_query() -> None:
-    from loushang.coding.ui.command_list import format_session_commands
+    from loushang.coding.commands.tui import format_session_commands
 
     text = asyncio.run(format_session_commands(_Session(), query="hot"))
 
@@ -83,7 +83,7 @@ def test_format_session_commands_filters_by_query() -> None:
 
 
 def test_format_session_commands_reports_empty_matches() -> None:
-    from loushang.coding.ui.command_list import format_session_commands
+    from loushang.coding.commands.tui import format_session_commands
 
     text = asyncio.run(format_session_commands(_Session(), query="missing"))
 
@@ -91,7 +91,7 @@ def test_format_session_commands_reports_empty_matches() -> None:
 
 
 def test_format_session_commands_includes_argument_hint() -> None:
-    from loushang.coding.ui.command_list import format_session_commands
+    from loushang.coding.commands.tui import format_session_commands
 
     text = asyncio.run(format_session_commands(_ArgumentHintSession()))
 
@@ -99,7 +99,7 @@ def test_format_session_commands_includes_argument_hint() -> None:
 
 
 def test_session_command_completion_provider_exposes_structured_items() -> None:
-    from loushang.coding.ui.command_list import session_command_completion_provider
+    from loushang.coding.commands.tui import session_command_completion_provider
     from loushang.tui import CompletionItem, CompletionProvider
 
     provider = asyncio.run(session_command_completion_provider(_Session()))
@@ -117,7 +117,7 @@ def test_session_command_completion_provider_exposes_structured_items() -> None:
 
 
 def test_session_command_completion_provider_uses_argument_hint_in_label() -> None:
-    from loushang.coding.ui.command_list import session_command_completion_provider
+    from loushang.coding.commands.tui import session_command_completion_provider
     from loushang.tui import CompletionItem, CompletionProvider
 
     provider = asyncio.run(session_command_completion_provider(_ArgumentHintSession()))
@@ -134,7 +134,7 @@ def test_session_command_completion_provider_uses_argument_hint_in_label() -> No
 
 
 def test_command_apis_await_session_command_getter() -> None:
-    from loushang.coding.ui.command_list import (
+    from loushang.coding.commands.tui import (
         coding_command_completion_provider,
         session_command_completion_provider,
     )
@@ -147,7 +147,7 @@ def test_command_apis_await_session_command_getter() -> None:
 
 
 def test_format_coding_commands_includes_local_and_session_commands() -> None:
-    from loushang.coding.ui.command_list import format_coding_commands
+    from loushang.coding.commands.tui import format_coding_commands
 
     text = asyncio.run(format_coding_commands(_Session(), query="terminal"))
 
@@ -155,7 +155,7 @@ def test_format_coding_commands_includes_local_and_session_commands() -> None:
 
 
 def test_coding_command_completion_provider_includes_local_commands() -> None:
-    from loushang.coding.ui.command_list import coding_command_completion_provider
+    from loushang.coding.commands.tui import coding_command_completion_provider
     from loushang.tui import CompletionItem
 
     provider = asyncio.run(coding_command_completion_provider(_Session()))
@@ -169,7 +169,7 @@ def test_coding_command_completion_provider_includes_local_commands() -> None:
 
 
 def test_builtin_terminal_command_is_visible_in_command_completion_and_list() -> None:
-    from loushang.coding.ui.command_list import (
+    from loushang.coding.commands.tui import (
         format_session_commands,
         session_command_completion_provider,
     )
@@ -187,7 +187,7 @@ def test_builtin_terminal_command_is_visible_in_command_completion_and_list() ->
 
 
 def test_session_command_palette_reuses_structured_command_items() -> None:
-    from loushang.coding.ui.command_list import session_command_palette
+    from loushang.coding.commands.tui import session_command_palette
     from loushang.tui import CommandPalette, CommandPaletteItem
 
     palette = asyncio.run(session_command_palette(_Session(), title="Commands"))
@@ -206,7 +206,7 @@ def test_session_command_palette_reuses_structured_command_items() -> None:
 
 
 def test_select_session_command_uses_palette_when_query_is_empty() -> None:
-    from loushang.coding.ui.command_list import select_session_command
+    from loushang.coding.commands.tui import select_session_command
     from loushang.tui import CommandPalette
 
     seen: list[CommandPalette] = []
@@ -222,7 +222,7 @@ def test_select_session_command_uses_palette_when_query_is_empty() -> None:
 
 
 def test_select_session_command_filters_unique_match() -> None:
-    from loushang.coding.ui.command_list import select_session_command
+    from loushang.coding.commands.tui import select_session_command
 
     result = asyncio.run(select_session_command(_Session(), query="hot"))
 
@@ -230,7 +230,7 @@ def test_select_session_command_filters_unique_match() -> None:
 
 
 def test_select_session_command_reports_multiple_matches() -> None:
-    from loushang.coding.ui.command_list import select_session_command
+    from loushang.coding.commands.tui import select_session_command
 
     result = asyncio.run(select_session_command(_Session(), query="/"))
 
@@ -238,7 +238,7 @@ def test_select_session_command_reports_multiple_matches() -> None:
 
 
 def test_select_session_command_reports_cancelled_palette() -> None:
-    from loushang.coding.ui.command_list import select_session_command
+    from loushang.coding.commands.tui import select_session_command
 
     result = asyncio.run(select_session_command(_Session(), choose=lambda _palette: None))
 
@@ -246,7 +246,7 @@ def test_select_session_command_reports_cancelled_palette() -> None:
 
 
 def test_select_coding_command_invokes_chooser_for_empty_catalog() -> None:
-    from loushang.coding.ui.command_list import select_coding_command
+    from loushang.coding.commands.tui import select_coding_command
     from loushang.tui import CommandPalette
 
     seen: list[CommandPalette] = []

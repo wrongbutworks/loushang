@@ -5,7 +5,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, TextIO
 
+from loushang.coding.commands.tui import (
+    CommandPaletteChooser,
+    format_coding_commands,
+    select_coding_command,
+)
 from loushang.coding.interaction.controller import CodingUiController
+from loushang.coding.model_selection_tui import (
+    ModelPaletteChooser,
+    format_available_models,
+    select_available_model,
+)
 from loushang.coding.presentation.session import (
     is_running,
     session_error_message,
@@ -13,11 +23,6 @@ from loushang.coding.presentation.session import (
     thinking_level,
 )
 from loushang.coding.ui.abort import AbortHandler
-from loushang.coding.ui.command_list import (
-    CommandPaletteChooser,
-    format_coding_commands,
-    select_coding_command,
-)
 from loushang.coding.ui.debug_command import DebugCommandHandler
 from loushang.coding.ui.follow_up_queue import FollowUpQueueHandler
 from loushang.coding.ui.handlers import (
@@ -25,23 +30,18 @@ from loushang.coding.ui.handlers import (
     InfoPanelPresenter,
 )
 from loushang.coding.ui.hotkeys import format_hotkeys
-from loushang.coding.ui.model_list import (
-    ModelPaletteChooser,
-    format_available_models,
-    select_available_model,
-)
 from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
 from loushang.coding.ui.prompt_dispatch import PromptDispatchHandler
 from loushang.coding.ui.prompt_result import PromptResultHandler
-from loushang.coding.ui.status_provider import (
-    CodingTuiStatusProvider,
-    statusline_settings_from_settings_manager,
-    statusline_settings_persistence_callback,
-)
 from loushang.harnesstui.conversation.control import (
     ConversationRunControl as RunLifecycle,
 )
 from loushang.harnesstui.conversation.control import SteerActionHandler as SteerHandler
+from loushang.harnesstui.status.persistence import (
+    statusline_settings_from_store,
+    statusline_settings_persistence_callback,
+)
+from loushang.harnesstui.status.provider import StatusProvider
 from loushang.tui import CompletionProvider
 
 
@@ -137,14 +137,14 @@ def build_plain_coding_tui_app(
         trace=trace,
     )
     settings_manager = getattr(session, "settings_manager", None)
-    status_provider = CodingTuiStatusProvider(
+    status_provider = StatusProvider(
         model_label=model_label,
         cwd=cwd,
         branch=branch,
         session_label=lambda: session_label(session),
         thinking_level=lambda: thinking_level(session),
         running=lambda: lifecycle.visible_running(session_running=is_running(session)),
-        statusline_settings=statusline_settings_from_settings_manager(settings_manager),
+        statusline_settings=statusline_settings_from_store(settings_manager),
         on_statusline_settings_changed=statusline_settings_persistence_callback(settings_manager),
     )
     handlers = CodingTuiHandlers(

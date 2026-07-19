@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 
 from loushang.coding.types import ModelSelection
-from loushang.coding.ui.settings_page import SettingsPageView
-from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+from loushang.coding.ui.settings_page import build_coding_settings_page
+from loushang.harnesstui.settings.workflow import SettingsPageView
 from loushang.harnesstui.status.line import StatusLinePreviewSnapshot
+from loushang.harnesstui.status.provider import StatusProvider
 from loushang.tui import InputEvent, InputIntent, RenderConstraints
 from loushang.tui.cell_width import strip_control_sequences
 
@@ -86,7 +87,7 @@ class _SettingsManager:
 
 
 def test_status_provider_exposes_read_only_snapshot() -> None:
-    provider = CodingTuiStatusProvider(
+    provider = StatusProvider(
         model_label="moonshot/kimi-for-coding",
         cwd="/repo",
         branch="main",
@@ -106,8 +107,8 @@ def test_status_provider_exposes_read_only_snapshot() -> None:
     assert snapshot.statusline_visible is True
 
 
-def _status_provider() -> CodingTuiStatusProvider:
-    return CodingTuiStatusProvider(
+def _status_provider() -> StatusProvider:
+    return StatusProvider(
         model_label="moonshot/kimi-for-coding",
         cwd="/repo",
         branch="main",
@@ -136,7 +137,7 @@ def _page(
     statusline_preview: object | None = None,
 ) -> SettingsPageView:
     return asyncio.run(
-        SettingsPageView.create(
+        build_coding_settings_page(
             session=_Session(),
             status_provider=_status_provider(),
             settings_manager=settings_manager,
@@ -155,38 +156,22 @@ def _raw(page: SettingsPageView, *, width: int = 100, height: int = 18) -> tuple
 
 
 def test_settings_page_uses_canonical_page_components() -> None:
-    from loushang.coding.ui.settings_config import ConfigSettingsPage
-    from loushang.coding.ui.settings_page import (
-        ModelPage,
-    )
-    from loushang.coding.ui.settings_page import (
-        StaticLinesPage as CodingStaticLinesPage,
-    )
     from loushang.harnesstui.settings.dashboard import (
         SettingsDashboard,
         StaticLinesPage,
     )
-    from loushang.harnesstui.settings.model import ModelPage as SharedModelPage
+    from loushang.harnesstui.settings.model import ModelPage
     from loushang.harnesstui.settings.page import (
-        ConfigSettingsPage as SharedConfigSettingsPage,
+        ConfigSettingsPage,
     )
     from loushang.harnesstui.status.settings import StatusLineSettingsPage
-    from loushang.harnesstui.status.settings import (
-        StatusLineSettingsPage as SharedStatusLineSettingsPage,
-    )
-    from loushang.tui.settings import ConfigRow
-    from loushang.tui.settings import ConfigRow as SharedConfigRow
 
     page = _page()
 
-    assert ConfigSettingsPage is SharedConfigSettingsPage
-    assert StatusLineSettingsPage is SharedStatusLineSettingsPage
-    assert ModelPage is SharedModelPage
-    assert CodingStaticLinesPage is StaticLinesPage
-    assert ConfigRow is SharedConfigRow
     assert isinstance(page, SettingsDashboard)
     assert type(page.status_page) is StaticLinesPage
     assert isinstance(page.config_page, ConfigSettingsPage)
+    assert isinstance(page.model_page, ModelPage)
     assert isinstance(page.statusline_page, StatusLineSettingsPage)
 
 

@@ -354,7 +354,7 @@ def test_screen_loop_escape_closes_model_surface_and_restores_prompt() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_loop import run_screen_coding_tui
     from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
-    from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+    from loushang.harnesstui.status.provider import StatusProvider
 
     stdout = StringIO()
     app = ScreenCodingTuiApp(model_label="moonshot/kimi-for-coding", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
@@ -362,7 +362,7 @@ def test_screen_loop_escape_closes_model_surface_and_restores_prompt() -> None:
     manager = ScreenSurfaceManager(
         app=app,
         session=session,
-        status_provider=CodingTuiStatusProvider(
+        status_provider=StatusProvider(
             model_label=app.state.model_label,
             cwd=app.state.cwd,
             branch=app.state.branch,

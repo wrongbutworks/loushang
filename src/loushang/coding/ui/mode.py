@@ -37,12 +37,12 @@ from loushang.coding.ui.startup import (
     CodingTuiStartupSnapshot,
     load_coding_tui_startup_snapshot,
 )
-from loushang.coding.ui.status_provider import (
-    CodingTuiStatusProvider,
-    statusline_settings_from_settings_manager,
+from loushang.coding.ui.transcript_source import SessionTranscriptSource
+from loushang.harnesstui.status.persistence import (
+    statusline_settings_from_store,
     statusline_settings_persistence_callback,
 )
-from loushang.coding.ui.transcript_source import SessionTranscriptSource
+from loushang.harnesstui.status.provider import StatusProvider
 from loushang.observability import get_log, log_context
 from loushang.tui import CompletionProvider
 from loushang.tui.prompt import run_non_interactive_prompt_loop
@@ -134,14 +134,14 @@ async def _run_screen_interactive_tui(
         return False
 
     settings_manager = getattr(session, "settings_manager", None)
-    status_provider = CodingTuiStatusProvider(
+    status_provider = StatusProvider(
         model_label=snapshot.model_label,
         cwd=snapshot.cwd,
         branch=snapshot.branch,
         session_label=lambda: session_label(session),
         thinking_level=lambda: thinking_level(session),
         running=lambda: app.state.running or is_running(session),
-        statusline_settings=statusline_settings_from_settings_manager(settings_manager),
+        statusline_settings=statusline_settings_from_store(settings_manager),
         on_statusline_settings_changed=statusline_settings_persistence_callback(
             settings_manager
         ),

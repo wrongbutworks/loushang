@@ -12,7 +12,7 @@ from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_input import build_screen_input_router
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
-from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+from loushang.harnesstui.status.provider import StatusProvider
 from loushang.tui import (
     FakeTerminalPort,
     ImageBlock,
@@ -889,7 +889,7 @@ def _manager(app: ScreenCodingTuiApp, session: _Session) -> ScreenSurfaceManager
     return ScreenSurfaceManager(
         app=app,
         session=session,
-        status_provider=CodingTuiStatusProvider(
+        status_provider=StatusProvider(
             model_label=app.state.model_label,
             cwd=app.state.cwd,
             branch=app.state.branch,

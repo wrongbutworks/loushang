@@ -8,14 +8,13 @@ from loushang.ai import Model
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_surfaces import (
-    ModelSelectorSurface,
     ScreenSurfaceManager,
     ScreenSurfaceView,
 )
-from loushang.coding.ui.status_provider import CodingTuiStatusProvider
 from loushang.harnesstui.selection.model import (
     ModelSelectorSurface as SharedModelSelectorSurface,
 )
+from loushang.harnesstui.status.provider import StatusProvider
 from loushang.harnesstui.surface.view import (
     ScreenSurfaceView as SharedScreenSurfaceView,
 )
@@ -67,7 +66,6 @@ class _TallContent:
 
 def test_screen_surface_compatibility_exports_keep_object_identity() -> None:
     assert ScreenSurfaceView is SharedScreenSurfaceView
-    assert ModelSelectorSurface is SharedModelSelectorSurface
 
 
 def test_screen_surface_view_delegates_editor_input_target() -> None:
@@ -128,7 +126,7 @@ def test_screen_surface_manager_opens_model_surface_and_selects_model() -> None:
     assert app.active_surface.title == "Select Model"
     assert app.active_surface.presentation == "bottom-exclusive"
     assert app.active_surface.exclusive_bottom is True
-    assert isinstance(app.active_surface.content, ModelSelectorSurface)
+    assert isinstance(app.active_surface.content, SharedModelSelectorSurface)
     assert app.active_surface.content.max_visible == 10
 
     rendered = app.active_surface.render(RenderConstraints(width=80, max_height=10))
@@ -1300,7 +1298,7 @@ def _status_provider(
     app: ScreenCodingTuiApp,
     *,
     settings_manager: object | None = None,
-) -> CodingTuiStatusProvider:
+) -> StatusProvider:
     from loushang.harnesstui.status.line import (
         status_line_settings_from_control,
         status_line_settings_to_patch,
@@ -1319,7 +1317,7 @@ def _status_provider(
                 scope="global",
             )
 
-    return CodingTuiStatusProvider(
+    return StatusProvider(
         model_label=app.state.model_label,
         cwd=app.state.cwd,
         branch=app.state.branch,
