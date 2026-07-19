@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from loushang.coding.event import project_runtime_event_to_session_event
+from loushang.ai.types import AssistantMessage, Usage
+from loushang.coding.event import (
+    project_runtime_event_to_json_views,
+    project_runtime_event_to_session_event,
+    shape_runtime_event_view,
+)
 from loushang.harness.events import (
     BranchSummaryCompleted,
     ContextCompactionStarted,
@@ -142,4 +147,62 @@ def test_runtime_projection_converts_tool_policy_audit_event() -> None:
         "type": "tool_approval_resolved",
         "tool_name": "write",
         "approval_decision": "allow",
+    }
+
+
+def test_runtime_projection_creates_transport_view_with_source_identity() -> None:
+    message = AssistantMessage(
+        role="assistant",
+        content=[],
+        api="test",
+        provider="test",
+        model="test",
+        response_id=None,
+        usage=Usage(
+            input=0,
+            output=0,
+            cache_read=0,
+            cache_write=0,
+            total_tokens=0,
+            cost={},
+        ),
+        stop_reason="stop",
+        error_message=None,
+        timestamp=0.0,
+    )
+    event = _event(
+        "agent.message_update",
+        {
+            "type": "message_update",
+            "message": message,
+            "assistant_message_event": {
+                "type": "text_delta",
+                "content_index": 0,
+                "delta": "hello",
+                "partial": message,
+            },
+        },
+    )
+
+    views = project_runtime_event_to_json_views(event, event_view="assistant_stream")
+
+    assert len(views) == 1
+    view = views[0]
+    assert view.event_id == event.event_id
+    assert view.stream_id == event.stream_id
+    assert view.sequence == event.sequence
+    assert view.event_type == "assistant_delta"
+    assert view.delivery_hint == "coalesce"
+    assert view.payload == {
+        "type": "assistant_delta",
+        "eventType": "text_delta",
+        "contentIndex": 0,
+        "delta": "hello",
+    }
+    assert shape_runtime_event_view(view) == {
+        "type": "assistant_delta",
+        "eventType": "text_delta",
+        "contentIndex": 0,
+        "delta": "hello",
+        "stream": {"kind": "session_event", "view": "assistant_stream"},
     }

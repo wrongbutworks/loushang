@@ -35,6 +35,6 @@ graph TD
 `loushang-coding` core.
 
 `loushang-channel` currently owns the minimal boundary protocol types for carrying
-`WorkOperation` and `WorkEvent`. The current RPC implementation remains the
-transitional `loushang.coding.mode.RpcMode` surface; future transport adapters
-should live under `loushang.channel`.
+`WorkOperation`, `WorkEvent`, and already-projected `RuntimeEventView`. The
+current RPC implementation remains the transitional `loushang.coding.mode.RpcMode`
+surface; future transport adapters should live under `loushang.channel`.

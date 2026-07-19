@@ -29,10 +29,12 @@
 - `loushang.ontology`
 - `loushang.protocol`
 
-`loushang.channel` 提供承载 `WorkOperation` / `WorkEvent` 的边界协议，及
-`rpc_jsonl` 的 JSONL framing、request correlation、accepted ACK 和 event
-delivery。现有 `loushang.coding.mode.RpcMode` 仍是 Coding-local transitional
-surface；它的命令表和 UI payload 不属于 Channel。
+`loushang.channel` 提供承载 `WorkOperation` / `WorkEvent` 以及已投影
+`RuntimeEventView` 的边界协议，及 `rpc_jsonl` 的 JSONL framing、request
+correlation、accepted ACK 和 event delivery。Channel 仅消费 Harness 的纯
+runtime-view 值契约，Harness 不反向依赖 Channel。现有
+`loushang.coding.mode.RpcMode` 仍是 Coding-local transitional surface；它的
+命令表和 UI payload 不属于 Channel。
 
 当前仓库结构应按已落地包理解：
 

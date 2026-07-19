@@ -23,6 +23,7 @@ from loushang.coding.mode.rpc_json import (
     RpcJsonProjectionError,
     project_rpc_value,
 )
+from loushang.harness.events import RuntimeEventView
 from loushang.work import WorkEvent, WorkOperation
 
 
@@ -75,6 +76,34 @@ def test_event_delivery_preserves_work_event_and_optional_request_correlation() 
     assert decoded == delivery
     assert isinstance(decoded, ChannelEventDelivery)
     assert decoded.envelope.payload.delivery_hint == "coalesce"
+
+
+def test_event_delivery_round_trips_projected_runtime_event() -> None:
+    delivery = ChannelEventDelivery(
+        request_id="request-1",
+        envelope=ChannelEnvelope(
+            envelope_id="envelope-runtime-event-1",
+            kind="event",
+            payload=RuntimeEventView(
+                event_id="runtime-event-1",
+                kind="agent.message_update",
+                stream_id="session:session-1",
+                sequence=1,
+                occurred_at=datetime(2026, 7, 17, tzinfo=UTC),
+                event_type="assistant_delta",
+                view="assistant_stream",
+                payload={"type": "assistant_delta", "delta": "partial"},
+                delivery_hint="coalesce",
+                session_id="session-1",
+            ),
+        ),
+    )
+
+    decoded = decode_rpc_jsonl_frame(encode_rpc_jsonl_frame(delivery))
+
+    assert decoded == delivery
+    assert isinstance(decoded, ChannelEventDelivery)
+    assert isinstance(decoded.envelope.payload, RuntimeEventView)
 
 
 def test_error_frame_round_trips_strict_json_details() -> None:

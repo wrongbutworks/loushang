@@ -21,9 +21,12 @@ from loushang.coding.event import (
     SUPPORTED_JSON_EVENT_VIEWS,
     JsonEventView,
     normalize_event_select,
+    project_runtime_event_to_json_views,
     project_session_event,
+    shape_runtime_event_view,
     shape_stream_event,
     should_emit_projected_event,
+    should_emit_runtime_event_view,
 )
 from loushang.coding.mode.base import ModeAdapter, ModeState
 from loushang.coding.mode.rpc_json import project_rpc_value
@@ -31,6 +34,7 @@ from loushang.coding.store import SessionQuery
 from loushang.coding.types import ModelSelection
 from loushang.harness.agent_transcript import create_agent_transcript_message_codec
 from loushang.harness.diagnostics.types import DiagnosticsQuery
+from loushang.harness.events import RuntimeEvent
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.protocol import JsonValueError, require_json_mapping, require_json_value
 
@@ -381,7 +385,7 @@ class RpcMode(ModeAdapter):
         self._tool_render_runtime: ToolRenderRuntime | None = None
         self._tool_definition_resolver: ToolDefinitionResolver | None = None
         self._configure_tool_rendering(self.session)
-        self._unsubscribe = self.session.subscribe(self._handle_event)
+        self._unsubscribe = self._subscribe_to_events(self.session)
         self._background_tasks: set[asyncio.Task[None]] = set()
         self._active_prompt_task: asyncio.Task[None] | None = None
         self._active_bash_task: asyncio.Task[None] | None = None
@@ -2044,7 +2048,7 @@ class RpcMode(ModeAdapter):
         self._unsubscribe()
         self.session = session
         self._configure_tool_rendering(session)
-        self._unsubscribe = self.session.subscribe(self._handle_event)
+        self._unsubscribe = self._subscribe_to_events(session)
         self._bind_extension_ui_context(session)
 
     def _bind_extension_ui_context(self, session: Any) -> None:
@@ -2065,6 +2069,22 @@ class RpcMode(ModeAdapter):
                 self._write_json_line(
                     shape_stream_event(projected_event, event_view=self.event_view)
                 )
+
+    def _subscribe_to_events(self, session: Any):
+        subscribe_runtime_events = getattr(session, "subscribe_runtime_events", None)
+        if callable(subscribe_runtime_events):
+            return subscribe_runtime_events(self._handle_runtime_event)
+        return session.subscribe(self._handle_event)
+
+    def _handle_runtime_event(self, event: RuntimeEvent[object]) -> None:
+        for projected_event in project_runtime_event_to_json_views(
+            event,
+            event_view=self.event_view,
+            tool_render_runtime=self._tool_render_runtime,
+            tool_definition_resolver=self._tool_definition_resolver,
+        ):
+            if should_emit_runtime_event_view(projected_event, self.event_select):
+                self._write_json_line(shape_runtime_event_view(projected_event))
 
     def _configure_tool_rendering(self, session: Any) -> None:
         if not self.render_tool_events:

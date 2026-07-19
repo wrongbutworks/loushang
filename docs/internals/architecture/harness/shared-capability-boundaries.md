@@ -408,7 +408,7 @@ others — they are orthogonal replaceability points:
 | Dimension | Override method | Harness stability contract |
 | --- | --- | --- |
 | Product (coding / ppt / research / …) | Ship an OEM product adapter that reuses the shared harness | Product adapters depend on Harness protocols, not internals |
-| Channel (TUI / WebUI / SDK / bot / …) | Register an OEM channel adapter | `ChannelEnvelope(WorkOperation/WorkEvent)` schema, additive evolution |
+| Channel (TUI / WebUI / SDK / bot / …) | Register an OEM channel adapter | `ChannelEnvelope(WorkOperation/WorkEvent/RuntimeEventView)` schema, additive evolution |
 | Method (bugfix / tdd / review / …) | Override method resources in OEM directories | `methods/*/METHOD.md` format and loader mechanics |
 | Skill (debugging / refactoring / …) | Override skill resources | `skills/*/SKILL.md` format and activation settings |
 | Model (opus / sonnet / gpt / custom / …) | Register OEM providers/endpoints/models via `models.json` overlay or runtime registration | Model registry cascade merge, additive model-descriptor fields |

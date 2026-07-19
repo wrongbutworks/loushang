@@ -151,7 +151,8 @@ prepared-run contract，不引入第二套 `HarnessRunSpec`。原
 `channel` 面向多客户端和多 UI：TUI、WebUI、AppUI、SDK host、RPC client
 都应通过 channel 发送 operation、订阅 event、恢复和回放状态。channel core
 承载 `WorkOperation` / `WorkEvent` 的边界传输语义；具体产品 adapter 由
-host 装配，不由 channel core 直接 import。
+host 装配，不由 channel core 直接 import。对于 Host/Session 的瞬态观察，
+channel 还可承载已完成产品投影的 `RuntimeEventView`；它不解释或产生该 view。
 
 ### loushang-tui
 
@@ -378,13 +379,14 @@ Multi-UI target shape:
 TUI / WebUI / AppUI / SDK / RPC client
   -> channel client
   -> channel server / host assembly
-  -> WorkOperation / WorkEvent
+  -> WorkOperation / WorkEvent / RuntimeEventView
   -> product adapter
   -> harness
 ```
 
-The channel core transports and replays work operations/events. It does not
-render UI and does not own product execution internals.
+The channel core transports and replays work operations/events and can deliver
+already-projected runtime views. It does not render UI, create runtime views,
+or own product execution internals.
 
 ## Loop Boundaries
 

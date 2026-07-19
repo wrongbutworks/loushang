@@ -13,10 +13,10 @@ This boundary keeps four event layers distinct:
 AgentEvent                 Agent-loop execution facts, owned by loushang.agent
     |
 RuntimeEvent               transient Host/Session facts, owned by Harness
+    |\
+    | \-> Work projection -> WorkEvent, owned by loushang.work
     |
-WorkEvent                  normalized work semantics, owned by loushang.work
-    |
-Product projection         JSON/RPC/TUI/extension fields, owned by each Product
+    \--> Product projection -> RuntimeEventView -> Channel delivery
 ```
 
 `ConversationRecord` remains the durable transcript fact. A runtime event is
@@ -98,6 +98,17 @@ Coding continues to own:
 - RPC, print, TUI, and extension filtering;
 - tool-render enrichment and Product artifact display;
 - Product-specific event payloads and compatibility exports.
+
+Harness additionally owns `RuntimeEventView`: a strict-JSON, source-preserving
+transport view and generic exact/trailing-wildcard selector. Products create a
+view only after applying their own event mapping and render policy. Coding's Pi
+aliases, event names, tool render enrichment, and RPC stream shape remain
+Coding-owned.
+
+`loushang.channel` may carry an already-created `RuntimeEventView`; it depends
+only on this value contract, while Harness never imports Channel. This neither
+makes RuntimeEvent a durable event log nor replaces WorkEvent's separate work
+semantics.
 
 The generic Session coordination mechanisms that produce these facts are
 documented separately in [Session Runtime Core](product-runtime-injection/components/session-runtime-core.md).

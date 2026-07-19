@@ -10,12 +10,15 @@ from loushang.coding.event import (
     SUPPORTED_JSON_EVENT_VIEWS,
     JsonEventView,
     normalize_event_select,
+    project_runtime_event_to_json_views,
     project_session_event,
     should_emit_projected_event,
+    should_emit_runtime_event_view,
 )
 from loushang.coding.mode.base import ModeAdapter, ModeState
 from loushang.coding.work_shell import CodingWorkShell
 from loushang.harness.conversation import NativeConversationHeaderCodec
+from loushang.harness.events import RuntimeEvent
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.protocol import require_json_value
 from loushang.work import EventLogBackend
@@ -166,7 +169,7 @@ class PrintMode(ModeAdapter):
             if self.output_mode == "json":
                 header = self.session.session_manager.get_header()
                 self._write_json_line(serialize_session_header(header))
-            unsubscribe = self.session.subscribe(self._handle_event)
+            unsubscribe = self._subscribe_to_events()
             await self._prompt_session(
                 user_input,
                 images=images,
@@ -219,6 +222,24 @@ class PrintMode(ModeAdapter):
         if rendered is None:
             return
         self.stdout.write(rendered + "\n")
+
+    def _subscribe_to_events(self):
+        subscribe_runtime_events = getattr(
+            self.session, "subscribe_runtime_events", None
+        )
+        if self.output_mode == "json" and callable(subscribe_runtime_events):
+            return subscribe_runtime_events(self._handle_runtime_event)
+        return self.session.subscribe(self._handle_event)
+
+    def _handle_runtime_event(self, event: RuntimeEvent[object]) -> None:
+        for projected_event in project_runtime_event_to_json_views(
+            event,
+            event_view=self.event_view,
+            tool_render_runtime=self._tool_render_runtime,
+            tool_definition_resolver=self._tool_definition_resolver,
+        ):
+            if should_emit_runtime_event_view(projected_event, self.event_select):
+                self._write_json_line(projected_event.payload)
 
     def _write_json_line(self, payload: object) -> None:
         projected = require_json_value(payload, name="print_json_event")

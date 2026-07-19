@@ -109,6 +109,12 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
                 "loushang.method",
                 "loushang.tui",
             ),
+            allowed_paths=frozenset(
+                {
+                    "src/loushang/channel/json_codec.py",
+                    "src/loushang/channel/types.py",
+                }
+            ),
         ),
     )
 
@@ -861,7 +867,7 @@ assert forbidden == [], forbidden
     assert completed.returncode == 0, completed.stderr
 
 
-def test_importing_channel_public_api_does_not_eagerly_load_runtime_or_products() -> (
+def test_importing_channel_public_api_loads_only_runtime_event_contracts_or_products() -> (
     None
 ):
     script = """
@@ -878,10 +884,11 @@ forbidden = sorted(
     or name.startswith("loushang.ai.")
     or name == "loushang.coding"
     or name.startswith("loushang.coding.")
-    or name == "loushang.harness"
-    or name.startswith("loushang.harness.")
+    or name == "loushang.harness.session"
+    or name.startswith("loushang.harness.session.")
 )
 assert forbidden == [], forbidden
+assert "loushang.harness.events.projection" in sys.modules
 """
     completed = subprocess.run(
         [sys.executable, "-c", script],
