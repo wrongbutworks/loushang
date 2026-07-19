@@ -7,7 +7,7 @@ from typing import Literal, TypeAlias
 
 from loushang.coding.extensions.types import RegisteredFlag, ResolvedFlag
 
-CliMode = Literal["text", "print", "json", "rpc"]
+CliMode = Literal["text", "print", "json", "rpc", "channel"]
 CommandListFormat = Literal["tsv", "json"]
 DiagnosticListFormat = Literal["tsv", "json"]
 SourceInfoFormat = Literal["text", "json"]
@@ -417,7 +417,11 @@ def _build_parser() -> ArgumentParser:
     parser.add_argument("--version", "-v", action="store_true")
     parser.add_argument("--source-info", action="store_true")
     parser.add_argument("--source-info-format", choices=("text", "json"), default="text")
-    parser.add_argument("--mode", choices=("text", "print", "json", "rpc"), default="text")
+    parser.add_argument(
+        "--mode",
+        choices=("text", "print", "json", "rpc", "channel"),
+        default="text",
+    )
     parser.add_argument("--method", help="Guide one coding turn with a discovered method.")
     parser.add_argument("--no-method", action="store_true", help="Run one coding turn without method guidance.")
     parser.add_argument(

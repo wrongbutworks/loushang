@@ -607,6 +607,12 @@ def test_parse_args_supports_modes_sessions_and_overrides() -> None:
     assert args.messages == ("hello", "world")
 
 
+def test_parse_args_accepts_channel_mode() -> None:
+    from loushang.coding.cli.args import parse_args
+
+    assert parse_args(["--mode", "channel"]).mode == "channel"
+
+
 def test_parse_args_accepts_tui_flag() -> None:
     from loushang.coding.cli.args import parse_args
 
@@ -4398,6 +4404,34 @@ def test_run_cli_dispatches_rpc_mode_and_creates_new_session(tmp_path) -> None:
     assert rpc_runner.calls[0]["runtime"] is runtime
 
 
+def test_run_cli_dispatches_standard_channel_mode(tmp_path) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    channel_runner = FakeRunner()
+
+    async def scenario() -> None:
+        exit_code = await run_cli(
+            ["--mode", "channel"],
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            channel_runner=channel_runner,
+        )
+        assert exit_code == 0
+
+    asyncio.run(scenario())
+
+    assert len(channel_runner.calls) == 1
+    assert channel_runner.calls[0]["runtime"] is runtime
+    assert isinstance(channel_runner.calls[0]["stdin"], StringIO)
+    assert isinstance(channel_runner.calls[0]["stdout"], StringIO)
+    assert isinstance(channel_runner.calls[0]["stderr"], StringIO)
+
+
 def test_run_cli_default_path_uses_unified_mode_runner(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
@@ -5457,6 +5491,10 @@ def test_run_cli_default_rpc_path_uses_unified_mode_runner(tmp_path) -> None:
             "--work-log is not supported in RPC mode",
         ),
         (
+            ["--mode", "channel", "--work-log", "events.jsonl"],
+            "--work-log is not supported in Channel mode",
+        ),
+        (
             ["--work-log", "events.jsonl", "--prompt-steps", "workflow.json"],
             "--work-log is not supported with --prompt-steps",
         ),
@@ -5486,6 +5524,58 @@ def test_run_cli_rejects_work_log_on_unsupported_paths(tmp_path, argv, message) 
 
     asyncio.run(scenario())
 
+    assert message in stderr.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (
+            ["--mode", "channel", "--tui"],
+            "--tui is not supported in Channel mode",
+        ),
+        (
+            ["--mode", "channel", "--prompt", "inspect"],
+            "--prompt is not supported in Channel mode",
+        ),
+        (
+            ["--mode", "channel", "--prompt-steps", "workflow.json"],
+            "--prompt-steps is not supported in Channel mode",
+        ),
+        (
+            ["--mode", "channel", "inspect"],
+            "positional messages are not supported in Channel mode",
+        ),
+        (
+            ["--mode", "channel", "@notes.txt"],
+            "@file arguments are not supported in Channel mode",
+        ),
+        (
+            ["--mode", "channel", "--render-tool-events"],
+            "--render-tool-events is not supported in Channel mode",
+        ),
+    ],
+)
+def test_run_cli_rejects_non_protocol_channel_inputs(tmp_path, argv, message) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("session-1"))
+    stderr = StringIO()
+
+    exit_code = asyncio.run(
+        run_cli(
+            argv,
+            stdin=StringIO(""),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            channel_runner=FakeRunner(),
+        )
+    )
+
+    assert exit_code == 2
     assert message in stderr.getvalue()
 
 

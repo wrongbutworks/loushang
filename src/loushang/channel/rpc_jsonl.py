@@ -15,6 +15,8 @@ from loushang.protocol import JSONValue, dump_json_value, require_json_mapping
 ChannelRpcFrameKind: TypeAlias = Literal[
     "operation_request",
     "operation_accepted",
+    "operation_cancel_request",
+    "operation_cancelled",
     "event",
     "error",
 ]
@@ -44,6 +46,30 @@ class ChannelOperationAccepted:
         _require_text(self.request_id, name="channel request id")
         _require_text(self.operation_id, name="work operation id")
         _require_optional_text(self.run_id, name="work run id")
+
+
+@dataclass(frozen=True)
+class ChannelOperationCancelRequest:
+    """One correlated request to cancel an accepted operation."""
+
+    request_id: str
+    operation_id: str
+
+    def __post_init__(self) -> None:
+        _require_text(self.request_id, name="channel request id")
+        _require_text(self.operation_id, name="work operation id")
+
+
+@dataclass(frozen=True)
+class ChannelOperationCancelled:
+    """An ACK that confirms cancellation admission, not final completion."""
+
+    request_id: str
+    operation_id: str
+
+    def __post_init__(self) -> None:
+        _require_text(self.request_id, name="channel request id")
+        _require_text(self.operation_id, name="work operation id")
 
 
 @dataclass(frozen=True)
@@ -84,6 +110,8 @@ class ChannelError:
 ChannelRpcFrame: TypeAlias = (
     ChannelOperationRequest
     | ChannelOperationAccepted
+    | ChannelOperationCancelRequest
+    | ChannelOperationCancelled
     | ChannelEventDelivery
     | ChannelError
 )
@@ -104,6 +132,18 @@ def rpc_jsonl_frame_to_json(frame: ChannelRpcFrame) -> dict[str, JSONValue]:
             "request_id": frame.request_id,
             "operation_id": frame.operation_id,
             "run_id": frame.run_id,
+        }
+    if isinstance(frame, ChannelOperationCancelRequest):
+        return {
+            "frame_type": "operation_cancel_request",
+            "request_id": frame.request_id,
+            "operation_id": frame.operation_id,
+        }
+    if isinstance(frame, ChannelOperationCancelled):
+        return {
+            "frame_type": "operation_cancelled",
+            "request_id": frame.request_id,
+            "operation_id": frame.operation_id,
         }
     if isinstance(frame, ChannelEventDelivery):
         return {
@@ -145,6 +185,24 @@ def rpc_jsonl_frame_from_json(data: Mapping[str, object]) -> ChannelRpcFrame:
                 payload.get("operation_id"), name="work operation id"
             ),
             run_id=_optional_text(payload.get("run_id"), name="work run id"),
+        )
+    if frame_type == "operation_cancel_request":
+        return ChannelOperationCancelRequest(
+            request_id=_require_text(
+                payload.get("request_id"), name="channel request id"
+            ),
+            operation_id=_require_text(
+                payload.get("operation_id"), name="work operation id"
+            ),
+        )
+    if frame_type == "operation_cancelled":
+        return ChannelOperationCancelled(
+            request_id=_require_text(
+                payload.get("request_id"), name="channel request id"
+            ),
+            operation_id=_require_text(
+                payload.get("operation_id"), name="work operation id"
+            ),
         )
     if frame_type == "event":
         return ChannelEventDelivery(
@@ -208,6 +266,8 @@ def _require_frame_type(value: object) -> ChannelRpcFrameKind:
     if value not in {
         "operation_request",
         "operation_accepted",
+        "operation_cancel_request",
+        "operation_cancelled",
         "event",
         "error",
     }:
@@ -257,6 +317,8 @@ __all__ = [
     "ChannelError",
     "ChannelEventDelivery",
     "ChannelOperationAccepted",
+    "ChannelOperationCancelRequest",
+    "ChannelOperationCancelled",
     "ChannelOperationRequest",
     "ChannelRpcFrame",
     "ChannelRpcFrameKind",

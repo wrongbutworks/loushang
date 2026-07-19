@@ -229,6 +229,10 @@ class FakeSession:
             model_selection=None,
         )
 
+    @property
+    def session_control(self) -> "FakeSession":
+        return self
+
     def subscribe(self, listener):
         self.listeners.append(listener)
 

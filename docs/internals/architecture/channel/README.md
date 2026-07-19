@@ -17,6 +17,7 @@ Current code package:
 ```text
 src/loushang/channel/
   __init__.py
+  host.py
   json_codec.py
   json_projection.py
   rpc_jsonl.py
@@ -65,10 +66,12 @@ a Work event. This is additive to existing Work channels.
 
 `json_codec.py` converts envelopes to and from JSON-compatible Python dicts.
 `rpc_jsonl.py` maps those envelopes onto one JSONL frame at a time. It has no
-stdio loop, socket, HTTP server, dispatcher, or Product command table. A host
-accepts a `WorkOperation`, emits the accepted ACK, and later delivers
-`WorkEvent` frames; `request_id` supplies the transport correlation while
-`operation_id` and `run_id` retain Work ownership.
+socket, HTTP server, or Product command table. `host.py` supplies the standard
+stdio JSONL loop over an injected `ChannelHostPort`: a Product port accepts a
+`WorkOperation`, emits the accepted ACK, and later delivers `WorkEvent` or
+`RuntimeEventView` frames. `request_id` supplies transport correlation while
+`operation_id` and `run_id` retain Work ownership. See
+[Channel Host Boundary](channel-host-boundary.md).
 
 ## Ownership
 
@@ -98,7 +101,7 @@ projecting Work events into product or UI state.
 
 The current channel package does not implement:
 
-- stdio, HTTP, WebSocket, or in-process transport loops
+- HTTP, WebSocket, or in-process transport loops
 - operation dispatch or a WorkRun state machine
 - capability negotiation
 - replay or audit storage

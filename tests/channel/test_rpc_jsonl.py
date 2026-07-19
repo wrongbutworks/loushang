@@ -12,6 +12,8 @@ from loushang.channel import (
     ChannelError,
     ChannelEventDelivery,
     ChannelOperationAccepted,
+    ChannelOperationCancelled,
+    ChannelOperationCancelRequest,
     ChannelOperationRequest,
     decode_rpc_jsonl_frame,
     encode_rpc_jsonl_frame,
@@ -47,6 +49,20 @@ def test_operation_accepted_ack_carries_request_and_run_ids() -> None:
         run_id="run-1",
     )
 
+    assert decode_rpc_jsonl_frame(encode_rpc_jsonl_frame(accepted)) == accepted
+
+
+def test_operation_cancellation_frames_round_trip() -> None:
+    request = ChannelOperationCancelRequest(
+        request_id="cancel-1",
+        operation_id="operation-1",
+    )
+    accepted = ChannelOperationCancelled(
+        request_id="cancel-1",
+        operation_id="operation-1",
+    )
+
+    assert decode_rpc_jsonl_frame(encode_rpc_jsonl_frame(request)) == request
     assert decode_rpc_jsonl_frame(encode_rpc_jsonl_frame(accepted)) == accepted
 
 

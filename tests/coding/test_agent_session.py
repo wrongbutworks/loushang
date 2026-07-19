@@ -23,7 +23,9 @@ def _ai_model_registry(
 ) -> AiModelRegistry:
     providers: dict[str, Provider] = {}
     for endpoint in endpoints:
-        provider = providers.get(endpoint.provider_id, Provider(id=endpoint.provider_id))
+        provider = providers.get(
+            endpoint.provider_id, Provider(id=endpoint.provider_id)
+        )
         provider_endpoints = dict(provider.endpoints)
         provider_endpoints[endpoint.id] = endpoint
         providers[provider.id] = replace(provider, endpoints=provider_endpoints)
@@ -2686,9 +2688,7 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
     assert endpoint.adapter is not None
     assert endpoint.adapter.streaming_usage is True
     assert dict(endpoint.defaults) == {"temperature": 0.1}
-    model = model_registry.ai_registry.get_model(
-        "proxy", "proxy-simple", "proxy-model"
-    )
+    model = model_registry.ai_registry.get_model("proxy", "proxy-simple", "proxy-model")
     assert model.name == "Proxy Model"
     assert model.supports_image_input is True
     assert model.supports_thinking is True
@@ -2719,9 +2719,7 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
     assert endpoint.base_url == "https://proxy-updated.example.com"
     assert endpoint.auth is not None
     assert endpoint.auth.api_key_env == "PROXY_API_KEY"
-    model = model_registry.ai_registry.get_model(
-        "proxy", "proxy-simple", "proxy-model"
-    )
+    model = model_registry.ai_registry.get_model("proxy", "proxy-simple", "proxy-model")
     assert model.name == "Proxy Model"
     assert model.adapter is not None
     assert model.adapter.streaming_usage is True
@@ -2977,11 +2975,16 @@ def test_agent_session_exposes_pi_style_runtime_facades(tmp_path) -> None:
         settings_manager=settings,
     )
 
+    control = session.session_control
+    assert control.session_id == session.session_id
+    assert control.session_name == session.session_name
     assert session.isRetrying is False
     session.setAutoRetryEnabled(False)
     assert session.autoRetryEnabled is False
+    assert control.auto_retry_enabled is False
     session.setAutoCompactionEnabled(False)
     assert session.autoCompactionEnabled is False
+    assert control.auto_compaction_enabled is False
     session.abort_compaction()
     session.abortCompaction()
     session.abort_branch_summary()
