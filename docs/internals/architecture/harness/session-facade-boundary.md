@@ -28,7 +28,8 @@ A Product supplies its already-admitted:
 
 - `SessionRuntime` with turn policy, application-input policy, event routing,
   and transcript-commit binding;
-- transcript, tools, commands, command-execution, view, and retry ports;
+- a `SessionFacadePorts` bundle containing transcript, tools, commands,
+  command-execution, view, and retry ports;
 - prompt content, model/thinking selection, context policy, lifecycle cleanup,
   and channel event projection.
 
@@ -39,6 +40,8 @@ or a universal Product command result schema.
 ## Coding Binding
 
 Coding `AgentSession` is a compatibility and Product adapter over the Facade.
+It supplies one `SessionFacadePorts` bundle rather than reproducing the common
+session surface in another Coding controller.
 It retains model catalog and auth resolution, provider registration, default
 tools and prompt content, Coding command handlers, extension API event and
 `user_bash` mapping, Pi-style protocol aliases, package/root/trust policy,

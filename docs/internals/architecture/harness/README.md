@@ -110,6 +110,9 @@ planning, work event persistence, or AI provider behavior.
   Product-facing operation surface over already-bound session runtimes while
   Products retain model/auth, prompts, extension protocols, lifecycle policy,
   and channel projection.
+- [Session Product Adapter Collapse](session-product-adapter-collapse.md)
+  records the direct Facade/inspector/retry bindings that remove redundant
+  Coding session controllers while preserving Coding product ports.
 - [Session Inspection Boundary](session-inspection-boundary.md) defines
   Product-neutral Agent/transcript state, context usage, and statistics while
   Products retain display and wire-format projection.

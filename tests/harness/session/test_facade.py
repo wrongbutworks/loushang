@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 
-from loushang.harness.session import SessionFacade
+from loushang.harness.session import SessionFacade, SessionFacadePorts
 from loushang.harness.workspace.exec import ExecOutputChunk
 
 
@@ -181,14 +181,16 @@ def _facade():
     command_execution = _CommandExecution()
     retry = _Retry()
     return (
-        SessionFacade(
+        SessionFacade.from_ports(
             runtime=runtime,
-            transcript=_Transcript(),
-            tools=_Tools(),
-            commands=_Commands(),
-            command_execution=command_execution,
-            view=_View(),
-            retry=retry,
+            ports=SessionFacadePorts(
+                transcript=_Transcript(),
+                tools=_Tools(),
+                commands=_Commands(),
+                command_execution=command_execution,
+                view=_View(),
+                retry=retry,
+            ),
         ),
         runtime,
         command_execution,

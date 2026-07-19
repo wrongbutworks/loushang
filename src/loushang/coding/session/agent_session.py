@@ -17,6 +17,7 @@ from loushang.ai.api_registry import (
 )
 from loushang.ai.model import Model, ModelSelection, Provider
 from loushang.ai.types import AssistantMessage, ImagePart
+from loushang.ai.utils import is_context_overflow
 from loushang.coding.capability_plan import resolve_coding_capability_profile
 from loushang.coding.commands import SessionCommandDescriptor
 from loushang.coding.compaction import (
@@ -45,6 +46,10 @@ from loushang.coding.package.materializer import (
     PackageProgressEvent,
 )
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
+from loushang.coding.platform.session_projection import (
+    project_pi_fork_candidates,
+    project_pi_session_stats,
+)
 from loushang.coding.policy import InteractiveApprovalResolver
 from loushang.coding.session.bash_controller import BashController
 from loushang.coding.session.builtin_commands import (
@@ -73,12 +78,10 @@ from loushang.coding.session.extension_runtime_controller import (
     ExtensionRuntimeController,
 )
 from loushang.coding.session.package_controller import PackageController
-from loushang.coding.session.retry_controller import RetryController
 from loushang.coding.session.selection_controller import SelectionController
 from loushang.coding.session.session_settings_controller import (
     SessionSettingsController,
 )
-from loushang.coding.session.session_view_controller import SessionViewController
 from loushang.coding.session.tool_controller import ToolController
 from loushang.coding.session.tree_controller import TreeController
 from loushang.coding.session.types import (
@@ -90,6 +93,7 @@ from loushang.coding.tools import ToolRegistry
 from loushang.harness.agent_transcript import (
     AgentTranscriptCompactionCapability,
     AgentTranscriptContext,
+    AgentTranscriptRetryRuntime,
     CompactionResult,
     CompactionStatus,
     SessionRecord,
@@ -112,24 +116,29 @@ from loushang.harness.events import (
     RuntimeEvent,
     SessionRuntimeEventPayload,
 )
+from loushang.harness.host.retry import RetryPolicy
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
 )
 from loushang.harness.resources.watcher import ResourceChangeWatcher
-from loushang.harness.runtime import CancellationController, CancellationSignal
+from loushang.harness.runtime import CancellationSignal
 from loushang.harness.session import (
     AfterTurnPolicyPort,
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
     SessionFacade,
+    SessionFacadePorts,
     SessionResourceRefreshRuntime,
     SessionRuntime,
     TranscriptRuntimePort,
     TurnPolicyPort,
 )
-from loushang.harness.session.inspection import AgentSessionState
+from loushang.harness.session.inspection import (
+    AgentSessionInspector,
+    AgentSessionState,
+)
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import (
     ExecOutputChunk,
@@ -147,6 +156,16 @@ async def _execute_coding_compaction(**kwargs: object) -> object:
     """Run Coding's Product-owned summary executor for a Harness plan."""
 
     return await compact(**kwargs)
+
+
+def _retry_policy(settings: RetrySettings) -> RetryPolicy:
+    """Bind Coding's persisted retry settings to the neutral retry policy."""
+
+    return RetryPolicy(
+        enabled=settings.enabled,
+        max_attempts=settings.max_retries,
+        base_delay_ms=settings.base_delay_ms,
+    )
 
 
 class AgentSession:
@@ -352,13 +371,16 @@ class AgentSession:
             get_extension_runner=lambda: self._extension_runner,
             get_cwd=self.session_manager.get_cwd,
         )
-        self._retry_controller = RetryController(
-            agent=self.agent,
-            get_settings=self._get_retry_settings,
+        self._retry_runtime = AgentTranscriptRetryRuntime(
+            get_policy=lambda: _retry_policy(self._get_retry_settings()),
+            get_messages=lambda: list(self.agent.state.messages),
+            set_messages=self.agent.state.set_messages,
+            get_context_window=lambda: self.agent.model.context_window,
             dispatch_event=self._dispatch_event,
             continue_run=lambda: self.continue_run(),
             record_runtime_exception=self._record_runtime_exception,
             sleep_for_retry=lambda delay_ms, signal: _sleep_for_retry(delay_ms, signal),
+            is_context_overflow_fn=is_context_overflow,
             wait_for_idle=self.wait_for_idle,
         )
         self._session_runtime = SessionRuntime(
@@ -395,7 +417,7 @@ class AgentSession:
             after_turn_policy=AfterTurnPolicyPort(
                 emit_extension_agent_event=self._emit_extension_agent_event,
                 record_tool_execution_error=self._record_tool_execution_error,
-                retry_controller=self._retry_controller,
+                retry_controller=self._retry_runtime,
                 compaction_controller=self._compaction_controller,
                 sync_extension_diagnostics=self._sync_extension_diagnostics,
                 record_assistant_response_error=self._record_assistant_response_error,
@@ -477,9 +499,11 @@ class AgentSession:
                 self._extension_runtime_controller.is_refreshing
             ),
         )
-        self._view_controller = SessionViewController(
+        self._session_inspector = AgentSessionInspector(
             agent=self.agent,
-            session_manager=self.session_manager,
+            session=self.session_manager,
+            get_session_id=lambda: self.session_manager.get_session_record().session_id,
+            get_session_name=lambda: self.session_manager.get_session_record().metadata.name,
             get_active_tool_names=self.get_active_tool_names,
             is_retrying=lambda: self.is_retrying,
             is_compacting=lambda: self.is_compacting,
@@ -496,14 +520,16 @@ class AgentSession:
                 self._get_compaction_settings().keep_recent_tokens
             ),
         )
-        self._facade = SessionFacade(
+        self._facade = SessionFacade.from_ports(
             runtime=self._session_runtime,
-            transcript=self.session_manager,
-            tools=self._tool_controller,
-            commands=self._command_controller,
-            command_execution=self._bash_controller,
-            view=self._view_controller,
-            retry=self._retry_controller,
+            ports=SessionFacadePorts(
+                transcript=self.session_manager,
+                tools=self._tool_controller,
+                commands=self._command_controller,
+                command_execution=self._bash_controller,
+                view=self._session_inspector,
+                retry=self._retry_runtime,
+            ),
         )
         session_context = self.session_manager.build_session_context()
         self._apply_agent_transcript_context(session_context)
@@ -700,7 +726,11 @@ class AgentSession:
         return serialize_context_usage_payload(self._facade.get_context_usage())
 
     def get_session_stats(self) -> dict[str, object]:
-        return self._view_controller.get_pi_style_stats()
+        return project_pi_session_stats(
+            agent=self.agent,
+            session_manager=self.session_manager,
+            context_usage=self._facade.get_context_usage(),
+        )
 
     def get_session_state(self) -> dict[str, object]:
         return self._pi_style_session_state()
@@ -719,7 +749,7 @@ class AgentSession:
 
     def _get_builtin_session_info(self) -> dict[str, object]:
         record = self.session_manager.get_session_record()
-        stats = self._view_controller.build_session_stats()
+        stats = self._session_inspector.build_session_stats()
         session_file = record.session_file
         return {
             "session_id": record.session_id,
@@ -790,31 +820,7 @@ class AgentSession:
 
     @property
     def retryAttempt(self) -> int:
-        return self._retry_controller.attempt
-
-    @property
-    def _retry_attempt(self) -> int:
-        return self._retry_controller.attempt
-
-    @_retry_attempt.setter
-    def _retry_attempt(self, value: int) -> None:
-        self._retry_controller.attempt = value
-
-    @property
-    def _retry_future(self) -> asyncio.Future[None] | object | None:
-        return self._retry_controller.retry_future
-
-    @_retry_future.setter
-    def _retry_future(self, value: asyncio.Future[None] | object | None) -> None:
-        self._retry_controller.retry_future = value
-
-    @property
-    def _retry_abort_controller(self) -> CancellationController | None:
-        return self._retry_controller.cancel_handle
-
-    @_retry_abort_controller.setter
-    def _retry_abort_controller(self, value: CancellationController | None) -> None:
-        self._retry_controller.cancel_handle = value
+        return self._retry_runtime.attempt
 
     @property
     def isCompacting(self) -> bool:
@@ -1056,7 +1062,7 @@ class AgentSession:
         return self._facade.get_user_messages_for_forking()
 
     def getUserMessagesForForking(self) -> list[dict[str, str]]:
-        return self._view_controller.get_pi_style_user_messages_for_forking()
+        return project_pi_fork_candidates(self._session_inspector)
 
     def get_entry_text(self, entry_id: str) -> str | None:
         return self._facade.get_entry_text(entry_id)
@@ -1172,9 +1178,6 @@ class AgentSession:
         self._apply_active_tools(tool_names)
         if emit_refresh:
             await self._refresh_extension_runtime(reason="active_tools_changed")
-
-    def _build_tool_context(self, *, tool_call_id: str) -> object:
-        return self._tool_controller.build_tool_context(tool_call_id=tool_call_id)
 
     # Public facade: run controls, retry, compaction, and tree navigation.
 
@@ -1414,25 +1417,6 @@ class AgentSession:
             else [],
             "context_files": [],
         }
-
-    def _resolve_active_tool_definitions(
-        self, tool_names: list[str]
-    ) -> tuple[list[ToolDefinition], list[str]]:
-        return self._tool_controller.resolve_active_tool_definitions(tool_names)
-
-    def _is_tool_allowed(self, name: str) -> bool:
-        return self._tool_controller.is_tool_allowed(name)
-
-    def _filter_allowed_tool_names(self, tool_names: list[str]) -> list[str]:
-        return self._tool_controller.filter_allowed_tool_names(tool_names)
-
-    def _filter_allowed_tool_definitions(
-        self, definitions: list[ToolDefinition]
-    ) -> list[ToolDefinition]:
-        return self._tool_controller.filter_allowed_tool_definitions(definitions)
-
-    def _tool_source_info(self, name: str) -> object | None:
-        return self._tool_controller.tool_source_info(name)
 
     def _default_active_tool_names(self) -> list[str]:
         return self._tool_controller.default_active_tool_names()
@@ -1767,37 +1751,6 @@ class AgentSession:
     def _persist_queue_mode(self, kind: str, mode: str) -> None:
         self._settings_controller.persist_queue_mode(kind, mode)
 
-    def _ensure_retry_future(self) -> asyncio.Future[None]:
-        return self._retry_controller.ensure_future()
-
-    async def _finish_retry(
-        self,
-        *,
-        success: bool,
-        attempt: int,
-        final_error: str | None = None,
-    ) -> None:
-        await self._retry_controller.finish(
-            success=success, attempt=attempt, final_error=final_error
-        )
-
-    def _should_prepare_retry(self, assistant_message: AssistantMessage) -> bool:
-        return self._retry_controller.should_prepare_retry(assistant_message)
-
-    def _is_retryable_error(self, assistant_message: AssistantMessage) -> bool:
-        return self._retry_controller.is_retryable_error(assistant_message)
-
-    async def _handle_retryable_error(
-        self, assistant_message: AssistantMessage
-    ) -> bool:
-        return await self._retry_controller.handle_retryable_error(assistant_message)
-
-    def _apply_navigation_leaf(self, new_leaf_id: str | None) -> None:
-        if new_leaf_id is None:
-            self.session_manager.reset_leaf()
-        else:
-            self.session_manager.branch(new_leaf_id)
-
     async def _check_auto_compaction(
         self, assistant_message: AssistantMessage
     ) -> CompactionResult | None:
@@ -1876,20 +1829,6 @@ class AgentSession:
 
     def _sync_extension_diagnostics(self, *, phase: str) -> None:
         self._diagnostics_bridge.sync_extension_diagnostics(phase=phase)
-
-    async def _record_bash_execution(
-        self,
-        *,
-        command: str,
-        result: dict[str, object],
-        exclude_from_context: bool,
-    ) -> None:
-        await self._bash_controller.record_result(
-            command=command,
-            result=result,
-            exclude_from_context=exclude_from_context,
-        )
-
 
 async def _sleep_for_retry(delay_ms: int, signal: CancellationSignal) -> None:
     remaining = max(delay_ms, 0) / 1000

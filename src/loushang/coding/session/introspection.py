@@ -25,10 +25,10 @@ if TYPE_CHECKING:
 
 
 def build_context_usage(session: AgentSession) -> ContextUsage | None:
-    view_controller = getattr(session, "_view_controller", None)
-    view_getter = getattr(view_controller, "get_context_usage", None)
-    if callable(view_getter):
-        usage = view_getter()
+    inspector = getattr(session, "_session_inspector", None)
+    get_inspected_usage = getattr(inspector, "get_context_usage", None)
+    if callable(get_inspected_usage):
+        usage = get_inspected_usage()
         if isinstance(usage, ContextUsage) or usage is None:
             return usage
 
