@@ -131,9 +131,8 @@ segmentation, render caches, committed and draft segments, streaming Markdown
 reuse, and tail clipping live in `loushang.tui.ui_parts.transcript`; Harnesstui
 does not duplicate or wrap that rendering engine.
 
-Compatibility modules in `loushang.coding.ui` may temporarily re-export moved
-symbols. They must depend inward on `loushang.harnesstui`; this package must
-never depend back on those compatibility modules.
+Coding product bindings import these owners directly. Compatibility re-exports
+must not be recreated; `loushang.harnesstui` must never depend back on Coding.
 
 The stable imports introduced by this slice are the explicit module paths
 `loushang.harnesstui.conversation.screen_state`,
@@ -356,6 +355,15 @@ Coding UI adapters that own product policy, copy, or runtime binding remain in
 `tests/coding/test_ui_import_boundaries.py` prevents the compatibility paths
 from being recreated accidentally.
 
+Coding's screen input binding now constructs the canonical
+`ConversationInputRouter` directly. Harnesstui keeps staged prompt images as
+neutral `PromptImageAttachment` values through routing and exposes clipboard
+outcomes through an optional product callback. Coding alone chooses the
+`.loushang/clipboard` workspace path, presents product status copy, and converts
+neutral attachments to `ImagePart` at the model-dispatch boundary. Its screen
+loop is a thin binding around `run_conversation_screen`; test-only aliases for
+shared runner and terminal helpers are not product APIs.
+
 ## Plain Conversation Presentation
 
 `loushang.harnesstui.plain.renderer` owns the reusable plain-terminal renderer:
@@ -434,9 +442,9 @@ The model settings page emits the shared UI intent
 Products decide how that opaque choice value is resolved, applied, and
 persisted; Harnesstui never calls a Session or settings manager.
 
-Compatibility modules in `loushang.coding.ui` re-export the moved class objects
-without subclassing or wrapping them. The explicit module paths above are the
-stable imports; package initializers do not add convenience re-exports.
+The explicit module paths above are the stable imports. Coding binds prepared
+product data and callbacks directly, without subclassing or re-exporting these
+shared implementations; package initializers do not add convenience exports.
 
 ## Quality Gate
 

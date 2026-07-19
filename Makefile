@@ -63,7 +63,6 @@ HARNESSTUI_TEST_PATHS := \
 	tests/tui/test_transcript_region.py \
 	tests/architecture/test_import_boundaries.py \
 	tests/coding/test_platform_utils.py \
-	tests/coding/test_terminal_diagnostics_compatibility.py \
 	tests/coding/test_ui_handlers.py \
 	tests/coding/test_ui_abort.py \
 	tests/coding/test_ui_event_stream.py \

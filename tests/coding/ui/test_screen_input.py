@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-from loushang.ai.types import ImagePart
+from pathlib import Path
+
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_input import ScreenInputResult, ScreenInputRouter
+from loushang.coding.ui.screen_input import (
+    build_screen_input_router,
+    image_parts_from_prompt_attachments,
+)
+from loushang.harnesstui.conversation.attachments import PromptImageAttachment
 from loushang.tui import InputEvent
-from loushang.tui.keybindings import KeybindingManager
+from loushang.tui.clipboard_image import ClipboardImage
 
 
 def _app(*, cwd: str = "/repo") -> ScreenCodingTuiApp:
@@ -17,60 +22,40 @@ def _app(*, cwd: str = "/repo") -> ScreenCodingTuiApp:
     )
 
 
-def test_screen_input_result_preserves_images_and_neutral_aliases() -> None:
-    image = ImagePart(
-        type="image",
-        data="cG5n",
+def test_prompt_image_attachments_convert_at_the_coding_boundary() -> None:
+    attachment = PromptImageAttachment(
+        bytes=b"png",
         mime_type="image/png",
-    )
-    result = ScreenInputResult(
-        prompt_images=(image,),
-        steer_images=(image,),
-        followup_images=(image,),
+        path=Path("/repo/.loushang/clipboard/image.png"),
+        display_path=".loushang/clipboard/image.png",
+        marker="@.loushang/clipboard/image.png",
     )
 
-    assert result.prompt_attachments == result.prompt_images
-    assert result.steer_attachments == result.steer_images
-    assert result.followup_attachments == result.followup_images
+    images = image_parts_from_prompt_attachments((attachment,))
+
+    assert images is not None
+    assert images[0].mime_type == "image/png"
+    assert images[0].data == "cG5n"
 
 
-def test_screen_input_router_preserves_public_read_write_configuration() -> None:
-    def exit_predicate(text: str) -> bool:
-        return text == "/bye"
-
-    def local_predicate(text: str) -> bool:
-        return text == "/help"
-
+def test_coding_input_binding_follows_a_replaced_app(tmp_path: Path) -> None:
     first_app = _app()
-    replacement_app = _app(cwd="/other")
-    router = ScreenInputRouter(
+    replacement_app = _app(cwd=str(tmp_path))
+    router = build_screen_input_router(
         first_app,
-        should_exit=lambda text: text == "/quit",
-        is_local_command=lambda text: text == "/model",
-        width=80,
-        height=12,
+        should_exit=lambda _text: False,
+        clipboard_image_reader=lambda: ClipboardImage(
+            bytes=b"png",
+            mime_type="image/png",
+        ),
+        clipboard_image_name_factory=lambda: "image",
     )
-    keybindings = KeybindingManager(
-        {"tui.input.submit": ("alt+s",)},
+    router.replace_app(replacement_app)
+
+    router.handle(InputEvent(kind="key", key="ctrl+v"))
+
+    expected = tmp_path / ".loushang" / "clipboard" / "clipboard-image.png"
+    assert expected.read_bytes() == b"png"
+    assert replacement_app.state.status_message == (
+        "Attached clipboard image: .loushang/clipboard/clipboard-image.png"
     )
-
-    router.app = replacement_app
-    router.should_exit = exit_predicate
-    router.is_local_command = local_predicate
-    router.width = 100
-    router.height = 20
-    router.keybindings = keybindings
-    router.running_submit_mode = "follow_up"
-    router.follow_up_keys = ("ctrl+enter",)
-
-    assert router.app is replacement_app
-    assert router.should_exit is exit_predicate
-    assert router.is_local_command is local_predicate
-    assert (router.width, router.height) == (100, 20)
-    assert router.keybindings is keybindings
-    assert router.running_submit_mode == "follow_up"
-    assert router.follow_up_keys == ("ctrl+enter",)
-
-    replacement_app.composer.set_text("/bye")
-    result = router.handle(InputEvent(kind="key", key="alt+s"))
-    assert result.exit_code == 0

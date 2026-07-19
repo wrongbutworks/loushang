@@ -9,7 +9,7 @@ from loushang.coding.testing.tui.scenarios.budgets import (
     LONG_TRANSCRIPT_FRAME_BUDGET,
 )
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_input import ScreenInputRouter
+from loushang.coding.ui.screen_input import build_screen_input_router
 from loushang.coding.ui.screen_loop import run_screen_coding_tui
 from loushang.harnesstui.conversation.screen_runner import (
     AbortHandler,
@@ -63,7 +63,7 @@ def coding_scenario_input_router_factory(
 
     return cast(
         ConversationPlaybackInputRouterPort[ConversationInputResultPort],
-        ScreenInputRouter(
+        build_screen_input_router(
             app=cast(ScreenCodingTuiApp, app),
             should_exit=should_exit,
             is_local_command=is_local_command,

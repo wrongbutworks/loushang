@@ -5,10 +5,12 @@ import os
 import threading
 import time
 from io import StringIO
+from pathlib import Path
 from types import SimpleNamespace
 
 from loushang.ai.types import ImagePart
 from loushang.coding.types import ModelSelection
+from loushang.harnesstui.conversation.attachments import PromptImageAttachment
 from loushang.tui import strip_control_sequences
 
 
@@ -109,28 +111,17 @@ def test_screen_loop_runs_prompt_to_worked_divider_without_stale_working() -> No
     assert rendered.rfind("Working") < rendered.rfind("Worked for")
 
 
-def test_screen_loop_passes_prompt_images_to_handler() -> None:
-    from loushang.coding.ui.screen_loop import _run_prompt_handler
-
-    seen: dict[str, object] = {}
-    image = ImagePart(type="image", data="abc", mime_type="image/png")
-
-    async def handle_prompt(text: str, *, images: tuple[ImagePart, ...] | None = None) -> int | None:
-        seen["text"] = text
-        seen["images"] = images
-        return 7
-
-    result = asyncio.run(_run_prompt_handler(handle_prompt, "describe", images=(image,)))
-
-    assert result == 7
-    assert seen == {"text": "describe", "images": (image,)}
-
-
 def test_screen_loop_adapts_neutral_attachments_to_coding_images() -> None:
     from loushang.coding.ui.screen_loop import _adapt_attachment_handler
 
     seen: dict[str, object] = {}
-    image = ImagePart(type="image", data="abc", mime_type="image/png")
+    attachment = PromptImageAttachment(
+        bytes=b"png",
+        mime_type="image/png",
+        path=Path("/repo/image.png"),
+        display_path="image.png",
+        marker="@image.png",
+    )
 
     async def handle_prompt(
         text: str,
@@ -142,40 +133,13 @@ def test_screen_loop_adapts_neutral_attachments_to_coding_images() -> None:
         return 9
 
     adapted = _adapt_attachment_handler(handle_prompt)
-    result = asyncio.run(adapted("describe", attachments=(image,)))
+    result = asyncio.run(adapted("describe", attachments=(attachment,)))
 
     assert result == 9
-    assert seen == {"text": "describe", "images": (image,)}
-
-
-def test_finish_active_task_preserves_legacy_signature_and_cancellation_copy() -> None:
-    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import _finish_active_task
-
-    app = ScreenCodingTuiApp(
-        model_label="kimi",
-        cwd="/repo",
-        branch="main",
-        session_label="abcd",
-        now=lambda: 2.0,
-    )
-    app.start_prompt("work", started_at=1.0)
-
-    async def scenario() -> int | None:
-        async def pending() -> int:
-            await asyncio.Event().wait()
-            return 0
-
-        task = asyncio.create_task(pending())
-        task.cancel()
-        return await _finish_active_task(
-            app=app,
-            active_task=task,
-            started_at=1.0,
-        )
-
-    assert asyncio.run(scenario()) is None
-    assert app.state.interruption_message == "Operation aborted"
+    images = seen["images"]
+    assert isinstance(images, tuple)
+    assert images[0].mime_type == "image/png"
+    assert images[0].data == "cG5n"
 
 
 def test_screen_loop_scripted_prompt_then_quit_exits_without_status_residue() -> None:
@@ -497,14 +461,14 @@ def test_screen_loop_exposes_terminal_diagnostics_provider_while_running() -> No
 
 
 def test_screen_loop_normalizes_terminal_input_before_reader_parses_events() -> None:
-    from loushang.coding.ui.screen_loop import _input_events_for_chunk
+    from loushang.tui._runner_utils import input_events_for_chunk
     from loushang.tui.input import InputReader
 
     class _Context:
         def normalize_input_chunk(self, data: str) -> str:
             return "\x1b[13;2u" if data == "\r" else data
 
-    events = _input_events_for_chunk(InputReader(), "\r", terminal_context=_Context())
+    events = input_events_for_chunk(InputReader(), "\r", terminal_context=_Context())
 
     assert len(events) == 1
     assert events[0].kind == "key"
@@ -886,26 +850,6 @@ def test_screen_loop_dispatches_session_command_without_prompting_agent() -> Non
     assert session.prompt_calls == []
     assert "Session name set: Project Alpha" in result.text
     result.assert_no_clear_screen()
-
-
-def test_pop_interrupt_pending_steer_returns_none_when_queue_empty() -> None:
-    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import _pop_interrupt_pending_steer
-
-    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd")
-
-    assert _pop_interrupt_pending_steer(app) is None
-
-
-def test_pop_interrupt_pending_steer_uses_queue_fifo() -> None:
-    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import _pop_interrupt_pending_steer
-
-    app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd")
-    app.state.pending_steers.extend(["预先排队", "follow"])
-
-    assert _pop_interrupt_pending_steer(app) == "预先排队"
-    assert app.state.pending_steers == ["follow"]
 
 
 def test_screen_loop_renders_streaming_updates_without_waiting_for_keyboard() -> None:

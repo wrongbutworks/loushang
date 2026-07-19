@@ -426,7 +426,10 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
     )
     assert "Operation aborted" in screen_loop
     assert "ImagePart" in screen_input
-    assert 'Path(self.app.cwd) / ".loushang" / "clipboard"' in screen_input
+    assert '".loushang" / "clipboard"' in screen_input
+    assert "class ScreenInputResult" not in screen_input
+    assert "class ScreenInputRouter" not in screen_input
+    assert "ConversationInputRouter(" in screen_input
     assert "PromptIntent" in prompt_dispatch
     assert "BashIntent" in prompt_dispatch
 

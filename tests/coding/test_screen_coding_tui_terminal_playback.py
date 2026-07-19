@@ -6,8 +6,7 @@ import pytest
 
 from loushang.coding.testing.tui.playback import ScreenTuiScenario
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_input import ScreenInputRouter
-from loushang.coding.ui.screen_loop import _finish_tui_exit
+from loushang.coding.ui.screen_input import build_screen_input_router
 from loushang.harnesstui.testing.performance import (
     build_synthetic_long_transcript_records,
 )
@@ -23,6 +22,7 @@ from loushang.tui import (
     TuiRuntime,
     strip_control_sequences,
 )
+from loushang.tui._runner_utils import finish_tui_exit
 from loushang.tui.theme import ThemeResolver
 
 pytestmark = pytest.mark.tui_render_contract
@@ -76,7 +76,7 @@ def test_screen_coding_tui_exit_cleanup_clears_bottom_frame_status() -> None:
     before = tuple(strip_control_sequences(line).rstrip() for line in port.screen.visible_lines)
     assert "kimi | repo | main | abcd | idle" in before
 
-    exit_code = _finish_tui_exit(runtime=runtime, stdout=StringIO(), exit_code=0)
+    exit_code = finish_tui_exit(runtime=runtime, stdout=StringIO(), exit_code=0)
 
     after = tuple(strip_control_sequences(line).rstrip() for line in port.screen.visible_lines)
     assert exit_code == 0
@@ -165,7 +165,7 @@ def test_screen_coding_tui_completion_close_keeps_footer_height_and_cursor_ancho
     app.append_assistant_chunk("done")
     app.end_assistant()
     app.complete_run(elapsed_seconds=1.0)
-    router = ScreenInputRouter(app, should_exit=lambda text: text == "/quit", is_local_command=lambda text: text.startswith("/"))
+    router = build_screen_input_router(app, should_exit=lambda text: text == "/quit", is_local_command=lambda text: text.startswith("/"))
     runtime, port = _runtime(app, width=80, height=18)
 
     runtime.render_now()
