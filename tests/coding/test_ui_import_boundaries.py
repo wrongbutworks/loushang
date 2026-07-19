@@ -491,6 +491,71 @@ def test_shared_window_budget_does_not_own_screen_runtime_policy() -> None:
     assert "trim_records_to_line_budget" in coding
 
 
+def test_tui_owns_transcript_region_while_coding_owns_presentation_policy() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+    from loushang.tui.ui_parts.transcript import TranscriptRegion
+
+    shared = Path("src/loushang/tui/ui_parts/transcript.py").read_text(encoding="utf-8")
+    coding = Path("src/loushang/coding/ui/screen_app.py").read_text(encoding="utf-8")
+
+    assert "class _ScreenTranscriptRegion" not in coding
+    for token in (
+        "_screen_coding_display_record",
+        "_coding_lines",
+        "_compact_display_paths",
+        "collapse_tool_output_preview",
+        "DEFAULT_TOOL_OUTPUT_PREVIEW_LINES",
+        "bright_cyan",
+    ):
+        assert token not in shared
+        assert token in coding
+
+    app = ScreenCodingTuiApp(
+        model_label=None,
+        cwd="/workspace",
+        branch=None,
+        session_label=None,
+    )
+    assert type(app._transcript_region) is TranscriptRegion
+
+
+def test_shared_screen_frame_does_not_own_coding_copy() -> None:
+    shared = Path("src/loushang/harnesstui/conversation/screen_frame.py").read_text(
+        encoding="utf-8"
+    )
+    coding = Path("src/loushang/coding/ui/screen_app.py").read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in shared
+    for copy in (
+        "Working",
+        "Messages to be submitted after next tool call",
+        "Queued follow-up inputs",
+    ):
+        literal = f'"{copy}"'
+        assert literal not in shared
+        assert literal in coding
+
+
+def test_shared_screen_app_does_not_own_coding_presentation_policy() -> None:
+    shared = Path("src/loushang/harnesstui/conversation/screen_app.py").read_text(
+        encoding="utf-8"
+    )
+    coding = Path("src/loushang/coding/ui/screen_app.py").read_text(encoding="utf-8")
+
+    for token in (
+        "ScreenCodingTuiApp",
+        "_CodingTranscriptPresentation",
+        "LoushangWelcomePanel",
+        "Compacted summary:",
+        "trim_records_to_line_budget",
+        "DEFAULT_ACTIVE_TRANSCRIPT_LINE_BUDGET = 320",
+        "collapse_tool_output_preview",
+    ):
+        assert token not in shared
+        assert token in coding
+    assert "class ScreenCodingTuiApp(ScreenConversationApp)" in coding
+
+
 def test_old_coding_ui_app_module_is_removed() -> None:
     result = _run_python_import_boundary_check(
         """

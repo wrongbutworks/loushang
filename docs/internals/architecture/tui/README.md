@@ -67,3 +67,22 @@ Generic playback-suite orchestration lives in `loushang.tui.playback_suite`.
 It owns neutral scenario specifications and results, scenario selection,
 timing, and artifact dispatch. Product scenario catalogs, command-line runners,
 and product-specific playback hosts remain in their product adapter packages.
+
+## Screen Transcript Region
+
+The explicit entrypoint `loushang.tui.ui_parts.transcript` owns the generic
+incremental transcript region used by full-screen layouts. It owns stable and
+transient record caches, committed and draft render segments, streaming
+Markdown segment reuse, tail clipping, cache promotion, and bounded eviction.
+These are terminal rendering mechanics over `DisplayRecord` values; the module
+does not know about Harness conversations, Coding sessions, tools, or products.
+
+Products bind a long-lived `TranscriptPresentation` implementation that
+projects presentation-ready records, chooses record width, decorates rendered
+lines, and supplies a cache token. Coding therefore keeps its glyphs, theme,
+path compaction, tool-output preview, and cwd policy. The presentation object is
+not recreated per frame, and the region preserves the frozen cache keys,
+segment identities, records-list identity, and streaming call shape.
+
+`loushang.tui.ui_parts.layout.CappedRenderable` owns the corresponding generic
+height cap used when the transcript and bottom frame share a screen layout.
