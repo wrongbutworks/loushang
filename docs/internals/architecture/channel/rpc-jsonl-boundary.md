@@ -2,9 +2,9 @@
 
 ## Decision
 
-`loushang.channel.rpc_jsonl` is the first reusable headless Channel adapter.
-It maps one JSONL frame to one Work-boundary message. It does not reuse or
-wrap `loushang.coding.mode.RpcMode`.
+`loushang.channel.rpc_jsonl` is the reusable JSONL frame adapter.
+`loushang.channel.host` owns the injected stdio host loop over those frames.
+Neither surface reuses or wraps `loushang.coding.mode.RpcMode`.
 
 The protocol has four frame kinds:
 
@@ -13,6 +13,8 @@ The protocol has four frame kinds:
 | `operation_request` | client to host | One `ChannelEnvelope(kind="operation")` and a client `request_id`. |
 | `operation_accepted` | host to client | The host accepted the request. It contains the request, operation, and optional run id. |
 | `event` | host to client | One `ChannelEnvelope(kind="event")`, optionally correlated to the source request. |
+| `operation_cancel_request` | client to host | Request cancellation of one accepted operation. |
+| `operation_cancelled` | host to client | Cancellation was accepted; completion remains an event fact. |
 | `error` | either direction | A transport or acceptance failure, never a replacement for a `WorkEvent`. |
 
 `operation_accepted` is deliberately only an ACK. Completion, cancellation,
@@ -26,6 +28,7 @@ Channel owns:
 - request/event/error envelope validation;
 - request correlation fields; and
 - strict JSON transport projection for documented transport values.
+- an injected stdio host loop that routes only standard Channel frames.
 
 Work owns operation, run, event, delivery-hint, and domain semantics. Products
 own the conversion from their input into a `WorkOperation`, operation dispatch,
