@@ -2968,6 +2968,56 @@ def test_coding_internal_store_alias_imports_use_harness_owners() -> None:
     assert offenders == []
 
 
+def test_coding_internal_scenario_imports_use_harness_owner() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/workflow/__init__.py",
+        "src/loushang/coding/workflow/assertions.py",
+        "src/loushang/coding/workflow/events.py",
+        "src/loushang/coding/workflow/fake_runtime.py",
+        "src/loushang/coding/workflow/loader.py",
+        "src/loushang/coding/workflow/schema.py",
+    }
+    legacy_prefixes = (
+        "loushang.coding.workflow.assertions",
+        "loushang.coding.workflow.events",
+        "loushang.coding.workflow.fake_runtime",
+        "loushang.coding.workflow.loader",
+        "loushang.coding.workflow.schema",
+    )
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if imported.startswith(legacy_prefixes):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
+def test_coding_internal_compaction_type_imports_use_harness_owner() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/compaction/__init__.py",
+        "src/loushang/coding/compaction/types.py",
+    }
+    legacy_symbols = (
+        "loushang.coding.compaction.types.CompactionPlan",
+        "loushang.coding.compaction.types.CompactionPreparation",
+        "loushang.coding.compaction.types.CompactionResult",
+        "loushang.coding.compaction.types.CompactionStatus",
+        "loushang.coding.compaction.types.ContextUsageEstimate",
+    )
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if _matches_any(imported, legacy_symbols):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
 def test_harness_product_kernel_ownership_is_documented() -> None:
     path = Path("docs/internals/architecture/harness/shared-capability-boundaries.md")
     text = " ".join(path.read_text(encoding="utf-8").split())

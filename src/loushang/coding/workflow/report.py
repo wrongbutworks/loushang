@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from loushang.coding.workflow.schema import WorkflowResult
+from loushang.harness.scenario.schema import WorkflowResult
 
 
 def format_workflow_report(
