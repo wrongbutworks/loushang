@@ -93,6 +93,9 @@ planning, work event persistence, or AI provider behavior.
   defines common create, restore, detached-copy, fork, disposal, and active
   Native-file deletion mechanics while Products retain binding and resume
   policy.
+- [Agent Transcript Session Factory Boundary](agent-transcript-session-factory-boundary.md)
+  defines reusable header, Native-context, create/load/recent-resume, and fork
+  assembly while Products retain profile selection and resume compatibility.
 - [Agent Transcript Interaction Runtime Boundary](agent-transcript-interaction-runtime-boundary.md)
   defines standard branch navigation, selection persistence, transcript
   inspection, and context replay while Products retain domain actions.

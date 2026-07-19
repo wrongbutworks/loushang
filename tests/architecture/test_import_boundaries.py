@@ -415,9 +415,9 @@ def test_session_facade_is_neutral_and_adopted() -> None:
 
 
 def test_session_inspection_is_neutral_and_adopted() -> None:
-    inspection_source = Path(
-        "src/loushang/harness/session/inspection.py"
-    ).read_text(encoding="utf-8")
+    inspection_source = Path("src/loushang/harness/session/inspection.py").read_text(
+        encoding="utf-8"
+    )
     view_source = Path(
         "src/loushang/coding/session/session_view_controller.py"
     ).read_text(encoding="utf-8")
@@ -554,9 +554,7 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     text = path.read_text(encoding="utf-8")
 
     assert "`loushang.coding.ui` -> `loushang.harnesstui`" in text
-    assert (
-        "`loushang.coding.testing.tui` -> `loushang.harnesstui.testing`" in text
-    )
+    assert "`loushang.coding.testing.tui` -> `loushang.harnesstui.testing`" in text
     assert "`loushang.harnesstui.conversation.queue`" in text
     assert "`loushang.harnesstui.conversation.reader`" in text
     assert "`loushang.harnesstui.conversation.screen_state`" in text
@@ -1207,6 +1205,7 @@ def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
         },
         Path("src/loushang/coding/store/session_manager.py"): {
             "loushang.harness.agent_transcript.AgentTranscriptLifecycle",
+            "loushang.harness.agent_transcript.AgentTranscriptSessionFactory",
             "loushang.harness.agent_transcript.AgentTranscriptSession",
             "loushang.harness.agent_transcript.catalog.AgentTranscriptSessionCatalog",
         },
@@ -1332,6 +1331,46 @@ def test_harness_agent_transcript_lifecycle_is_documented_and_adopted() -> None:
     )
     assert (
         "loushang.harness.agent_transcript.AgentTranscriptLifecycle"
+        in session_manager_imports
+    )
+
+
+def test_harness_agent_transcript_session_factory_is_documented_and_adopted() -> None:
+    design_path = Path(
+        "docs/internals/architecture/harness/agent-transcript-session-factory-boundary.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Agent Transcript Session Factory Boundary",
+        "`AgentTranscriptSessionFactory`",
+        "does not import Coding",
+        "detached copy",
+        "runtime binding",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Agent Transcript Session Factory Boundary" in readme_text
+
+    factory_imports = set(
+        _absolute_imports(
+            Path("src/loushang/harness/agent_transcript/session_factory.py")
+        )
+    )
+    assert not any(
+        imported.startswith("loushang.coding") for imported in factory_imports
+    )
+
+    session_manager_imports = set(
+        _absolute_imports(Path("src/loushang/coding/store/session_manager.py"))
+    )
+    assert (
+        "loushang.harness.agent_transcript.AgentTranscriptSessionFactory"
         in session_manager_imports
     )
 
