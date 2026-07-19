@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol, TextIO
 
-from loushang.coding.ui.event_policy import is_cancelled_error_message
+from loushang.coding.event.presentation_policy import is_cancelled_error_message
 from loushang.coding.ui.prompt_dispatch import PromptDispatchOutcome
 from loushang.harnesstui.conversation.dispatch import (
     ConversationResultPresenter,

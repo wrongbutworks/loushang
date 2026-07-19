@@ -4,8 +4,8 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, Protocol
 
-from loushang.coding.ui.debug_status import debug_status_text
-from loushang.coding.ui.intent import DebugIntent
+from loushang.coding.diagnostics.debug_status import debug_status_text
+from loushang.coding.interaction.intent import DebugIntent
 
 
 class Renderer(Protocol):

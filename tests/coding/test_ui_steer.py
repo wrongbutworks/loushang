@@ -26,7 +26,7 @@ class _Controller:
 
 
 def test_steer_handler_sends_text_to_controller_and_traces() -> None:
-    from loushang.coding.ui.controller import ControllerResult
+    from loushang.coding.interaction.controller import ControllerResult
     from loushang.harnesstui.conversation.control import SteerActionHandler
 
     controller = _Controller(ControllerResult(exit_code=3))
@@ -53,7 +53,7 @@ def test_steer_handler_sends_text_to_controller_and_traces() -> None:
 
 
 def test_steer_handler_renders_controller_error() -> None:
-    from loushang.coding.ui.controller import ControllerResult
+    from loushang.coding.interaction.controller import ControllerResult
     from loushang.harnesstui.conversation.control import SteerActionHandler
 
     controller = _Controller(ControllerResult(exit_code=2, error_message="steer failed"))

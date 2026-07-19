@@ -59,8 +59,8 @@ def test_coding_tui_handlers_ignore_empty_prompt() -> None:
 
 
 def test_coding_tui_handlers_block_abort_settling_input() -> None:
+    from loushang.coding.interaction.intent import PromptIntent
     from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.intent import PromptIntent
     from loushang.coding.ui.prompt_routing import PromptRoute
 
     emitted: list[str] = []
@@ -96,8 +96,8 @@ def test_coding_tui_handlers_block_abort_settling_input() -> None:
 
 
 def test_coding_tui_handlers_prefers_local_info_panel_presenter_for_hotkeys() -> None:
+    from loushang.coding.interaction.intent import HotkeysIntent
     from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.intent import HotkeysIntent
     from loushang.coding.ui.prompt_routing import PromptRoute
 
     emitted: list[str] = []
@@ -141,8 +141,8 @@ def test_coding_tui_handlers_prefers_local_info_panel_presenter_for_hotkeys() ->
 
 
 def test_coding_tui_handlers_renders_models_command() -> None:
+    from loushang.coding.interaction.intent import ModelsIntent
     from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.intent import ModelsIntent
     from loushang.coding.ui.prompt_routing import PromptRoute
 
     emitted: list[str] = []
@@ -182,8 +182,8 @@ def test_coding_tui_handlers_renders_models_command() -> None:
 
 
 def test_coding_tui_handlers_handles_model_select_command() -> None:
+    from loushang.coding.interaction.intent import ModelSelectIntent
     from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.intent import ModelSelectIntent
     from loushang.coding.ui.prompt_routing import PromptRoute
 
     emitted: list[str] = []
@@ -223,8 +223,8 @@ def test_coding_tui_handlers_handles_model_select_command() -> None:
 
 
 def test_coding_tui_handlers_renders_hotkeys_command() -> None:
+    from loushang.coding.interaction.intent import HotkeysIntent
     from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.intent import HotkeysIntent
     from loushang.coding.ui.prompt_routing import PromptRoute
 
     emitted: list[str] = []
@@ -261,8 +261,8 @@ def test_coding_tui_handlers_renders_hotkeys_command() -> None:
 
 
 def test_coding_tui_handlers_renders_settings_command() -> None:
+    from loushang.coding.interaction.intent import SettingsIntent
     from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.intent import SettingsIntent
     from loushang.coding.ui.prompt_routing import PromptRoute
 
     emitted: list[str] = []
@@ -299,8 +299,8 @@ def test_coding_tui_handlers_renders_settings_command() -> None:
 
 
 def test_coding_tui_handlers_renders_commands_command() -> None:
+    from loushang.coding.interaction.intent import CommandsIntent
     from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.intent import CommandsIntent
     from loushang.coding.ui.prompt_routing import PromptRoute
 
     emitted: list[str] = []
@@ -340,8 +340,8 @@ def test_coding_tui_handlers_renders_commands_command() -> None:
 
 
 def test_coding_tui_handlers_handles_command_select_command() -> None:
+    from loushang.coding.interaction.intent import CommandSelectIntent
     from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.intent import CommandSelectIntent
     from loushang.coding.ui.prompt_routing import PromptRoute
 
     emitted: list[str] = []
@@ -381,8 +381,12 @@ def test_coding_tui_handlers_handles_command_select_command() -> None:
 
 
 def test_coding_tui_handlers_routes_follow_up_steer_debug_dispatch_abort_and_restore() -> None:
+    from loushang.coding.interaction.intent import (
+        DebugIntent,
+        FollowUpIntent,
+        PromptIntent,
+    )
     from loushang.coding.ui.handlers import CodingTuiHandlers
-    from loushang.coding.ui.intent import DebugIntent, FollowUpIntent, PromptIntent
     from loushang.coding.ui.prompt_routing import PromptRoute
 
     calls: list[tuple[str, object]] = []

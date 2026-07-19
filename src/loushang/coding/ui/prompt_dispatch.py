@@ -4,8 +4,8 @@ import time
 from collections.abc import Callable
 from typing import Protocol
 
-from loushang.coding.ui.controller import ControllerResult
-from loushang.coding.ui.intent import BashIntent, CodingUiIntent, PromptIntent
+from loushang.coding.interaction.controller import ControllerResult
+from loushang.coding.interaction.intent import BashIntent, CodingUiIntent, PromptIntent
 from loushang.harnesstui.conversation.dispatch import (
     ConversationDispatchHandler,
     ConversationDispatchOutcome,

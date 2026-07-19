@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 from loushang.coding.commands.catalog import CodingCommandCatalog
-from loushang.coding.ui.intent import (
+from loushang.coding.interaction.intent import (
     CodingUiIntent,
     CommandSelectIntent,
     CommandsIntent,

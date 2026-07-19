@@ -8,7 +8,7 @@ from typing import Any
 
 from loushang.ai.types import ImagePart
 from loushang.coding.commands.catalog import CodingCommandCatalog
-from loushang.coding.ui.intent import (
+from loushang.coding.interaction.intent import (
     AbortIntent,
     BashIntent,
     CodingUiIntent,

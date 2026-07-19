@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from io import StringIO
 
+from loushang.coding.interaction.controller import CodingUiController
 from loushang.coding.testing.tui.fakes import SessionCommandPlaybackSession
 from loushang.coding.testing.tui.playback import (
     ScreenTuiInputPlaybackResult,
@@ -9,7 +10,6 @@ from loushang.coding.testing.tui.playback import (
     ScreenTuiLoopPlayback,
 )
 from loushang.coding.testing.tui.scenarios.budgets import INTERACTION_FRAME_BUDGET
-from loushang.coding.ui.controller import CodingUiController
 from loushang.coding.ui.mode import _screen_prompt_handler
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager

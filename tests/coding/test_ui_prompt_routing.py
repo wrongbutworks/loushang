@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def test_prompt_routing_keeps_running_inputs_pi_style() -> None:
-    from loushang.coding.ui.intent import (
+    from loushang.coding.interaction.intent import (
         CommandSelectIntent,
         CommandsIntent,
         DebugIntent,
@@ -32,7 +32,7 @@ def test_prompt_routing_keeps_running_inputs_pi_style() -> None:
     assert route_prompt_intent(QuitIntent(), lifecycle) is PromptRoute.DISPATCH
 
 def test_prompt_routing_blocks_non_quit_inputs_while_abort_settles() -> None:
-    from loushang.coding.ui.intent import FollowUpIntent, PromptIntent, QuitIntent
+    from loushang.coding.interaction.intent import FollowUpIntent, PromptIntent, QuitIntent
     from loushang.coding.ui.prompt_routing import PromptRoute, route_prompt_intent
     from loushang.harnesstui.conversation.control import ConversationRunControl
 
@@ -46,7 +46,7 @@ def test_prompt_routing_blocks_non_quit_inputs_while_abort_settles() -> None:
 
 
 def test_prompt_routing_dispatches_idle_intents_except_debug_and_follow_up() -> None:
-    from loushang.coding.ui.intent import (
+    from loushang.coding.interaction.intent import (
         BashIntent,
         CommandSelectIntent,
         CommandsIntent,

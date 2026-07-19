@@ -5,13 +5,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, TextIO
 
+from loushang.coding.interaction.controller import CodingUiController
+from loushang.coding.presentation.session import (
+    is_running,
+    session_error_message,
+    session_label,
+    thinking_level,
+)
 from loushang.coding.ui.abort import AbortHandler
 from loushang.coding.ui.command_list import (
     CommandPaletteChooser,
     format_coding_commands,
     select_coding_command,
 )
-from loushang.coding.ui.controller import CodingUiController
 from loushang.coding.ui.debug_command import DebugCommandHandler
 from loushang.coding.ui.follow_up_queue import FollowUpQueueHandler
 from loushang.coding.ui.handlers import (
@@ -27,12 +33,6 @@ from loushang.coding.ui.model_list import (
 from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
 from loushang.coding.ui.prompt_dispatch import PromptDispatchHandler
 from loushang.coding.ui.prompt_result import PromptResultHandler
-from loushang.coding.ui.session_view import (
-    is_running,
-    session_error_message,
-    session_label,
-    thinking_level,
-)
 from loushang.coding.ui.status_provider import (
     CodingTuiStatusProvider,
     statusline_settings_from_settings_manager,

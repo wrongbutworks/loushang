@@ -8,10 +8,19 @@ from collections.abc import Callable
 from typing import Any, TextIO
 
 from loushang.ai.types import ImagePart
+from loushang.coding.interaction.controller import CodingUiController, ControllerResult
+from loushang.coding.interaction.intent import (
+    AbortIntent,
+    QuitIntent,
+    parse_prompt_intent,
+)
 from loushang.coding.observability import disable_session_debug, enable_session_debug
+from loushang.coding.presentation.session import (
+    is_running,
+    session_label,
+    thinking_level,
+)
 from loushang.coding.ui.completion import coding_inline_completion_provider
-from loushang.coding.ui.controller import CodingUiController, ControllerResult
-from loushang.coding.ui.intent import AbortIntent, QuitIntent, parse_prompt_intent
 from loushang.coding.ui.plain_app import build_plain_coding_tui_app
 from loushang.coding.ui.plain_events import PlainCodingEventRenderer
 from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
@@ -24,7 +33,6 @@ from loushang.coding.ui.screen_events import ScreenCodingEventProjector
 from loushang.coding.ui.screen_loop import run_screen_coding_tui
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.coding.ui.session_history import session_history_records
-from loushang.coding.ui.session_view import is_running, session_label, thinking_level
 from loushang.coding.ui.startup import (
     CodingTuiStartupSnapshot,
     load_coding_tui_startup_snapshot,

@@ -5,12 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from loushang.coding.commands.catalog import CodingCommandCatalog
-from loushang.coding.ui.command_list import (
-    coding_command_palette,
-    format_coding_commands,
-)
-from loushang.coding.ui.hotkeys import format_hotkeys
-from loushang.coding.ui.intent import (
+from loushang.coding.interaction.intent import (
     CommandSelectIntent,
     CommandsIntent,
     HotkeysIntent,
@@ -20,11 +15,16 @@ from loushang.coding.ui.intent import (
     TerminalDiagnosticsIntent,
     parse_prompt_intent,
 )
-from loushang.coding.ui.model import (
+from loushang.coding.model_selection import (
     get_session_model_selection,
     iter_scoped_model_selections,
     model_label_from_selection,
 )
+from loushang.coding.ui.command_list import (
+    coding_command_palette,
+    format_coding_commands,
+)
+from loushang.coding.ui.hotkeys import format_hotkeys
 from loushang.coding.ui.model_list import (
     available_model_choices,
     current_model_choice_value,

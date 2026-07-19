@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, Protocol
 
-from loushang.coding.ui.intent import AbortIntent
+from loushang.coding.interaction.intent import AbortIntent
 from loushang.harnesstui.conversation.control import (
     AbortActionHandler,
     InterruptionRenderer,

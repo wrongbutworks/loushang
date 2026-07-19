@@ -36,7 +36,7 @@ async def _emit(write, *, label: str) -> None:
 
 
 def test_prompt_result_suppresses_cancelled_error_for_aborted_run() -> None:
-    from loushang.coding.ui.controller import ControllerResult
+    from loushang.coding.interaction.controller import ControllerResult
     from loushang.coding.ui.prompt_dispatch import PromptDispatchOutcome
     from loushang.coding.ui.prompt_result import PromptResultHandler
 
@@ -74,7 +74,7 @@ def test_prompt_result_suppresses_cancelled_error_for_aborted_run() -> None:
 
 
 def test_prompt_result_renders_error_and_verbose_traceback() -> None:
-    from loushang.coding.ui.controller import ControllerResult
+    from loushang.coding.interaction.controller import ControllerResult
     from loushang.coding.ui.prompt_dispatch import PromptDispatchOutcome
     from loushang.coding.ui.prompt_result import PromptResultHandler
 
@@ -115,7 +115,7 @@ def test_prompt_result_renders_error_and_verbose_traceback() -> None:
 
 
 def test_prompt_result_does_not_duplicate_existing_event_error() -> None:
-    from loushang.coding.ui.controller import ControllerResult
+    from loushang.coding.interaction.controller import ControllerResult
     from loushang.coding.ui.prompt_dispatch import PromptDispatchOutcome
     from loushang.coding.ui.prompt_result import PromptResultHandler
 
@@ -152,7 +152,7 @@ def test_prompt_result_does_not_duplicate_existing_event_error() -> None:
 
 
 def test_prompt_result_renders_worked_for_successful_work_intent() -> None:
-    from loushang.coding.ui.controller import ControllerResult
+    from loushang.coding.interaction.controller import ControllerResult
     from loushang.coding.ui.prompt_dispatch import PromptDispatchOutcome
     from loushang.coding.ui.prompt_result import PromptResultHandler
 
@@ -189,7 +189,7 @@ def test_prompt_result_renders_worked_for_successful_work_intent() -> None:
 
 
 def test_prompt_result_renders_controller_status_message_instead_of_worked() -> None:
-    from loushang.coding.ui.controller import ControllerResult
+    from loushang.coding.interaction.controller import ControllerResult
     from loushang.coding.ui.prompt_dispatch import PromptDispatchOutcome
     from loushang.coding.ui.prompt_result import PromptResultHandler
 

@@ -29,7 +29,7 @@ class _Controller:
 
 
 def test_follow_up_queue_ignores_empty_text() -> None:
-    from loushang.coding.ui.controller import ControllerResult
+    from loushang.coding.interaction.controller import ControllerResult
     from loushang.coding.ui.follow_up_queue import FollowUpQueueHandler
 
     renderer = _Renderer()
@@ -53,7 +53,7 @@ def test_follow_up_queue_ignores_empty_text() -> None:
 
 
 def test_follow_up_queue_reports_idle_follow_up_as_unavailable() -> None:
-    from loushang.coding.ui.controller import ControllerResult
+    from loushang.coding.interaction.controller import ControllerResult
     from loushang.coding.ui.follow_up_queue import FollowUpQueueHandler
 
     renderer = _Renderer()
@@ -81,7 +81,7 @@ def test_follow_up_queue_reports_idle_follow_up_as_unavailable() -> None:
 
 
 def test_follow_up_queue_strips_and_queues_active_follow_up() -> None:
-    from loushang.coding.ui.controller import ControllerResult
+    from loushang.coding.interaction.controller import ControllerResult
     from loushang.coding.ui.follow_up_queue import FollowUpQueueHandler
 
     renderer = _Renderer()
@@ -109,7 +109,7 @@ def test_follow_up_queue_strips_and_queues_active_follow_up() -> None:
 
 
 def test_follow_up_queue_renders_controller_error() -> None:
-    from loushang.coding.ui.controller import ControllerResult
+    from loushang.coding.interaction.controller import ControllerResult
     from loushang.coding.ui.follow_up_queue import FollowUpQueueHandler
 
     renderer = _Renderer()

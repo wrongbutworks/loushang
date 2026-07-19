@@ -58,23 +58,40 @@ RETIRED_CODING_UI_COMPATIBILITY_MODULES: dict[str, tuple[str, ...]] = {
     ),
 }
 
+MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
+    "loushang.coding.ui.controller": (
+        "loushang.coding.interaction.controller",
+    ),
+    "loushang.coding.ui.debug_status": (
+        "loushang.coding.diagnostics.debug_status",
+    ),
+    "loushang.coding.ui.event_policy": (
+        "loushang.coding.event.presentation_policy",
+    ),
+    "loushang.coding.ui.intent": ("loushang.coding.interaction.intent",),
+    "loushang.coding.ui.model": ("loushang.coding.model_selection",),
+    "loushang.coding.ui.session_view": (
+        "loushang.coding.presentation.session",
+    ),
+}
+
+RETIRED_CODING_UI_MODULES = {
+    **RETIRED_CODING_UI_COMPATIBILITY_MODULES,
+    **MOVED_CODING_UI_PRODUCT_MODULES,
+}
+
 RETAINED_CODING_UI_PRODUCT_ADAPTER_MODULES = {
     "abort",
     "cli",
     "command_list",
     "completion",
-    "controller",
     "conversation_event_adapter",
     "debug_command",
-    "debug_status",
-    "event_policy",
     "event_stream",
     "follow_up_queue",
     "handlers",
     "hotkeys",
-    "intent",
     "mode",
-    "model",
     "model_list",
     "plain_app",
     "plain_events",
@@ -89,7 +106,6 @@ RETAINED_CODING_UI_PRODUCT_ADAPTER_MODULES = {
     "screen_loop",
     "screen_surfaces",
     "session_history",
-    "session_view",
     "settings_config",
     "settings_page",
     "startup",
@@ -117,8 +133,8 @@ assert "loushang.coding.ui.plain_renderer" not in sys.modules
     assert result.returncode == 0, result.stderr
 
 
-def test_retired_coding_ui_compatibility_modules_use_canonical_owners() -> None:
-    for module in RETIRED_CODING_UI_COMPATIBILITY_MODULES:
+def test_retired_coding_ui_modules_use_canonical_owners() -> None:
+    for module in RETIRED_CODING_UI_MODULES:
         relative = Path(*module.split("."))
         module_path = Path("src") / relative.with_suffix(".py")
         package_path = Path("src") / relative / "__init__.py"
@@ -129,7 +145,7 @@ def test_retired_coding_ui_compatibility_modules_use_canonical_owners() -> None:
         sorted(
             {
                 owner
-                for owners in RETIRED_CODING_UI_COMPATIBILITY_MODULES.values()
+                for owners in RETIRED_CODING_UI_MODULES.values()
                 for owner in owners
             }
         )
@@ -163,7 +179,7 @@ def test_coding_ui_module_manifest_contains_only_product_adapters() -> None:
 
 
 def test_repository_imports_use_canonical_owners_for_retired_modules() -> None:
-    retired = tuple(RETIRED_CODING_UI_COMPATIBILITY_MODULES)
+    retired = tuple(RETIRED_CODING_UI_MODULES)
     offenders: list[str] = []
     for root in (Path("src"), Path("tests"), Path("examples"), Path("scripts")):
         for path in sorted(root.rglob("*.py")):
@@ -182,6 +198,55 @@ def test_repository_imports_use_canonical_owners_for_retired_modules() -> None:
                     offenders.append(f"{path}:{target} -> {matched}")
 
     assert offenders == []
+
+
+def test_non_ui_coding_owners_do_not_depend_on_ui_layers() -> None:
+    modules = (
+        Path("src/loushang/coding/model_selection.py"),
+        Path("src/loushang/coding/diagnostics/debug_status.py"),
+        Path("src/loushang/coding/event/presentation_policy.py"),
+        Path("src/loushang/coding/interaction/controller.py"),
+        Path("src/loushang/coding/interaction/intent.py"),
+        Path("src/loushang/coding/presentation/session.py"),
+    )
+    forbidden = (
+        "loushang.coding.ui",
+        "loushang.harnesstui",
+        "loushang.tui",
+    )
+
+    offenders = [
+        f"{path}:{target}"
+        for path in modules
+        for target in _absolute_import_targets(path)
+        if target.startswith(forbidden)
+    ]
+
+    assert offenders == []
+
+
+def test_importing_non_ui_coding_owners_does_not_load_ui_layers() -> None:
+    canonical_modules = tuple(
+        owner
+        for owners in MOVED_CODING_UI_PRODUCT_MODULES.values()
+        for owner in owners
+    )
+    result = _run_python_import_boundary_check(
+        f"""
+import importlib
+import sys
+
+for module in {canonical_modules!r}:
+    importlib.import_module(module)
+
+for module in sys.modules:
+    assert module != "loushang.coding.ui" and not module.startswith("loushang.coding.ui."), module
+    assert module != "loushang.harnesstui" and not module.startswith("loushang.harnesstui."), module
+    assert module != "loushang.tui" and not module.startswith("loushang.tui."), module
+"""
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_old_coding_ui_renderer_module_is_removed() -> None:

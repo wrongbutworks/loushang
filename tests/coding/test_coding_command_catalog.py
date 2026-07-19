@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 def test_coding_command_catalog_classifies_local_and_session_commands() -> None:
     from loushang.coding.commands.catalog import CodingCommandCatalog
-    from loushang.coding.ui.intent import PromptIntent, SettingsIntent
+    from loushang.coding.interaction.intent import PromptIntent, SettingsIntent
     from loushang.coding.ui.prompt_routing import PromptRoute
     from loushang.harness.commands import CommandEffectKind, CommandKind
 
@@ -37,7 +37,7 @@ def test_coding_command_catalog_classifies_local_and_session_commands() -> None:
 
 def test_coding_command_catalog_leaves_plain_prompts_and_queue_routes_unowned() -> None:
     from loushang.coding.commands.catalog import CodingCommandCatalog
-    from loushang.coding.ui.intent import FollowUpIntent, PromptIntent
+    from loushang.coding.interaction.intent import FollowUpIntent, PromptIntent
     from loushang.coding.ui.prompt_routing import PromptRoute
 
     catalog = CodingCommandCatalog(session_commands=lambda: [])

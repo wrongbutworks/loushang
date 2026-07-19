@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from loushang.coding.ui.intent import (
+from loushang.coding.interaction.intent import (
     CodingUiIntent,
     CommandSelectIntent,
     CommandsIntent,

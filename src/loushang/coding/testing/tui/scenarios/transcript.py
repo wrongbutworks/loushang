@@ -3,12 +3,12 @@ from __future__ import annotations
 from io import StringIO
 from types import SimpleNamespace
 
+from loushang.coding.interaction.controller import CodingUiController
 from loushang.coding.testing.tui.playback import ScreenTuiLoopPlayback
 from loushang.coding.testing.tui.scenario_binding import (
     CODING_SCENARIO_FACTORY,
     CODING_SCENARIO_FRAME_CONTRACTS,
 )
-from loushang.coding.ui.controller import CodingUiController
 from loushang.coding.ui.mode import _screen_prompt_handler
 from loushang.harnesstui.testing.performance import (
     build_synthetic_long_transcript_records,
