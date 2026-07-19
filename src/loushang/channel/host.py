@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
-import io
 import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from typing import Protocol, TextIO
 
+from loushang.channel._stdio import read_line, stream_supports_fileno
 from loushang.channel.rpc_jsonl import (
     ChannelError,
     ChannelEventDelivery,
@@ -58,7 +57,7 @@ class ChannelHost:
         self._stdin = stdin
         self._stdout = stdout
         self._stderr = sys.stderr if stderr is None else stderr
-        self._stdin_uses_thread = _stream_supports_fileno(stdin)
+        self._stdin_uses_thread = stream_supports_fileno(stdin)
         self._operation_requests: dict[str, str] = {}
         self._unsubscribe: ChannelUnsubscribe | None = None
         self._running = False
@@ -79,7 +78,9 @@ class ChannelHost:
             return 0
         except Exception as error:
             self._write_frame(
-                ChannelError(code="host_failure", message=str(error) or type(error).__name__)
+                ChannelError(
+                    code="host_failure", message=str(error) or type(error).__name__
+                )
             )
             return 1
         finally:
@@ -122,7 +123,9 @@ class ChannelHost:
         """Deliver one Product-projected event or transport error to the client."""
 
         if not isinstance(delivery, ChannelEventDelivery | ChannelError):
-            raise TypeError("channel delivery must be an event delivery or channel error")
+            raise TypeError(
+                "channel delivery must be an event delivery or channel error"
+            )
         if isinstance(delivery, ChannelEventDelivery):
             delivery = self._correlate_event_delivery(delivery)
         self._write_frame(delivery)
@@ -156,9 +159,7 @@ class ChannelHost:
         self._operation_requests[operation_id] = request.request_id
         self._write_frame(result)
 
-    async def _cancel_operation(
-        self, request: ChannelOperationCancelRequest
-    ) -> None:
+    async def _cancel_operation(self, request: ChannelOperationCancelRequest) -> None:
         try:
             result = await self._port.cancel_operation(request)
         except Exception as error:
@@ -186,9 +187,7 @@ class ChannelHost:
         self._write_frame(result)
 
     async def _read_line(self) -> str:
-        if self._stdin_uses_thread:
-            return await asyncio.to_thread(self._stdin.readline)
-        return self._stdin.readline()
+        return await read_line(self._stdin, use_thread=self._stdin_uses_thread)
 
     def _correlate_event_delivery(
         self, delivery: ChannelEventDelivery
@@ -235,17 +234,6 @@ def _event_operation_id(envelope: ChannelEnvelope) -> str | None:
         return operation_id
     correlation_id = getattr(payload, "correlation_id", None)
     return correlation_id if isinstance(correlation_id, str) else None
-
-
-def _stream_supports_fileno(stream: TextIO) -> bool:
-    fileno = getattr(stream, "fileno", None)
-    if not callable(fileno):
-        return False
-    try:
-        fileno()
-    except (io.UnsupportedOperation, OSError, ValueError):
-        return False
-    return True
 
 
 __all__ = [

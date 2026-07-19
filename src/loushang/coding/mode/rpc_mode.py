@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import io
 import json
 import sys
-import uuid
 from collections.abc import Sequence
 from math import isfinite
 from pathlib import Path
 from typing import Any, NotRequired, Required, TextIO, TypedDict, cast
 
+from loushang.channel import (
+    JsonlCommand,
+    JsonlCommandHost,
+    JsonlCommandHostError,
+    RemoteUiContext,
+)
 from loushang.coding.commands import complete_slash_commands
 from loushang.coding.diagnostics.serialization import (
     serialize_diagnostic,
@@ -39,7 +43,6 @@ from loushang.harness.diagnostics.types import DiagnosticsQuery
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.harness.session import SessionControlPort
-from loushang.protocol import JsonValueError, require_json_mapping, require_json_value
 
 _THINKING_LEVEL_ORDER: tuple[str, ...] = (
     "off",
@@ -91,17 +94,18 @@ class RpcSessionState(TypedDict, total=False):
     pendingMessageCount: Required[int]
 
 
-class RpcExtensionUIContext:
+class RpcExtensionUIContext(RemoteUiContext):
     """RPC-backed extension UI context for headless hosts."""
 
     def __init__(self, output) -> None:
         self._output = output
-        self._pending: dict[str, asyncio.Future[object]] = {}
-        self._notifications: list[dict[str, object]] = []
-        self._statuses: dict[str, str] = {}
-        self._widgets: dict[str, dict[str, object]] = {}
-        self._title: str | None = None
-        self._editor_text = ""
+
+        def emit(payload: dict[str, object]) -> None:
+            if payload.get("type") == "remote_ui_request":
+                payload = {**payload, "type": "extension_ui_request"}
+            self._output(payload)
+
+        super().__init__(emit)
         self._working_message: str | None = None
         self._working_visible = True
         self._working_indicator: object | None = None
@@ -112,134 +116,16 @@ class RpcExtensionUIContext:
         self._autocomplete_providers: list[object] = []
         self._tools_expanded = False
 
-    async def select(
-        self, title: str, options: list[str], *, timeout: float | None = None
-    ) -> str | None:
-        response = await self._request_dialog(
-            {
-                "method": "select",
-                "title": title,
-                "options": list(options),
-                **_timeout_payload(timeout),
-            },
-            timeout=timeout,
-            default={"cancelled": True},
-        )
-        if response.get("cancelled") is True:
-            return None
-        value = response.get("value")
-        return value if isinstance(value, str) else None
-
-    async def confirm(
-        self, title: str, message: str, *, timeout: float | None = None
-    ) -> bool:
-        response = await self._request_dialog(
-            {
-                "method": "confirm",
-                "title": title,
-                "message": message,
-                **_timeout_payload(timeout),
-            },
-            timeout=timeout,
-            default={"confirmed": False},
-        )
-        return (
-            bool(response.get("confirmed", False))
-            if response.get("cancelled") is not True
-            else False
-        )
-
-    async def input(
-        self,
-        title: str,
-        placeholder: str | None = None,
-        *,
-        timeout: float | None = None,
-    ) -> str | None:
-        payload: dict[str, object] = {
-            "method": "input",
-            "title": title,
-            **_timeout_payload(timeout),
-        }
-        if placeholder is not None:
-            payload["placeholder"] = placeholder
-        response = await self._request_dialog(
-            payload, timeout=timeout, default={"cancelled": True}
-        )
-        if response.get("cancelled") is True:
-            return None
-        value = response.get("value")
-        return value if isinstance(value, str) else None
-
-    async def editor(
-        self, title: str, prefill: str | None = None, *, timeout: float | None = None
-    ) -> str | None:
-        payload: dict[str, object] = {"method": "editor", "title": title}
-        if prefill is not None:
-            payload["prefill"] = prefill
-        if timeout is not None:
-            payload["timeout"] = timeout
-        response = await self._request_dialog(
-            payload, timeout=timeout, default={"cancelled": True}
-        )
-        if response.get("cancelled") is True:
-            return None
-        value = response.get("value")
-        return value if isinstance(value, str) else None
-
-    def notify(self, message: str, notify_type: str | None = None) -> None:
-        payload: dict[str, object] = {"method": "notify", "message": message}
-        if notify_type is not None:
-            payload["notifyType"] = notify_type
-        self._notifications.append(
-            {key: value for key, value in payload.items() if key != "method"}
-        )
-        self._emit_request(payload)
-
-    def set_status(self, key: str, text: str | None) -> None:
-        payload: dict[str, object] = {"method": "setStatus", "statusKey": key}
-        if text is not None:
-            payload["statusText"] = text
-            self._statuses[key] = text
-        else:
-            self._statuses.pop(key, None)
-        self._emit_request(payload)
-
     def setStatus(self, key: str, text: str | None) -> None:
         self.set_status(key, text)
-
-    def set_widget(
-        self, key: str, lines: list[str] | None, *, placement: str | None = None
-    ) -> None:
-        payload: dict[str, object] = {"method": "setWidget", "widgetKey": key}
-        if lines is not None:
-            payload["widgetLines"] = list(lines)
-        if placement is not None:
-            payload["widgetPlacement"] = placement
-        if lines is None:
-            self._widgets.pop(key, None)
-        else:
-            widget: dict[str, object] = {"lines": list(lines)}
-            if placement is not None:
-                widget["placement"] = placement
-            self._widgets[key] = widget
-        self._emit_request(payload)
 
     def setWidget(
         self, key: str, lines: list[str] | None, *, placement: str | None = None
     ) -> None:
         self.set_widget(key, lines, placement=placement)
 
-    def set_title(self, title: str) -> None:
-        self._title = title
-        self._emit_request({"method": "setTitle", "title": title})
-
     def setTitle(self, title: str) -> None:
         self.set_title(title)
-
-    def set_editor_text(self, text: str) -> None:
-        self._editor_text = text
-        self._emit_request({"method": "set_editor_text", "text": text})
 
     def setEditorText(self, text: str) -> None:
         self.set_editor_text(text)
@@ -248,7 +134,7 @@ class RpcExtensionUIContext:
         self.set_editor_text(text)
 
     def getEditorText(self) -> str:
-        return self._editor_text
+        return self.get_editor_text()
 
     def onTerminalInput(self, handler) -> object:
         del handler
@@ -296,22 +182,20 @@ class RpcExtensionUIContext:
         self._tools_expanded = expanded
 
     def get_snapshot(self) -> dict[str, object]:
-        snapshot: dict[str, object] = {
-            "notifications": list(self._notifications),
-            "statuses": dict(self._statuses),
-            "widgets": {key: dict(value) for key, value in self._widgets.items()},
-            "title": self._title,
-            "editorText": self._editor_text,
-            "workingMessage": self._working_message,
-            "workingVisible": self._working_visible,
-            "workingIndicator": self._working_indicator,
-            "hiddenThinkingLabel": self._hidden_thinking_label,
-            "hasFooter": self._footer is not None,
-            "hasHeader": self._header is not None,
-            "hasEditorComponent": self._editor_component is not None,
-            "autocompleteProviderCount": len(self._autocomplete_providers),
-            "toolsExpanded": self._tools_expanded,
-        }
+        snapshot = super().get_snapshot()
+        snapshot.update(
+            {
+                "workingMessage": self._working_message,
+                "workingVisible": self._working_visible,
+                "workingIndicator": self._working_indicator,
+                "hiddenThinkingLabel": self._hidden_thinking_label,
+                "hasFooter": self._footer is not None,
+                "hasHeader": self._header is not None,
+                "hasEditorComponent": self._editor_component is not None,
+                "autocompleteProviderCount": len(self._autocomplete_providers),
+                "toolsExpanded": self._tools_expanded,
+            }
+        )
         return snapshot
 
     def emit_extension_error(self, error: dict[str, object]) -> None:
@@ -323,41 +207,6 @@ class RpcExtensionUIContext:
                 "error": str(error.get("error", "")),
             }
         )
-
-    def resolve_response(self, response: dict[str, object]) -> None:
-        request_id = response.get("id")
-        if not isinstance(request_id, str):
-            return
-        future = self._pending.pop(request_id, None)
-        if future is not None and not future.done():
-            future.set_result(response)
-
-    async def _request_dialog(
-        self,
-        payload: dict[str, object],
-        *,
-        timeout: float | None,
-        default: dict[str, object],
-    ) -> dict[str, object]:
-        request_id = self._emit_request(payload)
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future[object] = loop.create_future()
-        self._pending[request_id] = future
-        try:
-            result = (
-                await asyncio.wait_for(future, timeout=timeout)
-                if timeout is not None
-                else await future
-            )
-        except TimeoutError:
-            self._pending.pop(request_id, None)
-            return default
-        return result if isinstance(result, dict) else {}
-
-    def _emit_request(self, payload: dict[str, object]) -> str:
-        request_id = str(uuid.uuid4())
-        self._output({"type": "extension_ui_request", "id": request_id, **payload})
-        return request_id
 
 
 class RpcMode(ModeAdapter):
@@ -383,7 +232,6 @@ class RpcMode(ModeAdapter):
         self.event_view = event_view
         self.event_select = normalize_event_select(event_select)
         self.render_tool_events = render_tool_events
-        self._stdin_uses_thread = _stream_supports_fileno(stdin)
         self.session = self._require_current_session()
         self._session_control = self._find_session_control(self.session)
         self._tool_render_runtime: ToolRenderRuntime | None = None
@@ -393,16 +241,21 @@ class RpcMode(ModeAdapter):
         self._background_tasks: set[asyncio.Task[None]] = set()
         self._active_prompt_task: asyncio.Task[None] | None = None
         self._active_bash_task: asyncio.Task[None] | None = None
-        self._running = True
         self.extension_ui_context = RpcExtensionUIContext(self._write_json_line)
         self._bind_extension_ui_context(self.session)
+        self._command_host = JsonlCommandHost(
+            port=self,
+            on_error=self._handle_jsonl_command_error,
+            stdin=stdin,
+            command_name="rpc_command",
+        )
 
     async def start(self, user_input: str | None = None) -> int:
         del user_input
         return await self.run()
 
     async def stop(self) -> int:
-        self._running = False
+        self._command_host.stop()
         self._unsubscribe()
         return 0
 
@@ -410,7 +263,7 @@ class RpcMode(ModeAdapter):
         if not isinstance(input_payload, str):
             raise TypeError("Rpc mode submit_input expects a string")
         try:
-            await self._handle_line(input_payload)
+            await self._command_host.handle_line(input_payload)
         except Exception:
             return 1
         return 0
@@ -426,7 +279,7 @@ class RpcMode(ModeAdapter):
         return 0
 
     async def dispose(self) -> int:
-        self._running = False
+        self._command_host.stop()
         self._unsubscribe()
         disposer = getattr(self.runtime, "dispose", None)
         if callable(disposer):
@@ -438,20 +291,14 @@ class RpcMode(ModeAdapter):
 
     async def run(self) -> int:
         try:
-            while self._running:
-                line = await self._read_line()
-                if line == "":
-                    break
-                stripped = line.strip()
-                if not stripped:
-                    continue
-                await self._handle_line(stripped)
+            await self._command_host.run()
             await self._drain_background_tasks()
             return 0
         except Exception as exc:
             self.stderr.write(f"Error: {exc}\n")
             return 1
         finally:
+            self._command_host.stop()
             self._unsubscribe()
 
     def get_mode_state(self) -> ModeState:
@@ -471,76 +318,70 @@ class RpcMode(ModeAdapter):
                 "model": None,
             }
 
-    async def _read_line(self) -> str:
-        if self._stdin_uses_thread:
-            return await asyncio.to_thread(self.stdin.readline)
-        return self.stdin.readline()
-
     async def _handle_line(self, line: str) -> None:
-        try:
-            payload = json.loads(line, parse_constant=_reject_json_constant)
-        except ValueError as exc:
-            detail = exc.msg if isinstance(exc, json.JSONDecodeError) else str(exc)
-            self._write_response_error(
-                command="parse", error=f"Failed to parse command: {detail}"
-            )
+        """Test-facing adapter for the Channel-owned JSONL command host."""
+
+        await self._command_host.handle_line(line)
+
+    async def handle_jsonl_command(self, command: JsonlCommand) -> None:
+        """Adapt one validated Channel JSONL command to Coding RPC semantics."""
+
+        payload = dict(command.payload)
+        if command.command_type == "extension_ui_response":
+            self.extension_ui_context.resolve_response(payload)
             return
 
-        if not isinstance(payload, dict):
+        handler = getattr(self, f"_handle_{command.command_type}_command", None)
+        if handler is None:
+            self._write_response_error(
+                id=command.command_id,
+                command=command.command_type,
+                error=f"unsupported command: {command.command_type}",
+                code="unsupported_command",
+            )
+            return
+        result = handler(command.command_id, payload)
+        if inspect.isawaitable(result):
+            await result
+
+    def _handle_jsonl_command_error(self, error: JsonlCommandHostError) -> None:
+        if error.reason == "invalid_json":
+            self._write_response_error(
+                command="parse", error=f"Failed to parse command: {error.message}"
+            )
+            return
+        if error.reason == "not_object":
             self._write_response_error(
                 command="invalid", error="RPC commands must be JSON objects"
             )
             return
-
-        command_id = _usable_rpc_request_id(payload.get("id"))
-        try:
-            payload = require_json_mapping(payload, name="rpc_command")
-        except JsonValueError as exc:
+        if error.reason == "non_json_value":
+            detail = error.message.removeprefix(
+                "JSONL command contains a value outside strict JSON: "
+            )
             self._write_response_error(
-                id=command_id,
+                id=error.command_id,
                 command="invalid",
-                error=f"RPC command contains a value outside strict JSON: {exc}",
+                error=f"RPC command contains a value outside strict JSON: {detail}",
             )
             return
-
-        if payload.get("type") == "extension_ui_response":
-            self.extension_ui_context.resolve_response(payload)
-            return
-
-        command_id = payload.get("id")
-        if command_id is not None and not isinstance(command_id, str):
+        if error.reason == "invalid_id":
             self._write_response_error(
                 command="invalid", error="command id must be a string"
             )
             return
-
-        command_type = payload.get("type")
-        if not isinstance(command_type, str) or not command_type:
+        if error.reason == "missing_type":
             self._write_response_error(
-                id=command_id,
+                id=error.command_id,
                 command="invalid",
                 error="RPC command missing string type",
             )
             return
-
-        handler = getattr(self, f"_handle_{command_type}_command", None)
-        if handler is None:
-            self._write_response_error(
-                id=command_id,
-                command=command_type,
-                error=f"unsupported command: {command_type}",
-                code="unsupported_command",
-            )
-            return
-
-        try:
-            result = handler(command_id, payload)
-            if inspect.isawaitable(result):
-                await result
-        except Exception as exc:
-            self._write_response_error(
-                id=command_id, command=command_type, error=str(exc)
-            )
+        self._write_response_error(
+            id=error.command_id,
+            command=error.command_type or "invalid",
+            error=error.message,
+        )
 
     async def _handle_prompt_command(
         self, command_id: str | None, payload: dict[str, Any]
@@ -2828,31 +2669,6 @@ def _tool_definition_resolver(session: Any) -> ToolDefinitionResolver | None:
     return resolve
 
 
-def _stream_supports_fileno(stream: TextIO) -> bool:
-    fileno = getattr(stream, "fileno", None)
-    if not callable(fileno):
-        return False
-    try:
-        fileno()
-    except (io.UnsupportedOperation, OSError, ValueError):
-        return False
-    return True
-
-
-def _reject_json_constant(value: str) -> object:
-    raise ValueError(f"invalid JSON numeric constant: {value}")
-
-
-def _usable_rpc_request_id(value: object) -> str | None:
-    if type(value) is not str:
-        return None
-    try:
-        projected = require_json_value(value, name="rpc_command.id")
-    except JsonValueError:
-        return None
-    return projected if isinstance(projected, str) else None
-
-
 def _package_lifecycle_failure(record: dict[str, Any]) -> str | None:
     if record.get("lifecycle") != "failed":
         return None
@@ -2877,7 +2693,3 @@ def _is_unknown_model(payload: RpcModel | dict[str, object] | None) -> bool:
     provider = payload.get("provider")
     model_id = payload.get("id")
     return provider == "unknown" and model_id == "unknown"
-
-
-def _timeout_payload(timeout: float | None) -> dict[str, object]:
-    return {"timeout": timeout} if timeout is not None else {}

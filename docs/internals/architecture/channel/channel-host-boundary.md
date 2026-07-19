@@ -69,5 +69,7 @@ Coding until a separately versioned API retirement.
 ## Exclusions
 
 This boundary does not add sockets, HTTP, WebSockets, persistent
-subscriptions, outbox/replay, authentication, capability negotiation, generic
-UI dialogs, or cross-process exactly-once delivery.
+subscriptions, outbox/replay, authentication, capability negotiation, a
+standardized UI-dialog or widget wire protocol, or cross-process exactly-once
+delivery. `RemoteUiContext` may be used by a Product as an injected interaction
+helper, but its emitted mappings are not standard Channel frames.
