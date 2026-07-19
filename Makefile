@@ -22,6 +22,8 @@ HARNESSTUI_SHARED_SOURCES := \
 	src/loushang/tui/playback_suite.py \
 	src/loushang/tui/settings.py \
 	src/loushang/tui/terminal_diagnostics.py \
+	src/loushang/tui/ui_parts/layout.py \
+	src/loushang/tui/ui_parts/transcript.py \
 	src/loushang/harnesstui
 HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/platform/__init__.py \
@@ -74,6 +76,7 @@ HARNESSTUI_TEST_PATHS := \
 	tests/tui/test_playback_suite.py \
 	tests/tui/test_settings.py \
 	tests/tui/test_terminal_diagnostics.py \
+	tests/tui/test_transcript_region.py \
 	tests/architecture/test_import_boundaries.py \
 	tests/coding/test_coding_tui_playback_compatibility.py \
 	tests/coding/test_playback_suite_compatibility.py \

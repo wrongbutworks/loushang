@@ -96,10 +96,11 @@ a session-like port. Products retain queue availability policy, tracing sinks,
 and the decision about when to present or restore queued input.
 
 This slice does not own session lifecycle, persistence, runtime orchestration,
-or raw Agent/Coding event projection. It does not enter the render hot path.
-The state and active-window algorithms retain their existing semantics after
-moving here. Incremental transcript segmentation, render caches, committed and
-draft segments, and frame composition remain untouched in their current owner.
+or raw Agent/Coding event projection. The state and active-window algorithms
+retain their existing semantics after moving here. Incremental transcript
+segmentation, render caches, committed and draft segments, streaming Markdown
+reuse, and tail clipping live in `loushang.tui.ui_parts.transcript`; Harnesstui
+does not duplicate or wrap that rendering engine.
 
 Compatibility modules in `loushang.coding.ui` may temporarily re-export moved
 symbols. They must depend inward on `loushang.harnesstui`; this package must
@@ -196,6 +197,27 @@ existing `make test-tui-render-contract` gate covers this new boundary.
 The explicit `projection`, `plain_target`, and `screen_target` module paths
 above are the stable imports for this capability. The package initializer does
 not provide convenience re-exports.
+
+## Conversation Screen Composition
+
+`loushang.harnesstui.conversation.screen_frame` builds the product-neutral
+working line, pending queue, status bar, and bottom-frame geometry from
+`ScreenConversationState`. Products inject immutable copy once when the screen
+binding is constructed; no copy profile is allocated while rendering.
+
+`loushang.harnesstui.conversation.screen_app` owns the reusable full-screen
+conversation shell: state transitions, assistant streaming coordination,
+transcript-reader surfaces, render requests, elapsed-time scheduling, active
+window replacement, transcript-region synchronization, and screen layout.
+It holds the canonical `loushang.tui.ui_parts.transcript.TranscriptRegion`
+directly and preserves the records list, cache, and segment identities.
+
+Coding retains a real `ScreenCodingTuiApp` subclass. That binding supplies its
+composer prompts, frame copy, theme, welcome panel, transcript presentation,
+320-line budget, compaction wording, path compaction, and tool-output preview
+policy. The shared app does not import Coding, AI, Agent, or raw product events.
+The explicit `screen_frame` and `screen_app` module paths are stable; the
+conversation package initializer does not re-export them.
 
 ## Conversation Transcript Styling
 

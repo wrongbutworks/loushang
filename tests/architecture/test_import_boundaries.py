@@ -178,6 +178,26 @@ def test_harnesstui_does_not_import_product_or_model_layers() -> None:
     assert offenders == []
 
 
+def test_production_harnesstui_imports_only_approved_loushang_layers() -> None:
+    root = Path("src/loushang/harnesstui")
+    testing_root = root / "testing"
+    allowed_prefixes = (
+        "loushang.harnesstui",
+        "loushang.tui",
+        "loushang.harness",
+    )
+    offenders = [
+        f"{path.as_posix()} imports {imported}"
+        for path in sorted(root.rglob("*.py"))
+        if testing_root not in path.parents
+        for imported in _absolute_imports(path)
+        if imported.startswith("loushang.")
+        and not _matches_any(imported, allowed_prefixes)
+    ]
+
+    assert offenders == []
+
+
 def test_harnesstui_testing_does_not_import_runtime_or_product_layers() -> None:
     offenders = _find_forbidden_imports(
         ImportBoundary(
@@ -191,6 +211,23 @@ def test_harnesstui_testing_does_not_import_runtime_or_product_layers() -> None:
             ),
         )
     )
+
+    assert offenders == []
+
+
+def test_harnesstui_testing_imports_only_approved_loushang_layers() -> None:
+    root = Path("src/loushang/harnesstui/testing")
+    allowed_prefixes = (
+        "loushang.harnesstui",
+        "loushang.tui",
+    )
+    offenders = [
+        f"{path.as_posix()} imports {imported}"
+        for path in sorted(root.rglob("*.py"))
+        for imported in _absolute_imports(path)
+        if imported.startswith("loushang.")
+        and not _matches_any(imported, allowed_prefixes)
+    ]
 
     assert offenders == []
 
@@ -527,6 +564,38 @@ def test_tui_does_not_import_runtime_product_or_model_layers() -> None:
     assert _find_forbidden_imports(boundary) == []
 
 
+def test_importing_transcript_region_stays_tui_only() -> None:
+    script = """
+import importlib
+import sys
+
+importlib.import_module("loushang.tui.ui_parts.transcript")
+forbidden_prefixes = (
+    "loushang.agent",
+    "loushang.ai",
+    "loushang.coding",
+    "loushang.harness",
+    "loushang.harnesstui",
+    "loushang.method",
+    "loushang.work",
+)
+forbidden = sorted(
+    name
+    for name in sys.modules
+    if any(name == prefix or name.startswith(prefix + ".") for prefix in forbidden_prefixes)
+)
+assert forbidden == [], forbidden
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
 def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     path = Path("docs/internals/architecture/harnesstui/README.md")
     text = path.read_text(encoding="utf-8")
@@ -537,6 +606,8 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     )
     assert "`loushang.harnesstui.conversation.queue`" in text
     assert "`loushang.harnesstui.conversation.reader`" in text
+    assert "`loushang.harnesstui.conversation.screen_app`" in text
+    assert "`loushang.harnesstui.conversation.screen_frame`" in text
     assert "`loushang.harnesstui.conversation.screen_state`" in text
     assert "`loushang.harnesstui.conversation.window_budget`" in text
     assert "`loushang.harnesstui.conversation.source`" in text
@@ -574,6 +645,7 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.testing.scenarios`" in text
     assert "`loushang.coding.testing.tui.scenarios`" in text
     assert "`loushang.tui.settings`" in text
+    assert "`loushang.tui.ui_parts.transcript`" in text
 
 
 def test_harnesstui_capability_entrypoints_exist() -> None:
@@ -586,6 +658,8 @@ def test_harnesstui_capability_entrypoints_exist() -> None:
         Path("src/loushang/harnesstui/conversation/projection.py"),
         Path("src/loushang/harnesstui/conversation/queue.py"),
         Path("src/loushang/harnesstui/conversation/reader.py"),
+        Path("src/loushang/harnesstui/conversation/screen_app.py"),
+        Path("src/loushang/harnesstui/conversation/screen_frame.py"),
         Path("src/loushang/harnesstui/conversation/screen_state.py"),
         Path("src/loushang/harnesstui/conversation/screen_target.py"),
         Path("src/loushang/harnesstui/conversation/run_context.py"),
@@ -620,6 +694,7 @@ def test_harnesstui_capability_entrypoints_exist() -> None:
         Path("src/loushang/harnesstui/testing/scenarios/transcript.py"),
         Path("src/loushang/harnesstui/testing/scenarios/surface.py"),
         Path("src/loushang/tui/settings.py"),
+        Path("src/loushang/tui/ui_parts/transcript.py"),
     )
 
     missing = [path.as_posix() for path in paths if not path.is_file()]
@@ -637,6 +712,8 @@ for module_name in (
     "loushang.harnesstui.conversation.dispatch",
     "loushang.harnesstui.conversation.input",
     "loushang.harnesstui.conversation.run_context",
+    "loushang.harnesstui.conversation.screen_app",
+    "loushang.harnesstui.conversation.screen_frame",
     "loushang.harnesstui.conversation.screen_runner",
     "loushang.harnesstui.conversation.transcript_style",
     "loushang.harnesstui.conversation.window_budget",
