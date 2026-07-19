@@ -1,5 +1,12 @@
 """Channel boundary protocol primitives."""
 
+from loushang.channel.host import (
+    ChannelDelivery,
+    ChannelDeliveryListener,
+    ChannelHost,
+    ChannelHostPort,
+    ChannelUnsubscribe,
+)
 from loushang.channel.json_codec import (
     channel_envelope_from_json,
     channel_envelope_to_json,
@@ -8,10 +15,22 @@ from loushang.channel.json_projection import (
     ChannelJsonProjectionError,
     project_channel_value,
 )
+from loushang.channel.jsonl_command_host import (
+    JsonlCommand,
+    JsonlCommandErrorListener,
+    JsonlCommandHost,
+    JsonlCommandHostError,
+    JsonlCommandHostErrorKind,
+    JsonlCommandHostErrorReason,
+    JsonlCommandPort,
+)
+from loushang.channel.remote_ui import RemoteUiContext
 from loushang.channel.rpc_jsonl import (
     ChannelError,
     ChannelEventDelivery,
     ChannelOperationAccepted,
+    ChannelOperationCancelled,
+    ChannelOperationCancelRequest,
     ChannelOperationRequest,
     ChannelRpcFrame,
     ChannelRpcFrameKind,
@@ -30,15 +49,30 @@ from loushang.channel.types import (
 __all__ = [
     "ChannelError",
     "ChannelEndpoint",
+    "ChannelDelivery",
+    "ChannelDeliveryListener",
     "ChannelEnvelope",
     "ChannelEnvelopeKind",
     "ChannelEventDelivery",
     "ChannelJsonProjectionError",
+    "ChannelHost",
+    "ChannelHostPort",
     "ChannelOperationAccepted",
+    "ChannelOperationCancelRequest",
+    "ChannelOperationCancelled",
     "ChannelOperationRequest",
     "ChannelPayload",
     "ChannelRpcFrame",
     "ChannelRpcFrameKind",
+    "ChannelUnsubscribe",
+    "JsonlCommand",
+    "JsonlCommandErrorListener",
+    "JsonlCommandHost",
+    "JsonlCommandHostError",
+    "JsonlCommandHostErrorKind",
+    "JsonlCommandHostErrorReason",
+    "JsonlCommandPort",
+    "RemoteUiContext",
     "channel_envelope_from_json",
     "channel_envelope_to_json",
     "decode_rpc_jsonl_frame",

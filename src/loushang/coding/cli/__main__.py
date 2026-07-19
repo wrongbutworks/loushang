@@ -32,7 +32,13 @@ from loushang.coding.diag_export import export_diagnostics_bundle
 from loushang.coding.diagnostics.serialization import serialize_diagnostic
 from loushang.coding.domain import CodingDomainApp, CodingDomainRequest, MethodPolicy
 from loushang.coding.extensions.types import ResolvedFlag
-from loushang.coding.mode import ModeConfig, run_mode, run_print_mode, run_rpc_mode
+from loushang.coding.mode import (
+    ModeConfig,
+    run_channel_mode,
+    run_mode,
+    run_print_mode,
+    run_rpc_mode,
+)
 from loushang.coding.model_selection import (
     apply_model_selection,
     model_selection_ref,
@@ -269,6 +275,7 @@ async def run_cli(
     workflow_runner=run_prompt_steps_workflow,
     print_runner=run_print_mode,
     rpc_runner=run_rpc_mode,
+    channel_runner=run_channel_mode,
     tui_runner=run_coding_tui,
 ) -> int:
     raw_argv = list(argv or ())
@@ -328,6 +335,10 @@ async def run_cli(
     method_error = _method_static_error(bootstrap_args)
     if method_error is not None:
         stderr.write(f"Error: {method_error}.\n")
+        return 2
+    channel_error = _channel_static_error(bootstrap_args)
+    if channel_error is not None:
+        stderr.write(f"Error: {channel_error}.\n")
         return 2
     work_log_inspect_result = _run_work_log_inspect(
         bootstrap_args, project_root, stdout, stderr
@@ -545,6 +556,14 @@ async def run_cli(
                     runtime=runtime,
                     session=session,
                     user_input=None,
+                    stdin=stdin,
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+
+            if args.mode == "channel":
+                return await channel_runner(
+                    runtime=runtime,
                     stdin=stdin,
                     stdout=stdout,
                     stderr=stderr,
@@ -843,7 +862,7 @@ def _help_belongs_on_stderr(args: CliArgs) -> bool:
     return bool(
         args.prompt is not None
         or args.prompt_steps is not None
-        or args.mode in {"print", "json", "rpc"}
+        or args.mode in {"print", "json", "rpc", "channel"}
     )
 
 
@@ -851,7 +870,7 @@ def _stdout_guard_enabled(args: CliArgs) -> bool:
     if (
         args.prompt is not None
         or args.prompt_steps is not None
-        or args.mode in {"print", "json", "rpc"}
+        or args.mode in {"print", "json", "rpc", "channel"}
     ):
         return True
     return bool(
@@ -944,6 +963,8 @@ def _work_log_static_error(args: CliArgs) -> str | None:
         return "--work-log is not supported in TUI mode"
     if args.mode == "rpc":
         return "--work-log is not supported in RPC mode"
+    if args.mode == "channel":
+        return "--work-log is not supported in Channel mode"
     if args.prompt_steps is not None:
         return "--work-log is not supported with --prompt-steps"
     return None
@@ -966,8 +987,28 @@ def _method_static_error(args: CliArgs) -> str | None:
         return "--method is not supported in TUI mode"
     if args.mode == "rpc":
         return "--method is not supported in RPC mode"
+    if args.mode == "channel":
+        return "--method is not supported in Channel mode"
     if args.prompt_steps is not None:
         return "--method is not supported with --prompt-steps"
+    return None
+
+
+def _channel_static_error(args: CliArgs) -> str | None:
+    if args.mode != "channel":
+        return None
+    if args.tui:
+        return "--tui is not supported in Channel mode"
+    if args.prompt is not None:
+        return "--prompt is not supported in Channel mode"
+    if args.prompt_steps is not None:
+        return "--prompt-steps is not supported in Channel mode"
+    if args.messages:
+        return "positional messages are not supported in Channel mode"
+    if args.file_args:
+        return "@file arguments are not supported in Channel mode"
+    if args.render_tool_events:
+        return "--render-tool-events is not supported in Channel mode"
     return None
 
 

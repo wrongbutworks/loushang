@@ -37,28 +37,16 @@ class UnboundProductRuntimeContext:
         return self
 
     @property
-    def hasUI(self) -> bool:
+    def has_ui(self) -> bool:
         return False
 
     @property
-    def has_ui(self) -> bool:
-        return self.hasUI
-
-    @property
-    def sessionManager(self) -> object | None:
-        return None
-
-    @property
     def session_manager(self) -> object | None:
-        return self.sessionManager
-
-    @property
-    def modelRegistry(self) -> object | None:
         return None
 
     @property
     def model_registry(self) -> object | None:
-        return self.modelRegistry
+        return None
 
     @property
     def model(self) -> object | None:
@@ -98,26 +86,14 @@ class UnboundProductRuntimeContext:
     def get_active_tool_names(self) -> list[str]:
         return []
 
-    def getActiveTools(self) -> list[str]:
-        return self.get_active_tool_names()
-
-    def getAllTools(self) -> list[object]:
-        return []
-
     def get_all_tools(self) -> list[object]:
-        return self.getAllTools()
+        return []
 
     def register_tool(self, tool: object) -> None:
         del tool
 
-    def registerTool(self, tool: object) -> None:
-        self.register_tool(tool)
-
-    def getFlag(self, name: str) -> bool | str | None:
-        return self.get_flag_value(name)
-
     def get_flag(self, name: str) -> bool | str | None:
-        return self.getFlag(name)
+        return self.get_flag_value(name)
 
     def get_model_selection(self):
         return None
@@ -125,74 +101,37 @@ class UnboundProductRuntimeContext:
     async def set_active_tools(self, tool_names: list[str]) -> None:
         del tool_names
 
-    async def setActiveTools(self, tool_names: list[str]) -> None:
-        await self.set_active_tools(tool_names)
-
     async def set_model(self, selection) -> None:
         del selection
 
-    async def setModel(self, selection) -> None:
-        await self.set_model(selection)
-
-    def getThinkingLevel(self) -> str:
+    def get_thinking_level(self) -> str:
         return "off"
 
-    def get_thinking_level(self) -> str:
-        return self.getThinkingLevel()
-
-    async def setThinkingLevel(self, level: str) -> None:
+    async def set_thinking_level(self, level: str) -> None:
         del level
 
-    async def set_thinking_level(self, level: str) -> None:
-        await self.setThinkingLevel(level)
-
-    async def appendEntry(self, custom_type: str, data: object | None = None) -> None:
+    async def append_entry(self, custom_type: str, data: object | None = None) -> None:
         del custom_type, data
 
-    async def append_entry(self, custom_type: str, data: object | None = None) -> None:
-        await self.appendEntry(custom_type, data)
-
-    async def sendMessage(self, message: object, options: object | None = None) -> None:
+    async def send_message(self, message: object, options: object | None = None) -> None:
         del message, options
-
-    async def send_message(
-        self, message: object, options: object | None = None
-    ) -> None:
-        await self.sendMessage(message, options)
-
-    async def sendUserMessage(
-        self, content: object, options: object | None = None
-    ) -> None:
-        del content, options
 
     async def send_user_message(
         self, content: object, options: object | None = None
     ) -> None:
-        await self.sendUserMessage(content, options)
-
-    async def setSessionName(self, name: str | None) -> None:
-        del name
+        del content, options
 
     async def set_session_name(self, name: str | None) -> None:
-        await self.setSessionName(name)
-
-    def getSessionName(self) -> str | None:
-        return None
+        del name
 
     def get_session_name(self) -> str | None:
-        return self.getSessionName()
-
-    async def setLabel(self, entry_id: str, label: str | None) -> None:
-        del entry_id, label
+        return None
 
     async def set_label(self, entry_id: str, label: str | None) -> None:
-        await self.setLabel(entry_id, label)
-
-    def listCommands(self):
-        return []
+        del entry_id, label
 
     def list_commands(self):
-        return self.listCommands()
+        return []
 
     def request_resource_refresh(self) -> None:
         return None
@@ -200,17 +139,11 @@ class UnboundProductRuntimeContext:
     def abort(self) -> None:
         return None
 
-    def isIdle(self) -> bool:
+    def is_idle(self) -> bool:
         return True
 
-    def is_idle(self) -> bool:
-        return self.isIdle()
-
-    def hasPendingMessages(self) -> bool:
-        return False
-
     def has_pending_messages(self) -> bool:
-        return self.hasPendingMessages()
+        return False
 
     def get_context_usage(self) -> object | None:
         return None
@@ -219,31 +152,20 @@ class UnboundProductRuntimeContext:
         del options
         return None
 
-    def getSystemPrompt(self) -> str:
+    def get_system_prompt(self) -> str:
         return ""
 
-    def get_system_prompt(self) -> str:
-        return self.getSystemPrompt()
-
-    async def waitForIdle(self) -> None:
-        return None
-
     async def wait_for_idle(self) -> None:
-        await self.waitForIdle()
+        return None
 
     async def reload(self) -> None:
         return None
 
-    async def navigateTree(
+    async def navigate_tree(
         self, target_id: str, options: object | None = None
     ) -> dict[str, object]:
         del target_id, options
         return {"cancelled": False}
-
-    async def navigate_tree(
-        self, target_id: str, options: object | None = None
-    ) -> dict[str, object]:
-        return await self.navigateTree(target_id, options)
 
     async def fork(
         self, entry_id: str, options: object | None = None
@@ -251,23 +173,15 @@ class UnboundProductRuntimeContext:
         del entry_id, options
         return {"cancelled": True}
 
-    async def newSession(self, options: object | None = None) -> dict[str, object]:
-        del options
-        return {"cancelled": True}
-
     async def new_session(self, options: object | None = None) -> dict[str, object]:
-        return await self.newSession(options)
-
-    async def switchSession(
-        self, session_path: str, options: object | None = None
-    ) -> dict[str, object]:
-        del session_path, options
+        del options
         return {"cancelled": True}
 
     async def switch_session(
         self, session_path: str, options: object | None = None
     ) -> dict[str, object]:
-        return await self.switchSession(session_path, options)
+        del session_path, options
+        return {"cancelled": True}
 
     def shutdown(self) -> None:
         return None
@@ -403,32 +317,20 @@ class BoundProductRuntimeContext:
         return self
 
     @property
-    def hasUI(self) -> bool:
-        return self._ui_context() is not None
-
-    @property
     def has_ui(self) -> bool:
-        return self.hasUI
+        return self._ui_context() is not None
 
     @property
     def cwd(self) -> str:
         return str(self._require_bindings().cwd)
 
     @property
-    def sessionManager(self) -> object | None:
+    def session_manager(self) -> object | None:
         return self._require_bindings().session_manager
 
     @property
-    def session_manager(self) -> object | None:
-        return self.sessionManager
-
-    @property
-    def modelRegistry(self) -> object | None:
-        return self._require_bindings().model_registry
-
-    @property
     def model_registry(self) -> object | None:
-        return self.modelRegistry
+        return self._require_bindings().model_registry
 
     @property
     def model(self) -> object | None:
@@ -477,26 +379,14 @@ class BoundProductRuntimeContext:
     def get_active_tool_names(self) -> list[str]:
         return list(self._require_bindings().get_active_tool_names())
 
-    def getActiveTools(self) -> list[str]:
-        return self.get_active_tool_names()
-
-    def getAllTools(self) -> list[object]:
-        return list(self._require_bindings().get_all_tools())
-
     def get_all_tools(self) -> list[object]:
-        return self.getAllTools()
+        return list(self._require_bindings().get_all_tools())
 
     def register_tool(self, tool: object) -> None:
         self._require_bindings().register_tool(tool, self._tool_source_info)
 
-    def registerTool(self, tool: object) -> None:
-        self.register_tool(tool)
-
-    def getFlag(self, name: str) -> bool | str | None:
-        return self._get_flag_value(name)
-
     def get_flag(self, name: str) -> bool | str | None:
-        return self.getFlag(name)
+        return self._get_flag_value(name)
 
     def get_model_selection(self):
         return self._require_bindings().get_model_selection()
@@ -504,46 +394,26 @@ class BoundProductRuntimeContext:
     async def set_active_tools(self, tool_names: list[str]) -> None:
         await self._require_bindings().set_active_tools(list(tool_names))
 
-    async def setActiveTools(self, tool_names: list[str]) -> None:
-        await self.set_active_tools(tool_names)
-
     async def set_model(self, selection) -> None:
         await self._require_bindings().set_model(selection)
 
-    async def setModel(self, selection) -> None:
-        await self.set_model(selection)
-
-    def getThinkingLevel(self) -> str:
+    def get_thinking_level(self) -> str:
         return str(self._require_bindings().get_thinking_level())
 
-    def get_thinking_level(self) -> str:
-        return self.getThinkingLevel()
-
-    async def setThinkingLevel(self, level: str) -> None:
+    async def set_thinking_level(self, level: str) -> None:
         await self._require_bindings().set_thinking_level(level)
 
-    async def set_thinking_level(self, level: str) -> None:
-        await self.setThinkingLevel(level)
-
-    async def appendEntry(self, custom_type: str, data: object | None = None) -> None:
+    async def append_entry(self, custom_type: str, data: object | None = None) -> None:
         await self._require_bindings().append_entry(custom_type, data)
 
-    async def append_entry(self, custom_type: str, data: object | None = None) -> None:
-        await self.appendEntry(custom_type, data)
-
-    async def sendMessage(self, message: object, options: object | None = None) -> None:
+    async def send_message(self, message: object, options: object | None = None) -> None:
         callback = self._require_bindings().send_message
         if callback is None:
             return None
         await callback(message, options)
         return None
 
-    async def send_message(
-        self, message: object, options: object | None = None
-    ) -> None:
-        await self.sendMessage(message, options)
-
-    async def sendUserMessage(
+    async def send_user_message(
         self, content: object, options: object | None = None
     ) -> None:
         callback = self._require_bindings().send_user_message
@@ -552,34 +422,17 @@ class BoundProductRuntimeContext:
         await callback(content, options)
         return None
 
-    async def send_user_message(
-        self, content: object, options: object | None = None
-    ) -> None:
-        await self.sendUserMessage(content, options)
-
-    async def setSessionName(self, name: str | None) -> None:
+    async def set_session_name(self, name: str | None) -> None:
         await self._require_bindings().set_session_name(name)
 
-    async def set_session_name(self, name: str | None) -> None:
-        await self.setSessionName(name)
-
-    def getSessionName(self) -> str | None:
+    def get_session_name(self) -> str | None:
         return self._require_bindings().get_session_name()
 
-    def get_session_name(self) -> str | None:
-        return self.getSessionName()
-
-    async def setLabel(self, entry_id: str, label: str | None) -> None:
+    async def set_label(self, entry_id: str, label: str | None) -> None:
         await self._require_bindings().set_label(entry_id, label)
 
-    async def set_label(self, entry_id: str, label: str | None) -> None:
-        await self.setLabel(entry_id, label)
-
-    def listCommands(self):
-        return list(self._require_bindings().list_commands())
-
     def list_commands(self):
-        return self.listCommands()
+        return list(self._require_bindings().list_commands())
 
     def request_resource_refresh(self) -> None:
         self._require_bindings().request_resource_refresh()
@@ -587,17 +440,11 @@ class BoundProductRuntimeContext:
     def abort(self) -> None:
         self._require_bindings().abort()
 
-    def isIdle(self) -> bool:
+    def is_idle(self) -> bool:
         return bool(self._require_bindings().is_idle())
 
-    def is_idle(self) -> bool:
-        return self.isIdle()
-
-    def hasPendingMessages(self) -> bool:
-        return bool(self._require_bindings().has_pending_messages())
-
     def has_pending_messages(self) -> bool:
-        return self.hasPendingMessages()
+        return bool(self._require_bindings().has_pending_messages())
 
     def get_context_usage(self) -> object | None:
         return self._require_bindings().get_context_usage()
@@ -608,21 +455,15 @@ class BoundProductRuntimeContext:
             return None
         return await callback(_compact_custom_instructions(options))
 
-    def getSystemPrompt(self) -> str:
+    def get_system_prompt(self) -> str:
         return str(self._require_bindings().get_system_prompt())
 
-    def get_system_prompt(self) -> str:
-        return self.getSystemPrompt()
-
-    async def waitForIdle(self) -> None:
+    async def wait_for_idle(self) -> None:
         callback = self._require_bindings().wait_for_idle
         if callback is None:
             return None
         await callback()
         return None
-
-    async def wait_for_idle(self) -> None:
-        await self.waitForIdle()
 
     async def reload(self) -> None:
         callback = self._require_bindings().reload
@@ -631,7 +472,7 @@ class BoundProductRuntimeContext:
         await callback()
         return None
 
-    async def navigateTree(
+    async def navigate_tree(
         self, target_id: str, options: object | None = None
     ) -> dict[str, object]:
         callback = self._require_bindings().navigate_tree
@@ -639,11 +480,6 @@ class BoundProductRuntimeContext:
             return {"cancelled": False}
         result = await callback(target_id, options)
         return result if isinstance(result, dict) else {"cancelled": False}
-
-    async def navigate_tree(
-        self, target_id: str, options: object | None = None
-    ) -> dict[str, object]:
-        return await self.navigateTree(target_id, options)
 
     async def fork(
         self, entry_id: str, options: object | None = None
@@ -654,17 +490,14 @@ class BoundProductRuntimeContext:
         result = await callback(entry_id, options)
         return result if isinstance(result, dict) else {"cancelled": False}
 
-    async def newSession(self, options: object | None = None) -> dict[str, object]:
+    async def new_session(self, options: object | None = None) -> dict[str, object]:
         callback = self._require_bindings().new_session
         if callback is None:
             return {"cancelled": True}
         result = await callback(options)
         return result if isinstance(result, dict) else {"cancelled": False}
 
-    async def new_session(self, options: object | None = None) -> dict[str, object]:
-        return await self.newSession(options)
-
-    async def switchSession(
+    async def switch_session(
         self, session_path: str, options: object | None = None
     ) -> dict[str, object]:
         callback = self._require_bindings().switch_session
@@ -672,11 +505,6 @@ class BoundProductRuntimeContext:
             return {"cancelled": True}
         result = await callback(session_path, options)
         return result if isinstance(result, dict) else {"cancelled": False}
-
-    async def switch_session(
-        self, session_path: str, options: object | None = None
-    ) -> dict[str, object]:
-        return await self.switchSession(session_path, options)
 
     def shutdown(self) -> None:
         self._require_bindings().shutdown()

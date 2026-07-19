@@ -1495,7 +1495,7 @@ def test_print_mode_json_can_include_rendered_tool_event_payloads() -> None:
 
             return unsubscribe
 
-        def getToolDefinition(self, name):
+        def get_tool_definition(self, name):
             return definition if name == "bash" else None
 
         async def prompt(self, user_input: str, images=None) -> None:

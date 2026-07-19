@@ -17,8 +17,11 @@ Current code package:
 ```text
 src/loushang/channel/
   __init__.py
+  host.py
   json_codec.py
+  jsonl_command_host.py
   json_projection.py
+  remote_ui.py
   rpc_jsonl.py
   types.py
 ```
@@ -47,6 +50,13 @@ The `rpc_jsonl` surface provides:
 - `project_channel_value` for documented dataclass, `Path`, mapping, list, and
   tuple transport projection without arbitrary-object coercion.
 
+The Product-owned JSONL command-host surface provides:
+
+- `JsonlCommand` and `JsonlCommandHostError` as strict input observations;
+- `JsonlCommandHost` and its injected `JsonlCommandPort`; and
+- `RemoteUiContext` for request correlation, dialog timeout, and headless UI
+  state without a standardized widget wire schema.
+
 `ChannelEnvelope` accepts two envelope kinds and three payload families:
 
 - `kind="operation"` with a `WorkOperation`
@@ -65,10 +75,19 @@ a Work event. This is additive to existing Work channels.
 
 `json_codec.py` converts envelopes to and from JSON-compatible Python dicts.
 `rpc_jsonl.py` maps those envelopes onto one JSONL frame at a time. It has no
-stdio loop, socket, HTTP server, dispatcher, or Product command table. A host
-accepts a `WorkOperation`, emits the accepted ACK, and later delivers
-`WorkEvent` frames; `request_id` supplies the transport correlation while
-`operation_id` and `run_id` retain Work ownership.
+socket, HTTP server, or Product command table. `host.py` supplies the standard
+stdio JSONL loop over an injected `ChannelHostPort`: a Product port accepts a
+`WorkOperation`, emits the accepted ACK, and later delivers `WorkEvent` or
+`RuntimeEventView` frames. `request_id` supplies transport correlation while
+`operation_id` and `run_id` retain Work ownership. See
+[Channel Host Boundary](channel-host-boundary.md).
+
+`jsonl_command_host.py` supplies a separate, injected strict-JSON input loop
+for Product-owned JSONL command schemas. It does not define a second standard
+Channel frame grammar or response envelope. `remote_ui.py` supplies request
+correlation, dialog timeout, and snapshot mechanics through a Product-injected
+emitter; it does not standardize widget or extension payloads. See
+[JSONL Command Host Boundary](jsonl-command-host-boundary.md).
 
 ## Ownership
 
@@ -98,11 +117,11 @@ projecting Work events into product or UI state.
 
 The current channel package does not implement:
 
-- stdio, HTTP, WebSocket, or in-process transport loops
+- HTTP, WebSocket, or in-process transport loops
 - operation dispatch or a WorkRun state machine
 - capability negotiation
 - replay or audit storage
-- UI layout, widgets, or rendering
+- UI layout, widgets, rendering, or a universal UI wire protocol
 - direct agent loop or product session control
 
 The next likely implementation step is channel capability negotiation and

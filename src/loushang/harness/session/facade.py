@@ -119,6 +119,118 @@ class SessionRetryPort(Protocol):
     async def wait(self) -> None: ...
 
 
+class SessionIdentityPort(Protocol):
+    """Stable session identity and Product-persisted display metadata."""
+
+    @property
+    def session_id(self) -> str: ...
+
+    @property
+    def session_name(self) -> str | None: ...
+
+    async def set_session_name(self, name: str | None) -> None: ...
+
+
+class SessionMaintenancePort(Protocol):
+    """Product-selected transcript maintenance controls."""
+
+    @property
+    def is_compacting(self) -> bool: ...
+
+    @property
+    def auto_retry_enabled(self) -> bool: ...
+
+    @property
+    def auto_compaction_enabled(self) -> bool: ...
+
+    def set_auto_retry_enabled(self, enabled: bool) -> None: ...
+
+    def set_auto_compaction_enabled(self, enabled: bool) -> None: ...
+
+    async def compact(self, custom_instructions: str | None = None) -> object: ...
+
+    def abort_compaction(self) -> None: ...
+
+
+class SessionControlPort(Protocol):
+    """Stable common control surface exposed by a composed Product session.
+
+    This deliberately excludes Product vocabulary such as model selection,
+    provider authentication, extension UI, and Product-specific command or
+    output schemas.  Those remain on the Product adapter around this port.
+    """
+
+    @property
+    def session_id(self) -> str: ...
+
+    @property
+    def session_name(self) -> str | None: ...
+
+    async def set_session_name(self, name: str | None) -> None: ...
+
+    def subscribe_runtime_events(
+        self,
+        listener: RuntimeEventListener,
+    ) -> Callable[[], None]: ...
+
+    async def prompt(
+        self,
+        user_input: str,
+        images: list[ImagePart] | None = None,
+        *,
+        streaming_behavior: str | None = None,
+        source: str | None = None,
+        preflight_result: Callable[[bool], None] | None = None,
+    ) -> None: ...
+
+    def steer(self, user_input: str, images: list[ImagePart] | None = None) -> None: ...
+
+    def follow_up(
+        self,
+        user_input: str,
+        images: list[ImagePart] | None = None,
+    ) -> None: ...
+
+    @property
+    def pending_message_count(self) -> int: ...
+
+    def get_steering_messages(self) -> list[str]: ...
+
+    def get_follow_up_messages(self) -> list[str]: ...
+
+    def clear_queue(self) -> dict[str, list[str]]: ...
+
+    async def continue_run(self) -> None: ...
+
+    def abort(self) -> bool: ...
+
+    async def wait_for_idle(self) -> None: ...
+
+    def abort_retry(self) -> None: ...
+
+    async def wait_for_retry(self) -> None: ...
+
+    @property
+    def is_retrying(self) -> bool: ...
+
+    @property
+    def is_compacting(self) -> bool: ...
+
+    @property
+    def auto_retry_enabled(self) -> bool: ...
+
+    @property
+    def auto_compaction_enabled(self) -> bool: ...
+
+    def set_auto_retry_enabled(self, enabled: bool) -> None: ...
+
+    def set_auto_compaction_enabled(self, enabled: bool) -> None: ...
+
+    async def compact(self, custom_instructions: str | None = None) -> object: ...
+
+    def abort_compaction(self) -> None: ...
+
+
 @dataclass(frozen=True)
 class SessionFacadePorts(
     Generic[
@@ -144,6 +256,8 @@ class SessionFacadePorts(
     command_execution: SessionCommandExecutionPort
     view: SessionViewPort[StateT, UsageT]
     retry: SessionRetryPort
+    identity: SessionIdentityPort
+    maintenance: SessionMaintenancePort
 
 
 @dataclass
@@ -173,6 +287,8 @@ class SessionFacade(
     command_execution: SessionCommandExecutionPort
     view: SessionViewPort[StateT, UsageT]
     retry: SessionRetryPort
+    identity: SessionIdentityPort
+    maintenance: SessionMaintenancePort
 
     @classmethod
     def from_ports(
@@ -199,7 +315,20 @@ class SessionFacade(
             command_execution=ports.command_execution,
             view=ports.view,
             retry=ports.retry,
+            identity=ports.identity,
+            maintenance=ports.maintenance,
         )
+
+    @property
+    def session_id(self) -> str:
+        return self.identity.session_id
+
+    @property
+    def session_name(self) -> str | None:
+        return self.identity.session_name
+
+    async def set_session_name(self, name: str | None) -> None:
+        await self.identity.set_session_name(name)
 
     def get_state(self) -> StateT:
         return self.view.get_state(
@@ -365,16 +494,43 @@ class SessionFacade(
     def is_retrying(self) -> bool:
         return self.retry.is_retrying
 
+    @property
+    def is_compacting(self) -> bool:
+        return self.maintenance.is_compacting
+
+    @property
+    def auto_retry_enabled(self) -> bool:
+        return self.maintenance.auto_retry_enabled
+
+    @property
+    def auto_compaction_enabled(self) -> bool:
+        return self.maintenance.auto_compaction_enabled
+
+    def set_auto_retry_enabled(self, enabled: bool) -> None:
+        self.maintenance.set_auto_retry_enabled(enabled)
+
+    def set_auto_compaction_enabled(self, enabled: bool) -> None:
+        self.maintenance.set_auto_compaction_enabled(enabled)
+
+    async def compact(self, custom_instructions: str | None = None) -> object:
+        return await self.maintenance.compact(custom_instructions)
+
+    def abort_compaction(self) -> None:
+        self.maintenance.abort_compaction()
+
 
 __all__ = [
     "OutputCallback",
     "RuntimeEventListener",
+    "SessionControlPort",
     "SessionCommandExecutionPort",
     "SessionCommandsPort",
     "SessionEventListener",
     "SessionEventProjector",
     "SessionFacade",
     "SessionFacadePorts",
+    "SessionIdentityPort",
+    "SessionMaintenancePort",
     "SessionRetryPort",
     "SessionToolsPort",
     "SessionTranscriptPort",

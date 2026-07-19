@@ -23,7 +23,9 @@ def _ai_model_registry(
 ) -> AiModelRegistry:
     providers: dict[str, Provider] = {}
     for endpoint in endpoints:
-        provider = providers.get(endpoint.provider_id, Provider(id=endpoint.provider_id))
+        provider = providers.get(
+            endpoint.provider_id, Provider(id=endpoint.provider_id)
+        )
         provider_endpoints = dict(provider.endpoints)
         provider_endpoints[endpoint.id] = endpoint
         providers[provider.id] = replace(provider, endpoints=provider_endpoints)
@@ -214,16 +216,16 @@ def test_agent_session_binds_extension_runtime_state_context_methods(tmp_path) -
     )
 
     context = runner.create_command_context(fallback_cwd="/tmp/project")
-    assert context.isIdle() is True
-    assert context.hasPendingMessages() is False
-    assert context.getSystemPrompt() == "system prompt"
+    assert context.is_idle() is True
+    assert context.has_pending_messages() is False
+    assert context.get_system_prompt() == "system prompt"
     assert context.get_context_usage()["messageCount"] == 0
 
     with pytest.raises(ValueError, match="visible message entry"):
         asyncio.run(context.compact({"customInstructions": "no running loop"}))
     context.abort()
     session.steer("queued")
-    assert context.hasPendingMessages() is True
+    assert context.has_pending_messages() is True
 
 
 def _model() -> Model:
@@ -1014,7 +1016,7 @@ def test_agent_session_applies_before_agent_start_result(tmp_path) -> None:
         return _stream_with_final_message(_assistant_text_message("done"))
 
     def _before(event, ctx):
-        seen.append((event.prompt, event.system_prompt, ctx.getSystemPrompt()))
+        seen.append((event.prompt, event.system_prompt, ctx.get_system_prompt()))
         return BeforeAgentStartResult(
             system_prompt="Extension system prompt",
             extra_messages=[
@@ -1881,7 +1883,7 @@ def test_agent_session_extension_command_context_wait_for_idle_and_reload(
 
     async def _handler(args: str, ctx):
         del args
-        await ctx.waitForIdle()
+        await ctx.wait_for_idle()
         await ctx.wait_for_idle()
         await ctx.reload()
         calls.append("done")
@@ -1934,7 +1936,7 @@ def test_agent_session_extension_command_context_navigate_tree(tmp_path) -> None
     events: list[tuple[object, object, object]] = []
 
     async def _handler(args: str, ctx):
-        result = await ctx.navigateTree(args, {"label": "from-extension"})
+        result = await ctx.navigate_tree(args, {"label": "from-extension"})
         results.append(result)
 
     def _session_tree(event, ctx):
@@ -2183,13 +2185,13 @@ def test_agent_session_lists_user_messages_for_forking(tmp_path) -> None:
         {"entry_id": first_id, "text": "first"},
         {"entry_id": second_id, "text": "second"},
     ]
-    assert session.getUserMessagesForForking() == [
-        {"entryId": first_id, "text": "first"},
-        {"entryId": second_id, "text": "second"},
+    assert session.get_user_messages_for_forking() == [
+        {"entry_id": first_id, "text": "first"},
+        {"entry_id": second_id, "text": "second"},
     ]
 
 
-def test_agent_session_exposes_pi_style_last_assistant_text_alias(tmp_path) -> None:
+def test_agent_session_exposes_last_assistant_text(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -2205,7 +2207,6 @@ def test_agent_session_exposes_pi_style_last_assistant_text_alias(tmp_path) -> N
     )
 
     assert session.get_last_assistant_text() == "answer"
-    assert session.getLastAssistantText() == "answer"
 
 
 def test_agent_session_exposes_recent_assistant_texts_newest_first(tmp_path) -> None:
@@ -2231,7 +2232,7 @@ def test_agent_session_exposes_recent_assistant_texts_newest_first(tmp_path) -> 
     assert session.get_recent_assistant_texts() == ("second", "first")
 
 
-def test_agent_session_exposes_pi_style_state_property_aliases(tmp_path) -> None:
+def test_agent_session_exposes_standard_state_properties(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -2248,17 +2249,17 @@ def test_agent_session_exposes_pi_style_state_property_aliases(tmp_path) -> None
     session.set_follow_up_mode("one-at-a-time")
 
     assert session.model == session.agent.model
-    assert session.thinkingLevel == "high"
-    assert session.isStreaming is False
-    assert session.systemPrompt == session.agent.system_prompt
-    assert session.retryAttempt == 0
-    assert session.isCompacting is False
-    assert session.steeringMode == "all"
-    assert session.followUpMode == "one-at-a-time"
-    assert session.sessionFile == str(manager.session_file)
-    assert session.sessionId == session.session_id
-    assert session.sessionName == "Demo"
-    assert session.autoCompactionEnabled == session.auto_compaction_enabled
+    assert session.thinking_level == "high"
+    assert session.is_streaming is False
+    assert session.system_prompt == session.agent.system_prompt
+    assert session.retry_attempt == 0
+    assert session.is_compacting is False
+    assert session.steering_mode == "all"
+    assert session.follow_up_mode == "one-at-a-time"
+    assert session.session_file == manager.session_file
+    assert session.session_id == manager.get_header().conversation_id
+    assert session.session_name == "Demo"
+    assert session.auto_compaction_enabled is True
 
 
 def test_agent_session_steer_then_continue_persists_follow_on_turn(tmp_path) -> None:
@@ -2303,7 +2304,7 @@ def test_agent_session_steer_then_continue_persists_follow_on_turn(tmp_path) -> 
     asyncio.run(scenario())
 
 
-def test_agent_session_exposes_pi_style_queue_accessors_and_clear_queue(
+def test_agent_session_exposes_standard_queue_accessors_and_clear_queue(
     tmp_path,
 ) -> None:
     from loushang.agent import Agent
@@ -2326,23 +2327,20 @@ def test_agent_session_exposes_pi_style_queue_accessors_and_clear_queue(
     session.steer("steer one")
     session.follow_up("follow one")
 
-    assert session.pendingMessageCount == 2
     assert session.pending_message_count == 2
-    assert session.getSteeringMessages() == ["steer one"]
     assert session.get_steering_messages() == ["steer one"]
-    assert session.getFollowUpMessages() == ["follow one"]
     assert session.get_follow_up_messages() == ["follow one"]
 
-    cleared = session.clearQueue()
+    cleared = session.clear_queue()
 
     assert cleared == {
         "steering": ["steer one"],
         "followUp": ["follow one"],
         "follow_up": ["follow one"],
     }
-    assert session.pendingMessageCount == 0
-    assert session.getSteeringMessages() == []
-    assert session.getFollowUpMessages() == []
+    assert session.pending_message_count == 0
+    assert session.get_steering_messages() == []
+    assert session.get_follow_up_messages() == []
     assert events[-1] == ([], [])
 
 
@@ -2561,7 +2559,7 @@ def test_agent_session_emits_model_select_event_for_async_model_control(
     ]
 
 
-def test_agent_session_exposes_pi_style_model_and_session_mutators(tmp_path) -> None:
+def test_agent_session_exposes_standard_model_and_session_mutators(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import ModelRegistry
     from loushang.coding.session import AgentSession, ModelSelection
@@ -2591,24 +2589,24 @@ def test_agent_session_exposes_pi_style_model_and_session_mutators(tmp_path) -> 
         model_registry=ModelRegistry(ai_registry=ai_registry),
     )
 
-    asyncio.run(session.setModel(second))
+    asyncio.run(session.set_model(second))
     assert session.get_model_selection() == ModelSelection(
         provider="alt", model_id="alt-model"
     )
 
-    assert asyncio.run(session.cycleModel("backward")) == ModelSelection(
+    assert asyncio.run(session.cycle_model("backward")) == ModelSelection(
         provider="faux", model_id="faux-model"
     )
     assert session.get_model_selection() == ModelSelection(
         provider="faux", model_id="faux-model"
     )
 
-    asyncio.run(session.setThinkingLevel("high"))
-    assert session.thinkingLevel == "high"
-    assert asyncio.run(session.cycleThinkingLevel()) == "xhigh"
+    asyncio.run(session.set_thinking_level("high"))
+    assert session.thinking_level == "high"
+    assert asyncio.run(session.cycle_thinking_level()) == "xhigh"
 
-    asyncio.run(session.setSessionName("SDK Demo"))
-    assert session.getSessionName() == "SDK Demo"
+    asyncio.run(session.set_session_name("SDK Demo"))
+    assert session.session_name == "SDK Demo"
 
 
 def test_agent_session_applies_extension_provider_registration(tmp_path) -> None:
@@ -2686,9 +2684,7 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
     assert endpoint.adapter is not None
     assert endpoint.adapter.streaming_usage is True
     assert dict(endpoint.defaults) == {"temperature": 0.1}
-    model = model_registry.ai_registry.get_model(
-        "proxy", "proxy-simple", "proxy-model"
-    )
+    model = model_registry.ai_registry.get_model("proxy", "proxy-simple", "proxy-model")
     assert model.name == "Proxy Model"
     assert model.supports_image_input is True
     assert model.supports_thinking is True
@@ -2719,9 +2715,7 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
     assert endpoint.base_url == "https://proxy-updated.example.com"
     assert endpoint.auth is not None
     assert endpoint.auth.api_key_env == "PROXY_API_KEY"
-    model = model_registry.ai_registry.get_model(
-        "proxy", "proxy-simple", "proxy-model"
-    )
+    model = model_registry.ai_registry.get_model("proxy", "proxy-simple", "proxy-model")
     assert model.name == "Proxy Model"
     assert model.adapter is not None
     assert model.adapter.streaming_usage is True
@@ -2838,7 +2832,7 @@ def test_agent_session_rejects_pi_style_extension_provider_config(tmp_path) -> N
     )
 
 
-def test_agent_session_exposes_pi_style_scoped_models_and_resources(tmp_path) -> None:
+def test_agent_session_exposes_standard_scoped_models_and_resources(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import ModelRegistry
     from loushang.coding.loader import DefaultResourceLoader
@@ -2871,7 +2865,7 @@ def test_agent_session_exposes_pi_style_scoped_models_and_resources(tmp_path) ->
         resource_loader=loader,
     )
 
-    session.setScopedModels(
+    session.set_scoped_models(
         [
             {"model": first, "thinkingLevel": "low"},
             {
@@ -2881,13 +2875,13 @@ def test_agent_session_exposes_pi_style_scoped_models_and_resources(tmp_path) ->
         ]
     )
 
-    assert session.scopedModels[0]["model"] is first
-    assert asyncio.run(session.cycleModel()) == ModelSelection(
+    assert session.scoped_models[0]["model"] is first
+    assert asyncio.run(session.cycle_model()) == ModelSelection(
         provider="alt", model_id="alt-model"
     )
-    assert session.thinkingLevel == "high"
-    assert session.resourceLoader is loader
-    assert isinstance(session.promptTemplates, list)
+    assert session.thinking_level == "high"
+    assert session.resource_loader is loader
+    assert isinstance(session.prompt_templates, list)
 
 
 def test_agent_session_exposes_pi_style_thinking_and_context_queries(tmp_path) -> None:
@@ -2909,11 +2903,11 @@ def test_agent_session_exposes_pi_style_thinking_and_context_queries(tmp_path) -
     )
     asyncio.run(session.session_manager.append_message(_user_message("hello")))
 
-    assert session.supportsThinking() is True
     assert session.supports_thinking() is True
-    assert session.supportsXhighThinking() is True
+    assert session.supports_thinking() is True
     assert session.supports_xhigh_thinking() is True
-    assert session.getAvailableThinkingLevels() == [
+    assert session.supports_xhigh_thinking() is True
+    assert session.get_available_thinking_levels() == [
         "off",
         "minimal",
         "low",
@@ -2944,19 +2938,19 @@ def test_agent_session_exposes_pi_style_thinking_and_context_queries(tmp_path) -
             max_tokens=2048,
         ),
     )
-    asyncio.run(session.setModel(non_reasoning))
+    asyncio.run(session.set_model(non_reasoning))
 
-    assert session.supportsThinking() is False
     assert session.supports_thinking() is False
-    assert session.supportsXhighThinking() is False
+    assert session.supports_thinking() is False
     assert session.supports_xhigh_thinking() is False
-    assert session.getAvailableThinkingLevels() == ["off"]
+    assert session.supports_xhigh_thinking() is False
+    assert session.get_available_thinking_levels() == ["off"]
     assert session.get_available_thinking_levels() == ["off"]
     assert asyncio.run(session.cycle_thinking_level()) is None
-    assert session.thinkingLevel == "off"
+    assert session.thinking_level == "off"
 
 
-def test_agent_session_exposes_pi_style_runtime_facades(tmp_path) -> None:
+def test_agent_session_exposes_standard_runtime_facades(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import SettingsManager
     from loushang.coding.session import AgentSession
@@ -2977,21 +2971,26 @@ def test_agent_session_exposes_pi_style_runtime_facades(tmp_path) -> None:
         settings_manager=settings,
     )
 
-    assert session.isRetrying is False
-    session.setAutoRetryEnabled(False)
-    assert session.autoRetryEnabled is False
-    session.setAutoCompactionEnabled(False)
-    assert session.autoCompactionEnabled is False
+    control = session.session_control
+    assert control.session_id == session.session_id
+    assert control.session_name == session.session_name
+    assert session.is_retrying is False
+    session.set_auto_retry_enabled(False)
+    assert session.auto_retry_enabled is False
+    assert control.auto_retry_enabled is False
+    session.set_auto_compaction_enabled(False)
+    assert session.auto_compaction_enabled is False
+    assert control.auto_compaction_enabled is False
     session.abort_compaction()
-    session.abortCompaction()
+    session.abort_compaction()
     session.abort_branch_summary()
-    assert session.isBashRunning is False
-    assert session.hasPendingBashMessages is False
+    assert session.is_bash_running is False
+    assert session.has_pending_bash_messages is False
     asyncio.run(
-        session.recordBashResult(
+        session.record_bash_result(
             "echo hi",
             {"output": "hi\n", "exitCode": 0},
-            {"excludeFromContext": True},
+            exclude_from_context=True,
         )
     )
     assert session.get_session_context().messages == ()
@@ -3502,9 +3501,9 @@ def test_agent_session_extension_runtime_actions_update_session_store(tmp_path) 
 
     async def _before(event, ctx):
         del event
-        entry_id = await ctx.sessionManager.append_message(_user_message("root"))
-        await ctx.appendEntry("demo_state", {"enabled": True})
-        await ctx.sendMessage(
+        entry_id = await ctx.session_manager.append_message(_user_message("root"))
+        await ctx.append_entry("demo_state", {"enabled": True})
+        await ctx.send_message(
             {
                 "customType": "demo_notice",
                 "content": "visible note",
@@ -3512,14 +3511,14 @@ def test_agent_session_extension_runtime_actions_update_session_store(tmp_path) 
                 "details": {"source": "extension"},
             }
         )
-        await ctx.setSessionName("Demo Session")
-        await ctx.setLabel(entry_id, "Root")
+        await ctx.set_session_name("Demo Session")
+        await ctx.set_label(entry_id, "Root")
         seen.append(
             (
-                ctx.getSessionName(),
-                ctx.getActiveTools(),
-                len(ctx.getAllTools()),
-                ctx.listCommands(),
+                ctx.get_session_name(),
+                ctx.get_active_tool_names(),
+                len(ctx.get_all_tools()),
+                ctx.list_commands(),
             )
         )
 
@@ -3601,7 +3600,7 @@ def test_agent_session_extension_send_user_message_triggers_turn_without_command
 
     async def _emit_command(args: str, ctx):
         del args
-        await ctx.sendUserMessage("/nested should stay text")
+        await ctx.send_user_message("/nested should stay text")
 
     async def _nested_command(args: str, ctx):
         del ctx
@@ -3667,8 +3666,8 @@ def test_agent_session_extension_send_user_message_queues_while_streaming(
 
     async def _queue_command(args: str, ctx):
         del args
-        await ctx.sendUserMessage("queued steer", {"deliverAs": "steer"})
-        await ctx.sendUserMessage("queued follow", {"deliverAs": "followUp"})
+        await ctx.send_user_message("queued steer", {"deliverAs": "steer"})
+        await ctx.send_user_message("queued follow", {"deliverAs": "followUp"})
 
     async def scenario() -> None:
         manager = await SessionManager.new(
@@ -3724,7 +3723,7 @@ def test_agent_session_send_message_next_turn_is_appended_after_user_message(
 
     async def _queue_next_turn(args: str, ctx):
         del args
-        await ctx.sendMessage(
+        await ctx.send_message(
             {"customType": "queued_note", "content": "queued note"},
             {"deliverAs": "nextTurn"},
         )
@@ -3796,7 +3795,7 @@ def test_agent_session_send_custom_message_public_api_persists_and_emits_events(
     session.subscribe(listener)
 
     asyncio.run(
-        session.sendCustomMessage(
+        session.send_message(
             {
                 "customType": "demo_notice",
                 "content": "visible note",
@@ -3859,7 +3858,7 @@ def test_agent_session_send_user_message_public_api_triggers_turn_without_comman
             ),
         )
 
-        await session.sendUserMessage("/nested should stay text")
+        await session.send_user_message("/nested should stay text")
 
         assert prompted_texts == ["/nested should stay text"]
         assert nested_command_calls == []
@@ -3898,7 +3897,7 @@ def test_agent_session_reload_extensions_refreshes_resources_before_session_star
 
     def _session_start(event, ctx):
         del event
-        seen.append(ctx.getSystemPrompt().splitlines())
+        seen.append(ctx.get_system_prompt().splitlines())
 
     def _resources_discover(event, ctx):
         del event, ctx
@@ -4097,10 +4096,10 @@ def test_agent_session_set_extension_ui_context_rebinds_context_without_lifecycl
 
     def _session_start(event, ctx):
         del event
-        start_events.append(ctx.hasUI)
+        start_events.append(ctx.has_ui)
 
     def _session_refresh(event, ctx):
-        refresh_events.append((event.reason, ctx.hasUI))
+        refresh_events.append((event.reason, ctx.has_ui))
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -4135,7 +4134,7 @@ def test_agent_session_set_extension_ui_context_rebinds_context_without_lifecycl
 
     assert start_events == [False]
     assert refresh_events == []
-    assert context.hasUI is True
+    assert context.has_ui is True
 
 
 def test_agent_session_dispose_invalidates_extension_contexts_after_shutdown_hooks(
@@ -4876,27 +4875,17 @@ def test_agent_session_exposes_session_state_runtime_queue(tmp_path) -> None:
     session.steer("adjust current task")
     session.follow_up("continue later")
 
-    runtime_state = session.get_session_state()
+    runtime_state = session.get_state()
 
-    assert runtime_state | {"sessionId": None} == {
-        "sessionId": None,
-        "sessionFile": None,
-        "sessionName": None,
-        "runStatus": "idle",
-        "isStreaming": False,
-        "queue": {"steering": ["adjust current task"], "followUp": ["continue later"]},
-        "pendingMessageCount": 2,
-        "isCompacting": False,
-        "isRetrying": False,
-        "thinkingLevel": "off",
-        "modelSelection": {"provider": "faux", "modelId": "faux-model"},
-        "activeToolNames": [],
-        "steeringMode": "one-at-a-time",
-        "followUpMode": "one-at-a-time",
-        "autoCompactionEnabled": True,
-        "messageCount": 0,
-    }
-    assert runtime_state["sessionId"] == session.session_id
+    assert runtime_state.run.status == "idle"
+    assert runtime_state.steering == ["adjust current task"]
+    assert runtime_state.follow_up == ["continue later"]
+    assert runtime_state.is_compacting is False
+    assert runtime_state.is_retrying is False
+    assert runtime_state.thinking_level == "off"
+    assert runtime_state.model_selection is not None
+    assert runtime_state.model_selection.provider == "faux"
+    assert runtime_state.model_selection.model_id == "faux-model"
 
 
 def test_agent_session_set_session_name_emits_session_info_changed(tmp_path) -> None:

@@ -12,9 +12,7 @@ from loushang.tui.keybindings import KeybindingConfig
 
 
 def tool_definition_resolver(session: Any) -> ToolDefinitionResolver | None:
-    getter = getattr(session, "getToolDefinition", None)
-    if not callable(getter):
-        getter = getattr(session, "get_tool_definition", None)
+    getter = getattr(session, "get_tool_definition", None)
     return cast(ToolDefinitionResolver, getter) if callable(getter) else None
 
 

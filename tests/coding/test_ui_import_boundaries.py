@@ -386,7 +386,7 @@ def test_mode_is_only_the_coding_tui_composition_root() -> None:
         "set_approval_presenter",
         "get_session_file",
         "inspect.signature",
-        "getToolDefinition",
+        "get_tool_definition",
         "get_steering_messages",
         "get_follow_up_messages",
         "base64",

@@ -10,22 +10,14 @@ from loushang.coding.presentation.tui.runtime import (
 )
 
 
-def test_tool_definition_resolver_supports_camel_and_snake_case_sessions() -> None:
-    def camel_case(name: str) -> str:
-        return f"camel:{name}"
-
+def test_tool_definition_resolver_supports_standard_sessions() -> None:
     def snake_case(name: str) -> str:
         return f"snake:{name}"
 
-    camel_resolver = tool_definition_resolver(
-        SimpleNamespace(getToolDefinition=camel_case)
-    )
     snake_resolver = tool_definition_resolver(
         SimpleNamespace(get_tool_definition=snake_case)
     )
 
-    assert camel_resolver is not None
-    assert camel_resolver("read") == "camel:read"
     assert snake_resolver is not None
     assert snake_resolver("write") == "snake:write"
 

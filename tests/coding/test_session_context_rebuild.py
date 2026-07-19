@@ -6,7 +6,7 @@ import pytest
 
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.coding.store import SessionManager
-from loushang.coding.store.session_manager import build_session_context
+from loushang.harness.agent_transcript import build_agent_transcript_session_context
 
 
 def _assistant(text: str, timestamp: float) -> AssistantMessage:
@@ -66,7 +66,9 @@ def test_build_session_context_uses_selected_native_branch(tmp_path) -> None:
         )
     )
 
-    context = build_session_context(manager.get_entries(), leaf_id=branch_a_id)
+    context = build_agent_transcript_session_context(
+        manager.get_entries(), leaf_id=branch_a_id
+    )
 
     assert [message.role for message in context.messages] == ["user", "application"]
     assert "A" in _context_text(context.messages)
@@ -135,9 +137,17 @@ def test_build_session_context_unknown_or_empty_leaf_is_empty(tmp_path) -> None:
         manager.append_message(UserMessage(role="user", content="root", timestamp=1.0))
     )
 
-    assert build_session_context(manager.get_entries(), leaf_id=None).messages == ()
     assert (
-        build_session_context(manager.get_entries(), leaf_id="missing").messages == ()
+        build_agent_transcript_session_context(
+            manager.get_entries(), leaf_id=None
+        ).messages
+        == ()
+    )
+    assert (
+        build_agent_transcript_session_context(
+            manager.get_entries(), leaf_id="missing"
+        ).messages
+        == ()
     )
 
 

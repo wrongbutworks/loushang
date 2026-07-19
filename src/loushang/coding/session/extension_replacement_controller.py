@@ -34,9 +34,7 @@ class ExtensionReplacementController:
             _assert_context_active()
             await send_user_message(content, options)
 
-        context.sendMessage = _send_message
         context.send_message = _send_message
-        context.sendUserMessage = _send_user_message
         context.send_user_message = _send_user_message
         return context
 

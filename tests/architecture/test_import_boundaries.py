@@ -517,6 +517,12 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
+    channel_source = Path("src/loushang/coding/mode/channel_mode.py").read_text(
+        encoding="utf-8"
+    )
+    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+        encoding="utf-8"
+    )
     boundary = Path(
         "docs/internals/architecture/harness/session-facade-boundary.md"
     ).read_text(encoding="utf-8")
@@ -524,6 +530,10 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     assert "loushang.coding" not in facade_source
     assert "execute_pi_style" not in facade_source
     assert "SessionFacade" in session_source
+    assert "SessionControlPort" in facade_source
+    assert "def session_control" in session_source
+    assert "SessionControlPort" in channel_source
+    assert "_require_session_control" in rpc_source
     assert "Product Binding" in boundary
     assert "Coding Binding" in boundary
     assert "Pi-style" in boundary
@@ -621,6 +631,22 @@ def test_extension_message_controller_is_a_product_api_adapter() -> None:
     assert "ApplicationInputRuntime" in source
     assert "SessionManager" not in source
     assert "append_message(" not in source
+
+
+def test_product_transcript_session_is_neutral_and_adopted() -> None:
+    session_source = Path(
+        "src/loushang/harness/agent_transcript/product_session.py"
+    ).read_text(encoding="utf-8")
+    coding_adapter_source = Path(
+        "src/loushang/coding/store/session_manager.py"
+    ).read_text(encoding="utf-8")
+    boundary = Path(
+        "docs/internals/architecture/harness/product-transcript-session-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in session_source
+    assert "ProductTranscriptSession" in coding_adapter_source
+    assert "Standard Session Contract" in boundary
 
 
 def test_tui_and_harness_keep_harnesstui_dependency_one_way() -> None:
@@ -1426,8 +1452,7 @@ def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
         Path("src/loushang/coding/store/session_manager.py"): {
             "loushang.harness.agent_transcript.AgentTranscriptLifecycle",
             "loushang.harness.agent_transcript.AgentTranscriptSessionFactory",
-            "loushang.harness.agent_transcript.AgentTranscriptSession",
-            "loushang.harness.agent_transcript.catalog.AgentTranscriptSessionCatalog",
+            "loushang.harness.agent_transcript.ProductTranscriptSession",
         },
         Path("src/loushang/work/event_log.py"): {
             "loushang.harness.journal.FunctionalJournalRecordCodec",
@@ -1510,7 +1535,7 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
         _absolute_imports(Path("src/loushang/coding/store/session_manager.py"))
     )
     assert (
-        "loushang.harness.agent_transcript.catalog.AgentTranscriptSessionCatalog"
+        "loushang.harness.agent_transcript.ProductTranscriptSession"
         in session_manager_imports
     )
 
@@ -1632,7 +1657,7 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
 
     expected_imports = {
         Path("src/loushang/coding/store/session_manager.py"): {
-            "loushang.harness.agent_transcript.catalog.AgentTranscriptSessionCatalog",
+            "loushang.harness.agent_transcript.ProductTranscriptSession",
         },
         Path("src/loushang/coding/control/settings_manager.py"): {
             "loushang.harness.config.LayeredConfig",
@@ -1785,7 +1810,7 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
         for imported in _absolute_imports(path)
     }
     assert (
-        "loushang.harness.agent_transcript.catalog.AgentTranscriptSessionCatalog"
+        "loushang.harness.agent_transcript.ProductTranscriptSession"
         in (coding_store_imports)
     )
     assert "loushang.harness.journal.TranscriptRepository" not in (coding_store_imports)
