@@ -459,7 +459,7 @@ def create_agent_session(
             settings.enabled_models, services.model_registry
         )
         if scoped_models:
-            session.setScopedModels(scoped_models)
+            session.set_scoped_models(scoped_models)
         return session
     except Exception:
         capability_runtime.dispose()

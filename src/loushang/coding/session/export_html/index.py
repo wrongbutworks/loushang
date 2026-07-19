@@ -101,7 +101,7 @@ def export_session_to_html(
             "{{TOOL_SECTIONS}}",
             render_tool_sections(
                 messages,
-                tool_definition_resolver=session.getToolDefinition,
+                tool_definition_resolver=session.get_tool_definition,
                 theme=theme,
                 cwd=session.session_manager.get_cwd(),
             ),

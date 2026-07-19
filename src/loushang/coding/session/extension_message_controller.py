@@ -24,10 +24,10 @@ class ExtensionMessageController:
         self, message: object, options: object | None = None
     ) -> None:
         if not isinstance(message, dict):
-            raise TypeError("sendMessage expects a message object.")
+            raise TypeError("send_message expects a message object.")
         custom_type = message.get("customType", message.get("custom_type"))
         if not isinstance(custom_type, str) or not custom_type:
-            raise ValueError("sendMessage requires customType.")
+            raise ValueError("send_message requires custom_type.")
         content = message.get("content", "")
         display = bool(message.get("display", True))
         details = message.get("details")
@@ -104,7 +104,7 @@ def _normalize_extension_user_message_content(
             if part_type == "image":
                 images.append(part)  # type: ignore[arg-type]
         return "\n".join(text_parts), images or None
-    raise TypeError("sendUserMessage expects a string or content block list.")
+    raise TypeError("send_user_message expects a string or content block list.")
 
 
 def _content_part_type(part: object) -> str | None:

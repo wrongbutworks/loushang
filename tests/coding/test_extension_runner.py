@@ -1805,7 +1805,7 @@ def test_extension_runner_before_agent_start_returns_messages_and_system_prompt(
                 event.prompt,
                 event.system_prompt,
                 event.systemPrompt,
-                ctx.getSystemPrompt(),
+                ctx.get_system_prompt(),
             )
         )
         return BeforeAgentStartResult(
@@ -1821,7 +1821,7 @@ def test_extension_runner_before_agent_start_returns_messages_and_system_prompt(
         )
 
     def _second(event, ctx):
-        seen.append((event.type, event.system_prompt, ctx.getSystemPrompt()))
+        seen.append((event.type, event.system_prompt, ctx.get_system_prompt()))
         retained_contexts.append(ctx)
         return {"systemPrompt": "Second override"}
 
@@ -1864,7 +1864,7 @@ def test_extension_runner_before_agent_start_returns_messages_and_system_prompt(
         ("before_agent_start", "hello", "Base prompt", "Base prompt", "Base prompt"),
         ("before_agent_start", "First override", "First override"),
     ]
-    assert retained_contexts[0].getSystemPrompt() == "Second override"
+    assert retained_contexts[0].get_system_prompt() == "Second override"
 
 
 def test_extension_runner_user_bash_returns_first_handler_result() -> None:
@@ -2175,20 +2175,20 @@ def test_extension_runner_context_pi_style_session_and_registry_actions_delegate
 
     async def _before(event, ctx):
         del event
-        await ctx.setActiveTools(["read", "grep"])
-        await ctx.appendEntry("demo_state", {"enabled": True})
-        await ctx.sendMessage(
+        await ctx.set_active_tools(["read", "grep"])
+        await ctx.append_entry("demo_state", {"enabled": True})
+        await ctx.send_message(
             {"customType": "demo_message", "content": "hello"}, {"triggerTurn": False}
         )
-        await ctx.sendUserMessage("run this", {"deliverAs": "followUp"})
-        await ctx.setSessionName("Demo")
-        await ctx.setLabel("entry-1", "Bookmark")
+        await ctx.send_user_message("run this", {"deliverAs": "followUp"})
+        await ctx.set_session_name("Demo")
+        await ctx.set_label("entry-1", "Bookmark")
         seen.append(
             (
-                ctx.getActiveTools(),
-                ctx.getAllTools(),
-                ctx.getSessionName(),
-                ctx.listCommands(),
+                ctx.get_active_tool_names(),
+                ctx.get_all_tools(),
+                ctx.get_session_name(),
+                ctx.list_commands(),
             )
         )
 
@@ -2246,12 +2246,12 @@ def test_extension_runner_context_runtime_state_methods_delegate_through_binding
         await ctx.compact({"customInstructions": "summarize aggressively"})
         seen.append(
             (
-                ctx.isIdle(),
                 ctx.is_idle(),
-                ctx.hasPendingMessages(),
+                ctx.is_idle(),
+                ctx.has_pending_messages(),
                 ctx.has_pending_messages(),
                 ctx.get_context_usage(),
-                ctx.getSystemPrompt(),
+                ctx.get_system_prompt(),
                 ctx.get_system_prompt(),
             )
         )
@@ -2308,9 +2308,9 @@ def test_extension_runner_context_exposes_pi_style_runtime_properties() -> None:
         del event
         seen.append(
             (
-                ctx.sessionManager,
                 ctx.session_manager,
-                ctx.modelRegistry,
+                ctx.session_manager,
+                ctx.model_registry,
                 ctx.model_registry,
                 ctx.model,
                 ctx.signal,
@@ -2373,7 +2373,7 @@ def test_extension_runner_command_context_wait_for_idle_and_reload_delegate_thro
 
     async def scenario() -> None:
         context = runner.create_command_context(fallback_cwd="/tmp/project")
-        assert await context.waitForIdle() is None
+        assert await context.wait_for_idle() is None
         assert await context.wait_for_idle() is None
         assert await context.reload() is None
 
@@ -2405,7 +2405,7 @@ def test_extension_runner_command_context_navigate_tree_delegates_through_bindin
 
     async def scenario() -> None:
         context = runner.create_command_context(fallback_cwd="/tmp/project")
-        assert await context.navigateTree(
+        assert await context.navigate_tree(
             "entry-1", {"summarize": True, "customInstructions": "brief"}
         ) == {"cancelled": False}
         assert await context.navigate_tree("entry-2", {"label": "keep"}) == {
@@ -2469,13 +2469,13 @@ def test_extension_runner_command_context_new_and_switch_session_delegate_throug
 
     async def scenario() -> None:
         context = runner.create_command_context(fallback_cwd="/tmp/project")
-        assert await context.newSession({"parentSession": "parent-1"}) == {
+        assert await context.new_session({"parentSession": "parent-1"}) == {
             "cancelled": False
         }
         assert await context.new_session({"parent_session": "parent-2"}) == {
             "cancelled": False
         }
-        assert await context.switchSession("/tmp/session.jsonl") == {"cancelled": False}
+        assert await context.switch_session("/tmp/session.jsonl") == {"cancelled": False}
         assert await context.switch_session(
             "/tmp/other.jsonl", {"withSession": "ignored"}
         ) == {"cancelled": False}
@@ -2589,14 +2589,14 @@ def test_extension_runner_invalidates_captured_runtime_contexts() -> None:
     assert new_context.cwd == "/tmp/project"
 
 
-def test_extension_runner_context_exposes_pi_style_ui_namespace_and_has_ui() -> None:
+def test_extension_runner_context_exposes_standard_ui_namespace_and_has_ui() -> None:
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
 
     seen: list[tuple[bool, bool, bool]] = []
 
     def _before(event, ctx):
         del event
-        seen.append((ctx.ui is ctx, ctx.hasUI, ctx.has_ui))
+        seen.append((ctx.ui is ctx, ctx.has_ui, ctx.has_ui))
 
     runner = ExtensionRunner(
         [

@@ -47,7 +47,6 @@ from loushang.coding.package.materializer import (
 )
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
 from loushang.coding.platform.session_projection import (
-    project_pi_fork_candidates,
     project_pi_session_stats,
 )
 from loushang.coding.policy import InteractiveApprovalResolver
@@ -361,7 +360,7 @@ class AgentSession:
                 navigate_tree=self._navigate_tree_from_extension,
                 import_session=self._import_from_builtin,
                 get_active_tool_names=self.get_active_tool_names,
-                get_all_tools=self.getAllTools,
+                get_all_tools=self.get_all_tool_infos,
                 set_active_tools=self.set_active_tools,
                 get_default_active_tool_names=self._default_active_tool_names,
                 get_extensions=self.list_extensions,
@@ -623,16 +622,13 @@ class AgentSession:
     def get_active_tool_names(self) -> list[str]:
         return self._facade.get_active_tool_names()
 
-    def getActiveToolNames(self) -> list[str]:
-        return self.get_active_tool_names()
-
     def get_all_tools(self) -> list[ToolDefinition]:
         return self._facade.get_all_tools()
 
-    def getAllTools(self) -> list[dict[str, object]]:
+    def get_all_tool_infos(self) -> list[dict[str, object]]:
         return self._tool_controller.get_all_tool_infos()
 
-    def getToolDefinition(self, name: str) -> ToolDefinition | None:
+    def get_tool_definition(self, name: str) -> ToolDefinition | None:
         return self._facade.get_tool_definition(name)
 
     def list_commands(self) -> list[SessionCommandDescriptor]:
@@ -640,9 +636,6 @@ class AgentSession:
 
     def list_extensions(self) -> list[dict[str, object]]:
         return self._extension_runner.list_extensions()
-
-    def listExtensions(self) -> list[dict[str, object]]:
-        return self.list_extensions()
 
     async def execute_command_async(
         self, invocation_name: str, args: str
@@ -737,20 +730,11 @@ class AgentSession:
             context_usage=self._facade.get_context_usage(),
         )
 
-    def get_session_state(self) -> dict[str, object]:
-        return self._pi_style_session_state()
-
     def export_to_jsonl(self, output_path: str | None = None) -> str:
         return export_session_to_jsonl(self, output_path)
 
-    def exportToJsonl(self, output_path: str | None = None) -> str:
-        return self.export_to_jsonl(output_path)
-
     def export_to_html(self, output_path: str | None = None) -> str:
         return export_session_to_html(self, output_path)
-
-    def exportToHtml(self, output_path: str | None = None) -> str:
-        return self.export_to_html(output_path)
 
     def _get_builtin_session_info(self) -> dict[str, object]:
         record = self.session_manager.get_session_record()
@@ -771,34 +755,7 @@ class AgentSession:
             "is_compacting": stats.is_compacting,
         }
 
-    def _pi_style_session_state(self) -> dict[str, object]:
-        state = self.get_state()
-        session_file = self.session_file
-        steering = list(state.steering)
-        follow_up = list(state.follow_up)
-        return {
-            "sessionId": self.session_id,
-            "sessionFile": str(session_file) if session_file is not None else None,
-            "sessionName": self.session_name,
-            "runStatus": state.run.status,
-            "isStreaming": state.run.status == "running",
-            "queue": {
-                "steering": steering,
-                "followUp": follow_up,
-            },
-            "pendingMessageCount": len(steering) + len(follow_up),
-            "isCompacting": state.is_compacting,
-            "isRetrying": state.is_retrying,
-            "thinkingLevel": state.thinking_level,
-            "modelSelection": _model_selection_payload(state.model_selection),
-            "activeToolNames": list(state.active_tool_names),
-            "steeringMode": self.agent.steering_mode,
-            "followUpMode": self.agent.follow_up_mode,
-            "autoCompactionEnabled": self.auto_compaction_enabled,
-            "messageCount": len(self.get_session_context().messages),
-        }
-
-    # Public facade: session properties and compatibility aliases.
+    # Public facade: standard session properties.
 
     @property
     def is_compacting(self) -> bool:
@@ -812,24 +769,20 @@ class AgentSession:
         return self.agent.model
 
     @property
-    def thinkingLevel(self) -> ThinkingLevel:
+    def thinking_level(self) -> ThinkingLevel:
         return self.agent.thinking_level
 
     @property
-    def isStreaming(self) -> bool:
+    def is_streaming(self) -> bool:
         return self.agent.is_streaming
 
     @property
-    def systemPrompt(self) -> str:
+    def system_prompt(self) -> str:
         return self.agent.system_prompt
 
     @property
-    def retryAttempt(self) -> int:
+    def retry_attempt(self) -> int:
         return self._retry_runtime.attempt
-
-    @property
-    def isCompacting(self) -> bool:
-        return self.is_compacting
 
     @property
     def messages(self) -> list:
@@ -838,11 +791,6 @@ class AgentSession:
     @property
     def session_file(self):
         return self._facade.get_session_file()
-
-    @property
-    def sessionFile(self) -> str | None:
-        session_file = self.session_file
-        return str(session_file) if session_file is not None else None
 
     @property
     def extension_runner(self) -> ExtensionRunner | None:
@@ -859,26 +807,18 @@ class AgentSession:
         return self._facade
 
     @property
-    def sessionId(self) -> str:
-        return self.session_id
-
-    @property
     def session_name(self) -> str | None:
         return self.session_manager.get_session_record().metadata.name
 
     @property
-    def sessionName(self) -> str | None:
-        return self.session_name
-
-    @property
-    def scopedModels(self) -> list[dict[str, object]]:
+    def scoped_models(self) -> list[dict[str, object]]:
         return self._selection_controller.get_scoped_models()
 
-    def setScopedModels(self, scoped_models: list[dict[str, object]]) -> None:
+    def set_scoped_models(self, scoped_models: list[dict[str, object]]) -> None:
         self._selection_controller.set_scoped_models(scoped_models)
 
     @property
-    def promptTemplates(self) -> list[PromptFragmentDescriptor]:
+    def prompt_templates(self) -> list[PromptFragmentDescriptor]:
         return self._resource_refresh_runtime.get_prompt_templates()
 
     @property
@@ -887,10 +827,6 @@ class AgentSession:
 
     @property
     def resource_loader(self) -> DefaultResourceLoader | None:
-        return self._resource_loader
-
-    @property
-    def resourceLoader(self) -> DefaultResourceLoader | None:
         return self._resource_loader
 
     def subscribe(self, listener: SessionEventListener) -> Callable[[], None]:
@@ -939,41 +875,22 @@ class AgentSession:
     def pending_message_count(self) -> int:
         return self._facade.pending_message_count
 
-    @property
-    def pendingMessageCount(self) -> int:
-        return self.pending_message_count
-
     def get_steering_messages(self) -> list[str]:
         return self._facade.get_steering_messages()
-
-    def getSteeringMessages(self) -> list[str]:
-        return self.get_steering_messages()
 
     def get_follow_up_messages(self) -> list[str]:
         return self._facade.get_follow_up_messages()
 
-    def getFollowUpMessages(self) -> list[str]:
-        return self.get_follow_up_messages()
-
     def clear_queue(self) -> dict[str, list[str]]:
         return self._facade.clear_queue()
-
-    def clearQueue(self) -> dict[str, list[str]]:
-        return self.clear_queue()
 
     # Public facade: model, thinking, tools, and session metadata.
 
     async def set_model(self, model: Model | ModelSelection) -> None:
         await self._set_model_internal(model, emit_refresh=True, source="set")
 
-    async def setModel(self, model: Model | ModelSelection) -> None:
-        await self.set_model(model)
-
     async def cycle_model(self, direction: str = "forward") -> ModelSelection | None:
         return await self._selection_controller.cycle_model(direction)
-
-    async def cycleModel(self, direction: str = "forward") -> ModelSelection | None:
-        return await self.cycle_model(direction)
 
     async def _cycle_scoped_model(self, direction: str) -> ModelSelection | None:
         return await self._selection_controller.cycle_scoped_model(direction)
@@ -986,40 +903,21 @@ class AgentSession:
     async def set_thinking_level(self, level: ThinkingLevel) -> None:
         await self._selection_controller.set_thinking_level(level)
 
-    async def setThinkingLevel(self, level: ThinkingLevel) -> None:
-        await self.set_thinking_level(level)
-
     async def cycle_thinking_level(self) -> ThinkingLevel | None:
         return await self._selection_controller.cycle_thinking_level()
-
-    async def cycleThinkingLevel(self) -> ThinkingLevel | None:
-        return await self.cycle_thinking_level()
 
     def supports_thinking(self) -> bool:
         return self._selection_controller.supports_thinking()
 
-    def supportsThinking(self) -> bool:
-        return self.supports_thinking()
-
     def supports_xhigh_thinking(self) -> bool:
         return self._selection_controller.supports_xhigh_thinking()
-
-    def supportsXhighThinking(self) -> bool:
-        return self.supports_xhigh_thinking()
 
     def get_available_thinking_levels(self) -> list[ThinkingLevel]:
         return self._selection_controller.get_available_thinking_levels()
 
-    def getAvailableThinkingLevels(self) -> list[ThinkingLevel]:
-        return self.get_available_thinking_levels()
-
     @property
     def steering_mode(self) -> str:
         return self.agent.steering_mode
-
-    @property
-    def steeringMode(self) -> str:
-        return self.steering_mode
 
     def set_steering_mode(self, mode: str) -> None:
         if mode not in {"all", "one-at-a-time"}:
@@ -1031,10 +929,6 @@ class AgentSession:
     def follow_up_mode(self) -> str:
         return self.agent.follow_up_mode
 
-    @property
-    def followUpMode(self) -> str:
-        return self.follow_up_mode
-
     def set_follow_up_mode(self, mode: str) -> None:
         if mode not in {"all", "one-at-a-time"}:
             raise ValueError(f"Unsupported follow-up mode: {mode}")
@@ -1043,9 +937,6 @@ class AgentSession:
 
     async def set_active_tools(self, tool_names: list[str]) -> None:
         await self._set_active_tools_internal(tool_names, emit_refresh=True)
-
-    async def setActiveToolsByName(self, tool_names: list[str]) -> None:
-        await self.set_active_tools(tool_names)
 
     def get_available_models(self) -> list[ModelSelection]:
         return self._selection_controller.get_available_models()
@@ -1063,26 +954,14 @@ class AgentSession:
             source_record_id=record_id,
         )
 
-    async def setSessionName(self, name: str | None) -> None:
-        await self.set_session_name(name)
-
-    def getSessionName(self) -> str | None:
-        return self.session_name
-
     def get_user_messages_for_forking(self) -> list[dict[str, str]]:
         return self._facade.get_user_messages_for_forking()
-
-    def getUserMessagesForForking(self) -> list[dict[str, str]]:
-        return project_pi_fork_candidates(self._session_inspector)
 
     def get_entry_text(self, entry_id: str) -> str | None:
         return self._facade.get_entry_text(entry_id)
 
     def get_last_assistant_text(self) -> str | None:
         return self._facade.get_last_assistant_text()
-
-    def getLastAssistantText(self) -> str | None:
-        return self.get_last_assistant_text()
 
     def get_recent_assistant_texts(self) -> tuple[str, ...]:
         return self._facade.get_recent_assistant_texts()
@@ -1114,33 +993,25 @@ class AgentSession:
             operations=operations,
         )
 
-    async def executeBash(
-        self,
-        command: str,
-        on_chunk: Callable[[str], Awaitable[None] | None] | None = None,
-        options: dict[str, object] | None = None,
-    ) -> dict[str, object]:
-        return await self._bash_controller.execute_pi_style(
-            command, on_chunk=on_chunk, options=options
-        )
-
-    async def recordBashResult(
+    async def record_bash_result(
         self,
         command: str,
         result: dict[str, object],
-        options: dict[str, object] | None = None,
+        *,
+        exclude_from_context: bool = False,
     ) -> None:
-        await self._bash_controller.record_pi_style_result(command, result, options)
-
-    def abortBash(self) -> None:
-        self.abort_bash()
+        await self._bash_controller.record_result(
+            command=command,
+            result=result,
+            exclude_from_context=exclude_from_context,
+        )
 
     @property
-    def isBashRunning(self) -> bool:
+    def is_bash_running(self) -> bool:
         return self._facade.is_command_running
 
     @property
-    def hasPendingBashMessages(self) -> bool:
+    def has_pending_bash_messages(self) -> bool:
         return self._facade.has_pending_command_messages
 
     # Public facade: extension runtime configuration.
@@ -1167,9 +1038,6 @@ class AgentSession:
 
     def create_replaced_session_context(self) -> ReplacedSessionContext:
         return self._create_replaced_session_context(self)
-
-    def createReplacedSessionContext(self) -> ReplacedSessionContext:
-        return self.create_replaced_session_context()
 
     # Internal ports shared by model and tool controllers.
 
@@ -1222,29 +1090,11 @@ class AgentSession:
     def auto_compaction_enabled(self) -> bool:
         return self._settings_controller.auto_compaction_enabled
 
-    @property
-    def autoCompactionEnabled(self) -> bool:
-        return self.auto_compaction_enabled
-
     def set_auto_retry_enabled(self, enabled: bool) -> None:
         self._settings_controller.set_auto_retry_enabled(enabled)
 
-    @property
-    def isRetrying(self) -> bool:
-        return self.is_retrying
-
-    @property
-    def autoRetryEnabled(self) -> bool:
-        return self.auto_retry_enabled
-
-    def setAutoRetryEnabled(self, enabled: bool) -> None:
-        self.set_auto_retry_enabled(enabled)
-
     def set_auto_compaction_enabled(self, enabled: bool) -> None:
         self._settings_controller.set_auto_compaction_enabled(enabled)
-
-    def setAutoCompactionEnabled(self, enabled: bool) -> None:
-        self.set_auto_compaction_enabled(enabled)
 
     async def compact(self, custom_instructions: str | None = None) -> CompactionResult:
         self.abort()
@@ -1273,9 +1123,6 @@ class AgentSession:
             is_compacting=self._compaction_controller.is_compacting,
             is_branch_summarizing=self._tree_controller.is_branch_summarizing,
         )
-
-    def abortCompaction(self) -> None:
-        self.abort_compaction()
 
     def abort_compaction(self) -> None:
         self.abort()
@@ -1531,25 +1378,16 @@ class AgentSession:
     def _request_resource_refresh(self) -> None:
         self._resource_refresh_runtime.request_refresh()
 
-    # Extension API bridge.
-
-    async def sendCustomMessage(
-        self, message: object, options: object | None = None
-    ) -> None:
-        await self._send_message_from_extension(message, options)
-
-    async def sendMessage(self, message: object, options: object | None = None) -> None:
-        await self.sendCustomMessage(message, options)
-
-    async def sendUserMessage(
-        self, content: object, options: object | None = None
-    ) -> None:
-        await self._send_user_message_from_extension_async(content, options)
-
     async def _send_message_from_extension(
         self, message: object, options: object | None = None
     ) -> None:
         await self._extension_message_controller.send_message(message, options)
+
+    async def send_message(
+        self, message: object, options: object | None = None
+    ) -> None:
+        """Submit an application message through the standard session input path."""
+        await self._send_message_from_extension(message, options)
 
     async def _send_message_from_extension_async(self, app_message) -> None:
         await self._extension_message_controller._send_message_async(app_message)
@@ -1567,6 +1405,12 @@ class AgentSession:
         self, content: object, options: object | None = None
     ) -> None:
         await self._extension_message_controller.send_user_message(content, options)
+
+    async def send_user_message(
+        self, content: object, options: object | None = None
+    ) -> None:
+        """Submit user input through the standard session input path."""
+        await self._send_user_message_from_extension_async(content, options)
 
     async def _exec_command_from_extension(
         self,
@@ -1892,9 +1736,3 @@ def _resolve_extension_exec_cwd(session_cwd: str, cwd: str | Path | None) -> str
 
 def _optional_string(value: object) -> str | None:
     return value if isinstance(value, str) else None
-
-
-def _model_selection_payload(selection: ModelSelection | None) -> dict[str, str] | None:
-    if selection is None:
-        return None
-    return {"provider": selection.provider, "modelId": selection.model_id}

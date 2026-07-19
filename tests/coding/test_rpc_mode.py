@@ -1014,7 +1014,7 @@ def test_rpc_mode_can_include_rendered_tool_event_payloads() -> None:
     def get_tool_definition(name):
         return definition if name == "bash" else None
 
-    session.getToolDefinition = get_tool_definition
+    session.get_tool_definition = get_tool_definition
     runtime = FakeRuntime(session)
     stdout = StringIO()
 
@@ -3898,21 +3898,10 @@ def test_rpc_mode_get_state_returns_error_when_state_serialization_fails() -> No
     ]
 
 
-def test_rpc_mode_get_state_prefers_public_snake_case_payload() -> None:
+def test_rpc_mode_get_state_uses_standard_session_state() -> None:
     from loushang.coding.mode import RpcMode
 
-    class SnakeCaseStateSession(FakeSession):
-        def get_session_state(self) -> dict[str, object]:
-            return {
-                "sessionId": self.session_id,
-                "runStatus": "running",
-                "customFlag": True,
-            }
-
-        def get_state(self):  # type: ignore[override]
-            raise RuntimeError("legacy state should not be queried")
-
-    session = SnakeCaseStateSession(session_id="session-a", cwd="/tmp/project")
+    session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
     stdin = StringIO(json.dumps({"id": "state", "type": "get_state"}) + "\n")
     stdout = StringIO()
@@ -3932,8 +3921,16 @@ def test_rpc_mode_get_state_prefers_public_snake_case_payload() -> None:
             "success": True,
             "data": {
                 "sessionId": "session-a",
-                "runStatus": "running",
-                "customFlag": True,
+                "model": None,
+                "isStreaming": False,
+                "isCompacting": False,
+                "steeringMode": "one-at-a-time",
+                "followUpMode": "one-at-a-time",
+                "autoCompactionEnabled": True,
+                "messageCount": 0,
+                "pendingMessageCount": 0,
+                "thinkingLevel": "off",
+                "sessionFile": "/tmp/project/session-a.jsonl",
             },
         },
     ]
@@ -4228,17 +4225,14 @@ def test_rpc_mode_get_last_assistant_text_handles_extraction_errors() -> None:
     ]
 
 
-def test_rpc_mode_get_last_assistant_text_accepts_pi_style_session_method() -> None:
+def test_rpc_mode_get_last_assistant_text_uses_standard_session_method() -> None:
     from loushang.coding.mode import RpcMode
 
-    class PiStyleLastAssistantSession(FakeSession):
+    class StandardLastAssistantSession(FakeSession):
         def get_last_assistant_text(self):
-            raise AttributeError("snake method unavailable")
-
-        def getLastAssistantText(self):
             return "latest"
 
-    session = PiStyleLastAssistantSession(session_id="session-a", cwd="/tmp/project")
+    session = StandardLastAssistantSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
     stdin = StringIO(
         json.dumps({"id": "last", "type": "get_last_assistant_text"}) + "\n"
@@ -4604,17 +4598,14 @@ def test_rpc_mode_supports_clone_and_get_fork_messages() -> None:
     }
 
 
-def test_rpc_mode_get_fork_messages_accepts_pi_style_session_method() -> None:
+def test_rpc_mode_get_fork_messages_uses_standard_session_method() -> None:
     from loushang.coding.mode import RpcMode
 
-    class PiStyleForkSession(FakeSession):
+    class StandardForkSession(FakeSession):
         def get_user_messages_for_forking(self):
-            raise AttributeError("snake method unavailable")
+            return [{"entry_id": "u1", "text": "first"}]
 
-        def getUserMessagesForForking(self):
-            return [{"entryId": "u1", "text": "first"}]
-
-    session = PiStyleForkSession(session_id="session-a", cwd="/tmp/project")
+    session = StandardForkSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
     stdin = StringIO(
         json.dumps({"id": "fork-messages", "type": "get_fork_messages"}) + "\n"
@@ -5129,7 +5120,7 @@ def test_rpc_mode_extension_context_supports_pi_style_ui_namespace(tmp_path) -> 
 
     RpcMode(runtime=runtime, stdin=StringIO(""), stdout=stdout)
     context = extension_runner.create_command_context(fallback_cwd="/tmp/project")
-    assert context.hasUI is True
+    assert context.has_ui is True
     context.ui.setStatus("deploy", "running")
     context.ui.setTitle("Deploying")
     context.ui.setEditorText("next prompt")
