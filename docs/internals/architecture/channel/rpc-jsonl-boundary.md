@@ -6,7 +6,7 @@
 `loushang.channel.host` owns the injected stdio host loop over those frames.
 Neither surface reuses or wraps `loushang.coding.mode.RpcMode`.
 
-The protocol has four frame kinds:
+The protocol has six frame kinds:
 
 | Frame | Direction | Meaning |
 | --- | --- | --- |

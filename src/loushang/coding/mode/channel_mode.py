@@ -6,13 +6,14 @@ import asyncio
 import inspect
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import replace
-from typing import Protocol
+from typing import Protocol, TextIO, cast
 
 from loushang.channel import (
     ChannelDelivery,
     ChannelDeliveryListener,
     ChannelError,
     ChannelEventDelivery,
+    ChannelHost,
     ChannelOperationAccepted,
     ChannelOperationCancelled,
     ChannelOperationCancelRequest,
@@ -169,6 +170,11 @@ class CodingChannelOperationPort:
     def close(self) -> None:
         """Release the runtime subscription after its Channel host stops."""
 
+        for task in tuple(self._tasks.values()):
+            task.cancel()
+        self._tasks.clear()
+        self._active_operation_id = None
+        self._active_request_id = None
         self._listeners.clear()
         self._release_runtime_subscription()
 
@@ -269,4 +275,42 @@ async def _maybe_await(value: object) -> None:
         await value
 
 
-__all__ = ["CodingChannelOperationPort", "CodingChannelSession"]
+async def run_channel_mode(
+    *,
+    runtime: object,
+    stdin: TextIO,
+    stdout: TextIO,
+    stderr: TextIO | None = None,
+    event_view: JsonEventView = "full",
+    event_select: Sequence[str] | str | None = None,
+) -> int:
+    """Run the standard Channel JSONL host against the active Coding session."""
+
+    session = _current_session(runtime)
+    port = CodingChannelOperationPort(
+        session=session,
+        event_view=event_view,
+        event_select=event_select,
+    )
+    host = ChannelHost(port=port, stdin=stdin, stdout=stdout, stderr=stderr)
+    try:
+        return await host.run()
+    finally:
+        port.close()
+
+
+def _current_session(runtime: object) -> CodingChannelSession:
+    getter = getattr(runtime, "get_current_session", None)
+    if not callable(getter):
+        raise TypeError("Channel mode runtime must provide get_current_session()")
+    session = getter()
+    if session is None:
+        raise RuntimeError("Channel mode requires an active Coding session")
+    return cast(CodingChannelSession, session)
+
+
+__all__ = [
+    "CodingChannelOperationPort",
+    "CodingChannelSession",
+    "run_channel_mode",
+]

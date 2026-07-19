@@ -12,7 +12,10 @@ from loushang.channel import (
     encode_rpc_jsonl_frame,
 )
 from loushang.channel.types import ChannelEnvelope
-from loushang.coding.mode.channel_mode import CodingChannelOperationPort
+from loushang.coding.mode.channel_mode import (
+    CodingChannelOperationPort,
+    run_channel_mode,
+)
 from loushang.harness.events import RuntimeEvent, RuntimeEventView
 from loushang.work import WorkOperation
 
@@ -157,6 +160,43 @@ def test_channel_host_correlates_coding_runtime_views_to_standard_request() -> N
         await asyncio.sleep(0)
         unsubscribe()
         port.close()
+
+    asyncio.run(scenario())
+
+
+def test_run_channel_mode_uses_active_session_and_releases_subscription() -> None:
+    class _Runtime:
+        def __init__(self, session: _FakeSession) -> None:
+            self._session = session
+
+        def get_current_session(self) -> _FakeSession:
+            return self._session
+
+    async def scenario() -> None:
+        session = _FakeSession()
+        stdout = StringIO()
+
+        exit_code = await run_channel_mode(
+            runtime=_Runtime(session),
+            stdin=StringIO(encode_rpc_jsonl_frame(_request()) + "\n"),
+            stdout=stdout,
+        )
+
+        frames = [
+            json.loads(line)
+            for line in stdout.getvalue().splitlines()
+            if line.strip()
+        ]
+        assert exit_code == 0
+        assert frames == [
+            {
+                "frame_type": "operation_accepted",
+                "operation_id": "operation-1",
+                "request_id": "request-1",
+                "run_id": None,
+            }
+        ]
+        assert session.unsubscribe_calls == 1
 
     asyncio.run(scenario())
 
