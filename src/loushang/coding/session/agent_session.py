@@ -15,12 +15,13 @@ from loushang.ai.api_registry import (
     ApiProviderRegistry,
     get_default_api_provider_registry,
 )
-from loushang.ai.model import Model, Provider
+from loushang.ai.model import Model, ModelSelection, Provider
 from loushang.ai.types import AssistantMessage, ImagePart
 from loushang.coding.capability_profile import (
     CodingCapabilityRuntimeBinding,
     bind_coding_capability_runtime,
 )
+from loushang.coding.commands import SessionCommandDescriptor
 from loushang.coding.compaction import (
     compact,
     generate_branch_summary,
@@ -85,19 +86,17 @@ from loushang.coding.session.session_view_controller import SessionViewControlle
 from loushang.coding.session.tool_controller import ToolController
 from loushang.coding.session.tree_controller import TreeController
 from loushang.coding.session.types import (
-    AgentSessionState,
     CommandExecutionResult,
-    ModelSelection,
-    SessionCommandDescriptor,
-    TreeNavigationResult,
 )
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
-from loushang.coding.store import SessionManager, SessionRecord
+from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
 from loushang.harness.agent_transcript import (
     AgentTranscriptContext,
     CompactionResult,
     CompactionStatus,
+    SessionRecord,
+    TranscriptNavigationResult,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import (
@@ -129,6 +128,7 @@ from loushang.harness.session import (
     TranscriptRuntimePort,
     TurnPolicyPort,
 )
+from loushang.harness.session.inspection import AgentSessionState
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.workspace.exec import (
     ExecOutputChunk,
@@ -1275,7 +1275,7 @@ class AgentSession:
         custom_instructions: str | None = None,
         replace_instructions: bool = False,
         label: str | None = None,
-    ) -> TreeNavigationResult:
+    ) -> TranscriptNavigationResult:
         return await self._tree_controller.navigate_tree(
             target_id,
             summarize=summarize,

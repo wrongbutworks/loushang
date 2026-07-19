@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import cast
 
+from loushang.coding.commands import CommandSourceInfo, SessionCommandDescriptor
 from loushang.coding.extensions import ExtensionRunner, ResolvedCommand
 from loushang.coding.prompt import (
     PromptPreflightResult,
@@ -16,11 +17,7 @@ from loushang.coding.session.builtin_commands import (
     is_builtin_command,
     list_builtin_command_descriptors,
 )
-from loushang.coding.session.types import (
-    CommandExecutionResult,
-    CommandSourceInfo,
-    SessionCommandDescriptor,
-)
+from loushang.coding.session.types import CommandExecutionResult
 from loushang.coding.source_info import (
     SourceDescriptor,
     source_info_from_resource_descriptor,

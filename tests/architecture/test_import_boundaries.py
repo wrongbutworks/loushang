@@ -2900,6 +2900,32 @@ def test_coding_internal_run_state_imports_use_harness_owner() -> None:
     assert offenders == []
 
 
+def test_coding_internal_session_type_imports_use_owners() -> None:
+    compatibility_paths = {
+        "src/loushang/coding/session/__init__.py",
+        "src/loushang/coding/session/types.py",
+    }
+    legacy_symbols = (
+        "loushang.coding.session.types.AgentSessionState",
+        "loushang.coding.session.types.CompactionDecision",
+        "loushang.coding.session.types.ContextUsage",
+        "loushang.coding.session.types.ContextUsageSnapshot",
+        "loushang.coding.session.types.ModelSelection",
+        "loushang.coding.session.types.SessionStats",
+        "loushang.coding.session.types.TokenUsageTotals",
+        "loushang.coding.session.types.TreeNavigationResult",
+    )
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        if path.as_posix() in compatibility_paths:
+            continue
+        for imported in _absolute_imports(path):
+            if _matches_any(imported, legacy_symbols):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+
+    assert offenders == []
+
+
 def test_harness_product_kernel_ownership_is_documented() -> None:
     path = Path("docs/internals/architecture/harness/shared-capability-boundaries.md")
     text = " ".join(path.read_text(encoding="utf-8").split())

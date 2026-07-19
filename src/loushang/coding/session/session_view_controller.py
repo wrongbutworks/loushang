@@ -4,12 +4,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from loushang.agent import Agent
-from loushang.coding.session.types import (
-    AgentSessionState,
-    ContextUsage,
-    ModelSelection,
-    SessionStats,
-)
+from loushang.ai.model import ModelSelection
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
@@ -17,7 +12,12 @@ from loushang.harness.agent_transcript import (
     AgentTranscriptRecord,
     ContextCompactionCheckpoint,
 )
-from loushang.harness.session.inspection import AgentSessionInspector
+from loushang.harness.session.inspection import (
+    AgentSessionInspector,
+    AgentSessionState,
+    ContextUsage,
+    SessionStats,
+)
 
 
 @dataclass
