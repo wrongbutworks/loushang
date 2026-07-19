@@ -32,6 +32,7 @@ Harness defaults
 | --- | --- | --- |
 | [00 Requirements](00-requirements.md) | Product-facing requirements, constraints, non-goals, and acceptance criteria. | Core accepted |
 | [01 Component Inventory](01-component-inventory.md) | Index of runtime-injection components, their owners, dependencies, and migration relationship. | Core implemented |
+| [02 Context Compaction Binding](02-context-compaction-binding.md) | Selection, lifecycle, Product executor, and contribution contract for transcript compaction. | Accepted; cutover in progress |
 | [Component Design Directory](components/README.md) | One detailed binding contract for each capability component. | Runtime profile implemented |
 
 Detailed component documents are added immediately before their corresponding
