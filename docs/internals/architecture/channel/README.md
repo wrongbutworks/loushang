@@ -20,6 +20,7 @@ src/loushang/channel/
   host.py
   json_codec.py
   json_projection.py
+  product_host.py
   rpc_jsonl.py
   types.py
 ```
@@ -48,6 +49,12 @@ The `rpc_jsonl` surface provides:
 - `project_channel_value` for documented dataclass, `Path`, mapping, list, and
   tuple transport projection without arbitrary-object coercion.
 
+`product_host.py` provides reusable Product-host lifecycle mechanics without a
+wire schema: `ProductHostAction` / `ProductHostAdapter`, line-input
+`ProductHostRuntime`, and `ProductHostTaskTracker`. Standard Channel JSONL and
+Product-specific compatibility hosts may share those mechanics while retaining
+their separate protocols.
+
 `ChannelEnvelope` accepts two envelope kinds and three payload families:
 
 - `kind="operation"` with a `WorkOperation`
@@ -72,6 +79,10 @@ stdio JSONL loop over an injected `ChannelHostPort`: a Product port accepts a
 `RuntimeEventView` frames. `request_id` supplies transport correlation while
 `operation_id` and `run_id` retain Work ownership. See
 [Channel Host Boundary](channel-host-boundary.md).
+
+[Product Host Runtime Boundary](product-host-runtime-boundary.md) records the
+separate lower-level host lifecycle shared by standard Channel and
+Product-specific host adapters.
 
 ## Ownership
 
@@ -107,7 +118,8 @@ The current channel package does not implement:
 - replay or audit storage
 - UI layout, widgets, or rendering
 - direct agent loop or product session control
+- a universal Product RPC command schema
 
-The next likely implementation step is channel capability negotiation and
-interaction request/response contracts. Those must remain independent of the
-legacy Coding RPC widget and editor payloads.
+Capability negotiation and interaction request/response contracts remain
+future work. They must remain independent of legacy Coding RPC widget and
+editor payloads.

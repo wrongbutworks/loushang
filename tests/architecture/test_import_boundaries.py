@@ -539,6 +539,30 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     assert "Pi-style" in boundary
 
 
+def test_channel_product_host_runtime_is_neutral_and_adopted() -> None:
+    runtime_source = Path("src/loushang/channel/product_host.py").read_text(
+        encoding="utf-8"
+    )
+    channel_host_source = Path("src/loushang/channel/host.py").read_text(
+        encoding="utf-8"
+    )
+    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+        encoding="utf-8"
+    )
+    boundary = Path(
+        "docs/internals/architecture/channel/product-host-runtime-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "from loushang." not in runtime_source
+    assert "import loushang." not in runtime_source
+    assert "ProductHostRuntime" in channel_host_source
+    assert "ProductHostRuntime" in rpc_source
+    assert "ProductHostTaskTracker" in rpc_source
+    assert "Product Binding" in boundary
+    assert "Coding Adoption" in boundary
+    assert "Dependency Rule" in boundary
+
+
 def test_session_inspection_is_neutral_and_adopted() -> None:
     inspection_source = Path("src/loushang/harness/session/inspection.py").read_text(
         encoding="utf-8"
