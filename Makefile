@@ -29,15 +29,7 @@ HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/platform/__init__.py \
 	src/loushang/coding/platform/clipboard_image.py \
 	src/loushang/coding/testing/tui \
-	src/loushang/coding/ui/completion.py \
-	src/loushang/coding/ui/event_stream.py \
-	src/loushang/coding/ui/plain_app.py \
-	src/loushang/coding/ui/run_context.py \
-	src/loushang/coding/ui/screen_app.py \
-	src/loushang/coding/ui/screen_input.py \
-	src/loushang/coding/ui/screen_loop.py \
-	src/loushang/coding/ui/screen_surfaces.py \
-	src/loushang/coding/ui/settings_page.py
+	src/loushang/coding/ui
 CODING_TUI_PRODUCT_SOURCES := \
 	src/loushang/coding/commands/tui.py \
 	src/loushang/coding/model_selection_tui.py \
@@ -69,15 +61,22 @@ HARNESSTUI_TEST_PATHS := \
 	tests/tui/test_transcript_region.py \
 	tests/architecture/test_import_boundaries.py \
 	tests/coding/test_platform_utils.py \
+	tests/coding/test_screen_conversation_action_host.py \
 	tests/coding/test_ui_handlers.py \
 	tests/coding/test_ui_abort.py \
+	tests/coding/test_ui_debug_command.py \
 	tests/coding/test_ui_event_stream.py \
 	tests/coding/test_ui_follow_up_queue.py \
+	tests/coding/test_ui_hotkeys.py \
+	tests/coding/test_ui_mode.py \
 	tests/coding/test_ui_prompt_dispatch.py \
 	tests/coding/test_ui_prompt_result.py \
+	tests/coding/test_ui_prompt_routing.py \
 	tests/coding/test_ui_run_context.py \
+	tests/coding/test_ui_startup.py \
 	tests/coding/test_ui_steer.py \
 	tests/coding/test_ui_import_boundaries.py \
+	tests/coding/test_tui_runtime_adapters.py \
 	tests/coding/test_screen_coding_tui_app.py \
 	tests/coding/test_screen_coding_tui_events.py \
 	tests/coding/test_screen_coding_tui_input.py \

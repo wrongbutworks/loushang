@@ -31,8 +31,13 @@ def test_prompt_routing_keeps_running_inputs_pi_style() -> None:
     assert route_prompt_intent(CommandsIntent(), lifecycle) is PromptRoute.COMMANDS
     assert route_prompt_intent(QuitIntent(), lifecycle) is PromptRoute.DISPATCH
 
+
 def test_prompt_routing_blocks_non_quit_inputs_while_abort_settles() -> None:
-    from loushang.coding.interaction.intent import FollowUpIntent, PromptIntent, QuitIntent
+    from loushang.coding.interaction.intent import (
+        FollowUpIntent,
+        PromptIntent,
+        QuitIntent,
+    )
     from loushang.coding.interaction.routing import PromptRoute, route_prompt_intent
     from loushang.harnesstui.conversation.control import ConversationRunControl
 

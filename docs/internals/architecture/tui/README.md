@@ -60,6 +60,23 @@ Clipboard-image acquisition resolves the host once into an ordered backend
 plan behind a common protocol. On macOS, the system `NSPasteboard` adapter is
 preferred, with `pngpaste` retained only as a compatibility fallback.
 
+## Coding UI Residual Boundary
+
+`loushang.coding.ui` is intentionally bounded to product UI composition and
+terminal bindings. Its retained owners are the mode/CLI entrypoints, concrete
+screen app and surfaces, plain/screen runner bindings, settings-page builder,
+input/clipboard policy, run/event context, completion, startup, and hotkey
+presentation. Raw intents, action control, model/settings facts, tool/event/
+history projection, approval binding, resume discovery, and Session-facing
+projection adapters live in their Coding feature packages instead.
+
+The package has a 2,200-line upper-budget gate. This is not an instruction to
+move `screen_app.py` into a shared layer: that file deliberately owns Coding's
+long-lived transcript presentation, cwd cache token, glyph/theme mapping, path
+compaction, tool-output preview, 320-line active-window policy, and render
+baseline reset reasons. Those contracts remain covered by the independent
+render-performance gate.
+
 Generic terminal diagnostics aggregation lives in
 `loushang.tui.terminal_diagnostics`. It combines terminal environment,
 capability, and live runtime facts without knowing which product presents the

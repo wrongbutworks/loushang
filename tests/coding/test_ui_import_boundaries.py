@@ -250,6 +250,19 @@ def test_coding_ui_module_manifest_contains_only_product_adapters() -> None:
     assert actual == RETAINED_CODING_UI_PRODUCT_ADAPTER_MODULES
 
 
+def test_coding_ui_package_stays_within_the_product_adapter_budget() -> None:
+    root = Path("src/loushang/coding/ui")
+    line_counts = {
+        path.relative_to(root).as_posix(): len(
+            path.read_text(encoding="utf-8").splitlines()
+        )
+        for path in sorted(root.rglob("*.py"))
+    }
+
+    assert sum(line_counts.values()) <= 2_200, line_counts
+    assert line_counts["mode.py"] <= 350
+
+
 def test_repository_imports_use_canonical_owners_for_retired_modules() -> None:
     retired = tuple(RETIRED_CODING_UI_MODULES)
     offenders: list[str] = []
