@@ -275,7 +275,7 @@ def test_agent_session_builtin_tools_command_can_restore_active_tools(tmp_path) 
     ]
 
 
-def test_agent_session_exposes_pi_style_tool_surface_aliases(tmp_path) -> None:
+def test_agent_session_exposes_standard_tool_surfaces(tmp_path) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
@@ -318,8 +318,8 @@ def test_agent_session_exposes_pi_style_tool_surface_aliases(tmp_path) -> None:
         base_prompt="Base prompt.",
     )
 
-    assert session.getActiveToolNames() == ["bash"]
-    assert [tool["name"] for tool in session.getAllTools()] == [
+    assert session.get_active_tool_names() == ["bash"]
+    assert [tool["name"] for tool in session.get_all_tool_infos()] == [
         "bash",
         "read",
         "ls",
@@ -328,19 +328,19 @@ def test_agent_session_exposes_pi_style_tool_surface_aliases(tmp_path) -> None:
         "write",
         "edit",
     ]
-    assert session.getAllTools()[0]["sourceInfo"] == {
+    assert session.get_all_tool_infos()[0]["sourceInfo"] == {
         "path": "<builtin:bash>",
         "source": "builtin",
         "scope": "temporary",
         "origin": "top-level",
         "baseDir": None,
     }
-    assert session.getToolDefinition("bash").name == "bash"
-    assert session.getToolDefinition("missing") is None
+    assert session.get_tool_definition("bash").name == "bash"
+    assert session.get_tool_definition("missing") is None
 
-    asyncio.run(session.setActiveToolsByName(["read", "grep", "missing"]))
+    asyncio.run(session.set_active_tools(["read", "grep", "missing"]))
 
-    assert session.getActiveToolNames() == ["read", "grep"]
+    assert session.get_active_tool_names() == ["read", "grep"]
     assert [tool.name for tool in session.agent.tools] == ["read", "grep"]
     assert "Available tools:\n- read:" in session.agent.system_prompt
     assert "- grep:" in session.agent.system_prompt
@@ -400,7 +400,7 @@ def test_agent_session_allowed_tool_names_filter_visible_and_active_tools(
         "read",
         "grep",
     ]
-    assert session.getToolDefinition("bash") is None
+    assert session.get_tool_definition("bash") is None
     assert "Available tools:\n- read:" in session.agent.system_prompt
     assert "- grep:" in session.agent.system_prompt
     assert "- bash:" not in session.agent.system_prompt
@@ -487,7 +487,9 @@ def test_agent_session_extension_context_register_tool_refreshes_active_tools_an
         in session.agent.system_prompt
     )
     dynamic_tool_info = next(
-        tool for tool in session.getAllTools() if tool["name"] == "dynamic_tool"
+        tool
+        for tool in session.get_all_tool_infos()
+        if tool["name"] == "dynamic_tool"
     )
     assert dynamic_tool_info["sourceInfo"] == {
         "path": "<inline:1>",
@@ -705,7 +707,7 @@ def test_agent_session_get_all_tools_projects_sdk_source_info(tmp_path) -> None:
         tool_registry=registry,
     )
 
-    assert session.getAllTools() == [
+    assert session.get_all_tool_infos() == [
         {
             "name": "custom_tool",
             "description": "custom tool",

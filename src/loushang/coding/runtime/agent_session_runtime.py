@@ -309,11 +309,30 @@ class AgentSessionRuntime:
     async def new_session(
         self, *, cwd: str | Path | None = None, parent_session: str | None = None
     ) -> AgentSession:
-        result = await self._run_new_session_operation(
+        result = await self.new_session_operation(
             cwd=cwd,
             parent_session=parent_session,
         )
         return _require_operation_session(result)
+
+    async def new_session_operation(
+        self,
+        *,
+        cwd: str | Path | None = None,
+        parent_session: str | None = None,
+        setup: object | None = None,
+        with_session: object | None = None,
+    ) -> _SessionOperationResult:
+        """Create a session and run optional standard replacement callbacks."""
+        options = _replacement_callback_options(
+            setup=setup,
+            with_session=with_session,
+        )
+        return await self._run_new_session_operation(
+            cwd=cwd,
+            parent_session=parent_session,
+            options=options or None,
+        )
 
     async def _run_new_session_operation(
         self,
@@ -332,30 +351,8 @@ class AgentSessionRuntime:
             ),
         )
 
-    async def newSession(self, options: object | None = None) -> dict[str, bool]:
-        opts = options if isinstance(options, dict) else {}
-        parent_candidate = opts.get("parentSession", opts.get("parent_session"))
-        parent_session = parent_candidate if isinstance(parent_candidate, str) else None
-        cwd = opts.get("cwd")
-        result = await self._run_new_session_operation(
-            cwd=cwd if isinstance(cwd, str | Path) else None,
-            parent_session=parent_session,
-            options=opts,
-        )
-        return {"cancelled": result.cancelled}
-
     async def switch_session(self, session_id: str | Path) -> AgentSession:
         return await self.restore_session(session_id)
-
-    async def switchSession(
-        self, session_path: str | Path, options: object | None = None
-    ) -> dict[str, bool]:
-        opts = options if isinstance(options, dict) else {}
-        result = await self._run_restore_session_operation(
-            session_path,
-            options=opts,
-        )
-        return {"cancelled": result.cancelled}
 
     async def restore_session(
         self,
@@ -364,12 +361,29 @@ class AgentSessionRuntime:
         fallback_cwd: str | Path | None = None,
         missing_cwd: Literal["error", "fallback"] = "error",
     ) -> AgentSession:
-        result = await self._run_restore_session_operation(
+        result = await self.restore_session_operation(
             session_id,
             fallback_cwd=fallback_cwd,
             missing_cwd=missing_cwd,
         )
         return _require_operation_session(result)
+
+    async def restore_session_operation(
+        self,
+        session_id: str | Path,
+        *,
+        fallback_cwd: str | Path | None = None,
+        missing_cwd: Literal["error", "fallback"] = "error",
+        with_session: object | None = None,
+    ) -> _SessionOperationResult:
+        """Restore a session and run an optional standard replacement callback."""
+        options = _replacement_callback_options(with_session=with_session)
+        return await self._run_restore_session_operation(
+            session_id,
+            fallback_cwd=fallback_cwd,
+            missing_cwd=missing_cwd,
+            options=options or None,
+        )
 
     async def _run_restore_session_operation(
         self,
@@ -402,8 +416,23 @@ class AgentSessionRuntime:
     async def fork_session(
         self, entry_id: str, *, position: str = "at"
     ) -> AgentSession:
-        result = await self._run_fork_session_operation(entry_id, position=position)
+        result = await self.fork_session_operation(entry_id, position=position)
         return _require_operation_session(result)
+
+    async def fork_session_operation(
+        self,
+        entry_id: str | None,
+        *,
+        position: str = "at",
+        with_session: object | None = None,
+    ) -> _SessionOperationResult:
+        """Fork the active transcript and run an optional replacement callback."""
+        options = _replacement_callback_options(with_session=with_session)
+        return await self._run_fork_session_operation(
+            entry_id,
+            position=position,
+            options=options or None,
+        )
 
     async def fork_session_with_result(
         self, entry_id: str, *, position: str = "at"
@@ -479,11 +508,6 @@ class AgentSessionRuntime:
             )
         except HarnessMissingSessionCwdError as exc:
             raise _coding_missing_cwd_error(exc) from exc
-
-    async def importFromJsonl(
-        self, input_path: str | Path, cwd_override: str | Path | None = None
-    ) -> dict[str, bool]:
-        return await self.import_from_jsonl(input_path, cwd_override)
 
     async def replace_current_session(self, session: AgentSession) -> None:
         await self._lifecycle.replace(
@@ -1312,14 +1336,24 @@ def _create_replaced_session_context(session: AgentSession) -> object:
     create_context = getattr(session, "create_replaced_session_context", None)
     if callable(create_context):
         return create_context()
-    create_context = getattr(session, "createReplacedSessionContext", None)
-    if callable(create_context):
-        return create_context()
     session_manager = getattr(session, "session_manager", None)
     cwd = session_manager.get_cwd() if session_manager is not None else None
     return SimpleNamespace(
-        cwd=cwd, sessionManager=session_manager, session_manager=session_manager
+        cwd=cwd, session_manager=session_manager
     )
+
+
+def _replacement_callback_options(
+    *,
+    setup: object | None = None,
+    with_session: object | None = None,
+) -> dict[str, object]:
+    options: dict[str, object] = {}
+    if setup is not None:
+        options["setup"] = setup
+    if with_session is not None:
+        options["with_session"] = with_session
+    return options
 
 
 def _sync_agent_messages_from_session_manager(session: AgentSession) -> None:

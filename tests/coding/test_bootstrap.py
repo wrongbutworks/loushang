@@ -2045,7 +2045,7 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
     )
     assert session.get_active_tool_names() == ["ext_tool"]
     assert [definition.name for definition in session.get_all_tools()] == ["ext_tool"]
-    assert session.getAllTools()[0]["sourceInfo"] == {
+    assert session.get_all_tool_infos()[0]["sourceInfo"] == {
         "path": "/tmp/extensions/demo",
         "source": "filesystem",
         "scope": "project",
@@ -2617,7 +2617,7 @@ def test_create_agent_session_applies_enabled_models_as_scoped_models(tmp_path) 
         session_manager=manager, model=first, services=services
     )
 
-    assert session.scopedModels == [
+    assert session.scoped_models == [
         {
             "model": {"provider": "faux", "model_id": "faux-model"},
             "thinkingLevel": "low",

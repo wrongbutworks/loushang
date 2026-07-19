@@ -95,11 +95,11 @@ def test_export_session_to_jsonl_writes_branch_entries_and_header(tmp_path) -> N
     assert len(entries) == len(session.session_manager.get_branch())
 
 
-def test_agent_session_exposes_pi_style_export_aliases(tmp_path) -> None:
+def test_agent_session_exposes_standard_export_methods(tmp_path) -> None:
     session = _build_export_session(tmp_path)
 
-    jsonl_output = session.exportToJsonl(str(tmp_path / "session.jsonl"))
-    html_output = session.exportToHtml(str(tmp_path / "session.html"))
+    jsonl_output = session.export_to_jsonl(str(tmp_path / "session.jsonl"))
+    html_output = session.export_to_html(str(tmp_path / "session.html"))
 
     assert jsonl_output.endswith(".jsonl")
     assert html_output.endswith(".html")
@@ -584,10 +584,10 @@ def test_export_session_to_html_embeds_entry_tree_and_summary_entries(tmp_path) 
 
 
 def test_product_transcript_dispositions_cover_every_standard_kind() -> None:
+    from loushang.coding.presentation.tui.history import TUI_TRANSCRIPT_DISPOSITIONS
     from loushang.coding.session.export_html.tool_renderer import (
         HTML_TRANSCRIPT_DISPOSITIONS,
     )
-    from loushang.coding.presentation.tui.history import TUI_TRANSCRIPT_DISPOSITIONS
     from loushang.harness.agent_transcript import STANDARD_AGENT_TRANSCRIPT_KINDS
 
     expected = set(STANDARD_AGENT_TRANSCRIPT_KINDS)

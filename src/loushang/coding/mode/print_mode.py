@@ -601,9 +601,7 @@ def _session_cwd(session: Any) -> str:
 
 
 def _tool_definition_resolver(session: Any) -> ToolDefinitionResolver | None:
-    getter = getattr(session, "getToolDefinition", None)
-    if not callable(getter):
-        getter = getattr(session, "get_tool_definition", None)
+    getter = getattr(session, "get_tool_definition", None)
     if not callable(getter):
         return None
 

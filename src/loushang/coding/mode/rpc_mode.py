@@ -1270,9 +1270,7 @@ class RpcMode(ModeAdapter):
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         del payload
-        getter = getattr(self.session, "getUserMessagesForForking", None)
-        if not callable(getter):
-            getter = getattr(self.session, "get_user_messages_for_forking", None)
+        getter = getattr(self.session, "get_user_messages_for_forking", None)
         if not callable(getter):
             self._write_response_error(
                 id=command_id,
@@ -2147,14 +2145,7 @@ class RpcMode(ModeAdapter):
         return self._session_control
 
     def _serialize_session_state(self, session: Any) -> RpcSessionState:
-        """Return the canonical `get_state` payload for the current session."""
-
-        state_getter = getattr(session, "get_session_state", None)
-        if callable(state_getter):
-            serialized = self._serialize_json_value(state_getter())
-            if not isinstance(serialized, dict):
-                raise TypeError("session state must serialize to an object")
-            return cast(RpcSessionState, self._camelize(serialized))
+        """Project the standard Harness session state into Coding RPC fields."""
 
         state = session.get_state()
         session_id = self._safe_getattr(session, "session_id", None)
@@ -2586,9 +2577,7 @@ class RpcMode(ModeAdapter):
         return value
 
     def _extract_last_assistant_text(self) -> str | None:
-        getter = getattr(self.session, "getLastAssistantText", None)
-        if not callable(getter):
-            getter = getattr(self.session, "get_last_assistant_text", None)
+        getter = getattr(self.session, "get_last_assistant_text", None)
         if callable(getter):
             return getter()
         return None
@@ -2826,9 +2815,7 @@ def _session_cwd(session: Any) -> str:
 
 
 def _tool_definition_resolver(session: Any) -> ToolDefinitionResolver | None:
-    getter = getattr(session, "getToolDefinition", None)
-    if not callable(getter):
-        getter = getattr(session, "get_tool_definition", None)
+    getter = getattr(session, "get_tool_definition", None)
     if not callable(getter):
         return None
 

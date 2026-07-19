@@ -130,6 +130,9 @@ from loushang.harness.agent_transcript.migration import (
     migrate_session_v3_file,
     read_session_v3_file,
 )
+from loushang.harness.agent_transcript.product_session import (
+    ProductTranscriptSession,
+)
 from loushang.harness.agent_transcript.profile import (
     AgentTranscriptProfile,
     RecordSemantics,
@@ -254,6 +257,7 @@ __all__ = [
     "ModelSelectionSnapshot",
     "ModelSelectionCatalog",
     "MigrationDisposition",
+    "ProductTranscriptSession",
     "RecordAnnotationPatch",
     "RecordSemantics",
     "SessionV3MigrationError",
