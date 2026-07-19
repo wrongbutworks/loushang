@@ -1654,6 +1654,7 @@ def test_harness_extension_runtime_core_boundary_is_documented() -> None:
         "Harness Extension Runtime Core Boundary",
         "`loushang.harness.extensions`",
         "`ExtensionContributionAPI`",
+        "`ExtensionRuntime`",
         "same Harness-owned objects",
         "Coding keeps",
         "must not import coding, method, work, TUI, AI",
@@ -1675,6 +1676,28 @@ def test_harness_extension_runtime_core_boundary_is_documented() -> None:
     ).read_text(encoding="utf-8")
     assert "extension runtime core implementation" in inventory_text
     assert "Wave 2: Extension Runtime Core" in inventory_text
+
+    runner_imports = set(
+        _absolute_imports(Path("src/loushang/coding/extensions/runner.py"))
+    )
+    assert "loushang.harness.extensions.runtime.ExtensionRuntime" in runner_imports
+
+    runtime_path = Path("src/loushang/harness/extensions/runtime.py")
+    forbidden_prefixes = (
+        "loushang.coding",
+        "loushang.design",
+        "loushang.method",
+        "loushang.ppt",
+        "loushang.research",
+        "loushang.tui",
+        "loushang.work",
+    )
+    offenders = [
+        imported
+        for imported in _absolute_imports(runtime_path)
+        if _matches_any(imported, forbidden_prefixes)
+    ]
+    assert offenders == []
 
 
 def test_harness_control_plane_runtime_boundary_is_documented() -> None:
