@@ -15,6 +15,17 @@ from loushang.channel.json_projection import (
     ChannelJsonProjectionError,
     project_channel_value,
 )
+from loushang.channel.product_host import (
+    ProductHostAction,
+    ProductHostActionType,
+    ProductHostAdapter,
+    ProductHostRuntime,
+    ProductHostState,
+    ProductHostStateReader,
+    ProductHostTaskTracker,
+    dispatch_product_host_action,
+    normalize_product_host_action,
+)
 from loushang.channel.rpc_jsonl import (
     ChannelError,
     ChannelEventDelivery,
@@ -55,11 +66,20 @@ __all__ = [
     "ChannelRpcFrame",
     "ChannelRpcFrameKind",
     "ChannelUnsubscribe",
+    "ProductHostAction",
+    "ProductHostActionType",
+    "ProductHostAdapter",
+    "ProductHostRuntime",
+    "ProductHostState",
+    "ProductHostStateReader",
+    "ProductHostTaskTracker",
     "channel_envelope_from_json",
     "channel_envelope_to_json",
     "decode_rpc_jsonl_frame",
     "encode_rpc_jsonl_frame",
     "project_channel_value",
+    "dispatch_product_host_action",
+    "normalize_product_host_action",
     "rpc_jsonl_frame_from_json",
     "rpc_jsonl_frame_to_json",
 ]
