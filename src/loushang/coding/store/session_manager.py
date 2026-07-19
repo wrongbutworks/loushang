@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 import builtins
-from collections.abc import Mapping
-from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
 
 from loushang.coding.capability_profile import (
     coding_capability_snapshot_metadata,
@@ -29,6 +26,7 @@ from loushang.harness.agent_transcript import (
     AgentTranscriptRecord,
     AgentTranscriptRuntimeBinding,
     AgentTranscriptSession,
+    AgentTranscriptSessionFactory,
     delete_current_native_agent_transcript,
 )
 from loushang.harness.agent_transcript.catalog import (
@@ -49,58 +47,9 @@ from loushang.harness.agent_transcript.catalog import (
     project_agent_transcript_session_summary,
     refresh_all_agent_transcript_session_indexes,
 )
-from loushang.harness.agent_transcript.migration import NATIVE_CONVERSATION_VERSION
-from loushang.harness.conversation import (
-    ConversationHeader,
-)
+from loushang.harness.conversation import ConversationHeader
 from loushang.harness.runtime import ResolvedRuntimeProfile
 from loushang.protocol import JSONValue, require_json_value
-
-CURRENT_SESSION_VERSION = NATIVE_CONVERSATION_VERSION
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-
-def _generate_id() -> str:
-    return uuid4().hex[:8]
-
-
-def _new_header(
-    *,
-    conversation_id: str,
-    cwd: str,
-    parent_conversation_id: str | None = None,
-    parent_session: str | None = None,
-    runtime_profile_metadata: Mapping[str, JSONValue] | None = None,
-    capability_profile_metadata: Mapping[str, JSONValue] | None = None,
-) -> ConversationHeader:
-    metadata: dict[str, JSONValue] = {"cwd": str(cwd)}
-    if parent_session is not None:
-        metadata["parentSession"] = parent_session
-    if runtime_profile_metadata is not None:
-        metadata.update(runtime_profile_metadata)
-    if capability_profile_metadata is not None:
-        metadata.update(capability_profile_metadata)
-    return ConversationHeader(
-        conversation_id=conversation_id,
-        version=CURRENT_SESSION_VERSION,
-        created_at=_now_iso(),
-        parent_conversation_id=parent_conversation_id,
-        metadata=metadata,
-    )
-
-
-def _resolve_session_id(session_id: str | None) -> str:
-    if session_id is None:
-        return _generate_id()
-    if not isinstance(session_id, str):
-        raise TypeError("session_id must be a string")
-    if not session_id.strip():
-        raise ValueError("session_id must not be blank")
-    return session_id
-
 
 # Compatibility import path; the implementation is Harness-owned.
 build_session_context = build_agent_transcript_session_context
@@ -134,24 +83,45 @@ _LIFECYCLE = AgentTranscriptLifecycle(
 )
 
 
-def _new_coding_lifecycle_context(
-    *,
-    session_dir: str | Path,
-    cwd: str | Path,
-    persist: bool,
+def _coding_header_metadata(
+    runtime_profile: ResolvedRuntimeProfile,
+) -> dict[str, JSONValue]:
+    capability_profile = resolve_coding_capability_profile()
+    return {
+        **coding_runtime_snapshot_metadata(runtime_profile),
+        **coding_capability_snapshot_metadata(capability_profile),
+    }
+
+
+def _validate_coding_restored_header(
     header: ConversationHeader,
-) -> AgentTranscriptLifecycleContext:
-    return _LIFECYCLE.new_context(
-        session_dir=session_dir,
-        cwd=cwd,
-        persist=persist,
-        header=header,
-        session_file=(
-            _LIFECYCLE.default_native_session_file(session_dir, header)
-            if persist
-            else None
-        ),
-    )
+    runtime_profile: ResolvedRuntimeProfile,
+    persist: bool,
+) -> None:
+    snapshot = validate_coding_runtime_snapshot(header)
+    capability_snapshot = validate_coding_capability_snapshot(header)
+    capability_profile = resolve_coding_capability_profile()
+    if persist and snapshot is not None and snapshot != runtime_profile.snapshot():
+        raise ValueError(
+            "Coding cannot resume a session with an unsupported runtime profile"
+        )
+    if (
+        persist
+        and capability_snapshot is not None
+        and capability_snapshot != capability_profile.snapshot()
+    ):
+        raise ValueError(
+            "Coding cannot resume a session with an unsupported capability profile"
+        )
+
+
+_FACTORY = AgentTranscriptSessionFactory(
+    lifecycle=_LIFECYCLE,
+    resolve_binding_input=resolve_coding_runtime_profile,
+    header_metadata=_coding_header_metadata,
+    validate_restored_header=_validate_coding_restored_header,
+    session_file_factory=_LIFECYCLE.default_native_session_file,
+)
 
 
 class SessionManager(AgentTranscriptSession):
@@ -172,7 +142,6 @@ class SessionManager(AgentTranscriptSession):
             label_timestamps_by_target_id=(
                 lifecycle_session.label_timestamps_by_target_id
             ),
-            application_message_id_factory=_generate_id,
         )
 
     @property
@@ -194,56 +163,18 @@ class SessionManager(AgentTranscriptSession):
         parent_session: str | None = None,
         session_id: str | None = None,
     ) -> SessionManager:
-        resolved_session_id = _resolve_session_id(session_id)
-        normalized_cwd = str(cwd)
-        runtime_profile = resolve_coding_runtime_profile(persist=persist)
-        capability_profile = resolve_coding_capability_profile()
-        header = _new_header(
-            conversation_id=resolved_session_id,
-            cwd=normalized_cwd,
-            parent_session=parent_session,
-            runtime_profile_metadata=coding_runtime_snapshot_metadata(runtime_profile),
-            capability_profile_metadata=coding_capability_snapshot_metadata(
-                capability_profile
-            ),
-        )
-        context = _new_coding_lifecycle_context(
+        lifecycle_session = await _FACTORY.new(
             session_dir=session_dir,
-            cwd=normalized_cwd,
+            cwd=cwd,
             persist=persist,
-            header=header,
-        )
-        lifecycle_session = await _LIFECYCLE.create(
-            context,
-            runtime_profile,
+            parent_session=parent_session,
+            session_id=session_id,
         )
         return cls(lifecycle_session=lifecycle_session)
 
     @classmethod
     async def load(cls, session_file: Path, persist: bool = True) -> SessionManager:
-        path = Path(session_file).expanduser().resolve(strict=False)
-        context = _LIFECYCLE.current_native_context(path, persist=persist)
-        header = context.header
-        snapshot = validate_coding_runtime_snapshot(header)
-        capability_snapshot = validate_coding_capability_snapshot(header)
-        runtime_profile = resolve_coding_runtime_profile(persist=persist)
-        capability_profile = resolve_coding_capability_profile()
-        if persist and snapshot is not None and snapshot != runtime_profile.snapshot():
-            raise ValueError(
-                "Coding cannot resume a session with an unsupported runtime profile"
-            )
-        if (
-            persist
-            and capability_snapshot is not None
-            and capability_snapshot != capability_profile.snapshot()
-        ):
-            raise ValueError(
-                "Coding cannot resume a session with an unsupported capability profile"
-            )
-        lifecycle_session = await _LIFECYCLE.restore(
-            context,
-            runtime_profile,
-        )
+        lifecycle_session = await _FACTORY.load(session_file, persist=persist)
         return cls(lifecycle_session=lifecycle_session)
 
     @classmethod
@@ -254,40 +185,34 @@ class SessionManager(AgentTranscriptSession):
         cwd_override: str | Path | None = None,
         persist: bool = True,
     ) -> SessionManager:
-        path = Path(session_file)
-        manager = await cls.load(path, persist=persist)
-        if session_dir is not None:
-            manager.session_dir = Path(session_dir)
-        if cwd_override is not None:
-            cwd = str(cwd_override)
-            manager.cwd = cwd
-        return manager
+        lifecycle_session = await _FACTORY.open(
+            session_file,
+            session_dir=session_dir,
+            cwd_override=cwd_override,
+            persist=persist,
+        )
+        return cls(lifecycle_session=lifecycle_session)
 
     @classmethod
     async def continue_recent(
         cls, session_dir: str | Path, cwd: str | Path, persist: bool = True
     ) -> SessionManager:
-        summaries = cls.list_summaries(Path(session_dir))
-        for summary in summaries:
-            if summary.session_file is None:
-                continue
-            return await cls.open(
-                summary.session_file,
-                session_dir=session_dir,
-                cwd_override=cwd,
-                persist=persist,
-            )
-        return await cls.new(
-            session_dir=Path(session_dir), cwd=str(cwd), persist=persist
+        lifecycle_session = await _FACTORY.continue_recent(
+            session_dir=session_dir,
+            cwd=cwd,
+            persist=persist,
         )
+        return cls(lifecycle_session=lifecycle_session)
 
     @classmethod
     async def in_memory(
         cls, cwd: str | Path = ".", session_id: str | None = None
     ) -> SessionManager:
-        return await cls.new(
-            session_dir=Path(), cwd=str(cwd), persist=False, session_id=session_id
+        lifecycle_session = await _FACTORY.in_memory(
+            cwd=cwd,
+            session_id=session_id,
         )
+        return cls(lifecycle_session=lifecycle_session)
 
     @classmethod
     async def fork_from(
@@ -297,32 +222,11 @@ class SessionManager(AgentTranscriptSession):
         session_dir: str | Path,
         persist: bool = True,
     ) -> SessionManager:
-        source = await cls.load(Path(source_file), persist=False)
-        source_header = source.header
-        source_entries = source.get_entries()
-        await source.dispose_runtime_profile()
-        runtime_profile = resolve_coding_runtime_profile(persist=persist)
-        capability_profile = resolve_coding_capability_profile()
-        header = _new_header(
-            conversation_id=_generate_id(),
-            cwd=str(target_cwd),
-            parent_conversation_id=source_header.conversation_id,
-            parent_session=str(Path(source_file)),
-            runtime_profile_metadata=coding_runtime_snapshot_metadata(runtime_profile),
-            capability_profile_metadata=coding_capability_snapshot_metadata(
-                capability_profile
-            ),
-        )
-        context = _new_coding_lifecycle_context(
+        lifecycle_session = await _FACTORY.fork_from(
+            source_file,
+            target_cwd=target_cwd,
             session_dir=session_dir,
-            cwd=target_cwd,
             persist=persist,
-            header=header,
-        )
-        lifecycle_session = await _LIFECYCLE.create(
-            context,
-            runtime_profile,
-            records=source_entries,
         )
         return cls(lifecycle_session=lifecycle_session)
 
@@ -393,33 +297,10 @@ class SessionManager(AgentTranscriptSession):
         return await self.append_conversation_name(name)
 
     async def fork(self, leaf_id: str) -> SessionManager:
-        parent_session = (
-            str(self.session_file) if self.session_file is not None else None
-        )
-        header = _new_header(
-            conversation_id=_generate_id(),
-            cwd=self.cwd,
-            parent_conversation_id=self.header.conversation_id,
-            parent_session=parent_session,
-            runtime_profile_metadata=coding_runtime_snapshot_metadata(
-                self.runtime_profile
-            ),
-            capability_profile_metadata=coding_capability_snapshot_metadata(
-                resolve_coding_capability_profile()
-            ),
-        )
-
-        context = _new_coding_lifecycle_context(
-            session_dir=self.session_dir,
-            cwd=self.cwd,
-            persist=self.persist,
-            header=header,
-        )
-        lifecycle_session = await _LIFECYCLE.fork(
-            self._transcript,
-            context,
-            self.runtime_profile,
+        lifecycle_session = await _FACTORY.fork(
+            self._lifecycle_session,
             leaf_id=leaf_id,
+            binding_input=self.runtime_profile,
         )
         return SessionManager(lifecycle_session=lifecycle_session)
 
