@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
-import io
 import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from typing import Protocol, TextIO
 
+from loushang.channel.product_host import ProductHostRuntime
 from loushang.channel.rpc_jsonl import (
     ChannelError,
     ChannelEventDelivery,
@@ -58,30 +57,19 @@ class ChannelHost:
         self._stdin = stdin
         self._stdout = stdout
         self._stderr = sys.stderr if stderr is None else stderr
-        self._stdin_uses_thread = _stream_supports_fileno(stdin)
+        self._runtime = ProductHostRuntime(stdin=stdin)
         self._operation_requests: dict[str, str] = {}
         self._unsubscribe: ChannelUnsubscribe | None = None
-        self._running = False
 
     async def run(self) -> int:
         """Consume standard request frames until EOF or :meth:`stop`."""
 
-        self._running = True
         self._unsubscribe = self._port.subscribe_deliveries(self.deliver)
         try:
-            while self._running:
-                line = await self._read_line()
-                if line == "":
-                    break
-                if not line.strip():
-                    continue
-                await self.handle_line(line)
-            return 0
-        except Exception as error:
-            self._write_frame(
-                ChannelError(code="host_failure", message=str(error) or type(error).__name__)
+            return await self._runtime.run(
+                self.handle_line,
+                handle_failure=self._handle_host_failure,
             )
-            return 1
         finally:
             self.stop()
 
@@ -112,7 +100,7 @@ class ChannelHost:
     def stop(self) -> None:
         """Stop input processing and release the Product event subscription."""
 
-        self._running = False
+        self._runtime.stop()
         unsubscribe = self._unsubscribe
         self._unsubscribe = None
         if unsubscribe is not None:
@@ -122,7 +110,9 @@ class ChannelHost:
         """Deliver one Product-projected event or transport error to the client."""
 
         if not isinstance(delivery, ChannelEventDelivery | ChannelError):
-            raise TypeError("channel delivery must be an event delivery or channel error")
+            raise TypeError(
+                "channel delivery must be an event delivery or channel error"
+            )
         if isinstance(delivery, ChannelEventDelivery):
             delivery = self._correlate_event_delivery(delivery)
         self._write_frame(delivery)
@@ -156,9 +146,7 @@ class ChannelHost:
         self._operation_requests[operation_id] = request.request_id
         self._write_frame(result)
 
-    async def _cancel_operation(
-        self, request: ChannelOperationCancelRequest
-    ) -> None:
+    async def _cancel_operation(self, request: ChannelOperationCancelRequest) -> None:
         try:
             result = await self._port.cancel_operation(request)
         except Exception as error:
@@ -185,10 +173,12 @@ class ChannelHost:
             return
         self._write_frame(result)
 
-    async def _read_line(self) -> str:
-        if self._stdin_uses_thread:
-            return await asyncio.to_thread(self._stdin.readline)
-        return self._stdin.readline()
+    async def _handle_host_failure(self, error: Exception) -> None:
+        self._write_frame(
+            ChannelError(
+                code="host_failure", message=str(error) or type(error).__name__
+            )
+        )
 
     def _correlate_event_delivery(
         self, delivery: ChannelEventDelivery
@@ -235,17 +225,6 @@ def _event_operation_id(envelope: ChannelEnvelope) -> str | None:
         return operation_id
     correlation_id = getattr(payload, "correlation_id", None)
     return correlation_id if isinstance(correlation_id, str) else None
-
-
-def _stream_supports_fileno(stream: TextIO) -> bool:
-    fileno = getattr(stream, "fileno", None)
-    if not callable(fileno):
-        return False
-    try:
-        fileno()
-    except (io.UnsupportedOperation, OSError, ValueError):
-        return False
-    return True
 
 
 __all__ = [

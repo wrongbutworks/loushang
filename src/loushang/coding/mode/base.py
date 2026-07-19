@@ -11,23 +11,20 @@ from typing import (
     TextIO,
     TypedDict,
     cast,
-    get_args,
 )
 
+from loushang.channel.product_host import (
+    ProductHostAction,
+    ProductHostActionType,
+    ProductHostAdapter,
+    dispatch_product_host_action,
+    normalize_product_host_action,
+)
 from loushang.coding.event import JsonEventView
 from loushang.work import EventLogBackend
 
 ModeName = Literal["text", "print", "json", "rpc"]
-ModeActionType = Literal[
-    "start",
-    "stop",
-    "submit_input",
-    "render_event",
-    "get_state",
-    "wait_for_idle",
-    "rebind_session",
-    "dispose",
-]
+ModeActionType = ProductHostActionType
 
 
 class ModeState(TypedDict, total=False):
@@ -57,78 +54,33 @@ class ModeConfig:
     render_tool_events: bool = False
 
 
-@dataclass(frozen=True)
-class ModeAction:
-    """Serializable-ish command object for driving a mode adapter."""
-
-    type: ModeActionType
-    payload: object | None = None
+ModeAction = ProductHostAction
 
 
-_SUPPORTED_MODE_ACTION_TYPES = frozenset(get_args(ModeActionType))
+def normalize_mode_action(action: ModeAction | Mapping[str, object]) -> ModeAction:
+    """Compatibility wrapper for the Channel-owned host action normalizer."""
+
+    return normalize_product_host_action(action, action_name="Mode action")
 
 
-def normalize_mode_action(action: ModeAction | dict[str, object]) -> ModeAction:
-    """Normalize a dataclass or JSON-like payload into a validated `ModeAction`."""
-
-    if isinstance(action, ModeAction):
-        return action
-    if not isinstance(action, dict):
-        raise TypeError("Mode action must be a ModeAction or dict payload.")
-    raw_type = action.get("type")
-    if not isinstance(raw_type, str) or not raw_type:
-        raise ValueError("Mode action requires string type.")
-    if raw_type not in _SUPPORTED_MODE_ACTION_TYPES:
-        raise ValueError(f"Unsupported mode action: {raw_type}")
-    return ModeAction(cast(ModeActionType, raw_type), action.get("payload"))
-
-
-class ModeAdapter(Protocol):
-    """Low-level runtime mode contract."""
-
-    async def start(self, *args: object, **kwargs: object) -> int: ...
-
-    async def stop(self) -> int: ...
-
-    async def submit_input(self, input_payload: object) -> int: ...
-
-    async def wait_for_idle(self) -> int: ...
-
-    def rebind_session(self, session: object | None = None) -> int: ...
-
-    async def dispose(self) -> int: ...
-
-    def render_event(self, event: object) -> None: ...
+class ModeAdapter(ProductHostAdapter, Protocol):
+    """Coding compatibility view of the generic Product host contract."""
 
     def get_mode_state(self) -> ModeState: ...
 
 
-async def dispatch_mode_action(adapter: ModeAdapter, action: ModeAction | dict[str, object]) -> int | ModeState:
+async def dispatch_mode_action(
+    adapter: ModeAdapter,
+    action: ModeAction | Mapping[str, object],
+) -> int | ModeState:
     """Dispatch a mode action through the stable adapter contract."""
 
-    action = normalize_mode_action(action)
-    if action.type == "start":
-        if isinstance(action.payload, tuple):
-            return await adapter.start(*action.payload)
-        if action.payload is None:
-            return await adapter.start()
-        return await adapter.start(action.payload)
-    if action.type == "stop":
-        return await adapter.stop()
-    if action.type == "submit_input":
-        return await adapter.submit_input(action.payload)
-    if action.type == "render_event":
-        adapter.render_event(action.payload)
-        return 0
-    if action.type == "get_state":
-        return adapter.get_mode_state()
-    if action.type == "wait_for_idle":
-        return await adapter.wait_for_idle()
-    if action.type == "rebind_session":
-        return adapter.rebind_session(action.payload)
-    if action.type == "dispose":
-        return await adapter.dispose()
-    raise ValueError(f"Unsupported mode action: {action.type}")
+    result = await dispatch_product_host_action(
+        adapter,
+        action,
+        get_state=lambda current: cast(ModeAdapter, current).get_mode_state(),
+    )
+    return cast(int | ModeState, result)
 
 
 def create_mode_adapter(
