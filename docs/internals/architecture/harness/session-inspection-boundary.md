@@ -22,10 +22,12 @@ or session naming policy.
 
 ## Coding Binding
 
-Coding `SessionViewController` binds the Coding session record and existing
-runtime callbacks to `AgentSessionInspector`. Coding preserves Pi-style stats,
-camelCase serialization, and TUI/RPC/HTML presentation. The accepted
-`coding.session.types` imports re-export the Harness-owned observation types.
+Coding `AgentSession` binds the Coding session record and existing runtime
+callbacks directly to `AgentSessionInspector`. Pi-style stats and camelCase
+fork-candidate serialization are pure functions in
+`coding.platform.session_projection`; TUI/RPC/HTML presentation remains
+Coding-owned. The accepted `coding.session.types` imports re-export the
+Harness-owned observation types.
 
 ## Dependency Rule
 
@@ -38,7 +40,7 @@ APIs, configuration, or presentation types.
 
 - Harness tests assemble the inspector with a memory transcript and Agent
   without importing Coding.
-- Coding view-controller tests preserve context usage, stats, fork candidates,
+- Coding projection tests preserve context usage, stats, fork candidates,
   assistant text, and Pi stats behavior.
 - Architecture tests require the Coding adapter to use the Harness inspector
   and prevent a Coding import from entering the shared implementation.

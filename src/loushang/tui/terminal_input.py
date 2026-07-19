@@ -8,6 +8,7 @@ import sys
 import time
 import weakref
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from io import StringIO
 from typing import Any, Literal, Protocol, TextIO
@@ -250,10 +251,8 @@ async def read_input_chunk_or_render_tick(
                 render_wakeup.clear()
             if render_task is not None and not render_task.done():
                 render_task.cancel()
-                try:
+                with suppress(asyncio.CancelledError):
                     await render_task
-                except asyncio.CancelledError:
-                    pass
             if input_task in done:
                 return input_task.result()
             if active_task is not None and active_task in done:
@@ -266,10 +265,8 @@ async def read_input_chunk_or_render_tick(
     finally:
         if not input_task.done():
             input_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await input_task
-            except asyncio.CancelledError:
-                pass
 
 
 async def read_input_chunk(stdin: TextIO) -> str:

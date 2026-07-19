@@ -93,7 +93,7 @@ async def check_for_new_loushang_version(
             fetcher=fetcher,
             env=env,
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
     if latest and is_newer_package_version(latest, current_version):
         return latest

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import cast
 
 from loushang.agent import AgentMessage
 from loushang.ai import ApiKeyAuth, CallOptions, Context
@@ -8,7 +9,6 @@ from loushang.ai.types import TextPart, UserMessage
 from loushang.coding.compaction.compaction import (
     _collect_file_operation_details,
     _complete_text,
-    _entry_to_agent_message,
     _format_file_operations,
     _serialize_conversation,
 )
@@ -23,10 +23,13 @@ from loushang.coding.compaction.types import (
 )
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
+    AgentTranscriptRecord,
     context_item_to_model_message,
     estimate_message_tokens,
+    record_to_context_item,
 )
 from loushang.harness.context import build_summary_prompt
+from loushang.harness.conversation import ConversationRecord
 
 BRANCH_SUMMARY_PREAMBLE = """The user explored a different conversation branch before returning here.
 Summary of that exploration:
@@ -56,7 +59,7 @@ def prepare_branch_entries(
     total_tokens = 0
 
     for entry in reversed(entries):
-        message = _entry_to_agent_message(entry)
+        message = _record_to_agent_message(entry)
         if message is None:
             continue
         tokens = estimate_message_tokens(message)
@@ -72,7 +75,7 @@ def prepare_branch_entries(
 
     if not prepared_messages and entries:
         last_entry = entries[-1]
-        last_message = _entry_to_agent_message(last_entry)
+        last_message = _record_to_agent_message(last_entry)
         if last_message is not None:
             prepared_messages = [last_message]
             prepared_entry_ids = [last_entry.record_id]
@@ -155,6 +158,12 @@ def _normalize_branch_summary_messages(
     return prepare_branch_entries(
         list(entries_or_messages), token_budget=token_budget
     ).messages
+
+
+def _record_to_agent_message(entry: object) -> AgentMessage | None:
+    if not isinstance(entry, ConversationRecord):
+        return None
+    return record_to_context_item(cast(AgentTranscriptRecord, entry))
 
 
 def _branch_summary_prompt(

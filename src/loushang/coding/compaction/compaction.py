@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 
 from loushang.agent import AgentMessage
 from loushang.ai import ApiKeyAuth, CallOptions, Context, complete
@@ -11,42 +10,16 @@ from loushang.coding.compaction.profiles import (
     CODING_TURN_PREFIX_SUMMARY_PROFILE,
 )
 from loushang.harness.agent_transcript import (
-    AgentTranscriptProfile,
-    AgentTranscriptRecord,
-    CompactionPlan,
     CompactionPreparation,
     CompactionResult,
-    ContextCompactionCheckpoint,
     context_item_to_model_message,
-    estimate_context_tokens,
 )
-from loushang.harness.agent_transcript import (
-    calculate_context_tokens as calculate_context_tokens,
-)
-from loushang.harness.context import (
-    ConversationCompactionPlanner,
-)
-from loushang.harness.context.budget import calculate_compaction_budget
 from loushang.harness.context.summary import (
     build_summary_prompt,
     compose_summary_prompt,
 )
 
 TOOL_RESULT_MAX_CHARS = 2_000
-
-_TRANSCRIPT_PROFILE = AgentTranscriptProfile(
-    context_token_estimator=lambda messages: (
-        estimate_context_tokens(list(messages)).tokens
-    )
-)
-
-
-@dataclass(frozen=True)
-class _PreparedCompaction:
-    plan: CompactionPlan
-    previous_summary: str | None
-    messages_to_summarize: list[AgentMessage]
-    turn_prefix_messages: list[AgentMessage]
 
 
 def _assistant_text(message: object) -> str:
@@ -63,131 +36,6 @@ async def _complete_text(
     options: CallOptions | None = None,
 ) -> str:
     return _assistant_text(await complete(model, context, options))
-
-
-def should_compact(
-    context_tokens: int,
-    context_window: int,
-    *,
-    enabled: bool,
-    reserve_tokens: int,
-    compact_percent: float = 100.0,
-) -> bool:
-    if not enabled:
-        return False
-    budget = calculate_compaction_budget(
-        context_window=context_window,
-        compact_percent=compact_percent,
-        reserve_tokens=reserve_tokens,
-    )
-    return context_tokens > budget.threshold_tokens
-
-
-def prepare_compaction(
-    entries: list[AgentTranscriptRecord], keep_recent_tokens: int
-) -> CompactionPreparation:
-    prepared = _prepare_compaction(entries, keep_recent_tokens)
-    return CompactionPreparation(
-        first_kept_entry_id=prepared.plan.first_kept_entry_id,
-        messages_to_summarize=prepared.messages_to_summarize,
-        turn_prefix_messages=prepared.turn_prefix_messages,
-        is_split_turn=prepared.plan.is_split_turn,
-        tokens_before=prepared.plan.tokens_before,
-        previous_summary=prepared.previous_summary,
-        details={"compactionPlan": compaction_plan_to_payload(prepared.plan)},
-        plan=prepared.plan,
-    )
-
-
-def plan_compaction(
-    entries: list[AgentTranscriptRecord], keep_recent_tokens: int
-) -> CompactionPlan:
-    return _prepare_compaction(entries, keep_recent_tokens).plan
-
-
-def compaction_plan_to_payload(plan: CompactionPlan) -> dict[str, object]:
-    return {
-        "previousCompactionId": plan.previous_compaction_id,
-        "previousFirstKeptEntryId": plan.previous_first_kept_entry_id,
-        "firstKeptEntryId": plan.first_kept_entry_id,
-        "summarizedEntryIds": list(plan.summarized_entry_ids),
-        "turnPrefixEntryIds": list(plan.turn_prefix_entry_ids),
-        "keptEntryIds": list(plan.kept_entry_ids),
-        "isSplitTurn": plan.is_split_turn,
-        "tokensBefore": plan.tokens_before,
-        "keepRecentTokens": plan.keep_recent_tokens,
-    }
-
-
-def _prepare_compaction(
-    entries: list[AgentTranscriptRecord], keep_recent_tokens: int
-) -> _PreparedCompaction:
-    if not any(_entry_to_agent_message(entry) is not None for entry in entries):
-        raise ValueError("Compaction requires at least one visible message entry.")
-    shared_plan = _coding_compaction_planner().plan(
-        entries,
-        keep_recent_tokens=keep_recent_tokens,
-    )
-    messages_to_summarize = [
-        message
-        for entry in shared_plan.summarized_records
-        if (message := _entry_to_agent_message(entry)) is not None
-    ]
-    turn_prefix_messages = [
-        message
-        for entry in shared_plan.turn_prefix_records
-        if (message := _entry_to_agent_message(entry)) is not None
-    ]
-    summarized_entry_ids = list(shared_plan.summarized_record_ids)
-
-    previous_boundary = shared_plan.previous_summary
-    previous_first_kept_entry_id: str | None = None
-    if previous_boundary is not None:
-        previous_entry = next(
-            (
-                entry
-                for entry in entries
-                if entry.record_id == previous_boundary.record_id
-                and isinstance(entry.payload, ContextCompactionCheckpoint)
-            ),
-            None,
-        )
-        if previous_entry is not None and isinstance(
-            previous_entry.payload.first_kept_record_id, str
-        ):
-            previous_first_kept_entry_id = previous_entry.payload.first_kept_record_id
-    plan = CompactionPlan(
-        previous_compaction_id=(
-            previous_boundary.record_id if previous_boundary is not None else None
-        ),
-        previous_first_kept_entry_id=previous_first_kept_entry_id,
-        first_kept_entry_id=shared_plan.first_kept_record_id,
-        summarized_entry_ids=tuple(summarized_entry_ids),
-        turn_prefix_entry_ids=shared_plan.turn_prefix_record_ids,
-        kept_entry_ids=shared_plan.kept_record_ids,
-        is_split_turn=shared_plan.is_split_turn,
-        tokens_before=shared_plan.tokens_before,
-        keep_recent_tokens=shared_plan.keep_recent_tokens,
-    )
-    return _PreparedCompaction(
-        plan=plan,
-        messages_to_summarize=messages_to_summarize,
-        turn_prefix_messages=turn_prefix_messages,
-        previous_summary=(
-            previous_boundary.content if previous_boundary is not None else None
-        ),
-    )
-
-
-def _coding_compaction_planner() -> ConversationCompactionPlanner[
-    AgentTranscriptRecord, str
-]:
-    return ConversationCompactionPlanner(
-        _TRANSCRIPT_PROFILE.record_ports(),
-        turn_start_roles=frozenset({"user"}),
-        non_cut_roles=frozenset({"toolResult"}),
-        missing_previous_summary="error",
-    )
 
 
 async def compact(
@@ -236,10 +84,6 @@ async def compact(
         tokens_before=preparation.tokens_before,
         details=details,
     )
-
-
-def _entry_to_agent_message(entry: AgentTranscriptRecord) -> AgentMessage | None:
-    return _TRANSCRIPT_PROFILE.record_to_context_item(entry)
 
 
 async def _summarize_messages(

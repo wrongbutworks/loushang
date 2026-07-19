@@ -1,5 +1,11 @@
 # Capability Composition Binding
 
+## Status
+
+Implemented by the `harness/resource-packs` wave. The standard binding runtime
+now lives in `loushang.harness.capabilities.composition_runtime`; Coding's
+former private binding facade has been removed.
+
 ## Purpose
 
 This component binds Product-selected resource, prompt, skill, tool, and
@@ -67,7 +73,7 @@ for the following compatibility-preserving paths:
   handler; the command list continues to display built-ins, extensions, then
   resource commands.
 
-`coding.capability_profile` records the resolved selection snapshot under the
+`coding.capability_plan` records the resolved selection snapshot under the
 separate `capabilityProfile` header key. New sessions and forks write that
 snapshot; persistent resume rejects a different supported-profile snapshot.
 This is independent from `runtimeProfile`, which continues to select the

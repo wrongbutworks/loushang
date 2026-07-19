@@ -133,22 +133,23 @@ exact factories for:
 1. `coding.file` or `coding.memory` conversation storage, selected by the
    existing `persist` decision;
 2. the current `coding.agent_transcript` profile; and
-3. `coding.default` compaction behavior, which still delegates to Coding's
-   existing prompt, model invocation, and compaction functions.
+3. `agent_transcript.turn_aware_summary/v1`, the Harness-owned transcript
+   compaction mechanism. Coding binds only its prompt/model summary executor
+   and extension hook translation.
 
 `SessionManager` creates, loads, and forks these bindings. New session headers
 persist the pure JSON `runtimeProfile` snapshot. Persistent resume validates
 the snapshot and rejects an unsupported profile instead of silently choosing a
 different durable-store or transcript schema. A non-persistent open may use a
 memory runtime binding while preserving the source file's durable snapshot.
-`AgentSession` supplies the selected compaction behavior to its Coding
-controller and disposes the binding with the session.
+`AgentSession` supplies the selected Harness capability and Coding executor to
+its Product controller, and disposes the binding with the session.
 
 This adoption does not move `coding.settings_manager`, `coding.bootstrap`,
 extension discovery, model registry, auth resolution, Coding file naming, or
-compaction prompts into Harness. Coding has not yet admitted OEM or extension
-layers for these slots; each remains Product-only until that trust and policy
-surface has its own accepted design.
+compaction prompts into Harness. Coding admits trusted OEM selection of
+registered compaction mechanisms; extension hooks remain Product adapters and
+cannot register arbitrary planners or transcript writers.
 
 No channel is involved in resolution. TUI, Web, RPC, and future channel
 adapters consume the same resolved profile or its diagnostics and may bind

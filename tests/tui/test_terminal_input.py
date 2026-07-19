@@ -6,6 +6,7 @@ import os
 import sys
 import threading
 import time
+from contextlib import suppress
 from io import StringIO
 from types import SimpleNamespace
 from typing import Any
@@ -217,10 +218,8 @@ def test_windows_canceled_key_read_is_reused_by_next_reader(monkeypatch: Any) ->
         while not started.is_set():
             await asyncio.sleep(0.001)
         first.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await first
-        except asyncio.CancelledError:
-            pass
         while calls != ["start", "end"]:
             await asyncio.sleep(0.001)
         return await asyncio.wait_for(read_input_chunk(_TtyInput()), timeout=0.1)

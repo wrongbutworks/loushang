@@ -6,8 +6,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from loushang.ontology.core.object import OntologyObject
 from loushang.ontology.core.ontology import Ontology

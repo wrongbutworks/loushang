@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from loushang.coding.capability_profile import (
+from loushang.coding.capability_plan import (
     CODING_CAPABILITY_PROFILE_METADATA_KEY,
-    bind_coding_capability_runtime,
     coding_capability_plan,
     coding_capability_snapshot_metadata,
     resolve_coding_capability_profile,
     validate_coding_capability_snapshot,
 )
-from loushang.harness.capabilities import CapabilityPack
+from loushang.harness.capabilities import (
+    CapabilityPack,
+    bind_capability_composition_runtime,
+)
 from loushang.harness.capabilities.prompt import PromptSection
 from loushang.harness.conversation import ConversationHeader
 from loushang.harness.resources.types import ResourceBundle, SkillDescriptor
@@ -16,7 +18,7 @@ from loushang.harness.resources.types import ResourceBundle, SkillDescriptor
 
 def test_coding_capability_profile_binds_all_default_capabilities(tmp_path) -> None:
     profile = resolve_coding_capability_profile()
-    binding = bind_coding_capability_runtime(profile=profile)
+    binding = bind_capability_composition_runtime(profile)
     bundle = ResourceBundle(
         cwd=tmp_path,
         skills=[

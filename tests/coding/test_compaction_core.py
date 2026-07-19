@@ -16,15 +16,21 @@ from loushang.coding.compaction import (
     BranchSummaryResult,
     CompactionPreparation,
     CompactionResult,
-    calculate_context_tokens,
     compact,
-    estimate_context_tokens,
     generate_branch_summary,
-    plan_compaction,
-    prepare_compaction,
-    should_compact,
 )
 from loushang.coding.store import SessionManager
+from loushang.harness.agent_transcript import (
+    calculate_context_tokens,
+    estimate_context_tokens,
+)
+from loushang.harness.agent_transcript import (
+    plan_turn_aware_compaction as plan_compaction,
+)
+from loushang.harness.agent_transcript import (
+    prepare_turn_aware_compaction as prepare_compaction,
+)
+from loushang.harness.context.budget import calculate_compaction_budget
 
 
 @pytest.mark.anyio
@@ -70,7 +76,7 @@ async def test_complete_text_calls_root_complete_with_options(monkeypatch) -> No
     assert captured == {"model": "model", "context": context, "options": options}
 
 
-def test_compaction_package_exports_core_symbols() -> None:
+def test_compaction_package_exports_product_symbols() -> None:
     from loushang.coding.compaction import (
         SummaryQualityReport,
         validate_summary_contract,
@@ -78,7 +84,6 @@ def test_compaction_package_exports_core_symbols() -> None:
 
     assert CompactionResult is not None
     assert SummaryQualityReport is not None
-    assert callable(calculate_context_tokens)
     assert callable(validate_summary_contract)
 
 
@@ -129,9 +134,14 @@ def test_estimate_context_tokens_adds_trailing_message_estimate() -> None:
     assert estimate.tokens == estimate.usage_tokens + estimate.trailing_tokens
 
 
-def test_should_compact_uses_reserve_tokens() -> None:
-    assert should_compact(95_000, 100_000, enabled=True, reserve_tokens=8_192) is True
-    assert should_compact(90_000, 100_000, enabled=False, reserve_tokens=8_192) is False
+def test_compaction_budget_keeps_reserve_threshold_behavior() -> None:
+    budget = calculate_compaction_budget(
+        context_window=100_000,
+        compact_percent=100,
+        reserve_tokens=8_192,
+    )
+    assert 95_000 > budget.threshold_tokens
+    assert 90_000 <= budget.threshold_tokens
 
 
 def test_prepare_compaction_returns_first_kept_entry_and_messages_to_summarize(
@@ -753,16 +763,16 @@ def test_plan_compaction_partitions_do_not_overlap_when_all_context_is_kept(
     assert preparation.plan.kept_entry_ids == (user_id, assistant_id)
 
 
-def test_top_level_package_exports_compaction_surface() -> None:
+def test_harness_exports_turn_aware_compaction_surface() -> None:
     from loushang.coding import CompactionResult as TopLevelCompactionResult
-    from loushang.coding import prepare_compaction as top_level_prepare_compaction
     from loushang.coding import (
         validate_summary_contract as top_level_validate_summary_contract,
     )
     from loushang.coding.compaction import validate_summary_contract
+    from loushang.harness.agent_transcript import prepare_turn_aware_compaction
 
     assert TopLevelCompactionResult is CompactionResult
-    assert callable(top_level_prepare_compaction)
+    assert callable(prepare_turn_aware_compaction)
     assert top_level_validate_summary_contract is validate_summary_contract
 
 

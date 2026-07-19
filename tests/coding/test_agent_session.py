@@ -2400,10 +2400,10 @@ def test_agent_session_follow_up_and_state_snapshot(tmp_path) -> None:
     session = AgentSession(agent=agent, session_manager=manager)
 
     session.follow_up("later")
-    session._retry_future = object()  # type: ignore[assignment]
+    session._retry_runtime.retry_future = object()  # type: ignore[assignment]
     session._tree_controller._branch_summary_abort_controller = AbortController()
     state = session.get_state()
-    session._retry_future = None
+    session._retry_runtime.retry_future = None
     session._tree_controller._branch_summary_abort_controller = None
 
     assert state.run == RunState(status="idle")
