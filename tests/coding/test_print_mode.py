@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from contextlib import redirect_stderr
 from datetime import UTC, datetime
 from io import StringIO
@@ -88,6 +89,67 @@ def test_print_mode_run_once_prompts_session_and_waits_for_idle() -> None:
         assert exit_code == 0
         assert session.prompt_calls == [("hello", None)]
         assert session.wait_calls == 1
+
+    asyncio.run(scenario())
+
+
+def test_print_mode_json_prefers_common_runtime_event_stream() -> None:
+    from loushang.coding.mode import PrintMode
+
+    class FakeRuntime:
+        pass
+
+    class FakeSessionManager:
+        def get_header(self) -> ConversationHeader:
+            return ConversationHeader(
+                conversation_id="session-1",
+                version=1,
+                created_at="2026-07-19T00:00:00Z",
+                metadata={},
+            )
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.session_manager = FakeSessionManager()
+            self.runtime_listeners = []
+            self.legacy_subscribe_called = False
+
+        def subscribe(self, listener):
+            del listener
+            self.legacy_subscribe_called = True
+            raise AssertionError("JSON mode must subscribe to runtime events")
+
+        def subscribe_runtime_events(self, listener):
+            self.runtime_listeners.append(listener)
+
+            def unsubscribe() -> None:
+                self.runtime_listeners.remove(listener)
+
+            return unsubscribe
+
+        async def prompt(self, user_input: str, images=None) -> None:
+            del user_input, images
+            for listener in list(self.runtime_listeners):
+                listener(_runtime_event({"type": "agent_start"}, 1))
+
+        async def wait_for_idle(self) -> None:
+            return None
+
+    async def scenario() -> None:
+        stdout = StringIO()
+        session = FakeSession()
+        mode = PrintMode(
+            runtime=FakeRuntime(),
+            session=session,
+            stdout=stdout,
+            output_mode="json",
+        )
+
+        assert await mode.run_once("hello", dispose=False) == 0
+        assert session.legacy_subscribe_called is False
+        assert [
+            json.loads(line) for line in stdout.getvalue().splitlines() if line.strip()
+        ][1] == {"type": "agent_start"}
 
     asyncio.run(scenario())
 

@@ -133,6 +133,9 @@ planning, work event persistence, or AI provider behavior.
   common queue, compaction, retry, branch, metadata, package-progress, and
   transcript-commit facts, the single ordered Session stream, and Product event
   projection ownership.
+- [Runtime Event Projection And Channel Boundary](runtime-event-projection-channel-boundary.md)
+  defines strict transport-ready RuntimeEvent views, the narrow Channel value
+  dependency, Coding's Pi projection ownership, and the separate Work path.
 - [Session Lifecycle Runtime Boundary](session-lifecycle-runtime-boundary.md)
   defines active Product-session replacement, Product-selected store/hooks,
   staged import, configurable fork profiles, and Harness's conservative

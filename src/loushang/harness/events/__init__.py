@@ -1,49 +1,56 @@
 """Product-neutral in-process runtime event contracts and delivery."""
 
-from loushang.harness.events.bus import OrderedEventBus
-from loushang.harness.events.protocols import EventListener, EventPublisher
-from loushang.harness.events.publisher import RuntimeEventPublisher
-from loushang.harness.events.session import (
-    BranchSummaryCompleted,
-    BranchSummaryStarted,
-    CompactionReason,
-    ContextCompactionCompleted,
-    ContextCompactionStarted,
-    ConversationMetadataChanged,
-    PackageProgressAction,
-    PackageProgressChanged,
-    PackageProgressType,
-    QueueChanged,
-    RetryCompleted,
-    RetryStarted,
-    SessionRuntimeEventPayload,
-    ToolPolicyAuditEvent,
-    ToolPolicyAuditEventType,
-    session_runtime_event_kind,
-)
-from loushang.harness.events.types import RuntimeEvent, TranscriptRecordCommitted
+from __future__ import annotations
 
-__all__ = [
-    "BranchSummaryCompleted",
-    "BranchSummaryStarted",
-    "CompactionReason",
-    "ContextCompactionCompleted",
-    "ContextCompactionStarted",
-    "ConversationMetadataChanged",
-    "EventListener",
-    "EventPublisher",
-    "OrderedEventBus",
-    "PackageProgressAction",
-    "PackageProgressChanged",
-    "PackageProgressType",
-    "QueueChanged",
-    "RetryCompleted",
-    "RetryStarted",
-    "RuntimeEvent",
-    "RuntimeEventPublisher",
-    "SessionRuntimeEventPayload",
-    "ToolPolicyAuditEvent",
-    "ToolPolicyAuditEventType",
-    "TranscriptRecordCommitted",
-    "session_runtime_event_kind",
-]
+from importlib import import_module
+from typing import Any
+
+_EXPORT_MODULES = {
+    "BranchSummaryCompleted": "loushang.harness.events.session",
+    "BranchSummaryStarted": "loushang.harness.events.session",
+    "CompactionReason": "loushang.harness.events.session",
+    "ContextCompactionCompleted": "loushang.harness.events.session",
+    "ContextCompactionStarted": "loushang.harness.events.session",
+    "ConversationMetadataChanged": "loushang.harness.events.session",
+    "EventListener": "loushang.harness.events.protocols",
+    "EventPublisher": "loushang.harness.events.protocols",
+    "OrderedEventBus": "loushang.harness.events.bus",
+    "PackageProgressAction": "loushang.harness.events.session",
+    "PackageProgressChanged": "loushang.harness.events.session",
+    "PackageProgressType": "loushang.harness.events.session",
+    "QueueChanged": "loushang.harness.events.session",
+    "RetryCompleted": "loushang.harness.events.session",
+    "RetryStarted": "loushang.harness.events.session",
+    "RuntimeEvent": "loushang.harness.events.types",
+    "RuntimeEventDeliveryHint": "loushang.harness.events.projection",
+    "RuntimeEventPublisher": "loushang.harness.events.publisher",
+    "RuntimeEventView": "loushang.harness.events.projection",
+    "SessionRuntimeEventPayload": "loushang.harness.events.session",
+    "ToolPolicyAuditEvent": "loushang.harness.events.session",
+    "ToolPolicyAuditEventType": "loushang.harness.events.session",
+    "TranscriptRecordCommitted": "loushang.harness.events.types",
+    "matches_event_select": "loushang.harness.events.projection",
+    "normalize_event_select": "loushang.harness.events.projection",
+    "project_runtime_event": "loushang.harness.events.projection",
+    "select_runtime_event_views": "loushang.harness.events.projection",
+    "session_runtime_event_kind": "loushang.harness.events.session",
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Load optional event contracts only when a caller asks for them."""
+
+    try:
+        module_name = _EXPORT_MODULES[name]
+    except KeyError as exc:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from exc
+    value = getattr(import_module(module_name), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted({*globals(), *_EXPORT_MODULES})
+
+
+__all__ = list(_EXPORT_MODULES)

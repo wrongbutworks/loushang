@@ -103,6 +103,29 @@ def test_channel_envelope_carries_work_event_for_client_delivery() -> None:
     assert envelope.created_at is created_at
 
 
+def test_channel_envelope_carries_projected_runtime_event_for_client_delivery() -> None:
+    from loushang.channel import ChannelEnvelope
+    from loushang.harness.events import RuntimeEventView
+
+    created_at = datetime(2026, 6, 10, 12, 30, tzinfo=UTC)
+    event = RuntimeEventView(
+        event_id="runtime-event-1",
+        kind="agent.message_update",
+        stream_id="session:session-1",
+        sequence=4,
+        occurred_at=created_at,
+        event_type="assistant_delta",
+        view="assistant_stream",
+        payload={"type": "assistant_delta", "text": "hello"},
+        delivery_hint="coalesce",
+        session_id="session-1",
+    )
+
+    envelope = ChannelEnvelope(envelope_id="env-runtime-1", kind="event", payload=event)
+
+    assert envelope.payload is event
+
+
 def test_channel_envelope_rejects_mismatched_payload_kind() -> None:
     from loushang.channel import ChannelEnvelope
     from loushang.work import WorkOperation

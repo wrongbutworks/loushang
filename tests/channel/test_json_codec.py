@@ -139,6 +139,58 @@ def test_channel_envelope_json_round_trips_work_event() -> None:
     assert channel_envelope_from_json(data) == envelope
 
 
+def test_channel_envelope_json_round_trips_projected_runtime_event() -> None:
+    from loushang.channel import (
+        ChannelEnvelope,
+        channel_envelope_from_json,
+        channel_envelope_to_json,
+    )
+    from loushang.harness.events import RuntimeEventView
+
+    occurred_at = datetime(2026, 6, 10, 13, 1, tzinfo=UTC)
+    envelope = ChannelEnvelope(
+        envelope_id="env-runtime-1",
+        kind="event",
+        payload=RuntimeEventView(
+            event_id="runtime-event-1",
+            kind="agent.message_update",
+            stream_id="session:session-1",
+            sequence=7,
+            occurred_at=occurred_at,
+            event_type="assistant_delta",
+            view="assistant_stream",
+            payload={"type": "assistant_delta", "text": "hello"},
+            delivery_hint="coalesce",
+            session_id="session-1",
+            run_id="run-1",
+            source_event_ref="agent:event:1",
+            source_record_id="record-1",
+            correlation_id="call-1",
+        ),
+    )
+
+    data = channel_envelope_to_json(envelope)
+
+    assert data["payload"] == {
+        "event_family": "runtime",
+        "event_id": "runtime-event-1",
+        "kind": "agent.message_update",
+        "stream_id": "session:session-1",
+        "sequence": 7,
+        "occurred_at": "2026-06-10T13:01:00+00:00",
+        "event_type": "assistant_delta",
+        "view": "assistant_stream",
+        "delivery_hint": "coalesce",
+        "payload": {"type": "assistant_delta", "text": "hello"},
+        "session_id": "session-1",
+        "run_id": "run-1",
+        "source_event_ref": "agent:event:1",
+        "source_record_id": "record-1",
+        "correlation_id": "call-1",
+    }
+    assert channel_envelope_from_json(data) == envelope
+
+
 def test_channel_envelope_json_decode_rejects_unknown_kind() -> None:
     from loushang.channel import channel_envelope_from_json
 

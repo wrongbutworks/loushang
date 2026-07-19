@@ -8,6 +8,7 @@ from loushang.ai.json_codec import serialize_assistant_message_event
 from loushang.coding.event.serialization import serialize_session_event
 from loushang.coding.event.types import AgentSessionEvent
 from loushang.harness.agent_transcript import create_agent_transcript_message_codec
+from loushang.harness.events import matches_event_select
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.harness.tools.core import ToolRenderOutput
 from loushang.harness.tools.workspace.protocol import project_tool_details_for_protocol
@@ -41,18 +42,9 @@ def select_events(*patterns: str) -> tuple[str, ...]:
 
 
 def normalize_event_select(event_select: str | Sequence[str] | None) -> tuple[str, ...]:
-    if event_select is None:
-        return ()
-    if isinstance(event_select, str):
-        event_select = (event_select,)
-    normalized: list[str] = []
-    for pattern in event_select:
-        if not isinstance(pattern, str):
-            raise TypeError("event_select patterns must be strings")
-        if not pattern:
-            raise ValueError("event_select patterns must be non-empty")
-        normalized.append(pattern)
-    return tuple(normalized)
+    from loushang.harness.events import normalize_event_select as normalize
+
+    return normalize(event_select)
 
 
 def project_session_event(
@@ -106,14 +98,7 @@ def should_emit_projected_event(
     if not isinstance(event_type, str):
         return False
     expanded = _expand_patterns(event_select)
-    for pattern in expanded:
-        if pattern == "*":
-            return True
-        if pattern.endswith("*") and event_type.startswith(pattern[:-1]):
-            return True
-        if event_type == pattern:
-            return True
-    return False
+    return matches_event_select(event_type, expanded)
 
 
 def shape_stream_event(

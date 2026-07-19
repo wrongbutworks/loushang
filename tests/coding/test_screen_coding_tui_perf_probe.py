@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from loushang.coding.ui.perf_probe import (
+from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+from loushang.harnesstui.testing.performance import (
     build_synthetic_long_transcript_records,
     characterize_long_transcript_rendering,
 )
-from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.tui import RenderLoop
 
 

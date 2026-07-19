@@ -73,6 +73,14 @@ window generations, live assistant buffers, tool-record replacement, pending
 input queues, and presentation-ready status facts. This is UI projection state,
 not Harness Session lifecycle, persistence, or runtime orchestration.
 
+`loushang.harnesstui.conversation.window_budget` owns the pure active-window
+budgeting algorithm and its generic omission markers. It counts source logical
+lines independently of terminal width, includes one separator line between
+records, preserves the newest contiguous tail, and may tail-trim only the
+oldest retained boundary record. Coding continues to choose the default line
+budget, when trimming runs, how fully evicted counts accumulate, and which
+render-baseline reset reason is emitted.
+
 The reusable transcript source protocol, active-window source,
 record-composition helpers, and modal conversation reader also live here.
 Record composition may merge history with a live window, preserve
@@ -88,10 +96,11 @@ a session-like port. Products retain queue availability policy, tracing sinks,
 and the decision about when to present or restore queued input.
 
 This slice does not own session lifecycle, persistence, runtime orchestration,
-or raw Agent/Coding event projection. It does not enter the render hot path.
-The state and active-window algorithms retain their existing semantics after
-moving here. Incremental transcript segmentation, render caches, committed and
-draft segments, and frame composition remain untouched in their current owner.
+or raw Agent/Coding event projection. The state and active-window algorithms
+retain their existing semantics after moving here. Incremental transcript
+segmentation, render caches, committed and draft segments, streaming Markdown
+reuse, and tail clipping live in `loushang.tui.ui_parts.transcript`; Harnesstui
+does not duplicate or wrap that rendering engine.
 
 Compatibility modules in `loushang.coding.ui` may temporarily re-export moved
 symbols. They must depend inward on `loushang.harnesstui`; this package must
@@ -99,6 +108,7 @@ never depend back on those compatibility modules.
 
 The stable imports introduced by this slice are the explicit module paths
 `loushang.harnesstui.conversation.screen_state`,
+`loushang.harnesstui.conversation.window_budget`,
 `loushang.harnesstui.conversation.queue`,
 `loushang.harnesstui.conversation.reader` and
 `loushang.harnesstui.conversation.source`. The conversation package does not
@@ -158,8 +168,12 @@ and converts tool events through the Coding tool adapter before invoking the
 neutral projector. `loushang.harnesstui.conversation.plain_target` owns the
 reusable Plain projection target and its generic retry/compaction status copy.
 Coding keeps the raw-event facade and decides which events reach that target.
-The Screen implementation remains a product target and decides how projected
-facts mutate its app and product-specific status copy.
+`loushang.harnesstui.conversation.screen_target` owns the reusable Screen
+projection target: it maps neutral facts onto a product-neutral Screen app
+port, including optimistic user-echo handling, assistant lifecycle calls, tool
+record upserts, and compaction-record dispatch. Coding injects its running-tool
+title resolver, tool-record projector, and retry/compaction status copy, so
+tool labeling and all product wording remain outside Harnesstui.
 
 Surface-interest checks happen in the Coding adapter before queue reads, text
 joins, or tool rendering. This preserves Plain and Screen's distinct event
@@ -180,8 +194,47 @@ or bypass the frozen TUI render-performance contract. A marked Coding adapter
 test exercises the complete adapter-to-projector-to-target delta path, so the
 existing `make test-tui-render-contract` gate covers this new boundary.
 
-The explicit module path above is the stable import for this capability. The
-package initializer does not provide a convenience re-export.
+The explicit `projection`, `plain_target`, and `screen_target` module paths
+above are the stable imports for this capability. The package initializer does
+not provide convenience re-exports.
+
+## Conversation Screen Composition
+
+`loushang.harnesstui.conversation.screen_frame` builds the product-neutral
+working line, pending queue, status bar, and bottom-frame geometry from
+`ScreenConversationState`. Products inject immutable copy once when the screen
+binding is constructed; no copy profile is allocated while rendering.
+
+`loushang.harnesstui.conversation.screen_app` owns the reusable full-screen
+conversation shell: state transitions, assistant streaming coordination,
+transcript-reader surfaces, render requests, elapsed-time scheduling, active
+window replacement, transcript-region synchronization, and screen layout.
+It holds the canonical `loushang.tui.ui_parts.transcript.TranscriptRegion`
+directly and preserves the records list, cache, and segment identities.
+
+Coding retains a real `ScreenCodingTuiApp` subclass. That binding supplies its
+composer prompts, frame copy, theme, welcome panel, transcript presentation,
+320-line budget, compaction wording, path compaction, and tool-output preview
+policy. The shared app does not import Coding, AI, Agent, or raw product events.
+The explicit `screen_frame` and `screen_app` module paths are stable; the
+conversation package initializer does not re-export them.
+
+## Conversation Transcript Styling
+
+`loushang.harnesstui.conversation.transcript_style` owns the reusable
+presentation-ready transcript grammar that maps semantic spans to theme
+tokens. It recognizes tool markers, verbs, flags, activity actions,
+connectors, timing and omission metadata, errors, and worked dividers, then
+adds ANSI styling without changing plain text or visible width.
+
+Coding still owns the glyph and rail transformation in `_coding_line` and
+`_coding_lines`, its default theme token values, path compaction, duplicate
+command/timing suppression, and tool-output preview policy. The shared styler
+does not participate in segmentation, cache invalidation, frame planning, or
+terminal writes; its module-level regular expressions, span ordering, and
+per-line call shape remain part of the frozen render-performance contract.
+The explicit module path above is stable and is not re-exported by the
+conversation package initializer.
 
 ## Conversation Interaction Control
 
@@ -235,6 +288,9 @@ ports:
 - `loushang.harnesstui.testing.screen_loop_playback` owns scripted TTY chunks,
   real screen-loop playback, captured output and state artifacts, and the
   fluent loop scenario;
+- `loushang.harnesstui.testing.performance` owns neutral long-transcript
+  fixtures, visible/full-plan timing, render-loop operation metrics, and
+  optional plan commits over a narrow render app port;
 - `loushang.harnesstui.testing.scenarios.factory` binds those drivers to a
   product-supplied app, router, screen runner, artifact adapters, and frame
   contracts;
@@ -248,7 +304,10 @@ recipes into its concrete catalog under `loushang.coding.testing.tui.scenarios`
 and retains the app/router adapters, product-only scenarios, fakes, CLI runner,
 product copy, fixture volumes, and render-performance budgets. The former
 `loushang.coding.ui.playback*` modules remain temporary compatibility facades
-only; production UI modules do not own playback implementations.
+only; production UI modules do not own playback implementations. Persisted
+Coding Session materialization remains in
+`loushang.coding.testing.tui.performance`; the former
+`loushang.coding.ui.perf_probe` path is only a compatibility facade.
 
 ## Plain Conversation Presentation
 

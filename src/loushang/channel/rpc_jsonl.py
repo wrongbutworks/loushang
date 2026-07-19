@@ -48,7 +48,7 @@ class ChannelOperationAccepted:
 
 @dataclass(frozen=True)
 class ChannelEventDelivery:
-    """Deliver one WorkEvent, optionally correlated to its source request."""
+    """Deliver one WorkEvent or RuntimeEventView, optionally request-correlated."""
 
     envelope: ChannelEnvelope
     request_id: str | None = None

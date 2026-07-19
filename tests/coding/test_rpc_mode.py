@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import replace
+from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -39,6 +40,7 @@ from loushang.coding.store import SessionQuery
 from loushang.coding.types import ModelSelection
 from loushang.harness.agent_transcript import AGENT_MESSAGE_KIND
 from loushang.harness.conversation import ConversationRecord
+from loushang.harness.events import RuntimeEvent
 
 
 def _assistant_message(text: str) -> AssistantMessage:
@@ -931,6 +933,46 @@ def test_rpc_mode_projects_stream_event_shape_and_tool_correlation() -> None:
     }
     assert event["toolCallId"] == "tc1"
     assert event["toolName"] == "bash"
+
+
+def test_rpc_mode_prefers_common_runtime_event_stream() -> None:
+    from loushang.coding.mode import RpcMode
+
+    session = FakeSession(session_id="session-a", cwd="/tmp/project")
+    runtime_listeners = []
+
+    def subscribe_runtime_events(listener):
+        runtime_listeners.append(listener)
+
+        def unsubscribe() -> None:
+            runtime_listeners.remove(listener)
+
+        return unsubscribe
+
+    session.subscribe_runtime_events = subscribe_runtime_events
+    stdout = StringIO()
+    RpcMode(runtime=FakeRuntime(session), stdin=StringIO(), stdout=stdout)
+
+    for listener in list(runtime_listeners):
+        listener(
+            RuntimeEvent(
+                event_id="event-1",
+                kind="agent.agent_start",
+                stream_id="session:session-a",
+                sequence=1,
+                occurred_at=datetime(2026, 7, 19, tzinfo=UTC),
+                payload={"type": "agent_start"},
+            )
+        )
+
+    assert session.listeners == []
+    assert _parse_jsonl(stdout) == [
+        {
+            "type": "agent_start",
+            "eventType": "agent_start",
+            "stream": {"kind": "session_event", "view": "full"},
+        }
+    ]
 
 
 def test_rpc_mode_can_include_rendered_tool_event_payloads() -> None:

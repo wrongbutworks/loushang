@@ -10,6 +10,11 @@ from loushang.coding.event.projection import (
 from loushang.coding.event.runtime_projection import (
     project_runtime_event_to_session_event,
 )
+from loushang.coding.event.runtime_view import (
+    project_runtime_event_to_json_views,
+    shape_runtime_event_view,
+    should_emit_runtime_event_view,
+)
 from loushang.coding.event.serialization import serialize_session_event
 from loushang.coding.event.types import AgentSessionEvent
 
@@ -20,8 +25,11 @@ __all__ = [
     "normalize_event_select",
     "project_session_event",
     "project_runtime_event_to_session_event",
+    "project_runtime_event_to_json_views",
     "select_events",
     "serialize_session_event",
     "shape_stream_event",
+    "shape_runtime_event_view",
     "should_emit_projected_event",
+    "should_emit_runtime_event_view",
 ]

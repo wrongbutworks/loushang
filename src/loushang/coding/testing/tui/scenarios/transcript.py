@@ -10,7 +10,9 @@ from loushang.coding.testing.tui.scenario_binding import (
 )
 from loushang.coding.ui.controller import CodingUiController
 from loushang.coding.ui.mode import _screen_prompt_handler
-from loushang.coding.ui.perf_probe import build_synthetic_long_transcript_records
+from loushang.harnesstui.testing.performance import (
+    build_synthetic_long_transcript_records,
+)
 from loushang.harnesstui.testing.scenarios.transcript import (
     TranscriptScenarioFixtures,
     transcript_scenarios,
