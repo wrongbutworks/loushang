@@ -7,13 +7,44 @@ import sys
 from pathlib import Path
 
 RETIRED_CODING_UI_COMPATIBILITY_MODULES: dict[str, tuple[str, ...]] = {
+    "loushang.coding.interaction.plain_abort": (
+        "loushang.harnesstui.conversation.control",
+        "loushang.coding.ui.plain_app",
+    ),
+    "loushang.coding.interaction.plain_dispatch": (
+        "loushang.harnesstui.conversation.dispatch",
+        "loushang.coding.interaction.tui_profile",
+    ),
+    "loushang.coding.interaction.plain_follow_up": (
+        "loushang.harnesstui.conversation.control",
+        "loushang.coding.ui.plain_app",
+    ),
+    "loushang.coding.interaction.plain_host": (
+        "loushang.harnesstui.conversation.host",
+        "loushang.coding.interaction.tui_profile",
+    ),
+    "loushang.coding.interaction.plain_result": (
+        "loushang.harnesstui.conversation.dispatch",
+        "loushang.coding.ui.plain_app",
+    ),
+    "loushang.coding.interaction.routing": (
+        "loushang.harnesstui.conversation.host",
+        "loushang.coding.interaction.tui_profile",
+    ),
     "loushang.coding.ui.lifecycle": ("loushang.harnesstui.conversation.control",),
+    "loushang.coding.ui.event_stream": ("loushang.harnesstui.conversation.dispatch",),
     "loushang.coding.ui.pending_queue": ("loushang.harnesstui.conversation.queue",),
     "loushang.coding.ui.perf_probe": (
         "loushang.harnesstui.testing.performance",
         "loushang.coding.presentation.tui.history",
     ),
     "loushang.coding.ui.plain_toolbar": ("loushang.harnesstui.status.plain",),
+    "loushang.coding.ui.run_context": ("loushang.harnesstui.conversation.run_context",),
+    "loushang.coding.ui.screen_loop": (
+        "loushang.harnesstui.conversation.host",
+        "loushang.harnesstui.conversation.screen_runner",
+        "loushang.coding.ui.screen_input",
+    ),
     "loushang.coding.ui.playback": ("tests.coding.tui_support.playback",),
     "loushang.coding.ui.playback_fakes": ("tests.coding.tui_support.fakes",),
     "loushang.coding.ui.playback_runner": ("tests.coding.tui_support.runner",),
@@ -60,61 +91,45 @@ RETIRED_CODING_UI_COMPATIBILITY_MODULES: dict[str, tuple[str, ...]] = {
 
 MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
     "loushang.coding.ui.abort": (
-        "loushang.coding.interaction.plain_abort",
+        "loushang.harnesstui.conversation.control",
+        "loushang.coding.ui.plain_app",
     ),
-    "loushang.coding.ui.command_list": (
-        "loushang.coding.commands.tui",
-    ),
+    "loushang.coding.ui.command_list": ("loushang.coding.commands.tui",),
     "loushang.coding.ui.conversation_event_adapter": (
         "loushang.coding.presentation.tui.events",
     ),
-    "loushang.coding.ui.controller": (
-        "loushang.coding.interaction.controller",
-    ),
-    "loushang.coding.ui.debug_status": (
-        "loushang.coding.diagnostics.debug_status",
-    ),
-    "loushang.coding.ui.debug_command": (
-        "loushang.coding.diagnostics.tui",
-    ),
-    "loushang.coding.ui.event_policy": (
-        "loushang.coding.event.presentation_policy",
-    ),
+    "loushang.coding.ui.controller": ("loushang.coding.interaction.controller",),
+    "loushang.coding.ui.debug_status": ("loushang.coding.diagnostics.debug_status",),
+    "loushang.coding.ui.debug_command": ("loushang.coding.diagnostics.tui",),
+    "loushang.coding.ui.event_policy": ("loushang.coding.event.presentation_policy",),
     "loushang.coding.ui.intent": ("loushang.coding.interaction.intent",),
     "loushang.coding.ui.follow_up_queue": (
-        "loushang.coding.interaction.plain_follow_up",
+        "loushang.harnesstui.conversation.control",
+        "loushang.coding.ui.plain_app",
     ),
     "loushang.coding.ui.handlers": (
-        "loushang.coding.interaction.plain_host",
+        "loushang.harnesstui.conversation.host",
+        "loushang.coding.interaction.tui_profile",
     ),
     "loushang.coding.ui.model": ("loushang.coding.model_selection",),
-    "loushang.coding.ui.model_list": (
-        "loushang.coding.model_selection_tui",
-    ),
-    "loushang.coding.ui.plain_events": (
-        "loushang.coding.presentation.tui.plain",
-    ),
-    "loushang.coding.ui.plain_renderer": (
-        "loushang.coding.presentation.tui.plain",
-    ),
+    "loushang.coding.ui.model_list": ("loushang.coding.model_selection_tui",),
+    "loushang.coding.ui.plain_events": ("loushang.coding.presentation.tui.plain",),
+    "loushang.coding.ui.plain_renderer": ("loushang.coding.presentation.tui.plain",),
     "loushang.coding.ui.prompt_dispatch": (
-        "loushang.coding.interaction.plain_dispatch",
+        "loushang.harnesstui.conversation.dispatch",
+        "loushang.coding.interaction.tui_profile",
     ),
     "loushang.coding.ui.prompt_result": (
-        "loushang.coding.interaction.plain_result",
+        "loushang.harnesstui.conversation.dispatch",
+        "loushang.coding.ui.plain_app",
     ),
     "loushang.coding.ui.prompt_routing": (
-        "loushang.coding.interaction.routing",
+        "loushang.harnesstui.conversation.host",
+        "loushang.coding.interaction.tui_profile",
     ),
-    "loushang.coding.ui.session_view": (
-        "loushang.coding.presentation.session",
-    ),
-    "loushang.coding.ui.screen_events": (
-        "loushang.coding.presentation.tui.screen",
-    ),
-    "loushang.coding.ui.session_history": (
-        "loushang.coding.presentation.tui.history",
-    ),
+    "loushang.coding.ui.session_view": ("loushang.coding.presentation.session",),
+    "loushang.coding.ui.screen_events": ("loushang.coding.presentation.tui.screen",),
+    "loushang.coding.ui.session_history": ("loushang.coding.presentation.tui.history",),
     "loushang.coding.ui.settings_config": (
         "loushang.coding.presentation.settings",
         "loushang.harnesstui.settings.workflow",
@@ -143,14 +158,11 @@ RETIRED_CODING_UI_MODULES = {
 RETAINED_CODING_UI_PRODUCT_ADAPTER_MODULES = {
     "cli",
     "completion",
-    "event_stream",
     "hotkeys",
     "mode",
     "plain_app",
-    "run_context",
     "screen_app",
     "screen_input",
-    "screen_loop",
     "screen_surfaces",
     "settings_page",
     "startup",
@@ -169,13 +181,8 @@ NON_UI_CODING_OWNERS = (
 CODING_TUI_FEATURE_OWNERS = (
     "loushang.coding.commands.tui",
     "loushang.coding.diagnostics.tui",
-    "loushang.coding.interaction.plain_abort",
-    "loushang.coding.interaction.plain_dispatch",
-    "loushang.coding.interaction.plain_follow_up",
-    "loushang.coding.interaction.plain_host",
-    "loushang.coding.interaction.plain_result",
-    "loushang.coding.interaction.routing",
     "loushang.coding.interaction.screen_host",
+    "loushang.coding.interaction.tui_profile",
     "loushang.coding.model_selection_tui",
     "loushang.coding.policy.tui",
     "loushang.coding.presentation.resume",
@@ -215,11 +222,7 @@ def test_retired_coding_ui_modules_use_canonical_owners() -> None:
 
     canonical_modules = tuple(
         sorted(
-            {
-                owner
-                for owners in RETIRED_CODING_UI_MODULES.values()
-                for owner in owners
-            }
+            {owner for owners in RETIRED_CODING_UI_MODULES.values() for owner in owners}
         )
     )
     result = _run_python_import_boundary_check(
@@ -388,7 +391,8 @@ def test_mode_is_only_the_coding_tui_composition_root() -> None:
         "ScreenCodingConversationActionHost",
         "ScreenCodingEventProjector",
         "ScreenSurfaceManager",
-        "run_screen_coding_tui",
+        "run_action_host_conversation_screen",
+        "CODING_SCREEN_RUN_PROFILE",
         "build_plain_coding_tui_app",
     ):
         assert token in source
@@ -511,14 +515,19 @@ def test_shared_playback_support_does_not_own_coding_copy_or_budgets() -> None:
     binding = Path("tests/coding/tui_support/scenario_binding.py").read_text(
         encoding="utf-8"
     )
+    screen_profile = Path("src/loushang/coding/ui/screen_input.py").read_text(
+        encoding="utf-8"
+    )
     product = Path("tests/coding/tui_support/scenarios/product.py").read_text(
         encoding="utf-8"
     )
 
     assert "INTERACTION_FRAME_BUDGET" in budgets
     assert "LONG_TRANSCRIPT_FRAME_BUDGET" in budgets
-    assert "Conversation interrupted" in binding
-    assert "Operation aborted" in binding
+    assert "CODING_INTERRUPTION_MESSAGE" in binding
+    assert "CODING_CANCELLATION_MESSAGE" in binding
+    assert "Conversation interrupted" in screen_profile
+    assert "Operation aborted" in screen_profile
     assert "PRODUCT_COMPOSED_FRAME_BUDGET" in product
     assert "PRODUCT_STREAMING_CONTROL_FRAME_BUDGET" in product
 
@@ -526,21 +535,6 @@ def test_shared_playback_support_does_not_own_coding_copy_or_budgets() -> None:
 def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
     moved_definitions = {
         Path("src/loushang/coding/model_selection_tui.py"): ("class ModelChoice",),
-        Path("src/loushang/coding/interaction/plain_dispatch.py"): (
-            "class PromptDispatchOutcome",
-        ),
-        Path("src/loushang/coding/ui/run_context.py"): ("def _stable_emit_factory",),
-        Path("src/loushang/coding/ui/screen_loop.py"): (
-            "async def _finish_active_task",
-            "def _write_startup_welcome",
-            "def _configure_runtime_for_terminal_context",
-            "def _elapsed_since",
-            "def _pop_interrupt_pending_steer",
-            "async def _run_surface_intent_handler",
-            "async def _maybe_await",
-            "def _supports_keyword",
-            "def _terminal_size",
-        ),
         Path("src/loushang/coding/ui/screen_app.py"): (
             "def _trim_records_to_line_budget",
             "def _record_logical_line_count",
@@ -592,7 +586,16 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
         Path(f"src/loushang/harnesstui/conversation/{module}.py").read_text(
             encoding="utf-8"
         )
-        for module in ("control", "dispatch", "input", "run_context", "screen_runner")
+        for module in (
+            "control",
+            "dispatch",
+            "host",
+            "info",
+            "input",
+            "plain_app",
+            "run_context",
+            "screen_runner",
+        )
     )
 
     for token in (
@@ -607,10 +610,8 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
     ):
         assert token not in shared
 
-    follow_up = Path("src/loushang/coding/interaction/plain_follow_up.py").read_text(
-        encoding="utf-8"
-    )
-    screen_loop = Path("src/loushang/coding/ui/screen_loop.py").read_text(
+    plain_app = Path("src/loushang/coding/ui/plain_app.py").read_text(encoding="utf-8")
+    profile = Path("src/loushang/coding/interaction/tui_profile.py").read_text(
         encoding="utf-8"
     )
     screen_input = Path("src/loushang/coding/ui/screen_input.py").read_text(
@@ -619,25 +620,23 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
     screen_host = Path("src/loushang/coding/interaction/screen_host.py").read_text(
         encoding="utf-8"
     )
-    prompt_dispatch = Path(
-        "src/loushang/coding/interaction/plain_dispatch.py"
-    ).read_text(encoding="utf-8")
 
-    assert "Follow-up is only available while a run is active." in follow_up
-    assert "Follow-up queued." in follow_up
+    assert "Follow-up is only available while a run is active." in plain_app
+    assert "Follow-up queued." in plain_app
     assert (
         "Conversation interrupted - tell the model what to do differently."
-        in screen_loop
+        in screen_input
     )
-    assert "Operation aborted" in screen_loop
+    assert "Operation aborted" in screen_input
     assert "ImagePart" not in screen_input
     assert "ImagePart" in screen_host
     assert '".loushang" / "clipboard"' in screen_input
     assert "class ScreenInputResult" not in screen_input
     assert "class ScreenInputRouter" not in screen_input
-    assert "ConversationInputRouter(" in screen_input
-    assert "PromptIntent" in prompt_dispatch
-    assert "BashIntent" in prompt_dispatch
+    assert "bind_clipboard_image_input_router(" in screen_input
+    assert "PromptIntent" in profile
+    assert "BashIntent" in profile
+    assert "build_plain_conversation_app" in plain_app
 
 
 def test_shared_surface_controller_does_not_own_coding_policy_or_copy() -> None:
@@ -783,6 +782,9 @@ def test_shared_window_budget_does_not_own_screen_runtime_policy() -> None:
     shared = Path("src/loushang/harnesstui/conversation/window_budget.py").read_text(
         encoding="utf-8"
     )
+    screen_app = Path("src/loushang/harnesstui/conversation/screen_app.py").read_text(
+        encoding="utf-8"
+    )
     coding = Path("src/loushang/coding/ui/screen_app.py").read_text(encoding="utf-8")
 
     for token in (
@@ -796,8 +798,8 @@ def test_shared_window_budget_does_not_own_screen_runtime_policy() -> None:
         assert token not in shared
 
     assert "DEFAULT_ACTIVE_TRANSCRIPT_LINE_BUDGET = 320" in coding
-    assert "transcript_window_trimmed:active_line_budget" in coding
-    assert "trim_records_to_line_budget" in coding
+    assert "transcript_window_trimmed:active_line_budget" in screen_app
+    assert "trim_records_to_line_budget" in screen_app
 
 
 def test_tui_owns_transcript_region_while_coding_owns_presentation_policy() -> None:
@@ -856,12 +858,12 @@ def test_shared_screen_app_does_not_own_coding_presentation_policy() -> None:
         "_CodingTranscriptPresentation",
         "LoushangWelcomePanel",
         "Compacted summary:",
-        "trim_records_to_line_budget",
         "DEFAULT_ACTIVE_TRANSCRIPT_LINE_BUDGET = 320",
         "collapse_tool_output_preview",
     ):
         assert token not in shared
         assert token in coding
+    assert "trim_records_to_line_budget" in shared
     assert "class ScreenCodingTuiApp(ScreenConversationApp)" in coding
 
 

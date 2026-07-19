@@ -77,7 +77,7 @@ def test_run_coding_tui_uses_screen_loop_for_interactive_terminal(monkeypatch) -
     async def fail_prompt_loop(**_kwargs):
         raise AssertionError("interactive mode should not use non-interactive prompt loop")
 
-    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fake_screen_loop)
     monkeypatch.setattr(mode, "run_non_interactive_prompt_loop", fail_prompt_loop)
 
     exit_code = asyncio.run(
@@ -92,10 +92,10 @@ def test_run_coding_tui_uses_screen_loop_for_interactive_terminal(monkeypatch) -
 
     assert exit_code == 0
     assert captured["app"].__class__.__name__ == "ScreenCodingTuiApp"
-    assert (
-        captured["action_host"].__class__.__name__
-        == "ScreenCodingConversationActionHost"
+    assert captured["action_host"].__class__.__name__ == (
+        "ScreenCodingConversationActionHost"
     )
+    assert captured["profile"].__class__.__name__ == "ConversationScreenRunProfile"
     assert callable(captured["handle_local"])
     assert callable(captured["handle_surface_intent"])
 
@@ -114,7 +114,7 @@ def test_run_coding_tui_non_interactive_keeps_plain_prompt_loop(monkeypatch) -> 
         await kwargs["handle_prompt"]("hello")
         return 0
 
-    monkeypatch.setattr(mode, "run_screen_coding_tui", fail_screen_loop)
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fail_screen_loop)
     monkeypatch.setattr(mode, "run_non_interactive_prompt_loop", fake_prompt_loop)
 
     exit_code = asyncio.run(

@@ -41,13 +41,8 @@ CODING_TUI_PRODUCT_SOURCES := \
 	src/loushang/coding/policy/tui.py \
 	src/loushang/coding/interaction/controller.py \
 	src/loushang/coding/interaction/intent.py \
-	src/loushang/coding/interaction/plain_abort.py \
-	src/loushang/coding/interaction/plain_dispatch.py \
-	src/loushang/coding/interaction/plain_follow_up.py \
-	src/loushang/coding/interaction/plain_host.py \
-	src/loushang/coding/interaction/plain_result.py \
-	src/loushang/coding/interaction/routing.py \
 	src/loushang/coding/interaction/screen_host.py \
+	src/loushang/coding/interaction/tui_profile.py \
 	src/loushang/coding/presentation/resume.py \
 	src/loushang/coding/presentation/session.py \
 	src/loushang/coding/presentation/settings.py \
@@ -63,17 +58,10 @@ HARNESSTUI_TEST_PATHS := \
 	tests/architecture/test_import_boundaries.py \
 	tests/coding/test_platform_utils.py \
 	tests/coding/test_screen_conversation_action_host.py \
-	tests/coding/test_ui_handlers.py \
-	tests/coding/test_ui_abort.py \
+	tests/coding/test_coding_tui_profile.py \
 	tests/coding/test_ui_debug_command.py \
-	tests/coding/test_ui_event_stream.py \
-	tests/coding/test_ui_follow_up_queue.py \
 	tests/coding/test_ui_hotkeys.py \
 	tests/coding/test_ui_mode.py \
-	tests/coding/test_ui_prompt_dispatch.py \
-	tests/coding/test_ui_prompt_result.py \
-	tests/coding/test_ui_prompt_routing.py \
-	tests/coding/test_ui_run_context.py \
 	tests/coding/test_ui_startup.py \
 	tests/coding/test_ui_steer.py \
 	tests/coding/test_ui_import_boundaries.py \
@@ -94,7 +82,6 @@ HARNESSTUI_TEST_PATHS := \
 	tests/coding/test_ui_command_list.py \
 	tests/coding/test_ui_completion.py \
 	tests/coding/test_ui_conversation_event_adapter.py \
-	tests/coding/test_ui_dispatch_compatibility.py \
 	tests/coding/test_ui_model_list.py \
 	tests/coding/test_ui_plain_app.py \
 	tests/coding/test_ui_plain_renderer.py \

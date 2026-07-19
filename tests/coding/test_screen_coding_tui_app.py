@@ -832,6 +832,24 @@ def test_screen_coding_tui_complete_run_does_not_trim_active_transcript_line_win
     assert "turn 0 line 0" in rendered
 
 
+def test_screen_coding_tui_keeps_product_compaction_summary_copy() -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+
+    app = ScreenCodingTuiApp(
+        model_label="model",
+        cwd="/workspace",
+        branch="main",
+        session_label="session",
+    )
+    app.state.records.append(UserPromptRecord("old"))
+
+    app.compact_transcript_window(summary=" condensed ", max_records=1)
+
+    assert app.state.records == [
+        AssistantMessageRecord("Compacted summary:\n\ncondensed")
+    ]
+
+
 @pytest.mark.tui_render_contract
 def test_screen_coding_tui_explicit_active_window_trim_keeps_recent_tail() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp

@@ -3,8 +3,11 @@ from __future__ import annotations
 import asyncio
 
 
-def test_build_plain_coding_tui_app_wires_prompt_handler_without_legacy_status_api() -> None:
+def test_build_plain_coding_tui_app_wires_prompt_handler_without_legacy_status_api() -> (
+    None
+):
     from loushang.coding.ui.plain_app import build_plain_coding_tui_app
+    from loushang.harnesstui.conversation.control import ConversationTextAction
     from loushang.tui import CompletionItem, CompletionProvider
 
     emitted: list[str] = []
@@ -18,9 +21,16 @@ def test_build_plain_coding_tui_app_wires_prompt_handler_without_legacy_status_a
 
         def __init__(self) -> None:
             self.prompts: list[str] = []
+            self.follow_ups: list[str] = []
 
         async def prompt(self, text: str) -> None:
             self.prompts.append(text)
+            if text == "cancel":
+                app.lifecycle.mark_abort_requested()
+                raise asyncio.CancelledError
+
+        async def follow_up(self, text: str) -> None:
+            self.follow_ups.append(text)
 
         def get_thinking_level(self) -> str:
             return "high"
@@ -56,16 +66,28 @@ def test_build_plain_coding_tui_app_wires_prompt_handler_without_legacy_status_a
         emit=emit,
         trace=lambda name, **_data: traces.append(name),
         now=lambda: 10.0,
-        enable_debug=lambda *, session, scopes: enabled_debug.append((session, scopes)) or "/tmp/debug.log",
+        enable_debug=lambda *, session, scopes: (
+            enabled_debug.append((session, scopes)) or "/tmp/debug.log"
+        ),
         disable_debug=lambda: None,
         completion_provider=completion_provider,
     )
 
     result = asyncio.run(app.handle_prompt("hello"))
+    cancelled = asyncio.run(app.handle_prompt("cancel"))
+    app.lifecycle.begin_work()
+    queued = asyncio.run(app.action_host.follow_up(ConversationTextAction("  next  ")))
 
     assert result is None
-    assert session.prompts == ["hello"]
+    assert cancelled is None
+    assert queued is None
+    assert session.prompts == ["hello", "cancel"]
+    assert session.follow_ups == ["next"]
     assert "worked:0.0" in emitted
+    assert "status:Follow-up queued." in emitted
+    assert "error:Request cancelled." not in emitted
+    assert "prompt.suppressed_cancelled" in traces
+    assert app.lifecycle.aborted_id is None
     assert not hasattr(app, "status")
     assert not hasattr(app, "status_visible")
     assert "prompt.dispatch.start" in traces
@@ -86,7 +108,9 @@ def test_build_plain_coding_tui_app_wires_model_palette_chooser() -> None:
         session_name = "session-name"
 
         def __init__(self) -> None:
-            self.selection = ModelSelection(provider="moonshot", model_id="kimi-for-coding")
+            self.selection = ModelSelection(
+                provider="moonshot", model_id="kimi-for-coding"
+            )
             self.set_model_calls: list[ModelSelection] = []
 
         def get_model_selection(self) -> ModelSelection:
@@ -146,7 +170,9 @@ def test_build_plain_coding_tui_app_wires_model_palette_chooser() -> None:
 
     assert result is None
     assert emitted == ["model:select", "status:Model set: openai/gpt-5.4"]
-    assert session.set_model_calls == [ModelSelection(provider="openai", model_id="gpt-5.4")]
+    assert session.set_model_calls == [
+        ModelSelection(provider="openai", model_id="gpt-5.4")
+    ]
     assert seen
 
 

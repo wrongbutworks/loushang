@@ -1,0 +1,301 @@
+"""Product-neutral routing for conversation actions."""
+
+from __future__ import annotations
+
+import time
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, replace
+from enum import Enum
+from typing import Generic, TextIO, TypeVar
+
+from loushang.harnesstui.conversation.attachments import PromptImageAttachment
+from loushang.harnesstui.conversation.control import (
+    ConversationActionHost,
+    ConversationTextAction,
+)
+from loushang.harnesstui.conversation.screen_runner import (
+    AbortHandler,
+    ConversationInputRouterFactoryPort,
+    ConversationScreenPort,
+    LocalCommandPredicate,
+    ShouldExit,
+    SurfaceIntentHandler,
+    TerminalModeFactory,
+    TerminalSizeProvider,
+    TextHandler,
+    run_conversation_screen,
+)
+from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
+
+IntentT = TypeVar("IntentT")
+OutcomeT = TypeVar("OutcomeT")
+LocalT = TypeVar("LocalT")
+PendingT = TypeVar("PendingT")
+
+
+class ConversationHostRoute(Enum):
+    """Mechanism-level routes understood by a conversation action host."""
+
+    ABORT_SETTLING = "abort_settling"
+    FOLLOW_UP = "follow_up"
+    STEER = "steer"
+    LOCAL = "local"
+    DISPATCH = "dispatch"
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationHostDecision(Generic[LocalT]):
+    """One product decision projected onto a neutral host route.
+
+    ``text`` and ``source`` selectively replace the corresponding action
+    fields. Attachments always come from the submitted action, so routing a
+    prompt to follow-up or steer cannot accidentally discard them.
+    """
+
+    route: ConversationHostRoute
+    local: LocalT | None = None
+    text: str | None = None
+    source: str | None = None
+
+    def apply(self, action: ConversationTextAction) -> ConversationTextAction:
+        return replace(
+            action,
+            text=action.text if self.text is None else self.text,
+            source=action.source if self.source is None else self.source,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationHostProfile(Generic[IntentT, LocalT]):
+    """Product policy used by :class:`RoutedConversationActionHost`."""
+
+    parse: Callable[[ConversationTextAction], IntentT | None]
+    decide: Callable[
+        [IntentT, ConversationTextAction],
+        ConversationHostDecision[LocalT],
+    ]
+    is_exit: Callable[[IntentT], bool]
+    now: Callable[[], float] = time.monotonic
+    follow_up_source: str = "keybinding"
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationHostPorts(Generic[IntentT, OutcomeT, LocalT, PendingT]):
+    """Effects supplied by a product around the neutral routing mechanism."""
+
+    abort_settling: Callable[
+        [ConversationTextAction, IntentT],
+        Awaitable[None],
+    ]
+    follow_up: Callable[[ConversationTextAction], Awaitable[int | None]]
+    steer: Callable[[ConversationTextAction], Awaitable[int | None]]
+    local: Callable[
+        [ConversationTextAction, IntentT, LocalT | None],
+        Awaitable[int | None],
+    ]
+    dispatch: Callable[
+        [ConversationTextAction, IntentT],
+        Awaitable[OutcomeT],
+    ]
+    result: Callable[
+        [OutcomeT, ConversationTextAction, IntentT, float],
+        Awaitable[int | None],
+    ]
+    abort: Callable[[], Awaitable[None]]
+    restore_queue: Callable[[str], Awaitable[str | None]]
+    pending_messages: Callable[[], PendingT]
+
+
+class RoutedConversationActionHost(Generic[IntentT, OutcomeT, LocalT, PendingT]):
+    """Route neutral UI actions through injected product policy and effects.
+
+    This class coordinates ordering only. It owns no Session, product intent,
+    command catalog, renderer, queue, or model-facing attachment conversion.
+    """
+
+    def __init__(
+        self,
+        *,
+        profile: ConversationHostProfile[IntentT, LocalT],
+        ports: ConversationHostPorts[IntentT, OutcomeT, LocalT, PendingT],
+    ) -> None:
+        self._profile = profile
+        self._ports = ports
+
+    async def submit(self, action: ConversationTextAction) -> int | None:
+        prompt_started = self._profile.now()
+        intent = self._profile.parse(action)
+        if intent is None:
+            return None
+
+        decision = self._profile.decide(intent, action)
+        routed_action = decision.apply(action)
+        if decision.route is ConversationHostRoute.ABORT_SETTLING:
+            await self._ports.abort_settling(routed_action, intent)
+            return None
+        if decision.route is ConversationHostRoute.FOLLOW_UP:
+            return await self._ports.follow_up(routed_action)
+        if decision.route is ConversationHostRoute.STEER:
+            return await self._ports.steer(routed_action)
+        if decision.route is ConversationHostRoute.LOCAL:
+            return await self._ports.local(
+                routed_action,
+                intent,
+                decision.local,
+            )
+
+        outcome = await self._ports.dispatch(routed_action, intent)
+        return await self._ports.result(
+            outcome,
+            routed_action,
+            intent,
+            prompt_started,
+        )
+
+    async def steer(self, action: ConversationTextAction) -> int | None:
+        return await self._ports.steer(action)
+
+    async def follow_up(self, action: ConversationTextAction) -> int | None:
+        if action.source:
+            routed_action = action
+        else:
+            routed_action = replace(
+                action,
+                source=self._profile.follow_up_source,
+            )
+        return await self._ports.follow_up(routed_action)
+
+    async def abort(self) -> None:
+        await self._ports.abort()
+
+    async def restore_queue_to_composer(self, current_text: str) -> str | None:
+        return await self._ports.restore_queue(current_text)
+
+    def pending_messages(self) -> PendingT:
+        return self._ports.pending_messages()
+
+    def should_exit(self, text: str) -> bool:
+        intent = self._profile.parse(ConversationTextAction(text=text))
+        return intent is not None and self._profile.is_exit(intent)
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationScreenCallbacks:
+    """Action callbacks accepted by ``run_conversation_screen``."""
+
+    handle_prompt: TextHandler
+    handle_local: TextHandler
+    handle_steer: TextHandler
+    handle_followup: TextHandler
+    on_abort: AbortHandler
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationScreenRunProfile:
+    """Product policy needed by the shared action-host screen binding."""
+
+    input_router_factory: ConversationInputRouterFactoryPort | None
+    interruption_message: str
+    cancellation_message: str
+
+
+def bind_action_host_to_screen_runner(
+    host: ConversationActionHost,
+) -> ConversationScreenCallbacks:
+    """Adapt a neutral action host to the shared screen runner callbacks."""
+
+    return ConversationScreenCallbacks(
+        handle_prompt=_bind_text_action(host.submit, source="prompt"),
+        handle_local=_bind_text_action(host.submit, source="local"),
+        handle_steer=_bind_text_action(host.steer, source="steer"),
+        handle_followup=_bind_text_action(host.follow_up, source="follow_up"),
+        on_abort=host.abort,
+    )
+
+
+async def run_action_host_conversation_screen(
+    *,
+    app: ConversationScreenPort,
+    stdin: TextIO,
+    stdout: TextIO,
+    action_host: ConversationActionHost,
+    profile: ConversationScreenRunProfile,
+    handle_local: TextHandler | None = None,
+    handle_surface_intent: SurfaceIntentHandler | None = None,
+    should_exit: ShouldExit,
+    is_local_command: LocalCommandPredicate | None = None,
+    keybindings: KeybindingManager | KeybindingConfig | None = None,
+    terminal_mode_factory: TerminalModeFactory | None = None,
+    terminal_size_provider: TerminalSizeProvider | None = None,
+) -> int:
+    """Run a screen by binding one neutral action host exactly once."""
+
+    callbacks = bind_action_host_to_screen_runner(action_host)
+    return await run_conversation_screen(
+        app=app,
+        stdin=stdin,
+        stdout=stdout,
+        handle_prompt=callbacks.handle_prompt,
+        handle_local=handle_local,
+        handle_steer=callbacks.handle_steer,
+        handle_followup=callbacks.handle_followup,
+        handle_surface_intent=handle_surface_intent,
+        on_abort=callbacks.on_abort,
+        should_exit=should_exit,
+        is_local_command=is_local_command,
+        keybindings=keybindings,
+        terminal_mode_factory=terminal_mode_factory,
+        terminal_size_provider=terminal_size_provider,
+        input_router_factory=profile.input_router_factory,
+        interruption_message=profile.interruption_message,
+        cancellation_message=profile.cancellation_message,
+    )
+
+
+TextActionHandler = Callable[
+    [ConversationTextAction],
+    Awaitable[int | None],
+]
+
+
+def _bind_text_action(
+    handler: TextActionHandler,
+    *,
+    source: str,
+) -> TextHandler:
+    async def adapted(
+        text: str,
+        *,
+        attachments: tuple[object, ...] | None = None,
+    ) -> int | None:
+        return await handler(
+            ConversationTextAction(
+                text=text,
+                attachments=tuple(
+                    _require_prompt_image_attachment(attachment)
+                    for attachment in attachments or ()
+                ),
+                source=source,
+            )
+        )
+
+    return adapted
+
+
+def _require_prompt_image_attachment(value: object) -> PromptImageAttachment:
+    if not isinstance(value, PromptImageAttachment):
+        raise TypeError("conversation attachments must be prompt images")
+    return value
+
+
+__all__ = [
+    "ConversationHostDecision",
+    "ConversationHostPorts",
+    "ConversationHostProfile",
+    "ConversationHostRoute",
+    "ConversationScreenCallbacks",
+    "ConversationScreenRunProfile",
+    "RoutedConversationActionHost",
+    "bind_action_host_to_screen_runner",
+    "run_action_host_conversation_screen",
+]

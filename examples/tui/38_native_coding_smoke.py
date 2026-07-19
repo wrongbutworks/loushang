@@ -4,13 +4,22 @@ import asyncio
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 from loushang.coding.session.builtin_commands import list_builtin_command_descriptors
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_loop import run_screen_coding_tui
+from loushang.coding.ui.screen_input import (
+    CODING_CANCELLATION_MESSAGE,
+    CODING_INTERRUPTION_MESSAGE,
+    build_screen_input_router,
+)
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
+from loushang.harnesstui.conversation.screen_runner import (
+    ConversationInputRouterFactoryPort,
+    run_conversation_screen,
+)
 from loushang.harnesstui.status.provider import StatusProvider
 
 
@@ -77,7 +86,7 @@ async def main() -> int:
         app.end_assistant()
         return None
 
-    return await run_screen_coding_tui(
+    return await run_conversation_screen(
         app=app,
         stdin=sys.stdin,
         stdout=sys.stdout,
@@ -87,6 +96,12 @@ async def main() -> int:
         on_abort=lambda: None,
         should_exit=lambda text: text in {"/quit", "/exit"},
         is_local_command=surface_manager.is_local_command,
+        input_router_factory=cast(
+            ConversationInputRouterFactoryPort,
+            build_screen_input_router,
+        ),
+        interruption_message=CODING_INTERRUPTION_MESSAGE,
+        cancellation_message=CODING_CANCELLATION_MESSAGE,
     )
 
 

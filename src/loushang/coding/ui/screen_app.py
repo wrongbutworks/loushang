@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -19,12 +20,8 @@ from loushang.harnesstui.conversation.screen_frame import (
     ScreenFrameCopy,
     ScreenFramePresentation,
 )
-from loushang.harnesstui.conversation.screen_state import ActiveTranscriptWindow
 from loushang.harnesstui.conversation.transcript_style import (
     apply_transcript_style as apply_coding_transcript_style,
-)
-from loushang.harnesstui.conversation.window_budget import (
-    trim_records_to_line_budget,
 )
 from loushang.tui import (
     Composer,
@@ -56,6 +53,10 @@ _CODING_SCREEN_FRAME_COPY = ScreenFrameCopy(
     followup_label="Queued follow-up inputs",
     followup_hint="alt + ↑ edit last queued message",
 )
+
+
+def _coding_compaction_summary(summary: str) -> str:
+    return f"Compacted summary:\n\n{summary.strip()}"
 
 
 def _terminal_transcript_theme() -> ThemeResolver:
@@ -137,6 +138,10 @@ class ScreenCodingTuiApp(ScreenConversationApp):
     transcript_theme: ThemeResolver = field(default_factory=_terminal_transcript_theme)
     welcome_theme: ThemeResolver | None = field(default_factory=loushang_welcome_theme)
     active_transcript_line_budget: int = DEFAULT_ACTIVE_TRANSCRIPT_LINE_BUDGET
+    compaction_summary_formatter: Callable[[str], str] = field(
+        default=_coding_compaction_summary,
+        repr=False,
+    )
     _transcript_presentation: _CodingTranscriptPresentation = field(
         init=False,
         repr=False,
@@ -151,43 +156,6 @@ class ScreenCodingTuiApp(ScreenConversationApp):
     def _prepare_transcript_presentation(self) -> None:
         self._transcript_presentation.cwd = self.state.cwd
 
-    def compact_transcript_window(
-        self,
-        *,
-        summary: str,
-        max_records: int = 80,
-    ) -> None:
-        summary_record = AssistantMessageRecord(
-            f"Compacted summary:\n\n{summary.strip()}"
-        )
-        active_records = tuple(self.state.records)
-        keep_count = max(0, max_records - 1)
-        kept_records = active_records[-keep_count:] if keep_count else ()
-        evicted_count = max(0, len(active_records) - len(kept_records))
-        self.replace_transcript_window(
-            (summary_record, *kept_records),
-            evicted_prefix_record_count=self.state.evicted_prefix_record_count
-            + evicted_count,
-            reason="compaction",
-        )
-
-    def append_context_compaction_record(
-        self,
-        *,
-        summary: str = "",
-        tokens_before: int | None = None,
-        max_records: int = 80,
-    ) -> None:
-        self.state.records.append(
-            ContextCompactionRecord(summary=summary, tokens_before=tokens_before)
-        )
-        self.state.mark_records_changed()
-        evicted = self.state.trim_transcript_prefix(max_records=max_records)
-        if evicted:
-            self._render_baseline_reset_reason = (
-                "transcript_window_trimmed:context_compaction"
-            )
-
     def startup_welcome_panel(self) -> LoushangWelcomePanel:
         return LoushangWelcomePanel(
             directory=self.state.cwd,
@@ -195,25 +163,6 @@ class ScreenCodingTuiApp(ScreenConversationApp):
             model=self.state.model_label or "",
             theme=self.welcome_theme,
         )
-
-    def trim_active_transcript_window(self) -> None:
-        records, evicted_count, changed = trim_records_to_line_budget(
-            tuple(self.state.records),
-            line_budget=self.active_transcript_line_budget,
-        )
-        if not changed:
-            return
-        self.state.replace_transcript_window(
-            ActiveTranscriptWindow(
-                records=records,
-                evicted_prefix_record_count=self.state.evicted_prefix_record_count
-                + evicted_count,
-            )
-        )
-        self._render_baseline_reset_reason = (
-            "transcript_window_trimmed:active_line_budget"
-        )
-
 
 def _coding_line(
     line: str,

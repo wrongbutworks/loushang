@@ -4,8 +4,16 @@ from collections.abc import Callable
 from typing import TextIO, cast
 
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_input import build_screen_input_router
-from loushang.coding.ui.screen_loop import run_screen_coding_tui
+from loushang.coding.ui.screen_input import (
+    CODING_CANCELLATION_MESSAGE,
+    CODING_INTERRUPTION_MESSAGE,
+    CODING_SCREEN_RUN_PROFILE,
+    build_screen_input_router,
+)
+from loushang.harnesstui.conversation.control import ConversationActionHost
+from loushang.harnesstui.conversation.host import (
+    run_action_host_conversation_screen,
+)
 from loushang.harnesstui.conversation.screen_runner import (
     AbortHandler,
     ConversationInputResultPort,
@@ -34,11 +42,6 @@ from tests.coding.tui_support.scenarios.budgets import (
     LONG_TRANSCRIPT_FRAME_BUDGET,
 )
 
-CODING_INTERRUPTION_MESSAGE = (
-    "Conversation interrupted - tell the model what to do differently."
-)
-CODING_CANCELLATION_MESSAGE = "Operation aborted"
-
 
 def coding_scenario_input_router_factory(
     *,
@@ -59,6 +62,38 @@ def coding_scenario_input_router_factory(
             width=width,
             height=height,
         ),
+    )
+
+
+async def run_coding_test_screen(
+    *,
+    app: ScreenCodingTuiApp,
+    stdin: TextIO,
+    stdout: TextIO,
+    action_host: ConversationActionHost,
+    handle_local: TextHandler | None = None,
+    handle_surface_intent: SurfaceIntentHandler | None = None,
+    should_exit: ShouldExit,
+    is_local_command: LocalCommandPredicate | None = None,
+    keybindings: KeybindingManager | KeybindingConfig | None = None,
+    terminal_mode_factory: TerminalModeFactory | None = None,
+    terminal_size_provider: TerminalSizeProvider | None = None,
+) -> int:
+    """Bind the Coding test profile directly to canonical screen owners."""
+
+    return await run_action_host_conversation_screen(
+        app=app,
+        stdin=stdin,
+        stdout=stdout,
+        action_host=action_host,
+        profile=CODING_SCREEN_RUN_PROFILE,
+        handle_local=handle_local,
+        handle_surface_intent=handle_surface_intent,
+        should_exit=should_exit,
+        is_local_command=is_local_command,
+        keybindings=keybindings,
+        terminal_mode_factory=terminal_mode_factory,
+        terminal_size_provider=terminal_size_provider,
     )
 
 
@@ -87,7 +122,7 @@ async def run_coding_scenario_screen_loop(
         or cancellation_message != CODING_CANCELLATION_MESSAGE
     ):
         raise ValueError("Coding playback copy does not match the product adapter")
-    return await run_screen_coding_tui(
+    return await run_coding_test_screen(
         app=cast(ScreenCodingTuiApp, app),
         stdin=stdin,
         stdout=stdout,
@@ -137,4 +172,5 @@ __all__ = [
     "CODING_SCENARIO_FRAME_CONTRACTS",
     "coding_scenario_input_router_factory",
     "run_coding_scenario_screen_loop",
+    "run_coding_test_screen",
 ]

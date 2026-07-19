@@ -4,6 +4,7 @@ import time
 import traceback
 from typing import Any, TextIO
 
+from loushang.coding.event.presentation_policy import event_writes_transcript
 from loushang.coding.interaction.controller import CodingUiController
 from loushang.coding.interaction.intent import QuitIntent, parse_prompt_intent
 from loushang.coding.interaction.screen_host import (
@@ -39,16 +40,20 @@ from loushang.coding.presentation.tui.runtime import (
 from loushang.coding.presentation.tui.screen import ScreenCodingEventProjector
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.plain_app import build_plain_coding_tui_app
-from loushang.coding.ui.run_context import (
-    open_coding_tui_run_context,
-    subscribe_session_events,
-)
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_loop import run_screen_coding_tui
+from loushang.coding.ui.screen_input import CODING_SCREEN_RUN_PROFILE
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.coding.ui.startup import (
     CodingTuiStartupSnapshot,
     load_coding_tui_startup_snapshot,
+)
+from loushang.harnesstui.conversation.dispatch import StableEventStreamHandler
+from loushang.harnesstui.conversation.host import (
+    run_action_host_conversation_screen,
+)
+from loushang.harnesstui.conversation.run_context import (
+    open_interaction_run_context,
+    subscribe_events,
 )
 from loushang.harnesstui.status.persistence import (
     statusline_settings_from_store,
@@ -197,12 +202,13 @@ async def _run_screen_interactive_tui(
         ):
             try:
                 _trace_start(snapshot, interactive=True)
-                unsubscribe = subscribe_session_events(session, projector.handle)
-                exit_code = await run_screen_coding_tui(
+                unsubscribe = subscribe_events(session, projector.handle)
+                exit_code = await run_action_host_conversation_screen(
                     app=app,
                     stdin=stdin,
                     stdout=stdout,
                     action_host=action_host,
+                    profile=CODING_SCREEN_RUN_PROFILE,
                     handle_local=surface_manager.handle_text,
                     handle_surface_intent=surface_manager.handle_surface_intent,
                     should_exit=_screen_should_exit,
@@ -249,13 +255,24 @@ async def _run_plain_tui(
             renderer,
             tool_definition_resolver=tool_definition_resolver(session),
         )
-        run_context = open_coding_tui_run_context(
-            session=session,
-            snapshot=snapshot,
-            event_renderer=event_renderer,
+        run_context = open_interaction_run_context(
+            event_source=session,
+            listener=event_renderer.handle,
+            interactive_listener_factory=lambda emit: StableEventStreamHandler(
+                renderer=event_renderer,
+                emit=emit,
+                writes_stably=event_writes_transcript,
+                event_type=lambda event: str(event.get("type") or "unknown"),
+                trace=_trace,
+            ).handle,
+            exit_context=log_context(
+                session_id=snapshot.session_observability_id,
+                cwd=snapshot.cwd,
+                mode="tui",
+            ),
             interactive=False,
-            log_context_factory=log_context,
             trace=_trace,
+            on_open=lambda: _trace_start(snapshot, interactive=False),
         )
         app = build_plain_coding_tui_app(
             runtime=runtime,
