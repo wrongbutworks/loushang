@@ -10,6 +10,7 @@ compaction implementation.
 
 The Facade provides:
 
+- stable session identity and Product-persisted display-name updates;
 - queue-aware state and transcript context/record/file reads;
 - active-tool and command catalog access, plus ordered command dispatch;
 - prompt, steering, follow-up, queue inspection/clear, runtime subscription,
@@ -17,6 +18,13 @@ The Facade provides:
 - selected command-tool execution with output forwarding, cancellation, and
   retry controls;
 - common transcript inspection for fork candidates and assistant text.
+
+`SessionControlPort` is the narrow, non-generic portion of this Facade used by
+standard hosts and Product adapters. It contains identity, prompt/queue/abort
+controls, runtime-event subscription, retry controls, and Product-bound
+maintenance controls. It intentionally excludes model selection, provider
+authentication, extension UI, Product command schemas, Bash options, and
+presentation payloads.
 
 `SessionRuntime`, the Agent transcript profile, session capabilities runtime,
 and maintenance runtimes remain their own owners. The Facade only makes their
@@ -29,7 +37,7 @@ A Product supplies its already-admitted:
 - `SessionRuntime` with turn policy, application-input policy, event routing,
   and transcript-commit binding;
 - a `SessionFacadePorts` bundle containing transcript, tools, commands,
-  command-execution, view, and retry ports;
+  command-execution, view, retry, identity, and maintenance ports;
 - prompt content, model/thinking selection, context policy, lifecycle cleanup,
   and channel event projection.
 
@@ -52,6 +60,13 @@ In particular, Pi-style `executeBash` options and result aliases remain in
 `BashController`. Harness exposes only neutral selected command-tool execution;
 it must not acquire Pi protocol vocabulary.
 
+`AgentSession.session_control` exposes the Harness `SessionControlPort`. The
+standard Coding Channel adapter consumes that port directly. Coding RPC routes
+common control commands through it, while retaining its legacy event
+subscription fallback and Pi JSON projection: the latter carries Coding event
+names, aliases, correlation fields, and optional tool rendering, so it is a
+Product adapter rather than a Harness event schema.
+
 ## Dependency Rule
 
 `harness.session.facade` may depend on public Agent/AI message values required
@@ -66,5 +81,7 @@ policy is passed through the bound ports rather than imported.
   runtime, transcript, tools, commands, command tool, view, and retry port.
 - Coding session regressions preserve the public `AgentSession` behavior while
   its common operations delegate through `SessionFacade`.
+- Channel tests bind only `SessionControlPort`; RPC tests preserve Coding's
+  legacy event projection while its control commands use the same port.
 - Architecture tests prohibit Coding imports and Pi protocol names in the
   Facade, and require Coding `AgentSession` to adopt it.

@@ -29,6 +29,10 @@ class _FakeSession:
         self.release = asyncio.Event()
         self.unsubscribe_calls = 0
 
+    @property
+    def session_control(self) -> "_FakeSession":
+        return self
+
     def subscribe_runtime_events(self, listener):
         self.listeners.append(listener)
 
@@ -147,9 +151,7 @@ def test_channel_host_correlates_coding_runtime_views_to_standard_request() -> N
         session.emit(_queue_runtime_event())
 
         frames = [
-            json.loads(line)
-            for line in stdout.getvalue().splitlines()
-            if line.strip()
+            json.loads(line) for line in stdout.getvalue().splitlines() if line.strip()
         ]
         assert frames[0]["frame_type"] == "operation_accepted"
         assert frames[1]["frame_type"] == "event"
@@ -183,9 +185,7 @@ def test_run_channel_mode_uses_active_session_and_releases_subscription() -> Non
         )
 
         frames = [
-            json.loads(line)
-            for line in stdout.getvalue().splitlines()
-            if line.strip()
+            json.loads(line) for line in stdout.getvalue().splitlines() if line.strip()
         ]
         assert exit_code == 0
         assert frames == [

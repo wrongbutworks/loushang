@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
-from typing import Protocol, TextIO, cast
+from typing import TextIO, cast
 
 from loushang.channel import (
     ChannelDelivery,
@@ -28,29 +28,12 @@ from loushang.coding.event import (
     should_emit_runtime_event_view,
 )
 from loushang.harness.events import RuntimeEvent
+from loushang.harness.session import SessionControlPort
 
-RuntimeEventListener = Callable[[RuntimeEvent[object]], Awaitable[None] | None]
 Unsubscribe = Callable[[], None]
 
-
-class CodingChannelSession(Protocol):
-    """The narrow Coding session shape needed by the standard Channel adapter."""
-
-    session_id: str
-
-    def subscribe_runtime_events(
-        self, listener: RuntimeEventListener
-    ) -> Unsubscribe: ...
-
-    def prompt(
-        self,
-        text: str,
-        *,
-        streaming_behavior: str | None = None,
-        source: str | None = None,
-    ) -> Awaitable[None]: ...
-
-    def abort(self) -> Awaitable[None] | None: ...
+# Compatibility type alias. The actual control contract is Harness-owned.
+CodingChannelSession = SessionControlPort
 
 
 class CodingChannelOperationPort:
@@ -59,7 +42,7 @@ class CodingChannelOperationPort:
     def __init__(
         self,
         *,
-        session: CodingChannelSession,
+        session: SessionControlPort,
         event_view: JsonEventView = "full",
         event_select: Sequence[str] | str | None = None,
     ) -> None:
@@ -286,7 +269,7 @@ async def run_channel_mode(
 ) -> int:
     """Run the standard Channel JSONL host against the active Coding session."""
 
-    session = _current_session(runtime)
+    session = _current_session_control(runtime)
     port = CodingChannelOperationPort(
         session=session,
         event_view=event_view,
@@ -299,14 +282,17 @@ async def run_channel_mode(
         port.close()
 
 
-def _current_session(runtime: object) -> CodingChannelSession:
+def _current_session_control(runtime: object) -> SessionControlPort:
     getter = getattr(runtime, "get_current_session", None)
     if not callable(getter):
         raise TypeError("Channel mode runtime must provide get_current_session()")
     session = getter()
     if session is None:
         raise RuntimeError("Channel mode requires an active Coding session")
-    return cast(CodingChannelSession, session)
+    control = getattr(session, "session_control", None)
+    if control is None:
+        raise TypeError("Active Coding session must expose Harness session_control")
+    return cast(SessionControlPort, control)
 
 
 __all__ = [

@@ -38,6 +38,7 @@ from loushang.harness.agent_transcript import (
 from loushang.harness.diagnostics.types import DiagnosticsQuery
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.harness.session import SessionControlPort
 from loushang.protocol import JsonValueError, require_json_mapping, require_json_value
 
 _THINKING_LEVEL_ORDER: tuple[str, ...] = (
@@ -384,6 +385,7 @@ class RpcMode(ModeAdapter):
         self.render_tool_events = render_tool_events
         self._stdin_uses_thread = _stream_supports_fileno(stdin)
         self.session = self._require_current_session()
+        self._session_control = self._find_session_control(self.session)
         self._tool_render_runtime: ToolRenderRuntime | None = None
         self._tool_definition_resolver: ToolDefinitionResolver | None = None
         self._configure_tool_rendering(self.session)
@@ -414,7 +416,7 @@ class RpcMode(ModeAdapter):
         return 0
 
     async def wait_for_idle(self) -> int:
-        await self.session.wait_for_idle()
+        await self._require_session_control().wait_for_idle()
         return 0
 
     def rebind_session(self, session: object | None = None) -> int:
@@ -550,7 +552,7 @@ class RpcMode(ModeAdapter):
         images = self._coerce_images(payload.get("images"))
         task = asyncio.create_task(
             self._run_prompt(
-                session=self.session,
+                session_control=self._require_session_control(),
                 command_id=command_id,
                 message=message,
                 images=images,
@@ -565,7 +567,7 @@ class RpcMode(ModeAdapter):
     async def _run_prompt(
         self,
         *,
-        session: Any,
+        session_control: SessionControlPort,
         command_id: str | None,
         message: str,
         images: list[object] | None,
@@ -580,14 +582,14 @@ class RpcMode(ModeAdapter):
                 self._write_response_success(id=command_id, command="prompt")
 
         try:
-            await session.prompt(
+            await session_control.prompt(
                 message,
                 images=images,
                 streaming_behavior=streaming_behavior,
                 source="rpc",
                 preflight_result=on_preflight,
             )
-            await session.wait_for_idle()
+            await session_control.wait_for_idle()
         except Exception as exc:
             if not preflight_succeeded:
                 self._write_response_error(
@@ -603,7 +605,7 @@ class RpcMode(ModeAdapter):
     def _handle_steer_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        self.session.steer(
+        self._require_session_control().steer(
             self._require_string(payload, "message"),
             images=self._coerce_images(payload.get("images")),
         )
@@ -612,7 +614,7 @@ class RpcMode(ModeAdapter):
     def _handle_follow_up_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        self.session.follow_up(
+        self._require_session_control().follow_up(
             self._require_string(payload, "message"),
             images=self._coerce_images(payload.get("images")),
         )
@@ -622,7 +624,7 @@ class RpcMode(ModeAdapter):
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         del payload
-        self.session.abort()
+        self._require_session_control().abort()
         self._write_response_success(id=command_id, command="abort")
 
     def _handle_get_state_command(
@@ -1235,9 +1237,7 @@ class RpcMode(ModeAdapter):
             )
             return
         try:
-            result = self.session.set_session_name(name)
-            if inspect.isawaitable(result):
-                await result
+            await self._require_session_control().set_session_name(name)
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -1949,7 +1949,7 @@ class RpcMode(ModeAdapter):
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         try:
-            result = await self.session.compact(
+            result = await self._require_session_control().compact(
                 custom_instructions=self._optional_string(
                     payload, "customInstructions", "custom_instructions"
                 )
@@ -1983,7 +1983,7 @@ class RpcMode(ModeAdapter):
         if not isinstance(enabled, bool):
             raise ValueError("set_auto_retry requires boolean enabled")
         try:
-            self.session.set_auto_retry_enabled(enabled)
+            self._require_session_control().set_auto_retry_enabled(enabled)
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -1997,7 +1997,7 @@ class RpcMode(ModeAdapter):
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         del payload
-        self.session.abort_retry()
+        self._require_session_control().abort_retry()
         self._write_response_success(id=command_id, command="abort_retry")
 
     def _handle_set_auto_compaction_command(
@@ -2007,7 +2007,7 @@ class RpcMode(ModeAdapter):
         if not isinstance(enabled, bool):
             raise ValueError("set_auto_compaction requires boolean enabled")
         try:
-            self.session.set_auto_compaction_enabled(enabled)
+            self._require_session_control().set_auto_compaction_enabled(enabled)
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -2049,6 +2049,7 @@ class RpcMode(ModeAdapter):
     def _bind_session(self, session: Any) -> None:
         self._unsubscribe()
         self.session = session
+        self._session_control = self._find_session_control(session)
         self._configure_tool_rendering(session)
         self._unsubscribe = self._subscribe_to_events(session)
         self._bind_extension_ui_context(session)
@@ -2073,6 +2074,14 @@ class RpcMode(ModeAdapter):
                 )
 
     def _subscribe_to_events(self, session: Any):
+        """Keep Coding's legacy event projection at the Product boundary.
+
+        Standard Channel consumes ``SessionControlPort`` directly.  RPC also
+        supports Pi-compatible event aliases and render-time enrichment, so it
+        retains this Product adapter and prefers the common runtime stream when
+        the bound Product session exposes one.
+        """
+
         subscribe_runtime_events = getattr(session, "subscribe_runtime_events", None)
         if callable(subscribe_runtime_events):
             return subscribe_runtime_events(self._handle_runtime_event)
@@ -2125,6 +2134,17 @@ class RpcMode(ModeAdapter):
         if session is None:
             raise RuntimeError("RPC mode requires an active session")
         return session
+
+    def _find_session_control(self, session: Any) -> SessionControlPort | None:
+        control = getattr(session, "session_control", None)
+        if control is None:
+            return None
+        return cast(SessionControlPort, control)
+
+    def _require_session_control(self) -> SessionControlPort:
+        if self._session_control is None:
+            raise TypeError("RPC mode session must expose Harness session_control")
+        return self._session_control
 
     def _serialize_session_state(self, session: Any) -> RpcSessionState:
         """Return the canonical `get_state` payload for the current session."""

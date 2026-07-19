@@ -517,6 +517,12 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
+    channel_source = Path("src/loushang/coding/mode/channel_mode.py").read_text(
+        encoding="utf-8"
+    )
+    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+        encoding="utf-8"
+    )
     boundary = Path(
         "docs/internals/architecture/harness/session-facade-boundary.md"
     ).read_text(encoding="utf-8")
@@ -524,6 +530,10 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     assert "loushang.coding" not in facade_source
     assert "execute_pi_style" not in facade_source
     assert "SessionFacade" in session_source
+    assert "SessionControlPort" in facade_source
+    assert "def session_control" in session_source
+    assert "SessionControlPort" in channel_source
+    assert "_require_session_control" in rpc_source
     assert "Product Binding" in boundary
     assert "Coding Binding" in boundary
     assert "Pi-style" in boundary
