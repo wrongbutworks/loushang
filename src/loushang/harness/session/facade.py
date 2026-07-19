@@ -152,6 +152,16 @@ class SessionMaintenancePort(Protocol):
     def abort_compaction(self) -> None: ...
 
 
+class SessionResourcePort(Protocol):
+    """Resource refresh controls exposed by a composed Product session."""
+
+    def get_prompt_templates(self) -> list[object]: ...
+
+    async def refresh_resources(self) -> None: ...
+
+    def request_resource_refresh(self) -> None: ...
+
+
 class SessionControlPort(Protocol):
     """Stable common control surface exposed by a composed Product session.
 
@@ -230,6 +240,10 @@ class SessionControlPort(Protocol):
 
     def abort_compaction(self) -> None: ...
 
+    async def refresh_resources(self) -> None: ...
+
+    def request_resource_refresh(self) -> None: ...
+
 
 @dataclass(frozen=True)
 class SessionFacadePorts(
@@ -258,6 +272,7 @@ class SessionFacadePorts(
     retry: SessionRetryPort
     identity: SessionIdentityPort
     maintenance: SessionMaintenancePort
+    resources: SessionResourcePort
 
 
 @dataclass
@@ -289,6 +304,7 @@ class SessionFacade(
     retry: SessionRetryPort
     identity: SessionIdentityPort
     maintenance: SessionMaintenancePort
+    resources: SessionResourcePort
 
     @classmethod
     def from_ports(
@@ -317,6 +333,7 @@ class SessionFacade(
             retry=ports.retry,
             identity=ports.identity,
             maintenance=ports.maintenance,
+            resources=ports.resources,
         )
 
     @property
@@ -518,6 +535,15 @@ class SessionFacade(
     def abort_compaction(self) -> None:
         self.maintenance.abort_compaction()
 
+    def get_prompt_templates(self) -> list[object]:
+        return self.resources.get_prompt_templates()
+
+    async def refresh_resources(self) -> None:
+        await self.resources.refresh_resources()
+
+    def request_resource_refresh(self) -> None:
+        self.resources.request_resource_refresh()
+
 
 __all__ = [
     "OutputCallback",
@@ -531,6 +557,7 @@ __all__ = [
     "SessionFacadePorts",
     "SessionIdentityPort",
     "SessionMaintenancePort",
+    "SessionResourcePort",
     "SessionRetryPort",
     "SessionToolsPort",
     "SessionTranscriptPort",
