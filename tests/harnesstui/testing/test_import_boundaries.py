@@ -12,6 +12,7 @@ import sys
 for module_name in (
     "loushang.harnesstui.testing.ports",
     "loushang.harnesstui.testing.input_playback",
+    "loushang.harnesstui.testing.performance",
     "loushang.harnesstui.testing.screen_loop_playback",
 ):
     importlib.import_module(module_name)

@@ -6,6 +6,13 @@ Frozen on 2026-07-16 against `main` commit
 `5fbf2674a82b1585bae729e93e7c63fb6ae45a5f`.
 The initial isolated contract run contains 151 passing cases.
 
+The screen-presentation extraction extends the isolated contract to 161 passing
+cases on 2026-07-19: the existing 154 cases plus direct ownership, identity,
+streaming-presentation parity, cache-promotion parity, and segment-invalidation
+checks, including the flat streaming fallback. Moving ownership into TUI and
+Harnesstui may not change the existing thresholds, exceptional repaint reasons,
+or structural work bounds in the same change.
+
 This contract is the guardrail for later TUI extraction and refactoring. The
 freeze itself changes tests, test entry points, and documentation only. It does
 not change the renderer, markdown renderer, transcript projection, or coding UI
