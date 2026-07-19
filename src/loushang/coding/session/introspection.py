@@ -4,7 +4,6 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from loushang.ai.types import AssistantMessage, ToolCall, ToolResultMessage, UserMessage
-from loushang.coding.session.types import ContextUsage, SessionStats, TokenUsageTotals
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
     APPLICATION_MESSAGE_KIND,
@@ -15,16 +14,21 @@ from loushang.harness.agent_transcript import (
     calculate_context_tokens,
     estimate_context_tokens,
 )
+from loushang.harness.session.inspection import (
+    ContextUsage,
+    SessionStats,
+    TokenUsageTotals,
+)
 
 if TYPE_CHECKING:
     from loushang.coding.session.agent_session import AgentSession
 
 
 def build_context_usage(session: AgentSession) -> ContextUsage | None:
-    view_controller = getattr(session, "_view_controller", None)
-    view_getter = getattr(view_controller, "get_context_usage", None)
-    if callable(view_getter):
-        usage = view_getter()
+    inspector = getattr(session, "_session_inspector", None)
+    get_inspected_usage = getattr(inspector, "get_context_usage", None)
+    if callable(get_inspected_usage):
+        usage = get_inspected_usage()
         if isinstance(usage, ContextUsage) or usage is None:
             return usage
 

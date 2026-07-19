@@ -3,7 +3,7 @@
 ## Status
 
 Directory for detailed, capability-specific binding contracts. Runtime-profile
-resolution and capability-composition admission are implemented. Product
+resolution and capability-composition binding are implemented. Product
 adoption remains incremental; other filenames remain planning placeholders
 until their adoption wave.
 

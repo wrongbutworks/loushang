@@ -12,9 +12,14 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
+from loushang.coding.platform.session_projection import (
+    project_pi_fork_candidates,
+    project_pi_session_stats,
+)
 from loushang.coding.session.types import ModelSelection, RunState
 from loushang.coding.store import SessionManager
 from loushang.harness.conversation import CommandExecutionRecord
+from loushang.harness.session import AgentSessionInspector
 
 
 def _model() -> Model:
@@ -96,9 +101,29 @@ def _tool_only_assistant_message() -> AssistantMessage:
     )
 
 
-def test_session_view_controller_builds_usage_and_pi_stats(tmp_path) -> None:
-    from loushang.coding.session.session_view_controller import SessionViewController
+def _inspector(
+    *,
+    agent: Agent,
+    session_manager: SessionManager,
+    active_tool_names: list[str],
+    is_retrying: bool,
+    is_compacting: bool,
+    model_selection: ModelSelection | None,
+) -> AgentSessionInspector:
+    return AgentSessionInspector(
+        agent=agent,
+        session=session_manager,
+        get_session_id=lambda: session_manager.get_session_record().session_id,
+        get_session_name=lambda: session_manager.get_session_record().metadata.name,
+        get_active_tool_names=lambda: active_tool_names,
+        is_retrying=lambda: is_retrying,
+        is_compacting=lambda: is_compacting,
+        get_last_diagnostics=lambda limit=50: [],
+        get_model_selection=lambda: model_selection,
+    )
 
+
+def test_session_view_controller_builds_usage_and_pi_stats(tmp_path) -> None:
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
@@ -120,14 +145,13 @@ def test_session_view_controller_builds_usage_and_pi_stats(tmp_path) -> None:
         initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
     )
     agent.state.set_messages(manager.build_session_context().messages)
-    controller = SessionViewController(
+    controller = _inspector(
         agent=agent,
         session_manager=manager,
-        get_active_tool_names=lambda: ["read", "bash"],
-        is_retrying=lambda: True,
-        is_compacting=lambda: False,
-        get_last_diagnostics=lambda limit=50: [],
-        get_model_selection=lambda: ModelSelection(
+        active_tool_names=["read", "bash"],
+        is_retrying=True,
+        is_compacting=False,
+        model_selection=ModelSelection(
             provider="faux", model_id="faux-model"
         ),
     )
@@ -150,7 +174,11 @@ def test_session_view_controller_builds_usage_and_pi_stats(tmp_path) -> None:
     assert stats.last_model_selection == ModelSelection(
         provider="faux", model_id="faux-model"
     )
-    pi_stats = controller.get_pi_style_stats()
+    pi_stats = project_pi_session_stats(
+        agent=agent,
+        session_manager=manager,
+        context_usage=usage,
+    )
     pi_usage = pi_stats["contextUsage"]
     assert pi_stats | {"contextUsage": None} == {
         "sessionFile": None,
@@ -183,8 +211,6 @@ def test_session_view_controller_builds_usage_and_pi_stats(tmp_path) -> None:
 def test_session_view_controller_reports_unknown_current_context_after_compaction(
     tmp_path,
 ) -> None:
-    from loushang.coding.session.session_view_controller import SessionViewController
-
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
@@ -220,14 +246,13 @@ def test_session_view_controller_reports_unknown_current_context_after_compactio
         initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
     )
     agent.state.set_messages(manager.build_session_context().messages)
-    controller = SessionViewController(
+    controller = _inspector(
         agent=agent,
         session_manager=manager,
-        get_active_tool_names=lambda: [],
-        is_retrying=lambda: False,
-        is_compacting=lambda: False,
-        get_last_diagnostics=lambda limit=50: [],
-        get_model_selection=lambda: None,
+        active_tool_names=[],
+        is_retrying=False,
+        is_compacting=False,
+        model_selection=None,
     )
 
     usage = controller.get_context_usage()
@@ -238,7 +263,11 @@ def test_session_view_controller_reports_unknown_current_context_after_compactio
     assert usage.context_window == 128000
     assert usage.percent is None
 
-    pi_stats = controller.get_pi_style_stats()
+    pi_stats = project_pi_session_stats(
+        agent=agent,
+        session_manager=manager,
+        context_usage=usage,
+    )
     assert pi_stats["latestCompaction"] == {
         "entryId": compaction_id,
         "firstKeptEntryId": kept_user_id,
@@ -262,8 +291,6 @@ def test_session_view_controller_reports_unknown_current_context_after_compactio
 def test_session_view_controller_uses_post_compaction_usage_for_current_context(
     tmp_path,
 ) -> None:
-    from loushang.coding.session.session_view_controller import SessionViewController
-
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
@@ -280,14 +307,13 @@ def test_session_view_controller_uses_post_compaction_usage_for_current_context(
         initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
     )
     agent.state.set_messages(manager.build_session_context().messages)
-    controller = SessionViewController(
+    controller = _inspector(
         agent=agent,
         session_manager=manager,
-        get_active_tool_names=lambda: [],
-        is_retrying=lambda: False,
-        is_compacting=lambda: False,
-        get_last_diagnostics=lambda limit=50: [],
-        get_model_selection=lambda: None,
+        active_tool_names=[],
+        is_retrying=False,
+        is_compacting=False,
+        model_selection=None,
     )
 
     usage = controller.get_context_usage()
@@ -301,8 +327,6 @@ def test_session_view_controller_uses_post_compaction_usage_for_current_context(
 def test_session_view_controller_reads_forking_entries_and_last_assistant_text(
     tmp_path,
 ) -> None:
-    from loushang.coding.session.session_view_controller import SessionViewController
-
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
@@ -325,21 +349,20 @@ def test_session_view_controller_reads_forking_entries_and_last_assistant_text(
         initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
     )
     agent.state.set_messages(manager.build_session_context().messages)
-    controller = SessionViewController(
+    controller = _inspector(
         agent=agent,
         session_manager=manager,
-        get_active_tool_names=lambda: [],
-        is_retrying=lambda: False,
-        is_compacting=lambda: False,
-        get_last_diagnostics=lambda limit=50: [],
-        get_model_selection=lambda: None,
+        active_tool_names=[],
+        is_retrying=False,
+        is_compacting=False,
+        model_selection=None,
     )
 
     assert controller.get_user_messages_for_forking() == [
         {"entry_id": first_id, "text": "first"},
         {"entry_id": second_id, "text": "second"},
     ]
-    assert controller.get_pi_style_user_messages_for_forking() == [
+    assert project_pi_fork_candidates(controller) == [
         {"entryId": first_id, "text": "first"},
         {"entryId": second_id, "text": "second"},
     ]
@@ -350,8 +373,6 @@ def test_session_view_controller_reads_forking_entries_and_last_assistant_text(
 def test_session_view_controller_returns_recent_assistant_texts_newest_first(
     tmp_path,
 ) -> None:
-    from loushang.coding.session.session_view_controller import SessionViewController
-
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
@@ -363,14 +384,13 @@ def test_session_view_controller_returns_recent_assistant_texts_newest_first(
         initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
     )
     agent.state.set_messages(manager.build_session_context().messages)
-    controller = SessionViewController(
+    controller = _inspector(
         agent=agent,
         session_manager=manager,
-        get_active_tool_names=lambda: [],
-        is_retrying=lambda: False,
-        is_compacting=lambda: False,
-        get_last_diagnostics=lambda limit=50: [],
-        get_model_selection=lambda: None,
+        active_tool_names=[],
+        is_retrying=False,
+        is_compacting=False,
+        model_selection=None,
     )
 
     assert controller.get_recent_assistant_texts() == ("second", "first")
@@ -378,21 +398,18 @@ def test_session_view_controller_returns_recent_assistant_texts_newest_first(
 
 
 def test_session_view_controller_builds_state_snapshot(tmp_path) -> None:
-    from loushang.coding.session.session_view_controller import SessionViewController
-
     agent = Agent(
         initial_state={"system_prompt": "", "model": _model(), "thinking_level": "high"}
     )
-    controller = SessionViewController(
+    controller = _inspector(
         agent=agent,
         session_manager=asyncio.run(
             SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
         ),
-        get_active_tool_names=lambda: ["read"],
-        is_retrying=lambda: True,
-        is_compacting=lambda: False,
-        get_last_diagnostics=lambda limit=50: [],
-        get_model_selection=lambda: ModelSelection(
+        active_tool_names=["read"],
+        is_retrying=True,
+        is_compacting=False,
+        model_selection=ModelSelection(
             provider="faux", model_id="faux-model"
         ),
     )

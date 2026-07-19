@@ -9,7 +9,7 @@ from loushang.agent import Agent, AgentTool, StreamFn, ThinkingLevel
 from loushang.ai.model import Model
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.types import Message, TextPart
-from loushang.coding.capability_profile import bind_coding_capability_runtime
+from loushang.coding.capability_plan import resolve_coding_capability_profile
 from loushang.coding.control import (
     ControlConfig,
     ModelRegistry,
@@ -32,6 +32,7 @@ from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
 from loushang.coding.types import ModelSelection
 from loushang.harness.agent_transcript import context_item_to_model_message
+from loushang.harness.capabilities import bind_capability_composition_runtime
 from loushang.harness.capabilities.packs import (
     CapabilityPack,
     CapabilityPackComposer,
@@ -315,7 +316,9 @@ def create_agent_session(
 ) -> AgentSession:
     services = services or create_services()
     settings = services.settings_manager.get_settings()
-    capability_runtime = bind_coding_capability_runtime()
+    capability_runtime = bind_capability_composition_runtime(
+        resolve_coding_capability_profile()
+    )
     resolved_package_materializer = (
         package_materializer or _default_package_materializer(session_manager)
     )

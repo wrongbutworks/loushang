@@ -7,17 +7,19 @@ import pytest
 
 from loushang.ai.model import Capabilities, Model
 from loushang.coding.bootstrap import create_agent_session
-from loushang.coding.capability_profile import (
+from loushang.coding.capability_plan import (
     CODING_CAPABILITY_PROFILE_METADATA_KEY,
     resolve_coding_capability_profile,
 )
-from loushang.coding.runtime_profile import (
-    CODING_RUNTIME_PROFILE_METADATA_KEY,
-    CodingCompactionRuntime,
-)
+from loushang.coding.runtime_profile import CODING_RUNTIME_PROFILE_METADATA_KEY
 from loushang.coding.store import SessionManager
 from loushang.coding.store.file_codec import write_session_file
-from loushang.harness.agent_transcript import AgentTranscriptProfile
+from loushang.harness.agent_transcript import (
+    TURN_AWARE_SUMMARY_IMPLEMENTATION,
+    TURN_AWARE_SUMMARY_VERSION,
+    AgentTranscriptCompactionCapability,
+    AgentTranscriptProfile,
+)
 from loushang.harness.runtime import RuntimeProfileSnapshot
 from loushang.harness.storage import FileConversationStore, MemoryConversationStore
 
@@ -64,7 +66,7 @@ def test_in_memory_session_binds_the_coding_runtime_profile_and_records_snapshot
         )
         assert isinstance(
             manager.get_runtime_capability("context.compaction"),
-            CodingCompactionRuntime,
+            AgentTranscriptCompactionCapability,
         )
         assert manager._transcript._profile is manager.get_runtime_capability(
             "agent.transcript_profile"
@@ -186,18 +188,19 @@ def test_agent_session_uses_and_disposes_selected_compaction_runtime(tmp_path) -
             cwd=str(tmp_path),
             persist=False,
         )
-        compaction_runtime = manager.get_runtime_capability("context.compaction")
-        assert isinstance(compaction_runtime, CodingCompactionRuntime)
+        compaction_capability = manager.get_runtime_capability("context.compaction")
+        assert isinstance(compaction_capability, AgentTranscriptCompactionCapability)
+        assert compaction_capability.implementation == TURN_AWARE_SUMMARY_IMPLEMENTATION
+        assert (
+            compaction_capability.implementation_version == TURN_AWARE_SUMMARY_VERSION
+        )
 
         session = create_agent_session(session_manager=manager, model=_model())
         capability_runtime = session._capability_runtime
 
         assert (
-            session._compaction_controller.compact_fn is compaction_runtime.compact_fn
-        )
-        assert (
-            session._compaction_controller.prepare_compaction_fn
-            is compaction_runtime.prepare_compaction_fn
+            session._compaction_controller.compaction_capability
+            is compaction_capability
         )
         assert capability_runtime is not None
         assert (

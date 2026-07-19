@@ -6,13 +6,7 @@ from loushang.coding.compaction.branch_summarization import (
     prepare_branch_entries,
 )
 from loushang.coding.compaction.compaction import (
-    calculate_context_tokens,
     compact,
-    compaction_plan_to_payload,
-    estimate_context_tokens,
-    plan_compaction,
-    prepare_compaction,
-    should_compact,
 )
 from loushang.coding.compaction.service import CompactionCoordinator
 from loushang.coding.compaction.summary_quality import (
@@ -58,20 +52,14 @@ __all__ = [
     "SummaryEvaluationResult",
     "SummaryEvaluationSuiteResult",
     "SummaryQualityReport",
-    "calculate_context_tokens",
     "calculate_compaction_budget",
-    "compaction_plan_to_payload",
     "collect_entries_for_branch_summary",
     "compact",
     "evaluate_summary_fixture",
     "evaluate_summary_cases",
     "evaluate_summary_case",
-    "estimate_context_tokens",
     "generate_branch_summary",
     "load_summary_evaluation_cases",
     "prepare_branch_entries",
-    "plan_compaction",
-    "prepare_compaction",
-    "should_compact",
     "validate_summary_contract",
 ]

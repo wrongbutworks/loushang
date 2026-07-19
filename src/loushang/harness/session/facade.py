@@ -119,6 +119,33 @@ class SessionRetryPort(Protocol):
     async def wait(self) -> None: ...
 
 
+@dataclass(frozen=True)
+class SessionFacadePorts(
+    Generic[
+        ContextT,
+        RecordT,
+        StateT,
+        ToolT,
+        CommandDescriptorT,
+        CommandResultT,
+        UsageT,
+    ]
+):
+    """Product-bound adapters consumed by :class:`SessionFacade`.
+
+    Keeping this composition object separate from ``SessionRuntime`` makes the
+    ownership boundary explicit: Harness owns common session controls, while a
+    Product supplies its transcript, capability, inspection, and retry ports.
+    """
+
+    transcript: SessionTranscriptPort[ContextT, RecordT]
+    tools: SessionToolsPort[ToolT]
+    commands: SessionCommandsPort[CommandDescriptorT, CommandResultT]
+    command_execution: SessionCommandExecutionPort
+    view: SessionViewPort[StateT, UsageT]
+    retry: SessionRetryPort
+
+
 @dataclass
 class SessionFacade(
     Generic[
@@ -146,6 +173,33 @@ class SessionFacade(
     command_execution: SessionCommandExecutionPort
     view: SessionViewPort[StateT, UsageT]
     retry: SessionRetryPort
+
+    @classmethod
+    def from_ports(
+        cls,
+        *,
+        runtime: SessionRuntime,
+        ports: SessionFacadePorts[
+            ContextT,
+            RecordT,
+            StateT,
+            ToolT,
+            CommandDescriptorT,
+            CommandResultT,
+            UsageT,
+        ],
+    ) -> "SessionFacade[ContextT, RecordT, StateT, ToolT, CommandDescriptorT, CommandResultT, UsageT]":
+        """Build the common surface from a Product's explicit port bundle."""
+
+        return cls(
+            runtime=runtime,
+            transcript=ports.transcript,
+            tools=ports.tools,
+            commands=ports.commands,
+            command_execution=ports.command_execution,
+            view=ports.view,
+            retry=ports.retry,
+        )
 
     def get_state(self) -> StateT:
         return self.view.get_state(
@@ -320,6 +374,7 @@ __all__ = [
     "SessionEventListener",
     "SessionEventProjector",
     "SessionFacade",
+    "SessionFacadePorts",
     "SessionRetryPort",
     "SessionToolsPort",
     "SessionTranscriptPort",

@@ -7,9 +7,11 @@ import pytest
 from loushang.agent import Agent
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage
+from loushang.ai.utils import is_context_overflow
 from loushang.coding.control import RetrySettings
+from loushang.harness.agent_transcript import AgentTranscriptRetryRuntime
 from loushang.harness.events import RetryCompleted, RetryStarted
-from loushang.harness.host.retry import RetryAttempt, RetryOutcome
+from loushang.harness.host.retry import RetryAttempt, RetryOutcome, RetryPolicy
 
 
 def _usage(*, input_tokens: int = 0, total_tokens: int = 0) -> Usage:
@@ -70,9 +72,34 @@ def _assistant_success_message() -> AssistantMessage:
     )
 
 
-def test_retry_controller_starts_retry_removes_error_and_continues() -> None:
-    from loushang.coding.session.retry_controller import RetryController
+def _retry_runtime(
+    *,
+    agent: Agent,
+    get_settings,
+    dispatch_event,
+    continue_run,
+    record_runtime_exception,
+    sleep_for_retry,
+) -> AgentTranscriptRetryRuntime:
+    return AgentTranscriptRetryRuntime(
+        get_policy=lambda: RetryPolicy(
+            enabled=get_settings().enabled,
+            max_attempts=get_settings().max_retries,
+            base_delay_ms=get_settings().base_delay_ms,
+        ),
+        get_messages=lambda: list(agent.state.messages),
+        set_messages=agent.state.set_messages,
+        get_context_window=lambda: agent.model.context_window,
+        dispatch_event=dispatch_event,
+        continue_run=continue_run,
+        record_runtime_exception=record_runtime_exception,
+        sleep_for_retry=sleep_for_retry,
+        is_context_overflow_fn=is_context_overflow,
+        wait_for_idle=agent.wait_for_idle,
+    )
 
+
+def test_retry_controller_starts_retry_removes_error_and_continues() -> None:
     agent = Agent(
         initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
     )
@@ -81,7 +108,7 @@ def test_retry_controller_starts_retry_removes_error_and_continues() -> None:
     events: list[object] = []
     continued: list[str] = []
 
-    controller = RetryController(
+    controller = _retry_runtime(
         agent=agent,
         get_settings=lambda: RetrySettings(
             enabled=True, max_retries=2, base_delay_ms=1
@@ -117,10 +144,8 @@ def test_retry_controller_starts_retry_removes_error_and_continues() -> None:
 
 
 def test_retry_controller_finishes_success_and_resolves_waiter() -> None:
-    from loushang.coding.session.retry_controller import RetryController
-
     events: list[object] = []
-    controller = RetryController(
+    controller = _retry_runtime(
         agent=Agent(
             initial_state={
                 "system_prompt": "",
@@ -151,8 +176,6 @@ def test_retry_controller_finishes_success_and_resolves_waiter() -> None:
 
 
 def test_retry_controller_abort_cancels_pending_retry() -> None:
-    from loushang.coding.session.retry_controller import RetryController
-
     agent = Agent(
         initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
     )
@@ -167,7 +190,7 @@ def test_retry_controller_abort_cancels_pending_retry() -> None:
             await asyncio.sleep(0)
         raise asyncio.CancelledError
 
-    controller = RetryController(
+    controller = _retry_runtime(
         agent=agent,
         get_settings=lambda: RetrySettings(
             enabled=True, max_retries=2, base_delay_ms=1
@@ -199,9 +222,7 @@ def test_retry_controller_abort_cancels_pending_retry() -> None:
 
 
 def test_retry_controller_does_not_retry_context_overflow() -> None:
-    from loushang.coding.session.retry_controller import RetryController
-
-    controller = RetryController(
+    controller = _retry_runtime(
         agent=Agent(
             initial_state={
                 "system_prompt": "",
@@ -243,9 +264,7 @@ def test_retry_controller_does_not_retry_context_overflow() -> None:
 def test_retry_controller_treats_auth_and_access_errors_as_non_retryable(
     message: str,
 ) -> None:
-    from loushang.coding.session.retry_controller import RetryController
-
-    controller = RetryController(
+    controller = _retry_runtime(
         agent=Agent(
             initial_state={
                 "system_prompt": "",
@@ -268,9 +287,7 @@ def test_retry_controller_treats_auth_and_access_errors_as_non_retryable(
 
 
 def test_retry_controller_treats_network_connection_lost_as_retryable() -> None:
-    from loushang.coding.session.retry_controller import RetryController
-
-    controller = RetryController(
+    controller = _retry_runtime(
         agent=Agent(
             initial_state={
                 "system_prompt": "",

@@ -7,14 +7,17 @@ prompt/model behavior are Product policy.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
 from loushang.harness.agent_transcript import (
+    TURN_AWARE_SUMMARY_IMPLEMENTATION,
+    TURN_AWARE_SUMMARY_VERSION,
+    AgentTranscriptCompactionCapability,
     AgentTranscriptProfile,
     AgentTranscriptRecord,
+    create_agent_transcript_compaction_capability,
 )
 from loushang.harness.agent_transcript.file_store import (
     AgentTranscriptFileLayout,
@@ -78,14 +81,6 @@ class CodingRuntimeSessionContext:
         )
 
 
-@dataclass(frozen=True)
-class CodingCompactionRuntime:
-    """Coding's selected compaction behavior, without moving policy to Harness."""
-
-    compact_fn: Callable[..., Awaitable[object]]
-    prepare_compaction_fn: Callable[..., object]
-
-
 @dataclass
 class CodingRuntimeSessionBinding:
     """The Product-owned lifetime wrapper around a Harness binding."""
@@ -108,7 +103,14 @@ def coding_runtime_plan(*, persist: bool) -> ProductRuntimePlan:
     """Declare Coding's current session defaults as Harness selections."""
 
     slots = tuple(
-        replace(slot, allowed_sources=frozenset({"product"}))
+        replace(
+            slot,
+            allowed_sources=(
+                frozenset({"product", "oem"})
+                if slot.key == _COMPACTION_SLOT
+                else frozenset({"product"})
+            ),
+        )
         for slot in standard_agent_session_slots()
     )
     return ProductRuntimePlan(
@@ -129,9 +131,14 @@ def coding_runtime_plan(*, persist: bool) -> ProductRuntimePlan:
             ),
             RuntimeCapabilitySelection(
                 slot=_COMPACTION_SLOT,
-                implementation="coding.default",
-                implementation_version=1,
-                config={"summaryProfile": "coding"},
+                implementation=TURN_AWARE_SUMMARY_IMPLEMENTATION,
+                implementation_version=TURN_AWARE_SUMMARY_VERSION,
+                config={
+                    "enabled": True,
+                    "compactPercent": 80.0,
+                    "reserveTokens": 8_192,
+                    "keepRecentTokens": 32_768,
+                },
             ),
         ),
     )
@@ -195,9 +202,9 @@ async def bind_coding_runtime(
             ),
             RuntimeCapabilityImplementation(
                 slot=_COMPACTION_SLOT,
-                implementation="coding.default",
-                implementation_version=1,
-                create=_create_coding_compaction_runtime,
+                implementation=TURN_AWARE_SUMMARY_IMPLEMENTATION,
+                implementation_version=TURN_AWARE_SUMMARY_VERSION,
+                create=_create_agent_transcript_compaction_capability,
             ),
         )
     )
@@ -223,15 +230,6 @@ def selected_transcript_profile(
     value = binding.value(_TRANSCRIPT_SLOT)
     if not isinstance(value, AgentTranscriptProfile):
         raise TypeError("selected Coding transcript profile is invalid")
-    return value
-
-
-def selected_compaction_runtime(
-    binding: CodingRuntimeSessionBinding,
-) -> CodingCompactionRuntime:
-    value = binding.value(_COMPACTION_SLOT)
-    if not isinstance(value, CodingCompactionRuntime):
-        raise TypeError("selected Coding compaction runtime is invalid")
     return value
 
 
@@ -271,29 +269,16 @@ def _create_agent_transcript_profile(
     return AgentTranscriptProfile.default()
 
 
-def _create_coding_compaction_runtime(
+def _create_agent_transcript_compaction_capability(
     selection: RuntimeCapabilitySelection,
     context: object | None,
-) -> CodingCompactionRuntime:
-    del selection, context
-    return CodingCompactionRuntime(
-        compact_fn=_run_coding_default_compaction,
-        prepare_compaction_fn=_prepare_coding_default_compaction,
+) -> AgentTranscriptCompactionCapability:
+    del context
+    return create_agent_transcript_compaction_capability(
+        implementation=selection.implementation,
+        implementation_version=selection.implementation_version,
+        config=selection.config,
     )
-
-
-async def _run_coding_default_compaction(**kwargs: object) -> object:
-    # Keep Coding's established module-level functions as its mutable Product
-    # seam while avoiding the SessionManager <-> compaction import cycle.
-    from loushang.coding.session.agent_session import _run_default_compaction
-
-    return await _run_default_compaction(**kwargs)
-
-
-def _prepare_coding_default_compaction(*args: object, **kwargs: object) -> object:
-    from loushang.coding.session.agent_session import _prepare_default_compaction
-
-    return _prepare_default_compaction(*args, **kwargs)
 
 
 def _require_context(context: object | None) -> CodingRuntimeSessionContext:
@@ -305,14 +290,12 @@ def _require_context(context: object | None) -> CodingRuntimeSessionContext:
 __all__ = [
     "CODING_RUNTIME_PRODUCT_ID",
     "CODING_RUNTIME_PROFILE_METADATA_KEY",
-    "CodingCompactionRuntime",
     "CodingRuntimeSessionBinding",
     "CodingRuntimeSessionContext",
     "bind_coding_runtime",
     "coding_runtime_plan",
     "coding_runtime_snapshot_metadata",
     "resolve_coding_runtime_profile",
-    "selected_compaction_runtime",
     "selected_store",
     "selected_transcript_profile",
     "validate_coding_runtime_snapshot",

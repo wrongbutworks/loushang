@@ -30,9 +30,11 @@ from loushang.coding.event import (
 )
 from loushang.coding.mode.base import ModeAdapter, ModeState
 from loushang.coding.mode.rpc_json import project_rpc_value
-from loushang.coding.store import SessionQuery
 from loushang.coding.types import ModelSelection
-from loushang.harness.agent_transcript import create_agent_transcript_message_codec
+from loushang.harness.agent_transcript import (
+    SessionQuery,
+    create_agent_transcript_message_codec,
+)
 from loushang.harness.diagnostics.types import DiagnosticsQuery
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime

@@ -5,8 +5,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from loushang.agent import Agent, ThinkingLevel
-from loushang.ai.model import Model
-from loushang.coding.session.types import ModelSelection
+from loushang.ai.model import Model, ModelSelection
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import AgentTranscriptSelectionRuntime
 

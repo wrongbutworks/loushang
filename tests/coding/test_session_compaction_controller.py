@@ -9,6 +9,11 @@ from loushang.coding.compaction import CompactionResult
 from loushang.coding.control import CompactionSettings
 from loushang.coding.session.compaction_controller import CompactionController
 from loushang.coding.store import SessionManager
+from loushang.harness.agent_transcript import (
+    TURN_AWARE_SUMMARY_IMPLEMENTATION,
+    TURN_AWARE_SUMMARY_VERSION,
+    create_agent_transcript_compaction_capability,
+)
 
 
 def _usage() -> Usage:
@@ -162,3 +167,42 @@ def test_compaction_controller_appends_compaction_and_rebuilds_agent_context(
     assert completed.usage_after["tokens"] is None
     assert completed.usage_after["percent"] is None
     assert completed.usage_after["stale_after_compaction"] is True
+
+
+def test_compaction_controller_uses_selected_capability_policy_without_override(
+    tmp_path,
+) -> None:
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+    )
+    agent = Agent(
+        initial_state={"system_prompt": "", "model": _model(), "thinking_level": "off"}
+    )
+
+    async def _dispatch_event(event: object) -> None:
+        del event
+
+    controller = CompactionController(
+        agent=agent,
+        session_manager=manager,
+        get_settings=CompactionSettings,
+        get_extension_runner=lambda: None,
+        dispatch_event=_dispatch_event,
+        compaction_capability=create_agent_transcript_compaction_capability(
+            implementation=TURN_AWARE_SUMMARY_IMPLEMENTATION,
+            implementation_version=TURN_AWARE_SUMMARY_VERSION,
+            config={
+                "enabled": False,
+                "compactPercent": 75.0,
+                "reserveTokens": 4_096,
+                "keepRecentTokens": 2_048,
+            },
+        ),
+    )
+
+    policy = controller._runtime._get_policy()
+
+    assert policy.enabled is False
+    assert policy.compact_percent == 75.0
+    assert policy.reserve_tokens == 4_096
+    assert policy.keep_recent_tokens == 2_048

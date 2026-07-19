@@ -6,6 +6,7 @@ import select
 import subprocess
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
 
 import pytest
@@ -97,10 +98,8 @@ def _run_pty_command(
             raise AssertionError(f"PTY command timed out; output:\n{output.decode(errors='replace')}")
         return output.decode(errors="replace"), process.returncode
     finally:
-        try:
+        with suppress(OSError):
             os.close(master_fd)
-        except OSError:
-            pass
 
 
 def _read_available(fd: int) -> bytes:

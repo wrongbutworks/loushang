@@ -340,7 +340,8 @@ def test_agent_session_compact_emits_error_event_on_failure(
         raise RuntimeError("boom")
 
     monkeypatch.setattr(
-        "loushang.coding.session.agent_session.prepare_compaction", _fake_prepare
+        "loushang.harness.agent_transcript.compaction.prepare_turn_aware_compaction",
+        _fake_prepare,
     )
     monkeypatch.setattr(
         "loushang.coding.session.agent_session.compact", _failing_compact

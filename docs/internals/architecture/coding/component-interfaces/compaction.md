@@ -6,23 +6,20 @@
 
 ## Owns
 
-- `CompactionCoordinator`
-- `CompactionPlan`
-- `CompactionPreparation`
-- `CompactionArtifact`
-- `CompactionStatus`
-- branch summary / compaction 的算法边界
+- Coding summary prompt、model/auth 调用与代码/文件操作摘要格式
+- `BranchSummarySettings` 与 branch summary 的产品语义
+- Coding extension hook、command 与 TUI/RPC/HTML 投影
 
 ## Depends On
 
 - `store`
 - `control`
 - `loushang-ai`
+- `loushang.harness.agent_transcript`
 - `loushang.harness.context`
 
 ## Commands
 
-- `prepare_compaction(...)`
 - `compact_session(...)`
 - `maybe_compact_after_turn(...)`
 - `abort()`
@@ -30,7 +27,6 @@
 ## Queries
 
 - `get_status()`
-- `should_compact(...)`
 - `calculate_compaction_budget(...)`
 
 ## Events
@@ -42,9 +38,6 @@
 
 - `CompactionSettings`
 - `BranchSummarySettings`
-- `CompactionPreparation`
-- `CompactionPlan`
-- `CompactionArtifact`
 - `CompactionStatus`
 - `CompactionBudget` (owned by `loushang.harness.context.budget`)
 - `SummaryEvaluationCase`
@@ -75,14 +68,14 @@
 - `validate_summary_contract(...)` 和 `evaluate_summary_case(...)` 提供 mode-neutral summary quality harness，用于验证 compaction /
   branch summary 是否保留固定结构、是否缺失关键 section、是否仍包含 prompt placeholder、是否覆盖固定 workload 期待的关键词与文件操作；
   它们不改变生产摘要结果，只作为回归和真实模型评估的稳定判定面
+- Harness 的 `plan_turn_aware_compaction(...)` 是 deterministic fact layer：它不调用模型，记录 previous
+  compaction、`first_kept_entry_id`、`summarized_entry_ids`、`turn_prefix_entry_ids`、`kept_entry_ids`、
+  `tokens_before` 与 `keep_recent_tokens`；`prepare_turn_aware_compaction(...)` 基于同一计划组装消息并写入
+  camelCase `compactionPlan` details
 - compaction preparation 使用 entry-aware cut point：上一轮 compaction 后从 `first_kept_entry_id` 边界继续，
   并在 cut point 落到 assistant/custom continuation 时拆出 `turn_prefix_messages`
 - cut point 不能落在 `toolResult` 上；当 recent window 被最新 tool result 撑爆时，cut point 回退到最近的
   合法 entry，通常是产生该 tool result 的 assistant，从而保留 assistant tool call + tool result 后缀
-- `plan_compaction(...)` 是 deterministic fact layer：它不调用模型，只记录 previous compaction、`first_kept_entry_id`、
-  `summarized_entry_ids`、`turn_prefix_entry_ids`、`kept_entry_ids`、`tokens_before` 与 `keep_recent_tokens`
-- `prepare_compaction(...)` 基于同一个 `CompactionPlan` 组装 `messages_to_summarize` / `turn_prefix_messages`，
-  并把 reference-style camelCase `compactionPlan` 写入 preparation details
 - 成功 compaction 后，`CompactionEntry.details.compactionPlan` 持久化该事实链，用于解释“摘要覆盖了哪些 entry、
   保留了哪些原文 entry、是否 split turn、使用了哪次 previous compaction boundary”
 - overflow recovery 对齐 `reference CLI`：同一连续 overflow 只允许一次自动 `compact + retry`；
