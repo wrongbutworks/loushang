@@ -476,6 +476,28 @@ def test_session_resource_refresh_runtime_is_neutral_and_adopted() -> None:
     assert "Coding Binding" in boundary
 
 
+def test_package_session_operations_are_neutral_and_adopted() -> None:
+    operations_source = Path(
+        "src/loushang/harness/resources/packages/operations.py"
+    ).read_text(encoding="utf-8")
+    diagnostics_source = Path(
+        "src/loushang/harness/resources/packages/catalog_diagnostics.py"
+    ).read_text(encoding="utf-8")
+    controller_source = Path(
+        "src/loushang/coding/session/package_controller.py"
+    ).read_text(encoding="utf-8")
+    boundary = Path(
+        "docs/internals/architecture/harness/package-session-operations-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in operations_source
+    assert "loushang.coding" not in diagnostics_source
+    assert "PackageOperationsRuntime" in controller_source
+    assert "PackageCatalogDiagnosticsRecorder" in controller_source
+    assert "Product Binding" in boundary
+    assert "Coding Binding" in boundary
+
+
 def test_extension_message_controller_is_a_product_api_adapter() -> None:
     source = Path(
         "src/loushang/coding/session/extension_message_controller.py"
