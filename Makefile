@@ -19,6 +19,7 @@ AI_OFFLINE_ENV := env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_
 
 HARNESSTUI_SHARED_SOURCES := \
 	src/loushang/tui/clipboard_image.py \
+	src/loushang/tui/launch.py \
 	src/loushang/tui/playback_suite.py \
 	src/loushang/tui/settings.py \
 	src/loushang/tui/terminal_diagnostics.py \
@@ -42,15 +43,16 @@ CODING_TUI_PRODUCT_SOURCES := \
 	src/loushang/coding/interaction/controller.py \
 	src/loushang/coding/interaction/intent.py \
 	src/loushang/coding/interaction/screen_host.py \
+	src/loushang/coding/interaction/settings_profile.py \
 	src/loushang/coding/interaction/tui_profile.py \
 	src/loushang/coding/presentation/resume.py \
 	src/loushang/coding/presentation/session.py \
-	src/loushang/coding/presentation/settings.py \
 	src/loushang/coding/presentation/tui
 HARNESSTUI_TEST_PATHS := \
 	tests/harnesstui \
 	tests/tui/test_clipboard_image.py \
 	tests/tui/test_import_boundaries.py \
+	tests/tui/test_launch.py \
 	tests/tui/test_playback_suite.py \
 	tests/tui/test_settings.py \
 	tests/tui/test_terminal_diagnostics.py \

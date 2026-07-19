@@ -20,6 +20,9 @@ from loushang.coding.interaction.intent import (
     SettingsIntent,
     parse_prompt_intent,
 )
+from loushang.harnesstui.conversation.action_presentation import (
+    ConversationActionPresentationCopy,
+)
 from loushang.harnesstui.conversation.control import (
     ConversationRunControl,
     ConversationTextAction,
@@ -51,6 +54,13 @@ _LOCAL_INTENTS = {
     HotkeysIntent: CodingLocalAction.HOTKEYS,
     SettingsIntent: CodingLocalAction.SETTINGS,
 }
+
+
+CODING_SCREEN_ACTION_COPY = ConversationActionPresentationCopy(
+    dispatch_failure_status=lambda message: f"Request failed: {message}",
+    steer_failure_status=lambda message: f"Steering failed: {message}",
+    follow_up_failure_status=lambda message: f"Follow-up failed: {message}",
+)
 
 
 @dataclass(frozen=True, slots=True)

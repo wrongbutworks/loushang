@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-import traceback
+from functools import partial
 from typing import Any, TextIO
 
 from loushang.coding.event.presentation_policy import event_writes_transcript
@@ -62,6 +62,7 @@ from loushang.harnesstui.status.persistence import (
 from loushang.harnesstui.status.provider import StatusProvider
 from loushang.observability import get_log, log_context
 from loushang.tui import CompletionProvider
+from loushang.tui.launch import TuiLaunchProfile, run_tui_launch_shell
 from loushang.tui.prompt import run_non_interactive_prompt_loop
 
 log = get_log(__name__).bind(component="CodingUiMode")
@@ -76,32 +77,33 @@ async def run_coding_tui(
     stderr: TextIO,
     verbose: bool = False,
 ) -> int:
-    interactive = _is_interactive(stdin=stdin, stdout=stdout)
-    try:
-        if interactive:
-            return await _run_screen_interactive_tui(
+    return await run_tui_launch_shell(
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
+        profile=TuiLaunchProfile(
+            run_screen=partial(
+                _run_screen_interactive_tui,
                 runtime=runtime,
                 session=session,
                 stdin=stdin,
                 stdout=stdout,
                 stderr=stderr,
                 verbose=verbose,
-            )
-        return await _run_plain_tui(
-            runtime=runtime,
-            session=session,
-            stdin=stdin,
-            stdout=stdout,
-            stderr=stderr,
-            verbose=verbose,
-        )
-    except Exception as error:
-        stdout.write(f"■ Error: {str(error) or error.__class__.__name__}\n")
-        stdout.flush()
-        if verbose:
-            stderr.write(traceback.format_exc())
-            stderr.flush()
-        return 1
+            ),
+            run_plain=partial(
+                _run_plain_tui,
+                runtime=runtime,
+                session=session,
+                stdin=stdin,
+                stdout=stdout,
+                stderr=stderr,
+                verbose=verbose,
+            ),
+            error_prefix="■ Error: ",
+        ),
+        verbose=verbose,
+    )
 
 
 async def _run_screen_interactive_tui(
@@ -258,13 +260,15 @@ async def _run_plain_tui(
         run_context = open_interaction_run_context(
             event_source=session,
             listener=event_renderer.handle,
-            interactive_listener_factory=lambda emit: StableEventStreamHandler(
-                renderer=event_renderer,
-                emit=emit,
-                writes_stably=event_writes_transcript,
-                event_type=lambda event: str(event.get("type") or "unknown"),
-                trace=_trace,
-            ).handle,
+            interactive_listener_factory=lambda emit: (
+                StableEventStreamHandler(
+                    renderer=event_renderer,
+                    emit=emit,
+                    writes_stably=event_writes_transcript,
+                    event_type=lambda event: str(event.get("type") or "unknown"),
+                    trace=_trace,
+                ).handle
+            ),
             exit_context=log_context(
                 session_id=snapshot.session_observability_id,
                 cwd=snapshot.cwd,
@@ -324,12 +328,6 @@ def _trace_start(snapshot: CodingTuiStartupSnapshot, *, interactive: bool) -> No
 
 def _trace(name: str, **data: Any) -> None:
     log.debug_event("tui", name, **data)
-
-
-def _is_interactive(*, stdin: TextIO, stdout: TextIO) -> bool:
-    stdin_is_tty = getattr(stdin, "isatty", lambda: False)
-    stdout_is_tty = getattr(stdout, "isatty", lambda: False)
-    return bool(stdin_is_tty() and stdout_is_tty())
 
 
 async def _load_completion_provider(session: Any) -> CompletionProvider:

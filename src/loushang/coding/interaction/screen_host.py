@@ -12,19 +12,20 @@ from loushang.coding.interaction.intent import (
     QuitIntent,
     parse_prompt_intent,
 )
+from loushang.coding.interaction.tui_profile import CODING_SCREEN_ACTION_COPY
+from loushang.harnesstui.conversation.action_presentation import (
+    ConversationActionPresentationPort,
+    ConversationActionResultPresenter,
+    ConversationTracebackPolicy,
+    PresentedConversationActionHost,
+    PresentedConversationActionPorts,
+)
 from loushang.harnesstui.conversation.attachments import PromptImageAttachment
-from loushang.harnesstui.conversation.control import ConversationTextAction
 
 
-class ScreenConversationPresenter(Protocol):
-    def add_error(self, text: str) -> None: ...
+class CodingConversationControllerPort(Protocol):
+    """Coding controller effects consumed by the shared action host."""
 
-    def add_status(self, text: str) -> None: ...
-
-    def set_status(self, message: str | None) -> None: ...
-
-
-class ScreenConversationController(Protocol):
     async def dispatch(self, intent: CodingUiIntent) -> ControllerResult: ...
 
     async def steer(
@@ -42,70 +43,47 @@ class ScreenConversationController(Protocol):
     async def wait_for_idle(self) -> None: ...
 
 
-class ScreenCodingConversationActionHost:
-    """Bind neutral screen actions to Coding intents and result presentation."""
+class ScreenCodingConversationActionHost(
+    PresentedConversationActionHost[CodingUiIntent, tuple[ImagePart, ...] | None]
+):
+    """Bind shared action sequencing to Coding intents and image values."""
 
     def __init__(
         self,
         *,
-        presenter: ScreenConversationPresenter,
-        controller: ScreenConversationController,
+        presenter: ConversationActionPresentationPort,
+        controller: CodingConversationControllerPort,
         stderr: TextIO,
         verbose: bool,
     ) -> None:
-        self._presenter = presenter
-        self._controller = controller
-        self._stderr = stderr
-        self._verbose = verbose
-
-    async def submit(self, action: ConversationTextAction) -> int | None:
-        intent = parse_prompt_intent(action.text)
-        if intent is None:
-            return None
-        if isinstance(intent, QuitIntent):
-            return 0
-        images = image_parts_from_prompt_attachments(action.attachments)
-        if images is not None and isinstance(intent, PromptIntent):
-            intent = PromptIntent(intent.text, images=images)
-        result = await self._controller.dispatch(intent)
-        self._present_result(result)
-        return result.exit_code
-
-    async def steer(self, action: ConversationTextAction) -> int | None:
-        result = await self._controller.steer(
-            action.text,
-            images=image_parts_from_prompt_attachments(action.attachments),
+        super().__init__(
+            ports=PresentedConversationActionPorts(
+                parse=parse_prompt_intent,
+                exit_code=lambda intent: 0 if isinstance(intent, QuitIntent) else None,
+                attachments=image_parts_from_prompt_attachments,
+                prepare=_intent_with_prompt_attachments,
+                dispatch=controller.dispatch,
+                steer=controller.steer,
+                follow_up=controller.follow_up,
+                abort_intent=AbortIntent,
+                wait_for_idle=controller.wait_for_idle,
+            ),
+            presenter=ConversationActionResultPresenter(
+                target=presenter,
+                stderr=stderr,
+                traceback_policy=ConversationTracebackPolicy(enabled=verbose),
+            ),
+            copy=CODING_SCREEN_ACTION_COPY,
         )
-        self._present_result(result, status_label="Steering failed")
-        return result.exit_code
 
-    async def follow_up(self, action: ConversationTextAction) -> int | None:
-        result = await self._controller.follow_up(
-            action.text,
-            images=image_parts_from_prompt_attachments(action.attachments),
-        )
-        self._present_result(result, status_label="Follow-up failed")
-        return result.exit_code
 
-    async def abort(self) -> None:
-        await self._controller.dispatch(AbortIntent())
-        await self._controller.wait_for_idle()
-
-    def _present_result(
-        self,
-        result: ControllerResult,
-        *,
-        status_label: str = "Request failed",
-    ) -> None:
-        if result.error_message:
-            self._presenter.add_error(result.error_message)
-            self._presenter.set_status(f"{status_label}: {result.error_message}")
-        elif result.status_message:
-            self._presenter.add_status(result.status_message)
-            self._presenter.set_status(result.status_message)
-        if self._verbose and result.traceback_text:
-            self._stderr.write(result.traceback_text)
-            self._stderr.flush()
+def _intent_with_prompt_attachments(
+    intent: CodingUiIntent,
+    images: tuple[ImagePart, ...] | None,
+) -> CodingUiIntent:
+    if images is not None and isinstance(intent, PromptIntent):
+        return PromptIntent(intent.text, images=images)
+    return intent
 
 
 def image_parts_from_prompt_attachments(
@@ -126,6 +104,7 @@ def image_parts_from_prompt_attachments(
 
 
 __all__ = [
+    "CodingConversationControllerPort",
     "ScreenCodingConversationActionHost",
     "image_parts_from_prompt_attachments",
 ]

@@ -6,6 +6,9 @@ from io import StringIO
 
 import pytest
 
+from loushang.harnesstui.conversation.action_presentation import (
+    ConversationTracebackPolicy,
+)
 from loushang.harnesstui.conversation.dispatch import (
     ConversationDispatchHandler,
     ConversationDispatchOutcome,
@@ -160,7 +163,7 @@ def test_result_presenter_uses_caller_resolved_error_and_traceback() -> None:
         renderer=renderer,
         emit=emit,
         stderr=stderr,
-        verbose=True,
+        traceback_policy=ConversationTracebackPolicy(enabled=True),
         last_error_message=lambda: None,
         now=lambda: 12.0,
         trace=lambda _name, **_data: None,
@@ -191,7 +194,7 @@ def test_result_presenter_does_not_duplicate_existing_event_error() -> None:
         renderer=renderer,
         emit=emit,
         stderr=StringIO(),
-        verbose=False,
+        traceback_policy=ConversationTracebackPolicy(enabled=False),
         last_error_message=lambda: "same error",
         now=lambda: 12.0,
         trace=lambda _name, **_data: None,
@@ -222,7 +225,7 @@ def test_result_presenter_emits_status_or_worked() -> None:
         renderer=renderer,
         emit=emit,
         stderr=StringIO(),
-        verbose=False,
+        traceback_policy=ConversationTracebackPolicy(enabled=False),
         last_error_message=lambda: None,
         now=lambda: 12.5,
         trace=lambda _name, **_data: None,

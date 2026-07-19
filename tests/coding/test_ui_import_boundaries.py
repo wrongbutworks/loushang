@@ -388,6 +388,8 @@ def test_mode_is_only_the_coding_tui_composition_root() -> None:
         "get_steering_messages",
         "get_follow_up_messages",
         "base64",
+        "traceback",
+        "def _is_interactive",
     ):
         assert token not in source
 
@@ -398,8 +400,30 @@ def test_mode_is_only_the_coding_tui_composition_root() -> None:
         "run_action_host_conversation_screen",
         "CODING_SCREEN_RUN_PROFILE",
         "build_plain_coding_tui_app",
+        "TuiLaunchProfile",
+        "run_tui_launch_shell",
     ):
         assert token in source
+
+
+def test_generic_tui_launch_shell_does_not_own_product_or_harness_policy() -> None:
+    shared = Path("src/loushang/tui/launch.py").read_text(encoding="utf-8")
+    coding = Path("src/loushang/coding/ui/mode.py").read_text(encoding="utf-8")
+
+    for token in (
+        "loushang.coding",
+        "loushang.harness",
+        "loushang.harnesstui",
+        "runtime",
+        "session",
+        "ScreenCodingTuiApp",
+        "■ Error: ",
+    ):
+        assert token not in shared
+
+    assert "TuiLaunchProfile" in coding
+    assert "run_tui_launch_shell" in coding
+    assert 'error_prefix="■ Error: "' in coding
 
 
 def test_old_coding_ui_renderer_module_is_removed() -> None:
@@ -643,11 +667,43 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
     assert "build_plain_conversation_app" in plain_app
 
 
+def test_shared_action_presentation_keeps_product_controller_and_copy_outside() -> None:
+    shared = Path(
+        "src/loushang/harnesstui/conversation/action_presentation.py"
+    ).read_text(encoding="utf-8")
+    controller = Path("src/loushang/coding/interaction/controller.py").read_text(
+        encoding="utf-8"
+    )
+    screen_host = Path("src/loushang/coding/interaction/screen_host.py").read_text(
+        encoding="utf-8"
+    )
+    profile = Path("src/loushang/coding/interaction/tui_profile.py").read_text(
+        encoding="utf-8"
+    )
+
+    for token in (
+        "loushang.coding",
+        "ImagePart",
+        "PromptIntent",
+        "AbortIntent",
+        "Request failed:",
+        "Steering failed:",
+        "Follow-up failed:",
+    ):
+        assert token not in shared
+
+    assert "loushang.harnesstui" not in controller
+    assert "class ControllerResult" in controller
+    assert "ImagePart" in screen_host
+    assert "PromptIntent" in screen_host
+    assert "Request failed:" in profile
+    assert "Steering failed:" in profile
+    assert "Follow-up failed:" in profile
+
+
 def test_shared_surface_controller_does_not_own_coding_policy_or_copy() -> None:
     shared = "\n".join(
-        Path(f"src/loushang/harnesstui/surface/{module}.py").read_text(
-            encoding="utf-8"
-        )
+        Path(f"src/loushang/harnesstui/surface/{module}.py").read_text(encoding="utf-8")
         for module in ("controller", "workflow")
     )
     coding = Path("src/loushang/coding/ui/screen_surfaces.py").read_text(
@@ -676,9 +732,9 @@ def test_shared_settings_workflow_does_not_own_coding_bindings_or_copy() -> None
         )
         for module in ("schema", "workflow")
     )
-    coding = Path(
-        "src/loushang/coding/interaction/settings_profile.py"
-    ).read_text(encoding="utf-8")
+    coding = Path("src/loushang/coding/interaction/settings_profile.py").read_text(
+        encoding="utf-8"
+    )
 
     for token in (
         "terminal.progress",
@@ -739,6 +795,35 @@ def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
     assert "loushang.harnesstui.selection.interaction" in model_adapter
 
 
+def test_shared_completion_host_does_not_own_coding_catalog_or_path_policy() -> None:
+    shared_path = Path("src/loushang/harnesstui/completion/host.py")
+    coding_path = Path("src/loushang/coding/ui/completion.py")
+    shared = shared_path.read_text(encoding="utf-8")
+    coding = coding_path.read_text(encoding="utf-8")
+
+    for token in (
+        "loushang.coding",
+        "Any",
+        "Session",
+        "ModelSelection",
+        '"/model"',
+        '"Models"',
+        '"Quit loushang"',
+    ):
+        assert token not in shared
+
+    for token in (
+        "PreparedCatalogCompletionHost",
+        'model_command_value="/model"',
+        'model_argument_group="Models"',
+        'CatalogSlashAlias("/quit", "/exit", "Quit loushang")',
+        "_session_completion_base_path",
+    ):
+        assert token in coding
+
+    assert len(coding.splitlines()) <= 75
+
+
 def test_shared_status_provider_does_not_own_settings_manager_adaptation() -> None:
     source = Path("src/loushang/harnesstui/status/provider.py").read_text(
         encoding="utf-8"
@@ -771,21 +856,19 @@ def test_shared_plain_presentation_does_not_own_coding_policy() -> None:
     assert 'event.get("type")' not in target
 
 
-def test_tool_transcript_projection_keeps_raw_coding_policy_at_product_edge() -> (
-    None
-):
-    shared = Path(
-        "src/loushang/harnesstui/conversation/tool_transcript.py"
-    ).read_text(encoding="utf-8")
-    coding = Path(
-        "src/loushang/coding/presentation/tui/tool_transcript.py"
-    ).read_text(encoding="utf-8")
+def test_tool_transcript_projection_keeps_raw_coding_policy_at_product_edge() -> None:
+    shared = Path("src/loushang/harnesstui/conversation/tool_transcript.py").read_text(
+        encoding="utf-8"
+    )
+    coding = Path("src/loushang/coding/presentation/tui/tool_transcript.py").read_text(
+        encoding="utf-8"
+    )
 
     for token in (
         "AgentToolResult",
         "ToolDefinitionResolver",
-        "tool_call_id\", event.get(\"toolCallId",
-        "tool_name\", event.get(\"toolName",
+        'tool_call_id", event.get("toolCallId',
+        'tool_name", event.get("toolName',
         "render_tool_result_presentation",
     ):
         assert token not in shared

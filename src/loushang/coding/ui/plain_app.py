@@ -32,6 +32,9 @@ from loushang.coding.presentation.session import (
 )
 from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
 from loushang.coding.ui.hotkeys import format_hotkeys
+from loushang.harnesstui.conversation.action_presentation import (
+    ConversationTracebackPolicy,
+)
 from loushang.harnesstui.conversation.control import (
     ConversationRunControl,
     ConversationTextAction,
@@ -171,7 +174,7 @@ def build_plain_coding_tui_app(
         ),
         suppress_result=suppress_cancelled,
         stderr=stderr,
-        verbose=verbose,
+        traceback_policy=ConversationTracebackPolicy(enabled=verbose),
         last_error_message=lambda: event_renderer.last_error_message,
         now=now,
         restore_queue=lambda text: restore_queued_messages(

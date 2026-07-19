@@ -4,6 +4,9 @@ import asyncio
 from dataclasses import dataclass
 from io import StringIO
 
+from loushang.harnesstui.conversation.action_presentation import (
+    ConversationTracebackPolicy,
+)
 from loushang.harnesstui.conversation.control import (
     ConversationRunControl,
     ConversationTextAction,
@@ -133,7 +136,7 @@ def _build_app():
         resolve_error=lambda outcome: outcome.result.error_message,
         suppress_result=suppress,
         stderr=StringIO(),
-        verbose=False,
+        traceback_policy=ConversationTracebackPolicy(enabled=False),
         last_error_message=lambda: None,
         now=lambda: 12.0,
         restore_queue=restore,

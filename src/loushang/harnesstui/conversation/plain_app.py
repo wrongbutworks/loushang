@@ -6,6 +6,9 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Protocol, TextIO, TypeVar
 
+from loushang.harnesstui.conversation.action_presentation import (
+    ConversationTracebackPolicy,
+)
 from loushang.harnesstui.conversation.control import (
     AbortActionHandler,
     ActionResult,
@@ -84,7 +87,7 @@ def build_plain_conversation_app(
     resolve_error: Callable[[ConversationDispatchOutcome], str | None],
     suppress_result: Callable[[ConversationDispatchOutcome, str | None], bool],
     stderr: TextIO,
-    verbose: bool,
+    traceback_policy: ConversationTracebackPolicy,
     last_error_message: Callable[[], str | None],
     now: Callable[[], float],
     restore_queue: Callable[[str], Awaitable[str | None]],
@@ -131,7 +134,7 @@ def build_plain_conversation_app(
         renderer=renderer,
         emit=emit,
         stderr=stderr,
-        verbose=verbose,
+        traceback_policy=traceback_policy,
         last_error_message=last_error_message,
         now=now,
         trace=trace,
