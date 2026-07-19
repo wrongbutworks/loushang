@@ -56,19 +56,16 @@ from loushang.coding.source_info import (
     executable_source_identity,
     format_source_identity_text,
 )
-from loushang.coding.store import SessionQuery
 from loushang.coding.tools import ToolRegistry, register_builtin_tools
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.mode import run_coding_tui
-from loushang.coding.workflow import (
-    load_workflow,
-    resolve_workflow_files,
-    run_prompt_steps_workflow,
-)
+from loushang.coding.workflow import run_prompt_steps_workflow
+from loushang.harness.agent_transcript import SessionQuery
 from loushang.harness.resources.plugins import (
     PluginManager,
     is_remote_plugin_source,
 )
+from loushang.harness.scenario.loader import load_workflow, resolve_workflow_files
 from loushang.harness.tools.workspace.path_utils import resolve_tool_path
 from loushang.harness.tools.workspace.read import (
     PillowReadImageResizer,

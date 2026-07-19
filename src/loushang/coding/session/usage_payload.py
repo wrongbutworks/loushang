@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
-from loushang.coding.session.types import ContextUsage, ContextUsageSnapshot
+from loushang.harness.agent_transcript import ContextUsageSnapshot
+from loushang.harness.session.inspection import ContextUsage
 from loushang.protocol import JSONValue, require_json_mapping
 
 

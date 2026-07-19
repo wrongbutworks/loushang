@@ -10,13 +10,13 @@ from loushang.coding.compaction import (
     generate_branch_summary,
 )
 from loushang.coding.extensions import ExtensionRunner, SessionBeforeTreeEvent
-from loushang.coding.session.types import TreeNavigationResult
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
     AgentTranscriptContext,
     AgentTranscriptNavigationRuntime,
     BranchSummaryOutput,
     TranscriptNavigationPlan,
+    TranscriptNavigationResult,
 )
 from loushang.harness.events import SessionRuntimeEventPayload
 from loushang.harness.runtime import CancellationSignal
@@ -81,10 +81,10 @@ class TreeController:
         replace_instructions: bool = False,
         label: str | None = None,
         generate_branch_summary_fn: BranchSummaryGenerator | None = None,
-    ) -> TreeNavigationResult:
+    ) -> TranscriptNavigationResult:
         plan = self._runtime.prepare(target_id)
         if plan is None:
-            return TreeNavigationResult(cancelled=False)
+            return TranscriptNavigationResult(cancelled=False)
 
         summary_override: BranchSummaryOutput | None = None
         if self.extension_runner is not None:
@@ -102,7 +102,7 @@ class TreeController:
                 label=label,
             )
             if cancelled:
-                return TreeNavigationResult(cancelled=True)
+                return TranscriptNavigationResult(cancelled=True)
 
         result = await self._runtime.navigate(
             plan,

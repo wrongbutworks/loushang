@@ -7,13 +7,14 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from loushang.coding.ui.model import ensure_usable_session_model
-from loushang.coding.workflow.fake_runtime import FakeWorkflowAdapter
-from loushang.coding.workflow.loader import load_workflow, resolve_workflow_files
 from loushang.coding.workflow.report import (
     format_workflow_json_report,
     format_workflow_report,
 )
-from loushang.coding.workflow.runner import AgentSessionWorkflowAdapter, run_workflow
+from loushang.coding.workflow.runner import run_workflow
+from loushang.harness.scenario.fake_runtime import FakeWorkflowAdapter
+from loushang.harness.scenario.loader import load_workflow, resolve_workflow_files
+from loushang.harness.scenario.runner import AgentSessionWorkflowAdapter
 
 
 async def run_prompt_steps_workflow(

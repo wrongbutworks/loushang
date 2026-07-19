@@ -17,13 +17,13 @@ from loushang.coding.extensions import (
     SessionStartEvent,
 )
 from loushang.coding.session import AgentSession
-from loushang.coding.store import (
-    SessionManager,
+from loushang.coding.store import SessionManager
+from loushang.harness.agent_transcript import (
+    AGENT_MESSAGE_KIND,
     SessionQuery,
     SessionRecord,
     SessionSummary,
 )
-from loushang.harness.agent_transcript import AGENT_MESSAGE_KIND
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import (
     DiagnosticPhase,

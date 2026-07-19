@@ -4,7 +4,6 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from loushang.ai.types import AssistantMessage, ToolCall, ToolResultMessage, UserMessage
-from loushang.coding.session.types import ContextUsage, SessionStats, TokenUsageTotals
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
     APPLICATION_MESSAGE_KIND,
@@ -14,6 +13,11 @@ from loushang.harness.agent_transcript import (
     SessionTreeNode,
     calculate_context_tokens,
     estimate_context_tokens,
+)
+from loushang.harness.session.inspection import (
+    ContextUsage,
+    SessionStats,
+    TokenUsageTotals,
 )
 
 if TYPE_CHECKING:
