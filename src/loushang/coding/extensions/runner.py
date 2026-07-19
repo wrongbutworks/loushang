@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import inspect
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
-from pathlib import Path
 from typing import cast
 
 from loushang.agent.types import (
@@ -20,46 +18,30 @@ from loushang.coding.extensions.types import (
     ExtensionCommandContext,
     ExtensionContext,
     ExtensionRuntimeBindings,
-    InputEventResult,
     LoadedExtension,
-    ResolvedCommand,
-    ResolvedFlag,
-    ResolvedShortcut,
     SessionActionDecision,
     SessionBeforeCompactResult,
     SessionBeforeForkResult,
     SessionBeforeTreeResult,
     SessionRefreshEvent,
 )
-from loushang.harness.extensions.dispatch import ExtensionDispatcher
-from loushang.harness.extensions.manifest import ExtensionManifest
-from loushang.harness.extensions.registry import (
-    resolve_extension_registry,
-)
 from loushang.harness.extensions.registry import (
     source_info_from_extension as _source_info_from_extension,
 )
-from loushang.harness.extensions.resources import ExtensionResourceRuntime
 from loushang.harness.extensions.routing import (
-    ExtensionRoutePlan,
-    ExtensionRouter,
     ResolvedExtensionRoute,
     RouteStep,
 )
-from loushang.harness.extensions.types import extension_is_active
-from loushang.harness.extensions.wrapper import wrap_registered_tool_definition
+from loushang.harness.extensions.runtime import ExtensionRuntime
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
-from loushang.harness.resources.source import SourceInfo
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
-    ResourceBundle,
 )
 from loushang.harness.runtime import (
     BoundProductRuntimeContext,
     RuntimeBindingState,
     UnboundProductRuntimeContext,
 )
-from loushang.harness.tools.core import ToolDefinition
 
 _UNSUPPORTED_THEME_MESSAGE = "Theme switching not supported in RPC mode"
 
@@ -124,24 +106,14 @@ class _BeforeAgentStartState:
     system_prompt_changed: bool = False
 
 
-class ExtensionRunner:
+class ExtensionRunner(ExtensionRuntime):
     def __init__(
         self, extensions: list[LoadedExtension | ExtensionDescriptor] | None = None
     ) -> None:
         self._diagnostics: list[ResourceDiagnostic] = []
-        self._extensions: list[LoadedExtension] = []
-        self._active_extensions: list[LoadedExtension] = []
-        self._tool_definitions: list[ToolDefinition] = []
-        self._tool_source_info_by_name: dict[str, SourceInfo[Path]] = {}
-        self._command_diagnostics: list[ResourceDiagnostic] = []
-        self._flag_diagnostics: list[ResourceDiagnostic] = []
-        self._shortcut_diagnostics: list[ResourceDiagnostic] = []
-        self._registered_commands: list[ResolvedCommand] = []
-        self._registered_commands_by_invocation_name: dict[str, ResolvedCommand] = {}
-        self._resolved_flags: list[ResolvedFlag] = []
-        self._resolved_shortcuts: list[ResolvedShortcut] = []
         self._runtime_state = _RunnerRuntimeState()
         loader = ExtensionLoader()
+        loaded_extensions: list[LoadedExtension] = []
 
         for extension in extensions or []:
             if isinstance(extension, ExtensionDescriptor):
@@ -152,233 +124,47 @@ class ExtensionRunner:
                     continue
             else:
                 loaded_extension = extension
-            self._extensions.append(loaded_extension)
-            if extension_is_active(loaded_extension):
-                self._active_extensions.append(loaded_extension)
-                self._bind_extension_api(loaded_extension)
+            loaded_extensions.append(loaded_extension)
             self._diagnostics.extend(loaded_extension.diagnostics)
-
-        self._route_plan = ExtensionRoutePlan.from_extensions(
-            self._extensions,
-            diagnostics=self._diagnostics,
-        )
-
-        def runtime_error_handler(extension, event, error) -> None:
-            self._emit_runtime_error(
+        super().__init__(
+            loaded_extensions,
+            context_factory=lambda fallback_cwd, extension: self._context_from_runtime(
+                fallback_cwd=fallback_cwd,
                 extension=extension,
-                event=event,
-                error=error,
-            )
-
-        self._router = ExtensionRouter(
-            self._route_plan,
+            ),
+            resource_context_factory=lambda cwd: _RunnerContext(cwd=cwd),
             diagnostics=self._diagnostics,
-            runtime_error_handler=runtime_error_handler,
-            include_route_id_in_error_metadata=False,
+            runtime_error_handler=self._emit_runtime_error,
         )
-        self._plain_diagnostic_router = ExtensionRouter(
-            self._route_plan,
-            diagnostics=self._diagnostics,
-            runtime_error_handler=runtime_error_handler,
-            include_route_id_in_error_metadata=False,
-            include_provenance_in_error_metadata=False,
-        )
-        self._apply_registry_snapshot()
-
-    def get_diagnostics(self) -> list[ResourceDiagnostic]:
-        return list(self._diagnostics)
-
-    def get_command_diagnostics(self) -> list[ResourceDiagnostic]:
-        return list(self._command_diagnostics)
-
-    def get_flag_diagnostics(self) -> list[ResourceDiagnostic]:
-        return list(self._flag_diagnostics)
-
-    def get_shortcut_diagnostics(self) -> list[ResourceDiagnostic]:
-        return list(self._shortcut_diagnostics)
-
-    def get_registered_commands(self) -> list[ResolvedCommand]:
-        return list(self._registered_commands)
-
-    def get_command(self, invocation_name: str) -> ResolvedCommand | None:
-        return self._registered_commands_by_invocation_name.get(invocation_name)
-
-    def _extension_by_name(self, name: str) -> LoadedExtension:
-        for extension in self._active_extensions:
-            if extension.name == name:
-                return extension
-        return LoadedExtension(name=name, source_path=Path("<unknown>"))
-
-    async def get_command_argument_completions(
-        self, invocation_name: str, prefix: str
-    ) -> list[object] | None:
-        command = self.get_command(invocation_name)
-        if command is None or command.get_argument_completions is None:
-            return None
-        try:
-            result = command.get_argument_completions(prefix)
-            if inspect.isawaitable(result):
-                result = await result
-        except Exception as exc:
-            self._diagnostics.append(
-                ResourceDiagnostic(
-                    code="extension_command_argument_completions_failed",
-                    message=f"Extension command argument completions failed: {exc}",
-                    source_path=command.source_info.path,
-                )
-            )
-            self._emit_runtime_error(
-                extension=self._extension_by_name(command.extension_name),
-                event="command_argument_completions",
-                error=exc,
-            )
-            return None
-        if result is None:
-            return None
-        if not isinstance(result, list):
-            self._diagnostics.append(
-                ResourceDiagnostic(
-                    code="invalid_extension_command_argument_completions",
-                    message="Command argument completions must return a list or None.",
-                    source_path=command.source_info.path,
-                )
-            )
-            return None
-        return result
-
-    def get_flags(self) -> list[ResolvedFlag]:
-        return list(self._resolved_flags)
-
-    def get_shortcuts(self) -> list[ResolvedShortcut]:
-        return list(self._resolved_shortcuts)
-
-    def set_flag_value(self, name: str, value: bool | str) -> None:
-        self._runtime_state.flag_values[name] = value
-
-    def get_flag_values(self) -> dict[str, bool | str]:
-        return dict(self._runtime_state.flag_values)
+        self._runtime_state.flag_values = self._flag_values
+        self._bind_extension_apis()
 
     def create_command_context(
         self, *, fallback_cwd: str = ""
     ) -> ExtensionCommandContext:
         return self._context_from_runtime(fallback_cwd=fallback_cwd)
 
-    def has_handlers(self, hook_name: str) -> bool:
-        return self._dispatcher(fallback_cwd="").has_handlers(hook_name)
-
     async def emit_user_bash(self, event: object, *, cwd: str = "") -> object | None:
-        return await self._dispatcher(fallback_cwd=cwd).dispatch_first_truthy(
-            "user_bash",
-            _event_object(event),
-        )
+        return await super().emit_user_bash(_event_object(event), cwd=cwd)
 
     async def emit_event(self, event: object, *, cwd: str = "") -> None:
         event_type = _event_type(event)
         if event_type is None:
             return
-        await self._dispatcher(fallback_cwd=cwd).dispatch(
+        await super().emit_event(
             event_type,
             _event_object(event),
+            cwd=cwd,
         )
-
-    async def emit_input(
-        self,
-        text: str,
-        images: list[object] | None = None,
-        *,
-        source: str = "interactive",
-        cwd: str = "",
-    ) -> InputEventResult:
-        return await self._dispatcher(fallback_cwd=cwd).dispatch_input(
-            text,
-            images,
-            source=source,
-        )
-
-    def list_tool_definitions(self) -> list[ToolDefinition]:
-        return list(self._tool_definitions)
-
-    def get_tool_source_info(self, name: str) -> SourceInfo[Path] | None:
-        return self._tool_source_info_by_name.get(name)
-
-    def get_message_renderer(self, custom_type: str):
-        for extension in self._active_extensions:
-            renderer = extension.message_renderers.get(custom_type)
-            if renderer is not None:
-                return renderer
-        return None
 
     def getMessageRenderer(self, custom_type: str):
         return self.get_message_renderer(custom_type)
 
-    def list_message_renderers(self) -> list[dict[str, object]]:
-        renderers: list[dict[str, object]] = []
-        for extension in self._active_extensions:
-            source_info = _source_info_from_extension(extension)
-            for custom_type in extension.message_renderers:
-                renderers.append(
-                    {
-                        "custom_type": custom_type,
-                        "customType": custom_type,
-                        "extension_name": extension.name,
-                        "extensionName": extension.name,
-                        "source_info": _serialize_source_info(source_info),
-                        "sourceInfo": _serialize_source_info(source_info),
-                    }
-                )
-        return renderers
-
     def listMessageRenderers(self) -> list[dict[str, object]]:
         return self.list_message_renderers()
 
-    def get_diagnostic_snapshot(self) -> dict[str, object]:
-        return {
-            "total": len(self._diagnostics),
-            "commands": len(self._command_diagnostics),
-            "flags": len(self._flag_diagnostics),
-            "shortcuts": len(self._shortcut_diagnostics),
-            "diagnostics": [
-                {
-                    "code": diagnostic.code,
-                    "message": diagnostic.message,
-                    "sourcePath": diagnostic.source_path.as_posix()
-                    if diagnostic.source_path is not None
-                    else None,
-                    "resourceId": diagnostic.resource_id,
-                    "resourceType": diagnostic.resource_type,
-                    "sourceKind": diagnostic.source_kind,
-                    "metadata": dict(diagnostic.metadata),
-                }
-                for diagnostic in self._diagnostics
-            ],
-        }
-
-    def list_extensions(self) -> list[dict[str, object]]:
-        return [
-            _extension_visibility_snapshot(extension, diagnostics=self._diagnostics)
-            for extension in self._extensions
-        ]
-
     def listExtensions(self) -> list[dict[str, object]]:
         return self.list_extensions()
-
-    def discover_resources(
-        self, bundle: ResourceBundle, *, reason: str = "refresh"
-    ) -> ResourceBundle:
-        del reason
-        return self._resource_runtime().discover(
-            bundle,
-            context=_RunnerContext(cwd=str(bundle.cwd)),
-        )
-
-    async def discover_resources_async(
-        self, bundle: ResourceBundle, *, reason: str = "refresh"
-    ) -> ResourceBundle:
-        del reason
-        return await self._resource_runtime().discover_async(
-            bundle,
-            context=_RunnerContext(cwd=str(bundle.cwd)),
-        )
 
     def bind_runtime(self, bindings: ExtensionRuntimeBindings) -> None:
         self._runtime_state.bind(bindings)
@@ -636,60 +422,6 @@ class ExtensionRunner:
             route_plan=self._route_plan,
         )
 
-    def _apply_registry_snapshot(self) -> None:
-        registry = resolve_extension_registry(self._active_extensions)
-        self._diagnostics.extend(registry.diagnostics)
-        self._flag_diagnostics.extend(registry.flag_diagnostics)
-        self._shortcut_diagnostics.extend(registry.shortcut_diagnostics)
-        self._registered_commands.extend(registry.commands)
-        self._registered_commands_by_invocation_name.update(registry.command_index())
-        self._resolved_flags.extend(registry.flags)
-        self._resolved_shortcuts.extend(registry.shortcuts)
-        for name, value in registry.flag_defaults.items():
-            self._runtime_state.flag_values.setdefault(name, value)
-        for registration in registry.tools:
-            source_info = registration.source_info
-
-            def context_factory(
-                source_info: SourceInfo[Path] = source_info,
-            ) -> ExtensionContext:
-                return self._context_from_runtime(
-                    fallback_cwd=str(source_info.path.parent)
-                )
-
-            self._tool_source_info_by_name[registration.definition.name] = source_info
-            self._tool_definitions.append(
-                wrap_registered_tool_definition(
-                    registration.definition,
-                    context_factory,
-                )
-            )
-
-    def _dispatcher(self, *, fallback_cwd: str) -> ExtensionDispatcher:
-        return ExtensionDispatcher(
-            self._extensions,
-            context_factory=lambda extension: self._context_from_runtime(
-                fallback_cwd=fallback_cwd,
-                extension=extension,
-            ),
-            diagnostics=self._diagnostics,
-            runtime_error_handler=lambda extension, event, error: (
-                self._emit_runtime_error(
-                    extension=extension,
-                    event=event,
-                    error=error,
-                )
-            ),
-            route_plan=self._route_plan,
-        )
-
-    def _resource_runtime(self) -> ExtensionResourceRuntime:
-        return ExtensionResourceRuntime(
-            self._extensions,
-            diagnostics=self._diagnostics,
-            route_plan=self._route_plan,
-        )
-
     async def _emit_session_hook(self, hook_name: str, session: object) -> None:
         fallback_cwd = _context_from_session(session).cwd
         await self._router.observe(
@@ -752,7 +484,7 @@ class ExtensionRunner:
                 ExtensionContext,
                 _RunnerContext(
                     cwd=fallback_cwd,
-                    get_flag_value=self._runtime_state.flag_values.get,
+                    get_flag_value=self.get_flag_value,
                     unsupported_theme_message=_UNSUPPORTED_THEME_MESSAGE,
                 ),
             )
@@ -765,13 +497,16 @@ class ExtensionRunner:
                     if extension is not None
                     else None
                 ),
-                get_flag_value=self._runtime_state.flag_values.get,
+                get_flag_value=self.get_flag_value,
                 unsupported_theme_message=_UNSUPPORTED_THEME_MESSAGE,
             ),
         )
 
     def _emit_runtime_error(
-        self, *, extension: LoadedExtension, event: str, error: Exception
+        self,
+        extension: LoadedExtension,
+        event: str,
+        error: Exception,
     ) -> None:
         bindings = self._runtime_state.bindings
         callback = getattr(bindings, "on_error", None) if bindings is not None else None
@@ -872,165 +607,3 @@ def _coerce_before_agent_start_result(result: object) -> BeforeAgentStartResult 
             diagnostics=diagnostics if isinstance(diagnostics, list) else [],
         )
     return None
-
-
-def _extension_visibility_snapshot(
-    extension: LoadedExtension,
-    *,
-    diagnostics: list[ResourceDiagnostic],
-) -> dict[str, object]:
-    manifest = cast(ExtensionManifest | None, extension.manifest)
-    policy = extension.policy
-    source_info = _source_info_from_extension(extension)
-    extension_id = manifest.id if manifest is not None else extension.name
-    extension_name = manifest.name if manifest is not None else extension.name
-    manifest_path = _extension_manifest_path(extension)
-    surfaces = [_serialize_surface(surface) for surface in extension.surfaces]
-    return {
-        "id": extension_id,
-        "name": extension_name,
-        "runtimeName": extension.name,
-        "version": manifest.version if manifest is not None else None,
-        "description": manifest.description if manifest is not None else None,
-        "sourcePath": source_info.path.as_posix(),
-        "manifestPath": manifest_path.as_posix() if manifest_path is not None else None,
-        "enabled": policy.enabled if policy is not None else True,
-        "permissionLevel": (
-            policy.permission_level
-            if policy is not None
-            else manifest.permissions.level
-            if manifest is not None
-            else "safe"
-        ),
-        "capabilities": list(
-            policy.capabilities
-            if policy is not None
-            else manifest.permissions.capabilities
-            if manifest is not None
-            else ()
-        ),
-        "surfaces": surfaces,
-        "contributions": list(surfaces),
-        "diagnostics": [
-            _serialize_diagnostic(diagnostic)
-            for diagnostic in _extension_visibility_diagnostics(
-                extension,
-                diagnostics=diagnostics,
-                manifest_path=manifest_path,
-            )
-        ],
-    }
-
-
-def _serialize_surface(surface: object) -> dict[str, object]:
-    metadata = getattr(surface, "metadata", {})
-    source = metadata.get("source") if isinstance(metadata, dict) else None
-    return {
-        "type": str(getattr(surface, "type", "")),
-        "name": str(getattr(surface, "name", "")),
-        "active": bool(getattr(surface, "active", True)),
-        "priority": int(getattr(surface, "priority", 0)),
-        "source": source if isinstance(source, str) else "",
-        "sourcePath": _path_text(getattr(surface, "source_path", None)),
-        "diagnostics": [
-            _serialize_diagnostic(diagnostic)
-            for diagnostic in getattr(surface, "diagnostics", ())
-            if isinstance(diagnostic, ResourceDiagnostic)
-        ],
-    }
-
-
-def _extension_visibility_diagnostics(
-    extension: LoadedExtension,
-    *,
-    diagnostics: list[ResourceDiagnostic],
-    manifest_path: Path | None,
-) -> list[ResourceDiagnostic]:
-    source_paths = {
-        path
-        for path in (
-            extension.source_path,
-            extension.entry_path,
-            manifest_path,
-            *_extension_manifest_candidate_paths(extension),
-        )
-        if path is not None
-    }
-    result: list[ResourceDiagnostic] = []
-    seen: set[tuple[str, str, str | None]] = set()
-    for diagnostic in extension.diagnostics:
-        result, seen = _append_extension_diagnostic(result, seen, diagnostic)
-    for diagnostic in diagnostics:
-        if diagnostic.source_path is None or diagnostic.source_path not in source_paths:
-            continue
-        result, seen = _append_extension_diagnostic(result, seen, diagnostic)
-    return result
-
-
-def _append_extension_diagnostic(
-    result: list[ResourceDiagnostic],
-    seen: set[tuple[str, str, str | None]],
-    diagnostic: ResourceDiagnostic,
-) -> tuple[list[ResourceDiagnostic], set[tuple[str, str, str | None]]]:
-    key = (
-        diagnostic.code,
-        diagnostic.message,
-        diagnostic.source_path.as_posix()
-        if diagnostic.source_path is not None
-        else None,
-    )
-    if key not in seen:
-        seen.add(key)
-        result.append(diagnostic)
-    return result, seen
-
-
-def _serialize_diagnostic(diagnostic: ResourceDiagnostic) -> dict[str, object]:
-    return {
-        "code": diagnostic.code,
-        "message": diagnostic.message,
-        "sourcePath": diagnostic.source_path.as_posix()
-        if diagnostic.source_path is not None
-        else None,
-        "resourceId": diagnostic.resource_id,
-        "resourceType": diagnostic.resource_type,
-        "sourceKind": diagnostic.source_kind,
-        "metadata": dict(diagnostic.metadata),
-    }
-
-
-def _extension_manifest_path(extension: LoadedExtension) -> Path | None:
-    for candidate in _extension_manifest_candidate_paths(extension):
-        if candidate.is_file():
-            return candidate
-    return None
-
-
-def _extension_manifest_candidate_paths(extension: LoadedExtension) -> tuple[Path, ...]:
-    candidates: list[Path] = []
-    if extension.source_path.suffix:
-        candidates.append(extension.source_path.with_name("loushang-extension.toml"))
-    else:
-        candidates.append(extension.source_path / "loushang-extension.toml")
-    if extension.entry_path is not None:
-        candidates.append(extension.entry_path.parent / "loushang-extension.toml")
-    return tuple(dict.fromkeys(candidates))
-
-
-def _path_text(value: object) -> str:
-    return value.as_posix() if isinstance(value, Path) else str(value or "")
-
-
-def _serialize_source_info(source_info: SourceInfo[Path]) -> dict[str, object]:
-    return {
-        "path": source_info.path.as_posix(),
-        "source": source_info.source,
-        "scope": source_info.scope,
-        "origin": source_info.origin,
-        "baseDir": source_info.base_dir.as_posix()
-        if source_info.base_dir is not None
-        else None,
-        "base_dir": source_info.base_dir.as_posix()
-        if source_info.base_dir is not None
-        else None,
-    }

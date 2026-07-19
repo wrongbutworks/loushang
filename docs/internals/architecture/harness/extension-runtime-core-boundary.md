@@ -27,6 +27,9 @@ Harness owns these mechanisms:
 - resource contribution execution and `promptPaths`, `skillPaths`, and
   `themePaths` normalization;
 - registered-tool execution wrapping with an injected context factory.
+- `ExtensionRuntime`, which composes already-loaded extensions into the common
+  registry, route plan, dispatcher, resource discovery, command/flag/shortcut,
+  tool, renderer, diagnostic, and extension-visibility surface.
 
 The implementation is split across focused modules under
 `loushang.harness.extensions`: `manifest`, `types`, `api`, `loader`, `registry`,
@@ -53,14 +56,33 @@ Coding keeps:
 - session switch/fork/compact/tree decisions and Coding event projection;
 - system-prompt augmentation, model/provider behavior, Agent tool-call result
   adaptation, compaction behavior, and UI integration;
-- the `ExtensionRunner` composition adapter and Product reducers that connect
-  Harness routing to Coding session, prompt, context, and Agent result types.
+- the `ExtensionRunner` adapter and Product reducers that connect the
+  Harness-owned `ExtensionRuntime` to Coding session, prompt, context, and
+  Agent result types.
 
 `loushang.coding.extensions.loader.ExtensionLoader` now only injects the Coding
 API factory, Coding permission policy, and legacy event names into the Harness
 loader. The Coding `manifest`, `events`, `contributions`, and `wrapper` modules
 are compatibility re-exports. Shared records imported through
 `coding.extensions.types` are the same Harness-owned objects.
+
+## Runtime Composition
+
+`ExtensionRuntime` starts after a Product has loaded, trusted, and selected
+extensions. It owns the mechanical composition of the standard extension
+surfaces: registration resolution, dispatch routing, resource contribution
+execution, context-factory based tool wrapping, and diagnostic/visibility
+projection. Its two context factories are explicit injection points: the
+per-extension factory supports dispatched hooks and tools, while the optional
+resource factory preserves a Product's resource-refresh context semantics.
+
+The runtime has no Product session state and does not interpret model choices,
+approval outcomes, UI state, or Agent-specific hook results. Coding's
+`ExtensionRunner` only performs descriptor loading with Coding API injection,
+binds Coding's typed runtime context, maps legacy event objects and session
+decisions, and supplies the Coding error callback. It must not reimplement
+registry snapshots, resource discovery, generic input/event dispatch, command
+completion, flag state, or extension visibility serialization.
 
 ## Policy Injection
 
@@ -183,6 +205,7 @@ The target direction is:
 
 ```text
 Coding extension/session adapter
+  -> loushang.harness.extensions.runtime
   -> loushang.harness.extensions
   -> loushang.harness.resources / tools / contributions
   -> stable agent tool value primitives
@@ -191,7 +214,8 @@ Coding extension/session adapter
 `loushang.harness.extensions` must not import coding, method, work, TUI, AI,
 provider, UI, session, or another product package. Coding must not reintroduce
 parallel implementations of Harness-owned manifest, loader, registry,
-dispatcher, resource contribution, or tool-wrapper behavior.
+dispatcher, resource contribution, runtime composition, or tool-wrapper
+behavior.
 
 ## Validation
 
