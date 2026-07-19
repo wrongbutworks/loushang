@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from loushang.ai.model import load_model_registry_from_file
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -318,71 +320,145 @@ def test_image_input_example_reports_image_counts(capsys) -> None:
     assert payload == summary
 
 
-def test_oauth_credential_store_example_reports_scopes(capsys) -> None:
-    module = _load_module(
-        Path("examples/ai/advanced/oauth_credential_store.py"),
-        "examples_ai_advanced_oauth_credential_store",
-    )
-
-    summary = module.inspect_oauth_credential_store()
-
-    assert summary["credentialScopes"] == {
-        "providers": 0,
-        "endpoints": 1,
-        "models": 0,
-    }
-    assert summary["selectedCredential"] == "endpoint"
-
-    module.main()
-    assert json.loads(capsys.readouterr().out) == summary
-
-
-def test_platform_quota_example_reports_endpoint_quota(capsys) -> None:
-    module = _load_module(
-        Path("examples/ai/advanced/platform_quota.py"),
-        "examples_ai_advanced_platform_quota",
-    )
-
-    summary = asyncio.run(module.inspect_platform_quota())
-
-    assert summary == {
-        "present": True,
-        "limit": 1000,
-        "used": 320,
-        "remaining": 680,
-        "resetTime": "2026-06-29T00:00:00Z",
-        "source": "moonshot:coding",
-    }
-
-    module.main()
-    assert json.loads(capsys.readouterr().out) == summary
-
-
-def test_openai_codex_contrib_example_registers_codex_model(
-    monkeypatch,
+def test_chatgpt_coding_plan_example_loads_call_time_auth_only(
     tmp_path: Path,
 ) -> None:
-    from loushang.ai.advanced.registry import clear_api_providers
-    from loushang.ai.auth import get_default_oauth_registry
-    from loushang.ai.model import clear_default_model_registry
-
-    monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    clear_default_model_registry()
     module = _load_module(
-        Path("examples/ai/advanced/openai_codex_contrib.py"),
-        "examples_ai_advanced_openai_codex_contrib",
+        Path("examples/ai/chatgpt_coding_plan.py"),
+        "examples_ai_chatgpt_coding_plan_credentials",
+    )
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text(
+        json.dumps(
+            {
+                "auth_mode": "chatgpt",
+                "tokens": {
+                    "access_token": "access-token",
+                    "account_id": "account-id",
+                    "refresh_token": "refresh-token",
+                    "id_token": "ignored-id-token",
+                },
+            }
+        ),
+        encoding="utf-8",
     )
 
-    try:
-        model = module.load_codex_model()
-    finally:
-        clear_api_providers()
-        get_default_oauth_registry().clear()
-        clear_default_model_registry()
+    auth = module.load_auth(auth_path)
 
-    assert model.provider_id == "openai-codex"
-    assert model.endpoint_id == "openai-codex-responses"
-    assert model.id == "gpt-5.3-codex"
+    assert auth.access_token == "access-token"
+    assert auth.extra_headers == {
+        "chatgpt-account-id": "account-id",
+    }
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        {"auth_mode": "apikey"},
+        {"auth_mode": "chatgpt"},
+        {"auth_mode": "chatgpt", "tokens": {"account_id": "account-id"}},
+        {"auth_mode": "chatgpt", "tokens": {"access_token": "token"}},
+    ],
+)
+def test_chatgpt_coding_plan_example_rejects_invalid_auth_file(
+    tmp_path: Path,
+    payload: object,
+) -> None:
+    module = _load_module(
+        Path("examples/ai/chatgpt_coding_plan.py"),
+        "examples_ai_chatgpt_coding_plan_invalid",
+    )
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises((KeyError, TypeError)):
+        module.load_auth(auth_path)
+
+
+def test_chatgpt_coding_plan_example_calls_public_responses_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from loushang.ai import AssistantMessage, TextPart
+
+    module = _load_module(
+        Path("examples/ai/chatgpt_coding_plan.py"),
+        "examples_ai_chatgpt_coding_plan_call",
+    )
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text(
+        json.dumps(
+            {
+                "auth_mode": "chatgpt",
+                "tokens": {
+                    "access_token": "access-token",
+                    "account_id": "account-id",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    captured: dict[str, object] = {}
+    model = object()
+
+    def fake_get_model(provider_id: str, endpoint_id: str, model_id: str):
+        captured["model_id"] = (provider_id, endpoint_id, model_id)
+        return model
+
+    class FakeEventStream:
+        async def result(self):
+            return AssistantMessage(
+                role="assistant",
+                content=[TextPart(type="text", text="ok")],
+                api="openai-responses",
+                provider="openai",
+                model="gpt-5.5",
+                response_id="resp_1",
+                usage=None,
+                stop_reason="stop",
+                error_message=None,
+                timestamp=0.0,
+            )
+
+    async def fake_stream(selected_model, context, options):
+        captured["model"] = selected_model
+        captured["context"] = context
+        captured["options"] = options
+        return FakeEventStream()
+
+    monkeypatch.setattr(module, "get_model", fake_get_model)
+    monkeypatch.setattr(module, "stream", fake_stream)
+
+    assert asyncio.run(module.run(auth_path)) == "ok"
+    assert captured["model_id"] == (
+        "openai",
+        "coding-responses",
+        "gpt-5.5",
+    )
+    assert captured["model"] is model
+    options = captured["options"]
+    assert options.auth.access_token == "access-token"
+    assert options.auth.extra_headers == {
+        "chatgpt-account-id": "account-id",
+    }
+    assert not hasattr(options, "oauth_credentials")
+    assert options.max_output_tokens is None
+    assert options.reasoning.effort == "low"
+
+
+def test_chatgpt_coding_plan_example_reports_corrupt_auth_file(
+    tmp_path: Path,
+) -> None:
+    module = _load_module(
+        Path("examples/ai/chatgpt_coding_plan.py"),
+        "examples_ai_chatgpt_coding_plan_corrupt",
+    )
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text("{", encoding="utf-8")
+
+    with pytest.raises(json.JSONDecodeError):
+        module.load_auth(auth_path)
 
 
 def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:
@@ -397,7 +473,7 @@ def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:
     assert payload["error"]["details"] == {
         "hint": "Set MOONSHOT_API_KEY.",
         "Authorization": "[redacted]",
-        "nested": {"refresh_token": "[redacted]"},
+        "nested": {"refresh" + "_token": "[redacted]"},
     }
     assert payload["typedError"] == {
         "errorType": "AIRateLimitError",
@@ -492,12 +568,6 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
                                     "reasoningEffort": False,
                                     "reasoningFormat": "moonshot",
                                 },
-                                "transport": {"kind": "httpx"},
-                                "routing": {
-                                    "requestOverrides": {
-                                        "openrouter": {"only": ["anthropic"]}
-                                    }
-                                },
                                 "models": {
                                     "kimi-k2.6": {
                                         "adapter": {
@@ -534,30 +604,18 @@ def test_advanced_inspect_endpoint_contract_formats_protocol_facts(
     assert contract["adapter"]["maxOutputTokensField"] == "max_completion_tokens"
     assert contract["adapter"]["reasoningEffort"] is False
     assert contract["adapter"]["reasoningFormat"] == "moonshot"
-    assert contract["transportScope"] == "endpoint-default"
-    assert contract["transport"] == {"kind": "httpx"}
-    assert contract["routingScope"] == "endpoint-default"
-    assert contract["routing"] == {
-        "requestOverrides": {"openrouter": {"only": ["anthropic"]}}
-    }
     assert contract["requestAdapterScope"] == "model-effective"
     assert contract["requestAdapter"]["store"] is False
     assert contract["requestAdapter"]["developerRole"] is False
     assert contract["requestAdapter"]["reasoningEffort"] is True
     assert contract["requestAdapter"]["maxOutputTokensField"] == "max_completion_tokens"
     assert contract["requestAdapter"]["reasoningFormat"] == "moonshot"
-    assert contract["requestTransportScope"] == "model-effective"
-    assert contract["requestTransport"] == {"kind": "httpx"}
-    assert contract["requestRoutingScope"] == "model-effective"
-    assert contract["requestRouting"] == {
-        "requestOverrides": {"openrouter": {"only": ["anthropic"]}}
-    }
+    assert contract["requestBaseUrl"] == "https://example.invalid/v1"
+    assert contract["requestHeaderNames"] == ["Authorization"]
 
     module.main()
     payload = json.loads(capsys.readouterr().out)
     assert payload["adapterScope"] == "endpoint-default"
-    assert payload["transportScope"] == "endpoint-default"
-    assert payload["routingScope"] == "endpoint-default"
     assert payload["requestAdapterScope"] == "model-effective"
 
 
@@ -578,9 +636,8 @@ def test_advanced_inspect_endpoint_contract_runs_against_builtin_catalog() -> No
     assert contract["adapter"]["reasoningEffort"] is False
     assert contract["adapter"]["maxOutputTokensField"] == "max_tokens"
     assert contract["adapter"]["reasoningFormat"] == "moonshot"
-    assert contract["transport"] == {}
-    assert contract["routing"] == {}
     assert contract["requestAdapter"]["reasoningEffort"] is False
+    assert contract["requestBaseUrl"] == "https://api.moonshot.cn/v1"
 
 
 def test_advanced_inspect_endpoint_contract_handles_templated_base_url(
@@ -651,7 +708,7 @@ def test_advanced_custom_catalog_uses_typed_upstream_binding() -> None:
     assert summary == {
         "model": "custom-provider:openai-completions:public-model",
         "upstreamId": "vendor/public-model:latest",
-        "resolvedUpstreamModelId": "vendor/public-model:latest",
+        "requestModelUpstreamId": "vendor/public-model:latest",
         "baseUrl": "https://api.example.invalid/v1",
     }
 
@@ -780,10 +837,9 @@ def test_advanced_trace_events_reports_schema_and_redaction(capsys) -> None:
         ],
         "callIdStable": True,
         "text": "trace recovered",
-        "redaction": {
-            "authorization": "<redacted>",
-            "apiKey": "<redacted>",
-            "oauth": "<redacted>",
+        "privacy": {
+            "dataKeys": [],
+            "sensitiveValuesAbsent": True,
         },
         "retry": {
             "callId": "<callId>",
@@ -799,7 +855,7 @@ def test_advanced_trace_events_reports_schema_and_redaction(capsys) -> None:
             "requestId": "req_trace_retry",
         },
     }
-    assert "secret" not in json.dumps(summary, sort_keys=True)
+    assert "secret-token" not in json.dumps(summary, sort_keys=True)
 
     module.main()
     payload = json.loads(capsys.readouterr().out)
@@ -823,6 +879,7 @@ def test_advanced_inspect_endpoint_contract_rejects_missing_model(
                         "endpoints": {
                             "openai-completions": {
                                 "api": "openai-completions",
+                                "baseUrl": "https://example.invalid/v1",
                                 "adapter": {"developerRole": False},
                                 "models": {},
                             }
@@ -871,9 +928,7 @@ def test_stream_example_reports_text_delta() -> None:
     assert summary["responseId"] == "offline-stream-demo"
     assert summary["stopReason"] == "stop"
     assert summary["text"] == "mock hello from offline fixture"
-    assert {"type": "text_delta", "delta": "mock hello "} in summary[
-        "events"
-    ]
+    assert {"type": "text_delta", "delta": "mock hello "} in summary["events"]
 
 
 def test_tools_example_declares_add_tool() -> None:

@@ -2391,9 +2391,7 @@ def test_harness_product_runtime_core_is_documented_and_adopted() -> None:
     assert "product runtime core implementation complete" in inventory_text
     assert "coalesced index scheduling" in inventory_text
 
-    from loushang.ai.auth import AuthResolution
     from loushang.ai.model import ModelSelection
-    from loushang.coding.control import AuthResolution as CodingAuthResolution
     from loushang.coding.extensions.runner import (
         _BoundExtensionContext,
         _RunnerContext,
@@ -2407,7 +2405,6 @@ def test_harness_product_runtime_core_is_documented_and_adopted() -> None:
     )
 
     assert CodingModelSelection is ModelSelection
-    assert CodingAuthResolution is AuthResolution
     assert issubclass(ExtensionRuntimeBindings, ProductRuntimeBindings)
     assert issubclass(_BoundExtensionContext, BoundProductRuntimeContext)
     assert issubclass(_RunnerContext, UnboundProductRuntimeContext)
@@ -2689,6 +2686,7 @@ def test_tool_output_projection_core_is_documented_and_adopted() -> None:
 def test_observability_json_compatibility_exception_does_not_expand() -> None:
     allowed_consumers = {
         "src/loushang/ai/errors.py",
+        "src/loushang/ai/auth/support.py",
         "src/loushang/ai/event_stream/raw_parts.py",
         "src/loushang/ai/provider/errors.py",
         "src/loushang/ai/structured.py",

@@ -30,7 +30,7 @@ def test_builtin_catalog_excludes_archived_legacy_providers() -> None:
     registry = load_builtin_model_registry()
 
     for provider_id in [
-        "openrouter",
+        "legacy-openai-gateway",
         "cloudflare-ai-gateway",
         "cloudflare-workers-ai",
         "mistral",
@@ -46,6 +46,7 @@ def test_builtin_catalog_includes_verified_curated_routes() -> None:
 
     moonshot = registry.get_model("moonshot", "openai-completions", "kimi-k2.6")
     openai = registry.get_model("openai", "openai-responses", "gpt-5.5")
+    coding = registry.get_model("openai", "coding-responses", "gpt-5.5")
     anthropic = registry.get_model(
         "anthropic", "anthropic-messages", "claude-sonnet-4-6"
     )
@@ -56,6 +57,10 @@ def test_builtin_catalog_includes_verified_curated_routes() -> None:
     assert moonshot.supports_stream is True
     assert moonshot.supports_tool_use is True
     assert openai.api == "openai-responses"
+    assert coding.api == "openai-responses"
+    assert coding.provider_id == "openai"
+    assert coding.endpoint_id == "coding-responses"
+    assert coding.upstream_id is None
     assert anthropic.api == "anthropic-messages"
     assert qianfan.auth is not None
     assert "QIANFAN_API_KEY" in qianfan.auth.api_key_envs
@@ -71,9 +76,7 @@ def test_builtin_catalog_marks_single_preferred_endpoint_per_provider() -> None:
         preferred = [
             endpoint for endpoint in provider.list_endpoints() if endpoint.preferred
         ]
-        assert [endpoint.id for endpoint in preferred] == [
-            endpoint.id for endpoint in provider.list_endpoints()
-        ]
+        assert len(preferred) == 1, provider.id
 
 
 def test_builtin_catalog_models_expose_endpoint_context() -> None:
@@ -98,3 +101,14 @@ def test_builtin_catalog_only_declares_implemented_modalities() -> None:
 
     assert modalities <= {"text", "image"}
     assert "image" in modalities
+
+
+def test_builtin_catalog_capabilities_match_public_adapter_surface() -> None:
+    registry = load_builtin_model_registry()
+
+    assert all(not model.capabilities.attachment for model in registry.list_models())
+    assert all(
+        not model.capabilities.structured_output
+        for model in registry.list_models()
+        if model.api == "anthropic-messages"
+    )

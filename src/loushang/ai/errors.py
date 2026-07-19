@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Self
 
-from loushang.ai.utils.redaction import is_sensitive_key
+from loushang.ai.utils.redaction import is_header_container_key, is_sensitive_key
 from loushang.observability.problem import (
     JSONValue,
     ensure_json_safe_mapping,
@@ -35,7 +35,7 @@ class AIErrorCode(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class AIErrorInfo:
-    code: AIErrorCode | str
+    code: AIErrorCode
     message: str
     source: str
     retryable: bool
@@ -47,18 +47,14 @@ class AIErrorInfo:
     details: Mapping[str, JSONValue] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        code = self.code
-        if isinstance(code, str):
-            code = AIErrorCode(code)
-            object.__setattr__(self, "code", code)
+        if not isinstance(self.code, AIErrorCode):
+            raise TypeError("AIErrorInfo.code must be AIErrorCode")
         details = ensure_json_safe_mapping(self.details)
         object.__setattr__(self, "details", details)
 
     def to_dict(self) -> dict[str, JSONValue]:
         return {
-            "code": self.code.value
-            if isinstance(self.code, AIErrorCode)
-            else self.code,
+            "code": self.code.value,
             "message": self.message,
             "source": self.source,
             "retryable": self.retryable,
@@ -81,7 +77,7 @@ class AIError(Exception):
         message: str | AIErrorInfo,
         *,
         info: AIErrorInfo | None = None,
-        code: AIErrorCode | str | None = None,
+        code: AIErrorCode | None = None,
         source: str | None = None,
         retryable: bool | None = None,
         provider: str | None = None,
@@ -208,19 +204,13 @@ _ERROR_CLASS_BY_CODE: dict[AIErrorCode, type[AIError]] = {
 
 
 def ai_error_from_info(info: AIErrorInfo) -> AIError:
-    code = info.code
-    if isinstance(code, str):
-        try:
-            code = AIErrorCode(code)
-        except ValueError:
-            return AIError.from_info(info)
-    return _ERROR_CLASS_BY_CODE.get(code, AIError).from_info(info)
+    return _ERROR_CLASS_BY_CODE.get(info.code, AIError).from_info(info)
 
 
 def ai_error_info_from_mapping(raw: Mapping[str, object]) -> AIErrorInfo:
     details = raw.get("details")
     return AIErrorInfo(
-        code=_required_str(raw, "code"),
+        code=AIErrorCode(_required_str(raw, "code")),
         message=_required_str(raw, "message"),
         source=_required_str(raw, "source"),
         retryable=bool(raw.get("retryable")),
@@ -234,6 +224,8 @@ def ai_error_info_from_mapping(raw: Mapping[str, object]) -> AIErrorInfo:
 
 
 def _redact_json_value(value: JSONValue, *, key: str | None = None) -> JSONValue:
+    if key is not None and is_header_container_key(key) and isinstance(value, dict):
+        return {item_key: _REDACTED for item_key in value}
     if key is not None and is_sensitive_key(key):
         return _REDACTED
     if isinstance(value, dict):

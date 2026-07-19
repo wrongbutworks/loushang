@@ -165,7 +165,6 @@ class CompactionController:
         kwargs: dict[str, object] = {
             "preparation": preparation,
             "model": self.agent.model,
-            "api_key": "",
             "headers": None,
             "signal": self.agent.signal,
         }

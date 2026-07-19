@@ -87,7 +87,7 @@ entries.
 | `coding.cli` | Keep product | Product CLI. It may expose harness-backed behavior but remains coding-owned. |
 | `coding.message` | Migrated and removed | `harness.conversation` owns the neutral envelope, repository, replay, and opaque-record behavior. The optional `harness.agent_transcript` profile owns standard Agent transcript payloads, codecs, state/context projection, the pure record factory, idempotent application-message commit, and an explicit Session v3 external importer. Native Product load accepts only the current format. Coding keeps only product presentation and orchestration policy. |
 | `coding.store` | Product adapter / compatibility shim | `ConversationStore`, revision/CAS semantics, Memory/File backends, and the open Agent transcript service live in Harness. The current Native Agent transcript codec, journal policy, lock, file layout, discovery, `FileConversationStore` assembly, standard session-facing commit/label/context operations, catalog summary/query/index/tree read model, and create/restore/detached-copy/fork/disposal lifecycle mechanics now live in `harness.agent_transcript`. Coding's `ProductRuntimePlan` selects file/memory stores and transcript profiles; its `SessionManager` facade retains root/persist decisions, runtime-profile binding, Product-only index fields and retention, CLI/UI policy, and compatibility names. Database/Redis providers and journal-offset projection checkpoints remain deferred. |
-| `coding.control` | Product adapter | Transactional ordered layers and persistence, `ConfigFieldSpec` / `SchemaConfigCodec`, scoped revisions and `ConfigChange` records, subscriptions, issue collection, injected-runner value resolution, and the explicit activation DAG live in `loushang.harness.config`. Coding keeps `ControlConfig`, fields, defaults, validation, paths, removed-setting compatibility, convenience APIs, diagnostic wording, effect selection/order/callbacks, provider registration, credential handling, model/auth interpretation, persisted selection policy, commands, and UI. Harness neither executes shell commands nor stores credentials; `ModelRegistry` and `AuthManager` do not move. |
+| `coding.control` | Product adapter | Transactional ordered layers and persistence, `ConfigFieldSpec` / `SchemaConfigCodec`, scoped revisions and `ConfigChange` records, subscriptions, issue collection, injected-runner value resolution, and the explicit activation DAG live in `loushang.harness.config`. Coding keeps `ControlConfig`, fields, defaults, validation, paths, removed-setting compatibility, convenience APIs, diagnostic wording, effect selection/order/callbacks, provider registration, persisted model-selection policy, commands, and UI. Harness neither executes shell commands nor stores credentials. `ModelRegistry` remains Product-owned; request authentication declarations and credential-to-header resolution remain AI-owned. Coding has no authentication lifecycle or credential store. |
 | `coding.package`, `coding.plugin`, `coding.resources`, `coding.skill` | Split candidate | Package source/manifest/materialization, standard roots/layout, registry/resolver, discovery, skill-loading, structured package catalog, scoped source resolution, lifecycle summary, and conflict diagnostics now live under `loushang.harness.resources`. Coding keeps built-in content registration, compatibility convention activation, additional roots, trust/approval policy, settings injection, CLI/RPC projection, and compatibility facades. |
 | `coding.workflow` | Compatibility shim / Product adapter | `loushang.harness.scenario` owns workflow schema, parser, runner, cancellation, waiting, event patterns, result values, fake adapter, read-only file assertions, and the injected command-runner protocol. Coding keeps CLI/reporting, model readiness, scenario activation, legacy local-shell execution policy, and compatibility exports. |
 | `coding.platform` | Split candidate | Route neutral workspace/git and operating-system mechanisms to focused Harness modules when reusable. Keep product update/version policy and output guards in Coding; clipboard and terminal integration belong to Product/TUI rather than Harness. |
@@ -270,9 +270,9 @@ diagnostic wording, and configuration effect order and callbacks.
 
 The activation runtime is neither a service locator nor a Product or extension
 manifest. Harness does not execute a shell or store credentials. `ModelRegistry`,
-`AuthManager`, provider registration, auth resolution, credential handling, and
-persisted model-selection behavior remain with their existing AI or Product
-owners.
+provider registration, and persisted model-selection behavior remain Product
+concerns. Request authentication declarations and credential-to-header
+resolution remain AI concerns; Coding does not add an authentication lifecycle.
 
 ## Completed And Accepted Capability History
 
@@ -523,14 +523,14 @@ probe for the moved invocation shape.
 - Do not add product imports from `loushang.harness`.
 - Default reusable concrete implementations to Harness; keep only
   domain-specific tool semantics in products.
-- Freeze Product configuration semantics and credential ownership, not neutral
+- Freeze Product configuration semantics and model-selection ownership, not neutral
   configuration mechanisms. `ControlConfig` fields, defaults, validation,
   paths, removed-setting compatibility, convenience APIs, diagnostic wording,
   and effect selection/order/callbacks remain Product-owned.
-- Do not route credentials, `ModelRegistry`, `AuthManager`, provider
-  registration, auth resolution, or persisted model selection through Harness.
-  Harness neither executes shell commands nor stores credentials; command-backed
-  values require an injected Product runner.
+- Do not route `ModelRegistry`, provider registration, persisted model
+  selection, or AI request authentication through Harness. Harness neither
+  executes shell commands nor stores credentials; command-backed values require
+  an injected Product runner.
 - Do not move product prompt content, section selection/order, command
   definitions/handlers, or source precedence policy. Neutral template
   expansion, prompt composition, slash parsing, catalog, and dispatch mechanics

@@ -86,7 +86,8 @@ class Pricing as "Pricing\n价格信息" {
 Provider "1" *-- "1..*" Endpoint : 包含
 Endpoint "1" *-- "1..*" Model : 暴露
 Provider "1" *-- "0..1" Auth : 默认认证
-Endpoint "1" *-- "0..1" Auth : 覆盖认证
+Endpoint "1" *-- "0..1" Auth : 完整替换认证
+Model "1" *-- "0..1" Auth : 完整替换认证
 Model "1" *-- "0..1" Pricing : 定价
 Endpoint "1" *-- "0..1" Compat : 默认兼容参数
 Model "1" *-- "0..1" Compat : 覆盖兼容参数
@@ -111,7 +112,9 @@ end note
 note right of Auth
 Auth 是嵌入式对象：
 - provider.auth
-- endpoint.authOverride
+- endpoint.auth
+- model.auth
+优先级：Model > Endpoint > Provider
 不是独立顶层实体。
 end note
 

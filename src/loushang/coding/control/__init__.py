@@ -1,4 +1,3 @@
-from loushang.coding.control.auth_manager import AuthManager, AuthResolution
 from loushang.coding.control.config_value import (
     ConfigCommandResult,
     ConfigValueResolver,
@@ -24,8 +23,6 @@ from loushang.coding.control.types import (
 )
 
 __all__ = [
-    "AuthManager",
-    "AuthResolution",
     "BranchSummarySettings",
     "ConfigCommandResult",
     "ConfigValueResolver",

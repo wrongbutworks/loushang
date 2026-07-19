@@ -5,10 +5,10 @@ from typing import NamedTuple
 
 from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.bootstrap import register_builtin_ai_providers
+from loushang.ai.protocols.anthropic_messages import AnthropicMessagesAdapter
+from loushang.ai.protocols.openai_chat_completions import OpenAIChatCompletionsAdapter
+from loushang.ai.protocols.openai_responses import OpenAIResponsesAdapter
 from loushang.ai.provider.protocol import ApiProvider
-from loushang.ai.providers.anthropic import AnthropicProvider
-from loushang.ai.providers.openai_completions import OpenAICompletionsProvider
-from loushang.ai.providers.openai_responses import OpenAIResponsesProvider
 
 
 class CoreAdapterCase(NamedTuple):
@@ -17,9 +17,9 @@ class CoreAdapterCase(NamedTuple):
 
 
 CORE_ADAPTERS = (
-    CoreAdapterCase("anthropic-messages", AnthropicProvider),
-    CoreAdapterCase("openai-completions", OpenAICompletionsProvider),
-    CoreAdapterCase("openai-responses", OpenAIResponsesProvider),
+    CoreAdapterCase("anthropic-messages", AnthropicMessagesAdapter),
+    CoreAdapterCase("openai-completions", OpenAIChatCompletionsAdapter),
+    CoreAdapterCase("openai-responses", OpenAIResponsesAdapter),
 )
 
 

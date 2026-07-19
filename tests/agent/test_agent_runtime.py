@@ -5,13 +5,9 @@ from typing import Any
 import pytest
 
 from loushang.agent.types import AgentToolResult
+from loushang.ai.auth import ApiKeyAuth, OAuthBearerAuth
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
-from loushang.ai.model import Capabilities, Model
-from loushang.ai.model.domain import Endpoint
-from loushang.ai.model.registry import (
-    clear_default_model_registry,
-    get_default_model_registry,
-)
+from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.options import CallOptions, ReasoningOptions, RetryOptions
 from loushang.ai.types import (
     AssistantMessage,
@@ -29,6 +25,7 @@ def _model() -> Model:
         name="Faux",
         provider="faux",
         endpoint="anthropic-messages",
+        api="anthropic-messages",
         capabilities=Capabilities(
             reasoning=False,
             input=("text",),
@@ -46,21 +43,6 @@ def _usage() -> Usage:
         cache_write=0,
         total_tokens=0,
         cost={},
-    )
-
-
-@pytest.fixture(autouse=True)
-def _default_registry() -> None:
-    clear_default_model_registry()
-    registry = get_default_model_registry()
-    registry.register_endpoint(
-        "faux",
-        Endpoint(
-            id="anthropic-messages",
-            provider="faux",
-            api="anthropic-messages",
-            models={"faux-model": _model()},
-        ),
     )
 
 
@@ -443,14 +425,14 @@ def test_process_event_requires_active_run_signal() -> None:
 def test_get_api_key_is_forwarded_to_stream_function_options() -> None:
     from loushang.agent import Agent
 
-    captured_api_keys: list[str | None] = []
+    captured_auth: list[object] = []
 
     async def get_api_key(provider: str) -> str:
         assert provider == "faux"
         return "secret-token"
 
     async def stream_fn(model, context, options=None):
-        captured_api_keys.append(getattr(options, "api_key", None))
+        captured_auth.append(getattr(options, "auth", None))
         return _stream_with_final_message(_assistant_text_message("hello"))
 
     async def scenario() -> None:
@@ -461,7 +443,46 @@ def test_get_api_key_is_forwarded_to_stream_function_options() -> None:
         )
         await agent.prompt("hi")
 
-        assert captured_api_keys == ["secret-token"]
+        assert captured_auth == [ApiKeyAuth("secret-token")]
+
+    asyncio.run(scenario())
+
+
+def test_get_api_key_uses_oauth_bearer_for_oauth_model() -> None:
+    from loushang.agent import Agent
+    from loushang.agent.types import AgentState
+
+    captured_auth: list[object] = []
+
+    async def get_api_key(provider: str) -> str:
+        assert provider == "faux"
+        return "oauth-token"
+
+    async def stream_fn(model, context, options=None):
+        captured_auth.append(getattr(options, "auth", None))
+        return _stream_with_final_message(_assistant_text_message("hello"))
+
+    async def scenario() -> None:
+        oauth_model = Model(
+            id="oauth-model",
+            provider="faux",
+            endpoint="anthropic-messages",
+            api="anthropic-messages",
+            auth=Auth(kind="oauth"),
+            capabilities=Capabilities(input=("text",), output=("text",)),
+        )
+        agent = Agent(
+            stream_fn=stream_fn,
+            get_api_key=get_api_key,
+            initial_state=AgentState(
+                system_prompt="",
+                model=oauth_model,
+                thinking_level="off",
+            ),
+        )
+        await agent.prompt("hi")
+
+        assert captured_auth == [OAuthBearerAuth("oauth-token")]
 
     asyncio.run(scenario())
 
@@ -474,9 +495,8 @@ def test_default_agent_stream_preserves_canonical_options(
 
     captured_options: list[object] = []
 
-    async def stream_fn(model, context, options=None, *, provider_registry=None):
+    async def stream_fn(model, context, options=None):
         del model, context
-        assert provider_registry is not None
         captured_options.append(options)
         return _stream_with_final_message(_assistant_text_message("hello"))
 
@@ -500,7 +520,7 @@ def test_default_agent_stream_preserves_canonical_options(
     assert len(captured_options) == 1
     options = captured_options[0]
     assert isinstance(options, CallOptions)
-    assert options.session_id == "session-1"
+    assert options.cache_key == "session-1"
     assert options.reasoning == ReasoningOptions(
         enabled=True,
         effort="high",

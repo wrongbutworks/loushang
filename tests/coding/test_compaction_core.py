@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from loushang.ai import CallOptions
+from loushang.ai import ApiKeyAuth, CallOptions
 from loushang.ai.types import (
     AssistantMessage,
     TextPart,
@@ -59,7 +59,7 @@ async def test_complete_text_calls_root_complete_with_options(monkeypatch) -> No
         )
 
     monkeypatch.setattr(compaction_module, "complete", fake_complete)
-    options = CallOptions(api_key="key", headers={"x-test": "1"})
+    options = CallOptions(auth=ApiKeyAuth("key"), headers={"x-test": "1"})
     context = Context(
         messages=[UserMessage(role="user", content="summarize", timestamp=0.0)]
     )
@@ -893,7 +893,10 @@ def test_tree_navigation_result_is_exported() -> None:
 
 @pytest.mark.anyio
 async def test_generate_branch_summary_returns_summary_text(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
     async def _fake_complete(*args, **kwargs):
+        captured["options"] = args[2] if len(args) > 2 else kwargs.get("options")
         return "branch summary"
 
     monkeypatch.setattr(
@@ -904,7 +907,6 @@ async def test_generate_branch_summary_returns_summary_text(monkeypatch) -> None
     result = await generate_branch_summary(
         [UserMessage(role="user", content="old summary", timestamp=0.0)],
         model=object(),
-        api_key="",
         signal=None,
         reserve_tokens=1024,
     )
@@ -914,6 +916,9 @@ async def test_generate_branch_summary_returns_summary_text(monkeypatch) -> None
         "Summary of that exploration:\n\nbranch summary",
         details=BranchSummaryDetails(read_files=[], modified_files=[]),
     )
+    options = captured["options"]
+    assert isinstance(options, CallOptions)
+    assert options.auth is None
 
 
 @pytest.mark.anyio
@@ -994,7 +999,7 @@ async def test_generate_branch_summary_uses_serialized_prompt_and_file_details(
     assert "Do NOT continue the conversation" in context.system_prompt
     options = captured["options"]
     assert isinstance(options, CallOptions)
-    assert options.api_key == "branch-key"
+    assert options.auth == ApiKeyAuth("branch-key")
     assert options.headers == {"x-branch": "1"}
     assert options.cancellation is signal
     assert result.summary.endswith(
@@ -1123,7 +1128,6 @@ async def test_compact_serializes_conversation_and_previous_summary_for_llm(
     result = await compact(
         preparation=preparation,
         model="model",
-        api_key="test-key",
         headers={"x-test": "1"},
         signal=signal,
         custom_instructions="Keep exact file paths.",
@@ -1141,7 +1145,7 @@ async def test_compact_serializes_conversation_and_previous_summary_for_llm(
     assert "Do NOT continue the conversation" in context.system_prompt
     options = captured["options"]
     assert isinstance(options, CallOptions)
-    assert options.api_key == "test-key"
+    assert options.auth is None
     assert options.headers == {"x-test": "1"}
     assert options.cancellation is signal
 
@@ -1200,7 +1204,7 @@ async def test_compact_split_turn_forwards_call_options_to_both_summaries(
     assert "[User]: current turn" in prompts[1]
     for _, _, options in captured:
         assert isinstance(options, CallOptions)
-        assert options.api_key == "test-key"
+        assert options.auth == ApiKeyAuth("test-key")
         assert options.headers == {"x-test": "1"}
         assert options.cancellation is signal
 

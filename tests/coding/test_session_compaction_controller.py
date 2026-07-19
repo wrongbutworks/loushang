@@ -79,6 +79,7 @@ def test_compaction_controller_appends_compaction_and_rebuilds_agent_context(
     async def _fake_compact(**kwargs):
         preparation = kwargs["preparation"]
         assert preparation.first_kept_entry_id == assistant_id
+        assert "api_key" not in kwargs
         return CompactionResult(
             summary="controller summary",
             first_kept_entry_id=preparation.first_kept_entry_id,

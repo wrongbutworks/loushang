@@ -15,7 +15,6 @@ from loushang.ai.api_registry import (
     ApiProviderRegistry,
     get_default_api_provider_registry,
 )
-from loushang.ai.auth.registry import OAuthProviderRegistry, get_default_oauth_registry
 from loushang.ai.model import Model, Provider
 from loushang.ai.types import AssistantMessage, ImagePart
 from loushang.coding.capability_profile import (
@@ -28,7 +27,6 @@ from loushang.coding.compaction import (
     prepare_compaction,
 )
 from loushang.coding.control import (
-    AuthManager,
     CompactionSettings,
     ModelRegistry,
     RetrySettings,
@@ -51,13 +49,6 @@ from loushang.coding.package.materializer import (
 )
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
 from loushang.coding.policy import InteractiveApprovalResolver
-from loushang.coding.session.auth_bridge_controller import AuthBridgeController
-from loushang.coding.session.auth_commands import (
-    SessionOAuthLoginCallbacks,
-    login_scope_kwargs,
-    resolve_auth_login_target,
-    validate_oauth_login_target,
-)
 from loushang.coding.session.bash_controller import BashController
 from loushang.coding.session.builtin_commands import (
     BuiltinCommandBackend,
@@ -167,7 +158,6 @@ class AgentSession:
         session_manager: SessionManager,
         settings_manager: SettingsManager | None = None,
         model_registry: ModelRegistry | None = None,
-        auth_manager: AuthManager | None = None,
         resource_loader: DefaultResourceLoader | None = None,
         resource_bundle: ResourceBundle | None = None,
         extension_runner: ExtensionRunner | None = None,
@@ -181,7 +171,6 @@ class AgentSession:
         package_materializer: PackageMaterializer | None = None,
         session_start_event: SessionStartEvent | None = None,
         api_provider_registry: ApiProviderRegistry | None = None,
-        oauth_provider_registry: OAuthProviderRegistry | None = None,
         footer_data_provider: FooterDataProvider | None = None,
         exec_service: ExecService | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
@@ -195,10 +184,6 @@ class AgentSession:
         self.api_provider_registry = (
             api_provider_registry or get_default_api_provider_registry()
         )
-        self.oauth_provider_registry = (
-            oauth_provider_registry or get_default_oauth_registry()
-        )
-        self._auth_manager = auth_manager
         self._resource_loader = resource_loader
         self.resource_bundle = resource_bundle
         self._extension_runner = extension_runner
@@ -361,7 +346,6 @@ class AgentSession:
                 set_active_tools=self.set_active_tools,
                 get_default_active_tool_names=self._default_active_tool_names,
                 get_extensions=self.list_extensions,
-                login_provider=self._login_from_builtin,
             ),
             pack_composer=capability_runtime.command_pack_composer,
         )
@@ -428,7 +412,6 @@ class AgentSession:
         self._extension_provider_controller = ExtensionProviderController(
             model_registry=self.model_registry,
             api_provider_registry=self.api_provider_registry,
-            oauth_provider_registry=self.oauth_provider_registry,
         )
         self._extension_replacement_controller = ExtensionReplacementController(
             get_runtime_host=lambda: self._extension_runtime_host,
@@ -483,12 +466,6 @@ class AgentSession:
             record_runtime_diagnostic=self._record_extension_runtime_diagnostic,
             sync_extension_diagnostics=self._sync_extension_diagnostics,
         )
-        self._auth_bridge_controller = AuthBridgeController(
-            agent=self.agent,
-            auth_manager=self._auth_manager,
-            diagnostics_service=self.diagnostics_service,
-            session_manager=self.session_manager,
-        )
         self._selection_controller = SelectionController(
             agent=self.agent,
             session_manager=self.session_manager,
@@ -500,7 +477,6 @@ class AgentSession:
             is_extension_runtime_refreshing=lambda: (
                 self._extension_runtime_controller.is_refreshing
             ),
-            record_model_auth_resolution=self._record_model_auth_resolution,
         )
         self._view_controller = SessionViewController(
             agent=self.agent,
@@ -545,7 +521,6 @@ class AgentSession:
             self._wire_extension_hooks()
             self._bind_extension_runtime_bindings()
         self._sync_footer_available_provider_count()
-        self._configure_auth_bridge()
 
     # Public facade: state, commands, diagnostics, packages, and exports.
 
@@ -971,41 +946,6 @@ class AgentSession:
         return self.clear_queue()
 
     # Public facade: model, thinking, tools, and session metadata.
-
-    async def _login_from_builtin(self, raw_target: str | None) -> dict[str, object]:
-        if self.model_registry is None:
-            raise RuntimeError("Model registry is not available.")
-        from loushang.ai.auth import oauth_login, register_builtin_oauth_providers
-
-        target = resolve_auth_login_target(
-            raw_target,
-            current_model=getattr(self.agent, "model", None),
-            registry=self.model_registry.ai_registry,
-        )
-        validate_oauth_login_target(target)
-        register_builtin_oauth_providers(registry=self.oauth_provider_registry)
-        callbacks = SessionOAuthLoginCallbacks()
-        scope_kwargs = login_scope_kwargs(target)
-        credentials = await oauth_login(
-            target.provider,
-            callbacks,
-            registry=self.oauth_provider_registry,
-            endpoint_id=scope_kwargs["endpoint_id"],
-            model_id=scope_kwargs["model_id"],
-            persist=True,
-        )
-        current_model = getattr(self.agent, "model", None)
-        if isinstance(current_model, Model):
-            self._auth_bridge_controller.record_model_auth_resolution(current_model)
-        return {
-            "provider": credentials.provider,
-            "scope": target.scope,
-            "endpoint_id": target.endpoint_id,
-            "model_id": target.model_id,
-            "message": _login_success_message(target.provider, target.scope),
-            "auth_url": (callbacks.auth_info or {}).get("url"),
-            "progress": list(callbacks.progress),
-        }
 
     async def set_model(self, model: Model | ModelSelection) -> None:
         await self._set_model_internal(model, emit_refresh=True, source="set")
@@ -1898,20 +1838,6 @@ class AgentSession:
     def _record_runtime_exception(self, *, code: str, exc: Exception | str) -> None:
         self._diagnostics_bridge.record_runtime_exception(code=code, exc=exc)
 
-    def _configure_auth_bridge(self) -> None:
-        self._auth_bridge_controller.configure_auth_bridge()
-
-    def _get_runtime_api_key(self, provider: str) -> str | None:
-        return self._auth_bridge_controller.get_runtime_api_key(provider)
-
-    def _record_model_auth_resolution(self, model: Model) -> None:
-        self._auth_bridge_controller.record_model_auth_resolution(model)
-
-    def _record_model_auth_resolution_failure(
-        self, model: Model, exc: Exception
-    ) -> None:
-        self._auth_bridge_controller.record_model_auth_resolution_failure(model, exc)
-
     def _record_assistant_response_error(
         self, assistant_message: AssistantMessage
     ) -> None:
@@ -2016,10 +1942,6 @@ def _resolve_extension_exec_cwd(session_cwd: str, cwd: str | Path | None) -> str
 
 def _optional_string(value: object) -> str | None:
     return value if isinstance(value, str) else None
-
-
-def _login_success_message(provider: str, scope: str) -> str:
-    return f"Login complete for {provider} ({scope} scope)."
 
 
 def _model_selection_payload(selection: ModelSelection | None) -> dict[str, str] | None:

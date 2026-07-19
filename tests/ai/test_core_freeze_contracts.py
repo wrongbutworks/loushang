@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import inspect
 import json
 from pathlib import Path
@@ -8,7 +9,11 @@ from pathlib import Path
 import pytest
 
 import loushang.ai as ai
-from loushang.ai.api_registry import ApiProviderRegistry
+from loushang.ai.api_registry import (
+    ApiProviderRegistry,
+    get_default_api_provider_registry,
+)
+from loushang.ai.auth import ApiKeyAuth
 from loushang.ai.model import (
     clear_default_model_registry,
     get_default_model_registry,
@@ -155,6 +160,51 @@ def test_model_instances_do_not_expose_call_facades() -> None:
         assert not hasattr(model, name)
 
 
+def test_auth_is_owned_by_ai_package_without_top_level_auth_package() -> None:
+    auth_files = {
+        path.name
+        for path in (AI_SRC / "auth").glob("*.py")
+        if path.name != "__pycache__"
+    }
+
+    assert auth_files == {
+        "__init__.py",
+        "credentials.py",
+        "support.py",
+    }
+
+    import loushang.ai.auth as auth_module
+
+    assert not (REPO_ROOT / "src/loushang/auth").exists()
+
+    for name in (
+        "Credential" + "Store",
+        "OAuth" + "Credentials",
+        "OAuthError",
+        "OAuth" + "Provider" + "Registry",
+        "OAuthReauthenticationRequiredError",
+        "get_oauth_api_key",
+        "load_credentials",
+        "oauth_" + "login",
+        "oauth_" + "refresh",
+        "register_builtin_oauth_providers",
+        "resolve_oauth_api_key",
+    ):
+        assert not hasattr(auth_module, name)
+
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("loushang.auth")
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    ("loushang.ai.cli", "loushang.ai." + "contrib.openai_codex"),
+)
+def test_removed_ai_package_surfaces_are_not_importable(module_name: str) -> None:
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module(module_name)
+
+
 def test_default_registry_loads_builtin_and_user_model_directory(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -228,10 +278,10 @@ def test_provider_registry_accepts_invoke_raw_and_rejects_stream_raw() -> None:
         registry.register_api_provider(_StreamRawOnlyProvider())
 
 
-def test_public_invocation_uses_explicit_provider_registry_keyword() -> None:
+def test_public_invocation_does_not_expose_registry_injection() -> None:
     for function in (ai.complete, ai.stream, ai.complete_structured):
         parameters = inspect.signature(function).parameters
-        assert "provider_registry" in parameters
+        assert "provider_registry" not in parameters
         assert "registry" not in parameters
 
 
@@ -245,14 +295,14 @@ def test_complete_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
             "company-chat",
         )
         provider = _InvokeRawOnlyProvider()
-        provider_registry = ApiProviderRegistry()
+        provider_registry = get_default_api_provider_registry()
+        provider_registry.clear_api_providers()
         provider_registry.register_api_provider(provider)
 
         message = await ai.complete(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
-            CallOptions(api_key="test-key"),
-            provider_registry=provider_registry,
+            CallOptions(auth=ApiKeyAuth("test-key")),
         )
 
         assert message.content[0].text == "ok"
@@ -271,14 +321,14 @@ def test_stream_dispatches_to_invoke_raw_provider(tmp_path: Path) -> None:
             "company-chat",
         )
         provider = _InvokeRawOnlyProvider()
-        provider_registry = ApiProviderRegistry()
+        provider_registry = get_default_api_provider_registry()
+        provider_registry.clear_api_providers()
         provider_registry.register_api_provider(provider)
 
         event_stream = await ai.stream(
             model,
             {"messages": [{"role": "user", "content": "hello"}]},
-            CallOptions(api_key="test-key"),
-            provider_registry=provider_registry,
+            CallOptions(auth=ApiKeyAuth("test-key")),
         )
         async for _event in event_stream:
             pass
@@ -298,21 +348,20 @@ def test_complete_and_stream_pass_distinct_provider_modes(tmp_path: Path) -> Non
             "company-chat",
         )
         provider = _RecordingProvider()
-        provider_registry = ApiProviderRegistry()
+        provider_registry = get_default_api_provider_registry()
+        provider_registry.clear_api_providers()
         provider_registry.register_api_provider(provider)
         context = {"messages": [{"role": "user", "content": "hello"}]}
 
         await ai.complete(
             model,
             context,
-            CallOptions(api_key="test-key"),
-            provider_registry=provider_registry,
+            CallOptions(auth=ApiKeyAuth("test-key")),
         )
         event_stream = await ai.stream(
             model,
             context,
-            CallOptions(api_key="test-key"),
-            provider_registry=provider_registry,
+            CallOptions(auth=ApiKeyAuth("test-key")),
         )
         async for _event in event_stream:
             pass
@@ -367,17 +416,17 @@ def test_bound_model_resolves_without_default_registry_lookup(
         raise AssertionError("default registry lookup should not be needed")
 
     monkeypatch.setattr(
-        "loushang.ai.provider.resolution.get_default_model_registry",
+        "loushang.ai.model.registry.get_default_model_registry",
         fail_default_registry_lookup,
     )
 
     request = resolve_request_for_model(
         model,
-        options=CallOptions(api_key="test-key"),
+        options=CallOptions(auth=ApiKeyAuth("test-key")),
         env={},
     )
 
-    assert request.provider == "company-aif002"
-    assert request.endpoint == "anthropic-messages"
-    assert request.api == "anthropic-messages"
+    assert request.model.provider_id == "company-aif002"
+    assert request.model.endpoint_id == "anthropic-messages"
+    assert request.model.api == "anthropic-messages"
     assert request.base_url == "https://ai.company.example/v1"

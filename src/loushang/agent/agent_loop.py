@@ -25,6 +25,7 @@ from loushang.agent.types import (
     StreamFn,
 )
 from loushang.ai.api import stream
+from loushang.ai.auth import ApiKeyAuth, OAuthBearerAuth, normalize_auth_kind
 from loushang.ai.event_stream import EventStream
 from loushang.ai.tool.validation import validate_tool_arguments
 from loushang.ai.types import (
@@ -335,15 +336,22 @@ async def _stream_assistant_response(
     )
 
     call_stream = stream_fn or stream
-    resolved_api_key = config.call_options.api_key
+    resolved_auth = config.call_options.auth
     if config.get_api_key is not None:
         runtime_api_key = await _resolve(config.get_api_key(config.model.provider_id))
         if runtime_api_key is not None:
-            resolved_api_key = runtime_api_key
+            auth_kind = normalize_auth_kind(
+                getattr(getattr(config.model, "auth", None), "kind", None)
+            )
+            resolved_auth = (
+                OAuthBearerAuth(runtime_api_key)
+                if auth_kind == "oauth"
+                else ApiKeyAuth(runtime_api_key)
+            )
 
     options = replace(
         config.call_options,
-        api_key=resolved_api_key,
+        auth=resolved_auth,
         cancellation=signal if signal is not None else config.call_options.cancellation,
     )
 

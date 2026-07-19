@@ -140,8 +140,8 @@ Coding and future Product adapters retain:
 - configuration effect selection, dependency order, callback implementation,
   context construction, failure escalation, and lifecycle integration;
 - diagnostic codes, wording, severity, remediation, and CLI/TUI projection;
-- provider registration, model selection policy, model/auth interpretation,
-  credentials, and persisted model-selection behavior.
+- provider registration, model selection policy, and persisted model-selection
+  behavior. Request authentication interpretation remains in AI.
 
 Coding's bootstrap may use `ConfigActivationRuntime` to preserve and make
 explicit its package, resource, extension, audit, and model-refresh order. The
@@ -152,9 +152,10 @@ controllers continue to own runtime reload behavior.
 
 ## Model, Authentication, And Credential Boundary
 
-`ModelRegistry` and `AuthManager` do not move in this migration. Provider
-registration, auth resolution, credential lookup and persistence, and model
-selection remain with their existing AI or Product owners.
+`ModelRegistry`, provider registration, and model selection remain Product
+concerns. Request authentication declarations and credential-to-header
+resolution remain AI concerns. Coding does not own an `AuthManager`, login or
+logout commands, credential persistence, or credential refresh.
 
 Harness configuration never stores credentials. It may carry opaque values
 provided by a Product, but it must not discover secrets, serialize credential
@@ -204,5 +205,5 @@ This migration does not:
 - move Product effect order, callbacks, services, or diagnostic wording into
   Harness;
 - execute shell commands or store credentials in Harness;
-- move `ModelRegistry`, `AuthManager`, provider registration, auth resolution,
-  persisted model selection, or credential policy into Harness.
+- move `ModelRegistry`, provider registration, persisted model selection, or AI
+  request authentication into Harness.

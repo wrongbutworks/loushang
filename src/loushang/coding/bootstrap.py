@@ -11,7 +11,6 @@ from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.types import Message, TextPart
 from loushang.coding.capability_profile import bind_coding_capability_runtime
 from loushang.coding.control import (
-    AuthManager,
     ControlConfig,
     ModelRegistry,
     SettingsManager,
@@ -69,7 +68,6 @@ ExtensionFlagValues = Mapping[str, bool | str]
 class BootstrapServices:
     settings_manager: SettingsManager
     model_registry: ModelRegistry
-    auth_manager: AuthManager
     resource_loader: DefaultResourceLoader
     diagnostics_service: DiagnosticsService
     exec_service: ExecService = field(default_factory=ExecService)
@@ -127,10 +125,6 @@ class AgentSessionServices:
         return self.services.model_registry
 
     @property
-    def auth_manager(self) -> AuthManager:
-        return self.services.auth_manager
-
-    @property
     def resource_loader(self) -> DefaultResourceLoader:
         return self.services.resource_loader
 
@@ -156,7 +150,6 @@ def create_services(
     ai_model_registry: AiModelRegistry | None = None,
     resource_loader: DefaultResourceLoader | None = None,
     settings_manager: SettingsManager | None = None,
-    auth_manager: AuthManager | None = None,
     exec_service: ExecService | None = None,
     default_model: ModelSelection | None = None,
     thinking_level: ThinkingLevel = "off",
@@ -173,8 +166,6 @@ def create_services(
     return BootstrapServices(
         settings_manager=resolved_settings_manager,
         model_registry=model_registry,
-        auth_manager=auth_manager
-        or AuthManager(ai_registry=model_registry.ai_registry),
         resource_loader=resource_loader or DefaultResourceLoader(),
         diagnostics_service=DiagnosticsService(),
         exec_service=exec_service or ExecService(),
@@ -188,7 +179,6 @@ def create_agent_session_services(
     ai_model_registry: AiModelRegistry | None = None,
     resource_loader: DefaultResourceLoader | None = None,
     settings_manager: SettingsManager | None = None,
-    auth_manager: AuthManager | None = None,
     exec_service: ExecService | None = None,
     default_model: ModelSelection | None = None,
     thinking_level: ThinkingLevel = "off",
@@ -213,7 +203,6 @@ def create_agent_session_services(
             ai_model_registry=ai_model_registry,
             resource_loader=resource_loader,
             settings_manager=resolved_settings_manager,
-            auth_manager=auth_manager,
             exec_service=exec_service,
             default_model=default_model,
             thinking_level=thinking_level,
@@ -225,7 +214,6 @@ def create_agent_session_services(
             ai_model_registry,
             resource_loader,
             settings_manager,
-            auth_manager,
             exec_service,
             default_model,
         )
@@ -445,7 +433,6 @@ def create_agent_session(
             session_manager=session_manager,
             settings_manager=services.settings_manager,
             model_registry=services.model_registry,
-            auth_manager=services.auth_manager,
             resource_loader=services.resource_loader,
             resource_bundle=resource_bundle,
             extension_runner=extension_runner,
@@ -705,7 +692,6 @@ def _activate_model_registry(
         state.services.model_registry,
         resource_bundle=_require_configured_resource_bundle(state),
         session_cwd=state.session_manager.get_cwd(),
-        auth_manager=state.services.auth_manager,
     )
 
 
@@ -1044,7 +1030,6 @@ def _reload_model_registry_with_project_layer(
     *,
     resource_bundle: ResourceBundle,
     session_cwd: str,
-    auth_manager: AuthManager | None = None,
 ) -> None:
     project_root = (
         resource_bundle.agents_path.parent
@@ -1059,8 +1044,6 @@ def _reload_model_registry_with_project_layer(
         user_dir=user_models_dir if user_models_dir.is_dir() else None,
         project_dir=project_models_dir,
     )
-    if auth_manager is not None:
-        auth_manager.ai_registry = model_registry.ai_registry
 
 
 def _resolve_user_resource_roots(

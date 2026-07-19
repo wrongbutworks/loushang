@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from loushang.agent import AgentMessage
-from loushang.ai import CallOptions, Context, complete
+from loushang.ai import ApiKeyAuth, CallOptions, Context, complete
 from loushang.ai.types import AssistantMessage, TextPart, UserMessage
 from loushang.coding.compaction.profiles import (
     CODING_COMPACTION_SUMMARY_PROFILE,
@@ -194,7 +194,7 @@ async def compact(
     *,
     preparation: CompactionPreparation,
     model: object,
-    api_key: str,
+    api_key: str | None = None,
     headers: Mapping[str, str] | None = None,
     signal: object | None = None,
     custom_instructions: str | None = None,
@@ -246,7 +246,7 @@ async def _summarize_messages(
     *,
     preparation: CompactionPreparation,
     model: object,
-    api_key: str,
+    api_key: str | None,
     headers: Mapping[str, str] | None = None,
     signal: object | None = None,
     custom_instructions: str | None = None,
@@ -279,7 +279,7 @@ async def _summarize_messages(
         model,
         context,
         CallOptions(
-            api_key=api_key,
+            auth=ApiKeyAuth(api_key) if api_key else None,
             headers=dict(headers or {}),
             cancellation=signal,
         ),
@@ -290,7 +290,7 @@ async def _summarize_turn_prefix(
     *,
     messages: list[AgentMessage],
     model: object,
-    api_key: str,
+    api_key: str | None,
     headers: Mapping[str, str] | None = None,
     signal: object | None = None,
 ) -> str:
@@ -314,7 +314,7 @@ async def _summarize_turn_prefix(
             ],
         ),
         CallOptions(
-            api_key=api_key,
+            auth=ApiKeyAuth(api_key) if api_key else None,
             headers=dict(headers or {}),
             cancellation=signal,
         ),

@@ -31,7 +31,6 @@ class SelectionController:
     get_extension_runner: Callable[[], _ExtensionRunner | None]
     refresh_extension_runtime: Callable[[str], Awaitable[None]]
     is_extension_runtime_refreshing: Callable[[], bool]
-    record_model_auth_resolution: Callable[[Model], None]
     _runtime: AgentTranscriptSelectionRuntime = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -69,7 +68,6 @@ class SelectionController:
         resolved_model = self._runtime.resolve_model(model)
         endpoint_id = model.endpoint_id if isinstance(model, ModelSelection) else None
         await self._runtime.apply_model(resolved_model, endpoint_id=endpoint_id)
-        self.record_model_auth_resolution(resolved_model)
         if emit_refresh:
             await self.refresh_extension_runtime("model_selection_changed")
         runner = self.get_extension_runner()
@@ -90,7 +88,6 @@ class SelectionController:
             resolved_model,
             endpoint_id=selection.endpoint_id,
         )
-        self.record_model_auth_resolution(resolved_model)
         if not self.is_extension_runtime_refreshing():
             await self.refresh_extension_runtime("model_selection_changed")
 

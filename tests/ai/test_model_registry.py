@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
+
 import pytest
 
 from loushang.ai.model import (
     AmbiguousModelReference,
     AmbiguousPreferredModelReference,
+    Auth,
+    Defaults,
     Endpoint,
     Model,
     ModelRegistry,
@@ -120,33 +125,74 @@ def test_registry_reports_ambiguous_preferred_refs() -> None:
         resolve_model_ref(registry, "shared", provider="custom")
 
 
-def test_registry_registers_and_unregisters_entries() -> None:
-    registry = ModelRegistry()
+def test_registry_is_constructed_once_and_exposes_queries_only() -> None:
     model = Model(
         id="new-model",
         provider="new-provider",
         endpoint="new-endpoint",
+        auth=Auth(api_key_env="NEW_PROVIDER_KEY"),
         adapter=OpenAICompletionsConfig(reasoning_format="moonshot"),
+        defaults=Defaults.from_raw({"metadata": {"tags": ["stable"]}}),
     )
-
-    registry.register_model(model)
+    endpoint = Endpoint(
+        id="new-endpoint",
+        provider="new-provider",
+        api="openai-completions",
+        headers={"x-static": "yes"},
+        models={model.id: model},
+    )
+    registry = ModelRegistry.from_providers(
+        {
+            "new-provider": Provider(
+                id="new-provider",
+                endpoints={endpoint.id: endpoint},
+            )
+        }
+    )
 
     assert registry.get_providers() == ["new-provider"]
     assert registry.get_endpoint("new-provider", "new-endpoint") is not None
-    assert registry.get_model("new-provider", "new-endpoint", "new-model").api == (
-        "new-endpoint"
+    assert (
+        registry.get_model("new-provider", "new-endpoint", "new-model").api
+        == "openai-completions"
     )
     assert registry.list_endpoints(provider="missing") == []
     assert registry.find_model("new-provider", "missing", "new-model") is None
-
-    endpoint = _endpoint("second", provider="new-provider", model_ids=("second",))
-    registry.register_endpoint("new-provider", endpoint)
-
-    assert registry.find_model("new-provider", "second", "second") is not None
-
-    registry.unregister_provider("new-provider")
-
-    assert registry.get_providers() == []
+    exposed_providers = registry.providers
+    exposed_providers.clear()
+    assert registry.get_providers() == ["new-provider"]
+    provider = registry.get_provider("new-provider")
+    assert provider is not None
+    with pytest.raises(TypeError):
+        provider.endpoints["other"] = endpoint  # type: ignore[index]
+    resolved_endpoint = registry.get_endpoint("new-provider", "new-endpoint")
+    assert resolved_endpoint is not None
+    with pytest.raises(TypeError):
+        resolved_endpoint.models["other"] = model  # type: ignore[index]
+    resolved_model = registry.get_model("new-provider", "new-endpoint", "new-model")
+    with pytest.raises(TypeError):
+        resolved_model.defaults.items_by_key["temperature"] = 0.2  # type: ignore[index]
+    default_metadata = resolved_model.defaults["metadata"]
+    assert isinstance(default_metadata, Mapping)
+    default_tags = default_metadata["tags"]
+    assert isinstance(default_tags, tuple)
+    assert default_tags == ["stable"]
+    assert not default_tags != ["stable"]
+    with pytest.raises(TypeError):
+        default_tags[0] = "changed"  # type: ignore[index]
+    assert resolved_model.auth is not None
+    with pytest.raises(TypeError):
+        resolved_model.headers["x-static"] = "changed"  # type: ignore[index]
+    assert isinstance(resolved_model.adapter, OpenAICompletionsConfig)
+    json.dumps(resolved_model.to_raw())
+    for method_name in (
+        "replace_providers",
+        "register_provider",
+        "unregister_provider",
+        "register_endpoint",
+        "register_model",
+    ):
+        assert not hasattr(registry, method_name)
 
 
 def test_registry_get_and_find_model_error_branches() -> None:
@@ -192,4 +238,4 @@ def test_resolve_model_api_requires_endpoint_context() -> None:
     model = Model(id="missing", provider="custom", endpoint="missing")
 
     with pytest.raises(ValueError, match="Endpoint not found"):
-        resolve_model_api(model, registry=ModelRegistry())
+        resolve_model_api(model, registry=ModelRegistry.from_providers({}))

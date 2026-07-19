@@ -365,26 +365,3 @@ def test_session_restores_persisted_model_and_accepts_model_selection_updates(
         "agent.model_selection",
         "agent.model_selection",
     ]
-
-
-def test_create_services_exposes_ai_backed_auth_manager(monkeypatch) -> None:
-    from loushang.ai.auth.types import OAuthCredentials
-    from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-    from loushang.coding.bootstrap import create_services
-    from loushang.coding.control import AuthManager
-
-    stored = {
-        "demo": OAuthCredentials(
-            provider="demo",
-            access_token="token",
-            refresh_token="refresh",
-        )
-    }
-
-    monkeypatch.setattr("loushang.ai.auth.storage.load_credentials", lambda: stored)
-
-    services = create_services(ai_model_registry=AiModelRegistry())
-
-    assert isinstance(services.auth_manager, AuthManager)
-    assert services.auth_manager.ai_registry is services.model_registry.ai_registry
-    assert services.auth_manager.load_stored_oauth_credentials() == stored

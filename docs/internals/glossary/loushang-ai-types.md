@@ -244,7 +244,7 @@ assistant message 停止原因。
 说明：
 
 - `Context` 只表达输入上下文
-- `api_key`、`session_id`、`metadata` 等运行选项不进入 `Context`
+- `api_key`、`cache_key`、`metadata` 等运行选项不进入 `Context`
 
 ---
 
@@ -427,16 +427,16 @@ assistant message 用量统计。
 
 建议字段：
 
-- `temperature: float | None = None`
+- `temperature: float | int | None = None`
 - `max_output_tokens: int | None = None`
 - `cancellation: object | None = None`
-- `api_key: str | None = None`
+- `auth: AuthCredential | None = None`
 - `cache_retention: CacheRetention | None = None`
-- `session_id: str | None = None`
-- `headers: dict[str, str] | None = None`
+- `cache_key: str | None = None`
 - `reasoning: ReasoningOptions | None = None`
 - `retry: RetryOptions | None = None`
-- `timeout: TimeoutOptions | None = None`
+- `timeout_seconds: float | int | None = None`
+- `idle_timeout_seconds: float | int | None = None`
 - `trace: object | None = None`
 
 说明：
@@ -445,6 +445,9 @@ assistant message 用量统计。
 - v0.1 不要求与 JavaScript `AbortSignal` 结构逐字段兼容
 - provider 与 streaming 层应在调用前、流式迭代中与收敛结果前检查该信号
 - 检测到取消后，应映射为 `aborted` 协议语义
+- `cache_key` 是调用方提供的不透明缓存/亲和键，不是 AI 包管理的 session
+- `timeout_seconds` 是单次 provider attempt 的完整 deadline
+- `idle_timeout_seconds` 只约束 stream 相邻 raw part 之间的空闲时间
 
 ### ReasoningOptions
 
@@ -453,7 +456,7 @@ assistant message 用量统计。
 建议字段：
 
 - `enabled: bool | None = None`
-- `effort: ThinkingLevel | str | None = None`
+- `effort: ThinkingLevel | None = None`
 - `budget_tokens: int | None = None`
 - `expose_summary: bool = False`
 
@@ -466,21 +469,13 @@ assistant message 用量统计。
 - `max_attempts: int = 1`
 - `max_delay_seconds: float = 30.0`
 
-### TimeoutOptions
-
-超时相关选项。
-
-建议字段：
-
-- `connect_seconds: float | int | None = None`
-- `total_seconds: float | int | None = None`
-- `idle_seconds: float | int | None = None`
-
 ### Provider-Specific Options
 
-provider / contrib 专用选项不进入 `loushang.ai` 根 public surface。
+产品场景不通过专用 provider、contrib 或 options 类型进入 `loushang.ai` 根 public surface。
 
-- Codex contrib 可通过 `loushang.ai.contrib.openai_codex.OpenAICodexResponsesOptions` 暴露 Codex 专有 `transport` 等字段
+- 完整 OAuth 凭证由 `loushang.ai.auth` 持有；AI 调用只通过 `CallOptions.auth` 接收
+  `OAuthBearerAuth(valid_access_token)` 或认证层完整派生的 `HeadersAuth`
+- endpoint 在 catalog 中选择已有协议适配器
 - 核心调用路径只消费 `CallOptions`
 
 ---
