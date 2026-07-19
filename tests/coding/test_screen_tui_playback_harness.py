@@ -5,11 +5,6 @@ import json
 
 import pytest
 
-from loushang.coding.testing.tui.playback import (
-    ScreenTuiInputScenario,
-    ScreenTuiLoopScenario,
-    ScreenTuiScenario,
-)
 from loushang.harnesstui.testing.performance import (
     build_synthetic_long_transcript_records,
 )
@@ -21,6 +16,11 @@ from loushang.tui import (
     strip_control_sequences,
 )
 from loushang.tui.transcript import AssistantMessageRecord
+from tests.coding.tui_support.playback import (
+    ScreenTuiInputScenario,
+    ScreenTuiLoopScenario,
+    ScreenTuiScenario,
+)
 
 INTERACTION_FRAME_BUDGET = PlaybackFrameBudget(
     disallowed_operation_classes=("baseline_repaint", "recovery_repaint"),
@@ -97,7 +97,9 @@ def test_screen_tui_input_scenario_captures_prompt_submission_without_screen_cle
     result.assert_cursor_matches_diagnostics()
 
 
-def test_screen_tui_input_scenario_writes_coding_jsonl_for_manual_inspection(tmp_path) -> None:
+def test_screen_tui_input_scenario_writes_neutral_jsonl_for_manual_inspection(
+    tmp_path,
+) -> None:
     result = (
         ScreenTuiInputScenario(width=80, height=12)
         .with_running_prompt("old")
@@ -110,19 +112,24 @@ def test_screen_tui_input_scenario_writes_coding_jsonl_for_manual_inspection(tmp
     result.write_jsonl(path)
 
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
-    assert rows[0]["coding"]["composer_text"] == "change"
-    assert rows[0]["coding"]["pending_steers"] == []
-    assert rows[-1]["coding"] == {
-        "composer_text": "",
-        "running": True,
-        "pending_steers": ["change"],
-        "pending_followups": [],
+    assert rows[0]["conversation"]["state"]["composer_text"] == "change"
+    assert rows[0]["conversation"]["state"]["pending_steers"] == []
+    assert rows[-1]["conversation"] == {
+        "state": {
+            "composer_text": "",
+            "running": True,
+            "pending_steers": ["change"],
+            "pending_followups": [],
+        },
         "input_results": [
             {
                 "prompt_text": None,
+                "prompt_attachment_count": 0,
                 "local_text": None,
                 "steer_text": "change",
+                "steer_attachment_count": 0,
                 "followup_text": None,
+                "followup_attachment_count": 0,
                 "surface_intent": None,
                 "abort_requested": False,
                 "exit_code": None,
@@ -352,10 +359,12 @@ def test_screen_tui_loop_playback_writes_artifacts_for_manual_inspection(tmp_pat
     assert "› hello" in artifacts.text.read_text(encoding="utf-8")
     assert json.loads(artifacts.state.read_text(encoding="utf-8")) == {
         "exit_code": 0,
-        "composer_text": "",
-        "running": False,
-        "pending_steers": [],
-        "pending_followups": [],
+        "conversation": {
+            "composer_text": "",
+            "running": False,
+            "pending_steers": [],
+            "pending_followups": [],
+        },
     }
 
 

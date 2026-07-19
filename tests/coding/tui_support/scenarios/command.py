@@ -3,22 +3,22 @@ from __future__ import annotations
 from io import StringIO
 
 from loushang.coding.interaction.controller import CodingUiController
-from loushang.coding.testing.tui.action_host import (
-    coding_screen_prompt_handler,
-)
-from loushang.coding.testing.tui.fakes import SessionCommandPlaybackSession
-from loushang.coding.testing.tui.playback import (
-    ScreenTuiInputPlaybackResult,
-    ScreenTuiInputScenario,
-    ScreenTuiLoopPlayback,
-)
-from loushang.coding.testing.tui.scenarios.budgets import INTERACTION_FRAME_BUDGET
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.harnesstui.status.provider import StatusProvider
 from loushang.tui.playback_suite import (
     PlaybackScenarioSpec as ScreenPlaybackScenarioSpec,
 )
+from tests.coding.tui_support.action_host import (
+    coding_screen_prompt_handler,
+)
+from tests.coding.tui_support.fakes import SessionCommandPlaybackSession
+from tests.coding.tui_support.playback import (
+    ScreenTuiInputPlaybackResult,
+    ScreenTuiInputScenario,
+    ScreenTuiLoopPlayback,
+)
+from tests.coding.tui_support.scenarios.budgets import INTERACTION_FRAME_BUDGET
 
 
 def _run_local_command() -> ScreenTuiInputPlaybackResult:

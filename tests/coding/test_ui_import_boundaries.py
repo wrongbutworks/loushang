@@ -11,37 +11,37 @@ RETIRED_CODING_UI_COMPATIBILITY_MODULES: dict[str, tuple[str, ...]] = {
     "loushang.coding.ui.pending_queue": ("loushang.harnesstui.conversation.queue",),
     "loushang.coding.ui.perf_probe": (
         "loushang.harnesstui.testing.performance",
-        "loushang.coding.testing.tui.performance",
+        "loushang.coding.presentation.tui.history",
     ),
     "loushang.coding.ui.plain_toolbar": ("loushang.harnesstui.status.plain",),
-    "loushang.coding.ui.playback": ("loushang.coding.testing.tui.playback",),
-    "loushang.coding.ui.playback_fakes": ("loushang.coding.testing.tui.fakes",),
-    "loushang.coding.ui.playback_runner": ("loushang.coding.testing.tui.runner",),
+    "loushang.coding.ui.playback": ("tests.coding.tui_support.playback",),
+    "loushang.coding.ui.playback_fakes": ("tests.coding.tui_support.fakes",),
+    "loushang.coding.ui.playback_runner": ("tests.coding.tui_support.runner",),
     "loushang.coding.ui.playback_suite": ("loushang.tui.playback_suite",),
-    "loushang.coding.ui.playback_scenarios": ("loushang.coding.testing.tui.scenarios",),
+    "loushang.coding.ui.playback_scenarios": ("tests.coding.tui_support.scenarios",),
     "loushang.coding.ui.playback_scenarios.budgets": (
-        "loushang.coding.testing.tui.scenarios.budgets",
+        "tests.coding.tui_support.scenarios.budgets",
     ),
     "loushang.coding.ui.playback_scenarios.command": (
-        "loushang.coding.testing.tui.scenarios.command",
+        "tests.coding.tui_support.scenarios.command",
     ),
     "loushang.coding.ui.playback_scenarios.composer": (
-        "loushang.coding.testing.tui.scenarios.composer",
+        "tests.coding.tui_support.scenarios.composer",
     ),
     "loushang.coding.ui.playback_scenarios.lifecycle": (
-        "loushang.coding.testing.tui.scenarios.lifecycle",
+        "tests.coding.tui_support.scenarios.lifecycle",
     ),
     "loushang.coding.ui.playback_scenarios.product": (
-        "loushang.coding.testing.tui.scenarios.product",
+        "tests.coding.tui_support.scenarios.product",
     ),
     "loushang.coding.ui.playback_scenarios.surface": (
-        "loushang.coding.testing.tui.scenarios.surface",
+        "tests.coding.tui_support.scenarios.surface",
     ),
     "loushang.coding.ui.playback_scenarios.terminal": (
-        "loushang.coding.testing.tui.scenarios.terminal",
+        "tests.coding.tui_support.scenarios.terminal",
     ),
     "loushang.coding.ui.playback_scenarios.transcript": (
-        "loushang.coding.testing.tui.scenarios.transcript",
+        "tests.coding.tui_support.scenarios.transcript",
     ),
     "loushang.coding.ui.screen_state": (
         "loushang.harnesstui.conversation.screen_state",
@@ -285,6 +285,23 @@ def test_repository_imports_use_canonical_owners_for_retired_modules() -> None:
     assert offenders == []
 
 
+def test_coding_tui_testing_package_is_extinct() -> None:
+    root = Path("src/loushang/coding/testing") / "tui"
+    assert not tuple(root.rglob("*.py"))
+
+    retired_prefix = ".".join(("loushang", "coding", "testing", "tui"))
+    offenders: list[str] = []
+    for root in (Path("src"), Path("tests"), Path("examples"), Path("scripts")):
+        for path in sorted(root.rglob("*.py")):
+            if path.resolve() == Path(__file__).resolve():
+                continue
+            for target in _absolute_import_targets(path):
+                if target == retired_prefix or target.startswith(f"{retired_prefix}."):
+                    offenders.append(f"{path}:{target}")
+
+    assert offenders == []
+
+
 def test_non_ui_coding_owners_do_not_depend_on_ui_layers() -> None:
     modules = tuple(
         Path("src", *module.split(".")).with_suffix(".py")
@@ -453,7 +470,7 @@ def test_shared_performance_probe_does_not_load_coding_sessions() -> None:
     shared = Path("src/loushang/harnesstui/testing/performance.py").read_text(
         encoding="utf-8"
     )
-    coding = Path("src/loushang/coding/testing/tui/performance.py").read_text(
+    coding = Path("src/loushang/coding/presentation/tui/history.py").read_text(
         encoding="utf-8"
     )
 
@@ -469,7 +486,7 @@ def test_shared_performance_probe_does_not_load_coding_sessions() -> None:
 
     assert "SessionManager" in coding
     assert "session_history_records" in coding
-    assert "load_session_history_records" in coding
+    assert "load_persisted_session_history_records" in coding
 
 
 def test_shared_playback_support_does_not_own_coding_copy_or_budgets() -> None:
@@ -488,13 +505,13 @@ def test_shared_playback_support_does_not_own_coding_copy_or_budgets() -> None:
     ):
         assert token not in shared
 
-    budgets = Path("src/loushang/coding/testing/tui/scenarios/budgets.py").read_text(
+    budgets = Path("tests/coding/tui_support/scenarios/budgets.py").read_text(
         encoding="utf-8"
     )
-    binding = Path("src/loushang/coding/testing/tui/scenario_binding.py").read_text(
+    binding = Path("tests/coding/tui_support/scenario_binding.py").read_text(
         encoding="utf-8"
     )
-    product = Path("src/loushang/coding/testing/tui/scenarios/product.py").read_text(
+    product = Path("tests/coding/tui_support/scenarios/product.py").read_text(
         encoding="utf-8"
     )
 

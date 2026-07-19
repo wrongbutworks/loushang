@@ -20,6 +20,7 @@ from loushang.harnesstui.testing.ports import (
     ConversationResultPayloadPort,
     ConversationStateSnapshotPort,
 )
+from loushang.harnesstui.testing.render_scenario import ConversationRenderScenario
 from loushang.harnesstui.testing.screen_loop_playback import (
     ConversationScreenLoopPlayback,
     ConversationScreenLoopRunnerPort,
@@ -72,6 +73,20 @@ class ConversationScenarioFactory(Generic[AppT]):
     state_snapshot: ConversationStateSnapshotPort[AppT] | None = None
     input_result_payload: ConversationResultPayloadPort | None = None
     loop_result_payload: ConversationLoopResultPayloadPort[AppT] | None = None
+
+    def render(
+        self,
+        *,
+        width: int = 80,
+        height: int = 24,
+        now: float = 0.0,
+    ) -> ConversationRenderScenario[AppT]:
+        return ConversationRenderScenario(
+            app_factory=self.app_factory,
+            width=width,
+            height=height,
+            now=now,
+        )
 
     def input(
         self,

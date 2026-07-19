@@ -28,8 +28,9 @@ HARNESSTUI_SHARED_SOURCES := \
 HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/platform/__init__.py \
 	src/loushang/coding/platform/clipboard_image.py \
-	src/loushang/coding/testing/tui \
 	src/loushang/coding/ui
+HARNESSTUI_TEST_SUPPORT := \
+	tests/coding/tui_support
 CODING_TUI_PRODUCT_SOURCES := \
 	src/loushang/coding/commands/tui.py \
 	src/loushang/coding/model_selection_tui.py \
@@ -82,9 +83,12 @@ HARNESSTUI_TEST_PATHS := \
 	tests/coding/test_screen_coding_tui_input.py \
 	tests/coding/test_screen_coding_tui_loop.py \
 	tests/coding/test_screen_coding_tui_mode.py \
+	tests/coding/test_screen_coding_tui_playback.py \
 	tests/coding/test_screen_coding_tui_perf_probe.py \
 	tests/coding/test_screen_coding_tui_surfaces.py \
+	tests/coding/test_screen_coding_tui_terminal_playback.py \
 	tests/coding/test_screen_settings_page.py \
+	tests/coding/test_screen_tui_playback_harness.py \
 	tests/coding/test_screen_tui_playback_runner.py \
 	tests/coding/test_tool_transcript_blocks.py \
 	tests/coding/test_ui_command_list.py \
@@ -140,7 +144,7 @@ check-ai-coverage:
 check-harnesstui: lint-harnesstui typecheck-harnesstui test-harnesstui
 
 lint-harnesstui:
-	uv --cache-dir .uv-cache run --extra dev ruff check $(HARNESSTUI_SHARED_SOURCES) $(HARNESSTUI_CODING_ADAPTERS) $(CODING_TUI_PRODUCT_SOURCES) $(HARNESSTUI_TEST_PATHS) $(CODING_TUI_PRODUCT_TEST_PATHS)
+	uv --cache-dir .uv-cache run --extra dev ruff check $(HARNESSTUI_SHARED_SOURCES) $(HARNESSTUI_CODING_ADAPTERS) $(CODING_TUI_PRODUCT_SOURCES) $(HARNESSTUI_TEST_SUPPORT) $(HARNESSTUI_TEST_PATHS) $(CODING_TUI_PRODUCT_TEST_PATHS)
 
 typecheck-harnesstui:
 	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(HARNESSTUI_SHARED_SOURCES) $(HARNESSTUI_CODING_ADAPTERS) $(CODING_TUI_PRODUCT_SOURCES)

@@ -3,15 +3,6 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from loushang.coding.testing.tui.fakes import (
-    ModelPlaybackSession,
-    SessionCommandPlaybackSession,
-)
-from loushang.coding.testing.tui.playback import ScreenTuiLoopPlayback
-from loushang.coding.testing.tui.scenario_binding import (
-    CODING_SCENARIO_FACTORY,
-    CODING_SCENARIO_FRAME_CONTRACTS,
-)
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
@@ -21,6 +12,15 @@ from loushang.harnesstui.testing.scenarios.surface import surface_scenarios
 from loushang.tui import DialogSurface
 from loushang.tui.playback_suite import (
     PlaybackScenarioSpec as ScreenPlaybackScenarioSpec,
+)
+from tests.coding.tui_support.fakes import (
+    ModelPlaybackSession,
+    SessionCommandPlaybackSession,
+)
+from tests.coding.tui_support.playback import ScreenTuiLoopPlayback
+from tests.coding.tui_support.scenario_binding import (
+    CODING_SCENARIO_FACTORY,
+    CODING_SCENARIO_FRAME_CONTRACTS,
 )
 
 

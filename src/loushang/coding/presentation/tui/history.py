@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
@@ -8,6 +9,7 @@ from loushang.coding.presentation.tui.tool_transcript import (
     ToolTranscriptProjector,
     tool_block_to_record,
 )
+from loushang.coding.store.session_manager import SessionManager
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
     APPLICATION_MESSAGE_KIND,
@@ -77,6 +79,28 @@ def session_history_records(
         if record is not None:
             records.append(record)
     return tuple(records)
+
+
+async def load_persisted_session_history_records(
+    session_file: str | Path,
+    *,
+    tool_definition_resolver: Any | None = None,
+) -> tuple[DisplayRecord, ...]:
+    """Load a persisted Coding session into terminal transcript records."""
+
+    manager = await SessionManager.load(Path(session_file).expanduser().resolve())
+    return session_history_records(
+        _PersistedHistorySession(manager),
+        tool_definition_resolver=tool_definition_resolver,
+    )
+
+
+class _PersistedHistorySession:
+    def __init__(self, manager: SessionManager) -> None:
+        self.session_manager = manager
+
+    def get_session_context(self):
+        return self.session_manager.build_session_context()
 
 
 def _transcript_record(
@@ -246,5 +270,6 @@ __all__ = [
     "SessionTranscriptSource",
     "TranscriptSnapshot",
     "TranscriptSource",
+    "load_persisted_session_history_records",
     "session_history_records",
 ]

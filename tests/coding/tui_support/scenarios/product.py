@@ -2,10 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from loushang.coding.testing.tui.playback import (
-    ScreenTuiInputPlaybackResult,
-    ScreenTuiInputScenario,
-)
 from loushang.harnesstui.testing.performance import (
     build_synthetic_long_transcript_records,
 )
@@ -18,6 +14,10 @@ from loushang.tui import (
 )
 from loushang.tui.playback_suite import (
     PlaybackScenarioSpec as ScreenPlaybackScenarioSpec,
+)
+from tests.coding.tui_support.playback import (
+    ScreenTuiInputPlaybackResult,
+    ScreenTuiInputScenario,
 )
 
 PRODUCT_COMPOSED_FRAME_BUDGET = PlaybackFrameBudget(
@@ -191,14 +191,7 @@ def _run_product_streaming_control_flow() -> ScreenTuiInputPlaybackResult:
 def _result_from_scenario(
     scenario: ScreenTuiInputScenario,
 ) -> ScreenTuiInputPlaybackResult:
-    return ScreenTuiInputPlaybackResult(
-        steps=scenario.playback.harness.steps,
-        port=scenario.playback.port,
-        input_results=tuple(scenario.playback.input_results),
-        step_input_results=tuple(scenario.playback.step_input_results),
-        step_coding_states=tuple(scenario.playback.step_coding_states),
-        app=scenario.app,
-    )
+    return scenario.playback.result()
 
 
 def _assert_visible_contains(scenario: ScreenTuiInputScenario, expected: str) -> None:

@@ -2,23 +2,23 @@ from __future__ import annotations
 
 import asyncio
 
-from loushang.coding.testing.tui.fakes import (
-    SessionCommandPlaybackSession as _SessionCommandSession,
-)
-from loushang.coding.testing.tui.playback import (
-    ScreenTuiInputPlaybackResult,
-    ScreenTuiInputScenario,
-)
-from loushang.coding.testing.tui.scenario_binding import (
-    CODING_SCENARIO_FACTORY,
-    CODING_SCENARIO_FRAME_CONTRACTS,
-)
-from loushang.coding.testing.tui.scenarios.budgets import (
-    INTERACTION_FRAME_BUDGET,
-)
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.harnesstui.testing.scenarios.composer import composer_scenarios
 from loushang.tui.playback_suite import PlaybackScenarioSpec
+from tests.coding.tui_support.fakes import (
+    SessionCommandPlaybackSession as _SessionCommandSession,
+)
+from tests.coding.tui_support.playback import (
+    ScreenTuiInputPlaybackResult,
+    ScreenTuiInputScenario,
+)
+from tests.coding.tui_support.scenario_binding import (
+    CODING_SCENARIO_FACTORY,
+    CODING_SCENARIO_FRAME_CONTRACTS,
+)
+from tests.coding.tui_support.scenarios.budgets import (
+    INTERACTION_FRAME_BUDGET,
+)
 
 
 def _run_completion_session_command() -> ScreenTuiInputPlaybackResult:

@@ -6,7 +6,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from loushang.coding.testing.tui.playback import ScreenTuiInputPlayback
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
@@ -39,6 +38,7 @@ from loushang.tui._runner_utils import (
     poll_terminal_runtime,
     terminal_runtime_wakeup_ms,
 )
+from tests.coding.tui_support.playback import ScreenTuiInputPlayback
 
 
 def test_screen_tui_playback_applies_model_argument_completion() -> None:
@@ -88,7 +88,9 @@ def test_screen_tui_playback_browses_history_from_non_empty_single_line_draft() 
     )
 
     assert all(step.flush_succeeded for step in result)
-    assert [state["composer_text"] for state in playback.step_coding_states] == [
+    assert [
+        state["composer_text"] for state in playback.step_state_snapshots
+    ] == [
         "draft",
         "second prompt",
         "first prompt",
@@ -115,7 +117,9 @@ def test_screen_tui_playback_uses_visual_up_before_history_for_multiline_draft()
     )
 
     assert all(step.flush_succeeded for step in result)
-    assert [state["composer_text"] for state in playback.step_coding_states] == [
+    assert [
+        state["composer_text"] for state in playback.step_state_snapshots
+    ] == [
         "alpha\nbeta",
         "alpha\nbeta",
         "previous prompt",
@@ -163,7 +167,9 @@ def test_screen_tui_playback_completion_navigation_wins_over_history_navigation(
 
     assert all(step.flush_succeeded for step in result)
     assert app.composer.value == "/models "
-    assert [state["composer_text"] for state in playback.step_coding_states] == [
+    assert [
+        state["composer_text"] for state in playback.step_state_snapshots
+    ] == [
         "/",
         "/",
         "/models ",

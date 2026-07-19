@@ -701,7 +701,7 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     text = path.read_text(encoding="utf-8")
 
     assert "`loushang.coding.ui` -> `loushang.harnesstui`" in text
-    assert "`loushang.coding.testing.tui` -> `loushang.harnesstui.testing`" in text
+    assert "`tests/coding/tui_support` -> `loushang.harnesstui.testing`" in text
     assert "`loushang.harnesstui.conversation.queue`" in text
     assert "`loushang.harnesstui.conversation.reader`" in text
     assert "`loushang.harnesstui.conversation.screen_app`" in text
@@ -744,9 +744,10 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.testing.input_playback`" in text
     assert "`loushang.harnesstui.testing.performance`" in text
     assert "`loushang.harnesstui.testing.screen_loop_playback`" in text
+    assert "`loushang.harnesstui.testing.render_scenario`" in text
     assert "`loushang.harnesstui.testing.scenarios.factory`" in text
     assert "`loushang.harnesstui.testing.scenarios`" in text
-    assert "`loushang.coding.testing.tui.scenarios`" in text
+    assert "`tests/coding/tui_support`" in text
     assert "`loushang.tui.settings`" in text
     assert "`loushang.tui.ui_parts.transcript`" in text
 

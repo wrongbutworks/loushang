@@ -4,14 +4,6 @@ from io import StringIO
 from types import SimpleNamespace
 
 from loushang.coding.interaction.controller import CodingUiController
-from loushang.coding.testing.tui.action_host import (
-    coding_screen_prompt_handler,
-)
-from loushang.coding.testing.tui.playback import ScreenTuiLoopPlayback
-from loushang.coding.testing.tui.scenario_binding import (
-    CODING_SCENARIO_FACTORY,
-    CODING_SCENARIO_FRAME_CONTRACTS,
-)
 from loushang.harnesstui.testing.performance import (
     build_synthetic_long_transcript_records,
 )
@@ -24,6 +16,14 @@ from loushang.tui.transcript import (
     AssistantMessageRecord,
     DisplayRecord,
     ToolExecutionRecord,
+)
+from tests.coding.tui_support.action_host import (
+    coding_screen_prompt_handler,
+)
+from tests.coding.tui_support.playback import ScreenTuiLoopPlayback
+from tests.coding.tui_support.scenario_binding import (
+    CODING_SCENARIO_FACTORY,
+    CODING_SCENARIO_FRAME_CONTRACTS,
 )
 
 

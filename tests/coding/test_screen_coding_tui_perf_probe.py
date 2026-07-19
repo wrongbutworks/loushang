@@ -92,7 +92,7 @@ async def test_coding_performance_loader_adapts_persisted_session_history(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    import loushang.coding.testing.tui.performance as performance
+    import loushang.coding.presentation.tui.history as history
 
     loaded_paths: list[Path] = []
     projected: list[tuple[object, object]] = []
@@ -116,15 +116,15 @@ async def test_coding_performance_loader_adapts_persisted_session_history(
         projected.append((context, tool_definition_resolver))
         return (UserPromptRecord("loaded"),)
 
-    monkeypatch.setattr(performance, "SessionManager", FakeManager)
+    monkeypatch.setattr(history, "SessionManager", FakeManager)
     monkeypatch.setattr(
-        performance,
+        history,
         "session_history_records",
         fake_session_history_records,
     )
     session_path = tmp_path / "nested" / "session.jsonl"
 
-    records = await performance.load_session_history_records(
+    records = await history.load_persisted_session_history_records(
         session_path,
         tool_definition_resolver=resolver,
     )
