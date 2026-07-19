@@ -3,13 +3,15 @@ from __future__ import annotations
 from io import StringIO
 from types import SimpleNamespace
 
+from loushang.coding.interaction.controller import CodingUiController
+from loushang.coding.testing.tui.action_host import (
+    coding_screen_prompt_handler,
+)
 from loushang.coding.testing.tui.playback import ScreenTuiLoopPlayback
 from loushang.coding.testing.tui.scenario_binding import (
     CODING_SCENARIO_FACTORY,
     CODING_SCENARIO_FRAME_CONTRACTS,
 )
-from loushang.coding.ui.controller import CodingUiController
-from loushang.coding.ui.mode import _screen_prompt_handler
 from loushang.harnesstui.testing.performance import (
     build_synthetic_long_transcript_records,
 )
@@ -79,8 +81,8 @@ def _run_transcript_reader_copy_command() -> object:
         (0.02, "\x0f"),
         (0.03, "/copy 2\r"),
         (0.05, ""),
-        handle_prompt=_screen_prompt_handler(
-            app=playback.app,
+        handle_prompt=coding_screen_prompt_handler(
+            presenter=playback.app,
             controller=controller,
             stderr=StringIO(),
             verbose=False,

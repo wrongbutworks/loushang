@@ -6,9 +6,11 @@ import traceback
 from collections.abc import Mapping, Sequence
 from typing import Any, TextIO
 
-from loushang.coding.ui.model import ensure_usable_session_model
-from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+from loushang.coding.model_selection import ensure_usable_session_model
+from loushang.coding.presentation.tui.plain import (
+    PlainCodingEventRenderer,
+    PlainCodingUiRenderer,
+)
 from loushang.coding.work_shell import CodingWorkShell
 from loushang.work import EventLogBackend
 

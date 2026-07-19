@@ -282,7 +282,9 @@ loushang.coding
 
 ```text
 loushang.method -> loushang.coding -> loushang.work
-loushang.coding.ui -> loushang.tui
+loushang.coding.ui -> loushang.coding feature-local TUI adapters
+loushang.coding.ui -> loushang.harnesstui -> loushang.tui
+loushang.coding feature-local TUI adapters -> loushang.harnesstui
 ```
 
 跨产品执行目标链路为：
@@ -319,12 +321,15 @@ external host/client -> loushang.channel -> loushang.work -> domain app
 - `agent` 提供运行语义
 - `harness` 提供跨产品 prepared-run contract 以及 product-neutral host /
   adapter / command substrate
+- `harnesstui` 提供跨产品的 Harness/TUI conversation interaction 与
+  presentation composition；可依赖 `harness` 和 `tui`，不可依赖 `coding`
 - `channel` 提供目标边界通信，当前未作为源码包落地
 - `tui` 提供通用终端交互原语
 - `method` 提供可选的方法组织与 plan/projection
 - `work` 提供运行、事件、日志与 projection
-- `coding` 提供 coding 产品装配，并通过 `loushang.coding.ui` 调用
-  `loushang.tui`
+- `coding` 提供 coding 产品装配；feature-local adapter 解释 Coding 语义，
+  `loushang.coding.ui` 只保留最终 UI composition、具体 surface 和 terminal
+  binding
 - `design`、`research`、`ppt`、`cowork` 是目标产品线概念，和 `coding` 并列，而不是
   `work` 或 `agent` 的子层
 

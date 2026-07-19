@@ -121,14 +121,14 @@ class _AmbiguousDuplicateEndpointSession(_DuplicateEndpointSession):
 
 
 def test_model_choice_is_the_shared_harnesstui_view_model() -> None:
-    from loushang.coding.ui.model_list import ModelChoice as CodingModelChoice
+    from loushang.coding.model_selection_tui import ModelChoice as CodingModelChoice
     from loushang.harnesstui.selection.catalog import ModelChoice
 
     assert CodingModelChoice is ModelChoice
 
 
 def test_format_available_models_marks_current_model() -> None:
-    from loushang.coding.ui.model_list import format_available_models
+    from loushang.coding.model_selection_tui import format_available_models
 
     text = asyncio.run(format_available_models(_Session()))
 
@@ -140,7 +140,7 @@ def test_format_available_models_marks_current_model() -> None:
 
 
 def test_format_available_models_filters_by_query() -> None:
-    from loushang.coding.ui.model_list import format_available_models
+    from loushang.coding.model_selection_tui import format_available_models
 
     text = asyncio.run(format_available_models(_Session(), query="gpt"))
 
@@ -148,7 +148,7 @@ def test_format_available_models_filters_by_query() -> None:
 
 
 def test_format_available_models_lists_current_model_first() -> None:
-    from loushang.coding.ui.model_list import format_available_models
+    from loushang.coding.model_selection_tui import format_available_models
 
     text = asyncio.run(format_available_models(_CurrentSecondSession()))
 
@@ -160,7 +160,7 @@ def test_format_available_models_lists_current_model_first() -> None:
 
 
 def test_format_available_models_reports_empty_matches() -> None:
-    from loushang.coding.ui.model_list import format_available_models
+    from loushang.coding.model_selection_tui import format_available_models
 
     text = asyncio.run(format_available_models(_Session(), query="missing"))
 
@@ -168,7 +168,7 @@ def test_format_available_models_reports_empty_matches() -> None:
 
 
 def test_format_available_models_keeps_longer_substring_with_exact_label() -> None:
-    from loushang.coding.ui.model_list import format_available_models
+    from loushang.coding.model_selection_tui import format_available_models
 
     class _FormattingSession(_Session):
         def get_available_models(self) -> list[object]:
@@ -185,7 +185,7 @@ def test_format_available_models_keeps_longer_substring_with_exact_label() -> No
 
 
 def test_available_model_completion_provider_exposes_structured_items() -> None:
-    from loushang.coding.ui.model_list import available_model_completion_provider
+    from loushang.coding.model_selection_tui import available_model_completion_provider
     from loushang.tui import CompletionItem, CompletionProvider
 
     provider = asyncio.run(available_model_completion_provider(_Session()))
@@ -203,7 +203,7 @@ def test_available_model_completion_provider_exposes_structured_items() -> None:
 
 
 def test_available_model_completion_provider_uses_model_detail_descriptions() -> None:
-    from loushang.coding.ui.model_list import available_model_completion_provider
+    from loushang.coding.model_selection_tui import available_model_completion_provider
     from loushang.tui import CompletionItem, CompletionProvider
 
     provider = asyncio.run(available_model_completion_provider(_SessionWithModelDetails()))
@@ -225,7 +225,7 @@ def test_available_model_completion_provider_uses_model_detail_descriptions() ->
 
 
 def test_available_model_completion_provider_lists_current_model_first() -> None:
-    from loushang.coding.ui.model_list import available_model_completion_provider
+    from loushang.coding.model_selection_tui import available_model_completion_provider
 
     provider = asyncio.run(available_model_completion_provider(_CurrentSecondSession()))
 
@@ -237,7 +237,7 @@ def test_available_model_completion_provider_lists_current_model_first() -> None
 
 
 def test_available_model_palette_reuses_structured_model_items() -> None:
-    from loushang.coding.ui.model_list import available_model_palette
+    from loushang.coding.model_selection_tui import available_model_palette
     from loushang.tui import CommandPalette, CommandPaletteItem
 
     palette = asyncio.run(available_model_palette(_Session(), title="Models"))
@@ -256,7 +256,7 @@ def test_available_model_palette_reuses_structured_model_items() -> None:
 
 
 def test_select_available_model_sets_unique_match() -> None:
-    from loushang.coding.ui.model_list import select_available_model
+    from loushang.coding.model_selection_tui import select_available_model
 
     session = _Session()
     text = asyncio.run(select_available_model(session, query="gpt"))
@@ -268,7 +268,7 @@ def test_select_available_model_sets_unique_match() -> None:
 
 
 def test_select_available_model_lists_models_when_query_is_empty() -> None:
-    from loushang.coding.ui.model_list import select_available_model
+    from loushang.coding.model_selection_tui import select_available_model
 
     session = _Session()
     text = asyncio.run(select_available_model(session, query=""))
@@ -282,7 +282,7 @@ def test_select_available_model_lists_models_when_query_is_empty() -> None:
 
 
 def test_select_available_model_uses_injected_palette_chooser() -> None:
-    from loushang.coding.ui.model_list import select_available_model
+    from loushang.coding.model_selection_tui import select_available_model
     from loushang.tui import CommandPalette
 
     session = _Session()
@@ -304,7 +304,7 @@ def test_select_available_model_uses_injected_palette_chooser() -> None:
 
 
 def test_select_available_model_reports_cancelled_palette_choice() -> None:
-    from loushang.coding.ui.model_list import select_available_model
+    from loushang.coding.model_selection_tui import select_available_model
 
     session = _Session()
 
@@ -315,7 +315,7 @@ def test_select_available_model_reports_cancelled_palette_choice() -> None:
 
 
 def test_select_available_model_passes_empty_palette_to_chooser() -> None:
-    from loushang.coding.ui.model_list import select_available_model
+    from loushang.coding.model_selection_tui import select_available_model
     from loushang.tui import CommandPalette
 
     session = _EmptySession()
@@ -333,7 +333,7 @@ def test_select_available_model_passes_empty_palette_to_chooser() -> None:
 
 
 def test_select_available_model_reports_ambiguous_matches_with_hint() -> None:
-    from loushang.coding.ui.model_list import select_available_model
+    from loushang.coding.model_selection_tui import select_available_model
 
     session = _AmbiguousSession()
     text = asyncio.run(select_available_model(session, query="moonshot"))
@@ -348,7 +348,7 @@ def test_select_available_model_reports_ambiguous_matches_with_hint() -> None:
 
 
 def test_select_available_model_uses_full_identity_for_duplicate_endpoint_choice() -> None:
-    from loushang.coding.ui.model_list import select_available_model
+    from loushang.coding.model_selection_tui import select_available_model
 
     session = _DuplicateEndpointSession()
     text = asyncio.run(
@@ -369,7 +369,7 @@ def test_select_available_model_uses_full_identity_for_duplicate_endpoint_choice
 
 
 def test_select_available_model_uses_preferred_endpoint_for_duplicate_label() -> None:
-    from loushang.coding.ui.model_list import select_available_model
+    from loushang.coding.model_selection_tui import select_available_model
 
     session = _DuplicateEndpointSession()
     text = asyncio.run(select_available_model(session, query="dashscope/qwen3.6-plus"))
@@ -385,7 +385,7 @@ def test_select_available_model_uses_preferred_endpoint_for_duplicate_label() ->
 
 
 def test_select_available_model_reports_duplicate_endpoint_label_as_ambiguous_without_preferred() -> None:
-    from loushang.coding.ui.model_list import select_available_model
+    from loushang.coding.model_selection_tui import select_available_model
 
     session = _AmbiguousDuplicateEndpointSession()
     text = asyncio.run(select_available_model(session, query="dashscope/qwen3.6-plus"))
@@ -400,7 +400,7 @@ def test_select_available_model_reports_duplicate_endpoint_label_as_ambiguous_wi
 
 
 def test_available_model_completion_provider_marks_only_current_endpoint() -> None:
-    from loushang.coding.ui.model_list import available_model_completion_provider
+    from loushang.coding.model_selection_tui import available_model_completion_provider
 
     provider = asyncio.run(available_model_completion_provider(_DuplicateEndpointCurrentSession()))
 
@@ -419,7 +419,7 @@ def test_available_model_completion_provider_marks_only_current_endpoint() -> No
 
 
 def test_available_model_completion_provider_uses_agent_model_endpoint_for_current() -> None:
-    from loushang.coding.ui.model_list import available_model_completion_provider
+    from loushang.coding.model_selection_tui import available_model_completion_provider
 
     provider = asyncio.run(available_model_completion_provider(_DuplicateEndpointAgentModelSession()))
 
@@ -438,7 +438,7 @@ def test_available_model_completion_provider_uses_agent_model_endpoint_for_curre
 
 
 def test_available_model_completion_provider_dedupes_to_preferred_endpoint() -> None:
-    from loushang.coding.ui.model_list import available_model_completion_provider
+    from loushang.coding.model_selection_tui import available_model_completion_provider
 
     provider = asyncio.run(available_model_completion_provider(_DuplicateEndpointSession()))
 

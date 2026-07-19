@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from loushang.coding.ui.model import (
+from loushang.coding.model_selection import (
     ensure_usable_session_model,
     get_session_model_selection,
     model_label_from_selection,
 )
-from loushang.coding.ui.session_view import (
+from loushang.coding.presentation.session import (
     git_branch,
     project_label,
     session_cwd,

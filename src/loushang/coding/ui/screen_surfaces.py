@@ -5,12 +5,11 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from loushang.coding.commands.catalog import CodingCommandCatalog
-from loushang.coding.ui.command_list import (
+from loushang.coding.commands.tui import (
     coding_command_palette,
     format_coding_commands,
 )
-from loushang.coding.ui.hotkeys import format_hotkeys
-from loushang.coding.ui.intent import (
+from loushang.coding.interaction.intent import (
     CommandSelectIntent,
     CommandsIntent,
     HotkeysIntent,
@@ -20,40 +19,35 @@ from loushang.coding.ui.intent import (
     TerminalDiagnosticsIntent,
     parse_prompt_intent,
 )
-from loushang.coding.ui.model import (
+from loushang.coding.model_selection import (
     get_session_model_selection,
     iter_scoped_model_selections,
     model_label_from_selection,
 )
-from loushang.coding.ui.model_list import (
+from loushang.coding.model_selection_tui import (
     available_model_choices,
     current_model_choice_value,
     format_available_models,
     model_detail_descriptions_by_label,
     select_available_model,
 )
+from loushang.coding.ui.hotkeys import format_hotkeys
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.settings_page import SettingsPageView
-from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+from loushang.coding.ui.settings_page import build_coding_settings_page
 from loushang.harness.commands import CommandDef, CommandKind
-from loushang.harnesstui.commands.presentation import command_palette_select_items
 from loushang.harnesstui.selection.catalog import (
     model_choice_select_items,
     model_label_select_items,
 )
-from loushang.harnesstui.selection.model import (
-    MODEL_SELECTOR_SELECTED_STYLE as MODEL_SELECTOR_SELECTED_STYLE,
-)
-from loushang.harnesstui.selection.model import (
-    ModelSelectorSurface,
-)
+from loushang.harnesstui.status.provider import StatusProvider
 from loushang.harnesstui.surface.controller import (
     ApprovalSurfaceDecision,
     ScreenSurfaceCoordinator,
 )
 from loushang.harnesstui.surface.factory import (
-    command_surface_view,
+    command_palette_surface_view,
     info_surface_view,
+    model_selector_surface_view,
 )
 from loushang.harnesstui.surface.view import (
     ScreenSurfacePresentation,
@@ -78,7 +72,7 @@ class ScreenCommandCatalog(Protocol):
 class ScreenSurfaceManager:
     app: ScreenCodingTuiApp
     session: Any
-    status_provider: CodingTuiStatusProvider
+    status_provider: StatusProvider
     on_approval: Callable[[dict[str, Any]], Awaitable[bool | None]] | None = None
     command_catalog: ScreenCommandCatalog | None = None
     _surface_coordinator: ScreenSurfaceCoordinator = field(init=False, repr=False)
@@ -262,10 +256,10 @@ class ScreenSurfaceManager:
         purpose: Literal["model", "command"],
     ) -> None:
         self._open_surface(
-            command_surface_view(
+            command_palette_surface_view(
+                palette,
                 title=title,
                 purpose=purpose,
-                items=command_palette_select_items(palette),
                 max_visible=8,
             )
         )
@@ -283,28 +277,23 @@ class ScreenSurfaceManager:
             if (label := model_label_from_selection(selection)) is not None
         ]
         descriptions = await model_detail_descriptions_by_label(self.session)
-        surface = ModelSelectorSurface(
-            all_items=tuple(
-                model_choice_select_items(choices, current_value=current_value)
-            ),
-            scoped_items=tuple(
-                model_label_select_items(
+        self._open_surface(
+            model_selector_surface_view(
+                all_items=model_choice_select_items(
+                    choices,
+                    current_value=current_value,
+                ),
+                scoped_items=model_label_select_items(
                     scoped_labels,
                     current_label=current_label,
                     descriptions=descriptions,
-                )
-            ),
-            selected_value=current_value or current_label,
-            max_visible=10,
-        )
-        self._open_surface(
-            ScreenSurfaceView(
+                ),
+                selected_value=current_value or current_label,
                 title="Select Model",
                 subtitle="Access legacy models by running loushang --model <provider/model>.",
-                purpose="model",
-                content=surface,
                 footer="  Press number or enter to confirm or esc to go back",
                 presentation="bottom-exclusive",
+                max_visible=10,
             )
         )
 
@@ -333,11 +322,10 @@ class ScreenSurfaceManager:
         self._open_info("Terminal", text)
 
     async def _open_settings(self) -> None:
-        surface = await SettingsPageView.create(
+        surface = await build_coding_settings_page(
             session=self.session,
             status_provider=self.status_provider,
             settings_manager=getattr(self.session, "settings_manager", None),
-            session_settings=getattr(self.session, "settings_controller", None),
             statusline_preview=self.app.statusline_preview_snapshot,
         )
         self._open_surface(

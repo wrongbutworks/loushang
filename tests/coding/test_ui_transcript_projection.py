@@ -2,16 +2,16 @@ from __future__ import annotations
 
 
 def test_coding_tool_transcript_projection_preserves_compatibility_aliases() -> None:
-    from loushang.coding.ui.tool_blocks import (
+    from loushang.coding.presentation.tui.tool_transcript import (
         ToolCallSnapshot as CodingToolCallSnapshot,
     )
-    from loushang.coding.ui.tool_blocks import (
+    from loushang.coding.presentation.tui.tool_transcript import (
         ToolTranscriptBlock as CodingToolTranscriptBlock,
     )
-    from loushang.coding.ui.tool_blocks import (
+    from loushang.coding.presentation.tui.tool_transcript import (
         ToolTranscriptStatus as CodingToolTranscriptStatus,
     )
-    from loushang.coding.ui.transcript_projection import (
+    from loushang.coding.presentation.tui.tool_transcript import (
         tool_block_to_record as coding_tool_block_to_record,
     )
     from loushang.harnesstui.conversation.tool_transcript import (

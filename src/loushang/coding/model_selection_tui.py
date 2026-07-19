@@ -7,11 +7,9 @@ from typing import Any
 
 from loushang.coding.model_selection import (
     apply_model_selection,
-    persistence_warning_message,
-)
-from loushang.coding.ui.model import (
     iter_available_model_selections,
     model_label_from_selection,
+    persistence_warning_message,
 )
 from loushang.harnesstui.selection.catalog import (
     ModelChoice,

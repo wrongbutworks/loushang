@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.ui.command_list import coding_command_completion_provider
-from loushang.coding.ui.model_list import available_model_completion_provider
+from loushang.coding.commands.tui import coding_command_completion_provider
+from loushang.coding.model_selection_tui import available_model_completion_provider
 from loushang.tui import (
     CombinedCompletionProvider,
     CompletionItem,

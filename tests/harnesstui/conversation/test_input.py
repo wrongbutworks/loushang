@@ -166,3 +166,37 @@ def test_conversation_input_router_reports_unconfigured_clipboard_as_unhandled()
 
     assert result.render_requested is False
     assert result.clipboard_outcome is None
+
+
+def test_conversation_input_router_presents_each_clipboard_outcome_once(
+    tmp_path: Path,
+) -> None:
+    app = _ConversationApp()
+    attachment = _attachment(tmp_path)
+    outcomes = iter(
+        (
+            PromptImageAttachmentOutcome(
+                kind="attached",
+                attachment=attachment,
+                mime_type=attachment.mime_type,
+            ),
+            PromptImageAttachmentOutcome(kind="empty"),
+        )
+    )
+    presented: list[tuple[PromptImageAttachmentOutcome, str]] = []
+    router = ConversationInputRouter(
+        app=app,
+        should_exit=lambda _text: False,
+        prompt_image_stager=lambda: next(outcomes),
+        clipboard_outcome_presenter=lambda outcome: presented.append(
+            (outcome, app.composer.value)
+        ),
+    )
+
+    attached = router.handle(InputEvent(kind="key", key="ctrl+v"))
+    empty = router.handle(InputEvent(kind="key", key="ctrl+v"))
+
+    assert [outcome.kind for outcome, _text in presented] == ["attached", "empty"]
+    assert presented[0][1] == "@image.png "
+    assert attached.clipboard_outcome is presented[0][0]
+    assert empty.clipboard_outcome is presented[1][0]

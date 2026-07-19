@@ -3,11 +3,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Literal
 
+from loushang.harnesstui.commands.presentation import command_palette_select_items
+from loushang.harnesstui.selection.model import ModelSelectorSurface
 from loushang.harnesstui.surface.view import (
     ScreenSurfacePresentation,
     ScreenSurfaceView,
 )
-from loushang.tui import CommandSurface, InfoPanel, SelectItem
+from loushang.tui import CommandPalette, CommandSurface, InfoPanel, SelectItem
 
 
 def info_surface_view(
@@ -69,4 +71,67 @@ def command_surface_view(
     )
 
 
-__all__ = ["command_surface_view", "info_surface_view"]
+def command_palette_surface_view(
+    palette: CommandPalette,
+    *,
+    purpose: Literal["model", "command"] = "command",
+    title: str | None = None,
+    subtitle: str = "",
+    footer: str = "Enter to select - Esc to close",
+    presentation: ScreenSurfacePresentation = "bottom",
+    preferred_height: int | None = None,
+    query: str = "",
+    max_visible: int = 8,
+) -> ScreenSurfaceView:
+    """Present a prepared command palette as a framed selection surface."""
+
+    return command_surface_view(
+        title=palette.title if title is None else title,
+        purpose=purpose,
+        items=command_palette_select_items(palette),
+        subtitle=subtitle,
+        footer=footer,
+        presentation=presentation,
+        preferred_height=preferred_height,
+        query=query,
+        max_visible=max_visible,
+    )
+
+
+def model_selector_surface_view(
+    *,
+    all_items: Iterable[SelectItem],
+    scoped_items: Iterable[SelectItem] = (),
+    selected_value: str | None = None,
+    title: str = "Select Model",
+    subtitle: str = "",
+    footer: str = "Enter to select - Esc to close",
+    presentation: ScreenSurfacePresentation = "bottom",
+    preferred_height: int | None = None,
+    max_visible: int = 10,
+) -> ScreenSurfaceView:
+    """Present prepared, product-neutral model items in the shared selector."""
+
+    content = ModelSelectorSurface(
+        all_items=tuple(all_items),
+        scoped_items=tuple(scoped_items),
+        selected_value=selected_value,
+        max_visible=max_visible,
+    )
+    return ScreenSurfaceView(
+        title=title,
+        purpose="model",
+        content=content,
+        footer=footer,
+        subtitle=subtitle,
+        presentation=presentation,
+        preferred_height=preferred_height,
+    )
+
+
+__all__ = [
+    "command_palette_surface_view",
+    "command_surface_view",
+    "info_surface_view",
+    "model_selector_surface_view",
+]

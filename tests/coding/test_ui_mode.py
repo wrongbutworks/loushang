@@ -92,9 +92,12 @@ def test_run_coding_tui_uses_screen_loop_for_interactive_terminal(monkeypatch) -
 
     assert exit_code == 0
     assert captured["app"].__class__.__name__ == "ScreenCodingTuiApp"
-    assert callable(captured["handle_prompt"])
-    assert callable(captured["handle_steer"])
-    assert callable(captured["handle_followup"])
+    assert (
+        captured["action_host"].__class__.__name__
+        == "ScreenCodingConversationActionHost"
+    )
+    assert callable(captured["handle_local"])
+    assert callable(captured["handle_surface_intent"])
 
 
 def test_run_coding_tui_non_interactive_keeps_plain_prompt_loop(monkeypatch) -> None:

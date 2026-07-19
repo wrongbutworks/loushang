@@ -29,30 +29,28 @@ HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/platform/__init__.py \
 	src/loushang/coding/platform/clipboard_image.py \
 	src/loushang/coding/testing/tui \
-	src/loushang/coding/ui/abort.py \
-	src/loushang/coding/ui/command_list.py \
-	src/loushang/coding/ui/completion.py \
-	src/loushang/coding/ui/conversation_event_adapter.py \
-	src/loushang/coding/ui/event_stream.py \
-	src/loushang/coding/ui/follow_up_queue.py \
-	src/loushang/coding/ui/handlers.py \
-	src/loushang/coding/ui/model_list.py \
-	src/loushang/coding/ui/plain_app.py \
-	src/loushang/coding/ui/plain_events.py \
-	src/loushang/coding/ui/plain_renderer.py \
-	src/loushang/coding/ui/prompt_dispatch.py \
-	src/loushang/coding/ui/prompt_result.py \
-	src/loushang/coding/ui/run_context.py \
-	src/loushang/coding/ui/screen_app.py \
-	src/loushang/coding/ui/screen_events.py \
-	src/loushang/coding/ui/screen_input.py \
-	src/loushang/coding/ui/screen_loop.py \
-	src/loushang/coding/ui/screen_surfaces.py \
-	src/loushang/coding/ui/settings_config.py \
-	src/loushang/coding/ui/settings_page.py \
-	src/loushang/coding/ui/tool_blocks.py \
-	src/loushang/coding/ui/transcript_projection.py \
-	src/loushang/coding/ui/transcript_source.py
+	src/loushang/coding/ui
+CODING_TUI_PRODUCT_SOURCES := \
+	src/loushang/coding/commands/tui.py \
+	src/loushang/coding/model_selection_tui.py \
+	src/loushang/coding/model_selection.py \
+	src/loushang/coding/diagnostics/debug_status.py \
+	src/loushang/coding/diagnostics/tui.py \
+	src/loushang/coding/event/presentation_policy.py \
+	src/loushang/coding/policy/tui.py \
+	src/loushang/coding/interaction/controller.py \
+	src/loushang/coding/interaction/intent.py \
+	src/loushang/coding/interaction/plain_abort.py \
+	src/loushang/coding/interaction/plain_dispatch.py \
+	src/loushang/coding/interaction/plain_follow_up.py \
+	src/loushang/coding/interaction/plain_host.py \
+	src/loushang/coding/interaction/plain_result.py \
+	src/loushang/coding/interaction/routing.py \
+	src/loushang/coding/interaction/screen_host.py \
+	src/loushang/coding/presentation/resume.py \
+	src/loushang/coding/presentation/session.py \
+	src/loushang/coding/presentation/settings.py \
+	src/loushang/coding/presentation/tui
 HARNESSTUI_TEST_PATHS := \
 	tests/harnesstui \
 	tests/tui/test_clipboard_image.py \
@@ -63,16 +61,22 @@ HARNESSTUI_TEST_PATHS := \
 	tests/tui/test_transcript_region.py \
 	tests/architecture/test_import_boundaries.py \
 	tests/coding/test_platform_utils.py \
-	tests/coding/test_terminal_diagnostics_compatibility.py \
+	tests/coding/test_screen_conversation_action_host.py \
 	tests/coding/test_ui_handlers.py \
 	tests/coding/test_ui_abort.py \
+	tests/coding/test_ui_debug_command.py \
 	tests/coding/test_ui_event_stream.py \
 	tests/coding/test_ui_follow_up_queue.py \
+	tests/coding/test_ui_hotkeys.py \
+	tests/coding/test_ui_mode.py \
 	tests/coding/test_ui_prompt_dispatch.py \
 	tests/coding/test_ui_prompt_result.py \
+	tests/coding/test_ui_prompt_routing.py \
 	tests/coding/test_ui_run_context.py \
+	tests/coding/test_ui_startup.py \
 	tests/coding/test_ui_steer.py \
 	tests/coding/test_ui_import_boundaries.py \
+	tests/coding/test_tui_runtime_adapters.py \
 	tests/coding/test_screen_coding_tui_app.py \
 	tests/coding/test_screen_coding_tui_events.py \
 	tests/coding/test_screen_coding_tui_input.py \
@@ -91,10 +95,16 @@ HARNESSTUI_TEST_PATHS := \
 	tests/coding/test_ui_plain_app.py \
 	tests/coding/test_ui_plain_renderer.py \
 	tests/coding/test_ui_status_line.py \
-	tests/coding/test_ui_status_provider.py \
 	tests/coding/test_ui_transcript_projection.py \
 	tests/coding/test_ui_transcript_source.py \
 	tests/coding/ui/test_screen_input.py
+CODING_TUI_PRODUCT_TEST_PATHS := \
+	tests/coding/test_ui_controller.py \
+	tests/coding/test_ui_debug_status.py \
+	tests/coding/test_ui_event_policy.py \
+	tests/coding/test_ui_model.py \
+	tests/coding/test_coding_settings_presentation.py \
+	tests/coding/test_ui_session_view.py
 
 .PHONY: bootstrap test test-ai check-ai test-tui test-tui-render-contract lint-ai fmt-ai typecheck-ai typecheck-tui build-binary install-binary clean-binary vendor-ai-moonshot-anthropic-stream vendor-ai-moonshot-anthropic-complete vendor-ai-moonshot-anthropic-tools vendor-ai-moonshot-openai-stream vendor-ai-moonshot-openai-complete vendor-ai-moonshot-openai-tools vendor-ai-dashscope-openai-responses-stream vendor-ai-dashscope-openai-responses-tools example-ai-model-lookup example-ai-complete example-ai-stream example-ai-tools example-ai-typed-context example-ai-advanced-faux-stream example-ai-advanced-context-tools example-ai-advanced-tool-result-roundtrip example-ai-kimi-anthropic-stream example-ai-kimi-anthropic-complete example-ai-kimi-anthropic-tools example-ai-kimi-openai-stream example-ai-kimi-openai-complete example-ai-kimi-openai-tools example-ai-dashscope-openai-responses-stream example-ai-dashscope-openai-responses-tools example-ai-custom-base-url-openai-advanced example-ai-faux-stream example-ai-context-tools-minimal example-ai-tool-result-roundtrip
 .PHONY: check-ai-catalog check-ai-examples check-ai-imports check-ai-coverage
@@ -130,13 +140,13 @@ check-ai-coverage:
 check-harnesstui: lint-harnesstui typecheck-harnesstui test-harnesstui
 
 lint-harnesstui:
-	uv --cache-dir .uv-cache run --extra dev ruff check $(HARNESSTUI_SHARED_SOURCES) $(HARNESSTUI_CODING_ADAPTERS) src/loushang/coding/ui/status_provider.py $(HARNESSTUI_TEST_PATHS)
+	uv --cache-dir .uv-cache run --extra dev ruff check $(HARNESSTUI_SHARED_SOURCES) $(HARNESSTUI_CODING_ADAPTERS) $(CODING_TUI_PRODUCT_SOURCES) $(HARNESSTUI_TEST_PATHS) $(CODING_TUI_PRODUCT_TEST_PATHS)
 
 typecheck-harnesstui:
-	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(HARNESSTUI_SHARED_SOURCES) $(HARNESSTUI_CODING_ADAPTERS) src/loushang/coding/ui/status_provider.py
+	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(HARNESSTUI_SHARED_SOURCES) $(HARNESSTUI_CODING_ADAPTERS) $(CODING_TUI_PRODUCT_SOURCES)
 
 test-harnesstui:
-	uv --cache-dir .uv-cache run --extra dev pytest $(HARNESSTUI_TEST_PATHS) -m "not tui_render_contract" -q
+	uv --cache-dir .uv-cache run --extra dev pytest $(HARNESSTUI_TEST_PATHS) $(CODING_TUI_PRODUCT_TEST_PATHS) -m "not tui_render_contract" -q
 
 test-tui:
 	. .venv/bin/activate && python -m pytest tests/tui -q

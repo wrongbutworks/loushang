@@ -22,8 +22,8 @@ def _project(
     is_error: bool = False,
     max_body_lines: int = 4,
 ):
+    from loushang.coding.presentation.tui.tool_transcript import ToolTranscriptProjector
     from loushang.coding.tools import create_all_tool_definitions
-    from loushang.coding.ui.tool_blocks import ToolTranscriptProjector
 
     definitions = create_all_tool_definitions()
     projector = ToolTranscriptProjector(
@@ -152,7 +152,7 @@ def test_tool_transcript_block_uses_transcript_projection_for_raw_details() -> N
 
 def test_terminate_status_is_identical_for_live_and_replayed_tool_results() -> None:
     from loushang.ai import ToolResultMessage
-    from loushang.coding.ui.tool_blocks import ToolTranscriptProjector
+    from loushang.coding.presentation.tui.tool_transcript import ToolTranscriptProjector
 
     result = AgentToolResult(
         content=[TextPart(type="text", text="done")],

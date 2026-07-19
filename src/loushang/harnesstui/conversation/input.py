@@ -23,6 +23,7 @@ from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
 
 RunningSubmitMode = Literal["steer", "follow_up"]
 PromptImageAttachmentStager = Callable[[], PromptImageAttachmentOutcome]
+ClipboardOutcomePresenter = Callable[[PromptImageAttachmentOutcome], None]
 
 
 class ConversationScreenInputPort(Protocol):
@@ -73,6 +74,7 @@ class ConversationInputRouter:
     width: int = 80
     height: int = 12
     prompt_image_stager: PromptImageAttachmentStager | None = None
+    clipboard_outcome_presenter: ClipboardOutcomePresenter | None = None
     _jump_mode: Literal["forward", "backward"] | None = None
     _pending_prompt_images: PendingPromptImageRegistry = field(
         default_factory=PendingPromptImageRegistry,
@@ -347,12 +349,21 @@ class ConversationInputRouter:
         outcome = self.prompt_image_stager()
         attachment = outcome.attachment
         if outcome.kind != "attached":
+            self._present_clipboard_outcome(outcome)
             return ConversationInputResult(clipboard_outcome=outcome)
         if attachment is None:
             raise RuntimeError("attached clipboard outcome requires an attachment")
         self.app.composer.paste(f"{attachment.marker} ")
         self._pending_prompt_images.add(attachment)
+        self._present_clipboard_outcome(outcome)
         return ConversationInputResult(clipboard_outcome=outcome)
+
+    def _present_clipboard_outcome(
+        self,
+        outcome: PromptImageAttachmentOutcome,
+    ) -> None:
+        if self.clipboard_outcome_presenter is not None:
+            self.clipboard_outcome_presenter(outcome)
 
     def _prompt_attachments_for_text(
         self,
@@ -366,6 +377,7 @@ class ConversationInputRouter:
 
 
 __all__ = [
+    "ClipboardOutcomePresenter",
     "ConversationInputResult",
     "ConversationInputRouter",
     "ConversationScreenInputPort",

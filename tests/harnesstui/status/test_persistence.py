@@ -19,25 +19,9 @@ class _SettingsManager:
         self.saved.append((patch, scope))
 
 
-def test_status_provider_compatibility_export_is_identical() -> None:
-    from loushang.coding.ui.status_provider import CodingTuiStatusProvider
-    from loushang.harnesstui.status.provider import StatusProvider
-
-    assert CodingTuiStatusProvider is StatusProvider
-
-
-def test_status_snapshot_compatibility_export_is_identical() -> None:
-    from loushang.coding.ui.status_provider import (
-        StatusSnapshot as CodingStatusSnapshot,
-    )
-    from loushang.harnesstui.status.snapshot import StatusSnapshot
-
-    assert CodingStatusSnapshot is StatusSnapshot
-
-
-def test_statusline_settings_adapter_reads_settings_manager() -> None:
-    from loushang.coding.ui.status_provider import (
-        statusline_settings_from_settings_manager,
+def test_statusline_settings_adapter_reads_settings_store() -> None:
+    from loushang.harnesstui.status.persistence import (
+        statusline_settings_from_store,
     )
 
     control_settings = StatusLineControlSettings(
@@ -48,18 +32,18 @@ def test_statusline_settings_adapter_reads_settings_manager() -> None:
     )
     manager = _SettingsManager(control_settings)
 
-    assert statusline_settings_from_settings_manager(manager) == StatusLineSettings(
+    assert statusline_settings_from_store(manager) == StatusLineSettings(
         enabled=False,
         queue="true",
         separator="dot",
         style="muted",
     )
-    assert statusline_settings_from_settings_manager(None) is None
-    assert statusline_settings_from_settings_manager(object()) is None
+    assert statusline_settings_from_store(None) is None
+    assert statusline_settings_from_store(object()) is None
 
 
 def test_statusline_settings_adapter_persists_patch_in_requested_scope() -> None:
-    from loushang.coding.ui.status_provider import (
+    from loushang.harnesstui.status.persistence import (
         statusline_settings_persistence_callback,
     )
 

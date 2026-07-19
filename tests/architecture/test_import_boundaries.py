@@ -657,6 +657,8 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.settings.dashboard`" in text
     assert "`loushang.harnesstui.settings.model`" in text
     assert "`loushang.harnesstui.settings.page`" in text
+    assert "`loushang.harnesstui.settings.workflow`" in text
+    assert "`loushang.harnesstui.status.persistence`" in text
     assert "`loushang.harnesstui.status.settings`" in text
     assert "`loushang.harnesstui.status.line`" in text
     assert "`loushang.harnesstui.status.plain`" in text
@@ -665,6 +667,7 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.surface.controller`" in text
     assert "`loushang.harnesstui.surface.factory`" in text
     assert "`loushang.harnesstui.surface.view`" in text
+    assert "`loushang.harnesstui.testing.action_host`" in text
     assert "`loushang.harnesstui.testing.ports`" in text
     assert "`loushang.harnesstui.testing.input_playback`" in text
     assert "`loushang.harnesstui.testing.performance`" in text
@@ -705,7 +708,9 @@ def test_harnesstui_capability_entrypoints_exist() -> None:
         Path("src/loushang/harnesstui/settings/dashboard.py"),
         Path("src/loushang/harnesstui/settings/model.py"),
         Path("src/loushang/harnesstui/settings/page.py"),
+        Path("src/loushang/harnesstui/settings/workflow.py"),
         Path("src/loushang/harnesstui/status/line.py"),
+        Path("src/loushang/harnesstui/status/persistence.py"),
         Path("src/loushang/harnesstui/status/plain.py"),
         Path("src/loushang/harnesstui/status/provider.py"),
         Path("src/loushang/harnesstui/status/settings.py"),
@@ -713,6 +718,7 @@ def test_harnesstui_capability_entrypoints_exist() -> None:
         Path("src/loushang/harnesstui/surface/controller.py"),
         Path("src/loushang/harnesstui/surface/factory.py"),
         Path("src/loushang/harnesstui/surface/view.py"),
+        Path("src/loushang/harnesstui/testing/action_host.py"),
         Path("src/loushang/harnesstui/testing/ports.py"),
         Path("src/loushang/harnesstui/testing/input_playback.py"),
         Path("src/loushang/harnesstui/testing/performance.py"),
@@ -842,6 +848,7 @@ import importlib
 import sys
 
 for module_name in (
+    "loushang.harnesstui.testing.action_host",
     "loushang.harnesstui.testing.ports",
     "loushang.harnesstui.testing.input_playback",
     "loushang.harnesstui.testing.performance",

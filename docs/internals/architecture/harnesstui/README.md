@@ -6,7 +6,11 @@ direction is:
 
 ```text
 `loushang.coding.ui` -> `loushang.harnesstui` -> `loushang.tui`
-                                             -> `loushang.harness`
+`loushang.coding.commands.tui` -> `loushang.harnesstui`
+`loushang.coding.interaction.*` -> `loushang.harnesstui`
+`loushang.coding.model_selection_tui` -> `loushang.harnesstui`
+`loushang.coding.presentation.tui.*` -> `loushang.harnesstui`
+`loushang.harnesstui` -> `loushang.harness`
 
 `loushang.coding.testing.tui` -> `loushang.harnesstui.testing`
                               -> `loushang.harnesstui`
@@ -41,8 +45,10 @@ This layer owns reusable Harness-oriented terminal interaction, including:
 decoding, host clipboard-image acquisition, generic widgets, and transcript
 presentation primitives.
 `loushang.harness` continues to own neutral runtime and durable conversation
-contracts. Product adapters such as `loushang.coding.ui` continue to own raw
-product-event interpretation, commands, policy, branding, and runtime assembly.
+contracts. Product adapters under `loushang.coding.presentation.tui` continue
+to own raw product-event and transcript interpretation. `loushang.coding.ui`
+owns product UI composition, while Coding retains commands, policy, branding,
+and runtime assembly.
 
 ## Catalog Interaction Workflows
 
@@ -72,6 +78,25 @@ caller-supplied descriptors and choices.
 The explicit module paths `loushang.harnesstui.commands.interaction` and
 `loushang.harnesstui.selection.interaction` are the stable entrypoints for
 these workflows. Package initializers do not add convenience re-exports.
+
+## Settings and Prepared Surfaces
+
+`loushang.harnesstui.settings.workflow` owns the reusable settings-dashboard
+workflow: tab composition, focus, status and status-line refresh, model-page
+refresh, and structural apply effects. Products supply prepared `ConfigRow`
+and `ModelChoice` snapshots plus callbacks for applying configuration and model
+changes. The workflow never receives a raw Session or SettingsManager.
+
+Coding keeps its six setting ids, labels, getter/setter mapping, validation
+copy, model catalog acquisition, endpoint policy, model application, and
+default-model persistence. Those product facts live outside `coding.ui`; its
+remaining settings-page module is only the composition adapter that turns them
+into shared workflow ports.
+
+`loushang.harnesstui.surface.factory` builds framed surfaces from prepared
+palettes and neutral selection items. Titles, subtitles, footers, placement,
+and sizing remain caller-supplied policy. It does not parse Coding commands,
+load models, mutate a composer, or decide approval outcomes.
 
 ## Conversation Attachments
 
@@ -131,9 +156,8 @@ segmentation, render caches, committed and draft segments, streaming Markdown
 reuse, and tail clipping live in `loushang.tui.ui_parts.transcript`; Harnesstui
 does not duplicate or wrap that rendering engine.
 
-Compatibility modules in `loushang.coding.ui` may temporarily re-export moved
-symbols. They must depend inward on `loushang.harnesstui`; this package must
-never depend back on those compatibility modules.
+Coding product bindings import these owners directly. Compatibility re-exports
+must not be recreated; `loushang.harnesstui` must never depend back on Coding.
 
 The stable imports introduced by this slice are the explicit module paths
 `loushang.harnesstui.conversation.screen_state`,
@@ -155,12 +179,12 @@ provider objects. Deterministic transcript status, block construction, and
 record projection belong here because they are reusable across Harness-backed
 terminal products.
 
-`loushang.coding.ui` remains responsible for adapting raw `AgentToolResult`
-instances and runtime events into that neutral view. It also retains product
-policy: which events are visible, product-specific labels and commands,
-redaction, and any decision that requires Coding runtime state. This keeps the
-dependency pointing from Coding into Harnesstui and prevents Agent event types
-from becoming presentation contracts.
+`loushang.coding.presentation.tui.tool_transcript` remains responsible for
+adapting raw `AgentToolResult` instances and runtime events into that neutral
+view. It also retains product policy: which events are visible,
+product-specific labels and commands, redaction, and any decision that requires
+Coding runtime state. This keeps the dependency pointing from Coding into
+Harnesstui and prevents Agent event types from becoming presentation contracts.
 
 `loushang.harnesstui.status.line` owns a shared Harness status profile and its
 product-neutral presentation rules. A product shell supplies the profile's
@@ -172,10 +196,12 @@ reach into those mechanics or introduce a second status-bar runtime.
 `loushang.harnesstui.status.snapshot` owns the neutral status facts.
 `loushang.harnesstui.status.provider` owns the callback-fed status profile and
 product-neutral status-line setting transitions.
+`loushang.harnesstui.status.persistence` adapts those settings to a
+caller-supplied duck-typed settings store without importing a product manager.
 `loushang.harnesstui.status.plain` owns the compact, line-oriented toolbar
 projection over presentation-ready status values. Coding continues to own live
-Session reads, SettingsManager adaptation and persistence, and provider update
-timing; its former status and toolbar imports are direct compatibility aliases.
+Session reads, the concrete settings store, scope choice, and provider update
+timing. Removed Coding status modules are not compatibility re-exported.
 
 These explicit module paths are the stable imports for this slice. The package
 initializers do not need to provide convenience re-exports.
@@ -191,7 +217,7 @@ presentation-ready values; raw Agent/Coding event dictionaries and AI message
 objects are not part of this contract.
 
 Product adapters keep ownership of raw event interpretation. In Coding,
-`loushang.coding.ui.conversation_event_adapter` reads product event shapes,
+`loushang.coding.presentation.tui.events` reads product event shapes,
 extracts message and compaction values, applies Coding cancellation policy,
 and converts tool events through the Coding tool adapter before invoking the
 neutral projector. `loushang.harnesstui.conversation.plain_target` owns the
@@ -273,7 +299,9 @@ explicit entrypoints:
 - `loushang.harnesstui.conversation.input` coordinates decoded input,
   completion, surfaces, running-submit modes, and neutral attachments;
 - `loushang.harnesstui.conversation.control` coordinates abort, steer, and
-  follow-up actions over caller-supplied controllers and status callbacks;
+  follow-up actions over caller-supplied controllers and status callbacks. It
+  also defines the immutable `ConversationTextAction` and the structural
+  `ConversationActionHost` product port;
 - `loushang.harnesstui.conversation.dispatch` owns product-neutral dispatch,
   result-presentation, and stable event-stream lifecycles;
 - `loushang.harnesstui.conversation.run_context` owns UI subscription cleanup,
@@ -290,11 +318,28 @@ neutral attachments to its runtime-facing values. In particular, Coding keeps
 raw-event interpretation, `.loushang` storage policy, and its interruption,
 queue, and error messages.
 
+The action host is a dependency-inversion seam, not a second lifecycle or
+dispatch engine. Plain products may compose the existing run-control,
+dispatch, and result presenter behind it. Screen products may keep lifecycle
+ownership in `screen_runner` and only bind the host's four action methods.
+`loushang.harnesstui.testing.action_host` provides the corresponding callback
+adapter for playback without introducing product policy into the shared layer.
+
 The screen runner coordinates existing rendering calls but does not move or
 replace transcript segmentation, invalidation, render caches, frame
 composition, or terminal writes. Those hot-path responsibilities and the
 independent render-performance contract remain unchanged. The conversation
 package initializer intentionally does not re-export these entrypoints.
+
+Coding's `ui.mode` is the composition root for these ports. It explicitly
+constructs the screen app, surface manager, event projector, action host, and
+runner, and preserves their reverse cleanup order. Raw Session discovery for
+tool definitions, queues, and keybindings lives in
+`loushang.coding.presentation.tui.runtime`; resume-hint discovery lives in
+`loushang.coding.presentation.resume`. Approval presenter binding and Session
+transition cleanup remain Coding product policy in
+`loushang.coding.policy.tui`. They do not belong to Harnesstui merely because a
+shared surface displays the prepared approval facts.
 
 ## Conversation Playback Testing
 
@@ -355,6 +400,15 @@ Coding UI adapters that own product policy, copy, or runtime binding remain in
 `loushang.coding.ui`. The retired-module manifest in
 `tests/coding/test_ui_import_boundaries.py` prevents the compatibility paths
 from being recreated accidentally.
+
+Coding's screen input binding now constructs the canonical
+`ConversationInputRouter` directly. Harnesstui keeps staged prompt images as
+neutral `PromptImageAttachment` values through routing and exposes clipboard
+outcomes through an optional product callback. Coding alone chooses the
+`.loushang/clipboard` workspace path, presents product status copy, and converts
+neutral attachments to `ImagePart` at the model-dispatch boundary. Its screen
+loop is a thin binding around `run_conversation_screen`; test-only aliases for
+shared runner and terminal helpers are not product APIs.
 
 ## Plain Conversation Presentation
 
@@ -434,9 +488,9 @@ The model settings page emits the shared UI intent
 Products decide how that opaque choice value is resolved, applied, and
 persisted; Harnesstui never calls a Session or settings manager.
 
-Compatibility modules in `loushang.coding.ui` re-export the moved class objects
-without subclassing or wrapping them. The explicit module paths above are the
-stable imports; package initializers do not add convenience re-exports.
+The explicit module paths above are the stable imports. Coding binds prepared
+product data and callbacks directly, without subclassing or re-exporting these
+shared implementations; package initializers do not add convenience exports.
 
 ## Quality Gate
 

@@ -4,8 +4,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from loushang.coding.ui.event_policy import is_cancelled_error_message
-from loushang.coding.ui.tool_blocks import ToolTranscriptProjector
+from loushang.coding.event.presentation_policy import is_cancelled_error_message
+from loushang.coding.presentation.tui.tool_transcript import (
+    ToolTranscriptProjector,
+)
 from loushang.harnesstui.conversation.projection import ConversationProjector
 
 QueueReader = Callable[[], tuple[str, ...] | list[str]]
