@@ -5,9 +5,9 @@ change can affect terminal behavior, not just pure component rendering.
 
 Reusable conversation drivers and product-neutral scenario recipes live under
 `loushang.harnesstui.testing`. The bound Coding suite, product fakes, frozen
-frame budgets, and CLI live under `loushang.coding.testing.tui`. Legacy
-`loushang.coding.ui.playback*` imports remain compatibility facades and should
-not be used by new tests.
+frame budgets, and CLI live under `loushang.coding.testing.tui`. The former
+`loushang.coding.ui.playback*` compatibility imports are retired; tests use the
+canonical testing packages directly.
 
 Good candidates include:
 

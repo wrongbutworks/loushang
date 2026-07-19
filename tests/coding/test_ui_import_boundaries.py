@@ -6,21 +6,182 @@ import subprocess
 import sys
 from pathlib import Path
 
+RETIRED_CODING_UI_COMPATIBILITY_MODULES: dict[str, tuple[str, ...]] = {
+    "loushang.coding.ui.lifecycle": ("loushang.harnesstui.conversation.control",),
+    "loushang.coding.ui.pending_queue": ("loushang.harnesstui.conversation.queue",),
+    "loushang.coding.ui.perf_probe": (
+        "loushang.harnesstui.testing.performance",
+        "loushang.coding.testing.tui.performance",
+    ),
+    "loushang.coding.ui.plain_toolbar": ("loushang.harnesstui.status.plain",),
+    "loushang.coding.ui.playback": ("loushang.coding.testing.tui.playback",),
+    "loushang.coding.ui.playback_fakes": ("loushang.coding.testing.tui.fakes",),
+    "loushang.coding.ui.playback_runner": ("loushang.coding.testing.tui.runner",),
+    "loushang.coding.ui.playback_suite": ("loushang.tui.playback_suite",),
+    "loushang.coding.ui.playback_scenarios": ("loushang.coding.testing.tui.scenarios",),
+    "loushang.coding.ui.playback_scenarios.budgets": (
+        "loushang.coding.testing.tui.scenarios.budgets",
+    ),
+    "loushang.coding.ui.playback_scenarios.command": (
+        "loushang.coding.testing.tui.scenarios.command",
+    ),
+    "loushang.coding.ui.playback_scenarios.composer": (
+        "loushang.coding.testing.tui.scenarios.composer",
+    ),
+    "loushang.coding.ui.playback_scenarios.lifecycle": (
+        "loushang.coding.testing.tui.scenarios.lifecycle",
+    ),
+    "loushang.coding.ui.playback_scenarios.product": (
+        "loushang.coding.testing.tui.scenarios.product",
+    ),
+    "loushang.coding.ui.playback_scenarios.surface": (
+        "loushang.coding.testing.tui.scenarios.surface",
+    ),
+    "loushang.coding.ui.playback_scenarios.terminal": (
+        "loushang.coding.testing.tui.scenarios.terminal",
+    ),
+    "loushang.coding.ui.playback_scenarios.transcript": (
+        "loushang.coding.testing.tui.scenarios.transcript",
+    ),
+    "loushang.coding.ui.screen_state": (
+        "loushang.harnesstui.conversation.screen_state",
+    ),
+    "loushang.coding.ui.settings_common": ("loushang.tui.settings",),
+    "loushang.coding.ui.settings_status_line": ("loushang.harnesstui.status.settings",),
+    "loushang.coding.ui.status_line": ("loushang.harnesstui.status.line",),
+    "loushang.coding.ui.steer": ("loushang.harnesstui.conversation.control",),
+    "loushang.coding.ui.transcript_reader": (
+        "loushang.harnesstui.conversation.reader",
+    ),
+    "loushang.coding.ui.transcript_style": (
+        "loushang.harnesstui.conversation.transcript_style",
+    ),
+}
 
-def test_importing_coding_ui_state_does_not_load_tui_mode_entrypoint() -> None:
+RETAINED_CODING_UI_PRODUCT_ADAPTER_MODULES = {
+    "abort",
+    "cli",
+    "command_list",
+    "completion",
+    "controller",
+    "conversation_event_adapter",
+    "debug_command",
+    "debug_status",
+    "event_policy",
+    "event_stream",
+    "follow_up_queue",
+    "handlers",
+    "hotkeys",
+    "intent",
+    "mode",
+    "model",
+    "model_list",
+    "plain_app",
+    "plain_events",
+    "plain_renderer",
+    "prompt_dispatch",
+    "prompt_result",
+    "prompt_routing",
+    "run_context",
+    "screen_app",
+    "screen_events",
+    "screen_input",
+    "screen_loop",
+    "screen_surfaces",
+    "session_history",
+    "session_view",
+    "settings_config",
+    "settings_page",
+    "startup",
+    "status_provider",
+    "tool_blocks",
+    "transcript_projection",
+    "transcript_source",
+}
+
+
+def test_importing_shared_screen_state_does_not_load_coding_ui() -> None:
     result = _run_python_import_boundary_check(
         """
 import importlib
 import sys
 
-importlib.import_module("loushang.coding.ui.screen_state")
+importlib.import_module("loushang.harnesstui.conversation.screen_state")
 
+assert "loushang.coding.ui" not in sys.modules
 assert "loushang.coding.ui.mode" not in sys.modules
 assert "loushang.coding.ui.plain_renderer" not in sys.modules
 """
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_retired_coding_ui_compatibility_modules_use_canonical_owners() -> None:
+    for module in RETIRED_CODING_UI_COMPATIBILITY_MODULES:
+        relative = Path(*module.split("."))
+        module_path = Path("src") / relative.with_suffix(".py")
+        package_path = Path("src") / relative / "__init__.py"
+        assert not module_path.exists(), module
+        assert not package_path.exists(), module
+
+    canonical_modules = tuple(
+        sorted(
+            {
+                owner
+                for owners in RETIRED_CODING_UI_COMPATIBILITY_MODULES.values()
+                for owner in owners
+            }
+        )
+    )
+    result = _run_python_import_boundary_check(
+        f"""
+import importlib.util
+
+canonical = {canonical_modules!r}
+
+for module in canonical:
+    assert importlib.util.find_spec(module) is not None, module
+"""
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_coding_ui_module_manifest_contains_only_product_adapters() -> None:
+    root = Path("src/loushang/coding/ui")
+    actual: set[str] = set()
+    for path in root.rglob("*.py"):
+        relative = path.relative_to(root)
+        if relative.name == "__init__.py":
+            if relative.parent != Path("."):
+                actual.add(".".join(relative.parent.parts))
+            continue
+        actual.add(".".join(relative.with_suffix("").parts))
+
+    assert actual == RETAINED_CODING_UI_PRODUCT_ADAPTER_MODULES
+
+
+def test_repository_imports_use_canonical_owners_for_retired_modules() -> None:
+    retired = tuple(RETIRED_CODING_UI_COMPATIBILITY_MODULES)
+    offenders: list[str] = []
+    for root in (Path("src"), Path("tests"), Path("examples"), Path("scripts")):
+        for path in sorted(root.rglob("*.py")):
+            if path.resolve() == Path(__file__).resolve():
+                continue
+            for target in _absolute_import_targets(path):
+                matched = next(
+                    (
+                        module
+                        for module in retired
+                        if target == module or target.startswith(f"{module}.")
+                    ),
+                    None,
+                )
+                if matched is not None:
+                    offenders.append(f"{path}:{target} -> {matched}")
+
+    assert offenders == []
 
 
 def test_old_coding_ui_renderer_module_is_removed() -> None:
@@ -58,9 +219,9 @@ else:
 
 
 def test_conversation_raw_event_dispatch_stays_in_coding_adapter() -> None:
-    adapter = Path(
-        "src/loushang/coding/ui/conversation_event_adapter.py"
-    ).read_text(encoding="utf-8")
+    adapter = Path("src/loushang/coding/ui/conversation_event_adapter.py").read_text(
+        encoding="utf-8"
+    )
     assert 'event.get("type")' in adapter
 
     for path in (
@@ -70,94 +231,11 @@ def test_conversation_raw_event_dispatch_stays_in_coding_adapter() -> None:
         assert 'event.get("type")' not in path.read_text(encoding="utf-8")
 
 
-def test_coding_ui_playback_modules_are_compatibility_facades() -> None:
-    facade_functions = {
-        Path("src/loushang/coding/ui/playback.py"): {"__getattr__", "__dir__"},
-        Path("src/loushang/coding/ui/playback_fakes.py"): set(),
-        Path("src/loushang/coding/ui/playback_runner.py"): {"main"},
-        Path("src/loushang/coding/ui/playback_suite.py"): set(),
-    }
-    implementation_imports = {
-        Path("src/loushang/coding/ui/playback.py"): (
-            "loushang.coding.testing.tui.playback"
-        ),
-        Path("src/loushang/coding/ui/playback_fakes.py"): (
-            "loushang.coding.testing.tui.fakes"
-        ),
-        Path("src/loushang/coding/ui/playback_runner.py"): (
-            "loushang.coding.testing.tui.runner"
-        ),
-        Path("src/loushang/coding/ui/playback_suite.py"): "loushang.tui.playback_suite",
-    }
-
-    offenders: list[str] = []
-    for path, allowed_functions in facade_functions.items():
-        source = path.read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        definitions = {
-            node.name
-            for node in ast.walk(tree)
-            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
-        }
-        unexpected = definitions - allowed_functions
-        offenders.extend(f"{path}:{name}" for name in sorted(unexpected))
-        if implementation_imports[path] not in source:
-            offenders.append(f"{path}:missing implementation facade import")
-
-    scenario_root = Path("src/loushang/coding/ui/playback_scenarios")
-    for path in sorted(scenario_root.glob("*.py")):
-        source = path.read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        definitions = [
-            node.name
-            for node in ast.walk(tree)
-            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
-        ]
-        offenders.extend(f"{path}:{name}" for name in definitions)
-        if path.name != "__init__.py":
-            owner = f"loushang.coding.testing.tui.scenarios.{path.stem}"
-            if owner not in source:
-                offenders.append(f"{path}:missing {owner} facade import")
-
-    assert offenders == []
-
-
-def test_coding_ui_perf_probe_is_a_compatibility_facade() -> None:
-    path = Path("src/loushang/coding/ui/perf_probe.py")
-    source = path.read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    definitions = [
-        node.name
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
-    ]
-
-    assert definitions == []
-    assert "loushang.harnesstui.testing.performance" in source
-    assert "loushang.coding.testing.tui.performance" in source
-
-
-def test_coding_transcript_style_is_a_compatibility_facade() -> None:
-    path = Path("src/loushang/coding/ui/transcript_style.py")
-    source = path.read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    definitions = [
-        node.name
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
-    ]
-
-    assert definitions == []
-    assert "loushang.harnesstui.conversation.transcript_style" in source
-
-
 def test_shared_transcript_style_does_not_own_screen_product_policy() -> None:
-    shared = Path(
-        "src/loushang/harnesstui/conversation/transcript_style.py"
-    ).read_text(encoding="utf-8")
-    screen = Path("src/loushang/coding/ui/screen_app.py").read_text(
+    shared = Path("src/loushang/harnesstui/conversation/transcript_style.py").read_text(
         encoding="utf-8"
     )
+    screen = Path("src/loushang/coding/ui/screen_app.py").read_text(encoding="utf-8")
 
     for token in (
         "loushang.coding",
@@ -179,12 +257,12 @@ def test_shared_transcript_style_does_not_own_screen_product_policy() -> None:
 
 
 def test_shared_performance_probe_does_not_load_coding_sessions() -> None:
-    shared = Path(
-        "src/loushang/harnesstui/testing/performance.py"
-    ).read_text(encoding="utf-8")
-    coding = Path(
-        "src/loushang/coding/testing/tui/performance.py"
-    ).read_text(encoding="utf-8")
+    shared = Path("src/loushang/harnesstui/testing/performance.py").read_text(
+        encoding="utf-8"
+    )
+    coding = Path("src/loushang/coding/testing/tui/performance.py").read_text(
+        encoding="utf-8"
+    )
 
     for token in (
         "loushang.coding",
@@ -217,15 +295,15 @@ def test_shared_playback_support_does_not_own_coding_copy_or_budgets() -> None:
     ):
         assert token not in shared
 
-    budgets = Path(
-        "src/loushang/coding/testing/tui/scenarios/budgets.py"
-    ).read_text(encoding="utf-8")
-    binding = Path(
-        "src/loushang/coding/testing/tui/scenario_binding.py"
-    ).read_text(encoding="utf-8")
-    product = Path(
-        "src/loushang/coding/testing/tui/scenarios/product.py"
-    ).read_text(encoding="utf-8")
+    budgets = Path("src/loushang/coding/testing/tui/scenarios/budgets.py").read_text(
+        encoding="utf-8"
+    )
+    binding = Path("src/loushang/coding/testing/tui/scenario_binding.py").read_text(
+        encoding="utf-8"
+    )
+    product = Path("src/loushang/coding/testing/tui/scenarios/product.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "INTERACTION_FRAME_BUDGET" in budgets
     assert "LONG_TRANSCRIPT_FRAME_BUDGET" in budgets
@@ -237,14 +315,11 @@ def test_shared_playback_support_does_not_own_coding_copy_or_budgets() -> None:
 
 def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
     moved_definitions = {
-        Path("src/loushang/coding/ui/lifecycle.py"): ("class RunLifecycle",),
         Path("src/loushang/coding/ui/model_list.py"): ("class ModelChoice",),
         Path("src/loushang/coding/ui/prompt_dispatch.py"): (
             "class PromptDispatchOutcome",
         ),
-        Path("src/loushang/coding/ui/run_context.py"): (
-            "def _stable_emit_factory",
-        ),
+        Path("src/loushang/coding/ui/run_context.py"): ("def _stable_emit_factory",),
         Path("src/loushang/coding/ui/screen_loop.py"): (
             "async def _finish_active_task",
             "def _write_startup_welcome",
@@ -264,20 +339,12 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
             "def _tail_trim_tool_record",
             "def _tail_trim_text",
         ),
-        Path("src/loushang/coding/ui/settings_common.py"): ("class ConfigRow",),
         Path("src/loushang/coding/ui/settings_config.py"): (
             "class ConfigSettingsPage",
         ),
         Path("src/loushang/coding/ui/settings_page.py"): (
             "class ModelPage",
             "class StaticLinesPage",
-        ),
-        Path("src/loushang/coding/ui/settings_status_line.py"): (
-            "class StatusLineSettingsPage",
-        ),
-        Path("src/loushang/coding/ui/plain_toolbar.py"): (
-            "class PlainToolbarSnapshot",
-            "def render_plain_toolbar",
         ),
         Path("src/loushang/coding/ui/plain_renderer.py"): (
             "def render_user",
@@ -289,21 +356,10 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
             "class _PlainProjectionTarget",
             "class PlainConversationProjectionTarget",
         ),
-        Path("src/loushang/coding/ui/pending_queue.py"): (
-            "def pending_queue_view",
-            "def session_pending_messages",
-            "def cleared_queue_messages",
-            "def restore_queued_messages",
-        ),
-        Path("src/loushang/coding/ui/screen_state.py"): (
-            "class ScreenCodingTuiState",
-            "class ScreenTranscriptWindow",
-        ),
         Path("src/loushang/coding/ui/status_provider.py"): (
             "class CodingTuiStatusProvider",
             "class StatusSnapshot",
         ),
-        Path("src/loushang/coding/ui/steer.py"): ("class SteerHandler",),
         Path("src/loushang/coding/ui/transcript_source.py"): (
             "class ActiveWindowTranscriptSource",
             "def _active_window_records",
@@ -329,9 +385,7 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
     assert offenders == []
 
 
-def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() -> (
-    None
-):
+def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() -> None:
     shared = "\n".join(
         Path(f"src/loushang/harnesstui/conversation/{module}.py").read_text(
             encoding="utf-8"
@@ -360,9 +414,9 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
     screen_input = Path("src/loushang/coding/ui/screen_input.py").read_text(
         encoding="utf-8"
     )
-    prompt_dispatch = Path(
-        "src/loushang/coding/ui/prompt_dispatch.py"
-    ).read_text(encoding="utf-8")
+    prompt_dispatch = Path("src/loushang/coding/ui/prompt_dispatch.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "Follow-up is only available while a run is active." in follow_up
     assert "Follow-up queued." in follow_up
@@ -378,9 +432,9 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
 
 
 def test_shared_surface_controller_does_not_own_coding_policy_or_copy() -> None:
-    shared = Path(
-        "src/loushang/harnesstui/surface/controller.py"
-    ).read_text(encoding="utf-8")
+    shared = Path("src/loushang/harnesstui/surface/controller.py").read_text(
+        encoding="utf-8"
+    )
     coding = Path("src/loushang/coding/ui/screen_surfaces.py").read_text(
         encoding="utf-8"
     )
@@ -462,9 +516,9 @@ def test_shared_plain_presentation_does_not_own_coding_policy() -> None:
     renderer = Path("src/loushang/harnesstui/plain/renderer.py").read_text(
         encoding="utf-8"
     )
-    target = Path(
-        "src/loushang/harnesstui/conversation/plain_target.py"
-    ).read_text(encoding="utf-8")
+    target = Path("src/loushang/harnesstui/conversation/plain_target.py").read_text(
+        encoding="utf-8"
+    )
 
     for token in (
         "Loushang TUI",
@@ -481,12 +535,10 @@ def test_shared_plain_presentation_does_not_own_coding_policy() -> None:
 
 
 def test_shared_screen_projection_target_does_not_own_coding_policy_or_copy() -> None:
-    shared = Path(
-        "src/loushang/harnesstui/conversation/screen_target.py"
-    ).read_text(encoding="utf-8")
-    coding = Path("src/loushang/coding/ui/screen_events.py").read_text(
+    shared = Path("src/loushang/harnesstui/conversation/screen_target.py").read_text(
         encoding="utf-8"
     )
+    coding = Path("src/loushang/coding/ui/screen_events.py").read_text(encoding="utf-8")
 
     for token in (
         "CodingConversationEventAdapter",
@@ -517,12 +569,10 @@ def test_shared_screen_projection_target_does_not_own_coding_policy_or_copy() ->
 
 
 def test_shared_window_budget_does_not_own_screen_runtime_policy() -> None:
-    shared = Path(
-        "src/loushang/harnesstui/conversation/window_budget.py"
-    ).read_text(encoding="utf-8")
-    coding = Path("src/loushang/coding/ui/screen_app.py").read_text(
+    shared = Path("src/loushang/harnesstui/conversation/window_budget.py").read_text(
         encoding="utf-8"
     )
+    coding = Path("src/loushang/coding/ui/screen_app.py").read_text(encoding="utf-8")
 
     for token in (
         "ScreenCodingTuiApp",
@@ -693,7 +743,11 @@ def test_active_coding_ui_surfaces_do_not_use_legacy_native_product_names() -> N
 def _run_python_import_boundary_check(script: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     src_path = str(Path.cwd() / "src")
-    env["PYTHONPATH"] = src_path if not env.get("PYTHONPATH") else f"{src_path}{os.pathsep}{env['PYTHONPATH']}"
+    env["PYTHONPATH"] = (
+        src_path
+        if not env.get("PYTHONPATH")
+        else f"{src_path}{os.pathsep}{env['PYTHONPATH']}"
+    )
     return subprocess.run(
         [sys.executable, "-c", script],
         cwd=Path.cwd(),
@@ -702,3 +756,23 @@ def _run_python_import_boundary_check(script: str) -> subprocess.CompletedProces
         capture_output=True,
         check=False,
     )
+
+
+def _absolute_import_targets(path: Path) -> tuple[str, ...]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    targets: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            targets.extend(alias.name for alias in node.names)
+            continue
+        if not isinstance(node, ast.ImportFrom) or node.level != 0:
+            continue
+        module = node.module or ""
+        if module:
+            targets.append(module)
+        targets.extend(
+            f"{module}.{alias.name}" if module else alias.name
+            for alias in node.names
+            if alias.name != "*"
+        )
+    return tuple(targets)

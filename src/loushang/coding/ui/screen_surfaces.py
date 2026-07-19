@@ -374,11 +374,6 @@ class ScreenSurfaceManager:
             self.app.state.model_label = label
 
 
-# Temporary private compatibility name for downstream imports. New code should use
-# the Harnesstui presentation builder directly.
-_palette_items = command_palette_select_items
-
-
 def _recoverable_surface_error(error: Exception) -> str:
     message = str(error).strip() or error.__class__.__name__
     return f"Error: {message}"

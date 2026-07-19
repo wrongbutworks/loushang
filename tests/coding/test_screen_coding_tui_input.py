@@ -516,7 +516,7 @@ def test_screen_input_router_routes_runtime_overlay_before_composer() -> None:
 def test_screen_input_router_ctrl_o_opens_transcript_reader_overlay() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import ScreenInputRouter
-    from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
+    from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
     from loushang.tui import SurfaceHost
     from loushang.tui.transcript import AssistantMessageRecord
 
@@ -538,7 +538,7 @@ def test_screen_input_router_ctrl_o_opens_transcript_reader_overlay() -> None:
 def test_screen_input_router_ctrl_o_fallback_reader_includes_streaming_assistant_draft() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import ScreenInputRouter
-    from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
+    from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
     from loushang.tui import RenderConstraints, SurfaceHost, strip_control_sequences
     from loushang.tui.transcript import AssistantMessageRecord, UserPromptRecord
 
@@ -570,8 +570,8 @@ def test_screen_input_router_ctrl_o_fallback_reader_includes_streaming_assistant
 def test_screen_input_router_ctrl_o_uses_transcript_source_factory() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import ScreenInputRouter
-    from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
     from loushang.coding.ui.transcript_source import TranscriptSnapshot
+    from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
     from loushang.tui import SurfaceHost
     from loushang.tui.transcript import AssistantMessageRecord
 
@@ -607,8 +607,8 @@ def test_screen_input_router_ctrl_o_session_reader_includes_running_tool_record(
     from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import ScreenInputRouter
-    from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
     from loushang.coding.ui.transcript_source import SessionTranscriptSource
+    from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
     from loushang.tui import RenderConstraints, SurfaceHost, strip_control_sequences
     from loushang.tui.transcript import (
         AssistantMessageRecord,
@@ -669,8 +669,8 @@ def test_screen_input_router_ctrl_o_session_reader_includes_streaming_assistant_
     from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import ScreenInputRouter
-    from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
     from loushang.coding.ui.transcript_source import SessionTranscriptSource
+    from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
     from loushang.tui import RenderConstraints, SurfaceHost, strip_control_sequences
     from loushang.tui.transcript import AssistantMessageRecord, UserPromptRecord
 
@@ -768,7 +768,7 @@ def test_screen_input_router_reader_ctrl_c_closes_then_text_routes_to_composer()
 def test_screen_input_router_reader_page_up_scrolls_without_moving_composer() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import ScreenInputRouter
-    from loushang.coding.ui.transcript_reader import TranscriptReaderSurface
+    from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
     from loushang.tui import RenderConstraints, SurfaceHost
     from loushang.tui.transcript import AssistantMessageRecord
 

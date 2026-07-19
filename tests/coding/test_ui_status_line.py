@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from loushang.coding.ui import status_line as coding_status_line
-from loushang.harnesstui.status import line as shared_status_line
 from loushang.harnesstui.status.line import (
     StatusLinePreviewSnapshot,
     StatusLineSettings,
@@ -10,12 +8,6 @@ from loushang.harnesstui.status.line import (
     status_line_style_mode,
 )
 from loushang.tui import RenderConstraints, StatusBar
-
-
-def test_coding_status_line_compatibility_aliases_are_identical() -> None:
-    assert coding_status_line.__all__ == shared_status_line.__all__
-    for name in shared_status_line.__all__:
-        assert getattr(coding_status_line, name) is getattr(shared_status_line, name)
 
 
 def test_screen_app_statusline_preview_snapshot_includes_live_queue_and_message_state() -> None:

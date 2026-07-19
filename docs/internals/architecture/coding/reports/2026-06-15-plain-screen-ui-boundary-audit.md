@@ -4,6 +4,12 @@ This report records the current `loushang.coding.ui` boundary after the screen U
 naming cleanup, the explicit plain renderer naming cleanup, and the explicit
 plain event projection and app assembly naming cleanups.
 
+> Historical note: the temporary playback, performance, shared state, status,
+> settings, control, reader, and transcript-style compatibility modules listed
+> below were retired by the later Harnesstui canonical-import cutover. Their
+> implementations and tests now use the canonical TUI, Harnesstui, and Coding
+> testing module paths directly.
+
 ## Scope
 
 This audit covers product-side coding UI modules only:

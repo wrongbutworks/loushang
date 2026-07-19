@@ -1301,7 +1301,7 @@ def _status_provider(
     *,
     settings_manager: object | None = None,
 ) -> CodingTuiStatusProvider:
-    from loushang.coding.ui.status_line import (
+    from loushang.harnesstui.status.line import (
         status_line_settings_from_control,
         status_line_settings_to_patch,
     )

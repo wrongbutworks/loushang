@@ -4,8 +4,8 @@ import asyncio
 
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.settings_page import SettingsPageView
-from loushang.coding.ui.status_line import StatusLinePreviewSnapshot
 from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+from loushang.harnesstui.status.line import StatusLinePreviewSnapshot
 from loushang.tui import InputEvent, InputIntent, RenderConstraints
 from loushang.tui.cell_width import strip_control_sequences
 
@@ -154,8 +154,7 @@ def _raw(page: SettingsPageView, *, width: int = 100, height: int = 18) -> tuple
     return tuple(line.text for line in page.render(RenderConstraints(width=width, max_height=height)).lines)
 
 
-def test_settings_page_tab_modules_export_page_components() -> None:
-    from loushang.coding.ui.settings_common import ConfigRow
+def test_settings_page_uses_canonical_page_components() -> None:
     from loushang.coding.ui.settings_config import ConfigSettingsPage
     from loushang.coding.ui.settings_page import (
         ModelPage,
@@ -163,7 +162,6 @@ def test_settings_page_tab_modules_export_page_components() -> None:
     from loushang.coding.ui.settings_page import (
         StaticLinesPage as CodingStaticLinesPage,
     )
-    from loushang.coding.ui.settings_status_line import StatusLineSettingsPage
     from loushang.harnesstui.settings.dashboard import (
         SettingsDashboard,
         StaticLinesPage,
@@ -172,9 +170,11 @@ def test_settings_page_tab_modules_export_page_components() -> None:
     from loushang.harnesstui.settings.page import (
         ConfigSettingsPage as SharedConfigSettingsPage,
     )
+    from loushang.harnesstui.status.settings import StatusLineSettingsPage
     from loushang.harnesstui.status.settings import (
         StatusLineSettingsPage as SharedStatusLineSettingsPage,
     )
+    from loushang.tui.settings import ConfigRow
     from loushang.tui.settings import ConfigRow as SharedConfigRow
 
     page = _page()
