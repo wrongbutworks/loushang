@@ -176,10 +176,49 @@ class _Retry:
         self.waited = True
 
 
+class _Identity:
+    def __init__(self) -> None:
+        self.session_id = "session-1"
+        self.session_name: str | None = "Initial name"
+        self.updated_names: list[str | None] = []
+
+    async def set_session_name(self, name: str | None) -> None:
+        self.updated_names.append(name)
+        self.session_name = name
+
+
+class _Maintenance:
+    def __init__(self) -> None:
+        self.is_compacting = False
+        self.auto_retry_enabled = True
+        self.auto_compaction_enabled = True
+        self.retry_updates: list[bool] = []
+        self.compaction_updates: list[bool] = []
+        self.compact_calls: list[str | None] = []
+        self.aborted = False
+
+    def set_auto_retry_enabled(self, enabled: bool) -> None:
+        self.retry_updates.append(enabled)
+        self.auto_retry_enabled = enabled
+
+    def set_auto_compaction_enabled(self, enabled: bool) -> None:
+        self.compaction_updates.append(enabled)
+        self.auto_compaction_enabled = enabled
+
+    async def compact(self, custom_instructions: str | None = None) -> object:
+        self.compact_calls.append(custom_instructions)
+        return {"summary": "compacted"}
+
+    def abort_compaction(self) -> None:
+        self.aborted = True
+
+
 def _facade():
     runtime = _Runtime()
     command_execution = _CommandExecution()
     retry = _Retry()
+    identity = _Identity()
+    maintenance = _Maintenance()
     return (
         SessionFacade.from_ports(
             runtime=runtime,
@@ -190,16 +229,20 @@ def _facade():
                 command_execution=command_execution,
                 view=_View(),
                 retry=retry,
+                identity=identity,
+                maintenance=maintenance,
             ),
         ),
         runtime,
         command_execution,
         retry,
+        identity,
+        maintenance,
     )
 
 
 def test_session_facade_composes_standard_read_and_queue_operations() -> None:
-    facade, runtime, _, _ = _facade()
+    facade, runtime, _, _, identity, maintenance = _facade()
 
     assert facade.get_state() == {"steering": ["steer"], "follow_up": ["follow"]}
     assert facade.get_session_context() == _Context("context")
@@ -216,6 +259,11 @@ def test_session_facade_composes_standard_read_and_queue_operations() -> None:
     assert facade.get_entry_text("user-1") == "hello"
     assert facade.get_last_assistant_text() == "done"
     assert facade.get_recent_assistant_texts() == ("done", "previous")
+    assert facade.session_id == "session-1"
+    assert facade.session_name == "Initial name"
+    assert facade.is_compacting is False
+    assert facade.auto_retry_enabled is True
+    assert facade.auto_compaction_enabled is True
 
     facade.steer("second steer")
     facade.follow_up("second follow")
@@ -228,9 +276,25 @@ def test_session_facade_composes_standard_read_and_queue_operations() -> None:
         "follow_up": ["follow"],
     }
 
+    async def update_controls() -> None:
+        await facade.set_session_name("Renamed")
+        assert await facade.compact("Keep the current task") == {"summary": "compacted"}
+
+    asyncio.run(update_controls())
+    facade.set_auto_retry_enabled(False)
+    facade.set_auto_compaction_enabled(False)
+    facade.abort_compaction()
+
+    assert identity.updated_names == ["Renamed"]
+    assert facade.session_name == "Renamed"
+    assert maintenance.retry_updates == [False]
+    assert maintenance.compaction_updates == [False]
+    assert maintenance.compact_calls == ["Keep the current task"]
+    assert maintenance.aborted is True
+
 
 def test_session_facade_forwards_execution_events_and_controls() -> None:
-    facade, runtime, command_execution, retry = _facade()
+    facade, runtime, command_execution, retry, _, _ = _facade()
     chunks: list[ExecOutputChunk] = []
     received: list[str] = []
 

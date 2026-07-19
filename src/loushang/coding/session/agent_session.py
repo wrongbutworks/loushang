@@ -126,6 +126,7 @@ from loushang.harness.resources.watcher import ResourceChangeWatcher
 from loushang.harness.runtime import CancellationSignal
 from loushang.harness.session import (
     AfterTurnPolicyPort,
+    SessionControlPort,
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
     SessionFacade,
@@ -503,7 +504,9 @@ class AgentSession:
             agent=self.agent,
             session=self.session_manager,
             get_session_id=lambda: self.session_manager.get_session_record().session_id,
-            get_session_name=lambda: self.session_manager.get_session_record().metadata.name,
+            get_session_name=lambda: (
+                self.session_manager.get_session_record().metadata.name
+            ),
             get_active_tool_names=self.get_active_tool_names,
             is_retrying=lambda: self.is_retrying,
             is_compacting=lambda: self.is_compacting,
@@ -529,6 +532,8 @@ class AgentSession:
                 command_execution=self._bash_controller,
                 view=self._session_inspector,
                 retry=self._retry_runtime,
+                identity=self,
+                maintenance=self,
             ),
         )
         session_context = self.session_manager.build_session_context()
@@ -846,6 +851,12 @@ class AgentSession:
     @property
     def session_id(self) -> str:
         return self.session_manager.get_session_record().session_id
+
+    @property
+    def session_control(self) -> SessionControlPort:
+        """Expose common controls without exposing Coding protocol semantics."""
+
+        return self._facade
 
     @property
     def sessionId(self) -> str:
@@ -1829,6 +1840,7 @@ class AgentSession:
 
     def _sync_extension_diagnostics(self, *, phase: str) -> None:
         self._diagnostics_bridge.sync_extension_diagnostics(phase=phase)
+
 
 async def _sleep_for_retry(delay_ms: int, signal: CancellationSignal) -> None:
     remaining = max(delay_ms, 0) / 1000
