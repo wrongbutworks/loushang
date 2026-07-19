@@ -44,6 +44,35 @@ presentation primitives.
 contracts. Product adapters such as `loushang.coding.ui` continue to own raw
 product-event interpretation, commands, policy, branding, and runtime assembly.
 
+## Catalog Interaction Workflows
+
+`loushang.harnesstui.commands.interaction` and
+`loushang.harnesstui.selection.interaction` own the product-neutral
+snapshot-to-resolution workflow for command and model catalogs. A product
+captures one immutable interaction snapshot, Harnesstui projects its generic
+palette, and the resolver returns a structural `list`, `selected`, `empty`,
+`ambiguous`, or `cancelled` outcome. Sync and async palette choosers are both
+supported. Command descriptors remain opaque and the selected descriptor is
+returned by identity; model interactions consume only product-prepared
+`ModelChoice` values and return the selected choice without applying it.
+
+These workflows do not acquire a Session catalog, parse Coding intents,
+normalize model/provider objects, mutate the active model, persist settings,
+or choose product wording. Coding continues to own `CodingCommandCatalog`,
+which commands count as local and their precedence, Session and model-detail
+adaptation, endpoint preference policy, `ModelSelection` application,
+default-model persistence, slash-command aliases, and all selection status,
+ambiguity-hint, and failure copy. Harnesstui applies caller-selected
+source-aware ordering, including local-last ordering, or value-only ordering,
+and resolves the prepared catalog. Generic palette widgets, completion
+containers, search lists, and terminal interaction mechanics remain in
+`loushang.tui`; the existing Harnesstui presentation modules only project
+caller-supplied descriptors and choices.
+
+The explicit module paths `loushang.harnesstui.commands.interaction` and
+`loushang.harnesstui.selection.interaction` are the stable entrypoints for
+these workflows. Package initializers do not add convenience re-exports.
+
 ## Conversation Attachments
 
 `loushang.harnesstui.conversation.attachments` owns product-neutral prompt-image

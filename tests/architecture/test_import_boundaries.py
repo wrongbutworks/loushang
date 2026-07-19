@@ -645,8 +645,10 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.conversation.tool_transcript`" in text
     assert "`loushang.harnesstui.conversation.transcript_style`" in text
     assert "`loushang.harnesstui.plain.renderer`" in text
+    assert "`loushang.harnesstui.commands.interaction`" in text
     assert "`loushang.harnesstui.commands.presentation`" in text
     assert "`loushang.harnesstui.selection.catalog`" in text
+    assert "`loushang.harnesstui.selection.interaction`" in text
     assert "`loushang.harnesstui.selection.model`" in text
     assert "`loushang.harnesstui.settings.dashboard`" in text
     assert "`loushang.harnesstui.settings.model`" in text
@@ -691,8 +693,10 @@ def test_harnesstui_capability_entrypoints_exist() -> None:
         Path("src/loushang/harnesstui/conversation/transcript_style.py"),
         Path("src/loushang/harnesstui/conversation/window_budget.py"),
         Path("src/loushang/harnesstui/plain/renderer.py"),
+        Path("src/loushang/harnesstui/commands/interaction.py"),
         Path("src/loushang/harnesstui/commands/presentation.py"),
         Path("src/loushang/harnesstui/selection/catalog.py"),
+        Path("src/loushang/harnesstui/selection/interaction.py"),
         Path("src/loushang/harnesstui/selection/model.py"),
         Path("src/loushang/harnesstui/settings/dashboard.py"),
         Path("src/loushang/harnesstui/settings/model.py"),
@@ -739,6 +743,40 @@ for module_name in (
     "loushang.harnesstui.conversation.screen_runner",
     "loushang.harnesstui.conversation.transcript_style",
     "loushang.harnesstui.conversation.window_budget",
+):
+    importlib.import_module(module_name)
+
+forbidden_prefixes = (
+    "loushang.agent",
+    "loushang.ai",
+    "loushang.coding",
+    "loushang.harness",
+)
+forbidden = sorted(
+    name
+    for name in sys.modules
+    if any(name == prefix or name.startswith(prefix + ".") for prefix in forbidden_prefixes)
+)
+assert forbidden == [], forbidden
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_importing_catalog_interaction_entrypoints_stays_product_neutral() -> None:
+    script = """
+import importlib
+import sys
+
+for module_name in (
+    "loushang.harnesstui.commands.interaction",
+    "loushang.harnesstui.selection.interaction",
 ):
     importlib.import_module(module_name)
 

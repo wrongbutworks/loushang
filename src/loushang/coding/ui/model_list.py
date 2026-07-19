@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -19,14 +19,18 @@ from loushang.harnesstui.selection.catalog import (
     dedupe_preferred_model_choices,
     filter_model_choices,
     format_model_choices,
-    matching_model_choices,
     model_choice_display_label,
     model_choice_value,
     model_completion_provider,
 )
+from loushang.harnesstui.selection.interaction import (
+    ModelInteractionChooser as ModelPaletteChooser,
+)
+from loushang.harnesstui.selection.interaction import (
+    ModelInteractionSnapshot,
+    run_model_interaction,
+)
 from loushang.tui import CommandPalette, CompletionProvider
-
-ModelPaletteChooser = Callable[[CommandPalette], Awaitable[str | None] | str | None]
 
 
 @dataclass(frozen=True)
@@ -64,41 +68,46 @@ async def select_available_model(
     choose: ModelPaletteChooser | None = None,
     settings_manager: object | None = None,
 ) -> str:
-    stripped_query = query.strip()
-    if not stripped_query:
-        if choose is not None:
-            selected = await _maybe_await(
-                choose(await available_model_palette(session, title="Models"))
-            )
-            if selected is None:
-                return "Model selection cancelled."
-            return await select_available_model(
-                session,
-                query=selected,
-                settings_manager=settings_manager,
-            )
-        return await format_available_models(session)
-
-    matches = matching_model_choices(
-        await available_model_choices(session), stripped_query
+    choices = await available_model_choices(session)
+    snapshot = ModelInteractionSnapshot(
+        choices=tuple(choices),
+        current_value=await current_model_choice_value(session, choices=choices),
     )
-    if not matches:
-        return f"No models match: {stripped_query}"
-    if len(matches) != 1:
+    resolution = await run_model_interaction(
+        snapshot,
+        query=query,
+        choose=choose,
+    )
+    if resolution.kind == "list":
+        return format_model_choices(
+            resolution.matches,
+            current_value=snapshot.current_value,
+        )
+    if resolution.kind == "cancelled":
+        return "Model selection cancelled."
+    if resolution.kind == "empty":
+        if resolution.query:
+            return f"No models match: {resolution.query}"
+        return "No models available."
+    if resolution.kind == "ambiguous":
         hint = (
             "Use /model <provider:endpoint:model> or choose one from the model list."
-            if any(choice.endpoint_id for choice in matches)
+            if any(choice.endpoint_id for choice in resolution.matches)
             else "Use /model <full model> to select one."
         )
         return "\n".join(
             [
                 "Multiple models match:",
-                *(f"  {model_choice_display_label(choice)}" for choice in matches),
+                *(
+                    f"  {model_choice_display_label(choice)}"
+                    for choice in resolution.matches
+                ),
                 hint,
             ]
         )
 
-    choice = matches[0]
+    assert resolution.choice is not None
+    choice = resolution.choice
     setter = getattr(session, "set_model", None)
     if not callable(setter):
         return "Model selection is not available."

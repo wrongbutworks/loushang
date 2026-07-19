@@ -38,6 +38,23 @@ class _BuiltinSession:
         return list_builtin_command_descriptors()
 
 
+class _AsyncSession:
+    async def list_commands(self) -> list[object]:
+        await asyncio.sleep(0)
+        return [
+            SimpleNamespace(
+                name="inspect",
+                description="Inspect asynchronously",
+                source="session",
+            )
+        ]
+
+
+class _EmptyCatalog:
+    def commands(self) -> tuple[object, ...]:
+        return ()
+
+
 def test_command_list_keeps_completion_item_compatibility_alias() -> None:
     from loushang.coding.ui.command_list import CompletionItem as CodingCompletionItem
     from loushang.tui import CompletionItem
@@ -114,6 +131,19 @@ def test_session_command_completion_provider_uses_argument_hint_in_label() -> No
             ),
         )
     )
+
+
+def test_command_apis_await_session_command_getter() -> None:
+    from loushang.coding.ui.command_list import (
+        coding_command_completion_provider,
+        session_command_completion_provider,
+    )
+
+    session_provider = asyncio.run(session_command_completion_provider(_AsyncSession()))
+    coding_provider = asyncio.run(coding_command_completion_provider(_AsyncSession()))
+
+    assert [item.value for item in session_provider.items] == ["/inspect"]
+    assert "/inspect" in {item.value for item in coding_provider.items}
 
 
 def test_format_coding_commands_includes_local_and_session_commands() -> None:
@@ -213,3 +243,32 @@ def test_select_session_command_reports_cancelled_palette() -> None:
     result = asyncio.run(select_session_command(_Session(), choose=lambda _palette: None))
 
     assert result == "Command selection cancelled."
+
+
+def test_select_coding_command_invokes_chooser_for_empty_catalog() -> None:
+    from loushang.coding.ui.command_list import select_coding_command
+    from loushang.tui import CommandPalette
+
+    seen: list[CommandPalette] = []
+
+    def cancel(palette: CommandPalette) -> None:
+        seen.append(palette)
+
+    cancelled = asyncio.run(
+        select_coding_command(
+            object(),
+            command_catalog=_EmptyCatalog(),  # type: ignore[arg-type]
+            choose=cancel,
+        )
+    )
+    missing = asyncio.run(
+        select_coding_command(
+            object(),
+            command_catalog=_EmptyCatalog(),  # type: ignore[arg-type]
+            choose=lambda _palette: "/missing",
+        )
+    )
+
+    assert seen == [CommandPalette((), title="Commands")]
+    assert cancelled == "Command selection cancelled."
+    assert missing == "No commands match: /missing"
