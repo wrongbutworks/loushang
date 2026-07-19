@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
-from loushang.coding.extensions.types import RegisteredFlag, ResolvedFlag
+from loushang.harness.extensions.types import RegisteredFlag, ResolvedFlag
 
 CliMode = Literal["text", "print", "json", "rpc", "channel"]
 CommandListFormat = Literal["tsv", "json"]

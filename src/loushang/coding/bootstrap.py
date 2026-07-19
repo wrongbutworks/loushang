@@ -20,7 +20,6 @@ from loushang.coding.control.settings_store import (
     default_project_settings_path,
 )
 from loushang.coding.extensions import ExtensionRunner
-from loushang.coding.extensions.types import SessionStartEvent
 from loushang.coding.loader import DefaultResourceLoader
 from loushang.coding.package import GitPackageMaterializerBackend, PackageMaterializer
 from loushang.coding.policy import InteractiveApprovalResolver
@@ -43,6 +42,7 @@ from loushang.harness.config import (
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticRecord, StartupCheckResult
+from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.resources.activation import SkillActivationRuntime
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.layout import resolve_user_resource_roots

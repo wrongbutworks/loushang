@@ -13,7 +13,7 @@ from loushang.coding.compaction import (
     compact as run_compaction,
 )
 from loushang.coding.control import CompactionSettings
-from loushang.coding.extensions import ExtensionRunner, SessionBeforeCompactEvent
+from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
@@ -28,6 +28,7 @@ from loushang.harness.agent_transcript import (
     create_agent_transcript_compaction_capability,
 )
 from loushang.harness.events import CompactionReason, SessionRuntimeEventPayload
+from loushang.harness.extensions.context import SessionBeforeCompactEvent
 
 EventDispatcher = Callable[[SessionRuntimeEventPayload], Awaitable[None]]
 ExtensionRunnerProvider = Callable[[], ExtensionRunner | None]

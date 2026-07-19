@@ -65,21 +65,21 @@ def test_bound_context_exposes_live_product_capabilities_without_coding() -> Non
     )
 
     async def scenario() -> None:
-        await context.setActiveTools(["search", "read"])
-        await context.setModel({"provider": "example", "model": "deep-research"})
-        await context.appendEntry("research.note", {"text": "finding"})
-        await context.setSessionName("Research")
-        await context.setLabel("entry-1", "source")
-        await context.setThinkingLevel("high")
+        await context.set_active_tools(["search", "read"])
+        await context.set_model({"provider": "example", "model": "deep-research"})
+        await context.append_entry("research.note", {"text": "finding"})
+        await context.set_session_name("Research")
+        await context.set_label("entry-1", "source")
+        await context.set_thinking_level("high")
         result = await context.compact({"customInstructions": "preserve citations"})
         assert result == {"summary": "research summary"}
 
     asyncio.run(scenario())
 
     assert context.cwd == "/tmp/research"
-    assert context.getActiveTools() == ["search"]
-    assert context.getFlag("citations") is True
-    assert context.getSystemPrompt() == "You are a research assistant."
+    assert context.get_active_tool_names() == ["search"]
+    assert context.get_flag("citations") is True
+    assert context.get_system_prompt() == "You are a research assistant."
     assert calls == [
         ("tools", ["search", "read"]),
         ("model", {"provider": "example", "model": "deep-research"}),
@@ -105,7 +105,7 @@ def test_bound_context_reads_refreshes_and_honors_invalidation() -> None:
         )
     )
     assert context.cwd == "/tmp/second"
-    assert context.getActiveTools() == ["search", "read"]
+    assert context.get_active_tool_names() == ["search", "read"]
 
     state.invalidate()
     with pytest.raises(RuntimeError, match="research session replaced"):
@@ -122,14 +122,11 @@ def test_unbound_context_has_conservative_defaults() -> None:
     assert context.get_flag("citations") == "required"
     assert context.get_all_tools() == []
     assert context.has_ui is False
-    assert context.setTheme("dark") == {
-        "success": False,
-        "error": "Theme switching is not supported.",
-    }
-    asyncio.run(context.appendEntry("ignored"))
-    asyncio.run(context.setSessionName("ignored"))
-    asyncio.run(context.setLabel("entry-1", "ignored"))
-    asyncio.run(context.setThinkingLevel("high"))
+    assert context.get_editor_text() == ""
+    asyncio.run(context.append_entry("ignored"))
+    asyncio.run(context.set_session_name("ignored"))
+    asyncio.run(context.set_label("entry-1", "ignored"))
+    asyncio.run(context.set_thinking_level("high"))
     with pytest.raises(RuntimeError, match="Extension runtime is not bound"):
         asyncio.run(context.exec_command("pwd"))
 

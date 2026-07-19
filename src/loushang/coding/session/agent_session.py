@@ -34,12 +34,7 @@ from loushang.coding.event import (
     AgentSessionEvent,
     project_runtime_event_to_session_event,
 )
-from loushang.coding.extensions import (
-    ExtensionRunner,
-    ReplacedSessionContext,
-    SessionShutdownEvent,
-    SessionStartEvent,
-)
+from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.loader import DefaultResourceLoader
 from loushang.coding.package.materializer import (
     PackageMaterializer,
@@ -114,6 +109,11 @@ from loushang.harness.events import (
     PackageProgressChanged,
     RuntimeEvent,
     SessionRuntimeEventPayload,
+)
+from loushang.harness.extensions.context import (
+    ReplacedSessionContext,
+    SessionShutdownEvent,
+    SessionStartEvent,
 )
 from loushang.harness.host.retry import RetryPolicy
 from loushang.harness.resources.diagnostics import ResourceDiagnostic

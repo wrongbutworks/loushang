@@ -31,7 +31,6 @@ from loushang.coding.control.settings_store import (
 from loushang.coding.diag_export import export_diagnostics_bundle
 from loushang.coding.diagnostics.serialization import serialize_diagnostic
 from loushang.coding.domain import CodingDomainApp, CodingDomainRequest, MethodPolicy
-from loushang.coding.extensions.types import ResolvedFlag
 from loushang.coding.mode import (
     ModeConfig,
     run_channel_mode,
@@ -67,6 +66,7 @@ from loushang.coding.types import ModelSelection
 from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.workflow import run_prompt_steps_workflow
 from loushang.harness.agent_transcript import SessionQuery
+from loushang.harness.extensions.types import ResolvedFlag
 from loushang.harness.resources.plugins import (
     PluginManager,
     is_remote_plugin_source,
