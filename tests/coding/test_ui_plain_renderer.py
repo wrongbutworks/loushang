@@ -59,17 +59,6 @@ def test_plain_renderer_uses_shared_core_with_compatible_constructor() -> None:
     )
 
 
-def test_plain_renderer_preserves_extract_text_compatibility() -> None:
-    from loushang.coding.presentation.tui.plain import extract_text
-
-    message = UserMessage(
-        role="user",
-        content=[TextPart(type="text", text="hello")],
-        timestamp=0.0,
-    )
-    assert extract_text(message) == "hello"
-
-
 def test_plain_renderer_prints_header_and_user_message() -> None:
     from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
 
@@ -532,7 +521,7 @@ def test_plain_renderer_can_project_assistant_markdown_through_transcript_view()
 
 def test_plain_renderer_can_project_tool_blocks_through_transcript_view() -> None:
     from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
-    from loushang.coding.presentation.tui.tool_transcript import ToolTranscriptBlock
+    from loushang.harnesstui.conversation.tool_transcript import ToolTranscriptBlock
 
     stdout = StringIO()
     renderer = PlainCodingUiRenderer(stdout=stdout, use_transcript_view=True)

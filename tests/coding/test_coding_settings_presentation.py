@@ -4,7 +4,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from loushang.coding.presentation.settings import (
+from loushang.coding.interaction.settings_profile import (
     CodingSettingApplyOutcome,
     CodingSettingFact,
     apply_coding_setting,

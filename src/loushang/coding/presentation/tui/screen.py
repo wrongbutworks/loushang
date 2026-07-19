@@ -9,10 +9,14 @@ from loushang.coding.presentation.tui.events import (
     CodingConversationEventAdapter,
 )
 from loushang.coding.presentation.tui.tool_transcript import (
-    ToolTranscriptProjector,
+    CodingToolTranscriptProjection,
+    build_coding_tool_transcript_projection,
     tool_block_to_record,
 )
-from loushang.harnesstui.conversation.projection import ConversationProjector
+from loushang.harnesstui.conversation.projection import (
+    ConversationProjectionBinding,
+    ConversationProjector,
+)
 from loushang.harnesstui.conversation.screen_target import (
     ScreenConversationProjectionPort,
     ScreenConversationProjectionTarget,
@@ -27,7 +31,7 @@ TraceFn = Callable[[str], None]
 
 
 @dataclass(slots=True)
-class ScreenCodingEventProjector:
+class ScreenCodingEventProjector(ConversationProjectionBinding[dict[str, Any]]):
     """Coding raw-event facade for the full-screen conversation target."""
 
     app: ScreenConversationProjectionPort
@@ -36,16 +40,14 @@ class ScreenCodingEventProjector:
     read_pending_steers: QueueReader = tuple
     read_pending_followups: QueueReader = tuple
     now: Callable[[], float] = time.monotonic
-    _tool_projector: ToolTranscriptProjector = field(init=False, repr=False)
-    _projection: ConversationProjector = field(init=False, repr=False)
-    _adapter: CodingConversationEventAdapter = field(init=False, repr=False)
+    _tool_projector: CodingToolTranscriptProjection = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        self._tool_projector = ToolTranscriptProjector(
+        self._tool_projector = build_coding_tool_transcript_projection(
             tool_definition_resolver=self.tool_definition_resolver,
             max_body_lines=self.max_tool_body_lines,
         )
-        self._projection = ConversationProjector(
+        projection = ConversationProjector(
             target=ScreenConversationProjectionTarget(
                 self.app,
                 tool_title_resolver=_tool_title,
@@ -56,8 +58,8 @@ class ScreenCodingEventProjector:
             now=self.now,
             track_rendered_tool_results=False,
         )
-        self._adapter = CodingConversationEventAdapter(
-            self._projection,
+        adapter = CodingConversationEventAdapter(
+            projection,
             self._tool_projector,
             read_pending_steers=self.read_pending_steers,
             read_pending_followups=self.read_pending_followups,
@@ -70,9 +72,11 @@ class ScreenCodingEventProjector:
             project_assistant_error_text=True,
             project_compaction_details=True,
         )
-
-    def handle(self, event: dict[str, Any]) -> None:
-        self._adapter.handle(event)
+        ConversationProjectionBinding.__init__(
+            self,
+            projector=projection,
+            event_handler=adapter.handle,
+        )
 
 
 @dataclass(frozen=True, slots=True)

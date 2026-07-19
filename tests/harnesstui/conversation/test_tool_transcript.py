@@ -5,13 +5,74 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from loushang.harnesstui.conversation.tool_transcript import (
+    ToolCallSnapshot,
     ToolCallView,
     ToolResultView,
     ToolTranscriptBlock,
+    ToolTranscriptProjectionBinding,
     ToolTranscriptProjector,
     tool_block_to_record,
 )
 from loushang.tui.transcript import ToolExecutionRecord
+
+
+def test_projection_binding_composes_raw_view_ports_with_neutral_projector() -> (
+    None
+):
+    calls: list[tuple[str, object]] = []
+
+    def call_view(event: dict[str, object]) -> ToolCallView:
+        calls.append(("call_view", event))
+        return ToolCallView(
+            tool_call_id=str(event["id"]),
+            tool_name=str(event["name"]),
+            args=event.get("args"),
+        )
+
+    def result_view(
+        event: dict[str, object],
+        snapshot: ToolCallSnapshot | None,
+        tool_call_id: str | None,
+    ) -> ToolResultView:
+        del snapshot
+        calls.append(("result_view", event))
+        return ToolResultView(
+            tool_call_id=tool_call_id or str(event["id"]),
+            tool_name=str(event["name"]),
+            status="ok",
+        )
+
+    binding = ToolTranscriptProjectionBinding[dict[str, object], object](
+        neutral_projector=ToolTranscriptProjector(
+            verb_resolver=lambda tool_name, args: "Ran"
+        ),
+        call_id=lambda event: str(event["id"]),
+        message_id=lambda message: str(getattr(message, "id", "")),
+        call_view=call_view,
+        result_view=result_view,
+        tool_result_message_view=lambda message: ToolResultView(
+            tool_call_id="message-1",
+            tool_name="read",
+            status="ok",
+        ),
+    )
+    raw_call = {"id": "call-1", "name": "bash", "args": {"command": "pytest"}}
+    snapshot = binding.remember_call(raw_call)
+
+    assert binding.call_id(raw_call) == "call-1"
+    assert snapshot.tool_name == "bash"
+    assert binding.project_result(
+        {"id": "call-1", "name": "ignored"},
+        snapshot,
+    ) == ToolTranscriptBlock(
+        tool_call_id="call-1",
+        tool_name="bash",
+        status="ok",
+        verb="Ran",
+        title="bash pytest",
+    )
+    assert binding.project_tool_result_message(object()).tool_call_id == "message-1"
+    assert [name for name, _event in calls] == ["call_view", "result_view"]
 
 
 def test_neutral_projector_combines_call_snapshot_and_result_view() -> None:

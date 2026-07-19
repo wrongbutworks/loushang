@@ -7,6 +7,10 @@ import sys
 from pathlib import Path
 
 RETIRED_CODING_UI_COMPATIBILITY_MODULES: dict[str, tuple[str, ...]] = {
+    "loushang.coding.presentation.settings": (
+        "loushang.harnesstui.settings.schema",
+        "loushang.coding.interaction.settings_profile",
+    ),
     "loushang.coding.interaction.plain_abort": (
         "loushang.harnesstui.conversation.control",
         "loushang.coding.ui.plain_app",
@@ -131,7 +135,7 @@ MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
     "loushang.coding.ui.screen_events": ("loushang.coding.presentation.tui.screen",),
     "loushang.coding.ui.session_history": ("loushang.coding.presentation.tui.history",),
     "loushang.coding.ui.settings_config": (
-        "loushang.coding.presentation.settings",
+        "loushang.coding.interaction.settings_profile",
         "loushang.harnesstui.settings.workflow",
     ),
     "loushang.coding.ui.status_provider": (
@@ -175,13 +179,13 @@ NON_UI_CODING_OWNERS = (
     "loushang.coding.interaction.controller",
     "loushang.coding.interaction.intent",
     "loushang.coding.presentation.session",
-    "loushang.coding.presentation.settings",
 )
 
 CODING_TUI_FEATURE_OWNERS = (
     "loushang.coding.commands.tui",
     "loushang.coding.diagnostics.tui",
     "loushang.coding.interaction.screen_host",
+    "loushang.coding.interaction.settings_profile",
     "loushang.coding.interaction.tui_profile",
     "loushang.coding.model_selection_tui",
     "loushang.coding.policy.tui",
@@ -640,8 +644,11 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
 
 
 def test_shared_surface_controller_does_not_own_coding_policy_or_copy() -> None:
-    shared = Path("src/loushang/harnesstui/surface/controller.py").read_text(
-        encoding="utf-8"
+    shared = "\n".join(
+        Path(f"src/loushang/harnesstui/surface/{module}.py").read_text(
+            encoding="utf-8"
+        )
+        for module in ("controller", "workflow")
     )
     coding = Path("src/loushang/coding/ui/screen_surfaces.py").read_text(
         encoding="utf-8"
@@ -657,6 +664,28 @@ def test_shared_surface_controller_does_not_own_coding_policy_or_copy() -> None:
         "Action rejected",
         "Approval request is no longer pending",
         "Command selected:",
+    ):
+        assert token not in shared
+        assert token in coding
+
+
+def test_shared_settings_workflow_does_not_own_coding_bindings_or_copy() -> None:
+    shared = "\n".join(
+        Path(f"src/loushang/harnesstui/settings/{module}.py").read_text(
+            encoding="utf-8"
+        )
+        for module in ("schema", "workflow")
+    )
+    coding = Path(
+        "src/loushang/coding/interaction/settings_profile.py"
+    ).read_text(encoding="utf-8")
+
+    for token in (
+        "terminal.progress",
+        "get_show_terminal_progress",
+        "set_show_terminal_progress",
+        "Invalid {binding.label} value.",
+        "is not available.",
     ):
         assert token not in shared
         assert token in coding
@@ -740,6 +769,37 @@ def test_shared_plain_presentation_does_not_own_coding_policy() -> None:
         assert token not in target
     assert 'event.get("type")' not in renderer
     assert 'event.get("type")' not in target
+
+
+def test_tool_transcript_projection_keeps_raw_coding_policy_at_product_edge() -> (
+    None
+):
+    shared = Path(
+        "src/loushang/harnesstui/conversation/tool_transcript.py"
+    ).read_text(encoding="utf-8")
+    coding = Path(
+        "src/loushang/coding/presentation/tui/tool_transcript.py"
+    ).read_text(encoding="utf-8")
+
+    for token in (
+        "AgentToolResult",
+        "ToolDefinitionResolver",
+        "tool_call_id\", event.get(\"toolCallId",
+        "tool_name\", event.get(\"toolName",
+        "render_tool_result_presentation",
+    ):
+        assert token not in shared
+        assert token in coding
+
+    coding_tree = ast.parse(coding)
+    coding_class_names = {
+        node.name for node in ast.walk(coding_tree) if isinstance(node, ast.ClassDef)
+    }
+    assert "ToolTranscriptProjector" not in coding_class_names
+    assert "CodingToolTranscriptViewAdapter" in coding_class_names
+    assert "build_coding_tool_transcript_projection" in coding
+    assert "ToolTranscriptProjectionBinding" in shared
+    assert "ToolTranscriptProjectionBinding" in coding
 
 
 def test_shared_screen_projection_target_does_not_own_coding_policy_or_copy() -> None:

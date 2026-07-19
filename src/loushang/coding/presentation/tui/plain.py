@@ -6,15 +6,21 @@ from typing import Any, cast
 
 from loushang.coding.presentation.tui.events import CodingConversationEventAdapter
 from loushang.coding.presentation.tui.tool_transcript import (
-    ToolTranscriptProjector,
+    CodingToolTranscriptProjection,
+    build_coding_tool_transcript_projection,
     tool_block_to_record,
 )
 from loushang.harness.presentation import ToolDefinitionResolver
 from loushang.harnesstui.conversation.plain_target import (
     PlainConversationProjectionTarget,
 )
-from loushang.harnesstui.conversation.projection import ConversationProjector
-from loushang.harnesstui.conversation.tool_transcript import ToolCallSnapshot
+from loushang.harnesstui.conversation.projection import (
+    ConversationProjectionBinding,
+    ConversationProjector,
+)
+from loushang.harnesstui.conversation.tool_transcript import (
+    ToolCallSnapshot,
+)
 from loushang.harnesstui.plain.renderer import (
     PlainConversationGlyphs,
     PlainConversationProfile,
@@ -87,31 +93,15 @@ class PlainCodingUiRenderer(PlainConversationRenderer):
     )
 
 
-def extract_text(value: object) -> str:
-    content = getattr(value, "content", value)
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for part in content:
-            text = getattr(part, "text", None)
-            if isinstance(text, str):
-                parts.append(text)
-        return "".join(parts)
-    return ""
-
-
 @dataclass(init=False)
-class PlainCodingEventRenderer:
+class PlainCodingEventRenderer(ConversationProjectionBinding[dict[str, Any]]):
     """Coding raw-event facade for the plain conversation target."""
 
     renderer: PlainCodingUiRenderer
     tool_definition_resolver: ToolDefinitionResolver | None = None
     max_tool_body_lines: int = 8
     render_user_messages: bool = True
-    _tool_projector: ToolTranscriptProjector = field(init=False, repr=False)
-    _projection: ConversationProjector = field(init=False, repr=False)
-    _adapter: CodingConversationEventAdapter = field(init=False, repr=False)
+    _tool_projector: CodingToolTranscriptProjection = field(init=False, repr=False)
 
     def __init__(
         self,
@@ -128,11 +118,11 @@ class PlainCodingEventRenderer:
         self.tool_definition_resolver = tool_definition_resolver
         self.max_tool_body_lines = max_tool_body_lines
         self.render_user_messages = render_user_messages
-        self._tool_projector = ToolTranscriptProjector(
+        self._tool_projector = build_coding_tool_transcript_projection(
             tool_definition_resolver=tool_definition_resolver,
             max_body_lines=max_tool_body_lines,
         )
-        self._projection = ConversationProjector(
+        projection = ConversationProjector(
             target=PlainConversationProjectionTarget(renderer=renderer),
             tool_projector=self._tool_projector.neutral_projector,
             measure_tool_elapsed=False,
@@ -151,8 +141,8 @@ class PlainCodingEventRenderer:
             ),
             last_error_message=last_error_message,
         )
-        self._adapter = CodingConversationEventAdapter(
-            self._projection,
+        adapter = CodingConversationEventAdapter(
+            projection,
             self._tool_projector,
             recover_tool_updates=False,
             project_tool_result_messages=True,
@@ -163,45 +153,14 @@ class PlainCodingEventRenderer:
             project_assistant_error_text=False,
             project_compaction_details=False,
         )
-
-    @property
-    def tool_calls(self) -> dict[str, ToolCallSnapshot]:
-        return self._projection.tool_calls
-
-    @tool_calls.setter
-    def tool_calls(self, value: dict[str, ToolCallSnapshot]) -> None:
-        self._projection.tool_calls = value
-
-    @property
-    def rendered_tool_results(self) -> set[str]:
-        return self._projection.rendered_tool_results
-
-    @rendered_tool_results.setter
-    def rendered_tool_results(self, value: set[str]) -> None:
-        self._projection.rendered_tool_results = value
-
-    @property
-    def rendered_assistant_errors(self) -> set[int]:
-        return cast(set[int], self._projection.rendered_assistant_errors)
-
-    @rendered_assistant_errors.setter
-    def rendered_assistant_errors(self, value: set[int]) -> None:
-        self._projection.rendered_assistant_errors = cast(set[int | str], value)
-
-    @property
-    def last_error_message(self) -> str | None:
-        return self._projection.last_error_message
-
-    @last_error_message.setter
-    def last_error_message(self, value: str | None) -> None:
-        self._projection.last_error_message = value
-
-    def handle(self, event: dict[str, Any]) -> None:
-        self._adapter.handle(event)
+        ConversationProjectionBinding.__init__(
+            self,
+            projector=projection,
+            event_handler=adapter.handle,
+        )
 
 
 __all__ = [
     "PlainCodingEventRenderer",
     "PlainCodingUiRenderer",
-    "extract_text",
 ]

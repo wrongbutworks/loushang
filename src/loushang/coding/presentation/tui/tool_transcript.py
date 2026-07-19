@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
-from typing import Any
+from dataclasses import dataclass, replace
+from typing import Any, TypeAlias
 
 from loushang.agent.types import AgentToolResult
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
@@ -14,6 +14,7 @@ from loushang.harnesstui.conversation.tool_transcript import (
     ToolCallView,
     ToolResultView,
     ToolTranscriptBlock,
+    ToolTranscriptProjectionBinding,
     ToolTranscriptStatus,
 )
 from loushang.harnesstui.conversation.tool_transcript import (
@@ -24,31 +25,22 @@ from loushang.harnesstui.conversation.tool_transcript import (
 )
 from loushang.tui.transcript import ToolExecutionRecord
 
+CodingToolTranscriptProjection: TypeAlias = ToolTranscriptProjectionBinding[
+    Mapping[str, Any], object
+]
+
 
 @dataclass
-class ToolTranscriptProjector:
-    """Adapt Coding tool events to the neutral transcript projector."""
+class CodingToolTranscriptViewAdapter:
+    """Adapt raw Coding tool events and messages to neutral transcript views."""
 
     tool_definition_resolver: ToolDefinitionResolver | None = None
     render_runtime: ToolRenderRuntime | None = None
     max_body_lines: int = 8
-    _projector: NeutralToolTranscriptProjector = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.render_runtime is None:
             self.render_runtime = ToolRenderRuntime()
-        self._projector = NeutralToolTranscriptProjector(
-            verb_resolver=_verb,
-            body_visibility=_should_show_body,
-            command_resolver=_command_for_transcript,
-            max_body_lines=self.max_body_lines,
-        )
-
-    @property
-    def neutral_projector(self) -> NeutralToolTranscriptProjector:
-        """Return the product-neutral projector used by this Coding adapter."""
-
-        return self._projector
 
     def call_id(self, event: Mapping[str, Any]) -> str:
         """Read a tool-call id without invoking presentation renderers."""
@@ -71,14 +63,10 @@ class ToolTranscriptProjector:
             rendered_text=self._render_event_text(event, expanded=False),
         )
 
-    def remember_call(self, event: Mapping[str, Any]) -> ToolCallSnapshot:
-        return self._projector.remember_call(self.call_view(event))
-
     def result_view(
         self,
         event: Mapping[str, Any],
         snapshot: ToolCallSnapshot | None = None,
-        *,
         tool_call_id: str | None = None,
     ) -> ToolResultView:
         """Adapt a raw Coding tool-result event to a neutral view."""
@@ -108,15 +96,6 @@ class ToolTranscriptProjector:
             error_summary=_tool_error_summary(result),
         )
 
-    def project_result(
-        self,
-        event: Mapping[str, Any],
-        snapshot: ToolCallSnapshot | None = None,
-    ) -> ToolTranscriptBlock:
-        return self._projector.project_result(
-            self.result_view(event, snapshot=snapshot), snapshot
-        )
-
     def tool_result_message_view(self, message: object) -> ToolResultView:
         """Adapt a raw Coding tool-result message to a neutral view."""
 
@@ -136,9 +115,6 @@ class ToolTranscriptProjector:
         }
         return self.result_view(event, tool_call_id=tool_call_id)
 
-    def project_tool_result_message(self, message: object) -> ToolTranscriptBlock:
-        return self._projector.project_result(self.tool_result_message_view(message))
-
     def _render_event_text(
         self,
         event: Mapping[str, Any],
@@ -156,6 +132,33 @@ class ToolTranscriptProjector:
         except Exception:
             return None
         return _rendered_text(rendered)
+
+
+def build_coding_tool_transcript_projection(
+    tool_definition_resolver: ToolDefinitionResolver | None = None,
+    render_runtime: ToolRenderRuntime | None = None,
+    max_body_lines: int = 8,
+) -> CodingToolTranscriptProjection:
+    """Compose Coding raw-view adaptation with neutral transcript projection."""
+
+    adapter = CodingToolTranscriptViewAdapter(
+        tool_definition_resolver=tool_definition_resolver,
+        render_runtime=render_runtime,
+        max_body_lines=max_body_lines,
+    )
+    return ToolTranscriptProjectionBinding(
+        neutral_projector=NeutralToolTranscriptProjector(
+            verb_resolver=_verb,
+            body_visibility=_should_show_body,
+            command_resolver=_command_for_transcript,
+            max_body_lines=max_body_lines,
+        ),
+        call_id=adapter.call_id,
+        message_id=adapter.message_id,
+        call_view=adapter.call_view,
+        result_view=adapter.result_view,
+        tool_result_message_view=adapter.tool_result_message_view,
+    )
 
 
 def _event_result(event: Mapping[str, Any]) -> object:
@@ -315,9 +318,8 @@ def tool_block_to_record(
 
 
 __all__ = [
-    "ToolCallSnapshot",
-    "ToolTranscriptBlock",
-    "ToolTranscriptProjector",
-    "ToolTranscriptStatus",
+    "CodingToolTranscriptProjection",
+    "CodingToolTranscriptViewAdapter",
+    "build_coding_tool_transcript_projection",
     "tool_block_to_record",
 ]
