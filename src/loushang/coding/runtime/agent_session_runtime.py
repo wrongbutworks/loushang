@@ -10,12 +10,6 @@ from types import SimpleNamespace
 from typing import Literal
 
 from loushang.ai.types import TextPart, UserMessage
-from loushang.coding.extensions import (
-    SessionBeforeForkEvent,
-    SessionBeforeSwitchEvent,
-    SessionShutdownEvent,
-    SessionStartEvent,
-)
 from loushang.coding.session import AgentSession
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
@@ -31,6 +25,12 @@ from loushang.harness.diagnostics.types import (
     DiagnosticsQuery,
     DiagnosticSummary,
     ErrorReport,
+)
+from loushang.harness.extensions.context import (
+    SessionBeforeForkEvent,
+    SessionBeforeSwitchEvent,
+    SessionShutdownEvent,
+    SessionStartEvent,
 )
 from loushang.harness.runtime import (
     CoalescingScheduler,
@@ -1338,9 +1338,7 @@ def _create_replaced_session_context(session: AgentSession) -> object:
         return create_context()
     session_manager = getattr(session, "session_manager", None)
     cwd = session_manager.get_cwd() if session_manager is not None else None
-    return SimpleNamespace(
-        cwd=cwd, session_manager=session_manager
-    )
+    return SimpleNamespace(cwd=cwd, session_manager=session_manager)
 
 
 def _replacement_callback_options(

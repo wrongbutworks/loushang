@@ -47,6 +47,9 @@ planning, work event persistence, or AI provider behavior.
   shared manifest, loading, registration, conflict resolution, observer/input
   dispatch, resource contribution, and tool-wrapper ownership while preserving
   product policy, session/model behavior, and UI integration.
+- [Extension Context Runtime Boundary](extension-context-runtime-boundary.md)
+  defines the standard extension context, lifecycle records, generation-bound
+  capability injection, and snake_case-only extension UI contract.
 - [Control Plane Runtime Boundary](control-plane-runtime-boundary.md) defines
   deterministic extension routing, neutral policy subjects and evaluator
   composition, pending approval lifecycle, and the Product adapters that retain

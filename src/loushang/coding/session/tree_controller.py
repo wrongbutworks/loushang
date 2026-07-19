@@ -9,7 +9,7 @@ from loushang.coding.compaction import (
     BranchSummaryResult,
     generate_branch_summary,
 )
-from loushang.coding.extensions import ExtensionRunner, SessionBeforeTreeEvent
+from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
     AgentTranscriptContext,
@@ -19,6 +19,7 @@ from loushang.harness.agent_transcript import (
     TranscriptNavigationResult,
 )
 from loushang.harness.events import SessionRuntimeEventPayload
+from loushang.harness.extensions.context import SessionBeforeTreeEvent
 from loushang.harness.runtime import CancellationSignal
 from loushang.protocol import JSONValue, require_json_value
 

@@ -13,17 +13,17 @@ from loushang.agent.types import (
     BeforeToolCallResult,
 )
 from loushang.ai.types import ToolCall
-from loushang.coding.extensions.types import (
-    ExtensionContext,
-    LoadedExtension,
-    ToolCallDecision,
-    ToolResultDecision,
-)
+from loushang.harness.extensions.context import ExtensionContext
 from loushang.harness.extensions.routing import (
     ExtensionRoutePlan,
     ExtensionRouter,
     ResolvedExtensionRoute,
     RouteStep,
+)
+from loushang.harness.extensions.types import (
+    LoadedExtension,
+    ToolCallDecision,
+    ToolResultDecision,
 )
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
