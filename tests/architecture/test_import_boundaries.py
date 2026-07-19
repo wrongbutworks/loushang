@@ -623,7 +623,7 @@ def test_extension_message_controller_is_a_product_api_adapter() -> None:
     assert "append_message(" not in source
 
 
-def test_tui_and_harness_do_not_import_harnesstui() -> None:
+def test_tui_and_harness_keep_harnesstui_dependency_one_way() -> None:
     boundaries = (
         ImportBoundary(
             name="tui",
@@ -633,7 +633,7 @@ def test_tui_and_harness_do_not_import_harnesstui() -> None:
         ImportBoundary(
             name="harness",
             root=Path("src/loushang/harness"),
-            forbidden_prefixes=("loushang.harnesstui",),
+            forbidden_prefixes=("loushang.harnesstui", "loushang.tui"),
         ),
     )
 
@@ -701,6 +701,7 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     text = path.read_text(encoding="utf-8")
 
     assert "`loushang.coding.ui` -> `loushang.harnesstui`" in text
+    assert "`loushang.harness` and `loushang.tui` are\nindependent peers" in text
     assert "`tests/coding/tui_support` -> `loushang.harnesstui.testing`" in text
     assert "`loushang.harnesstui.conversation.queue`" in text
     assert "`loushang.harnesstui.conversation.reader`" in text
@@ -715,6 +716,12 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.conversation.input`" in text
     assert "`loushang.harnesstui.conversation.run_context`" in text
     assert "`loushang.harnesstui.conversation.screen_runner`" in text
+    assert "`loushang.harnesstui.conversation.application_host`" in text
+    assert "`loushang.harnesstui.conversation.plain_app`" in text
+    assert "`loushang.harnesstui.conversation.plain_prompt_host`" in text
+    assert "`loushang.harnesstui.conversation.history`" in text
+    assert "`loushang.harnesstui.conversation.transcript_display`" in text
+    assert "`loushang.harnesstui.conversation.startup`" in text
     assert "`loushang.harnesstui.conversation.projection`" in text
     assert "`loushang.harnesstui.conversation.plain_target`" in text
     assert "`loushang.harnesstui.conversation.screen_target`" in text

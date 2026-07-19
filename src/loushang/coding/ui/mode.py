@@ -17,7 +17,7 @@ from loushang.coding.policy.tui import (
     handle_screen_approval,
     runtime_session,
 )
-from loushang.coding.presentation.resume import write_resume_hint_for_clean_exit
+from loushang.coding.presentation.resume import coding_resume_hint_for_session
 from loushang.coding.presentation.session import (
     is_running,
     session_label,
@@ -45,10 +45,7 @@ from loushang.coding.ui.plain_app import build_plain_coding_tui_app
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_input import CODING_SCREEN_RUN_PROFILE
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
-from loushang.coding.ui.startup import (
-    CodingTuiStartupSnapshot,
-    load_coding_tui_startup_snapshot,
-)
+from loushang.coding.ui.startup import load_coding_tui_startup_view
 from loushang.harnesstui.conversation.application_host import (
     InstalledConversationHistory,
     PreparedPlainConversationRun,
@@ -59,7 +56,9 @@ from loushang.harnesstui.conversation.application_host import (
 from loushang.harnesstui.conversation.host import (
     run_action_host_conversation_screen,
 )
+from loushang.harnesstui.conversation.resume import write_clean_exit_resume_hint
 from loushang.harnesstui.conversation.run_context import StableEmit
+from loushang.harnesstui.conversation.startup import ConversationStartupView
 from loushang.harnesstui.status.persistence import (
     statusline_settings_from_store,
     statusline_settings_persistence_callback,
@@ -120,7 +119,7 @@ async def _run_screen_interactive_tui(
     stderr: TextIO,
     verbose: bool,
 ) -> int:
-    snapshot = await load_coding_tui_startup_snapshot(runtime=runtime, session=session)
+    snapshot = await load_coding_tui_startup_view(runtime=runtime, session=session)
     app = ScreenCodingTuiApp(
         model_label=snapshot.model_label,
         cwd=snapshot.cwd,
@@ -207,10 +206,10 @@ async def _run_screen_interactive_tui(
         ),
         on_history_installed=_trace_resume_history,
         on_start=lambda: _trace_start(snapshot, interactive=True),
-        on_clean_exit=lambda exit_code: write_resume_hint_for_clean_exit(
-            session=session,
+        on_clean_exit=lambda exit_code: write_clean_exit_resume_hint(
             stdout=stdout,
             exit_code=exit_code,
+            hint=coding_resume_hint_for_session(session),
         ),
     )
     return await run_prepared_screen_conversation(
@@ -231,7 +230,7 @@ async def _run_plain_tui(
     verbose: bool,
 ) -> int:
     renderer = PlainCodingUiRenderer(stdout=stdout, stderr=stderr, verbose=verbose)
-    snapshot = await load_coding_tui_startup_snapshot(runtime=runtime, session=session)
+    snapshot = await load_coding_tui_startup_view(runtime=runtime, session=session)
     event_renderer = build_plain_coding_event_projection(
         renderer,
         tool_definition_resolver=tool_definition_resolver(session),
@@ -245,9 +244,7 @@ async def _run_plain_tui(
             event_renderer=event_renderer,
             stderr=stderr,
             verbose=verbose,
-            model_label=snapshot.model_label,
             cwd=snapshot.cwd,
-            branch=snapshot.branch,
             emit=emit,
             trace=_trace,
             now=time.monotonic,
@@ -286,7 +283,7 @@ def _screen_should_exit(text: str) -> bool:
     return isinstance(parse_prompt_intent(text), QuitIntent)
 
 
-def _trace_start(snapshot: CodingTuiStartupSnapshot, *, interactive: bool) -> None:
+def _trace_start(snapshot: ConversationStartupView, *, interactive: bool) -> None:
     _trace(
         "tui.start",
         interactive=interactive,

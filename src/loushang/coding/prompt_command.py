@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import time
-import traceback
 from collections.abc import Mapping, Sequence
 from typing import Any, TextIO
 
@@ -12,8 +10,10 @@ from loushang.coding.presentation.tui.plain import (
     build_plain_coding_event_projection,
 )
 from loushang.coding.work_shell import CodingWorkShell
-from loushang.harnesstui.conversation.projection import (
-    ConversationProjectionBinding,
+from loushang.harnesstui.conversation.plain_prompt_host import (
+    PlainPromptHostPorts,
+    PreparedPlainPromptRun,
+    run_plain_prompt_host,
 )
 from loushang.work import EventLogBackend
 
@@ -50,19 +50,11 @@ async def run_prompt_command(
         render_user_messages=False,
     )
 
-    def unsubscribe() -> None:
-        return None
-
-    exit_code = 0
-    try:
-        await ensure_usable_session_model(session)
-        unsubscribe = session.subscribe(event_renderer.handle)
-        exit_code = await _run_turn(
+    async def submit_turn(text: str, turn_index: int, turn_count: int) -> None:
+        await _run_prompt_session(
             session,
-            renderer,
-            event_renderer,
-            prompt,
-            images=images,
+            text,
+            images=images if turn_index == 0 else None,
             work_event_log=work_event_log,
             method_id=method_id,
             plan_id=plan_id,
@@ -73,103 +65,39 @@ async def run_prompt_command(
             audit_policy=audit_policy,
             plan_facts=plan_facts,
             step_facts=step_facts,
-            emit_plan_start=emit_plan_start,
-            emit_plan_completion=emit_plan_completion and not follow_up_messages,
+            emit_plan_start=emit_plan_start if turn_index == 0 else False,
+            emit_plan_completion=emit_plan_completion and turn_index == turn_count - 1,
         )
-        if exit_code == 0:
-            for follow_up_index, message in enumerate(follow_up_messages):
-                exit_code = await _run_turn(
-                    session,
-                    renderer,
-                    event_renderer,
-                    message,
-                    work_event_log=work_event_log,
-                    method_id=method_id,
-                    plan_id=plan_id,
-                    step_id=step_id,
-                    step_index=step_index,
-                    step_title=step_title,
-                    planned_constraint=planned_constraint,
-                    audit_policy=audit_policy,
-                    plan_facts=plan_facts,
-                    step_facts=step_facts,
-                    emit_plan_start=False,
-                    emit_plan_completion=emit_plan_completion
-                    and follow_up_index == len(follow_up_messages) - 1,
-                )
-                if exit_code != 0:
-                    break
-    except Exception as exc:
-        renderer.render_error(str(exc) or exc.__class__.__name__)
-        if verbose:
-            traceback.print_exception(type(exc), exc, exc.__traceback__, file=stderr)
-        exit_code = 1
-    finally:
-        unsubscribe()
-        if dispose:
-            try:
-                await _dispose_runtime_or_session(runtime, session)
-            except Exception as exc:
-                renderer.render_error(str(exc) or exc.__class__.__name__)
-                if verbose:
-                    traceback.print_exception(
-                        type(exc), exc, exc.__traceback__, file=stderr
-                    )
-                exit_code = 1
-    return exit_code
 
+    def resolve_failure(previous_error: str | None) -> str | None:
+        assistant_failure = _last_assistant_failure_message(session)
+        if (
+            assistant_failure is None
+            and event_renderer.last_error_message != previous_error
+        ):
+            return event_renderer.last_error_message
+        return assistant_failure
 
-async def _run_turn(
-    session: Any,
-    renderer: PlainCodingUiRenderer,
-    event_renderer: ConversationProjectionBinding[dict[str, Any]],
-    prompt: str,
-    *,
-    images: list[object] | None = None,
-    work_event_log: EventLogBackend | None = None,
-    method_id: str | None = None,
-    plan_id: str | None = None,
-    step_id: str | None = None,
-    step_index: int | None = None,
-    step_title: str | None = None,
-    planned_constraint: Mapping[str, object] | None = None,
-    audit_policy: Mapping[str, object] | None = None,
-    plan_facts: Mapping[str, object] | None = None,
-    step_facts: Mapping[str, object] | None = None,
-    emit_plan_start: bool = True,
-    emit_plan_completion: bool = True,
-) -> int:
-    started_at = time.monotonic()
-    previous_error = event_renderer.last_error_message
-    renderer.render_user(prompt)
-    await _run_prompt_session(
-        session,
-        prompt,
-        images=images,
-        work_event_log=work_event_log,
-        method_id=method_id,
-        plan_id=plan_id,
-        step_id=step_id,
-        step_index=step_index,
-        step_title=step_title,
-        planned_constraint=planned_constraint,
-        audit_policy=audit_policy,
-        plan_facts=plan_facts,
-        step_facts=step_facts,
-        emit_plan_start=emit_plan_start,
-        emit_plan_completion=emit_plan_completion,
+    return await run_plain_prompt_host(
+        PreparedPlainPromptRun(
+            prompts=(prompt, *follow_up_messages),
+            ports=PlainPromptHostPorts[str | None](
+                prepare=lambda: ensure_usable_session_model(session),
+                subscribe=lambda: session.subscribe(event_renderer.handle),
+                submit=submit_turn,
+                wait_for_idle=session.wait_for_idle,
+                capture_failure_state=lambda: event_renderer.last_error_message,
+                resolve_failure=resolve_failure,
+                render_user=renderer.render_user,
+                render_worked=renderer.render_worked,
+                render_error=renderer.render_error,
+                dispose=lambda: _dispose_runtime_or_session(runtime, session),
+            ),
+            stderr=stderr,
+            verbose=verbose,
+            dispose=dispose,
+        )
     )
-    await session.wait_for_idle()
-    assistant_failure = _last_assistant_failure_message(session)
-    if (
-        assistant_failure is None
-        and event_renderer.last_error_message != previous_error
-    ):
-        assistant_failure = event_renderer.last_error_message
-    if assistant_failure is not None:
-        return 1
-    renderer.render_worked(time.monotonic() - started_at)
-    return 0
 
 
 async def _run_prompt_session(

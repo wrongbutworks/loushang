@@ -18,6 +18,8 @@ DIST_BINARY := dist/$(BINARY_NAME)
 AI_OFFLINE_ENV := env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_OAUTH_TOKEN -u ANTHROPIC_BASE_URL -u ARK_API_KEY -u BAIDU_QIANFAN_API_KEY -u COPILOT_GITHUB_TOKEN -u DASHSCOPE_API_KEY -u DEEPSEEK_API_KEY -u GH_TOKEN -u GITHUB_TOKEN -u HUNYUAN_API_KEY -u MINIMAX_API_KEY -u MOONSHOT_API_KEY -u OPENAI_API_KEY -u QIANFAN_API_KEY -u STEPFUN_API_KEY -u STEP_API_KEY -u ZAI_API_KEY
 
 HARNESSTUI_SHARED_SOURCES := \
+	src/loushang/harness/command_composition.py \
+	src/loushang/harness/host/types.py \
 	src/loushang/tui/clipboard_image.py \
 	src/loushang/tui/launch.py \
 	src/loushang/tui/playback_suite.py \
@@ -36,8 +38,8 @@ CODING_TUI_PRODUCT_SOURCES := \
 	src/loushang/coding/commands/tui.py \
 	src/loushang/coding/model_selection_tui.py \
 	src/loushang/coding/model_selection.py \
+	src/loushang/coding/prompt_command.py \
 	src/loushang/coding/diagnostics/debug_status.py \
-	src/loushang/coding/diagnostics/tui.py \
 	src/loushang/coding/event/presentation_policy.py \
 	src/loushang/coding/policy/tui.py \
 	src/loushang/coding/interaction/controller.py \
@@ -49,6 +51,7 @@ CODING_TUI_PRODUCT_SOURCES := \
 	src/loushang/coding/presentation/session.py \
 	src/loushang/coding/presentation/tui
 HARNESSTUI_TEST_PATHS := \
+	tests/harness/test_command_composition.py \
 	tests/harnesstui \
 	tests/tui/test_clipboard_image.py \
 	tests/tui/test_import_boundaries.py \
@@ -59,6 +62,7 @@ HARNESSTUI_TEST_PATHS := \
 	tests/tui/test_transcript_region.py \
 	tests/architecture/test_import_boundaries.py \
 	tests/coding/test_platform_utils.py \
+	tests/coding/test_prompt_command.py \
 	tests/coding/test_screen_conversation_action_host.py \
 	tests/coding/test_coding_tui_profile.py \
 	tests/coding/test_ui_debug_command.py \
@@ -87,6 +91,7 @@ HARNESSTUI_TEST_PATHS := \
 	tests/coding/test_ui_model_list.py \
 	tests/coding/test_ui_plain_app.py \
 	tests/coding/test_ui_plain_renderer.py \
+	tests/coding/test_ui_resume.py \
 	tests/coding/test_ui_status_line.py \
 	tests/coding/test_ui_transcript_projection.py \
 	tests/coding/test_ui_transcript_source.py \

@@ -4,19 +4,16 @@ import asyncio
 from dataclasses import dataclass
 from io import StringIO
 
-from loushang.harnesstui.conversation.action_presentation import (
-    ConversationTracebackPolicy,
-)
-from loushang.harnesstui.conversation.control import (
-    ConversationRunControl,
-    ConversationTextAction,
-)
+from loushang.harnesstui.conversation.control import ConversationTextAction
 from loushang.harnesstui.conversation.host import (
     ConversationHostDecision,
     ConversationHostProfile,
     ConversationHostRoute,
 )
 from loushang.harnesstui.conversation.plain_app import (
+    PlainConversationPorts,
+    PlainConversationProductBinding,
+    PlainConversationProfile,
     build_plain_conversation_app,
 )
 
@@ -32,10 +29,13 @@ class _Result:
 class _Controller:
     def __init__(self, calls: list[tuple[str, object]]) -> None:
         self.calls = calls
+        self.on_suppress = None
 
     async def dispatch(self, intent: str) -> _Result:
         self.calls.append(("dispatch", intent))
         if intent == "suppress":
+            if self.on_suppress is not None:
+                self.on_suppress()
             return _Result(exit_code=9, error_message="skip")
         return _Result(status_message=f"done:{intent}")
 
@@ -69,7 +69,6 @@ def _build_app():
     calls: list[tuple[str, object]] = []
     traces: list[tuple[str, dict[str, object]]] = []
     parsed_actions: list[ConversationTextAction] = []
-    lifecycle = ConversationRunControl()
 
     def parse(action: ConversationTextAction) -> str | None:
         parsed_actions.append(action)
@@ -97,9 +96,6 @@ def _build_app():
         calls.append(("emit", label))
         write()
 
-    async def abort_settling(action: ConversationTextAction, intent: str) -> None:
-        calls.append(("abort_settling", (action, intent)))
-
     async def local(
         action: ConversationTextAction,
         intent: str,
@@ -112,38 +108,45 @@ def _build_app():
         calls.append(("restore", text))
         return f"queued\n\n{text}"
 
-    def suppress(outcome, error_message: str | None) -> bool:
-        calls.append(("suppress", (outcome.result.exit_code, error_message)))
-        return error_message == "skip"
+    controller = _Controller(calls)
+
+    def bind_product(assembly):
+        calls.append(("bind_local", assembly.settings_text()))
+        return PlainConversationProductBinding(
+            host_profile=ConversationHostProfile(
+                parse=parse,
+                decide=decide,
+                is_exit=lambda intent: intent == "quit",
+                now=lambda: 10.0,
+            ),
+            controller=controller,
+            abort_action=lambda: _record(calls, "abort_action"),
+            is_work_intent=lambda intent: intent in {"dispatch", "suppress"},
+            local=local,
+            fallback_error_message=lambda: None,
+            suppress_aborted_error=lambda error_message: error_message == "skip",
+        )
 
     app = build_plain_conversation_app(
-        lifecycle=lifecycle,
-        profile=ConversationHostProfile(
-            parse=parse,
-            decide=decide,
-            is_exit=lambda intent: intent == "quit",
-            now=lambda: 10.0,
+        profile=PlainConversationProfile(
+            abort_settling_message="settling",
+            idle_follow_up_message="idle",
+            queued_follow_up_message="queued",
+            now=lambda: 12.0,
         ),
-        controller=_Controller(calls),
-        renderer=_Renderer(calls),
-        emit=emit,
-        trace=lambda name, **data: traces.append((name, data)),
-        session_running=lambda: False,
-        abort_action=lambda: _record(calls, "abort_action"),
-        abort_settling=abort_settling,
-        is_work_intent=lambda intent: intent in {"dispatch", "suppress"},
-        local=local,
-        resolve_error=lambda outcome: outcome.result.error_message,
-        suppress_result=suppress,
-        stderr=StringIO(),
-        traceback_policy=ConversationTracebackPolicy(enabled=False),
-        last_error_message=lambda: None,
-        now=lambda: 12.0,
-        restore_queue=restore,
-        pending_messages=lambda: ("pending",),
-        idle_follow_up_message="idle",
-        queued_follow_up_message="queued",
+        ports=PlainConversationPorts(
+            bind_product=bind_product,
+            renderer=_Renderer(calls),
+            emit=emit,
+            trace=lambda name, **data: traces.append((name, data)),
+            stderr=StringIO(),
+            session_running=lambda: False,
+            last_error_message=lambda: None,
+            restore_queue=restore,
+            pending_messages=lambda: ("pending",),
+        ),
     )
+    controller.on_suppress = app.lifecycle.mark_abort_requested
     return app, calls, traces, parsed_actions
 
 
@@ -155,9 +158,9 @@ def test_plain_app_composes_dispatch_result_and_product_suppression() -> None:
 
     assert parsed_actions[0].source == "plain_prompt"
     assert ("render_status", "done:dispatch") in calls
-    assert ("suppress", (None, None)) in calls
-    assert ("suppress", (9, "skip")) in calls
     assert ("render_error", "skip") not in calls
+    assert app.lifecycle.aborted_id is None
+    assert ("bind_local", "Settings\nStatus line: true") in calls
 
 
 def test_plain_app_wires_routes_queue_sources_restore_and_abort() -> None:
@@ -181,6 +184,7 @@ def test_plain_app_wires_routes_queue_sources_restore_and_abort() -> None:
 
     assert ("follow_up", "queued") in calls
     assert ("follow_up", "direct") in calls
+    assert ("render_status", "settling") in calls
     sources = [
         data["source"] for name, data in traces if name == "prompt.follow_up.start"
     ]

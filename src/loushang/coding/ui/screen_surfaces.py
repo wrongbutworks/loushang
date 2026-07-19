@@ -44,9 +44,6 @@ from loushang.harnesstui.surface.factory import (
     command_palette_surface_view,
     model_selector_surface_view,
 )
-from loushang.harnesstui.surface.view import (
-    ScreenSurfacePurpose as ScreenSurfacePurpose,
-)
 from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.harnesstui.surface.workflow import (
     ScreenSurfaceCommand,
@@ -259,4 +256,4 @@ def _session_commands_provider(session: Any) -> Callable[[], Any] | None:
     return getter
 
 
-__all__ = ["ScreenSurfaceManager", "ScreenSurfaceView"]
+__all__ = ["ScreenSurfaceManager"]

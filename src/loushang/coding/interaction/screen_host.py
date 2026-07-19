@@ -4,7 +4,6 @@ import base64
 from typing import Protocol, TextIO
 
 from loushang.ai.types import ImagePart
-from loushang.coding.interaction.controller import ControllerResult
 from loushang.coding.interaction.intent import (
     AbortIntent,
     CodingUiIntent,
@@ -13,6 +12,7 @@ from loushang.coding.interaction.intent import (
     parse_prompt_intent,
 )
 from loushang.coding.interaction.tui_profile import CODING_SCREEN_ACTION_COPY
+from loushang.harness.host.types import HostActionResult
 from loushang.harnesstui.conversation.action_presentation import (
     ConversationActionPresentationPort,
     ConversationActionResultPresenter,
@@ -26,19 +26,19 @@ from loushang.harnesstui.conversation.attachments import PromptImageAttachment
 class CodingConversationControllerPort(Protocol):
     """Coding controller effects consumed by the shared action host."""
 
-    async def dispatch(self, intent: CodingUiIntent) -> ControllerResult: ...
+    async def dispatch(self, intent: CodingUiIntent) -> HostActionResult: ...
 
     async def steer(
         self,
         text: str,
         images: tuple[ImagePart, ...] | None = None,
-    ) -> ControllerResult: ...
+    ) -> HostActionResult: ...
 
     async def follow_up(
         self,
         text: str,
         images: tuple[ImagePart, ...] | None = None,
-    ) -> ControllerResult: ...
+    ) -> HostActionResult: ...
 
     async def wait_for_idle(self) -> None: ...
 

@@ -104,7 +104,10 @@ MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
     ),
     "loushang.coding.ui.controller": ("loushang.coding.interaction.controller",),
     "loushang.coding.ui.debug_status": ("loushang.coding.diagnostics.debug_status",),
-    "loushang.coding.ui.debug_command": ("loushang.coding.diagnostics.tui",),
+    "loushang.coding.ui.debug_command": (
+        "loushang.harnesstui.conversation.debug_action",
+        "loushang.coding.ui.plain_app",
+    ),
     "loushang.coding.ui.event_policy": ("loushang.coding.event.presentation_policy",),
     "loushang.coding.ui.intent": ("loushang.coding.interaction.intent",),
     "loushang.coding.ui.follow_up_queue": (
@@ -183,7 +186,6 @@ NON_UI_CODING_OWNERS = (
 
 CODING_TUI_FEATURE_OWNERS = (
     "loushang.coding.commands.tui",
-    "loushang.coding.diagnostics.tui",
     "loushang.coding.interaction.screen_host",
     "loushang.coding.interaction.settings_profile",
     "loushang.coding.interaction.tui_profile",
@@ -427,7 +429,6 @@ def test_prepared_application_host_owns_only_neutral_run_coordination() -> None:
         "ScreenSurfaceManager",
         "StatusProvider",
         "handle_screen_approval",
-        "write_resume_hint_for_clean_exit",
         "model_label",
     ):
         assert token not in shared
@@ -438,6 +439,76 @@ def test_prepared_application_host_owns_only_neutral_run_coordination() -> None:
         "run_prepared_screen_conversation",
         "PreparedPlainConversationRun",
         "run_prepared_plain_conversation",
+    ):
+        assert token in shared
+        assert token in coding
+
+
+def test_plain_prompt_host_owns_only_neutral_turn_lifecycle() -> None:
+    shared = Path(
+        "src/loushang/harnesstui/conversation/plain_prompt_host.py"
+    ).read_text(encoding="utf-8")
+    coding = Path("src/loushang/coding/prompt_command.py").read_text(
+        encoding="utf-8"
+    )
+
+    for token in (
+        "loushang.coding",
+        "ensure_usable_session_model",
+        "CodingWorkShell",
+        "EventLogBackend",
+        "_last_assistant_failure_message",
+        "method_id",
+        "plan_id",
+    ):
+        assert token not in shared
+        assert token in coding
+
+    for token in (
+        "PlainPromptHostPorts",
+        "PreparedPlainPromptRun",
+        "run_plain_prompt_host",
+    ):
+        assert token in shared
+        assert token in coding
+
+    assert "def _run_turn" not in coding
+
+
+def test_shared_resume_runtime_and_startup_keep_product_policy_outside() -> None:
+    shared = "\n".join(
+        Path(f"src/loushang/harnesstui/conversation/{module}.py").read_text(
+            encoding="utf-8"
+        )
+        for module in ("resume", "runtime_view", "startup")
+    )
+    coding = "\n".join(
+        Path(path).read_text(encoding="utf-8")
+        for path in (
+            "src/loushang/coding/presentation/resume.py",
+            "src/loushang/coding/presentation/tui/runtime.py",
+            "src/loushang/coding/ui/startup.py",
+            "src/loushang/coding/ui/mode.py",
+        )
+    )
+
+    for token in (
+        "loushang.coding",
+        "ensure_usable_session_model",
+        "get_session_model_selection",
+        "get_steering_messages",
+        "get_follow_up_messages",
+        "Resume this session with:",
+        "session_manager",
+    ):
+        assert token not in shared
+        assert token in coding
+
+    for token in (
+        "ConversationResumeHint",
+        "write_clean_exit_resume_hint",
+        "stable_string_queue_reader",
+        "build_conversation_startup_view",
     ):
         assert token in shared
         assert token in coding
@@ -515,14 +586,19 @@ def test_shared_transcript_style_does_not_own_screen_product_policy() -> None:
         Path(f"src/loushang/harnesstui/conversation/{module}.py").read_text(
             encoding="utf-8"
         )
-        for module in ("transcript_style", "transcript_presentation")
+        for module in (
+            "transcript_display",
+            "transcript_style",
+            "transcript_presentation",
+        )
     )
     screen = Path("src/loushang/coding/ui/screen_app.py").read_text(encoding="utf-8")
 
     for token in (
         "loushang.coding",
         "ScreenCodingTuiApp",
-        "_compact_display_paths",
+        "_project_coding_tool_name",
+        "_project_coding_tool_output",
         "collapse_tool_output_preview",
         "DEFAULT_TOOL_OUTPUT_PREVIEW_LINES",
         "bright_cyan",
@@ -534,7 +610,11 @@ def test_shared_transcript_style_does_not_own_screen_product_policy() -> None:
     assert "ConversationTranscriptCopy" in screen
     assert 'user_prompt_prefix="› "' in screen
     assert 'tool_command_prefix="  │ "' in screen
-    assert "_compact_display_paths" in screen
+    assert "TranscriptDisplayProjectionProfile" in shared
+    assert "TranscriptDisplayProjectionProfile" in screen
+    assert "compact_absolute_display_paths" in shared
+    assert "compact_absolute_display_paths" in screen
+    assert "_compact_display_paths" not in screen
     assert "collapse_tool_output_preview" in screen
     assert '"transcript.tool.marker": {"color": "bright_cyan"' in screen
 
@@ -560,6 +640,37 @@ def test_shared_performance_probe_does_not_load_coding_sessions() -> None:
     assert "SessionManager" in coding
     assert "session_history_records" in coding
     assert "load_persisted_session_history_records" in coding
+
+
+def test_shared_history_dispatch_keeps_raw_coding_projection_outside() -> None:
+    shared = Path("src/loushang/harnesstui/conversation/history.py").read_text(
+        encoding="utf-8"
+    )
+    coding = Path("src/loushang/coding/presentation/tui/history.py").read_text(
+        encoding="utf-8"
+    )
+
+    for token in (
+        "loushang.coding",
+        "loushang.ai",
+        "SessionManager",
+        "UserMessage",
+        "ToolResultMessage",
+        "CodingToolTranscriptProjection",
+        "TUI_TRANSCRIPT_DISPOSITIONS",
+    ):
+        assert token not in shared
+        assert token in coding
+
+    for token in (
+        "ConversationHistoryProjector",
+        "project_context_compaction_payload",
+        "project_context_branch_summary_payload",
+    ):
+        assert token in shared
+        assert token in coding
+
+    assert "def _transcript_record" not in coding
 
 
 def test_shared_playback_support_does_not_own_coding_copy_or_budgets() -> None:
@@ -712,6 +823,9 @@ def test_shared_action_presentation_keeps_product_controller_and_copy_outside() 
     shared = Path(
         "src/loushang/harnesstui/conversation/action_presentation.py"
     ).read_text(encoding="utf-8")
+    result_owner = Path("src/loushang/harness/host/types.py").read_text(
+        encoding="utf-8"
+    )
     controller = Path("src/loushang/coding/interaction/controller.py").read_text(
         encoding="utf-8"
     )
@@ -733,13 +847,43 @@ def test_shared_action_presentation_keeps_product_controller_and_copy_outside() 
     ):
         assert token not in shared
 
-    assert "loushang.harnesstui" not in controller
-    assert "class ControllerResult" in controller
+    assert "class HostActionResult" in result_owner
+    assert "HostActionResult" in controller
+    assert "class ControllerResult" not in controller
     assert "ImagePart" in screen_host
     assert "PromptIntent" in screen_host
     assert "Request failed:" in profile
     assert "Steering failed:" in profile
     assert "Follow-up failed:" in profile
+
+
+def test_shared_debug_action_keeps_product_binding_and_copy_outside() -> None:
+    shared = Path(
+        "src/loushang/harnesstui/conversation/debug_action.py"
+    ).read_text(encoding="utf-8")
+    coding = Path("src/loushang/coding/ui/plain_app.py").read_text(
+        encoding="utf-8"
+    )
+
+    for token in (
+        "loushang.coding",
+        "debug_status_text",
+        "Debug logging disabled.",
+        '"debug.enabled"',
+        '"debug.disabled"',
+        "session=session",
+        "cwd=cwd",
+    ):
+        assert token not in shared
+        assert token in coding
+
+    for token in (
+        "DebugActionCopy",
+        "DebugActionHandler",
+        "DebugActionPorts",
+    ):
+        assert token in shared
+        assert token in coding
 
 
 def test_shared_surface_controller_does_not_own_coding_policy_or_copy() -> None:
@@ -844,6 +988,65 @@ def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
     ):
         assert removed not in command_adapter
     assert "available_model_palette" not in model_adapter
+
+
+def test_shared_command_composition_keeps_coding_definitions_and_raw_adaptation_outside() -> None:
+    shared = Path("src/loushang/harness/command_composition.py").read_text(
+        encoding="utf-8"
+    )
+    coding = Path("src/loushang/coding/commands/catalog.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "loushang.coding" not in shared
+
+    for token in (
+        "coding.ui.model",
+        "coding.session.",
+        "CommandEffectKind",
+        "invocation_name\") or name",
+        "raw_command",
+    ):
+        assert token not in shared
+        assert token in coding
+
+    for token in (
+        "MixedCommandCatalog",
+        "MixedCommandCatalogPorts",
+        "MixedCommandCatalogProfile",
+    ):
+        assert token in shared
+        assert token in coding
+
+
+def test_shared_model_choice_catalog_keeps_session_and_endpoint_acquisition_outside() -> None:
+    shared = Path("src/loushang/harnesstui/selection/catalog.py").read_text(
+        encoding="utf-8"
+    )
+    coding = Path("src/loushang/coding/model_selection_tui.py").read_text(
+        encoding="utf-8"
+    )
+
+    for token in (
+        "loushang.coding",
+        "get_available_model_details",
+        "get_model_selection",
+        "apply_model_selection",
+        "persistence_warning_message",
+        'message = f"Model set:',
+        "def _string_attr",
+        "def _bool_attr",
+    ):
+        assert token not in shared
+        assert token in coding
+
+    for token in (
+        "ModelChoiceIdentity",
+        "resolve_current_model_choice_value",
+        "merge_model_choice_sources",
+    ):
+        assert token in shared
+        assert token in coding
 
 
 def test_shared_completion_host_does_not_own_coding_catalog_or_path_policy() -> None:
@@ -1007,15 +1210,18 @@ def test_tui_owns_transcript_region_while_coding_owns_presentation_policy() -> N
     from loushang.tui.ui_parts.transcript import TranscriptRegion
 
     engine = Path("src/loushang/tui/ui_parts/transcript.py").read_text(encoding="utf-8")
-    shared = Path(
-        "src/loushang/harnesstui/conversation/transcript_presentation.py"
-    ).read_text(encoding="utf-8")
+    shared = "\n".join(
+        Path(f"src/loushang/harnesstui/conversation/{module}.py").read_text(
+            encoding="utf-8"
+        )
+        for module in ("transcript_display", "transcript_presentation")
+    )
     coding = Path("src/loushang/coding/ui/screen_app.py").read_text(encoding="utf-8")
 
     assert "class _ScreenTranscriptRegion" not in coding
     for token in (
-        "_screen_coding_display_record",
-        "_compact_display_paths",
+        "_project_coding_tool_name",
+        "_project_coding_tool_output",
         "collapse_tool_output_preview",
         "DEFAULT_TOOL_OUTPUT_PREVIEW_LINES",
         "bright_cyan",
@@ -1024,6 +1230,9 @@ def test_tui_owns_transcript_region_while_coding_owns_presentation_policy() -> N
         assert token not in shared
         assert token in coding
     assert "ProfiledConversationTranscriptPresentation" in shared
+    assert "TranscriptDisplayProjectionProfile" in shared
+    assert "TranscriptDisplayProjectionProfile" in coding
+    assert "_compact_display_paths" not in coding
     assert "_CODING_TRANSCRIPT_PRESENTATION_PROFILE" in coding
 
     app = ScreenCodingTuiApp(
@@ -1057,7 +1266,11 @@ def test_shared_screen_app_does_not_own_coding_presentation_policy() -> None:
         Path(f"src/loushang/harnesstui/conversation/{module}.py").read_text(
             encoding="utf-8"
         )
-        for module in ("screen_app", "transcript_presentation")
+        for module in (
+            "screen_app",
+            "transcript_display",
+            "transcript_presentation",
+        )
     )
     coding = Path("src/loushang/coding/ui/screen_app.py").read_text(encoding="utf-8")
 
@@ -1071,6 +1284,7 @@ def test_shared_screen_app_does_not_own_coding_presentation_policy() -> None:
         assert token not in shared
         assert token in coding
     assert "trim_records_to_line_budget" in shared
+    assert "TranscriptDisplayProjectionProfile" in shared
     assert "class ProfiledScreenConversationApp(ScreenConversationApp)" in shared
     assert "class ScreenCodingTuiApp(ProfiledScreenConversationApp)" in coding
 

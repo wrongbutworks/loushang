@@ -19,7 +19,9 @@ direction is:
 
 The reverse dependencies are forbidden. In particular, `loushang.harnesstui`
 must not import `loushang.coding`, `loushang.agent`, AI message/model/provider
-packages, or product-specific policy.
+packages, or product-specific policy. `loushang.harness` and `loushang.tui` are
+independent peers: Harnesstui may depend on both, but neither peer may depend on
+Harnesstui or on the other peer.
 
 ## Responsibilities
 
@@ -388,6 +390,32 @@ temporary
 paths were retired after their consumers moved to the canonical testing
 packages. Persisted Coding Session materialization remains in
 `loushang.coding.presentation.tui.history`.
+
+## Prepared Conversation Application Hosts
+
+The reusable application shell is split into narrow, explicit entrypoints:
+
+- `loushang.harnesstui.conversation.application_host` owns prepared plain and
+  screen run sequencing, subscription lifetime, history installation, and
+  clean-exit callbacks;
+- `loushang.harnesstui.conversation.plain_app` composes the neutral plain
+  lifecycle, routing, status/settings view, information presentation, and
+  result presentation from injected product ports;
+- `loushang.harnesstui.conversation.plain_prompt_host` owns the one-shot and
+  multi-turn plain prompt loop over prepared callbacks;
+- `loushang.harnesstui.conversation.history` dispatches durable neutral
+  `ConversationRecord` payloads into presentation-ready transcript records;
+- `loushang.harnesstui.conversation.transcript_display` owns generic display
+  transforms such as duplicate command suppression, render-width selection,
+  and absolute-path compaction;
+- `loushang.harnesstui.conversation.startup`, `.resume`, `.runtime_view`, and
+  `.debug_action` own small presentation-ready view models and deterministic
+  UI-side sequencing.
+
+These hosts never acquire a Coding Session or Runtime and do not interpret raw
+Agent/AI events. Coding supplies its command/model/debug policy, raw event and
+transcript adapters, tool titles and previews, startup facts, resume command,
+copy, and product effects through the declared profiles and ports.
 
 ## Canonical Import Cutover
 

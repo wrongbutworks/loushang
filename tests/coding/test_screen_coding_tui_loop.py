@@ -351,7 +351,7 @@ def test_screen_loop_enter_executes_selected_slash_completion() -> None:
 
 def test_screen_loop_routes_runtime_overlay_surface_input() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_surfaces import ScreenSurfaceView
+    from loushang.harnesstui.surface.view import ScreenSurfaceView
     from loushang.tui import CommandSurface, InputIntent, SelectItem, Surface
 
     stdout = StringIO()

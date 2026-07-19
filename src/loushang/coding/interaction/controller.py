@@ -17,18 +17,10 @@ from loushang.coding.interaction.intent import (
     QuitIntent,
 )
 from loushang.harness.commands import CommandEffectKind
+from loushang.harness.host.types import HostActionResult
 from loushang.observability import get_log
 
 log = get_log(__name__).bind(component="CodingUiController")
-
-
-@dataclass(frozen=True)
-class ControllerResult:
-    handled: bool = True
-    exit_code: int | None = None
-    error_message: str | None = None
-    status_message: str | None = None
-    traceback_text: str | None = None
 
 
 @dataclass
@@ -37,26 +29,26 @@ class CodingUiController:
     runtime: Any | None = None
     verbose: bool = False
 
-    async def dispatch(self, intent: CodingUiIntent | None) -> ControllerResult:
+    async def dispatch(self, intent: CodingUiIntent | None) -> HostActionResult:
         if intent is None:
-            return ControllerResult(handled=False)
+            return HostActionResult(handled=False)
         try:
             if isinstance(intent, PromptIntent):
                 command_result = await self._dispatch_session_command(intent)
                 if command_result is not None:
                     return command_result
                 await self._prompt(intent.text, images=intent.images)
-                return ControllerResult()
+                return HostActionResult()
             if isinstance(intent, BashIntent):
                 await self._bash(intent.command)
-                return ControllerResult()
+                return HostActionResult()
             if isinstance(intent, FollowUpIntent):
                 return await self.follow_up(intent.text)
             if isinstance(intent, AbortIntent):
                 await self._abort()
-                return ControllerResult()
+                return HostActionResult()
             if isinstance(intent, QuitIntent):
-                return ControllerResult(exit_code=0)
+                return HostActionResult(exit_code=0)
         except asyncio.CancelledError as error:
             log.problem(
                 "coding_ui_request_cancelled",
@@ -66,7 +58,7 @@ class CodingUiController:
                 exc=error,
                 intent=type(intent).__name__,
             )
-            return ControllerResult(
+            return HostActionResult(
                 error_message="Request cancelled.",
                 traceback_text=traceback.format_exc() if self.verbose else None,
             )
@@ -79,21 +71,21 @@ class CodingUiController:
                 exc=error,
                 intent=type(intent).__name__,
             )
-            return ControllerResult(
+            return HostActionResult(
                 error_message=str(error) or error.__class__.__name__,
                 traceback_text=traceback.format_exc() if self.verbose else None,
             )
-        return ControllerResult(handled=False)
+        return HostActionResult(handled=False)
 
-    async def steer(self, text: str, images: tuple[ImagePart, ...] | list[ImagePart] | None = None) -> ControllerResult:
+    async def steer(self, text: str, images: tuple[ImagePart, ...] | list[ImagePart] | None = None) -> HostActionResult:
         try:
             method = _streaming_prompt_method(self.session, streaming_behavior="steer")
             if method is None:
                 method = getattr(self.session, "steer", None)
             if not callable(method):
-                return ControllerResult(error_message="Steering is unavailable for this session.")
+                return HostActionResult(error_message="Steering is unavailable for this session.")
             await _call_text_method(method, text, images=images)
-            return ControllerResult()
+            return HostActionResult()
         except Exception as error:
             log.problem(
                 "coding_ui_steer_failed",
@@ -102,20 +94,20 @@ class CodingUiController:
                 recoverable=True,
                 exc=error,
             )
-            return ControllerResult(
+            return HostActionResult(
                 error_message=str(error) or error.__class__.__name__,
                 traceback_text=traceback.format_exc() if self.verbose else None,
             )
 
-    async def follow_up(self, text: str, images: tuple[ImagePart, ...] | list[ImagePart] | None = None) -> ControllerResult:
+    async def follow_up(self, text: str, images: tuple[ImagePart, ...] | list[ImagePart] | None = None) -> HostActionResult:
         try:
             method = _streaming_prompt_method(self.session, streaming_behavior="followUp")
             if method is None:
                 method = getattr(self.session, "follow_up", None)
             if not callable(method):
-                return ControllerResult(error_message="Follow-up is unavailable for this session.")
+                return HostActionResult(error_message="Follow-up is unavailable for this session.")
             await _call_text_method(method, text, images=images)
-            return ControllerResult()
+            return HostActionResult()
         except Exception as error:
             log.problem(
                 "coding_ui_follow_up_failed",
@@ -124,7 +116,7 @@ class CodingUiController:
                 recoverable=True,
                 exc=error,
             )
-            return ControllerResult(
+            return HostActionResult(
                 error_message=str(error) or error.__class__.__name__,
                 traceback_text=traceback.format_exc() if self.verbose else None,
             )
@@ -138,7 +130,7 @@ class CodingUiController:
             raise RuntimeError("Session does not support prompts")
         await _call_text_method(method, text, images=images)
 
-    async def _dispatch_session_command(self, intent: PromptIntent) -> ControllerResult | None:
+    async def _dispatch_session_command(self, intent: PromptIntent) -> HostActionResult | None:
         if intent.images:
             return None
         executor = getattr(self.session, "execute_command_async", None)
@@ -220,20 +212,20 @@ def _session_commands_provider(session: Any):
     return getter
 
 
-def _controller_result_from_command_execution(execution: object, *, invocation_name: str) -> ControllerResult:
+def _controller_result_from_command_execution(execution: object, *, invocation_name: str) -> HostActionResult:
     result = getattr(execution, "result", None)
     if result is None and not hasattr(execution, "result"):
         result = execution
     if isinstance(result, dict):
         display = result.get("display")
         if isinstance(display, str) and display:
-            return ControllerResult(status_message=display)
+            return HostActionResult(status_message=display)
         message = result.get("message")
         if isinstance(message, str) and message:
             if result.get("status") == "error":
-                return ControllerResult(error_message=message)
-            return ControllerResult(status_message=message)
-    return ControllerResult(status_message=f"Command /{invocation_name} completed.")
+                return HostActionResult(error_message=message)
+            return HostActionResult(status_message=message)
+    return HostActionResult(status_message=f"Command /{invocation_name} completed.")
 
 
 async def _maybe_await(value: Any) -> Any:
@@ -242,4 +234,4 @@ async def _maybe_await(value: Any) -> Any:
     return value
 
 
-__all__ = ["CodingUiController", "ControllerResult"]
+__all__ = ["CodingUiController"]
