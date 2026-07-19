@@ -50,6 +50,11 @@ class _AmbiguousSession(_Session):
         ]
 
 
+class _EmptySession(_Session):
+    def get_available_models(self) -> list[object]:
+        return []
+
+
 class _SessionWithModelDetails(_Session):
     def get_available_model_details(self) -> list[object]:
         return [
@@ -160,6 +165,23 @@ def test_format_available_models_reports_empty_matches() -> None:
     text = asyncio.run(format_available_models(_Session(), query="missing"))
 
     assert text == "No models match: missing"
+
+
+def test_format_available_models_keeps_longer_substring_with_exact_label() -> None:
+    from loushang.coding.ui.model_list import format_available_models
+
+    class _FormattingSession(_Session):
+        def get_available_models(self) -> list[object]:
+            return [
+                ModelSelection(provider="provider", model_id="model"),
+                ModelSelection(provider="provider", model_id="model-plus"),
+            ]
+
+    text = asyncio.run(
+        format_available_models(_FormattingSession(), query="provider/model")
+    )
+
+    assert text == ("Available models:\n  provider/model\n  provider/model-plus")
 
 
 def test_available_model_completion_provider_exposes_structured_items() -> None:
@@ -289,6 +311,24 @@ def test_select_available_model_reports_cancelled_palette_choice() -> None:
     text = asyncio.run(select_available_model(session, query="", choose=lambda _palette: None))
 
     assert text == "Model selection cancelled."
+    assert session.set_model_calls == []
+
+
+def test_select_available_model_passes_empty_palette_to_chooser() -> None:
+    from loushang.coding.ui.model_list import select_available_model
+    from loushang.tui import CommandPalette
+
+    session = _EmptySession()
+    seen: list[CommandPalette] = []
+
+    def choose(palette: CommandPalette) -> None:
+        seen.append(palette)
+
+    text = asyncio.run(select_available_model(session, choose=choose))
+
+    assert text == "Model selection cancelled."
+    assert len(seen) == 1
+    assert seen[0].items == ()
     assert session.set_model_calls == []
 
 

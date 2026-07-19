@@ -400,6 +400,54 @@ def test_shared_surface_controller_does_not_own_coding_policy_or_copy() -> None:
         assert token in coding
 
 
+def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
+    command_interaction = Path(
+        "src/loushang/harnesstui/commands/interaction.py"
+    ).read_text(encoding="utf-8")
+    model_interaction = Path(
+        "src/loushang/harnesstui/selection/interaction.py"
+    ).read_text(encoding="utf-8")
+    shared = command_interaction + model_interaction
+    command_adapter = Path("src/loushang/coding/ui/command_list.py").read_text(
+        encoding="utf-8"
+    )
+    model_adapter = Path("src/loushang/coding/ui/model_list.py").read_text(
+        encoding="utf-8"
+    )
+    coding = command_adapter + model_adapter
+
+    for token in (
+        "loushang.coding",
+        "CodingCommandCatalog",
+        "ModelSelection",
+        "apply_model_selection",
+        "persistence_warning_message",
+        "settings_manager",
+        "set_model",
+        "Command selected:",
+        "Use /command <full command> to select one.",
+        "Model set:",
+        "Use /model <full model> to select one.",
+    ):
+        assert token not in shared
+
+    for token in (
+        "CodingCommandCatalog",
+        "apply_model_selection",
+        "persistence_warning_message",
+        "settings_manager",
+        "set_model",
+        "Command selected:",
+        "Use /command <full command> to select one.",
+        "Model set:",
+        "Use /model <full model> to select one.",
+    ):
+        assert token in coding
+
+    assert "loushang.harnesstui.commands.interaction" in command_adapter
+    assert "loushang.harnesstui.selection.interaction" in model_adapter
+
+
 def test_shared_status_provider_does_not_own_settings_manager_adaptation() -> None:
     source = Path("src/loushang/harnesstui/status/provider.py").read_text(
         encoding="utf-8"
