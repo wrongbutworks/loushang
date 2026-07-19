@@ -122,6 +122,85 @@ def test_coding_ui_playback_modules_are_compatibility_facades() -> None:
     assert offenders == []
 
 
+def test_coding_ui_perf_probe_is_a_compatibility_facade() -> None:
+    path = Path("src/loushang/coding/ui/perf_probe.py")
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    definitions = [
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+
+    assert definitions == []
+    assert "loushang.harnesstui.testing.performance" in source
+    assert "loushang.coding.testing.tui.performance" in source
+
+
+def test_coding_transcript_style_is_a_compatibility_facade() -> None:
+    path = Path("src/loushang/coding/ui/transcript_style.py")
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    definitions = [
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+    ]
+
+    assert definitions == []
+    assert "loushang.harnesstui.conversation.transcript_style" in source
+
+
+def test_shared_transcript_style_does_not_own_screen_product_policy() -> None:
+    shared = Path(
+        "src/loushang/harnesstui/conversation/transcript_style.py"
+    ).read_text(encoding="utf-8")
+    screen = Path("src/loushang/coding/ui/screen_app.py").read_text(
+        encoding="utf-8"
+    )
+
+    for token in (
+        "loushang.coding",
+        "ScreenCodingTuiApp",
+        "_coding_line",
+        "_coding_lines",
+        "_compact_display_paths",
+        "collapse_tool_output_preview",
+        "DEFAULT_TOOL_OUTPUT_PREVIEW_LINES",
+        "bright_cyan",
+    ):
+        assert token not in shared
+
+    assert "_coding_line" in screen
+    assert "_coding_lines" in screen
+    assert "_compact_display_paths" in screen
+    assert "collapse_tool_output_preview" in screen
+    assert '"transcript.tool.marker": {"color": "bright_cyan"' in screen
+
+
+def test_shared_performance_probe_does_not_load_coding_sessions() -> None:
+    shared = Path(
+        "src/loushang/harnesstui/testing/performance.py"
+    ).read_text(encoding="utf-8")
+    coding = Path(
+        "src/loushang/coding/testing/tui/performance.py"
+    ).read_text(encoding="utf-8")
+
+    for token in (
+        "loushang.coding",
+        "ScreenCodingTuiApp",
+        "SessionManager",
+        "session_history_records",
+        "AgentToolResult",
+        "loushang.harness",
+    ):
+        assert token not in shared
+
+    assert "SessionManager" in coding
+    assert "session_history_records" in coding
+    assert "load_session_history_records" in coding
+
+
 def test_shared_playback_support_does_not_own_coding_copy_or_budgets() -> None:
     shared = "\n".join(
         path.read_text(encoding="utf-8")
@@ -176,6 +255,14 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
             "async def _maybe_await",
             "def _supports_keyword",
             "def _terminal_size",
+        ),
+        Path("src/loushang/coding/ui/screen_app.py"): (
+            "def _trim_records_to_line_budget",
+            "def _record_logical_line_count",
+            "def _text_line_count",
+            "def _tail_trim_record",
+            "def _tail_trim_tool_record",
+            "def _tail_trim_text",
         ),
         Path("src/loushang/coding/ui/settings_common.py"): ("class ConfigRow",),
         Path("src/loushang/coding/ui/settings_config.py"): (
@@ -343,6 +430,65 @@ def test_shared_plain_presentation_does_not_own_coding_policy() -> None:
         assert token not in target
     assert 'event.get("type")' not in renderer
     assert 'event.get("type")' not in target
+
+
+def test_shared_screen_projection_target_does_not_own_coding_policy_or_copy() -> None:
+    shared = Path(
+        "src/loushang/harnesstui/conversation/screen_target.py"
+    ).read_text(encoding="utf-8")
+    coding = Path("src/loushang/coding/ui/screen_events.py").read_text(
+        encoding="utf-8"
+    )
+
+    for token in (
+        "CodingConversationEventAdapter",
+        "ScreenCodingTuiApp",
+        "AgentToolResult",
+        'event.get("type")',
+        'verb="Ran"',
+        'verb="Tested"',
+        "retry {attempt}/{max_attempts}",
+        "compact start:",
+        "compact error:",
+        'return "compact done"',
+    ):
+        assert token not in shared
+
+    tree = ast.parse(coding)
+    class_names = {
+        node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
+    }
+    assert "_ScreenProjectionTarget" not in class_names
+    assert "ScreenConversationProjectionTarget" in coding
+    assert "tool_title_resolver=_tool_title" in coding
+    assert "tool_record_projector=tool_block_to_record" in coding
+    assert "retry {attempt}/{max_attempts}" in coding
+    assert "compact start:" in coding
+    assert "compact error:" in coding
+    assert 'return "compact done"' in coding
+
+
+def test_shared_window_budget_does_not_own_screen_runtime_policy() -> None:
+    shared = Path(
+        "src/loushang/harnesstui/conversation/window_budget.py"
+    ).read_text(encoding="utf-8")
+    coding = Path("src/loushang/coding/ui/screen_app.py").read_text(
+        encoding="utf-8"
+    )
+
+    for token in (
+        "ScreenCodingTuiApp",
+        "DEFAULT_ACTIVE_TRANSCRIPT_LINE_BUDGET",
+        "transcript_window_trimmed:active_line_budget",
+        "ActiveTranscriptWindow",
+        "replace_transcript_window",
+        "loushang.coding",
+    ):
+        assert token not in shared
+
+    assert "DEFAULT_ACTIVE_TRANSCRIPT_LINE_BUDGET = 320" in coding
+    assert "transcript_window_trimmed:active_line_budget" in coding
+    assert "trim_records_to_line_budget" in coding
 
 
 def test_old_coding_ui_app_module_is_removed() -> None:

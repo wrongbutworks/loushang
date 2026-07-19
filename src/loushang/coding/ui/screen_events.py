@@ -12,11 +12,13 @@ from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.tool_blocks import ToolTranscriptProjector
 from loushang.coding.ui.transcript_projection import tool_block_to_record
 from loushang.harnesstui.conversation.projection import ConversationProjector
+from loushang.harnesstui.conversation.screen_target import (
+    ScreenConversationProjectionTarget,
+)
 from loushang.harnesstui.conversation.tool_transcript import (
     ToolCallSnapshot,
     ToolTranscriptBlock,
 )
-from loushang.tui.transcript import ToolExecutionRecord, UserPromptRecord
 
 QueueReader = Callable[[], tuple[str, ...] | list[str]]
 TraceFn = Callable[[str], None]
@@ -42,7 +44,12 @@ class ScreenCodingEventProjector:
             max_body_lines=self.max_tool_body_lines,
         )
         self._projection = ConversationProjector(
-            target=_ScreenProjectionTarget(self.app),
+            target=ScreenConversationProjectionTarget(
+                self.app,
+                tool_title_resolver=_tool_title,
+                tool_record_projector=tool_block_to_record,
+                status_copy=_CodingScreenProjectionStatusCopy(),
+            ),
             tool_projector=self._tool_projector.neutral_projector,
             now=self.now,
             track_rendered_tool_results=False,
@@ -66,110 +73,29 @@ class ScreenCodingEventProjector:
         self._adapter.handle(event)
 
 
-@dataclass(slots=True)
-class _ScreenProjectionTarget:
-    app: ScreenCodingTuiApp
-
-    def run_started(self, *, start_time: Callable[[], float]) -> None:
-        if not self.app.state.running:
-            self.app.begin_run(started_at=start_time())
-
-    def queues_updated(
-        self,
-        *,
-        steers: tuple[str, ...],
-        followups: tuple[str, ...],
-    ) -> None:
-        self.app.sync_queues(steers=steers, followups=followups)
-
-    def user_message(self, text: str) -> None:
-        text = text.strip()
-        if text and not self.app.state.consume_pending_user_echo(text):
-            self.app.state.records.append(UserPromptRecord(text))
-            self.app.state.mark_records_changed()
-
-    def assistant_started(self) -> None:
-        self.app.begin_assistant()
-
-    def assistant_delta(self, delta: str) -> None:
-        self.app.append_assistant_chunk(delta)
-
-    def assistant_finished(
-        self,
-        final_text: str,
-        *,
-        error_message: str | None,
-        show_error: bool,
-    ) -> None:
-        # Screen commits the final assistant text even when the message reports an
-        # error, then adds only errors that product policy says should be visible.
-        self.app.end_assistant(final_text)
-        if error_message is not None and show_error:
-            self.app.add_error(error_message)
-
-    def assistant_error(self, error_message: str) -> None:
-        self.app.add_error(error_message)
-
-    def tool_started(
-        self,
-        tool_call_id: str,
-        snapshot: ToolCallSnapshot,
-    ) -> None:
-        self.app.state.upsert_tool_record(
-            tool_call_id,
-            ToolExecutionRecord(
-                name=_tool_title(snapshot),
-                state="running",
-                elapsed_seconds=0.0,
-            ),
-        )
-
-    def tool_finished(
-        self,
-        block: ToolTranscriptBlock,
-        *,
-        elapsed_seconds: float,
-    ) -> None:
-        self.app.state.upsert_tool_record(
-            block.tool_call_id,
-            tool_block_to_record(block, elapsed_seconds=elapsed_seconds),
-        )
-
-    def tool_result_message(self, block: ToolTranscriptBlock) -> None:
-        # Full-screen mode already projects tool execution lifecycle records.
-        del block
-
-    def retry_started(
+@dataclass(frozen=True, slots=True)
+class _CodingScreenProjectionStatusCopy:
+    def retry_status(
         self,
         *,
         attempt: int | None,
         max_attempts: int | None,
         delay_ms: int | float | None,
         error_message: str | None,
-    ) -> None:
-        self.app.set_status(
-            f"retry {attempt}/{max_attempts} in {delay_ms}ms: {error_message}"
-        )
+    ) -> str:
+        return f"retry {attempt}/{max_attempts} in {delay_ms}ms: {error_message}"
 
-    def compaction_started(self, *, reason: str | None) -> None:
-        self.app.set_status(f"compact start: {reason}")
+    def compaction_started_status(self, *, reason: str | None) -> str:
+        return f"compact start: {reason}"
 
-    def compaction_finished(
+    def compaction_finished_status(
         self,
         *,
         error_message: str | None,
-        summary: str,
-        tokens_before: int | None,
-    ) -> None:
+    ) -> str:
         if error_message:
-            self.app.set_status(f"compact error: {error_message}")
-            return
-        self.app.set_status("compact done")
-        if summary:
-            self.app.append_context_compaction_record(
-                summary=summary,
-                tokens_before=tokens_before,
-            )
+            return f"compact error: {error_message}"
+        return "compact done"
 
 
 def _tool_title(snapshot: ToolCallSnapshot) -> str:

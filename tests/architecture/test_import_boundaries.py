@@ -560,6 +560,7 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.conversation.queue`" in text
     assert "`loushang.harnesstui.conversation.reader`" in text
     assert "`loushang.harnesstui.conversation.screen_state`" in text
+    assert "`loushang.harnesstui.conversation.window_budget`" in text
     assert "`loushang.harnesstui.conversation.source`" in text
     assert "`loushang.harnesstui.conversation.attachments`" in text
     assert "`loushang.harnesstui.conversation.control`" in text
@@ -569,7 +570,9 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.conversation.screen_runner`" in text
     assert "`loushang.harnesstui.conversation.projection`" in text
     assert "`loushang.harnesstui.conversation.plain_target`" in text
+    assert "`loushang.harnesstui.conversation.screen_target`" in text
     assert "`loushang.harnesstui.conversation.tool_transcript`" in text
+    assert "`loushang.harnesstui.conversation.transcript_style`" in text
     assert "`loushang.harnesstui.plain.renderer`" in text
     assert "`loushang.harnesstui.commands.presentation`" in text
     assert "`loushang.harnesstui.selection.catalog`" in text
@@ -587,6 +590,7 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.surface.view`" in text
     assert "`loushang.harnesstui.testing.ports`" in text
     assert "`loushang.harnesstui.testing.input_playback`" in text
+    assert "`loushang.harnesstui.testing.performance`" in text
     assert "`loushang.harnesstui.testing.screen_loop_playback`" in text
     assert "`loushang.harnesstui.testing.scenarios.factory`" in text
     assert "`loushang.harnesstui.testing.scenarios`" in text
@@ -605,10 +609,13 @@ def test_harnesstui_capability_entrypoints_exist() -> None:
         Path("src/loushang/harnesstui/conversation/queue.py"),
         Path("src/loushang/harnesstui/conversation/reader.py"),
         Path("src/loushang/harnesstui/conversation/screen_state.py"),
+        Path("src/loushang/harnesstui/conversation/screen_target.py"),
         Path("src/loushang/harnesstui/conversation/run_context.py"),
         Path("src/loushang/harnesstui/conversation/screen_runner.py"),
         Path("src/loushang/harnesstui/conversation/source.py"),
         Path("src/loushang/harnesstui/conversation/tool_transcript.py"),
+        Path("src/loushang/harnesstui/conversation/transcript_style.py"),
+        Path("src/loushang/harnesstui/conversation/window_budget.py"),
         Path("src/loushang/harnesstui/plain/renderer.py"),
         Path("src/loushang/harnesstui/commands/presentation.py"),
         Path("src/loushang/harnesstui/selection/catalog.py"),
@@ -626,6 +633,7 @@ def test_harnesstui_capability_entrypoints_exist() -> None:
         Path("src/loushang/harnesstui/surface/view.py"),
         Path("src/loushang/harnesstui/testing/ports.py"),
         Path("src/loushang/harnesstui/testing/input_playback.py"),
+        Path("src/loushang/harnesstui/testing/performance.py"),
         Path("src/loushang/harnesstui/testing/screen_loop_playback.py"),
         Path("src/loushang/harnesstui/testing/scenarios/factory.py"),
         Path("src/loushang/harnesstui/testing/scenarios/composer.py"),
@@ -652,6 +660,8 @@ for module_name in (
     "loushang.harnesstui.conversation.input",
     "loushang.harnesstui.conversation.run_context",
     "loushang.harnesstui.conversation.screen_runner",
+    "loushang.harnesstui.conversation.transcript_style",
+    "loushang.harnesstui.conversation.window_budget",
 ):
     importlib.import_module(module_name)
 
@@ -715,6 +725,7 @@ import sys
 for module_name in (
     "loushang.harnesstui.testing.ports",
     "loushang.harnesstui.testing.input_playback",
+    "loushang.harnesstui.testing.performance",
     "loushang.harnesstui.testing.screen_loop_playback",
     "loushang.harnesstui.testing.scenarios.factory",
     "loushang.harnesstui.testing.scenarios.composer",
