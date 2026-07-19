@@ -566,9 +566,9 @@ def test_screen_input_router_ctrl_o_fallback_reader_includes_streaming_assistant
 
 
 def test_screen_input_router_ctrl_o_uses_transcript_source_factory() -> None:
+    from loushang.coding.presentation.tui.history import TranscriptSnapshot
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import build_screen_input_router
-    from loushang.coding.ui.transcript_source import TranscriptSnapshot
     from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
     from loushang.tui import SurfaceHost
     from loushang.tui.transcript import AssistantMessageRecord
@@ -603,9 +603,9 @@ def test_screen_input_router_ctrl_o_session_reader_includes_running_tool_record(
     from dataclasses import dataclass
 
     from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
+    from loushang.coding.presentation.tui.history import SessionTranscriptSource
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import build_screen_input_router
-    from loushang.coding.ui.transcript_source import SessionTranscriptSource
     from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
     from loushang.tui import RenderConstraints, SurfaceHost, strip_control_sequences
     from loushang.tui.transcript import (
@@ -665,9 +665,9 @@ def test_screen_input_router_ctrl_o_session_reader_includes_streaming_assistant_
     from dataclasses import dataclass
 
     from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
+    from loushang.coding.presentation.tui.history import SessionTranscriptSource
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import build_screen_input_router
-    from loushang.coding.ui.transcript_source import SessionTranscriptSource
     from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
     from loushang.tui import RenderConstraints, SurfaceHost, strip_control_sequences
     from loushang.tui.transcript import AssistantMessageRecord, UserPromptRecord

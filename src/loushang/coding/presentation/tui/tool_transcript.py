@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from loushang.agent.types import AgentToolResult
@@ -19,6 +19,10 @@ from loushang.harnesstui.conversation.tool_transcript import (
 from loushang.harnesstui.conversation.tool_transcript import (
     ToolTranscriptProjector as NeutralToolTranscriptProjector,
 )
+from loushang.harnesstui.conversation.tool_transcript import (
+    tool_block_to_record as project_neutral_tool_block,
+)
+from loushang.tui.transcript import ToolExecutionRecord
 
 
 @dataclass
@@ -295,9 +299,25 @@ def _tool_error_summary(result: object) -> str | None:
     return None
 
 
+def tool_block_to_record(
+    block: ToolTranscriptBlock,
+    *,
+    elapsed_seconds: float = 0.0,
+) -> ToolExecutionRecord:
+    """Preserve Coding's command-label policy at the product edge."""
+
+    if block.command is None and block.verb in {"Ran", "Tested"}:
+        block = replace(block, command=block.title)
+    return project_neutral_tool_block(
+        block,
+        elapsed_seconds=elapsed_seconds,
+    )
+
+
 __all__ = [
     "ToolCallSnapshot",
     "ToolTranscriptBlock",
     "ToolTranscriptProjector",
     "ToolTranscriptStatus",
+    "tool_block_to_record",
 ]

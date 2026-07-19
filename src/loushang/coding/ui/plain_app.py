@@ -31,8 +31,8 @@ from loushang.coding.presentation.session import (
     session_label,
     thinking_level,
 )
+from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
 from loushang.coding.ui.hotkeys import format_hotkeys
-from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
 from loushang.harnesstui.conversation.control import (
     ConversationActionHost,
     ConversationTextAction,

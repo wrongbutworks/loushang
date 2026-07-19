@@ -18,24 +18,28 @@ from loushang.coding.presentation.session import (
     session_label,
     thinking_level,
 )
+from loushang.coding.presentation.tui.history import (
+    SessionTranscriptSource,
+    session_history_records,
+)
+from loushang.coding.presentation.tui.plain import (
+    PlainCodingEventRenderer,
+    PlainCodingUiRenderer,
+)
+from loushang.coding.presentation.tui.screen import ScreenCodingEventProjector
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.plain_app import build_plain_coding_tui_app
-from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
 from loushang.coding.ui.run_context import (
     open_coding_tui_run_context,
     subscribe_session_events,
 )
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_events import ScreenCodingEventProjector
 from loushang.coding.ui.screen_loop import run_screen_coding_tui
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
-from loushang.coding.ui.session_history import session_history_records
 from loushang.coding.ui.startup import (
     CodingTuiStartupSnapshot,
     load_coding_tui_startup_snapshot,
 )
-from loushang.coding.ui.transcript_source import SessionTranscriptSource
 from loushang.harnesstui.status.persistence import (
     statusline_settings_from_store,
     statusline_settings_persistence_callback,

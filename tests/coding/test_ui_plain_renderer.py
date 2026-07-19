@@ -41,7 +41,7 @@ def _assistant(
 def test_plain_renderer_uses_shared_core_with_compatible_constructor() -> None:
     from inspect import signature
 
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
     from loushang.harnesstui.plain.renderer import PlainConversationRenderer
 
     assert issubclass(PlainCodingUiRenderer, PlainConversationRenderer)
@@ -60,7 +60,7 @@ def test_plain_renderer_uses_shared_core_with_compatible_constructor() -> None:
 
 
 def test_plain_renderer_preserves_extract_text_compatibility() -> None:
-    from loushang.coding.ui.plain_renderer import extract_text
+    from loushang.coding.presentation.tui.plain import extract_text
 
     message = UserMessage(
         role="user",
@@ -71,7 +71,7 @@ def test_plain_renderer_preserves_extract_text_compatibility() -> None:
 
 
 def test_plain_renderer_prints_header_and_user_message() -> None:
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
 
     stdout = StringIO()
     renderer = PlainCodingUiRenderer(stdout=stdout)
@@ -88,8 +88,10 @@ def test_plain_renderer_prints_header_and_user_message() -> None:
 
 
 def test_event_renderer_buffers_assistant_deltas_until_final_block() -> None:
-    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import (
+        PlainCodingEventRenderer,
+        PlainCodingUiRenderer,
+    )
 
     stdout = StringIO()
     event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
@@ -117,8 +119,10 @@ def test_event_renderer_buffers_assistant_deltas_until_final_block() -> None:
 
 
 def test_event_renderer_accepts_legacy_delta_without_message() -> None:
-    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import (
+        PlainCodingEventRenderer,
+        PlainCodingUiRenderer,
+    )
 
     stdout = StringIO()
     event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
@@ -138,8 +142,10 @@ def test_event_renderer_accepts_legacy_delta_without_message() -> None:
 def test_event_renderer_preserves_legacy_constructor_and_injected_state() -> None:
     from inspect import signature
 
-    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import (
+        PlainCodingEventRenderer,
+        PlainCodingUiRenderer,
+    )
     from loushang.harnesstui.conversation.tool_transcript import ToolCallSnapshot
 
     assert tuple(signature(PlainCodingEventRenderer).parameters) == (
@@ -184,8 +190,10 @@ def test_event_renderer_preserves_legacy_constructor_and_injected_state() -> Non
 
 
 def test_event_renderer_renders_completed_assistant_markdown_without_raw_markers() -> None:
-    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import (
+        PlainCodingEventRenderer,
+        PlainCodingUiRenderer,
+    )
 
     stdout = StringIO()
     event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
@@ -201,7 +209,7 @@ def test_event_renderer_renders_completed_assistant_markdown_without_raw_markers
 
 
 def test_plain_renderer_can_render_generic_terminal_blocks() -> None:
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
     from loushang.tui.render import MarkdownBlock, RuleBlock, TextBlock
 
     stdout = StringIO()
@@ -220,8 +228,10 @@ def test_plain_renderer_can_render_generic_terminal_blocks() -> None:
 
 
 def test_event_renderer_prints_assistant_error_from_message_end() -> None:
-    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import (
+        PlainCodingEventRenderer,
+        PlainCodingUiRenderer,
+    )
 
     stdout = StringIO()
     event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
@@ -237,8 +247,10 @@ def test_event_renderer_prints_assistant_error_from_message_end() -> None:
 
 
 def test_event_renderer_prints_assistant_error_from_agent_end() -> None:
-    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import (
+        PlainCodingEventRenderer,
+        PlainCodingUiRenderer,
+    )
 
     stdout = StringIO()
     event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
@@ -254,8 +266,10 @@ def test_event_renderer_prints_assistant_error_from_agent_end() -> None:
 
 
 def test_event_renderer_deduplicates_assistant_error_and_keeps_last_error() -> None:
-    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import (
+        PlainCodingEventRenderer,
+        PlainCodingUiRenderer,
+    )
 
     stdout = StringIO()
     event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
@@ -274,8 +288,10 @@ def test_event_renderer_deduplicates_assistant_error_and_keeps_last_error() -> N
 
 
 def test_event_renderer_suppresses_intentional_abort_without_committing_draft() -> None:
-    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import (
+        PlainCodingEventRenderer,
+        PlainCodingUiRenderer,
+    )
 
     stdout = StringIO()
     event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
@@ -293,8 +309,10 @@ def test_event_renderer_suppresses_intentional_abort_without_committing_draft() 
 
 
 def test_event_renderer_prints_user_message_start() -> None:
-    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import (
+        PlainCodingEventRenderer,
+        PlainCodingUiRenderer,
+    )
 
     stdout = StringIO()
     event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
@@ -310,8 +328,10 @@ def test_event_renderer_prints_user_message_start() -> None:
 
 
 def test_event_renderer_can_suppress_user_messages() -> None:
-    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import (
+        PlainCodingEventRenderer,
+        PlainCodingUiRenderer,
+    )
 
     stdout = StringIO()
     event_renderer = PlainCodingEventRenderer(
@@ -334,8 +354,10 @@ def test_event_renderer_can_suppress_user_messages() -> None:
 
 
 def test_event_renderer_aggregates_tool_lifecycle() -> None:
-    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import (
+        PlainCodingEventRenderer,
+        PlainCodingUiRenderer,
+    )
 
     stdout = StringIO()
     event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
@@ -351,8 +373,10 @@ def test_event_renderer_aggregates_tool_lifecycle() -> None:
 
 
 def test_event_renderer_does_not_duplicate_tool_result_message_after_tool_end() -> None:
-    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import (
+        PlainCodingEventRenderer,
+        PlainCodingUiRenderer,
+    )
 
     stdout = StringIO()
     event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
@@ -375,13 +399,15 @@ def test_event_renderer_does_not_duplicate_tool_result_message_after_tool_end() 
 
 
 def test_event_renderer_renders_tool_block_with_bounded_result_preview() -> None:
+    from loushang.coding.presentation.tui.plain import (
+        PlainCodingEventRenderer,
+        PlainCodingUiRenderer,
+    )
     from loushang.coding.tools import (
         ToolDefinition,
         ToolRenderContext,
         ToolRenderResultOptions,
     )
-    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
 
     async def execute(*args, **kwargs):  # pragma: no cover - renderer-only test helper
         raise AssertionError("not used")
@@ -422,8 +448,10 @@ def test_event_renderer_renders_tool_block_with_bounded_result_preview() -> None
 
 
 def test_event_renderer_includes_failed_tool_error_summary() -> None:
-    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import (
+        PlainCodingEventRenderer,
+        PlainCodingUiRenderer,
+    )
 
     stdout = StringIO()
     event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
@@ -439,8 +467,8 @@ def test_event_renderer_includes_failed_tool_error_summary() -> None:
 
 
 def test_plain_renderer_prints_worked_divider_to_terminal_width(monkeypatch) -> None:
-    from loushang.coding.ui import plain_renderer as renderer_module
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui import plain as renderer_module
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
 
     monkeypatch.setattr(renderer_module.shutil, "get_terminal_size", lambda fallback: terminal_size((24, 24)))
     stdout = StringIO()
@@ -452,7 +480,7 @@ def test_plain_renderer_prints_worked_divider_to_terminal_width(monkeypatch) -> 
 
 
 def test_plain_renderer_prints_interruption_and_concise_error_without_traceback() -> None:
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
 
     stdout = StringIO()
     stderr = StringIO()
@@ -470,8 +498,10 @@ def test_plain_renderer_prints_interruption_and_concise_error_without_traceback(
 
 
 def test_event_renderer_prints_retry_status() -> None:
-    from loushang.coding.ui.plain_events import PlainCodingEventRenderer
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import (
+        PlainCodingEventRenderer,
+        PlainCodingUiRenderer,
+    )
 
     stdout = StringIO()
     event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
@@ -482,7 +512,7 @@ def test_event_renderer_prints_retry_status() -> None:
 
 
 def test_plain_renderer_can_project_assistant_markdown_through_transcript_view() -> None:
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
     from loushang.tui.theme import ThemeResolver
 
     stdout = StringIO()
@@ -501,8 +531,8 @@ def test_plain_renderer_can_project_assistant_markdown_through_transcript_view()
 
 
 def test_plain_renderer_can_project_tool_blocks_through_transcript_view() -> None:
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
-    from loushang.coding.ui.tool_blocks import ToolTranscriptBlock
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.tool_transcript import ToolTranscriptBlock
 
     stdout = StringIO()
     renderer = PlainCodingUiRenderer(stdout=stdout, use_transcript_view=True)
@@ -522,7 +552,7 @@ def test_plain_renderer_can_project_tool_blocks_through_transcript_view() -> Non
 
 
 def test_plain_renderer_buffers_deltas_then_projects_final_assistant_record() -> None:
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
     from loushang.tui.theme import ThemeResolver
 
     stdout = StringIO()
@@ -543,7 +573,7 @@ def test_plain_renderer_buffers_deltas_then_projects_final_assistant_record() ->
 
 
 def test_plain_renderer_collects_screen_transcript_without_stdout_writes() -> None:
-    from loushang.coding.ui.plain_renderer import PlainCodingUiRenderer
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
     from loushang.tui import (
         RenderConstraints,
         TranscriptBuffer,

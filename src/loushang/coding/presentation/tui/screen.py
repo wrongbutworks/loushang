@@ -5,14 +5,16 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from loushang.coding.ui.conversation_event_adapter import (
+from loushang.coding.presentation.tui.events import (
     CodingConversationEventAdapter,
 )
-from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.tool_blocks import ToolTranscriptProjector
-from loushang.coding.ui.transcript_projection import tool_block_to_record
+from loushang.coding.presentation.tui.tool_transcript import (
+    ToolTranscriptProjector,
+    tool_block_to_record,
+)
 from loushang.harnesstui.conversation.projection import ConversationProjector
 from loushang.harnesstui.conversation.screen_target import (
+    ScreenConversationProjectionPort,
     ScreenConversationProjectionTarget,
 )
 from loushang.harnesstui.conversation.tool_transcript import (
@@ -28,7 +30,7 @@ TraceFn = Callable[[str], None]
 class ScreenCodingEventProjector:
     """Coding raw-event facade for the full-screen conversation target."""
 
-    app: ScreenCodingTuiApp
+    app: ScreenConversationProjectionPort
     tool_definition_resolver: Any | None = None
     max_tool_body_lines: int = 8
     read_pending_steers: QueueReader = tuple

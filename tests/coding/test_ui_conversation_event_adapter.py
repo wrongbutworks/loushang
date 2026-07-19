@@ -83,10 +83,10 @@ def _adapter(
     tool_projector: object | None = None,
     **kwargs: object,
 ):
-    from loushang.coding.ui.conversation_event_adapter import (
+    from loushang.coding.presentation.tui.events import (
         CodingConversationEventAdapter,
     )
-    from loushang.coding.ui.tool_blocks import ToolTranscriptProjector
+    from loushang.coding.presentation.tui.tool_transcript import ToolTranscriptProjector
 
     return CodingConversationEventAdapter(
         projector=cast(Any, projector),
@@ -285,7 +285,7 @@ def test_coding_event_adapter_extracts_retry_and_compaction_values() -> None:
 
 
 def test_coding_tool_adapter_exposes_read_only_neutral_views_and_projector() -> None:
-    from loushang.coding.ui.tool_blocks import ToolTranscriptProjector
+    from loushang.coding.presentation.tui.tool_transcript import ToolTranscriptProjector
     from loushang.harnesstui.conversation.tool_transcript import (
         ToolTranscriptProjector as NeutralToolTranscriptProjector,
     )
@@ -326,7 +326,7 @@ class _CountingRenderRuntime:
 
 
 def _counting_tool_projector(runtime: _CountingRenderRuntime):
-    from loushang.coding.ui.tool_blocks import ToolTranscriptProjector
+    from loushang.coding.presentation.tui.tool_transcript import ToolTranscriptProjector
 
     return ToolTranscriptProjector(
         tool_definition_resolver=lambda name: None,
@@ -463,7 +463,7 @@ def test_delta_message_role_requirement_is_surface_configurable() -> None:
 
 
 def test_result_view_uses_started_tool_name_for_body_policy() -> None:
-    from loushang.coding.ui.tool_blocks import ToolTranscriptProjector
+    from loushang.coding.presentation.tui.tool_transcript import ToolTranscriptProjector
 
     tool_projector = ToolTranscriptProjector(max_body_lines=4)
     snapshot = tool_projector.remember_call(
@@ -692,10 +692,10 @@ def test_anonymous_tool_result_messages_are_not_deduplicated() -> None:
 
 @pytest.mark.tui_render_contract
 def test_delta_hot_path_preserves_identity_without_container_construction() -> None:
-    from loushang.coding.ui.conversation_event_adapter import (
+    from loushang.coding.presentation.tui.events import (
         CodingConversationEventAdapter,
     )
-    from loushang.coding.ui.tool_blocks import ToolTranscriptProjector
+    from loushang.coding.presentation.tui.tool_transcript import ToolTranscriptProjector
     from loushang.harnesstui.conversation.projection import ConversationProjector
 
     class DeltaTarget:

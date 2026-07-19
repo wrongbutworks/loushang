@@ -65,6 +65,9 @@ MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
     "loushang.coding.ui.command_list": (
         "loushang.coding.commands.tui",
     ),
+    "loushang.coding.ui.conversation_event_adapter": (
+        "loushang.coding.presentation.tui.events",
+    ),
     "loushang.coding.ui.controller": (
         "loushang.coding.interaction.controller",
     ),
@@ -88,6 +91,12 @@ MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
     "loushang.coding.ui.model_list": (
         "loushang.coding.model_selection_tui",
     ),
+    "loushang.coding.ui.plain_events": (
+        "loushang.coding.presentation.tui.plain",
+    ),
+    "loushang.coding.ui.plain_renderer": (
+        "loushang.coding.presentation.tui.plain",
+    ),
     "loushang.coding.ui.prompt_dispatch": (
         "loushang.coding.interaction.plain_dispatch",
     ),
@@ -100,6 +109,12 @@ MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
     "loushang.coding.ui.session_view": (
         "loushang.coding.presentation.session",
     ),
+    "loushang.coding.ui.screen_events": (
+        "loushang.coding.presentation.tui.screen",
+    ),
+    "loushang.coding.ui.session_history": (
+        "loushang.coding.presentation.tui.history",
+    ),
     "loushang.coding.ui.settings_config": (
         "loushang.coding.presentation.settings",
         "loushang.harnesstui.settings.workflow",
@@ -108,6 +123,15 @@ MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
         "loushang.harnesstui.status.persistence",
         "loushang.harnesstui.status.provider",
         "loushang.harnesstui.status.snapshot",
+    ),
+    "loushang.coding.ui.tool_blocks": (
+        "loushang.coding.presentation.tui.tool_transcript",
+    ),
+    "loushang.coding.ui.transcript_projection": (
+        "loushang.coding.presentation.tui.tool_transcript",
+    ),
+    "loushang.coding.ui.transcript_source": (
+        "loushang.coding.presentation.tui.history",
     ),
 }
 
@@ -119,25 +143,17 @@ RETIRED_CODING_UI_MODULES = {
 RETAINED_CODING_UI_PRODUCT_ADAPTER_MODULES = {
     "cli",
     "completion",
-    "conversation_event_adapter",
     "event_stream",
     "hotkeys",
     "mode",
     "plain_app",
-    "plain_events",
-    "plain_renderer",
     "run_context",
     "screen_app",
-    "screen_events",
     "screen_input",
     "screen_loop",
     "screen_surfaces",
-    "session_history",
     "settings_page",
     "startup",
-    "tool_blocks",
-    "transcript_projection",
-    "transcript_source",
 }
 
 NON_UI_CODING_OWNERS = (
@@ -161,6 +177,11 @@ CODING_TUI_FEATURE_OWNERS = (
     "loushang.coding.interaction.routing",
     "loushang.coding.interaction.screen_host",
     "loushang.coding.model_selection_tui",
+    "loushang.coding.presentation.tui.events",
+    "loushang.coding.presentation.tui.history",
+    "loushang.coding.presentation.tui.plain",
+    "loushang.coding.presentation.tui.screen",
+    "loushang.coding.presentation.tui.tool_transcript",
 )
 
 
@@ -174,7 +195,7 @@ importlib.import_module("loushang.harnesstui.conversation.screen_state")
 
 assert "loushang.coding.ui" not in sys.modules
 assert "loushang.coding.ui.mode" not in sys.modules
-assert "loushang.coding.ui.plain_renderer" not in sys.modules
+assert "loushang.coding.presentation.tui.plain" not in sys.modules
 """
     )
 
@@ -351,14 +372,14 @@ else:
 
 
 def test_conversation_raw_event_dispatch_stays_in_coding_adapter() -> None:
-    adapter = Path("src/loushang/coding/ui/conversation_event_adapter.py").read_text(
+    adapter = Path("src/loushang/coding/presentation/tui/events.py").read_text(
         encoding="utf-8"
     )
     assert 'event.get("type")' in adapter
 
     for path in (
-        Path("src/loushang/coding/ui/plain_events.py"),
-        Path("src/loushang/coding/ui/screen_events.py"),
+        Path("src/loushang/coding/presentation/tui/plain.py"),
+        Path("src/loushang/coding/presentation/tui/screen.py"),
     ):
         assert 'event.get("type")' not in path.read_text(encoding="utf-8")
 
@@ -476,17 +497,15 @@ def test_shared_interaction_types_are_not_redefined_in_coding_ui() -> None:
             "class SettingsPageView",
             "class StaticLinesPage",
         ),
-        Path("src/loushang/coding/ui/plain_renderer.py"): (
+        Path("src/loushang/coding/presentation/tui/plain.py"): (
             "def render_user",
             "def render_assistant",
             "def render_tool_block",
             "def render_transcript",
-        ),
-        Path("src/loushang/coding/ui/plain_events.py"): (
             "class _PlainProjectionTarget",
             "class PlainConversationProjectionTarget",
         ),
-        Path("src/loushang/coding/ui/transcript_source.py"): (
+        Path("src/loushang/coding/presentation/tui/history.py"): (
             "class ActiveWindowTranscriptSource",
             "def _active_window_records",
             "def _recent_assistant_texts",
@@ -671,7 +690,9 @@ def test_shared_screen_projection_target_does_not_own_coding_policy_or_copy() ->
     shared = Path("src/loushang/harnesstui/conversation/screen_target.py").read_text(
         encoding="utf-8"
     )
-    coding = Path("src/loushang/coding/ui/screen_events.py").read_text(encoding="utf-8")
+    coding = Path("src/loushang/coding/presentation/tui/screen.py").read_text(
+        encoding="utf-8"
+    )
 
     for token in (
         "CodingConversationEventAdapter",

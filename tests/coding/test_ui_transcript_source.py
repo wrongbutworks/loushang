@@ -3,14 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.ui.transcript_source import (
+from loushang.coding.presentation.tui.history import (
     ActiveWindowTranscriptSource,
     SessionTranscriptSource,
 )
-from loushang.coding.ui.transcript_source import (
+from loushang.coding.presentation.tui.history import (
     TranscriptSnapshot as CodingTranscriptSnapshot,
 )
-from loushang.coding.ui.transcript_source import (
+from loushang.coding.presentation.tui.history import (
     TranscriptSource as CodingTranscriptSource,
 )
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState

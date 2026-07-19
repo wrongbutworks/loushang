@@ -30,21 +30,14 @@ HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/platform/clipboard_image.py \
 	src/loushang/coding/testing/tui \
 	src/loushang/coding/ui/completion.py \
-	src/loushang/coding/ui/conversation_event_adapter.py \
 	src/loushang/coding/ui/event_stream.py \
 	src/loushang/coding/ui/plain_app.py \
-	src/loushang/coding/ui/plain_events.py \
-	src/loushang/coding/ui/plain_renderer.py \
 	src/loushang/coding/ui/run_context.py \
 	src/loushang/coding/ui/screen_app.py \
-	src/loushang/coding/ui/screen_events.py \
 	src/loushang/coding/ui/screen_input.py \
 	src/loushang/coding/ui/screen_loop.py \
 	src/loushang/coding/ui/screen_surfaces.py \
-	src/loushang/coding/ui/settings_page.py \
-	src/loushang/coding/ui/tool_blocks.py \
-	src/loushang/coding/ui/transcript_projection.py \
-	src/loushang/coding/ui/transcript_source.py
+	src/loushang/coding/ui/settings_page.py
 CODING_TUI_PRODUCT_SOURCES := \
 	src/loushang/coding/commands/tui.py \
 	src/loushang/coding/model_selection_tui.py \
@@ -62,7 +55,8 @@ CODING_TUI_PRODUCT_SOURCES := \
 	src/loushang/coding/interaction/routing.py \
 	src/loushang/coding/interaction/screen_host.py \
 	src/loushang/coding/presentation/session.py \
-	src/loushang/coding/presentation/settings.py
+	src/loushang/coding/presentation/settings.py \
+	src/loushang/coding/presentation/tui
 HARNESSTUI_TEST_PATHS := \
 	tests/harnesstui \
 	tests/tui/test_clipboard_image.py \

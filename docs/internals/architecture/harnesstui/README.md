@@ -9,6 +9,7 @@ direction is:
 `loushang.coding.commands.tui` -> `loushang.harnesstui`
 `loushang.coding.interaction.*` -> `loushang.harnesstui`
 `loushang.coding.model_selection_tui` -> `loushang.harnesstui`
+`loushang.coding.presentation.tui.*` -> `loushang.harnesstui`
 `loushang.harnesstui` -> `loushang.harness`
 
 `loushang.coding.testing.tui` -> `loushang.harnesstui.testing`
@@ -44,8 +45,10 @@ This layer owns reusable Harness-oriented terminal interaction, including:
 decoding, host clipboard-image acquisition, generic widgets, and transcript
 presentation primitives.
 `loushang.harness` continues to own neutral runtime and durable conversation
-contracts. Product adapters such as `loushang.coding.ui` continue to own raw
-product-event interpretation, commands, policy, branding, and runtime assembly.
+contracts. Product adapters under `loushang.coding.presentation.tui` continue
+to own raw product-event and transcript interpretation. `loushang.coding.ui`
+owns product UI composition, while Coding retains commands, policy, branding,
+and runtime assembly.
 
 ## Catalog Interaction Workflows
 
@@ -176,12 +179,12 @@ provider objects. Deterministic transcript status, block construction, and
 record projection belong here because they are reusable across Harness-backed
 terminal products.
 
-`loushang.coding.ui` remains responsible for adapting raw `AgentToolResult`
-instances and runtime events into that neutral view. It also retains product
-policy: which events are visible, product-specific labels and commands,
-redaction, and any decision that requires Coding runtime state. This keeps the
-dependency pointing from Coding into Harnesstui and prevents Agent event types
-from becoming presentation contracts.
+`loushang.coding.presentation.tui.tool_transcript` remains responsible for
+adapting raw `AgentToolResult` instances and runtime events into that neutral
+view. It also retains product policy: which events are visible,
+product-specific labels and commands, redaction, and any decision that requires
+Coding runtime state. This keeps the dependency pointing from Coding into
+Harnesstui and prevents Agent event types from becoming presentation contracts.
 
 `loushang.harnesstui.status.line` owns a shared Harness status profile and its
 product-neutral presentation rules. A product shell supplies the profile's
@@ -214,7 +217,7 @@ presentation-ready values; raw Agent/Coding event dictionaries and AI message
 objects are not part of this contract.
 
 Product adapters keep ownership of raw event interpretation. In Coding,
-`loushang.coding.ui.conversation_event_adapter` reads product event shapes,
+`loushang.coding.presentation.tui.events` reads product event shapes,
 extracts message and compaction values, applies Coding cancellation policy,
 and converts tool events through the Coding tool adapter before invoking the
 neutral projector. `loushang.harnesstui.conversation.plain_target` owns the

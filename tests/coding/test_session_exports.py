@@ -587,7 +587,7 @@ def test_product_transcript_dispositions_cover_every_standard_kind() -> None:
     from loushang.coding.session.export_html.tool_renderer import (
         HTML_TRANSCRIPT_DISPOSITIONS,
     )
-    from loushang.coding.ui.session_history import TUI_TRANSCRIPT_DISPOSITIONS
+    from loushang.coding.presentation.tui.history import TUI_TRANSCRIPT_DISPOSITIONS
     from loushang.harness.agent_transcript import STANDARD_AGENT_TRANSCRIPT_KINDS
 
     expected = set(STANDARD_AGENT_TRANSCRIPT_KINDS)
