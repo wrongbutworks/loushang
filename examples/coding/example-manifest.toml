@@ -216,18 +216,6 @@ requires_api_key = true
 tags = ["coding", "toolset", "existing", "trace"]
 
 [[example]]
-id = "legacy-017"
-slug = "17_kimi_env_probe"
-title = "17_kimi_env_probe.py - 模型路由与 key 来源诊断"
-category = "sdk"
-description = "输出模型 catalog 解析结果、鉴权 key 来源、kimi-code endpoint 映射，快速排障。"
-runtime = "offline"
-entrypoint = "17_kimi_env_probe.py"
-model_profile = "coding_primary"
-requires_api_key = false
-tags = ["coding", "sdk", "existing", "debug", "diagnostics"]
-
-[[example]]
 id = "legacy-018"
 slug = "18_kimi_runtime_matrix.py"
 title = "18_kimi_runtime_matrix.py - endpoint 与错误码矩阵"
@@ -250,18 +238,6 @@ entrypoint = "19_session_store_check.py"
 model_profile = "coding_primary"
 requires_api_key = false
 tags = ["coding", "run", "offline", "existing", "session", "persist"]
-
-[[example]]
-id = "legacy-020"
-slug = "20_key_rotation.py"
-title = "20_key_rotation.py - key 切换恢复演练"
-category = "sdk"
-description = "离线演练 401 -> 认证恢复；可选执行 online 最小可重现。"
-runtime = "offline"
-entrypoint = "20_key_rotation.py"
-model_profile = "coding_primary"
-requires_api_key = false
-tags = ["coding", "sdk", "existing", "offline", "auth", "diagnostics", "ops"]
 
 [[example]]
 id = "legacy-021"
