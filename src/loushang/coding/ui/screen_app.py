@@ -4,7 +4,7 @@ import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import ClassVar
 
 from loushang.harness.tools.workspace.output_preview import (
     DEFAULT_TOOL_OUTPUT_PREVIEW_LINES,
@@ -15,10 +15,13 @@ from loushang.harness.tools.workspace.output_preview import (
 from loushang.harnesstui.conversation.screen_app import (
     ACTIVE_RENDER_INTERVAL_MS as ACTIVE_RENDER_INTERVAL_MS,
 )
-from loushang.harnesstui.conversation.screen_app import ScreenConversationApp
-from loushang.harnesstui.conversation.screen_frame import (
-    ScreenFrameCopy,
-    ScreenFramePresentation,
+from loushang.harnesstui.conversation.screen_frame import ScreenFrameCopy
+from loushang.harnesstui.conversation.screen_state import ScreenConversationState
+from loushang.harnesstui.conversation.transcript_presentation import (
+    ConversationTranscriptCopy,
+    ConversationTranscriptPresentationProfile,
+    ProfiledScreenConversationApp,
+    ScreenConversationPresentationProfile,
 )
 from loushang.harnesstui.conversation.transcript_style import (
     apply_transcript_style as apply_coding_transcript_style,
@@ -30,18 +33,10 @@ from loushang.tui import (
 )
 from loushang.tui.theme import ThemeResolver
 from loushang.tui.transcript import (
-    AssistantMessageRecord,
-    ContextCompactionRecord,
     DisplayRecord,
-    ErrorRecord,
     ToolExecutionRecord,
-    UserPromptRecord,
-    WorkedDividerRecord,
 )
-from loushang.tui.ui_parts.transcript import (
-    DEFAULT_STABLE_TRANSCRIPT_CACHE_ENTRY_LIMIT,
-    TranscriptRegion,
-)
+from loushang.tui.ui_parts.transcript import DEFAULT_STABLE_TRANSCRIPT_CACHE_ENTRY_LIMIT
 
 DEFAULT_ACTIVE_TRANSCRIPT_LINE_BUDGET = 320
 DEFAULT_STABLE_RENDER_CACHE_ENTRY_LIMIT = DEFAULT_STABLE_TRANSCRIPT_CACHE_ENTRY_LIMIT
@@ -83,135 +78,6 @@ def _terminal_transcript_theme() -> ThemeResolver:
             "transcript.tool.meta": {"color": "bright_black", "dim": True},
             "transcript.tool.verb": {"bold": True},
         }
-    )
-
-
-@dataclass(slots=True)
-class _CodingTranscriptPresentation:
-    cwd: str = ""
-
-    @property
-    def cache_token(self) -> str:
-        return self.cwd
-
-    def project_record(self, record: DisplayRecord) -> DisplayRecord:
-        return _screen_coding_display_record(record, cwd=self.cwd)
-
-    def record_render_width(
-        self,
-        record: DisplayRecord,
-        *,
-        width: int,
-    ) -> int:
-        return _screen_transcript_record_render_width(record, width=width)
-
-    def present_lines(
-        self,
-        lines: tuple[str, ...],
-        record: DisplayRecord,
-        *,
-        theme: ThemeResolver | None,
-        capabilities: Any | None,
-    ) -> tuple[str, ...]:
-        return _coding_lines(
-            lines,
-            record,
-            theme=theme,
-            capabilities=capabilities,
-        )
-
-
-def _ScreenTranscriptRegion(
-    *args: Any, cwd: str = "", **kwargs: Any
-) -> TranscriptRegion:
-    """Construct the former private Coding region with Coding presentation."""
-    if "presentation" not in kwargs:
-        kwargs["presentation"] = _CodingTranscriptPresentation(cwd=cwd)
-    return TranscriptRegion(*args, **kwargs)
-
-
-@dataclass(slots=True)
-class ScreenCodingTuiApp(ScreenConversationApp):
-    composer: Composer = field(
-        default_factory=lambda: Composer(prompt="› ", continuation_prompt="  ")
-    )
-    transcript_theme: ThemeResolver = field(default_factory=_terminal_transcript_theme)
-    welcome_theme: ThemeResolver | None = field(default_factory=loushang_welcome_theme)
-    active_transcript_line_budget: int = DEFAULT_ACTIVE_TRANSCRIPT_LINE_BUDGET
-    compaction_summary_formatter: Callable[[str], str] = field(
-        default=_coding_compaction_summary,
-        repr=False,
-    )
-    _transcript_presentation: _CodingTranscriptPresentation = field(
-        init=False,
-        repr=False,
-    )
-
-    def _create_transcript_presentation(self) -> _CodingTranscriptPresentation:
-        return _CodingTranscriptPresentation(cwd=self.cwd)
-
-    def _create_frame_presentation(self) -> ScreenFramePresentation:
-        return ScreenFramePresentation(_CODING_SCREEN_FRAME_COPY)
-
-    def _prepare_transcript_presentation(self) -> None:
-        self._transcript_presentation.cwd = self.state.cwd
-
-    def startup_welcome_panel(self) -> LoushangWelcomePanel:
-        return LoushangWelcomePanel(
-            directory=self.state.cwd,
-            session=self.state.session_label or "",
-            model=self.state.model_label or "",
-            theme=self.welcome_theme,
-        )
-
-def _coding_line(
-    line: str,
-    record: DisplayRecord,
-    *,
-    theme: ThemeResolver | None,
-    capabilities: Any | None,
-) -> str:
-    if isinstance(record, UserPromptRecord) and line.startswith("> "):
-        line = "› " + line[2:]
-        return apply_coding_transcript_style(
-            line, record, theme=theme, capabilities=capabilities
-        )
-    if isinstance(record, AssistantMessageRecord) and line.startswith("* "):
-        line = "• " + line[2:]
-        return apply_coding_transcript_style(
-            line, record, theme=theme, capabilities=capabilities
-        )
-    if isinstance(record, ErrorRecord) and line.startswith("! Error: "):
-        line = "■ Error: " + line[len("! Error: ") :]
-        return apply_coding_transcript_style(
-            line, record, theme=theme, capabilities=capabilities
-        )
-    if isinstance(record, ContextCompactionRecord) and line.startswith("* "):
-        line = "• " + line[2:]
-        return apply_coding_transcript_style(
-            line, record, theme=theme, capabilities=capabilities
-        )
-    if isinstance(record, ToolExecutionRecord):
-        if line.startswith("- Ran "):
-            line = "• Ran " + line[len("- Ran ") :]
-            return apply_coding_transcript_style(
-                line, record, theme=theme, capabilities=capabilities
-            )
-        if line.startswith("! Ran "):
-            line = "■ Ran " + line[len("! Ran ") :]
-            return apply_coding_transcript_style(
-                line, record, theme=theme, capabilities=capabilities
-            )
-        return apply_coding_transcript_style(
-            line, record, theme=theme, capabilities=capabilities
-        )
-    if isinstance(record, WorkedDividerRecord) and line.startswith("- Worked for "):
-        line = line.replace("-", "─", 1).replace("-", "─")
-        return apply_coding_transcript_style(
-            line, record, theme=theme, capabilities=capabilities
-        )
-    return apply_coding_transcript_style(
-        line, record, theme=theme, capabilities=capabilities
     )
 
 
@@ -273,62 +139,6 @@ def _normalized_path(path: str) -> str:
     return normalized or path
 
 
-def _coding_lines(
-    lines: tuple[str, ...],
-    record: DisplayRecord,
-    *,
-    theme: ThemeResolver | None,
-    capabilities: Any | None,
-) -> tuple[str, ...]:
-    if not isinstance(record, ToolExecutionRecord):
-        return tuple(
-            _coding_line(line, record, theme=theme, capabilities=capabilities)
-            for line in lines
-        )
-
-    rendered: list[str] = []
-    output_started = False
-    for line in lines:
-        if line.startswith("- Ran ") or line.startswith("! Ran "):
-            rendered.append(
-                _coding_line(line, record, theme=theme, capabilities=capabilities)
-            )
-            continue
-        if line.startswith("  $ "):
-            rendered.append(
-                _style_tool_body_line(
-                    f"  │ {line[2:]}", record, theme=theme, capabilities=capabilities
-                )
-            )
-            continue
-        if line.startswith("  "):
-            content = line[2:]
-            prefix = "  └ " if not output_started else "    "
-            output_started = True
-            rendered.append(
-                _style_tool_body_line(
-                    f"{prefix}{content}", record, theme=theme, capabilities=capabilities
-                )
-            )
-            continue
-        rendered.append(
-            _coding_line(line, record, theme=theme, capabilities=capabilities)
-        )
-    return tuple(rendered)
-
-
-def _style_tool_body_line(
-    line: str,
-    record: ToolExecutionRecord,
-    *,
-    theme: ThemeResolver | None,
-    capabilities: Any | None,
-) -> str:
-    return apply_coding_transcript_style(
-        line, record, theme=theme, capabilities=capabilities
-    )
-
-
 def _screen_transcript_record_render_width(record: DisplayRecord, *, width: int) -> int:
     if isinstance(record, ToolExecutionRecord):
         return max(1, width - 2)
@@ -339,6 +149,74 @@ def _cwd_label(cwd: str) -> str:
     if not cwd:
         return "cwd"
     return cwd.rstrip("/").rsplit("/", 1)[-1] or cwd
+
+
+def _project_coding_display_record(
+    record: DisplayRecord,
+    *,
+    context: str,
+) -> DisplayRecord:
+    return _screen_coding_display_record(record, cwd=context)
+
+
+def _coding_welcome_panel(
+    state: ScreenConversationState,
+    *,
+    theme: ThemeResolver | None,
+) -> LoushangWelcomePanel:
+    return LoushangWelcomePanel(
+        directory=state.cwd,
+        session=state.session_label or "",
+        model=state.model_label or "",
+        theme=theme,
+    )
+
+
+_CODING_TRANSCRIPT_PRESENTATION_PROFILE = ConversationTranscriptPresentationProfile[
+    str
+](
+    copy=ConversationTranscriptCopy(
+        user_prompt_prefix="› ",
+        assistant_prefix="• ",
+        error_prefix="■ Error: ",
+        context_compaction_prefix="• ",
+        tool_success_prefix="• Ran ",
+        tool_error_prefix="■ Ran ",
+        worked_divider="─",
+        tool_command_prefix="  │ ",
+        tool_first_output_prefix="  └ ",
+        tool_continuation_prefix="    ",
+    ),
+    project_record=_project_coding_display_record,
+    record_render_width=_screen_transcript_record_render_width,
+    style_line=apply_coding_transcript_style,
+)
+
+_CODING_SCREEN_PRESENTATION_PROFILE = ScreenConversationPresentationProfile[str](
+    transcript=_CODING_TRANSCRIPT_PRESENTATION_PROFILE,
+    transcript_context=lambda state: state.cwd,
+    frame_copy=_CODING_SCREEN_FRAME_COPY,
+    welcome_panel=_coding_welcome_panel,
+)
+
+
+@dataclass(slots=True)
+class ScreenCodingTuiApp(ProfiledScreenConversationApp):
+    """Coding product binding over the shared profiled conversation screen."""
+
+    screen_presentation_profile: ClassVar[
+        ScreenConversationPresentationProfile[str]
+    ] = _CODING_SCREEN_PRESENTATION_PROFILE
+    composer: Composer = field(
+        default_factory=lambda: Composer(prompt="› ", continuation_prompt="  ")
+    )
+    transcript_theme: ThemeResolver = field(default_factory=_terminal_transcript_theme)
+    welcome_theme: ThemeResolver | None = field(default_factory=loushang_welcome_theme)
+    active_transcript_line_budget: int = DEFAULT_ACTIVE_TRANSCRIPT_LINE_BUDGET
+    compaction_summary_formatter: Callable[[str], str] = field(
+        default=_coding_compaction_summary,
+        repr=False,
+    )
 
 
 __all__ = ["ScreenCodingTuiApp"]

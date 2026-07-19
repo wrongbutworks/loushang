@@ -83,11 +83,6 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
                     query=value,
                 ),
                 refresh_model_label=self._refresh_model_label,
-                set_command_text=app.composer.set_text,
-                set_status=app.set_status,
-                set_statusline_visible=app.set_statusline_visible,
-                set_statusline_settings=app.set_statusline_settings,
-                request_render=lambda: app.request_render("product"),
                 command_catalog=self.command_catalog,
                 normalize_command=_normalize_coding_surface_command,
                 format_models=self._format_models,
@@ -240,9 +235,7 @@ def _normalize_coding_surface_command(
         return ScreenSurfaceCommand("terminal_diagnostics")
     if command.name == "hotkeys" and isinstance(intent, HotkeysIntent):
         return ScreenSurfaceCommand("hotkeys")
-    if command.name in {"settings", "config"} and isinstance(
-        intent, SettingsIntent
-    ):
+    if command.name in {"settings", "config"} and isinstance(intent, SettingsIntent):
         return ScreenSurfaceCommand("settings")
     return None
 

@@ -3,16 +3,9 @@
 from __future__ import annotations
 
 from loushang.harnesstui.settings.schema import (
-    BooleanSettingApplyOutcome,
     BooleanSettingBinding,
     BooleanSettingCopy,
-    BooleanSettingFact,
-    apply_boolean_setting,
-    boolean_setting_facts,
 )
-
-CodingSettingFact = BooleanSettingFact
-CodingSettingApplyOutcome = BooleanSettingApplyOutcome
 
 CODING_SETTING_BINDINGS = (
     BooleanSettingBinding(
@@ -68,36 +61,7 @@ CODING_SETTING_COPY = BooleanSettingCopy(
     ),
 )
 
-
-def coding_settings_facts(
-    settings_manager: object | None,
-) -> tuple[CodingSettingFact, ...]:
-    """Read the available Coding boolean settings as immutable facts."""
-
-    return boolean_setting_facts(settings_manager, CODING_SETTING_BINDINGS)
-
-
-def apply_coding_setting(
-    settings_manager: object | None,
-    item_id: str,
-    value: str,
-) -> CodingSettingApplyOutcome:
-    """Apply one Coding-owned boolean setting by id."""
-
-    return apply_boolean_setting(
-        settings_manager,
-        item_id,
-        value,
-        bindings=CODING_SETTING_BINDINGS,
-        copy=CODING_SETTING_COPY,
-    )
-
-
 __all__ = [
     "CODING_SETTING_BINDINGS",
     "CODING_SETTING_COPY",
-    "CodingSettingApplyOutcome",
-    "CodingSettingFact",
-    "apply_coding_setting",
-    "coding_settings_facts",
 ]

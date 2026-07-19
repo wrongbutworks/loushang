@@ -63,7 +63,9 @@ async def main() -> int:
         branch="smoke",
         session_label="smoke",
     )
-    app.composer.set_completion_provider(await coding_inline_completion_provider(session))
+    app.composer.set_completion_provider(
+        await coding_inline_completion_provider(session, base_path=cwd)
+    )
     status_provider = StatusProvider(
         model_label=app.state.model_label,
         cwd=app.state.cwd,

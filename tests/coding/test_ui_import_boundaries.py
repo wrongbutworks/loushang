@@ -474,25 +474,29 @@ def test_conversation_raw_event_dispatch_stays_in_coding_adapter() -> None:
 
 
 def test_shared_transcript_style_does_not_own_screen_product_policy() -> None:
-    shared = Path("src/loushang/harnesstui/conversation/transcript_style.py").read_text(
-        encoding="utf-8"
+    shared = "\n".join(
+        Path(f"src/loushang/harnesstui/conversation/{module}.py").read_text(
+            encoding="utf-8"
+        )
+        for module in ("transcript_style", "transcript_presentation")
     )
     screen = Path("src/loushang/coding/ui/screen_app.py").read_text(encoding="utf-8")
 
     for token in (
         "loushang.coding",
         "ScreenCodingTuiApp",
-        "_coding_line",
-        "_coding_lines",
         "_compact_display_paths",
         "collapse_tool_output_preview",
         "DEFAULT_TOOL_OUTPUT_PREVIEW_LINES",
         "bright_cyan",
+        'user_prompt_prefix="› "',
+        'tool_command_prefix="  │ "',
     ):
         assert token not in shared
 
-    assert "_coding_line" in screen
-    assert "_coding_lines" in screen
+    assert "ConversationTranscriptCopy" in screen
+    assert 'user_prompt_prefix="› "' in screen
+    assert 'tool_command_prefix="  │ "' in screen
     assert "_compact_display_paths" in screen
     assert "collapse_tool_output_preview" in screen
     assert '"transcript.tool.marker": {"color": "bright_cyan"' in screen
@@ -817,11 +821,13 @@ def test_shared_completion_host_does_not_own_coding_catalog_or_path_policy() -> 
         'model_command_value="/model"',
         'model_argument_group="Models"',
         'CatalogSlashAlias("/quit", "/exit", "Quit loushang")',
-        "_session_completion_base_path",
+        "coding_completion_host",
+        "base_path=base_path",
     ):
         assert token in coding
 
-    assert len(coding.splitlines()) <= 75
+    assert "_session_completion_base_path" not in coding
+    assert len(coding.splitlines()) <= 50
 
 
 def test_shared_status_provider_does_not_own_settings_manager_adaptation() -> None:
@@ -949,20 +955,25 @@ def test_tui_owns_transcript_region_while_coding_owns_presentation_policy() -> N
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.tui.ui_parts.transcript import TranscriptRegion
 
-    shared = Path("src/loushang/tui/ui_parts/transcript.py").read_text(encoding="utf-8")
+    engine = Path("src/loushang/tui/ui_parts/transcript.py").read_text(encoding="utf-8")
+    shared = Path(
+        "src/loushang/harnesstui/conversation/transcript_presentation.py"
+    ).read_text(encoding="utf-8")
     coding = Path("src/loushang/coding/ui/screen_app.py").read_text(encoding="utf-8")
 
     assert "class _ScreenTranscriptRegion" not in coding
     for token in (
         "_screen_coding_display_record",
-        "_coding_lines",
         "_compact_display_paths",
         "collapse_tool_output_preview",
         "DEFAULT_TOOL_OUTPUT_PREVIEW_LINES",
         "bright_cyan",
     ):
+        assert token not in engine
         assert token not in shared
         assert token in coding
+    assert "ProfiledConversationTranscriptPresentation" in shared
+    assert "_CODING_TRANSCRIPT_PRESENTATION_PROFILE" in coding
 
     app = ScreenCodingTuiApp(
         model_label=None,
@@ -991,14 +1002,16 @@ def test_shared_screen_frame_does_not_own_coding_copy() -> None:
 
 
 def test_shared_screen_app_does_not_own_coding_presentation_policy() -> None:
-    shared = Path("src/loushang/harnesstui/conversation/screen_app.py").read_text(
-        encoding="utf-8"
+    shared = "\n".join(
+        Path(f"src/loushang/harnesstui/conversation/{module}.py").read_text(
+            encoding="utf-8"
+        )
+        for module in ("screen_app", "transcript_presentation")
     )
     coding = Path("src/loushang/coding/ui/screen_app.py").read_text(encoding="utf-8")
 
     for token in (
         "ScreenCodingTuiApp",
-        "_CodingTranscriptPresentation",
         "LoushangWelcomePanel",
         "Compacted summary:",
         "DEFAULT_ACTIVE_TRANSCRIPT_LINE_BUDGET = 320",
@@ -1007,7 +1020,8 @@ def test_shared_screen_app_does_not_own_coding_presentation_policy() -> None:
         assert token not in shared
         assert token in coding
     assert "trim_records_to_line_budget" in shared
-    assert "class ScreenCodingTuiApp(ScreenConversationApp)" in coding
+    assert "class ProfiledScreenConversationApp(ScreenConversationApp)" in shared
+    assert "class ScreenCodingTuiApp(ProfiledScreenConversationApp)" in coding
 
 
 def test_old_coding_ui_app_module_is_removed() -> None:

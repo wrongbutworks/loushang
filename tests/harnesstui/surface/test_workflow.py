@@ -14,13 +14,7 @@ from loushang.harnesstui.surface.workflow import (
     ScreenSurfaceWorkflowCopy,
     ScreenSurfaceWorkflowPorts,
 )
-from loushang.tui import InfoPanel, InputIntent, SurfaceHost
-
-
-@dataclass(slots=True)
-class _App:
-    active_surface: object | None = None
-    surface_host: SurfaceHost | None = None
+from loushang.tui import InfoPanel, InputIntent, RenderRequestKind, SurfaceHost
 
 
 class _Catalog:
@@ -62,6 +56,39 @@ class _State:
     renders: int = 0
     fail_model: bool = False
     accept_approval: bool = True
+
+
+@dataclass(slots=True)
+class _Composer:
+    state: _State
+
+    def set_text(self, text: str) -> None:
+        self.state.command_texts.append(text)
+
+
+@dataclass(slots=True)
+class _App:
+    state: _State
+    active_surface: object | None = None
+    surface_host: SurfaceHost | None = None
+    composer: _Composer = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.composer = _Composer(self.state)
+
+    def set_status(self, message: str | None) -> None:
+        if message is not None:
+            self.state.statuses.append(message)
+
+    def set_statusline_visible(self, visible: bool) -> None:
+        self.state.statusline_visible.append(visible)
+
+    def set_statusline_settings(self, settings: StatusLineSettings) -> None:
+        self.state.statusline_settings.append(settings)
+
+    def request_render(self, kind: RenderRequestKind = "product") -> None:
+        assert kind == "product"
+        self.state.renders += 1
 
 
 class _SettingsPage:
@@ -133,15 +160,10 @@ def _workflow(*, state: _State | None = None) -> tuple[ScreenSurfaceWorkflow, _S
         return state.accept_approval
 
     workflow = ScreenSurfaceWorkflow(
-        app=_App(),
+        app=_App(state),
         ports=ScreenSurfaceWorkflowPorts(
             select_model=select_model,
             refresh_model_label=refresh_model,
-            set_command_text=state.command_texts.append,
-            set_status=state.statuses.append,
-            set_statusline_visible=state.statusline_visible.append,
-            set_statusline_settings=state.statusline_settings.append,
-            request_render=lambda: setattr(state, "renders", state.renders + 1),
             command_catalog=_Catalog(),
             normalize_command=_normalize,
             format_models=format_models,
@@ -196,16 +218,16 @@ def test_surface_workflow_routes_product_normalized_commands_and_copy() -> None:
     assert surface.content.text == "terminal body"
 
 
-def test_surface_workflow_applies_model_and_keeps_recoverable_error_surface_open() -> None:
+def test_surface_workflow_applies_model_and_keeps_recoverable_error_surface_open() -> (
+    None
+):
     state = _State(fail_model=True)
     workflow, _ = _workflow(state=state)
     asyncio.run(workflow.handle_text("/model"))
     model_surface = workflow.current
 
     asyncio.run(
-        workflow.handle_surface_intent(
-            InputIntent(kind="select", text="provider/beta")
-        )
+        workflow.handle_surface_intent(InputIntent(kind="select", text="provider/beta"))
     )
 
     assert workflow.current is model_surface
@@ -214,9 +236,7 @@ def test_surface_workflow_applies_model_and_keeps_recoverable_error_surface_open
 
     state.fail_model = False
     asyncio.run(
-        workflow.handle_surface_intent(
-            InputIntent(kind="select", text="provider/beta")
-        )
+        workflow.handle_surface_intent(InputIntent(kind="select", text="provider/beta"))
     )
 
     assert workflow.current is None

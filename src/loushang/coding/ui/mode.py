@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from functools import partial
+from pathlib import Path
 from typing import Any, TextIO
 
 from loushang.coding.event.presentation_policy import event_writes_transcript
@@ -143,7 +144,9 @@ async def _run_screen_interactive_tui(
             evicted_record_count=app.state.evicted_prefix_record_count,
             trimmed=app.state.evicted_prefix_record_count > 0,
         )
-    completion_provider = await _load_completion_provider(session)
+    completion_provider = await _load_completion_provider(
+        session, base_path=Path(snapshot.cwd)
+    )
     app.composer.set_completion_provider(completion_provider)
     controller = CodingUiController(runtime=runtime, session=session, verbose=verbose)
     action_host = ScreenCodingConversationActionHost(
@@ -330,9 +333,9 @@ def _trace(name: str, **data: Any) -> None:
     log.debug_event("tui", name, **data)
 
 
-async def _load_completion_provider(session: Any) -> CompletionProvider:
+async def _load_completion_provider(session: Any, *, base_path: Path | None) -> Any:
     try:
-        return await coding_inline_completion_provider(session)
+        return await coding_inline_completion_provider(session, base_path=base_path)
     except Exception as error:
         log.problem(
             "coding_ui_completion_provider_failed",

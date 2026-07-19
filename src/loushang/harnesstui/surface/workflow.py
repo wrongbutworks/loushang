@@ -17,7 +17,7 @@ from loushang.harnesstui.surface.view import (
     ScreenSurfacePresentation,
     ScreenSurfaceView,
 )
-from loushang.tui import InputIntent
+from loushang.tui import InputIntent, RenderRequestKind
 
 ScreenSurfaceCommandKind = Literal[
     "select_model",
@@ -40,6 +40,27 @@ class ScreenSurfaceCommandCatalog(Protocol):
     def lookup(self, text: str) -> CommandDef | None: ...
 
     def commands(self) -> tuple[CommandDef, ...]: ...
+
+
+class ScreenSurfaceComposerPort(Protocol):
+    """Composer effect used by command-selection surfaces."""
+
+    def set_text(self, text: str) -> None: ...
+
+
+class ScreenSurfaceWorkflowAppPort(ScreenSurfaceAppPort, Protocol):
+    """Generic screen-app effects owned by the shared surface workflow."""
+
+    @property
+    def composer(self) -> ScreenSurfaceComposerPort: ...
+
+    def set_status(self, message: str | None) -> None: ...
+
+    def set_statusline_visible(self, visible: bool) -> None: ...
+
+    def set_statusline_settings(self, settings: StatusLineSettings) -> None: ...
+
+    def request_render(self, kind: RenderRequestKind = "product") -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,11 +93,6 @@ class ScreenSurfaceWorkflowPorts:
 
     select_model: ModelSelectionHandler
     refresh_model_label: ModelLabelRefresher
-    set_command_text: Callable[[str], None]
-    set_status: Callable[[str], None]
-    set_statusline_visible: Callable[[bool], None]
-    set_statusline_settings: Callable[[StatusLineSettings], None]
-    request_render: Callable[[], None]
     command_catalog: ScreenSurfaceCommandCatalog
     normalize_command: Callable[[str, CommandDef], ScreenSurfaceCommand | None]
     format_models: Callable[[str], Awaitable[str]]
@@ -94,9 +110,10 @@ class ScreenSurfaceWorkflowPorts:
 class ScreenSurfaceWorkflow:
     """Run product-neutral submit, close, and approval surface mechanics."""
 
-    app: ScreenSurfaceAppPort
+    app: ScreenSurfaceWorkflowAppPort
     ports: ScreenSurfaceWorkflowPorts
     copy: ScreenSurfaceWorkflowCopy
+    request_render_reason: RenderRequestKind = "product"
     coordinator: ScreenSurfaceCoordinator = field(init=False)
 
     def __post_init__(self) -> None:
@@ -176,18 +193,18 @@ class ScreenSurfaceWorkflow:
         try:
             message = await self.ports.select_model(value)
         except Exception as error:
-            self.ports.set_status(self.copy.recoverable_error(error))
+            self.app.set_status(self.copy.recoverable_error(error))
             return
         if close_surface:
             self.close()
         await self.ports.refresh_model_label()
-        self.ports.set_status(message)
+        self.app.set_status(message)
 
     def select_command(self, value: str, *, close_surface: bool) -> None:
         command = value.strip()
         if command:
-            self.ports.set_command_text(command + " ")
-            self.ports.set_status(self.copy.command_selected(command))
+            self.app.composer.set_text(command + " ")
+            self.app.set_status(self.copy.command_selected(command))
         if close_surface:
             self.close()
 
@@ -281,12 +298,12 @@ class ScreenSurfaceWorkflow:
             payload["id"], payload.get("value", "")
         )
         if result.statusline_settings is not None:
-            self.ports.set_statusline_settings(result.statusline_settings)
+            self.app.set_statusline_settings(result.statusline_settings)
         elif result.statusline_visible is not None:
-            self.ports.set_statusline_visible(result.statusline_visible)
+            self.app.set_statusline_visible(result.statusline_visible)
         if result.refresh_model_label:
             await self.ports.refresh_model_label()
-        self.ports.request_render()
+        self.app.request_render(self.request_render_reason)
 
     async def _handle_dialog_submit(self, _payload: Any | None = None) -> None:
         self.close()
@@ -298,11 +315,11 @@ class ScreenSurfaceWorkflow:
         if self.ports.decide_approval is not None:
             accepted = await self.ports.decide_approval(payload) is not False
         if not accepted:
-            self.ports.set_status(self.copy.approval_stale)
+            self.app.set_status(self.copy.approval_stale)
         elif payload is not None and payload.approved:
-            self.ports.set_status(self.copy.approval_confirmed(payload.action))
+            self.app.set_status(self.copy.approval_confirmed(payload.action))
         elif payload is not None:
-            self.ports.set_status(self.copy.approval_rejected)
+            self.app.set_status(self.copy.approval_rejected)
 
     def _resolve_command(self, text: str) -> ScreenSurfaceCommand | None:
         command = self.ports.command_catalog.lookup(text)
@@ -321,4 +338,6 @@ __all__ = [
     "ScreenSurfaceCommand",
     "ScreenSurfaceCommandCatalog",
     "ScreenSurfaceCommandKind",
+    "ScreenSurfaceComposerPort",
+    "ScreenSurfaceWorkflowAppPort",
 ]

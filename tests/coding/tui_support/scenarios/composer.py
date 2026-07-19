@@ -25,7 +25,7 @@ def _run_completion_session_command() -> ScreenTuiInputPlaybackResult:
     session = _SessionCommandSession()
     scenario = ScreenTuiInputScenario(width=80, height=12)
     scenario.app.composer.set_completion_provider(
-        asyncio.run(coding_inline_completion_provider(session))
+        asyncio.run(coding_inline_completion_provider(session, base_path=None))
     )
 
     result = scenario.render().type_text("/na").tab().run()
