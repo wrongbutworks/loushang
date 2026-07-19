@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import inspect
-import shlex
 import time
 import traceback
-from collections.abc import Callable
-from typing import Any, TextIO, cast
+from typing import Any, TextIO
 
 from loushang.coding.interaction.controller import CodingUiController
 from loushang.coding.interaction.intent import QuitIntent, parse_prompt_intent
@@ -13,6 +10,13 @@ from loushang.coding.interaction.screen_host import (
     ScreenCodingConversationActionHost,
 )
 from loushang.coding.observability import disable_session_debug, enable_session_debug
+from loushang.coding.policy.tui import (
+    bind_screen_approval_presenter,
+    bind_screen_session_transition,
+    handle_screen_approval,
+    runtime_session,
+)
+from loushang.coding.presentation.resume import write_resume_hint_for_clean_exit
 from loushang.coding.presentation.session import (
     is_running,
     session_label,
@@ -25,6 +29,12 @@ from loushang.coding.presentation.tui.history import (
 from loushang.coding.presentation.tui.plain import (
     PlainCodingEventRenderer,
     PlainCodingUiRenderer,
+)
+from loushang.coding.presentation.tui.runtime import (
+    pending_followups_reader,
+    pending_steers_reader,
+    session_keybindings,
+    tool_definition_resolver,
 )
 from loushang.coding.presentation.tui.screen import ScreenCodingEventProjector
 from loushang.coding.ui.completion import coding_inline_completion_provider
@@ -47,7 +57,6 @@ from loushang.harnesstui.status.persistence import (
 from loushang.harnesstui.status.provider import StatusProvider
 from loushang.observability import get_log, log_context
 from loushang.tui import CompletionProvider
-from loushang.tui.keybindings import KeybindingConfig
 from loushang.tui.prompt import run_non_interactive_prompt_loop
 
 log = get_log(__name__).bind(component="CodingUiMode")
@@ -107,14 +116,15 @@ async def _run_screen_interactive_tui(
         session_label=snapshot.session_label,
         now=time.monotonic,
     )
-    tool_definition_resolver = _tool_definition_resolver(session)
+    tool_resolver = tool_definition_resolver(session)
     app.transcript_source_factory = lambda: SessionTranscriptSource(
         session,
-        tool_definition_resolver=tool_definition_resolver,
+        tool_definition_resolver=tool_resolver,
         active_window_state=app.state,
     )
     history_records = session_history_records(
-        session, tool_definition_resolver=tool_definition_resolver
+        session,
+        tool_definition_resolver=tool_resolver,
     )
     if history_records:
         app.replace_transcript_window(history_records, reason="resume")
@@ -136,12 +146,6 @@ async def _run_screen_interactive_tui(
         verbose=verbose,
     )
 
-    async def _handle_approval(event: dict[str, object]) -> bool:
-        sink = getattr(session, "handle_screen_approval", None)
-        if callable(sink):
-            return bool(await _maybe_await(sink(event)))
-        return False
-
     settings_manager = getattr(session, "settings_manager", None)
     status_provider = StatusProvider(
         model_label=snapshot.model_label,
@@ -160,12 +164,12 @@ async def _run_screen_interactive_tui(
         app=app,
         session=session,
         status_provider=status_provider,
-        on_approval=_handle_approval,
+        on_approval=lambda event: handle_screen_approval(session, event),
     )
-    unbind_approval_presenter = _bind_screen_approval_presenter(
+    unbind_approval_presenter = bind_screen_approval_presenter(
         session,
         surface_manager,
-        session_provider=lambda: _runtime_session(runtime, session),
+        session_provider=lambda: runtime_session(runtime, session),
     )
 
     def unbind_session_transition() -> None:
@@ -175,15 +179,15 @@ async def _run_screen_interactive_tui(
         return None
 
     try:
-        unbind_session_transition = _bind_screen_session_transition(
+        unbind_session_transition = bind_screen_session_transition(
             runtime,
             surface_manager,
         )
         projector = ScreenCodingEventProjector(
             app,
-            tool_definition_resolver=_tool_definition_resolver(session),
-            read_pending_steers=_queue_reader(session, "get_steering_messages"),
-            read_pending_followups=_queue_reader(session, "get_follow_up_messages"),
+            tool_definition_resolver=tool_resolver,
+            read_pending_steers=pending_steers_reader(session),
+            read_pending_followups=pending_followups_reader(session),
             now=time.monotonic,
         )
         with log_context(
@@ -203,9 +207,9 @@ async def _run_screen_interactive_tui(
                     handle_surface_intent=surface_manager.handle_surface_intent,
                     should_exit=_screen_should_exit,
                     is_local_command=surface_manager.is_local_command,
-                    keybindings=_session_keybindings(session),
+                    keybindings=session_keybindings(session),
                 )
-                _write_resume_hint_for_clean_exit(
+                write_resume_hint_for_clean_exit(
                     session=session,
                     stdout=stdout,
                     exit_code=exit_code,
@@ -226,70 +230,6 @@ async def _run_screen_interactive_tui(
                 unbind_approval_presenter()
 
 
-def _bind_screen_approval_presenter(
-    session: Any,
-    surface_manager: ScreenSurfaceManager,
-    *,
-    session_provider: Callable[[], Any] | None = None,
-) -> Callable[[], None]:
-    setter = getattr(session, "set_approval_presenter", None)
-    if not callable(setter):
-        return lambda: None
-
-    def present(payload: dict[str, object]) -> None:
-        action = payload.get("action")
-        risk = payload.get("risk")
-        action_id = payload.get("action_id")
-        surface_manager.open_approval(
-            action=action if isinstance(action, str) else "Approve tool call",
-            risk=risk if isinstance(risk, str) else "",
-            action_id=action_id if isinstance(action_id, str) else None,
-        )
-
-    setter(present, dismisser=surface_manager.dismiss_approval)
-
-    def unbind() -> None:
-        target = session_provider() if session_provider is not None else session
-        _unbind_session_approval_presenter(target)
-        if target is not session:
-            _unbind_session_approval_presenter(session)
-
-    return unbind
-
-
-def _unbind_session_approval_presenter(session: Any) -> None:
-    host_unbind = getattr(session, "_unbind_approval_presenter_host", None)
-    if callable(host_unbind):
-        host_unbind()
-        return
-    setter = getattr(session, "set_approval_presenter", None)
-    if callable(setter):
-        setter(None)
-
-
-def _runtime_session(runtime: Any, fallback: Any) -> Any:
-    getter = getattr(runtime, "get_current_session", None)
-    if callable(getter):
-        current = getter()
-        if current is not None:
-            return current
-    current = getattr(runtime, "current_session", None)
-    return current if current is not None else fallback
-
-
-def _bind_screen_session_transition(
-    runtime: Any,
-    surface_manager: ScreenSurfaceManager,
-) -> Callable[[], None]:
-    subscribe = getattr(runtime, "subscribe_after_session_invalidate", None)
-    if not callable(subscribe):
-        subscribe = getattr(runtime, "subscribe_before_session_invalidate", None)
-    if not callable(subscribe):
-        return lambda: None
-    unsubscribe = subscribe(surface_manager.clear_approval_surfaces)
-    return unsubscribe if callable(unsubscribe) else lambda: None
-
-
 async def _run_plain_tui(
     *,
     runtime: Any,
@@ -306,7 +246,8 @@ async def _run_plain_tui(
             runtime=runtime, session=session
         )
         event_renderer = PlainCodingEventRenderer(
-            renderer, tool_definition_resolver=_tool_definition_resolver(session)
+            renderer,
+            tool_definition_resolver=tool_definition_resolver(session),
         )
         run_context = open_coding_tui_run_context(
             session=session,
@@ -353,75 +294,6 @@ def _screen_should_exit(text: str) -> bool:
     return isinstance(parse_prompt_intent(text), QuitIntent)
 
 
-def _write_resume_hint_for_clean_exit(
-    *, session: Any, stdout: TextIO, exit_code: int
-) -> None:
-    if exit_code != 0:
-        return
-    command = _resume_command_for_session(session)
-    if command is None:
-        return
-    stdout.write(f"\nResume this session with:\n{command}\n")
-    stdout.flush()
-
-
-def _resume_command_for_session(session: Any) -> str | None:
-    resume_ref = _resume_ref_for_session(session)
-    if resume_ref is None:
-        return None
-    return " ".join(shlex.quote(part) for part in ("loushang", "--resume", resume_ref))
-
-
-def _resume_ref_for_session(session: Any) -> str | None:
-    session_file = _session_file_for_resume(session)
-    if session_file is None:
-        return None
-
-    session_id = getattr(session, "session_id", None)
-    if isinstance(session_id, str) and session_id:
-        return session_id
-
-    manager = getattr(session, "session_manager", None)
-    get_header = getattr(manager, "get_header", None)
-    if callable(get_header):
-        try:
-            header = get_header()
-        except Exception:
-            header = None
-        header_id = getattr(header, "conversation_id", None)
-        if isinstance(header_id, str) and header_id:
-            return header_id
-
-    return str(session_file)
-
-
-def _session_file_for_resume(session: Any) -> object | None:
-    manager = getattr(session, "session_manager", None)
-    get_session_file = getattr(manager, "get_session_file", None)
-    if callable(get_session_file):
-        try:
-            return get_session_file()
-        except Exception:
-            return None
-    return getattr(session, "session_file", None)
-
-
-def _session_keybindings(session: Any) -> KeybindingConfig | None:
-    settings_manager = getattr(session, "settings_manager", None)
-    if settings_manager is None:
-        return None
-    get_keybindings = getattr(settings_manager, "get_keybindings", None)
-    if callable(get_keybindings):
-        return cast(KeybindingConfig | None, get_keybindings())
-    get_settings = getattr(settings_manager, "get_settings", None)
-    if callable(get_settings):
-        return cast(
-            KeybindingConfig | None,
-            getattr(get_settings(), "keybindings", None),
-        )
-    return None
-
-
 def _trace_start(snapshot: CodingTuiStartupSnapshot, *, interactive: bool) -> None:
     _trace(
         "tui.start",
@@ -455,32 +327,3 @@ async def _load_completion_provider(session: Any) -> CompletionProvider:
             exc=error,
         )
         return CompletionProvider(())
-
-
-def _tool_definition_resolver(session: Any):
-    getter = getattr(session, "getToolDefinition", None)
-    if not callable(getter):
-        getter = getattr(session, "get_tool_definition", None)
-    return getter if callable(getter) else None
-
-
-def _queue_reader(session: Any, method_name: str):
-    def read() -> tuple[str, ...]:
-        method = getattr(session, method_name, None)
-        if not callable(method):
-            return ()
-        try:
-            values = method()
-        except Exception:
-            return ()
-        if not isinstance(values, list | tuple):
-            return ()
-        return tuple(value for value in values if isinstance(value, str))
-
-    return read
-
-
-async def _maybe_await(value: Any) -> Any:
-    if inspect.isawaitable(value):
-        return await value
-    return value

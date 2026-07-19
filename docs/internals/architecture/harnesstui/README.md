@@ -331,6 +331,16 @@ composition, or terminal writes. Those hot-path responsibilities and the
 independent render-performance contract remain unchanged. The conversation
 package initializer intentionally does not re-export these entrypoints.
 
+Coding's `ui.mode` is the composition root for these ports. It explicitly
+constructs the screen app, surface manager, event projector, action host, and
+runner, and preserves their reverse cleanup order. Raw Session discovery for
+tool definitions, queues, and keybindings lives in
+`loushang.coding.presentation.tui.runtime`; resume-hint discovery lives in
+`loushang.coding.presentation.resume`. Approval presenter binding and Session
+transition cleanup remain Coding product policy in
+`loushang.coding.policy.tui`. They do not belong to Harnesstui merely because a
+shared surface displays the prepared approval facts.
+
 ## Conversation Playback Testing
 
 `loushang.harnesstui.testing` is opt-in test support for exercising the

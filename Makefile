@@ -45,6 +45,7 @@ CODING_TUI_PRODUCT_SOURCES := \
 	src/loushang/coding/diagnostics/debug_status.py \
 	src/loushang/coding/diagnostics/tui.py \
 	src/loushang/coding/event/presentation_policy.py \
+	src/loushang/coding/policy/tui.py \
 	src/loushang/coding/interaction/controller.py \
 	src/loushang/coding/interaction/intent.py \
 	src/loushang/coding/interaction/plain_abort.py \
@@ -54,6 +55,7 @@ CODING_TUI_PRODUCT_SOURCES := \
 	src/loushang/coding/interaction/plain_result.py \
 	src/loushang/coding/interaction/routing.py \
 	src/loushang/coding/interaction/screen_host.py \
+	src/loushang/coding/presentation/resume.py \
 	src/loushang/coding/presentation/session.py \
 	src/loushang/coding/presentation/settings.py \
 	src/loushang/coding/presentation/tui

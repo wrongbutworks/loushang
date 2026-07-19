@@ -177,9 +177,12 @@ CODING_TUI_FEATURE_OWNERS = (
     "loushang.coding.interaction.routing",
     "loushang.coding.interaction.screen_host",
     "loushang.coding.model_selection_tui",
+    "loushang.coding.policy.tui",
+    "loushang.coding.presentation.resume",
     "loushang.coding.presentation.tui.events",
     "loushang.coding.presentation.tui.history",
     "loushang.coding.presentation.tui.plain",
+    "loushang.coding.presentation.tui.runtime",
     "loushang.coding.presentation.tui.screen",
     "loushang.coding.presentation.tui.tool_transcript",
 )
@@ -335,6 +338,30 @@ for module in sys.modules:
 """
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_mode_is_only_the_coding_tui_composition_root() -> None:
+    source = Path("src/loushang/coding/ui/mode.py").read_text(encoding="utf-8")
+
+    for token in (
+        "set_approval_presenter",
+        "get_session_file",
+        "inspect.signature",
+        "getToolDefinition",
+        "get_steering_messages",
+        "get_follow_up_messages",
+        "base64",
+    ):
+        assert token not in source
+
+    for token in (
+        "ScreenCodingConversationActionHost",
+        "ScreenCodingEventProjector",
+        "ScreenSurfaceManager",
+        "run_screen_coding_tui",
+        "build_plain_coding_tui_app",
+    ):
+        assert token in source
 
 
 def test_old_coding_ui_renderer_module_is_removed() -> None:

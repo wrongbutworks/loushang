@@ -17,6 +17,7 @@ from loushang.ai import (
     Usage,
     UserMessage,
 )
+from loushang.coding.policy import tui as tui_policy
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.harness.agent_transcript import (
@@ -728,7 +729,6 @@ def test_screen_approval_presenter_resolves_ask_tools_and_clears_pending(
         ToolRegistry,
         register_builtin_tools,
     )
-    from loushang.coding.ui import mode
 
     resolver = InteractiveApprovalResolver(
         fallback=HeadlessApprovalResolver(mode="deny")
@@ -771,7 +771,7 @@ def test_screen_approval_presenter_resolves_ask_tools_and_clears_pending(
         context_provider=context_provider,
     )
     session = ApprovalSession()
-    unbind = mode._bind_screen_approval_presenter(
+    unbind = tui_policy.bind_screen_approval_presenter(
         session,
         ApprovalSurfaceManager(),  # type: ignore[arg-type]
     )
@@ -823,7 +823,6 @@ def test_screen_approval_unbind_targets_runtime_current_session() -> None:
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.ui import mode
 
     resolver = InteractiveApprovalResolver(
         fallback=HeadlessApprovalResolver(mode="allow")
@@ -860,7 +859,7 @@ def test_screen_approval_unbind_targets_runtime_current_session() -> None:
     old_session = ApprovalSession()
     new_session = ApprovalSession()
     current_session = old_session
-    unbind = mode._bind_screen_approval_presenter(
+    unbind = tui_policy.bind_screen_approval_presenter(
         old_session,
         ApprovalSurfaceManager(),  # type: ignore[arg-type]
         session_provider=lambda: current_session,
@@ -895,7 +894,6 @@ def test_screen_approval_unbind_clears_host_presenter_without_current_session() 
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.ui import mode
 
     resolver = InteractiveApprovalResolver(
         fallback=HeadlessApprovalResolver(mode="deny")
@@ -921,10 +919,10 @@ def test_screen_approval_unbind_clears_host_presenter_without_current_session() 
             del action_id
 
     session = ClosedSession()
-    unbind = mode._bind_screen_approval_presenter(
+    unbind = tui_policy.bind_screen_approval_presenter(
         session,
         ApprovalSurfaceManager(),  # type: ignore[arg-type]
-        session_provider=lambda: mode._runtime_session(EmptyRuntime(), session),
+        session_provider=lambda: tui_policy.runtime_session(EmptyRuntime(), session),
     )
     assert resolver._request_presenter is not None
 
@@ -940,7 +938,6 @@ def test_screen_approval_unbind_clears_initial_presenter_when_current_has_none()
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.ui import mode
 
     resolver = InteractiveApprovalResolver(
         fallback=HeadlessApprovalResolver(mode="deny")
@@ -966,7 +963,7 @@ def test_screen_approval_unbind_clears_initial_presenter_when_current_has_none()
 
     initial_session = InitialSession()
     current_session = SessionWithoutApproval()
-    unbind = mode._bind_screen_approval_presenter(
+    unbind = tui_policy.bind_screen_approval_presenter(
         initial_session,
         ApprovalSurfaceManager(),  # type: ignore[arg-type]
         session_provider=lambda: current_session,
@@ -1086,7 +1083,6 @@ def test_screen_tui_projector_failure_still_unbinds_presenter(
 
 
 def test_screen_session_transition_binding_clears_approval_surfaces() -> None:
-    from loushang.coding.ui import mode
 
     subscribers: list[Callable[[], None]] = []
     primary_calls = 0
@@ -1113,7 +1109,7 @@ def test_screen_session_transition_binding_clears_approval_surfaces() -> None:
             clears += 1
 
     runtime = Runtime()
-    unbind = mode._bind_screen_session_transition(
+    unbind = tui_policy.bind_screen_session_transition(
         runtime,
         SurfaceManager(),  # type: ignore[arg-type]
     )
