@@ -12,18 +12,17 @@ from loushang.agent.types import (
 )
 from loushang.coding.extensions.hooks import HookDispatcher
 from loushang.coding.extensions.loader import ExtensionLoader
-from loushang.coding.extensions.types import (
-    BeforeAgentStartResult,
-    ContextResult,
+from loushang.harness.extensions.context import (
+    BoundExtensionContext,
     ExtensionCommandContext,
     ExtensionContext,
     ExtensionRuntimeBindings,
-    LoadedExtension,
     SessionActionDecision,
     SessionBeforeCompactResult,
     SessionBeforeForkResult,
     SessionBeforeTreeResult,
     SessionRefreshEvent,
+    UnboundExtensionContext,
 )
 from loushang.harness.extensions.registry import (
     source_info_from_extension as _source_info_from_extension,
@@ -33,24 +32,25 @@ from loushang.harness.extensions.routing import (
     RouteStep,
 )
 from loushang.harness.extensions.runtime import ExtensionRuntime
+from loushang.harness.extensions.types import (
+    BeforeAgentStartResult,
+    ContextResult,
+    LoadedExtension,
+)
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
 )
 from loushang.harness.runtime import (
-    BoundProductRuntimeContext,
     RuntimeBindingState,
-    UnboundProductRuntimeContext,
 )
 
-_UNSUPPORTED_THEME_MESSAGE = "Theme switching not supported in RPC mode"
 
-
-class _RunnerContext(UnboundProductRuntimeContext):
+class _RunnerContext(UnboundExtensionContext):
     pass
 
 
-class _BoundExtensionContext(BoundProductRuntimeContext):
+class _BoundExtensionContext(BoundExtensionContext):
     pass
 
 
@@ -78,19 +78,12 @@ class _BeforeAgentStartContext:
         return self.base.ui
 
     @property
-    def hasUI(self) -> bool:
-        return self.base.hasUI
-
-    @property
     def has_ui(self) -> bool:
         return self.base.has_ui
 
     @property
     def cwd(self) -> str:
         return self.base.cwd
-
-    def getSystemPrompt(self) -> str:
-        return self.get_system_prompt()
 
 
 @dataclass
@@ -485,7 +478,6 @@ class ExtensionRunner(ExtensionRuntime):
                 _RunnerContext(
                     cwd=fallback_cwd,
                     get_flag_value=self.get_flag_value,
-                    unsupported_theme_message=_UNSUPPORTED_THEME_MESSAGE,
                 ),
             )
         return cast(
@@ -498,7 +490,6 @@ class ExtensionRunner(ExtensionRuntime):
                     else None
                 ),
                 get_flag_value=self.get_flag_value,
-                unsupported_theme_message=_UNSUPPORTED_THEME_MESSAGE,
             ),
         )
 

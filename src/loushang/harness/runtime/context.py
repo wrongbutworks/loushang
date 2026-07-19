@@ -30,7 +30,6 @@ def _compact_custom_instructions(options: object | None) -> str | None:
 class UnboundProductRuntimeContext:
     cwd: str
     get_flag_value: Callable[[str], bool | str | None] = lambda name: None
-    unsupported_theme_message: str = "Theme switching is not supported."
 
     @property
     def ui(self) -> "UnboundProductRuntimeContext":
@@ -113,7 +112,9 @@ class UnboundProductRuntimeContext:
     async def append_entry(self, custom_type: str, data: object | None = None) -> None:
         del custom_type, data
 
-    async def send_message(self, message: object, options: object | None = None) -> None:
+    async def send_message(
+        self, message: object, options: object | None = None
+    ) -> None:
         del message, options
 
     async def send_user_message(
@@ -195,81 +196,19 @@ class UnboundProductRuntimeContext:
     def set_status(self, key: str, text: str | None) -> None:
         del key, text
 
-    def setStatus(self, key: str, text: str | None) -> None:
-        self.set_status(key, text)
-
     def set_widget(
         self, key: str, lines: list[str] | None, *, placement: str | None = None
     ) -> None:
         del key, lines, placement
 
-    def setWidget(
-        self, key: str, lines: list[str] | None, *, placement: str | None = None
-    ) -> None:
-        self.set_widget(key, lines, placement=placement)
-
     def set_title(self, title: str) -> None:
         del title
-
-    def setTitle(self, title: str) -> None:
-        self.set_title(title)
 
     def set_editor_text(self, text: str) -> None:
         del text
 
-    def setEditorText(self, text: str) -> None:
-        self.set_editor_text(text)
-
-    def pasteToEditor(self, text: str) -> None:
-        self.set_editor_text(text)
-
-    def getEditorText(self) -> str:
+    def get_editor_text(self) -> str:
         return ""
-
-    def onTerminalInput(self, handler: Callable[[str], None]) -> Callable[[], None]:
-        del handler
-        return lambda: None
-
-    def setWorkingMessage(self, message: str | None = None) -> None:
-        del message
-
-    def setWorkingVisible(self, visible: bool) -> None:
-        del visible
-
-    def setWorkingIndicator(self, options: object | None = None) -> None:
-        del options
-
-    def setHiddenThinkingLabel(self, label: str | None = None) -> None:
-        del label
-
-    def setFooter(self, factory: object | None) -> None:
-        del factory
-
-    def setHeader(self, factory: object | None) -> None:
-        del factory
-
-    def addAutocompleteProvider(self, factory: object) -> None:
-        del factory
-
-    def setEditorComponent(self, factory: object | None) -> None:
-        del factory
-
-    def getAllThemes(self) -> list[object]:
-        return []
-
-    def getTheme(self, name: str) -> object | None:
-        del name
-        return None
-
-    def setTheme(self, theme: object) -> dict[str, object]:
-        del theme
-        return {"success": False, "error": self.unsupported_theme_message}
-
-    def getToolsExpanded(self) -> bool:
-        return False
-
-    def setToolsExpanded(self, expanded: bool) -> None:
-        del expanded
 
     async def select(
         self, title: str, options: list[str], *, timeout: float | None = None
@@ -293,8 +232,14 @@ class UnboundProductRuntimeContext:
         del title, placeholder, timeout
         return None
 
-    async def editor(self, title: str, prefill: str | None = None) -> str | None:
-        del title, prefill
+    async def editor(
+        self,
+        title: str,
+        prefill: str | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> str | None:
+        del title, prefill, timeout
         return None
 
 
@@ -305,12 +250,10 @@ class BoundProductRuntimeContext:
         tool_source_info: SourceInfo[Path] | None = None,
         *,
         get_flag_value: Callable[[str], bool | str | None] | None = None,
-        unsupported_theme_message: str = "Theme switching is not supported.",
     ) -> None:
         self._runtime_bindings = runtime_bindings
         self._tool_source_info = tool_source_info
         self._get_flag_value = get_flag_value or (lambda name: None)
-        self._unsupported_theme_message = unsupported_theme_message
 
     @property
     def ui(self) -> "BoundProductRuntimeContext":
@@ -406,7 +349,9 @@ class BoundProductRuntimeContext:
     async def append_entry(self, custom_type: str, data: object | None = None) -> None:
         await self._require_bindings().append_entry(custom_type, data)
 
-    async def send_message(self, message: object, options: object | None = None) -> None:
+    async def send_message(
+        self, message: object, options: object | None = None
+    ) -> None:
         callback = self._require_bindings().send_message
         if callback is None:
             return None
@@ -525,9 +470,6 @@ class BoundProductRuntimeContext:
         if ui is not None:
             ui.set_status(key, text)
 
-    def setStatus(self, key: str, text: str | None) -> None:
-        self.set_status(key, text)
-
     def set_widget(
         self, key: str, lines: list[str] | None, *, placement: str | None = None
     ) -> None:
@@ -535,90 +477,20 @@ class BoundProductRuntimeContext:
         if ui is not None:
             ui.set_widget(key, lines, placement=placement)
 
-    def setWidget(
-        self, key: str, lines: list[str] | None, *, placement: str | None = None
-    ) -> None:
-        self.set_widget(key, lines, placement=placement)
-
     def set_title(self, title: str) -> None:
         ui = self._ui_context()
         if ui is not None:
             ui.set_title(title)
-
-    def setTitle(self, title: str) -> None:
-        self.set_title(title)
 
     def set_editor_text(self, text: str) -> None:
         ui = self._ui_context()
         if ui is not None:
             ui.set_editor_text(text)
 
-    def setEditorText(self, text: str) -> None:
-        self.set_editor_text(text)
-
-    def pasteToEditor(self, text: str) -> None:
-        self.set_editor_text(text)
-
-    def getEditorText(self) -> str:
+    def get_editor_text(self) -> str:
         ui = self._ui_context()
-        getter = getattr(ui, "getEditorText", None) if ui is not None else None
+        getter = getattr(ui, "get_editor_text", None) if ui is not None else None
         return getter() if callable(getter) else ""
-
-    def onTerminalInput(self, handler: Callable[[str], None]) -> Callable[[], None]:
-        ui = self._ui_context()
-        listener = getattr(ui, "onTerminalInput", None) if ui is not None else None
-        return listener(handler) if callable(listener) else (lambda: None)
-
-    def setWorkingMessage(self, message: str | None = None) -> None:
-        self._call_ui_noop("setWorkingMessage", message)
-
-    def setWorkingVisible(self, visible: bool) -> None:
-        self._call_ui_noop("setWorkingVisible", visible)
-
-    def setWorkingIndicator(self, options: object | None = None) -> None:
-        self._call_ui_noop("setWorkingIndicator", options)
-
-    def setHiddenThinkingLabel(self, label: str | None = None) -> None:
-        self._call_ui_noop("setHiddenThinkingLabel", label)
-
-    def setFooter(self, factory: object | None) -> None:
-        self._call_ui_noop("setFooter", factory)
-
-    def setHeader(self, factory: object | None) -> None:
-        self._call_ui_noop("setHeader", factory)
-
-    def addAutocompleteProvider(self, factory: object) -> None:
-        self._call_ui_noop("addAutocompleteProvider", factory)
-
-    def setEditorComponent(self, factory: object | None) -> None:
-        self._call_ui_noop("setEditorComponent", factory)
-
-    def getAllThemes(self) -> list[object]:
-        ui = self._ui_context()
-        getter = getattr(ui, "getAllThemes", None) if ui is not None else None
-        value = getter() if callable(getter) else []
-        return list(value) if isinstance(value, list) else []
-
-    def getTheme(self, name: str) -> object | None:
-        ui = self._ui_context()
-        getter = getattr(ui, "getTheme", None) if ui is not None else None
-        return getter(name) if callable(getter) else None
-
-    def setTheme(self, theme: object) -> dict[str, object]:
-        ui = self._ui_context()
-        setter = getattr(ui, "setTheme", None) if ui is not None else None
-        value = setter(theme) if callable(setter) else None
-        if isinstance(value, dict):
-            return value
-        return {"success": False, "error": self._unsupported_theme_message}
-
-    def getToolsExpanded(self) -> bool:
-        ui = self._ui_context()
-        getter = getattr(ui, "getToolsExpanded", None) if ui is not None else None
-        return bool(getter()) if callable(getter) else False
-
-    def setToolsExpanded(self, expanded: bool) -> None:
-        self._call_ui_noop("setToolsExpanded", expanded)
 
     async def select(
         self, title: str, options: list[str], *, timeout: float | None = None
@@ -652,21 +524,23 @@ class BoundProductRuntimeContext:
             else None
         )
 
-    async def editor(self, title: str, prefill: str | None = None) -> str | None:
+    async def editor(
+        self,
+        title: str,
+        prefill: str | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> str | None:
         ui = self._ui_context()
-        return await ui.editor(title, prefill) if ui is not None else None
+        return (
+            await ui.editor(title, prefill, timeout=timeout) if ui is not None else None
+        )
 
     def _require_bindings(self):
         return self._runtime_bindings.require()
 
     def _ui_context(self):
         return getattr(self._require_bindings(), "ui_context", None)
-
-    def _call_ui_noop(self, method_name: str, *args: object) -> None:
-        ui = self._ui_context()
-        method = getattr(ui, method_name, None) if ui is not None else None
-        if callable(method):
-            method(*args)
 
 
 __all__ = ["BoundProductRuntimeContext", "UnboundProductRuntimeContext"]

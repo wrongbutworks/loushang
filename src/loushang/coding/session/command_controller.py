@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import cast
 
 from loushang.coding.commands import CommandSourceInfo, SessionCommandDescriptor
-from loushang.coding.extensions import ExtensionRunner, ResolvedCommand
+from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.prompt import (
     PromptPreflightResult,
     preflight_user_input,
@@ -30,6 +30,7 @@ from loushang.harness.capabilities.commands import (
 )
 from loushang.harness.capabilities.packs import CapabilityPackComposer
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.extensions.types import ResolvedCommand
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.frontmatter import strip_frontmatter
 from loushang.harness.resources.source import SourceInfo as ExtensionSourceInfo
@@ -51,9 +52,9 @@ class CommandController:
     pack_composer: CapabilityPackComposer = field(
         default_factory=CapabilityPackComposer
     )
-    _runtime: SessionCommandRuntime[SessionCommandDescriptor, CommandExecutionResult] = (
-        field(init=False, repr=False)
-    )
+    _runtime: SessionCommandRuntime[
+        SessionCommandDescriptor, CommandExecutionResult
+    ] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._runtime = SessionCommandRuntime(

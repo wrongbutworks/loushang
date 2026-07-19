@@ -1801,9 +1801,8 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
         )
         for imported in _absolute_imports(path)
     }
-    assert (
-        "loushang.harness.agent_transcript.ProductTranscriptSession"
-        in (coding_store_imports)
+    assert "loushang.harness.agent_transcript.ProductTranscriptSession" in (
+        coding_store_imports
     )
     assert "loushang.harness.journal.TranscriptRepository" not in (coding_store_imports)
     assert "loushang.harness.journal.BranchGraph" not in coding_store_imports
@@ -1944,6 +1943,98 @@ def test_harness_extension_runtime_core_boundary_is_documented() -> None:
         if _matches_any(imported, forbidden_prefixes)
     ]
     assert offenders == []
+
+
+def test_harness_extension_context_runtime_is_documented_and_adopted() -> None:
+    from loushang.coding.extensions.types import (
+        ExtensionCommandContext as CodingExtensionCommandContext,
+    )
+    from loushang.coding.extensions.types import (
+        ExtensionContext as CodingExtensionContext,
+    )
+    from loushang.coding.extensions.types import (
+        ExtensionRuntimeBindings as CodingExtensionRuntimeBindings,
+    )
+    from loushang.coding.mode.rpc_mode import RpcExtensionUIContext
+    from loushang.harness.extensions.context import (
+        BoundExtensionContext,
+        ExtensionCommandContext,
+        ExtensionContext,
+        ExtensionRuntimeBindings,
+        ExtensionUiContext,
+        UnboundExtensionContext,
+    )
+
+    design_path = Path(
+        "docs/internals/architecture/harness/extension-context-runtime-boundary.md"
+    )
+    assert design_path.exists()
+    design_text = " ".join(design_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Harness Extension Context Runtime Boundary",
+        "`ExtensionContext`",
+        "`ExtensionRuntimeBindings`",
+        "snake_case only",
+        "Pi-style aliases",
+        "not a Python extension method name",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
+    )
+
+    assert CodingExtensionContext is ExtensionContext
+    assert CodingExtensionCommandContext is ExtensionCommandContext
+    assert CodingExtensionRuntimeBindings is ExtensionRuntimeBindings
+
+    pi_ui_aliases = {
+        "setStatus",
+        "setWidget",
+        "setTitle",
+        "setEditorText",
+        "pasteToEditor",
+        "getEditorText",
+        "onTerminalInput",
+        "setWorkingMessage",
+        "setWorkingVisible",
+        "setWorkingIndicator",
+        "setHiddenThinkingLabel",
+        "setFooter",
+        "setHeader",
+        "addAutocompleteProvider",
+        "setEditorComponent",
+        "getAllThemes",
+        "getTheme",
+        "setTheme",
+        "getToolsExpanded",
+        "setToolsExpanded",
+    }
+    for context_type in (
+        ExtensionUiContext,
+        ExtensionContext,
+        BoundExtensionContext,
+        UnboundExtensionContext,
+        RpcExtensionUIContext,
+    ):
+        assert pi_ui_aliases.isdisjoint(set(context_type.__dict__))
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Extension Context Runtime Boundary" in readme_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "snake_case context API is the sole extension API" in inventory_text
+
+    runner_imports = set(
+        _absolute_imports(Path("src/loushang/coding/extensions/runner.py"))
+    )
+    assert "loushang.harness.extensions.context.BoundExtensionContext" in runner_imports
+    assert "loushang.harness.extensions.context.ExtensionContext" in runner_imports
+    assert (
+        "loushang.harness.extensions.context.ExtensionRuntimeBindings" in runner_imports
+    )
 
 
 def test_harness_control_plane_runtime_boundary_is_documented() -> None:
@@ -2741,9 +2832,9 @@ def test_harness_product_runtime_core_is_documented_and_adopted() -> None:
 
     expected_imports = {
         Path("src/loushang/coding/extensions/runner.py"): {
-            "loushang.harness.runtime.BoundProductRuntimeContext",
+            "loushang.harness.extensions.context.BoundExtensionContext",
+            "loushang.harness.extensions.context.UnboundExtensionContext",
             "loushang.harness.runtime.RuntimeBindingState",
-            "loushang.harness.runtime.UnboundProductRuntimeContext",
         },
         Path("src/loushang/coding/runtime/agent_session_runtime.py"): {
             "loushang.harness.runtime.CoalescingScheduler",

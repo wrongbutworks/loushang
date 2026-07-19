@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from loushang.coding.extensions import SessionRefreshEvent, SessionStartEvent
+from loushang.harness.extensions.context import SessionRefreshEvent, SessionStartEvent
 from loushang.harness.extensions.lifecycle import (
     ExtensionRuntimeCoordinator,
     ExtensionRuntimeOperation,

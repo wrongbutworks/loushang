@@ -3068,9 +3068,9 @@ def test_agent_session_extension_status_updates_footer_data_provider(tmp_path) -
 
     def _session_start(event, ctx):
         del event
-        ctx.setStatus("deploy", "running")
+        ctx.set_status("deploy", "running")
         ctx.set_status("build", "queued")
-        ctx.setStatus("build", None)
+        ctx.set_status("build", None)
 
     session = AgentSession(
         agent=Agent(
