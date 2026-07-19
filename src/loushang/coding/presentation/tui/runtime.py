@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any, cast
 
 from loushang.harness.presentation import ToolDefinitionResolver
+from loushang.harnesstui.conversation.runtime_view import (
+    StringQueueReader,
+    StringQueueSource,
+    stable_string_queue_reader,
+)
 from loushang.tui.keybindings import KeybindingConfig
-
-QueueReader = Callable[[], tuple[str, ...]]
 
 
 def tool_definition_resolver(session: Any) -> ToolDefinitionResolver | None:
@@ -14,28 +16,24 @@ def tool_definition_resolver(session: Any) -> ToolDefinitionResolver | None:
     return cast(ToolDefinitionResolver, getter) if callable(getter) else None
 
 
-def queue_reader(session: Any, method_name: str) -> QueueReader:
-    def read() -> tuple[str, ...]:
-        method = getattr(session, method_name, None)
-        if not callable(method):
-            return ()
-        try:
-            values = method()
-        except Exception:
-            return ()
-        if not isinstance(values, list | tuple):
-            return ()
-        return tuple(value for value in values if isinstance(value, str))
-
-    return read
+def _session_queue_source(
+    session: Any,
+    method_name: str,
+) -> StringQueueSource | None:
+    source = getattr(session, method_name, None)
+    return cast(StringQueueSource, source) if callable(source) else None
 
 
-def pending_steers_reader(session: Any) -> QueueReader:
-    return queue_reader(session, "get_steering_messages")
+def pending_steers_reader(session: Any) -> StringQueueReader:
+    return stable_string_queue_reader(
+        _session_queue_source(session, "get_steering_messages")
+    )
 
 
-def pending_followups_reader(session: Any) -> QueueReader:
-    return queue_reader(session, "get_follow_up_messages")
+def pending_followups_reader(session: Any) -> StringQueueReader:
+    return stable_string_queue_reader(
+        _session_queue_source(session, "get_follow_up_messages")
+    )
 
 
 def session_keybindings(session: Any) -> KeybindingConfig | None:
@@ -57,7 +55,6 @@ def session_keybindings(session: Any) -> KeybindingConfig | None:
 __all__ = [
     "pending_followups_reader",
     "pending_steers_reader",
-    "queue_reader",
     "session_keybindings",
     "tool_definition_resolver",
 ]

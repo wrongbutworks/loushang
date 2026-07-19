@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from io import StringIO
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ from loushang.tui.playback_suite import (
     PlaybackScenarioSpec,
     PlaybackSuite,
     normalized_tags,
+    run_playback_cli,
     run_playback_scenarios,
 )
 
@@ -224,3 +226,53 @@ def test_run_playback_scenarios_propagates_non_assertion_errors() -> None:
 
     with pytest.raises(RuntimeError, match="unexpected"):
         run_playback_scenarios(suite=suite)
+
+
+def test_run_playback_cli_lists_and_runs_an_injected_suite() -> None:
+    suite = PlaybackSuite(
+        (
+            PlaybackScenarioSpec(
+                name="smoke",
+                description="Smoke scenario.",
+                run=lambda: None,
+                tags=("fast",),
+            ),
+        )
+    )
+    stdout = StringIO()
+
+    assert run_playback_cli(suite, ["--list"], stdout=stdout) == 0
+    assert stdout.getvalue() == "smoke\tSmoke scenario.\n"
+
+    stdout = StringIO()
+    assert run_playback_cli(suite, ["smoke"], stdout=stdout) == 0
+    assert stdout.getvalue().startswith("PASS smoke (")
+
+
+def test_run_playback_cli_reports_unknown_scenario_and_json() -> None:
+    suite = PlaybackSuite(
+        (
+            PlaybackScenarioSpec(
+                name="smoke",
+                description="Smoke scenario.",
+                run=lambda: None,
+            ),
+        )
+    )
+    stdout = StringIO()
+    stderr = StringIO()
+
+    assert (
+        run_playback_cli(
+            suite,
+            ["missing"],
+            stdout=stdout,
+            stderr=stderr,
+        )
+        == 2
+    )
+    assert stderr.getvalue() == "Unknown scenario: missing\n"
+
+    stdout = StringIO()
+    assert run_playback_cli(suite, ["--json"], stdout=stdout) == 0
+    assert '"name": "smoke"' in stdout.getvalue()

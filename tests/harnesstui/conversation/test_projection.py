@@ -6,7 +6,10 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from loushang.harnesstui.conversation.projection import ConversationProjector
+from loushang.harnesstui.conversation.projection import (
+    ConversationProjectionBinding,
+    ConversationProjector,
+)
 from loushang.harnesstui.conversation.tool_transcript import (
     ToolCallSnapshot,
     ToolCallView,
@@ -104,6 +107,33 @@ class RecordingTarget:
         self.events.append(
             ("compaction_finished", error_message, summary, tokens_before)
         )
+
+
+def test_projection_binding_forwards_product_events_and_exposes_shared_state() -> (
+    None
+):
+    target = RecordingTarget()
+    projector = ConversationProjector(target)
+    seen: list[object] = []
+    binding = ConversationProjectionBinding[object](projector, seen.append)
+    event = object()
+    tool_calls = {"call-1": ToolCallSnapshot(tool_name="read")}
+    rendered_tool_results = {"call-0"}
+    rendered_assistant_errors: set[int | str] = {"message-1"}
+
+    binding.tool_calls = tool_calls
+    binding.rendered_tool_results = rendered_tool_results
+    binding.rendered_assistant_errors = rendered_assistant_errors
+    binding.last_error_message = "old error"
+    binding.handle(event)
+
+    assert seen == [event]
+    assert seen[0] is event
+    assert binding.tool_calls is tool_calls
+    assert binding.rendered_tool_results is rendered_tool_results
+    assert binding.rendered_assistant_errors is rendered_assistant_errors
+    assert binding.last_error_message == "old error"
+    assert binding.projector is projector
 
 
 def test_assistant_delta_forwards_the_same_object_without_building_containers() -> None:

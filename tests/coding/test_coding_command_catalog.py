@@ -6,8 +6,9 @@ from types import SimpleNamespace
 def test_coding_command_catalog_classifies_local_and_session_commands() -> None:
     from loushang.coding.commands.catalog import CodingCommandCatalog
     from loushang.coding.interaction.intent import PromptIntent, SettingsIntent
-    from loushang.coding.interaction.routing import PromptRoute
+    from loushang.coding.interaction.tui_profile import CodingLocalAction
     from loushang.harness.commands import CommandEffectKind, CommandKind
+    from loushang.harnesstui.conversation.host import ConversationHostRoute
 
     catalog = CodingCommandCatalog(
         session_commands=lambda: [
@@ -21,13 +22,18 @@ def test_coding_command_catalog_classifies_local_and_session_commands() -> None:
         ]
     )
 
-    settings_effect = catalog.effect_for_route(PromptRoute.SETTINGS, SettingsIntent())
+    settings_effect = catalog.effect_for_route(
+        CodingLocalAction.SETTINGS, SettingsIntent()
+    )
     assert settings_effect is not None
     assert settings_effect.kind is CommandEffectKind.LOCAL_UI
     assert settings_effect.command.kind is CommandKind.LOCAL_UI
     assert settings_effect.command.id == "coding.ui.settings"
 
-    name_effect = catalog.effect_for_route(PromptRoute.DISPATCH, PromptIntent("/name Project Alpha"))
+    name_effect = catalog.effect_for_route(
+        ConversationHostRoute.DISPATCH,
+        PromptIntent("/name Project Alpha"),
+    )
     assert name_effect is not None
     assert name_effect.kind is CommandEffectKind.SESSION
     assert name_effect.command.kind is CommandKind.SESSION
@@ -38,13 +44,31 @@ def test_coding_command_catalog_classifies_local_and_session_commands() -> None:
 def test_coding_command_catalog_leaves_plain_prompts_and_queue_routes_unowned() -> None:
     from loushang.coding.commands.catalog import CodingCommandCatalog
     from loushang.coding.interaction.intent import FollowUpIntent, PromptIntent
-    from loushang.coding.interaction.routing import PromptRoute
+    from loushang.harnesstui.conversation.host import ConversationHostRoute
 
     catalog = CodingCommandCatalog(session_commands=lambda: [])
 
-    assert catalog.effect_for_route(PromptRoute.DISPATCH, PromptIntent("hello")) is None
-    assert catalog.effect_for_route(PromptRoute.STEER, PromptIntent("steer")) is None
-    assert catalog.effect_for_route(PromptRoute.FOLLOW_UP, FollowUpIntent("later")) is None
+    assert (
+        catalog.effect_for_route(
+            ConversationHostRoute.DISPATCH,
+            PromptIntent("hello"),
+        )
+        is None
+    )
+    assert (
+        catalog.effect_for_route(
+            ConversationHostRoute.STEER,
+            PromptIntent("steer"),
+        )
+        is None
+    )
+    assert (
+        catalog.effect_for_route(
+            ConversationHostRoute.FOLLOW_UP,
+            FollowUpIntent("later"),
+        )
+        is None
+    )
 
 
 def test_coding_command_catalog_preserves_local_command_argument_rules() -> None:
@@ -69,8 +93,12 @@ def test_coding_command_catalog_lists_local_and_session_commands_once() -> None:
 
     catalog = CodingCommandCatalog(
         session_commands=lambda: [
-            SimpleNamespace(name="report", description="Session report", source="builtin"),
-            SimpleNamespace(name="deploy", description="Deploy app", source="extension"),
+            SimpleNamespace(
+                name="report", description="Session report", source="builtin"
+            ),
+            SimpleNamespace(
+                name="deploy", description="Deploy app", source="extension"
+            ),
         ]
     )
 

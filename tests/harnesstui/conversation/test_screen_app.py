@@ -8,6 +8,11 @@ from loushang.harnesstui.conversation.screen_frame import (
     ScreenFramePresentation,
 )
 from loushang.tui import RenderConstraints
+from loushang.tui.transcript import (
+    AssistantMessageRecord,
+    ContextCompactionRecord,
+    UserPromptRecord,
+)
 from loushang.tui.ui_parts.transcript import TranscriptRegion
 
 
@@ -75,3 +80,64 @@ def test_screen_conversation_app_reports_window_replacement_reason_once() -> Non
         "transcript_window_replaced:test"
     )
     assert app.consume_render_baseline_reset_reason() is None
+
+
+def test_screen_conversation_app_owns_compaction_window_mechanics() -> None:
+    app = _app()
+    app.state.records.extend(
+        [
+            UserPromptRecord("old"),
+            AssistantMessageRecord("middle"),
+            UserPromptRecord("new"),
+        ]
+    )
+
+    app.compact_transcript_window(summary=" condensed ", max_records=2)
+
+    assert app.state.records == [
+        AssistantMessageRecord("condensed"),
+        UserPromptRecord("new"),
+    ]
+    assert app.state.evicted_prefix_record_count == 2
+    assert app.consume_render_baseline_reset_reason() == (
+        "transcript_window_replaced:compaction"
+    )
+
+
+def test_screen_conversation_app_appends_compaction_fact_and_trims_records() -> None:
+    app = _app()
+    app.state.records.extend(UserPromptRecord(str(index)) for index in range(3))
+
+    app.append_context_compaction_record(
+        summary="condensed",
+        tokens_before=42,
+        max_records=2,
+    )
+
+    assert app.state.records == [
+        UserPromptRecord("2"),
+        ContextCompactionRecord(summary="condensed", tokens_before=42),
+    ]
+    assert app.state.evicted_prefix_record_count == 2
+    assert app.consume_render_baseline_reset_reason() == (
+        "transcript_window_trimmed:context_compaction"
+    )
+
+
+def test_screen_conversation_app_applies_active_logical_line_budget() -> None:
+    app = _app()
+    app.active_transcript_line_budget = 2
+    app.state.records.extend(
+        [
+            UserPromptRecord("old"),
+            AssistantMessageRecord("new"),
+        ]
+    )
+
+    app.trim_active_transcript_window()
+
+    assert app.state.records == [AssistantMessageRecord("new")]
+    assert app.state.evicted_prefix_record_count == 1
+    assert app.consume_render_baseline_reset_reason() == (
+        "transcript_window_trimmed:active_line_budget"
+    )

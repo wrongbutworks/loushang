@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import pytest
 
-from loushang.coding.testing.tui.scenarios.budgets import (
+from loushang.tui import PlaybackFrameBudget
+from tests.coding.tui_support.scenarios.budgets import (
     INTERACTION_FRAME_BUDGET,
     LONG_TRANSCRIPT_FRAME_BUDGET,
 )
-from loushang.coding.testing.tui.scenarios.product import (
+from tests.coding.tui_support.scenarios.product import (
     PRODUCT_COMPOSED_FRAME_BUDGET,
     PRODUCT_STREAMING_CONTROL_FRAME_BUDGET,
 )
-from loushang.tui import PlaybackFrameBudget
 
 pytestmark = pytest.mark.tui_render_contract
 

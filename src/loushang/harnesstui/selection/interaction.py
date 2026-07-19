@@ -18,6 +18,19 @@ ModelInteractionKind = Literal["list", "selected", "empty", "ambiguous", "cancel
 
 
 @dataclass(frozen=True, slots=True)
+class ModelInteractionPresentationCopy:
+    """Product wording and list projection for a model resolution."""
+
+    list_items: Callable[[tuple[ModelChoice, ...], str | None], str]
+    item_text: Callable[[ModelChoice], str]
+    cancelled: str
+    empty: str
+    no_match: Callable[[str], str]
+    ambiguous_title: str
+    ambiguous_hint: Callable[[tuple[ModelChoice, ...]], str]
+
+
+@dataclass(frozen=True, slots=True)
 class ModelInteractionSnapshot:
     """Product-neutral model choices captured for one interaction."""
 
@@ -117,11 +130,38 @@ async def run_model_interaction(
     return resolve_model_interaction(snapshot, query=selected)
 
 
+def present_model_interaction(
+    result: ModelInteractionResult,
+    *,
+    current_value: str | None,
+    copy: ModelInteractionPresentationCopy,
+) -> str | None:
+    """Present non-selected outcomes while leaving model application to Product."""
+
+    if result.kind == "selected":
+        return None
+    if result.kind == "list":
+        return copy.list_items(result.matches, current_value)
+    if result.kind == "cancelled":
+        return copy.cancelled
+    if result.kind == "empty":
+        return copy.no_match(result.query) if result.query else copy.empty
+    return "\n".join(
+        (
+            copy.ambiguous_title,
+            *(f"  {copy.item_text(choice)}" for choice in result.matches),
+            copy.ambiguous_hint(result.matches),
+        )
+    )
+
+
 __all__ = [
     "ModelInteractionChooser",
     "ModelInteractionKind",
+    "ModelInteractionPresentationCopy",
     "ModelInteractionResult",
     "ModelInteractionSnapshot",
+    "present_model_interaction",
     "resolve_model_interaction",
     "run_model_interaction",
 ]

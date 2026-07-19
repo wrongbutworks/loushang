@@ -491,7 +491,7 @@ def test_screen_input_router_routes_active_surface_before_composer() -> None:
 def test_screen_input_router_routes_runtime_overlay_before_composer() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import build_screen_input_router
-    from loushang.coding.ui.screen_surfaces import ScreenSurfaceView
+    from loushang.harnesstui.surface.view import ScreenSurfaceView
     from loushang.tui import CommandSurface, SelectItem, Surface, SurfaceHost
 
     app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
@@ -566,10 +566,10 @@ def test_screen_input_router_ctrl_o_fallback_reader_includes_streaming_assistant
 
 
 def test_screen_input_router_ctrl_o_uses_transcript_source_factory() -> None:
-    from loushang.coding.presentation.tui.history import TranscriptSnapshot
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import build_screen_input_router
     from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
+    from loushang.harnesstui.conversation.source import TranscriptSnapshot
     from loushang.tui import SurfaceHost
     from loushang.tui.transcript import AssistantMessageRecord
 

@@ -2,15 +2,21 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Literal, Protocol
+from pathlib import Path
+from typing import Literal, Protocol, cast
 
 from loushang.harnesstui.conversation.attachments import (
+    ClipboardImageNameFactory,
+    ClipboardImageReader,
     PendingPromptImageRegistry,
     PromptImageAttachment,
     PromptImageAttachmentOutcome,
+    new_prompt_image_name_token,
+    stage_clipboard_image,
 )
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.tui import Composer, SurfaceHost
+from loushang.tui.clipboard_image import read_clipboard_image
 from loushang.tui.input import (
     ComposerInputTarget,
     InputEvent,
@@ -41,6 +47,68 @@ class ConversationScreenInputPort(Protocol):
     def queue_followup(self, text: str) -> None: ...
 
     def queue_steer(self, text: str) -> None: ...
+
+
+class ClipboardImageConversationInputPort(ConversationScreenInputPort, Protocol):
+    """Conversation input surface capable of presenting clipboard status."""
+
+    def set_status(self, message: str | None) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ClipboardImageStatusCopy:
+    """Caller-supplied copy for neutral clipboard attachment outcomes."""
+
+    empty: str
+    read_error_prefix: str
+    unsupported_prefix: str
+    write_error_prefix: str
+    attached_prefix: str
+    unknown_type: str
+
+    def message(self, outcome: PromptImageAttachmentOutcome) -> str | None:
+        if outcome.kind == "empty":
+            return self.empty
+        if outcome.kind == "read_error":
+            return f"{self.read_error_prefix}{outcome.error_message}"
+        if outcome.kind == "unsupported":
+            return f"{self.unsupported_prefix}{outcome.mime_type or self.unknown_type}"
+        if outcome.kind == "write_error":
+            return f"{self.write_error_prefix}{outcome.error_message}"
+        if outcome.attachment is not None:
+            return f"{self.attached_prefix}{outcome.attachment.display_path}"
+        return None
+
+
+ClipboardImageAppPath = Callable[[ConversationScreenInputPort], Path | str]
+
+
+@dataclass(frozen=True, slots=True)
+class ClipboardImageInputProfile:
+    """Product policy injected into app-aware clipboard image routing."""
+
+    directory: ClipboardImageAppPath
+    display_root: ClipboardImageAppPath
+    status_copy: ClipboardImageStatusCopy
+
+
+class ClipboardImageInputRouterBuilder(Protocol):
+    """Construct a clipboard-enabled router from one bound product profile."""
+
+    def __call__(
+        self,
+        app: ClipboardImageConversationInputPort,
+        should_exit: Callable[[str], bool],
+        is_local_command: Callable[[str], bool] = ...,
+        keybindings: KeybindingManager | KeybindingConfig | None = ...,
+        running_submit_mode: RunningSubmitMode = ...,
+        follow_up_keys: tuple[str, ...] = ...,
+        width: int = ...,
+        height: int = ...,
+        clipboard_image_reader: ClipboardImageReader = ...,
+        clipboard_image_dir: Path | str | None = ...,
+        clipboard_image_name_factory: ClipboardImageNameFactory = ...,
+    ) -> ConversationInputRouter: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -376,11 +444,81 @@ class ConversationInputRouter:
         self._pending_prompt_images.clear()
 
 
+def bind_clipboard_image_input_router(
+    profile: ClipboardImageInputProfile,
+) -> ClipboardImageInputRouterBuilder:
+    """Bind app-aware staging and status presentation to a router builder.
+
+    The callbacks resolve the router's current app at event time. Replacing the
+    app therefore also replaces the workspace and status destination without
+    rebuilding the router.
+    """
+
+    def build(
+        app: ClipboardImageConversationInputPort,
+        should_exit: Callable[[str], bool],
+        is_local_command: Callable[[str], bool] = lambda _text: False,
+        keybindings: KeybindingManager | KeybindingConfig | None = None,
+        running_submit_mode: RunningSubmitMode = "steer",
+        follow_up_keys: tuple[str, ...] = ("alt+enter",),
+        width: int = 80,
+        height: int = 12,
+        clipboard_image_reader: ClipboardImageReader = read_clipboard_image,
+        clipboard_image_dir: Path | str | None = None,
+        clipboard_image_name_factory: ClipboardImageNameFactory = (
+            new_prompt_image_name_token
+        ),
+    ) -> ConversationInputRouter:
+        router: ConversationInputRouter
+
+        def current_app() -> ClipboardImageConversationInputPort:
+            return cast(ClipboardImageConversationInputPort, router.app)
+
+        def stage_image() -> PromptImageAttachmentOutcome:
+            bound_app = current_app()
+            return stage_clipboard_image(
+                clipboard_image_reader,
+                directory=(
+                    clipboard_image_dir
+                    if clipboard_image_dir is not None
+                    else profile.directory(bound_app)
+                ),
+                display_root=profile.display_root(bound_app),
+                name_factory=clipboard_image_name_factory,
+            )
+
+        def present_outcome(outcome: PromptImageAttachmentOutcome) -> None:
+            message = profile.status_copy.message(outcome)
+            if message is not None:
+                current_app().set_status(message)
+
+        router = ConversationInputRouter(
+            app=app,
+            should_exit=should_exit,
+            is_local_command=is_local_command,
+            keybindings=keybindings,
+            running_submit_mode=running_submit_mode,
+            follow_up_keys=follow_up_keys,
+            width=width,
+            height=height,
+            prompt_image_stager=stage_image,
+            clipboard_outcome_presenter=present_outcome,
+        )
+        return router
+
+    return build
+
+
 __all__ = [
+    "ClipboardImageConversationInputPort",
+    "ClipboardImageInputProfile",
+    "ClipboardImageInputRouterBuilder",
+    "ClipboardImageStatusCopy",
     "ClipboardOutcomePresenter",
     "ConversationInputResult",
     "ConversationInputRouter",
     "ConversationScreenInputPort",
     "PromptImageAttachmentStager",
     "RunningSubmitMode",
+    "bind_clipboard_image_input_router",
 ]

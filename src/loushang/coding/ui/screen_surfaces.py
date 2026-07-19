@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol
+from typing import Any
 
 from loushang.coding.commands.catalog import CodingCommandCatalog
 from loushang.coding.commands.tui import (
@@ -34,114 +33,85 @@ from loushang.coding.model_selection_tui import (
 from loushang.coding.ui.hotkeys import format_hotkeys
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.settings_page import build_coding_settings_page
-from loushang.harness.commands import CommandDef, CommandKind
+from loushang.harness.commands import CommandDef
 from loushang.harnesstui.selection.catalog import (
     model_choice_select_items,
     model_label_select_items,
 )
 from loushang.harnesstui.status.provider import StatusProvider
-from loushang.harnesstui.surface.controller import (
-    ApprovalSurfaceDecision,
-    ScreenSurfaceCoordinator,
-)
+from loushang.harnesstui.surface.controller import ApprovalSurfaceDecision
 from loushang.harnesstui.surface.factory import (
     command_palette_surface_view,
-    info_surface_view,
     model_selector_surface_view,
 )
-from loushang.harnesstui.surface.view import (
-    ScreenSurfacePresentation,
-    ScreenSurfaceView,
-)
-from loushang.harnesstui.surface.view import (
-    ScreenSurfacePurpose as ScreenSurfacePurpose,
-)
-from loushang.tui import (
-    CommandPalette,
-    InputIntent,
+from loushang.harnesstui.surface.view import ScreenSurfaceView
+from loushang.harnesstui.surface.workflow import (
+    ScreenSurfaceCommand,
+    ScreenSurfaceCommandCatalog,
+    ScreenSurfaceWorkflow,
+    ScreenSurfaceWorkflowCopy,
+    ScreenSurfaceWorkflowPorts,
 )
 
 
-class ScreenCommandCatalog(Protocol):
-    def lookup(self, text: str) -> CommandDef | None: ...
+class ScreenSurfaceManager(ScreenSurfaceWorkflow):
+    """Coding product adapter over the shared surface interaction host."""
 
-    def commands(self) -> tuple[CommandDef, ...]: ...
-
-
-@dataclass(slots=True)
-class ScreenSurfaceManager:
-    app: ScreenCodingTuiApp
-    session: Any
-    status_provider: StatusProvider
-    on_approval: Callable[[dict[str, Any]], Awaitable[bool | None]] | None = None
-    command_catalog: ScreenCommandCatalog | None = None
-    _surface_coordinator: ScreenSurfaceCoordinator = field(init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        self._surface_coordinator = ScreenSurfaceCoordinator(
-            app=self.app,
-            handlers={
-                "model": self._handle_model_submit,
-                "command": self._handle_command_submit,
-                "settings": self._handle_settings_submit,
-                "dialog": self._handle_dialog_submit,
-                "approval": self._handle_approval_submit,
-            },
+    def __init__(
+        self,
+        *,
+        app: ScreenCodingTuiApp,
+        session: Any,
+        status_provider: StatusProvider,
+        on_approval: Callable[[dict[str, Any]], Awaitable[bool | None]] | None = None,
+        command_catalog: ScreenSurfaceCommandCatalog | None = None,
+    ) -> None:
+        self.session = session
+        self.status_provider = status_provider
+        self.on_approval = on_approval
+        self.command_catalog = command_catalog or CodingCommandCatalog(
+            session_commands=_session_commands_provider(session)
         )
-        if self.command_catalog is None:
-            self.command_catalog = CodingCommandCatalog(
-                session_commands=_session_commands_provider(self.session)
-            )
-
-    def is_local_command(self, text: str) -> bool:
-        return self._lookup_local_command(text) is not None
-
-    async def handle_text(self, text: str) -> int | None:
-        command = self._lookup_local_command(text)
-        if command is None:
-            return None
-        intent = parse_prompt_intent(text)
-        if command.name == "model" and isinstance(intent, ModelSelectIntent):
-            await self._handle_model_intent(intent)
-        elif command.name == "models" and isinstance(intent, ModelsIntent):
-            models_text = await format_available_models(
-                self.session, query=intent.query
-            )
-            self._open_info(
-                "Available Models",
-                _models_info_body(models_text),
-                presentation="bottom-exclusive",
-            )
-        elif command.name == "command" and isinstance(intent, CommandSelectIntent):
-            await self._handle_command_intent(intent)
-        elif command.name == "commands" and isinstance(intent, CommandsIntent):
-            self._open_info(
-                "Commands",
-                await format_coding_commands(
-                    self.session,
-                    query=intent.query,
-                    command_catalog=self._list_command_catalog(),
+        super().__init__(
+            app=app,
+            ports=ScreenSurfaceWorkflowPorts(
+                select_model=lambda value: select_available_model(
+                    session,
+                    query=value,
                 ),
-            )
-        elif command.name == "terminal" and isinstance(
-            intent, TerminalDiagnosticsIntent
-        ):
-            self._open_terminal_diagnostics()
-        elif command.name == "hotkeys" and isinstance(intent, HotkeysIntent):
-            self._open_info("Hotkeys", format_hotkeys())
-        elif command.name in {"settings", "config"} and isinstance(
-            intent, SettingsIntent
-        ):
-            await self._open_settings()
-        return None
+                refresh_model_label=self._refresh_model_label,
+                command_catalog=self.command_catalog,
+                normalize_command=_normalize_coding_surface_command,
+                format_models=self._format_models,
+                models_info_body=_models_info_body,
+                format_commands=self._format_commands,
+                build_model_selector=self._build_model_selector,
+                build_command_selector=self._build_command_selector,
+                build_settings_content=self._build_settings_content,
+                terminal_diagnostics=self._terminal_diagnostics,
+                hotkeys=format_hotkeys,
+                decide_approval=self._decide_approval,
+            ),
+            copy=ScreenSurfaceWorkflowCopy(
+                recoverable_error=_recoverable_surface_error,
+                command_selected=lambda command: f"Command selected: {command}",
+                approval_stale="Approval request is no longer pending",
+                approval_confirmed=lambda action: f"Action confirmed: {action}",
+                approval_rejected="Action rejected",
+                models_title="Available Models",
+                commands_title="Commands",
+                terminal_title="Terminal",
+                hotkeys_title="Hotkeys",
+                settings_title="Settings",
+            ),
+        )
 
-    def _lookup_local_command(self, text: str) -> CommandDef | None:
-        if self.command_catalog is None:
-            return None
-        command = self.command_catalog.lookup(text)
-        if command is None or command.kind is not CommandKind.LOCAL_UI:
-            return None
-        return command
+    @property
+    def coding_app(self) -> ScreenCodingTuiApp:
+        app = self.app
+        if not isinstance(app, ScreenCodingTuiApp):  # pragma: no cover - constructor
+            raise TypeError("Coding surface manager requires ScreenCodingTuiApp")
+        return app
 
     def _list_command_catalog(self) -> CodingCommandCatalog | None:
         return (
@@ -150,47 +120,9 @@ class ScreenSurfaceManager:
             else None
         )
 
-    async def handle_surface_intent(self, intent: InputIntent) -> int | None:
-        return await self._surface_coordinator.handle_intent(intent)
-
-    async def _handle_model_submit(self, payload: str) -> None:
-        try:
-            message = await select_available_model(self.session, query=payload)
-        except Exception as error:
-            self.app.set_status(_recoverable_surface_error(error))
-            return
-        self.close_surface()
-        await self._refresh_model_label()
-        self.app.set_status(message)
-
-    async def _handle_command_submit(self, payload: str) -> None:
-        command = payload.strip()
-        if command:
-            self.app.composer.set_text(command + (" " if " " not in command else ""))
-            self.app.set_status(f"Command selected: {command}")
-        self.close_surface()
-
-    async def _handle_settings_submit(self, payload: dict[str, str]) -> None:
-        surface = self._current_surface()
-        page = surface.content if isinstance(surface, ScreenSurfaceView) else None
-        apply_setting = getattr(page, "apply_setting", None)
-        if not callable(apply_setting):
-            return
-        result = await apply_setting(payload["id"], payload.get("value", ""))
-        if result.statusline_settings is not None:
-            self.app.set_statusline_settings(result.statusline_settings)
-        elif result.statusline_visible is not None:
-            self.app.set_statusline_visible(result.statusline_visible)
-        if result.refresh_model_label:
-            await self._refresh_model_label()
-        self.app.request_render("product")
-
-    async def _handle_dialog_submit(self, _payload: Any | None = None) -> None:
-        self.close_surface()
-
-    async def _handle_approval_submit(
+    async def _decide_approval(
         self, payload: ApprovalSurfaceDecision | None = None
-    ) -> None:
+    ) -> bool | None:
         callback_payload: dict[str, Any] = {}
         if payload is not None:
             callback_payload = {
@@ -199,72 +131,33 @@ class ScreenSurfaceManager:
                 "approved": payload.approved,
                 "raw_note": payload.raw_note,
             }
-        accepted = True
-        if self.on_approval is not None:
-            accepted = await self.on_approval(callback_payload) is not False
-        if not accepted:
-            self.app.set_status("Approval request is no longer pending")
-        elif payload is not None and payload.approved:
-            self.app.set_status(f"Action confirmed: {payload.action}")
-        elif payload is not None:
-            self.app.set_status("Action rejected")
+        if self.on_approval is None:
+            return True
+        return await self.on_approval(callback_payload)
 
-    def close_surface(self) -> None:
-        self._surface_coordinator.close()
+    async def _format_models(self, query: str) -> str:
+        return await format_available_models(self.session, query=query)
 
-    def clear_approval_surfaces(self) -> None:
-        self._surface_coordinator.clear_approvals()
+    async def _format_commands(self, query: str) -> str:
+        return await format_coding_commands(
+            self.session,
+            query=query,
+            command_catalog=self._list_command_catalog(),
+        )
 
-    def dismiss_approval(self, action_id: str) -> None:
-        self._surface_coordinator.dismiss_approval(action_id)
-
-    async def _handle_model_intent(self, intent: ModelSelectIntent) -> None:
-        if intent.query.strip():
-            try:
-                message = await select_available_model(self.session, query=intent.query)
-            except Exception as error:
-                self.app.set_status(_recoverable_surface_error(error))
-            else:
-                await self._refresh_model_label()
-                self.app.set_status(message)
-            return
-        await self._open_model_selector()
-
-    async def _handle_command_intent(self, intent: CommandSelectIntent) -> None:
-        if intent.query.strip():
-            command = (
-                intent.query if intent.query.startswith("/") else f"/{intent.query}"
-            )
-            self.app.composer.set_text(command + " ")
-            self.app.set_status(f"Command selected: {command}")
-            return
-        self._open_palette(
-            "Commands",
+    async def _build_command_selector(self) -> ScreenSurfaceView:
+        return command_palette_surface_view(
             await coding_command_palette(
                 self.session,
                 title="Commands",
                 command_catalog=self._list_command_catalog(),
             ),
+            title="Commands",
             purpose="command",
+            max_visible=8,
         )
 
-    def _open_palette(
-        self,
-        title: str,
-        palette: CommandPalette,
-        *,
-        purpose: Literal["model", "command"],
-    ) -> None:
-        self._open_surface(
-            command_palette_surface_view(
-                palette,
-                title=title,
-                purpose=purpose,
-                max_visible=8,
-            )
-        )
-
-    async def _open_model_selector(self) -> None:
+    async def _build_model_selector(self) -> ScreenSurfaceView:
         current_label = model_label_from_selection(
             await get_session_model_selection(self.session)
         )
@@ -277,89 +170,71 @@ class ScreenSurfaceManager:
             if (label := model_label_from_selection(selection)) is not None
         ]
         descriptions = await model_detail_descriptions_by_label(self.session)
-        self._open_surface(
-            model_selector_surface_view(
-                all_items=model_choice_select_items(
-                    choices,
-                    current_value=current_value,
-                ),
-                scoped_items=model_label_select_items(
-                    scoped_labels,
-                    current_label=current_label,
-                    descriptions=descriptions,
-                ),
-                selected_value=current_value or current_label,
-                title="Select Model",
-                subtitle="Access legacy models by running loushang --model <provider/model>.",
-                footer="  Press number or enter to confirm or esc to go back",
-                presentation="bottom-exclusive",
-                max_visible=10,
-            )
+        return model_selector_surface_view(
+            all_items=model_choice_select_items(
+                choices,
+                current_value=current_value,
+            ),
+            scoped_items=model_label_select_items(
+                scoped_labels,
+                current_label=current_label,
+                descriptions=descriptions,
+            ),
+            selected_value=current_value or current_label,
+            title="Select Model",
+            subtitle="Access legacy models by running loushang --model <provider/model>.",
+            footer="  Press number or enter to confirm or esc to go back",
+            presentation="bottom-exclusive",
+            max_visible=10,
         )
 
-    def _open_info(
-        self,
-        title: str,
-        text: str,
-        *,
-        presentation: ScreenSurfacePresentation = "bottom",
-    ) -> None:
-        self._open_surface(
-            info_surface_view(
-                title=title,
-                text=text,
-                presentation=presentation,
-            )
-        )
-
-    def _open_terminal_diagnostics(self) -> None:
-        provider = self.app.terminal_diagnostics_provider
-        text = (
+    def _terminal_diagnostics(self) -> str:
+        provider = self.coding_app.terminal_diagnostics_provider
+        return (
             provider()
             if provider is not None
             else "Terminal diagnostics are not available outside an active TUI session."
         )
-        self._open_info("Terminal", text)
 
-    async def _open_settings(self) -> None:
-        surface = await build_coding_settings_page(
+    async def _build_settings_content(self) -> object:
+        return await build_coding_settings_page(
             session=self.session,
             status_provider=self.status_provider,
             settings_manager=getattr(self.session, "settings_manager", None),
-            statusline_preview=self.app.statusline_preview_snapshot,
+            statusline_preview=self.coding_app.statusline_preview_snapshot,
         )
-        self._open_surface(
-            ScreenSurfaceView(
-                title="Settings",
-                purpose="settings",
-                content=surface,
-                footer="",
-                presentation="bottom-exclusive",
-                preferred_height=24,
-            )
-        )
-
-    def open_approval(
-        self, *, action: str, risk: str = "", action_id: str | None = None
-    ) -> None:
-        self._surface_coordinator.present_approval(
-            action=action,
-            risk=risk,
-            action_id=action_id,
-        )
-
-    def _open_surface(self, view: ScreenSurfaceView) -> None:
-        self._surface_coordinator.open(view)
-
-    def _current_surface(self) -> ScreenSurfaceView | Any | None:
-        return self._surface_coordinator.current
 
     async def _refresh_model_label(self) -> None:
         label = model_label_from_selection(
             await get_session_model_selection(self.session)
         )
         if label is not None:
-            self.app.state.model_label = label
+            self.coding_app.state.model_label = label
+
+
+def _normalize_coding_surface_command(
+    text: str,
+    command: CommandDef,
+) -> ScreenSurfaceCommand | None:
+    intent = parse_prompt_intent(text)
+    if command.name == "model" and isinstance(intent, ModelSelectIntent):
+        return ScreenSurfaceCommand("select_model", intent.query)
+    if command.name == "models" and isinstance(intent, ModelsIntent):
+        return ScreenSurfaceCommand("list_models", intent.query)
+    if command.name == "command" and isinstance(intent, CommandSelectIntent):
+        query = intent.query
+        if query and not query.startswith("/"):
+            query = f"/{query}"
+        return ScreenSurfaceCommand("select_command", query)
+    if command.name == "commands" and isinstance(intent, CommandsIntent):
+        return ScreenSurfaceCommand("list_commands", intent.query)
+    if command.name == "terminal" and isinstance(intent, TerminalDiagnosticsIntent):
+        return ScreenSurfaceCommand("terminal_diagnostics")
+    if command.name == "hotkeys" and isinstance(intent, HotkeysIntent):
+        return ScreenSurfaceCommand("hotkeys")
+    if command.name in {"settings", "config"} and isinstance(intent, SettingsIntent):
+        return ScreenSurfaceCommand("settings")
+    return None
 
 
 def _recoverable_surface_error(error: Exception) -> str:
@@ -381,4 +256,4 @@ def _session_commands_provider(session: Any) -> Callable[[], Any] | None:
     return getter
 
 
-__all__ = ["ScreenSurfaceManager", "ScreenSurfaceView"]
+__all__ = ["ScreenSurfaceManager"]

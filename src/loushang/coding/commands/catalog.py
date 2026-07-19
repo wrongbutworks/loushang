@@ -6,7 +6,11 @@ from typing import Any
 from loushang.harness.capabilities.commands import (
     CommandCatalog,
     CommandDescriptor,
-    split_slash_command,
+)
+from loushang.harness.command_composition import (
+    MixedCommandCatalog,
+    MixedCommandCatalogPorts,
+    MixedCommandCatalogProfile,
 )
 from loushang.harness.commands import (
     CommandDef,
@@ -21,23 +25,24 @@ SessionCommandsProvider = Callable[[], Iterable[object]]
 class CodingCommandCatalog:
     def __init__(self, *, session_commands: SessionCommandsProvider | None = None) -> None:
         self._session_commands = session_commands
+        self._catalog = MixedCommandCatalog(
+            profile=_CODING_COMMAND_CATALOG_PROFILE,
+            ports=MixedCommandCatalogPorts(
+                session_catalog=(
+                    self._session_catalog if session_commands is not None else None
+                ),
+                session_command=(
+                    _session_command_def if session_commands is not None else None
+                ),
+            ),
+        )
 
     def commands(self) -> tuple[CommandDef, ...]:
-        if self._session_commands is None:
-            return tuple(_LOCAL_COMMANDS_BY_NAME.values())
-        session_commands = tuple(
-            _session_command_def(descriptor)
-            for descriptor in self._session_catalog().commands()
-        )
-        session_names = {command.name for command in session_commands}
-        local_commands = tuple(
-            command for name, command in _LOCAL_COMMANDS_BY_NAME.items() if name not in session_names
-        )
-        return (*session_commands, *local_commands)
+        return self._catalog.commands()
 
     def effect_for_route(self, route: object, intent: object) -> CommandEffect | None:
         route_value = _route_value(route)
-        command = _LOCAL_COMMANDS_BY_ROUTE_VALUE.get(route_value)
+        command = self._catalog.local_for_route(route_value)
         if command is not None:
             return CommandEffect(kind=CommandEffectKind.LOCAL_UI, command=command)
         if route_value == "dispatch":
@@ -47,33 +52,17 @@ class CodingCommandCatalog:
         return None
 
     def lookup(self, text: str) -> CommandDef | None:
-        local_command = _local_command_for_text(text)
-        if local_command is not None:
-            return local_command
-        session_effect = self._session_effect_for_text(text)
-        if session_effect is None:
-            return None
-        return session_effect.command
+        return self._catalog.lookup(text)
 
     def _session_effect_for_text(self, text: str) -> CommandEffect | None:
-        parsed = split_slash_command(text.strip())
-        if parsed is None or self._session_commands is None:
-            return None
-        invocation_name, args = parsed
-        command = self._session_command(invocation_name)
-        if command is None:
+        match = self._catalog.session_match(text)
+        if match is None:
             return None
         return CommandEffect(
             kind=CommandEffectKind.SESSION,
-            command=command,
-            payload={"invocation_name": invocation_name, "args": args},
+            command=match.command,
+            payload={"invocation_name": match.invocation_name, "args": match.args},
         )
-
-    def _session_command(self, invocation_name: str) -> CommandDef | None:
-        descriptor = self._session_catalog().lookup(invocation_name)
-        if descriptor is None:
-            return None
-        return _session_command_def(descriptor)
 
     def _session_catalog(self) -> CommandCatalog[object]:
         if self._session_commands is None:
@@ -86,21 +75,6 @@ class CodingCommandCatalog:
             for raw_command in raw_commands
             if (descriptor := _session_command_descriptor(raw_command)) is not None
         )
-
-
-def _local_command_for_text(text: str) -> CommandDef | None:
-    parsed = split_slash_command(text.strip())
-    if parsed is None:
-        return None
-    invocation_name, args = parsed
-    name = invocation_name.removeprefix("/")
-    command = _LOCAL_COMMANDS_BY_NAME.get(name)
-    if command is None:
-        return None
-    if args and name not in _LOCAL_COMMANDS_ACCEPT_ARGS:
-        return None
-    return command
-
 
 def _route_value(route: object) -> str:
     value = getattr(route, "value", route)
@@ -211,6 +185,11 @@ _LOCAL_COMMANDS_BY_NAME: dict[str, CommandDef] = {
     command.name: command for command in _LOCAL_COMMANDS_BY_ROUTE_VALUE.values()
 }
 _LOCAL_COMMANDS_ACCEPT_ARGS = frozenset({"command", "commands", "model", "models"})
+_CODING_COMMAND_CATALOG_PROFILE = MixedCommandCatalogProfile(
+    local_commands_by_name=_LOCAL_COMMANDS_BY_NAME,
+    local_commands_by_route=_LOCAL_COMMANDS_BY_ROUTE_VALUE,
+    local_commands_accepting_args=_LOCAL_COMMANDS_ACCEPT_ARGS,
+)
 
 
 __all__ = ["CodingCommandCatalog", "SessionCommandsProvider"]

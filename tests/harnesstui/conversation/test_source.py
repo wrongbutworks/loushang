@@ -7,6 +7,7 @@ import pytest
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.harnesstui.conversation.source import (
     ActiveWindowTranscriptSource,
+    MaterializedTranscriptSource,
     TranscriptSnapshot,
     TranscriptSource,
     active_window_records,
@@ -121,6 +122,52 @@ def test_active_window_transcript_source_exposes_bounded_snapshot() -> None:
         source_label="Transcript window",
     )
     assert source.recent_assistant_texts() == ("answer",)
+
+
+def test_materialized_transcript_source_exposes_complete_history() -> None:
+    records = (
+        UserPromptRecord("question"),
+        AssistantMessageRecord("answer"),
+    )
+    source = MaterializedTranscriptSource(
+        materialize_records=lambda: records,
+        source_label="Conversation history",
+    )
+
+    assert source.snapshot() == TranscriptSnapshot(
+        records=records,
+        evicted_prefix_record_count=0,
+        complete=True,
+        source_label="Conversation history",
+    )
+    assert source.recent_assistant_texts() == ("answer",)
+
+
+def test_materialized_transcript_source_merges_decorated_live_window() -> None:
+    question = UserPromptRecord("question")
+    answer = AssistantMessageRecord("answer")
+    state = ScreenConversationState(
+        records=[question, WorkedDividerRecord(1.0), answer],
+    )
+    state.begin_run(started_at=2.0)
+    state.append_assistant_chunk("draft")
+    source = MaterializedTranscriptSource(
+        materialize_records=lambda: (question, answer),
+        source_label="Conversation history",
+        active_window_state=state,
+    )
+
+    assert source.snapshot() == TranscriptSnapshot(
+        records=(
+            question,
+            WorkedDividerRecord(1.0),
+            answer,
+            AssistantMessageRecord("draft", stable=False),
+        ),
+        evicted_prefix_record_count=0,
+        complete=False,
+        source_label="Conversation history + live window",
+    )
 
 
 @pytest.mark.parametrize(

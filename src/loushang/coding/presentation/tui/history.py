@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from functools import partial
+from pathlib import Path
 from typing import Any
 
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
 from loushang.coding.presentation.tui.tool_transcript import (
-    ToolTranscriptProjector,
+    CodingToolTranscriptProjection,
+    build_coding_tool_transcript_projection,
     tool_block_to_record,
 )
+from loushang.coding.store.session_manager import SessionManager
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
     APPLICATION_MESSAGE_KIND,
@@ -21,28 +24,26 @@ from loushang.harness.agent_transcript import (
     STANDARD_AGENT_TRANSCRIPT_KINDS,
     THINKING_SELECTION_KIND,
     ApplicationMessage,
-    BranchContextSummary,
-    ContextCompactionCheckpoint,
 )
-from loushang.harness.conversation import CommandExecutionRecord, ConversationRecord
+from loushang.harness.conversation import CommandExecutionRecord
+from loushang.harnesstui.conversation.history import (
+    ConversationHistoryProjector,
+    HistoryRecordDisposition,
+    project_context_branch_summary_payload,
+    project_context_compaction_payload,
+)
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.harnesstui.conversation.source import (
-    ActiveWindowTranscriptSource,
-    TranscriptSnapshot,
-    TranscriptSource,
-    active_window_records,
-    merge_history_and_active_records,
-    recent_assistant_texts,
+    MaterializedTranscriptSource,
 )
 from loushang.tui.transcript import (
     AssistantMessageRecord,
-    ContextCompactionRecord,
     DisplayRecord,
     ToolExecutionRecord,
     UserPromptRecord,
 )
 
-TUI_TRANSCRIPT_DISPOSITIONS = {
+TUI_TRANSCRIPT_DISPOSITIONS: dict[str, HistoryRecordDisposition] = {
     AGENT_MESSAGE_KIND: "render",
     THINKING_SELECTION_KIND: "state-only",
     MODEL_SELECTION_KIND: "state-only",
@@ -67,55 +68,50 @@ def session_history_records(
     transcript_items = _session_transcript_items(session)
     if not transcript_items:
         return ()
-    tool_projector = ToolTranscriptProjector(
+    tool_projector = build_coding_tool_transcript_projection(
         tool_definition_resolver=tool_definition_resolver,
         max_body_lines=max_tool_body_lines,
     )
-    records: list[DisplayRecord] = []
-    for item in transcript_items:
-        record = _transcript_record(item, tool_projector=tool_projector)
-        if record is not None:
-            records.append(record)
-    return tuple(records)
+    message_projector = partial(_message_record, tool_projector=tool_projector)
+    return ConversationHistoryProjector(
+        dispositions=TUI_TRANSCRIPT_DISPOSITIONS,
+        payload_projectors={
+            AGENT_MESSAGE_KIND: message_projector,
+            COMMAND_EXECUTION_KIND: _command_record,
+            CONTEXT_COMPACTION_CHECKPOINT_KIND: project_context_compaction_payload,
+            CONTEXT_BRANCH_SUMMARY_KIND: project_context_branch_summary_payload,
+            APPLICATION_MESSAGE_KIND: message_projector,
+        },
+        fallback_projector=message_projector,
+    ).project_items(transcript_items)
 
 
-def _transcript_record(
-    item: object, *, tool_projector: ToolTranscriptProjector
-) -> DisplayRecord | None:
-    if isinstance(item, ConversationRecord):
-        disposition = TUI_TRANSCRIPT_DISPOSITIONS.get(item.kind)
-        if disposition is not None and disposition != "render":
-            return None
-        if item.kind == AGENT_MESSAGE_KIND:
-            return _message_record(item.payload, tool_projector=tool_projector)
-        if item.kind == COMMAND_EXECUTION_KIND and isinstance(
-            item.payload, CommandExecutionRecord
-        ):
-            return _command_record(item.payload)
-        if item.kind == CONTEXT_COMPACTION_CHECKPOINT_KIND and isinstance(
-            item.payload, ContextCompactionCheckpoint
-        ):
-            return ContextCompactionRecord(
-                summary=item.payload.summary,
-                tokens_before=item.payload.tokens_before,
-            )
-        if item.kind == CONTEXT_BRANCH_SUMMARY_KIND and isinstance(
-            item.payload, BranchContextSummary
-        ):
-            return ContextCompactionRecord(summary=item.payload.summary)
-        if item.kind == APPLICATION_MESSAGE_KIND and isinstance(
-            item.payload, ApplicationMessage
-        ):
-            if not item.payload.display:
-                return None
-            text = _text_from_content(item.payload.content).strip()
-            return AssistantMessageRecord(text, stable=True) if text else None
-        return None
-    return _message_record(item, tool_projector=tool_projector)
+async def load_persisted_session_history_records(
+    session_file: str | Path,
+    *,
+    tool_definition_resolver: Any | None = None,
+) -> tuple[DisplayRecord, ...]:
+    """Load a persisted Coding session into terminal transcript records."""
+
+    manager = await SessionManager.load(Path(session_file).expanduser().resolve())
+    return session_history_records(
+        _PersistedHistorySession(manager),
+        tool_definition_resolver=tool_definition_resolver,
+    )
+
+
+class _PersistedHistorySession:
+    def __init__(self, manager: SessionManager) -> None:
+        self.session_manager = manager
+
+    def get_session_context(self):
+        return self.session_manager.build_session_context()
 
 
 def _message_record(
-    message: object, *, tool_projector: ToolTranscriptProjector
+    message: object,
+    *,
+    tool_projector: CodingToolTranscriptProjection,
 ) -> DisplayRecord | None:
     if isinstance(message, UserMessage):
         text = _text_from_content(message.content).strip()
@@ -179,7 +175,10 @@ def _text_from_content(content: object) -> str:
     return ""
 
 
-def _command_record(command: CommandExecutionRecord) -> ToolExecutionRecord:
+def _command_record(payload: object) -> ToolExecutionRecord | None:
+    if not isinstance(payload, CommandExecutionRecord):
+        return None
+    command = payload
     return ToolExecutionRecord(
         name=f"bash {command.command}".strip(),
         state=_bash_state(command),
@@ -203,48 +202,30 @@ def _bash_state(command: CommandExecutionRecord):
 # - active window: bounded UI records plus current assistant draft.
 # - session history: full materialized session projection.
 # - session + live window: full history with active UI-only suffix records.
-@dataclass(frozen=True, slots=True)
-class SessionTranscriptSource:
-    session: Any
-    tool_definition_resolver: Any | None = None
-    max_tool_body_lines: int = 8
-    source_label: str = "Full transcript"
-    active_window_state: ScreenConversationState | None = None
+class SessionTranscriptSource(MaterializedTranscriptSource):
+    """Bind Coding session materialization to the shared transcript source."""
 
-    def snapshot(self) -> TranscriptSnapshot:
-        session_records = session_history_records(
-            self.session,
-            tool_definition_resolver=self.tool_definition_resolver,
-            max_tool_body_lines=self.max_tool_body_lines,
-        )
-        records = session_records
-        complete = True
-        source_label = self.source_label
-        if self.active_window_state is not None:
-            active_records = active_window_records(self.active_window_state)
-            merged_records = merge_history_and_active_records(
-                session_records,
-                active_records,
-            )
-            if merged_records != session_records:
-                records = merged_records
-                complete = False
-                source_label = f"{self.source_label} + live window"
-        return TranscriptSnapshot(
-            records=records,
-            evicted_prefix_record_count=0,
-            complete=complete,
+    def __init__(
+        self,
+        session: Any,
+        tool_definition_resolver: Any | None = None,
+        max_tool_body_lines: int = 8,
+        source_label: str = "Full transcript",
+        active_window_state: ScreenConversationState | None = None,
+    ) -> None:
+        super().__init__(
+            materialize_records=lambda: session_history_records(
+                session,
+                tool_definition_resolver=tool_definition_resolver,
+                max_tool_body_lines=max_tool_body_lines,
+            ),
             source_label=source_label,
+            active_window_state=active_window_state,
         )
-
-    def recent_assistant_texts(self) -> tuple[str, ...]:
-        return recent_assistant_texts(self.snapshot().records)
 
 
 __all__ = [
-    "ActiveWindowTranscriptSource",
     "SessionTranscriptSource",
-    "TranscriptSnapshot",
-    "TranscriptSource",
+    "load_persisted_session_history_records",
     "session_history_records",
 ]

@@ -1,76 +1,53 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Protocol, TextIO
+from typing import Any, TextIO
 
-from loushang.coding.commands.tui import (
-    CommandPaletteChooser,
-    format_coding_commands,
-    select_coding_command,
-)
-from loushang.coding.diagnostics.tui import DebugCommandHandler
+from loushang.coding.commands.catalog import CodingCommandCatalog
+from loushang.coding.commands.tui import format_coding_commands, select_coding_command
+from loushang.coding.diagnostics.debug_status import debug_status_text
+from loushang.coding.event.presentation_policy import is_cancelled_error_message
 from loushang.coding.interaction.controller import CodingUiController
-from loushang.coding.interaction.plain_abort import AbortHandler
-from loushang.coding.interaction.plain_dispatch import PromptDispatchHandler
-from loushang.coding.interaction.plain_follow_up import FollowUpQueueHandler
-from loushang.coding.interaction.plain_host import (
-    InfoPanelPresenter,
-    PlainCodingConversationActionHost,
+from loushang.coding.interaction.intent import AbortIntent, CodingUiIntent
+from loushang.coding.interaction.tui_profile import (
+    CodingLocalAction,
+    CodingTuiPorts,
+    CodingTuiProfile,
+    is_coding_work_intent,
 )
-from loushang.coding.interaction.plain_result import PromptResultHandler
 from loushang.coding.model_selection_tui import (
-    ModelPaletteChooser,
     format_available_models,
     select_available_model,
 )
 from loushang.coding.presentation.session import (
     is_running,
     session_error_message,
-    session_label,
-    thinking_level,
 )
 from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
 from loushang.coding.ui.hotkeys import format_hotkeys
-from loushang.harnesstui.conversation.control import (
-    ConversationActionHost,
-    ConversationTextAction,
+from loushang.harnesstui.commands.interaction import CommandPaletteChooser
+from loushang.harnesstui.conversation.debug_action import (
+    DebugActionCopy,
+    DebugActionHandler,
+    DebugActionPorts,
 )
-from loushang.harnesstui.conversation.control import (
-    ConversationRunControl as RunLifecycle,
+from loushang.harnesstui.conversation.info import InfoPanelPresenter
+from loushang.harnesstui.conversation.plain_app import (
+    PlainConversationApp,
+    PlainConversationAssembly,
+    PlainConversationPorts,
+    PlainConversationProductBinding,
+    PlainConversationProfile,
+    build_plain_conversation_app,
 )
-from loushang.harnesstui.conversation.control import SteerActionHandler as SteerHandler
-from loushang.harnesstui.status.persistence import (
-    statusline_settings_from_store,
-    statusline_settings_persistence_callback,
+from loushang.harnesstui.conversation.queue import (
+    pending_queue_view,
+    restore_queued_messages,
 )
-from loushang.harnesstui.status.provider import StatusProvider
+from loushang.harnesstui.conversation.run_context import StableEmit, TraceFn
+from loushang.harnesstui.selection.interaction import ModelInteractionChooser
 from loushang.tui import CompletionProvider
-
-
-class TraceFn(Protocol):
-    def __call__(self, name: str, **data: Any) -> None: ...
-
-
-class StableEmit(Protocol):
-    def __call__(self, write_callable: Callable[[], None], *, label: str) -> Awaitable[None]: ...
-
-
-EnableDebug = Callable[..., Path]
-DisableDebug = Callable[[], None]
-
-
-@dataclass(frozen=True)
-class PlainCodingTuiApp:
-    lifecycle: RunLifecycle
-    action_host: ConversationActionHost
-    completion_provider: CompletionProvider | None = None
-
-    async def handle_prompt(self, text: str) -> int | None:
-        return await self.action_host.submit(
-            ConversationTextAction(text=text, source="plain_prompt")
-        )
 
 
 def build_plain_coding_tui_app(
@@ -81,109 +58,116 @@ def build_plain_coding_tui_app(
     event_renderer: Any,
     stderr: TextIO,
     verbose: bool,
-    model_label: str | None,
     cwd: str,
-    branch: str | None,
     emit: StableEmit,
     trace: TraceFn,
     now: Callable[[], float],
-    enable_debug: EnableDebug,
-    disable_debug: DisableDebug,
+    enable_debug: Callable[..., Path],
+    disable_debug: Callable[[], None],
     completion_provider: CompletionProvider | None = None,
-    model_palette_chooser: ModelPaletteChooser | None = None,
+    model_palette_chooser: ModelInteractionChooser | None = None,
     command_palette_chooser: CommandPaletteChooser | None = None,
     info_panel_presenter: InfoPanelPresenter | None = None,
-) -> PlainCodingTuiApp:
-    lifecycle = RunLifecycle()
-    controller = CodingUiController(runtime=runtime, session=session, verbose=verbose)
-    follow_up_queue = FollowUpQueueHandler(
-        lifecycle=lifecycle,
-        controller=controller,
-        renderer=renderer,
-        emit=emit,
-        trace=trace,
-    )
-    steer_handler = SteerHandler(
-        lifecycle=lifecycle,
-        controller=controller,
-        renderer=renderer,
-        emit=emit,
-        trace=trace,
-    )
-    abort_handler = AbortHandler(
-        lifecycle=lifecycle,
-        controller=controller,
-        renderer=renderer,
-        emit=emit,
-        session_running=lambda: is_running(session),
-        trace=trace,
-    )
-    debug_command = DebugCommandHandler(
-        session=session,
-        cwd=cwd,
-        renderer=renderer,
-        emit=emit,
-        trace=trace,
-        enable=enable_debug,
-        disable=disable_debug,
-    )
-    prompt_dispatch = PromptDispatchHandler(
-        lifecycle=lifecycle,
-        controller=controller,
-        session_running=lambda: is_running(session),
-        now=now,
-        trace=trace,
-    )
-    prompt_result = PromptResultHandler(
-        lifecycle=lifecycle,
-        renderer=renderer,
-        emit=emit,
-        stderr=stderr,
-        verbose=verbose,
-        last_error_message=lambda: event_renderer.last_error_message,
-        session_error_message=lambda: session_error_message(session),
-        now=now,
-        trace=trace,
-    )
+) -> PlainConversationApp:
     settings_manager = getattr(session, "settings_manager", None)
-    status_provider = StatusProvider(
-        model_label=model_label,
-        cwd=cwd,
-        branch=branch,
-        session_label=lambda: session_label(session),
-        thinking_level=lambda: thinking_level(session),
-        running=lambda: lifecycle.visible_running(session_running=is_running(session)),
-        statusline_settings=statusline_settings_from_store(settings_manager),
-        on_statusline_settings_changed=statusline_settings_persistence_callback(settings_manager),
-    )
-    action_host = PlainCodingConversationActionHost(
-        lifecycle=lifecycle,
-        follow_up=follow_up_queue.queue,
-        steer=steer_handler.steer,
-        debug=debug_command.handle,
-        dispatch=prompt_dispatch.dispatch,
-        result=prompt_result.handle,
-        abort=abort_handler.abort,
-        session=session,
-        emit=emit,
-        render_status=renderer.render_status,
-        render_info_panel=getattr(renderer, "render_info_panel", None),
-        present_info_panel=info_panel_presenter,
-        model_select=lambda query: select_available_model(session, query=query, choose=model_palette_chooser),
-        models=lambda query: format_available_models(session, query=query),
-        command_select=lambda query: select_coding_command(session, query=query, choose=command_palette_chooser),
-        commands=lambda query: format_coding_commands(session, query=query),
-        hotkeys=format_hotkeys,
-        settings_text=status_provider.settings_summary_text,
-        now=now,
-        session_running=lambda: is_running(session),
-        trace=trace,
-    )
-    return PlainCodingTuiApp(
-        lifecycle=lifecycle,
-        action_host=action_host,
-        completion_provider=completion_provider,
-    )
 
+    def bind_product(
+        assembly: PlainConversationAssembly,
+    ) -> PlainConversationProductBinding[CodingUiIntent, CodingLocalAction]:
+        controller = CodingUiController(
+            runtime=runtime,
+            session=session,
+            verbose=verbose,
+        )
+        debug_action = DebugActionHandler[Path](
+            copy=DebugActionCopy(
+                enabled_status=lambda debug_path, scopes: debug_status_text(
+                    debug_path,
+                    scopes=scopes,
+                    cwd=cwd,
+                ),
+                disabled_status="Debug logging disabled.",
+                enabled_emit_label="debug:enabled",
+                disabled_emit_label="debug:disabled",
+            ),
+            ports=DebugActionPorts(
+                enable=lambda scopes: enable_debug(session=session, scopes=scopes),
+                disable=disable_debug,
+                on_enabled=lambda debug_path, scopes: trace(
+                    "debug.enabled",
+                    path=str(debug_path),
+                    scopes=list(scopes),
+                ),
+                on_disabled=lambda: trace("debug.disabled"),
+                emit=emit,
+                render_status=renderer.render_status,
+            ),
+        )
+        session_commands = getattr(session, "list_commands", None)
+        return PlainConversationProductBinding(
+            host_profile=CodingTuiProfile(
+                lifecycle=assembly.lifecycle,
+                command_catalog=CodingCommandCatalog(
+                    session_commands=(
+                        session_commands if callable(session_commands) else None
+                    )
+                ),
+                session_running=lambda: is_running(session),
+                trace=trace,
+            ).host_profile(now=now),
+            controller=controller,
+            abort_action=lambda: controller.dispatch(AbortIntent()),
+            is_work_intent=is_coding_work_intent,
+            local=CodingTuiPorts(
+                debug=lambda intent: debug_action.handle(
+                    enabled=intent.enabled,
+                    scopes=intent.scopes,
+                ),
+                model_select=lambda query: select_available_model(
+                    session, query=query, choose=model_palette_chooser
+                ),
+                models=lambda query: format_available_models(session, query=query),
+                command_select=lambda query: select_coding_command(
+                    session, query=query, choose=command_palette_chooser
+                ),
+                commands=lambda query: format_coding_commands(session, query=query),
+                hotkeys=format_hotkeys,
+                settings_text=assembly.settings_text,
+                info=assembly.info,
+            ).local,
+            fallback_error_message=lambda: session_error_message(session),
+            suppress_aborted_error=is_cancelled_error_message,
+        )
 
-__all__ = ["PlainCodingTuiApp", "build_plain_coding_tui_app"]
+    return build_plain_conversation_app(
+        profile=PlainConversationProfile(
+            statusline_settings_store=settings_manager,
+            abort_settling_message=(
+                "Abort in progress. Wait for the current request to settle."
+            ),
+            idle_follow_up_message=(
+                "Follow-up is only available while a run is active."
+            ),
+            queued_follow_up_message="Follow-up queued.",
+            traceback_enabled=verbose,
+            now=now,
+        ),
+        ports=PlainConversationPorts(
+            bind_product=bind_product,
+            renderer=renderer,
+            emit=emit,
+            trace=trace,
+            stderr=stderr,
+            session_running=lambda: is_running(session),
+            last_error_message=lambda: event_renderer.last_error_message,
+            restore_queue=lambda text: restore_queued_messages(
+                session,
+                text,
+                trace=trace,
+            ),
+            pending_messages=lambda: pending_queue_view(session),
+            render_info_panel=getattr(renderer, "render_info_panel", None),
+            present_info_panel=info_panel_presenter,
+            completion_provider=completion_provider,
+        ),
+    )

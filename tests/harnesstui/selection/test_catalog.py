@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from loushang.harnesstui.selection.catalog import (
     ModelChoice,
+    ModelChoiceIdentity,
     dedupe_preferred_model_choices,
     format_model_choices,
     matching_model_choices,
+    merge_model_choice_sources,
     model_choice_description,
     model_choice_display_label,
     model_choice_select_items,
@@ -12,6 +14,7 @@ from loushang.harnesstui.selection.catalog import (
     model_completion_provider,
     model_label_select_items,
     model_search_items,
+    resolve_current_model_choice_value,
 )
 from loushang.harnesstui.selection.model import ModelSelectorSurface
 from loushang.tui import (
@@ -214,3 +217,62 @@ def test_preferred_endpoint_dedupe_preserves_current_nonpreferred_choice() -> No
         (preferred, current, other),
         current_value=None,
     ) == [preferred, other]
+
+
+def test_current_choice_resolution_prefers_value_then_falls_back_to_label() -> None:
+    first, second = _choices()
+
+    assert (
+        resolve_current_model_choice_value(
+            (first, second),
+            ModelChoiceIdentity(label=first.label, value=second.value),
+        )
+        == second.value
+    )
+    assert (
+        resolve_current_model_choice_value(
+            (first, second),
+            ModelChoiceIdentity(label=second.label, value="missing"),
+        )
+        == second.value
+    )
+    assert (
+        resolve_current_model_choice_value(
+            (first,),
+            ModelChoiceIdentity(label="missing"),
+        )
+        is None
+    )
+
+
+def test_merge_model_choice_sources_dedupes_and_keeps_current_first() -> None:
+    preferred = ModelChoice(
+        label="provider/model",
+        value="provider:preferred:model",
+        selection=object(),
+        preferred_endpoint=True,
+    )
+    current = ModelChoice(
+        label="provider/model",
+        value="provider:current:model",
+        selection=object(),
+    )
+    duplicate_fallback = ModelChoice(
+        label="provider/model",
+        value="provider/model",
+        selection=object(),
+    )
+    fallback = ModelChoice(
+        label="other/model",
+        value="other/model",
+        selection=object(),
+    )
+
+    assert merge_model_choice_sources(
+        (preferred, current),
+        (duplicate_fallback, fallback),
+        current_identity=ModelChoiceIdentity(
+            label=current.label,
+            value=current.value,
+        ),
+    ) == [current, preferred, fallback]

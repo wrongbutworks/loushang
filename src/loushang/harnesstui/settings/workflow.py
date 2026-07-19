@@ -17,6 +17,12 @@ from loushang.harnesstui.settings.dashboard import (
 )
 from loushang.harnesstui.settings.model import ModelPage
 from loushang.harnesstui.settings.page import ConfigSettingsPage
+from loushang.harnesstui.settings.schema import (
+    BooleanSettingBinding,
+    BooleanSettingCopy,
+    apply_boolean_setting,
+    boolean_setting_facts,
+)
 from loushang.harnesstui.status.line import (
     StatusLinePreviewSnapshot,
     StatusLineSettings,
@@ -76,6 +82,33 @@ class SettingsWorkflowPorts:
     apply_config: ConfigApplyHandler
     load_models: ModelSnapshotProvider
     apply_model: ModelApplyHandler
+
+
+@dataclass(frozen=True, slots=True)
+class BooleanSettingsWorkflowAdapter:
+    """Adapt a product boolean schema to settings-dashboard callbacks."""
+
+    manager: object | None
+    bindings: tuple[BooleanSettingBinding, ...]
+    copy: BooleanSettingCopy
+
+    def config_rows(self) -> tuple[ConfigRow, ...]:
+        return tuple(
+            ConfigRow(fact.id, fact.label, fact.value)
+            for fact in boolean_setting_facts(self.manager, self.bindings)
+        )
+
+    def apply_config(self, item_id: str, value: str) -> SettingsConfigUpdate | None:
+        outcome = apply_boolean_setting(
+            self.manager,
+            item_id,
+            value,
+            bindings=self.bindings,
+            copy=self.copy,
+        )
+        if not outcome.matched:
+            return None
+        return SettingsConfigUpdate(outcome.message)
 
 
 @dataclass(slots=True)
@@ -239,6 +272,7 @@ class SettingsPageView(SettingsDashboard):
 
 
 __all__ = [
+    "BooleanSettingsWorkflowAdapter",
     "SettingsApplyResult",
     "SettingsConfigUpdate",
     "SettingsModelSnapshot",

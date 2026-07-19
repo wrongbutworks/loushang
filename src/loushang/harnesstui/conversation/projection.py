@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Literal, Protocol
+from typing import Generic, Literal, Protocol, TypeVar
 
 from loushang.harnesstui.conversation.tool_transcript import (
     ToolCallSnapshot,
@@ -15,6 +15,7 @@ from loushang.harnesstui.conversation.tool_transcript import (
 
 ErrorId = int | str
 ToolFinishCleanup = Literal["before_projection", "after_target"]
+ProjectionEventT = TypeVar("ProjectionEventT")
 
 
 @dataclass(frozen=True, slots=True)
@@ -294,7 +295,57 @@ class ConversationProjector:
         return True
 
 
+class ConversationProjectionBinding(Generic[ProjectionEventT]):
+    """Bind a product event adapter to reusable conversation projection state."""
+
+    __slots__ = ("event_handler", "projector")
+
+    def __init__(
+        self,
+        projector: ConversationProjector,
+        event_handler: Callable[[ProjectionEventT], None],
+    ) -> None:
+        self.projector = projector
+        self.event_handler = event_handler
+
+    def handle(self, event: ProjectionEventT) -> None:
+        self.event_handler(event)
+
+    @property
+    def tool_calls(self) -> dict[str, ToolCallSnapshot]:
+        return self.projector.tool_calls
+
+    @tool_calls.setter
+    def tool_calls(self, value: dict[str, ToolCallSnapshot]) -> None:
+        self.projector.tool_calls = value
+
+    @property
+    def rendered_tool_results(self) -> set[str]:
+        return self.projector.rendered_tool_results
+
+    @rendered_tool_results.setter
+    def rendered_tool_results(self, value: set[str]) -> None:
+        self.projector.rendered_tool_results = value
+
+    @property
+    def rendered_assistant_errors(self) -> set[ErrorId]:
+        return self.projector.rendered_assistant_errors
+
+    @rendered_assistant_errors.setter
+    def rendered_assistant_errors(self, value: set[ErrorId]) -> None:
+        self.projector.rendered_assistant_errors = value
+
+    @property
+    def last_error_message(self) -> str | None:
+        return self.projector.last_error_message
+
+    @last_error_message.setter
+    def last_error_message(self, value: str | None) -> None:
+        self.projector.last_error_message = value
+
+
 __all__ = [
+    "ConversationProjectionBinding",
     "ConversationProjectionTarget",
     "ConversationProjector",
     "ToolFinishContext",

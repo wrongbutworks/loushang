@@ -147,7 +147,26 @@ def test_abort_action_handler_marks_and_presents_before_action() -> None:
         "abort_action",
     ]
     assert control.aborted_id == 5
-    assert [name for name, _data in traces] == ["abort.start", "abort.end"]
+    assert traces == [
+        (
+            "abort.start",
+            {
+                "active_run": True,
+                "active_run_id": 5,
+                "aborted_run_id": None,
+                "session_running": False,
+            },
+        ),
+        (
+            "abort.end",
+            {
+                "active_run": True,
+                "active_run_id": 5,
+                "aborted_run_id": 5,
+                "session_running": False,
+            },
+        ),
+    ]
 
 
 def test_steer_action_handler_uses_result_facts_without_fallback_copy() -> None:
@@ -188,6 +207,41 @@ def test_follow_up_action_handler_uses_injected_idle_and_queued_copy() -> None:
 
     assert controller.follow_ups == ["next step"]
     assert renderer.statuses == ["caller idle", "caller queued"]
+
+
+def test_follow_up_action_handler_ignores_empty_text_and_traces_source() -> None:
+    control = ConversationRunControl(active=True, active_id=7)
+    controller = _ActionController(_Result())
+    renderer = _StatusRenderer()
+    traces: list[tuple[str, dict[str, object]]] = []
+    handler = FollowUpActionHandler(
+        lifecycle=control,
+        controller=controller,
+        renderer=renderer,
+        emit=_emit,
+        trace=lambda name, **data: traces.append((name, data)),
+        idle_status_message="caller idle",
+        queued_status_message="caller queued",
+    )
+
+    assert asyncio.run(handler.queue("   ", source="keybinding")) is None
+    assert controller.follow_ups == []
+    assert renderer.statuses == []
+    assert traces == [
+        (
+            "prompt.follow_up.start",
+            {
+                "active_run_id": 7,
+                "active_run": True,
+                "source": "keybinding",
+                "text_len": 0,
+            },
+        ),
+        (
+            "prompt.follow_up.ignored",
+            {"reason": "empty", "source": "keybinding"},
+        ),
+    ]
 
 
 def test_follow_up_action_handler_presents_controller_error_verbatim() -> None:

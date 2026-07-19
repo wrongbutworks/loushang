@@ -1,30 +1,19 @@
 from __future__ import annotations
 
-import shlex
-from typing import Any, TextIO
+from typing import Any
+
+from loushang.harnesstui.conversation.resume import ConversationResumeHint
 
 
-def write_resume_hint_for_clean_exit(
-    *,
-    session: Any,
-    stdout: TextIO,
-    exit_code: int,
-) -> None:
-    if exit_code != 0:
-        return
-    command = resume_command_for_session(session)
-    if command is None:
-        return
-    stdout.write(f"\nResume this session with:\n{command}\n")
-    stdout.flush()
+def coding_resume_hint_for_session(session: Any) -> ConversationResumeHint | None:
+    """Prepare Coding copy and command arguments from Coding session policy."""
 
-
-def resume_command_for_session(session: Any) -> str | None:
     resume_ref = _resume_ref_for_session(session)
     if resume_ref is None:
         return None
-    return " ".join(
-        shlex.quote(part) for part in ("loushang", "--resume", resume_ref)
+    return ConversationResumeHint(
+        heading="Resume this session with:",
+        command=("loushang", "--resume", resume_ref),
     )
 
 
@@ -62,4 +51,4 @@ def _session_file_for_resume(session: Any) -> object | None:
     return getattr(session, "session_file", None)
 
 
-__all__ = ["resume_command_for_session", "write_resume_hint_for_clean_exit"]
+__all__ = ["coding_resume_hint_for_session"]

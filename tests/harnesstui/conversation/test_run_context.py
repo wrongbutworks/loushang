@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 
 import pytest
 
@@ -106,6 +107,119 @@ def test_subscribe_events_uses_returned_hook_or_safe_noop() -> None:
 
     assert calls == [listener, "unsubscribe"]
     assert subscribe_events(object(), listener)() is None
+
+
+def test_open_interaction_run_context_enters_wraps_and_closes_in_order() -> None:
+    from loushang.harnesstui.conversation.run_context import (
+        open_interaction_run_context,
+    )
+
+    calls: list[str] = []
+
+    class Context:
+        def __enter__(self):
+            calls.append("context.enter")
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            del exc_type, exc, traceback
+            calls.append("context.exit")
+
+    class Source:
+        def subscribe(self, listener):
+            calls.append(f"subscribe:{inspect.iscoroutinefunction(listener)}")
+            return lambda: calls.append("unsubscribe")
+
+    async def direct_listener(_event) -> None:
+        return None
+
+    context = open_interaction_run_context(
+        event_source=Source(),
+        listener=direct_listener,
+        interactive_listener_factory=lambda _emit: direct_listener,
+        exit_context=Context(),
+        interactive=True,
+        trace=lambda name, **_data: calls.append(name),
+        on_open=lambda: calls.append("open"),
+    )
+
+    assert calls == ["context.enter", "open", "subscribe:True"]
+    context.close()
+    assert calls == [
+        "context.enter",
+        "open",
+        "subscribe:True",
+        "tui.end",
+        "unsubscribe",
+        "context.exit",
+    ]
+
+
+def test_open_interaction_run_context_uses_direct_noninteractive_listener() -> None:
+    from loushang.harnesstui.conversation.run_context import (
+        open_interaction_run_context,
+    )
+
+    listeners: list[object] = []
+
+    class Context:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            del exc_type, exc, traceback
+
+    class Source:
+        def subscribe(self, listener):
+            listeners.append(listener)
+            return lambda: None
+
+    listener = object()
+    context = open_interaction_run_context(
+        event_source=Source(),
+        listener=listener,
+        interactive_listener_factory=lambda _emit: object(),
+        exit_context=Context(),
+        interactive=False,
+        trace=lambda _name, **_data: None,
+    )
+
+    assert listeners == [listener]
+    context.close()
+
+
+def test_open_interaction_run_context_exits_when_subscribe_fails() -> None:
+    from loushang.harnesstui.conversation.run_context import (
+        open_interaction_run_context,
+    )
+
+    calls: list[str] = []
+
+    class Context:
+        def __enter__(self):
+            calls.append("context.enter")
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            del exc_type, exc, traceback
+            calls.append("context.exit")
+
+    class Source:
+        def subscribe(self, _listener):
+            calls.append("subscribe")
+            raise RuntimeError("subscribe failed")
+
+    with pytest.raises(RuntimeError, match="subscribe failed"):
+        open_interaction_run_context(
+            event_source=Source(),
+            listener=object(),
+            interactive_listener_factory=lambda _emit: object(),
+            exit_context=Context(),
+            interactive=False,
+            trace=lambda _name, **_data: None,
+        )
+
+    assert calls == ["context.enter", "subscribe", "context.exit"]
 
 
 async def _emit(write_callable, *, label: str) -> None:

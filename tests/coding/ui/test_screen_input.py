@@ -59,3 +59,34 @@ def test_coding_input_binding_follows_a_replaced_app(tmp_path: Path) -> None:
     assert replacement_app.state.status_message == (
         "Attached clipboard image: .loushang/clipboard/clipboard-image.png"
     )
+
+
+def test_coding_input_binding_preserves_product_clipboard_status_copy(
+    tmp_path: Path,
+) -> None:
+    def fail_to_read():
+        raise RuntimeError("clipboard unavailable")
+
+    cases = (
+        (lambda: None, "No clipboard image found."),
+        (
+            fail_to_read,
+            "Unable to read clipboard image: clipboard unavailable",
+        ),
+        (
+            lambda: ClipboardImage(bytes=b"svg", mime_type="image/svg+xml"),
+            "Unsupported clipboard image type: image/svg+xml",
+        ),
+    )
+
+    for index, (reader, expected) in enumerate(cases):
+        app = _app(cwd=str(tmp_path / str(index)))
+        router = build_screen_input_router(
+            app,
+            should_exit=lambda _text: False,
+            clipboard_image_reader=reader,
+        )
+
+        router.handle(InputEvent(kind="key", key="ctrl+v"))
+
+        assert app.state.status_message == expected

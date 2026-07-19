@@ -6,6 +6,9 @@ from io import StringIO
 
 import pytest
 
+from loushang.harnesstui.conversation.action_presentation import (
+    ConversationTracebackPolicy,
+)
 from loushang.harnesstui.conversation.dispatch import (
     ConversationDispatchHandler,
     ConversationDispatchOutcome,
@@ -71,10 +74,35 @@ def test_dispatch_brackets_only_caller_classified_work() -> None:
     assert outcome.work_intent is True
     assert outcome.started_at == 10.0
     assert lifecycle.end_calls == 1
-    assert [name for name, _data in traces] == [
-        "prompt.dispatch.start",
-        "prompt.dispatch.end",
+    assert traces == [
+        (
+            "prompt.dispatch.start",
+            {"intent": "str", "work_intent": True, "run_id": 1},
+        ),
+        (
+            "prompt.dispatch.end",
+            {"run_id": 1, "active_run": False, "session_running": False},
+        ),
     ]
+
+
+def test_dispatch_does_not_start_lifecycle_for_non_work_intent() -> None:
+    lifecycle = _Lifecycle()
+    handler = ConversationDispatchHandler(
+        lifecycle=lifecycle,
+        controller=_Controller(_Result(exit_code=0)),
+        is_work_intent=lambda _intent: False,
+        session_running=lambda: True,
+        trace=lambda _name, **_data: None,
+    )
+
+    outcome = asyncio.run(handler.dispatch("quit"))
+
+    assert outcome.run_id is None
+    assert outcome.work_intent is False
+    assert outcome.result.exit_code == 0
+    assert lifecycle.begin_calls == 0
+    assert lifecycle.end_calls == 0
 
 
 def test_dispatch_ends_work_when_controller_raises() -> None:
@@ -135,7 +163,7 @@ def test_result_presenter_uses_caller_resolved_error_and_traceback() -> None:
         renderer=renderer,
         emit=emit,
         stderr=stderr,
-        verbose=True,
+        traceback_policy=ConversationTracebackPolicy(enabled=True),
         last_error_message=lambda: None,
         now=lambda: 12.0,
         trace=lambda _name, **_data: None,
@@ -143,9 +171,7 @@ def test_result_presenter_uses_caller_resolved_error_and_traceback() -> None:
 
     exit_code = asyncio.run(
         presenter.handle(
-            _outcome(
-                _Result(exit_code=2, traceback_text="traceback text")
-            ),
+            _outcome(_Result(exit_code=2, traceback_text="traceback text")),
             prompt_started=9.0,
             error_message="caller resolved error",
         )
@@ -154,6 +180,37 @@ def test_result_presenter_uses_caller_resolved_error_and_traceback() -> None:
     assert exit_code == 2
     assert renderer.errors == ["caller resolved error"]
     assert stderr.getvalue() == "traceback text"
+
+
+def test_result_presenter_does_not_duplicate_existing_event_error() -> None:
+    renderer = _Renderer()
+    labels: list[str] = []
+
+    async def emit(write, *, label: str) -> None:
+        labels.append(label)
+        write()
+
+    presenter = ConversationResultPresenter(
+        renderer=renderer,
+        emit=emit,
+        stderr=StringIO(),
+        traceback_policy=ConversationTracebackPolicy(enabled=False),
+        last_error_message=lambda: "same error",
+        now=lambda: 12.0,
+        trace=lambda _name, **_data: None,
+    )
+
+    exit_code = asyncio.run(
+        presenter.handle(
+            _outcome(_Result(error_message="same error")),
+            prompt_started=9.0,
+            error_message="same error",
+        )
+    )
+
+    assert exit_code is None
+    assert labels == []
+    assert renderer.errors == []
 
 
 def test_result_presenter_emits_status_or_worked() -> None:
@@ -168,7 +225,7 @@ def test_result_presenter_emits_status_or_worked() -> None:
         renderer=renderer,
         emit=emit,
         stderr=StringIO(),
-        verbose=False,
+        traceback_policy=ConversationTracebackPolicy(enabled=False),
         last_error_message=lambda: None,
         now=lambda: 12.5,
         trace=lambda _name, **_data: None,

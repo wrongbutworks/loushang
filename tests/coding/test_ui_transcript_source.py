@@ -3,24 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.presentation.tui.history import (
-    ActiveWindowTranscriptSource,
-    SessionTranscriptSource,
-)
-from loushang.coding.presentation.tui.history import (
-    TranscriptSnapshot as CodingTranscriptSnapshot,
-)
-from loushang.coding.presentation.tui.history import (
-    TranscriptSource as CodingTranscriptSource,
-)
+from loushang.coding.presentation.tui.history import SessionTranscriptSource
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
-from loushang.harnesstui.conversation.source import (
-    ActiveWindowTranscriptSource as SharedActiveWindowTranscriptSource,
-)
-from loushang.harnesstui.conversation.source import (
-    TranscriptSnapshot,
-    TranscriptSource,
-)
+from loushang.harnesstui.conversation.source import ActiveWindowTranscriptSource
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     ToolExecutionRecord,
@@ -32,12 +17,6 @@ from loushang.tui.transcript import (
 @dataclass(slots=True)
 class _Session:
     messages: list[object]
-
-
-def test_coding_transcript_contracts_are_harnesstui_compatibility_aliases() -> None:
-    assert ActiveWindowTranscriptSource is SharedActiveWindowTranscriptSource
-    assert CodingTranscriptSnapshot is TranscriptSnapshot
-    assert CodingTranscriptSource is TranscriptSource
 
 
 def test_active_window_transcript_source_returns_snapshot_metadata() -> None:

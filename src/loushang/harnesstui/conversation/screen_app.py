@@ -17,6 +17,9 @@ from loushang.harnesstui.conversation.source import (
     ActiveWindowTranscriptSource,
     TranscriptSource,
 )
+from loushang.harnesstui.conversation.window_budget import (
+    trim_records_to_line_budget,
+)
 from loushang.harnesstui.status.line import (
     StatusLinePreviewSnapshot,
     StatusLineSettings,
@@ -37,7 +40,11 @@ from loushang.tui import (
     theme_capabilities_from_runtime,
 )
 from loushang.tui.theme import ThemeResolver
-from loushang.tui.transcript import AssistantMessageRecord, DisplayRecord
+from loushang.tui.transcript import (
+    AssistantMessageRecord,
+    ContextCompactionRecord,
+    DisplayRecord,
+)
 from loushang.tui.ui_parts.layout import CappedRenderable
 from loushang.tui.ui_parts.transcript import (
     DEFAULT_STABLE_TRANSCRIPT_CACHE_ENTRY_LIMIT,
@@ -47,6 +54,10 @@ from loushang.tui.ui_parts.transcript import (
 )
 
 ACTIVE_RENDER_INTERVAL_MS = 80
+
+
+def _normalized_compaction_summary(summary: str) -> str:
+    return summary.strip()
 
 
 @dataclass(slots=True)
@@ -65,6 +76,9 @@ class ScreenConversationApp:
     transcript_theme: ThemeResolver | None = None
     welcome_theme: ThemeResolver | None = None
     active_transcript_line_budget: int = 0
+    compaction_summary_formatter: Callable[[str], str] = (
+        _normalized_compaction_summary
+    )
     stable_render_cache_entry_limit: int = DEFAULT_STABLE_TRANSCRIPT_CACHE_ENTRY_LIMIT
     render_requester: Callable[[RenderRequestKind], object] | None = None
     terminal_diagnostics_provider: Callable[[], str] | None = None
@@ -240,6 +254,72 @@ class ScreenConversationApp:
             f"transcript_window_replaced:{reason}"
             if reason
             else "transcript_window_replaced"
+        )
+
+    def compact_transcript_window(
+        self,
+        *,
+        summary: str,
+        max_records: int = 80,
+    ) -> None:
+        """Replace the oldest active records with one reusable summary record."""
+
+        summary_record = AssistantMessageRecord(
+            self.compaction_summary_formatter(summary)
+        )
+        active_records = tuple(self.state.records)
+        keep_count = max(0, max_records - 1)
+        kept_records = active_records[-keep_count:] if keep_count else ()
+        evicted_count = max(0, len(active_records) - len(kept_records))
+        self.replace_transcript_window(
+            (summary_record, *kept_records),
+            evicted_prefix_record_count=(
+                self.state.evicted_prefix_record_count + evicted_count
+            ),
+            reason="compaction",
+        )
+
+    def append_context_compaction_record(
+        self,
+        *,
+        summary: str = "",
+        tokens_before: int | None = None,
+        max_records: int = 80,
+    ) -> None:
+        """Append a compaction fact and bound the active record window."""
+
+        self.state.records.append(
+            ContextCompactionRecord(
+                summary=summary,
+                tokens_before=tokens_before,
+            )
+        )
+        self.state.mark_records_changed()
+        evicted = self.state.trim_transcript_prefix(max_records=max_records)
+        if evicted:
+            self._render_baseline_reset_reason = (
+                "transcript_window_trimmed:context_compaction"
+            )
+
+    def trim_active_transcript_window(self) -> None:
+        """Apply the configured logical-line budget to the active window."""
+
+        records, evicted_count, changed = trim_records_to_line_budget(
+            tuple(self.state.records),
+            line_budget=self.active_transcript_line_budget,
+        )
+        if not changed:
+            return
+        self.state.replace_transcript_window(
+            ActiveTranscriptWindow(
+                records=records,
+                evicted_prefix_record_count=(
+                    self.state.evicted_prefix_record_count + evicted_count
+                ),
+            )
+        )
+        self._render_baseline_reset_reason = (
+            "transcript_window_trimmed:active_line_budget"
         )
 
     def consume_render_baseline_reset_reason(self) -> str | None:

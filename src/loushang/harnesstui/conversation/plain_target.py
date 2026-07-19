@@ -2,15 +2,22 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, TypeVar
 
+from loushang.harnesstui.conversation.projection import (
+    ConversationProjectionBinding,
+    ConversationProjector,
+)
 from loushang.harnesstui.conversation.tool_transcript import (
     ToolCallSnapshot,
     ToolTranscriptBlock,
+    ToolTranscriptProjector,
 )
 
+ProjectionEventT = TypeVar("ProjectionEventT")
 
-class _PlainConversationRenderer(Protocol):
+
+class PlainConversationProjectionPort(Protocol):
     """Render product-neutral conversation content for a plain surface."""
 
     def render_user(self, text: str) -> None: ...
@@ -32,7 +39,7 @@ class _PlainConversationRenderer(Protocol):
 class PlainConversationProjectionTarget:
     """Map projected conversation facts onto a plain renderer."""
 
-    renderer: _PlainConversationRenderer
+    renderer: PlainConversationProjectionPort
 
     def run_started(self, *, start_time: Callable[[], float]) -> None:
         del start_time
@@ -120,4 +127,44 @@ class PlainConversationProjectionTarget:
             self.renderer.render_status("[compact] done")
 
 
-__all__ = ["PlainConversationProjectionTarget"]
+def build_plain_conversation_projection(
+    renderer: PlainConversationProjectionPort,
+    *,
+    tool_projector: ToolTranscriptProjector,
+    event_handler_factory: Callable[
+        [ConversationProjector], Callable[[ProjectionEventT], None]
+    ],
+    tool_calls: dict[str, ToolCallSnapshot] | None = None,
+    rendered_tool_results: set[str] | None = None,
+    rendered_assistant_errors: set[int | str] | None = None,
+    last_error_message: str | None = None,
+) -> ConversationProjectionBinding[ProjectionEventT]:
+    """Build a plain target, neutral projector, and product event binding."""
+
+    projector = ConversationProjector(
+        target=PlainConversationProjectionTarget(renderer=renderer),
+        tool_projector=tool_projector,
+        measure_tool_elapsed=False,
+        tool_finish_cleanup="before_projection",
+        tool_calls=tool_calls if tool_calls is not None else {},
+        rendered_tool_results=(
+            rendered_tool_results if rendered_tool_results is not None else set()
+        ),
+        rendered_assistant_errors=(
+            rendered_assistant_errors
+            if rendered_assistant_errors is not None
+            else set()
+        ),
+        last_error_message=last_error_message,
+    )
+    return ConversationProjectionBinding(
+        projector=projector,
+        event_handler=event_handler_factory(projector),
+    )
+
+
+__all__ = [
+    "PlainConversationProjectionPort",
+    "PlainConversationProjectionTarget",
+    "build_plain_conversation_projection",
+]

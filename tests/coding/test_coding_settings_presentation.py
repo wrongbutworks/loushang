@@ -4,11 +4,15 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from loushang.coding.presentation.settings import (
-    CodingSettingApplyOutcome,
-    CodingSettingFact,
-    apply_coding_setting,
-    coding_settings_facts,
+from loushang.coding.interaction.settings_profile import (
+    CODING_SETTING_BINDINGS,
+    CODING_SETTING_COPY,
+)
+from loushang.harnesstui.settings.schema import (
+    BooleanSettingApplyOutcome,
+    BooleanSettingFact,
+    apply_boolean_setting,
+    boolean_setting_facts,
 )
 
 
@@ -96,23 +100,23 @@ _SETTINGS = (
 def test_coding_settings_facts_read_all_available_manager_values() -> None:
     manager = _SettingsManager()
 
-    facts = coding_settings_facts(manager)
+    facts = boolean_setting_facts(manager, CODING_SETTING_BINDINGS)
 
     assert facts == (
-        CodingSettingFact("terminal.progress", "Terminal progress", "false"),
-        CodingSettingFact("terminal.show_images", "Show images", "true"),
-        CodingSettingFact("terminal.clear_on_shrink", "Clear on shrink", "false"),
-        CodingSettingFact("images.auto_resize", "Image auto-resize", "true"),
-        CodingSettingFact("images.block_images", "Block images", "false"),
-        CodingSettingFact("retry.enabled", "Retry", "true"),
+        BooleanSettingFact("terminal.progress", "Terminal progress", "false"),
+        BooleanSettingFact("terminal.show_images", "Show images", "true"),
+        BooleanSettingFact("terminal.clear_on_shrink", "Clear on shrink", "false"),
+        BooleanSettingFact("images.auto_resize", "Image auto-resize", "true"),
+        BooleanSettingFact("images.block_images", "Block images", "false"),
+        BooleanSettingFact("retry.enabled", "Retry", "true"),
     )
     with pytest.raises(FrozenInstanceError):
         facts[0].value = "true"  # type: ignore[misc]
 
 
 def test_coding_settings_facts_omit_unavailable_getters() -> None:
-    assert coding_settings_facts(None) == ()
-    assert coding_settings_facts(object()) == ()
+    assert boolean_setting_facts(None, CODING_SETTING_BINDINGS) == ()
+    assert boolean_setting_facts(object(), CODING_SETTING_BINDINGS) == ()
 
 
 @pytest.mark.parametrize(("item_id", "label", "field", "value", "message"), _SETTINGS)
@@ -126,10 +130,16 @@ def test_apply_coding_setting_writes_each_manager_setting(
     del label
     manager = _SettingsManager()
 
-    outcome = apply_coding_setting(manager, item_id, value)
+    outcome = apply_boolean_setting(
+        manager,
+        item_id,
+        value,
+        bindings=CODING_SETTING_BINDINGS,
+        copy=CODING_SETTING_COPY,
+    )
 
     enabled = value == "true"
-    assert outcome == CodingSettingApplyOutcome(matched=True, message=message)
+    assert outcome == BooleanSettingApplyOutcome(matched=True, message=message)
     assert manager.values[field] is enabled
     assert manager.calls == [(field, enabled)]
 
@@ -145,9 +155,15 @@ def test_apply_coding_setting_rejects_invalid_values_without_writing(
     del field, value, message
     manager = _SettingsManager()
 
-    outcome = apply_coding_setting(manager, item_id, "yes")
+    outcome = apply_boolean_setting(
+        manager,
+        item_id,
+        "yes",
+        bindings=CODING_SETTING_BINDINGS,
+        copy=CODING_SETTING_COPY,
+    )
 
-    assert outcome == CodingSettingApplyOutcome(
+    assert outcome == BooleanSettingApplyOutcome(
         matched=True,
         message=f"Invalid {label} value.",
     )
@@ -164,18 +180,27 @@ def test_apply_coding_setting_reports_unavailable_setters(
 ) -> None:
     del field, value, message
 
-    assert apply_coding_setting(None, item_id, "true") == CodingSettingApplyOutcome(
-        matched=True,
-        message=f"{label} is not available.",
-    )
+    assert apply_boolean_setting(
+        None,
+        item_id,
+        "true",
+        bindings=CODING_SETTING_BINDINGS,
+        copy=CODING_SETTING_COPY,
+    ) == BooleanSettingApplyOutcome(matched=True, message=f"{label} is not available.")
 
 
 def test_apply_coding_setting_reports_unknown_ids_as_unmatched() -> None:
     manager = _SettingsManager()
 
-    outcome = apply_coding_setting(manager, "model.current", "true")
+    outcome = apply_boolean_setting(
+        manager,
+        "model.current",
+        "true",
+        bindings=CODING_SETTING_BINDINGS,
+        copy=CODING_SETTING_COPY,
+    )
 
-    assert outcome == CodingSettingApplyOutcome(
+    assert outcome == BooleanSettingApplyOutcome(
         matched=False,
         message="Unknown setting: model.current",
     )
@@ -185,7 +210,13 @@ def test_apply_coding_setting_reports_unknown_ids_as_unmatched() -> None:
 def test_apply_coding_setting_accepts_case_insensitive_boolean_values() -> None:
     manager = _SettingsManager()
 
-    outcome = apply_coding_setting(manager, "terminal.progress", "TRUE")
+    outcome = apply_boolean_setting(
+        manager,
+        "terminal.progress",
+        "TRUE",
+        bindings=CODING_SETTING_BINDINGS,
+        copy=CODING_SETTING_COPY,
+    )
 
     assert outcome.message == "Terminal progress: on"
     assert manager.values["terminal_progress"] is True

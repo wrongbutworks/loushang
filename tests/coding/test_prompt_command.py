@@ -305,3 +305,59 @@ def test_prompt_command_does_not_render_worked_after_assistant_error() -> None:
         assert stderr.getvalue() == ""
 
     asyncio.run(scenario())
+
+
+def test_prompt_command_runs_follow_ups_with_images_only_on_first_turn() -> None:
+    from loushang.coding.prompt_command import run_prompt_command
+
+    image = object()
+
+    class FakeRuntime:
+        async def dispose(self) -> None:
+            raise AssertionError("dispose must not run")
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.listeners = []
+            self.prompt_calls = []
+            self.wait_calls = 0
+
+        def subscribe(self, listener):
+            self.listeners.append(listener)
+
+            def unsubscribe() -> None:
+                self.listeners.remove(listener)
+
+            return unsubscribe
+
+        async def prompt(self, user_input: str, images=None) -> None:
+            self.prompt_calls.append((user_input, images))
+
+        async def wait_for_idle(self) -> None:
+            self.wait_calls += 1
+
+    async def scenario() -> None:
+        session = FakeSession()
+        stdout = StringIO()
+        exit_code = await run_prompt_command(
+            runtime=FakeRuntime(),
+            session=session,
+            prompt="first",
+            images=[image],
+            follow_up_messages=("second", "third"),
+            stdout=stdout,
+            stderr=StringIO(),
+            dispose=False,
+        )
+
+        assert exit_code == 0
+        assert session.prompt_calls == [
+            ("first", [image]),
+            ("second", None),
+            ("third", None),
+        ]
+        assert session.wait_calls == 3
+        assert session.listeners == []
+        assert stdout.getvalue().count("─ Worked for ") == 3
+
+    asyncio.run(scenario())

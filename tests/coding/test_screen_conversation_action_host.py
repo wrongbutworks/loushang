@@ -6,11 +6,11 @@ from io import StringIO
 from pathlib import Path
 
 from loushang.ai.types import ImagePart
-from loushang.coding.interaction.controller import ControllerResult
 from loushang.coding.interaction.intent import AbortIntent, CodingUiIntent, PromptIntent
 from loushang.coding.interaction.screen_host import (
     ScreenCodingConversationActionHost,
 )
+from loushang.harness.host.types import HostActionResult
 from loushang.harnesstui.conversation.attachments import PromptImageAttachment
 from loushang.harnesstui.conversation.control import ConversationTextAction
 
@@ -34,11 +34,11 @@ class _Presenter:
 class _Controller:
     def __init__(self) -> None:
         self.calls: list[tuple[str, object]] = []
-        self.dispatch_result = ControllerResult(exit_code=7)
-        self.steer_result = ControllerResult()
-        self.follow_up_result = ControllerResult()
+        self.dispatch_result = HostActionResult(exit_code=7)
+        self.steer_result = HostActionResult()
+        self.follow_up_result = HostActionResult()
 
-    async def dispatch(self, intent: CodingUiIntent) -> ControllerResult:
+    async def dispatch(self, intent: CodingUiIntent) -> HostActionResult:
         self.calls.append(("dispatch", intent))
         return self.dispatch_result
 
@@ -46,7 +46,7 @@ class _Controller:
         self,
         text: str,
         images: tuple[ImagePart, ...] | None = None,
-    ) -> ControllerResult:
+    ) -> HostActionResult:
         self.calls.append(("steer", (text, images)))
         return self.steer_result
 
@@ -54,7 +54,7 @@ class _Controller:
         self,
         text: str,
         images: tuple[ImagePart, ...] | None = None,
-    ) -> ControllerResult:
+    ) -> HostActionResult:
         self.calls.append(("follow_up", (text, images)))
         return self.follow_up_result
 
@@ -111,12 +111,12 @@ def test_screen_action_host_submits_prompt_intent_with_coding_image_parts() -> N
 
 def test_screen_action_host_routes_steer_and_follow_up_with_attachments() -> None:
     controller = _Controller()
-    controller.steer_result = ControllerResult(
+    controller.steer_result = HostActionResult(
         exit_code=2,
         error_message="steer failed",
         traceback_text="steer traceback\n",
     )
-    controller.follow_up_result = ControllerResult(
+    controller.follow_up_result = HostActionResult(
         exit_code=3,
         status_message="follow-up queued",
     )
