@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
-from typing import Protocol, Sequence, TextIO, TypeVar, runtime_checkable
+from typing import Protocol, TextIO, TypeVar, runtime_checkable
 
 from loushang.tui.cell_width import _extract_control_sequence
 

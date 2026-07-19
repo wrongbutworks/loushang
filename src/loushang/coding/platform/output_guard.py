@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Iterator, TextIO
+from typing import TextIO
 
 
 @dataclass

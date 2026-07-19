@@ -231,5 +231,5 @@ def _scope_matches(scopes: frozenset[str], scope: str) -> bool:
 def _best_effort(callback: Callable[..., None], *args: object, **kwargs: object) -> None:
     try:
         callback(*args, **kwargs)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return
