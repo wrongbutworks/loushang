@@ -6,9 +6,10 @@ from typing import Any
 
 from loushang.coding.commands.catalog import CodingCommandCatalog
 from loushang.harnesstui.commands.interaction import (
-    CommandInteractionResult,
+    CommandInteractionPresentationCopy,
     CommandInteractionSnapshot,
     CommandPaletteChooser,
+    present_command_interaction,
     run_command_interaction,
 )
 from loushang.harnesstui.commands.presentation import (
@@ -20,13 +21,6 @@ from loushang.tui import (
     CommandPalette,
     CompletionProvider,
 )
-from loushang.tui import (
-    CompletionItem as CompletionItem,
-)
-
-
-async def format_session_commands(session: Any, *, query: str = "") -> str:
-    return format_commands(await _session_command_items(session), query=query)
 
 
 async def format_coding_commands(
@@ -41,13 +35,6 @@ async def format_coding_commands(
     )
 
 
-async def session_command_completion_provider(session: Any) -> CompletionProvider:
-    return command_completion_provider(
-        await _session_command_items(session),
-        local_last=False,
-    )
-
-
 async def coding_command_completion_provider(
     session: Any,
     *,
@@ -56,13 +43,6 @@ async def coding_command_completion_provider(
     return command_completion_provider(
         await _catalog_commands(session, command_catalog=command_catalog)
     )
-
-
-async def session_command_palette(
-    session: Any, *, title: str = "Commands"
-) -> CommandPalette:
-    provider = await session_command_completion_provider(session)
-    return CommandPalette.from_completion_provider(provider, title=title)
 
 
 async def coding_command_palette(
@@ -78,21 +58,6 @@ async def coding_command_palette(
     return CommandPalette.from_completion_provider(provider, title=title)
 
 
-async def select_session_command(
-    session: Any,
-    *,
-    query: str = "",
-    choose: CommandPaletteChooser | None = None,
-) -> str:
-    items = await _session_command_items(session)
-    result = await run_command_interaction(
-        CommandInteractionSnapshot(items, local_last=False),
-        query=query,
-        choose=choose,
-    )
-    return _format_command_interaction(result)
-
-
 async def select_coding_command(
     session: Any,
     *,
@@ -106,7 +71,7 @@ async def select_coding_command(
         query=query,
         choose=choose,
     )
-    return _format_command_interaction(result)
+    return present_command_interaction(result, copy=_COMMAND_INTERACTION_COPY)
 
 
 async def _catalog_commands(
@@ -133,31 +98,21 @@ async def _session_command_items(session: Any) -> tuple[object, ...]:
     return tuple(raw_commands)
 
 
-def _format_command_interaction(result: CommandInteractionResult[object]) -> str:
-    if result.kind == "list":
-        return format_commands(result.matches)
-    if result.kind == "cancelled":
-        return "Command selection cancelled."
-    if result.kind == "empty":
-        if result.query:
-            return f"No commands match: {result.query}"
-        return "No commands available."
-    if result.kind == "ambiguous":
-        return "\n".join(
-            [
-                "Multiple commands match:",
-                *(f"  {_command_value(item)}" for item in result.matches),
-                "Use /command <full command> to select one.",
-            ]
-        )
-    if result.item is not None:
-        return f"Command selected: {_command_value(result.item)}"
-    return "No commands available."
-
-
 def _command_value(item: object) -> str:
     completion = command_completion_item(item)
     return completion.value if completion is not None else ""
+
+
+_COMMAND_INTERACTION_COPY = CommandInteractionPresentationCopy[object](
+    list_items=format_commands,
+    item_text=_command_value,
+    cancelled="Command selection cancelled.",
+    empty="No commands available.",
+    no_match=lambda query: f"No commands match: {query}",
+    ambiguous_title="Multiple commands match:",
+    ambiguous_hint="Use /command <full command> to select one.",
+    selected_prefix="Command selected: ",
+)
 
 
 async def _maybe_await(value: Any) -> Any:
@@ -170,10 +125,6 @@ __all__ = [
     "CommandPaletteChooser",
     "coding_command_completion_provider",
     "coding_command_palette",
-    "format_session_commands",
     "format_coding_commands",
     "select_coding_command",
-    "select_session_command",
-    "session_command_completion_provider",
-    "session_command_palette",
 ]

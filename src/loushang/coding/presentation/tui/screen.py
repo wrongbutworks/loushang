@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from typing import Any
 
 from loushang.coding.presentation.tui.events import (
@@ -15,11 +14,10 @@ from loushang.coding.presentation.tui.tool_transcript import (
 )
 from loushang.harnesstui.conversation.projection import (
     ConversationProjectionBinding,
-    ConversationProjector,
 )
 from loushang.harnesstui.conversation.screen_target import (
     ScreenConversationProjectionPort,
-    ScreenConversationProjectionTarget,
+    build_screen_conversation_projection,
 )
 from loushang.harnesstui.conversation.tool_transcript import (
     ToolCallSnapshot,
@@ -27,59 +25,43 @@ from loushang.harnesstui.conversation.tool_transcript import (
 )
 
 QueueReader = Callable[[], tuple[str, ...] | list[str]]
-TraceFn = Callable[[str], None]
 
 
-@dataclass(slots=True)
-class ScreenCodingEventProjector(ConversationProjectionBinding[dict[str, Any]]):
-    """Coding raw-event facade for the full-screen conversation target."""
+def build_screen_coding_event_projection(
+    app: ScreenConversationProjectionPort,
+    tool_definition_resolver: Any | None = None,
+    max_tool_body_lines: int = 8,
+    read_pending_steers: QueueReader = tuple,
+    read_pending_followups: QueueReader = tuple,
+    now: Callable[[], float] = time.monotonic,
+) -> ConversationProjectionBinding[dict[str, Any]]:
+    """Build the Coding event adapter over a shared screen projection."""
 
-    app: ScreenConversationProjectionPort
-    tool_definition_resolver: Any | None = None
-    max_tool_body_lines: int = 8
-    read_pending_steers: QueueReader = tuple
-    read_pending_followups: QueueReader = tuple
-    now: Callable[[], float] = time.monotonic
-    _tool_projector: CodingToolTranscriptProjection = field(init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        self._tool_projector = build_coding_tool_transcript_projection(
-            tool_definition_resolver=self.tool_definition_resolver,
-            max_body_lines=self.max_tool_body_lines,
+    tool_projection: CodingToolTranscriptProjection = (
+        build_coding_tool_transcript_projection(
+            tool_definition_resolver=tool_definition_resolver,
+            max_body_lines=max_tool_body_lines,
         )
-        projection = ConversationProjector(
-            target=ScreenConversationProjectionTarget(
-                self.app,
-                tool_title_resolver=_tool_title,
-                tool_record_projector=tool_block_to_record,
-                status_copy=_CodingScreenProjectionStatusCopy(),
-            ),
-            tool_projector=self._tool_projector.neutral_projector,
-            now=self.now,
-            track_rendered_tool_results=False,
-        )
-        adapter = CodingConversationEventAdapter(
-            projection,
-            self._tool_projector,
-            read_pending_steers=self.read_pending_steers,
-            read_pending_followups=self.read_pending_followups,
-            recover_tool_updates=True,
-            project_tool_result_messages=False,
-            require_assistant_message_for_delta=True,
-            project_run_starts=True,
-            project_queue_updates=True,
-            project_user_messages=True,
-            project_assistant_error_text=True,
-            project_compaction_details=True,
-        )
-        ConversationProjectionBinding.__init__(
-            self,
-            projector=projection,
-            event_handler=adapter.handle,
-        )
+    )
+    return build_screen_conversation_projection(
+        app,
+        tool_projector=tool_projection.neutral_projector,
+        tool_title_resolver=_tool_title,
+        tool_record_projector=tool_block_to_record,
+        status_copy=_CodingScreenProjectionStatusCopy(),
+        event_handler_factory=lambda projection: (
+            CodingConversationEventAdapter(
+                projection,
+                tool_projection,
+                read_pending_steers=read_pending_steers,
+                read_pending_followups=read_pending_followups,
+                project_tool_result_messages=False,
+            ).handle
+        ),
+        now=now,
+    )
 
 
-@dataclass(frozen=True, slots=True)
 class _CodingScreenProjectionStatusCopy:
     def retry_status(
         self,
@@ -117,4 +99,4 @@ def _tool_title(snapshot: ToolCallSnapshot) -> str:
     return tool_block_to_record(block).name
 
 
-__all__ = ["ScreenCodingEventProjector"]
+__all__ = ["build_screen_coding_event_projection"]

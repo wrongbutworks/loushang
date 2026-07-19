@@ -15,7 +15,9 @@ from loushang.ai import (
 
 
 def _usage() -> Usage:
-    return Usage(input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={})
+    return Usage(
+        input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
+    )
 
 
 def _assistant(
@@ -65,7 +67,13 @@ def test_plain_renderer_prints_header_and_user_message() -> None:
     stdout = StringIO()
     renderer = PlainCodingUiRenderer(stdout=stdout)
 
-    renderer.render_header(project_label="loushang", cwd="/repo", branch="main", session_label="254d6156", model_label="moonshot/kimi")
+    renderer.render_header(
+        project_label="loushang",
+        cwd="/repo",
+        branch="main",
+        session_label="254d6156",
+        model_label="moonshot/kimi",
+    )
     renderer.render_user("hello")
 
     assert stdout.getvalue() == (
@@ -78,19 +86,25 @@ def test_plain_renderer_prints_header_and_user_message() -> None:
 
 def test_event_renderer_buffers_assistant_deltas_until_final_block() -> None:
     from loushang.coding.presentation.tui.plain import (
-        PlainCodingEventRenderer,
         PlainCodingUiRenderer,
+        build_plain_coding_event_projection,
     )
 
     stdout = StringIO()
-    event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
+    event_renderer = build_plain_coding_event_projection(
+        PlainCodingUiRenderer(stdout=stdout)
+    )
 
     event_renderer.handle({"type": "message_start", "message": _assistant("")})
     event_renderer.handle(
         {
             "type": "message_update",
             "message": _assistant("hi"),
-            "assistant_message_event": {"type": "text_delta", "content_index": 0, "delta": "hi"},
+            "assistant_message_event": {
+                "type": "text_delta",
+                "content_index": 0,
+                "delta": "hi",
+            },
         }
     )
     assert stdout.getvalue() == ""
@@ -99,7 +113,11 @@ def test_event_renderer_buffers_assistant_deltas_until_final_block() -> None:
         {
             "type": "message_update",
             "message": _assistant("hi there"),
-            "assistant_message_event": {"type": "text_delta", "content_index": 0, "delta": " there"},
+            "assistant_message_event": {
+                "type": "text_delta",
+                "content_index": 0,
+                "delta": " there",
+            },
         }
     )
     event_renderer.handle({"type": "message_end", "message": _assistant("hi there")})
@@ -109,12 +127,14 @@ def test_event_renderer_buffers_assistant_deltas_until_final_block() -> None:
 
 def test_event_renderer_accepts_legacy_delta_without_message() -> None:
     from loushang.coding.presentation.tui.plain import (
-        PlainCodingEventRenderer,
         PlainCodingUiRenderer,
+        build_plain_coding_event_projection,
     )
 
     stdout = StringIO()
-    event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
+    event_renderer = build_plain_coding_event_projection(
+        PlainCodingUiRenderer(stdout=stdout)
+    )
 
     event_renderer.handle({"type": "message_start", "message": _assistant("")})
     event_renderer.handle(
@@ -128,16 +148,16 @@ def test_event_renderer_accepts_legacy_delta_without_message() -> None:
     assert stdout.getvalue() == "• legacy\n"
 
 
-def test_event_renderer_preserves_legacy_constructor_and_injected_state() -> None:
+def test_plain_projection_builder_preserves_injected_state() -> None:
     from inspect import signature
 
     from loushang.coding.presentation.tui.plain import (
-        PlainCodingEventRenderer,
         PlainCodingUiRenderer,
+        build_plain_coding_event_projection,
     )
     from loushang.harnesstui.conversation.tool_transcript import ToolCallSnapshot
 
-    assert tuple(signature(PlainCodingEventRenderer).parameters) == (
+    assert tuple(signature(build_plain_coding_event_projection).parameters) == (
         "renderer",
         "tool_definition_resolver",
         "max_tool_body_lines",
@@ -151,7 +171,7 @@ def test_event_renderer_preserves_legacy_constructor_and_injected_state() -> Non
     tool_calls = {"tc-pending": ToolCallSnapshot(tool_name="read")}
     rendered_tool_results = {"tc-done"}
     rendered_assistant_errors = {123}
-    event_renderer = PlainCodingEventRenderer(
+    event_renderer = build_plain_coding_event_projection(
         PlainCodingUiRenderer(stdout=StringIO()),
         None,
         4,
@@ -178,17 +198,26 @@ def test_event_renderer_preserves_legacy_constructor_and_injected_state() -> Non
     }
 
 
-def test_event_renderer_renders_completed_assistant_markdown_without_raw_markers() -> None:
+def test_event_renderer_renders_completed_assistant_markdown_without_raw_markers() -> (
+    None
+):
     from loushang.coding.presentation.tui.plain import (
-        PlainCodingEventRenderer,
         PlainCodingUiRenderer,
+        build_plain_coding_event_projection,
     )
 
     stdout = StringIO()
-    event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
+    event_renderer = build_plain_coding_event_projection(
+        PlainCodingUiRenderer(stdout=stdout)
+    )
 
     event_renderer.handle({"type": "message_start", "message": _assistant("")})
-    event_renderer.handle({"type": "message_end", "message": _assistant("**Important**\n\n- first\n- second")})
+    event_renderer.handle(
+        {
+            "type": "message_end",
+            "message": _assistant("**Important**\n\n- first\n- second"),
+        }
+    )
 
     output = stdout.getvalue()
     assert "• Important" in output
@@ -218,17 +247,21 @@ def test_plain_renderer_can_render_generic_terminal_blocks() -> None:
 
 def test_event_renderer_prints_assistant_error_from_message_end() -> None:
     from loushang.coding.presentation.tui.plain import (
-        PlainCodingEventRenderer,
         PlainCodingUiRenderer,
+        build_plain_coding_event_projection,
     )
 
     stdout = StringIO()
-    event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
+    event_renderer = build_plain_coding_event_projection(
+        PlainCodingUiRenderer(stdout=stdout)
+    )
 
     event_renderer.handle(
         {
             "type": "message_end",
-            "message": _assistant("", stop_reason="error", error_message="provider failure"),
+            "message": _assistant(
+                "", stop_reason="error", error_message="provider failure"
+            ),
         }
     )
 
@@ -237,17 +270,21 @@ def test_event_renderer_prints_assistant_error_from_message_end() -> None:
 
 def test_event_renderer_prints_assistant_error_from_agent_end() -> None:
     from loushang.coding.presentation.tui.plain import (
-        PlainCodingEventRenderer,
         PlainCodingUiRenderer,
+        build_plain_coding_event_projection,
     )
 
     stdout = StringIO()
-    event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
+    event_renderer = build_plain_coding_event_projection(
+        PlainCodingUiRenderer(stdout=stdout)
+    )
 
     event_renderer.handle(
         {
             "type": "agent_end",
-            "messages": [_assistant("", stop_reason="error", error_message="provider failure")],
+            "messages": [
+                _assistant("", stop_reason="error", error_message="provider failure")
+            ],
         }
     )
 
@@ -256,12 +293,14 @@ def test_event_renderer_prints_assistant_error_from_agent_end() -> None:
 
 def test_event_renderer_deduplicates_assistant_error_and_keeps_last_error() -> None:
     from loushang.coding.presentation.tui.plain import (
-        PlainCodingEventRenderer,
         PlainCodingUiRenderer,
+        build_plain_coding_event_projection,
     )
 
     stdout = StringIO()
-    event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
+    event_renderer = build_plain_coding_event_projection(
+        PlainCodingUiRenderer(stdout=stdout)
+    )
     message = _assistant(
         "partial answer",
         stop_reason="error",
@@ -278,12 +317,14 @@ def test_event_renderer_deduplicates_assistant_error_and_keeps_last_error() -> N
 
 def test_event_renderer_suppresses_intentional_abort_without_committing_draft() -> None:
     from loushang.coding.presentation.tui.plain import (
-        PlainCodingEventRenderer,
         PlainCodingUiRenderer,
+        build_plain_coding_event_projection,
     )
 
     stdout = StringIO()
-    event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
+    event_renderer = build_plain_coding_event_projection(
+        PlainCodingUiRenderer(stdout=stdout)
+    )
     message = _assistant(
         "partial answer",
         stop_reason="aborted",
@@ -299,17 +340,23 @@ def test_event_renderer_suppresses_intentional_abort_without_committing_draft() 
 
 def test_event_renderer_prints_user_message_start() -> None:
     from loushang.coding.presentation.tui.plain import (
-        PlainCodingEventRenderer,
         PlainCodingUiRenderer,
+        build_plain_coding_event_projection,
     )
 
     stdout = StringIO()
-    event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
+    event_renderer = build_plain_coding_event_projection(
+        PlainCodingUiRenderer(stdout=stdout)
+    )
 
     event_renderer.handle(
         {
             "type": "message_start",
-            "message": UserMessage(role="user", content=[TextPart(type="text", text="hello")], timestamp=0.0),
+            "message": UserMessage(
+                role="user",
+                content=[TextPart(type="text", text="hello")],
+                timestamp=0.0,
+            ),
         }
     )
 
@@ -318,12 +365,12 @@ def test_event_renderer_prints_user_message_start() -> None:
 
 def test_event_renderer_can_suppress_user_messages() -> None:
     from loushang.coding.presentation.tui.plain import (
-        PlainCodingEventRenderer,
         PlainCodingUiRenderer,
+        build_plain_coding_event_projection,
     )
 
     stdout = StringIO()
-    event_renderer = PlainCodingEventRenderer(
+    event_renderer = build_plain_coding_event_projection(
         PlainCodingUiRenderer(stdout=stdout),
         render_user_messages=False,
     )
@@ -344,32 +391,62 @@ def test_event_renderer_can_suppress_user_messages() -> None:
 
 def test_event_renderer_aggregates_tool_lifecycle() -> None:
     from loushang.coding.presentation.tui.plain import (
-        PlainCodingEventRenderer,
         PlainCodingUiRenderer,
+        build_plain_coding_event_projection,
     )
 
     stdout = StringIO()
-    event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
-    result: AgentToolResult[dict[str, object]] = AgentToolResult(content=[TextPart(type="text", text="ok")], details={})
+    event_renderer = build_plain_coding_event_projection(
+        PlainCodingUiRenderer(stdout=stdout)
+    )
+    result: AgentToolResult[dict[str, object]] = AgentToolResult(
+        content=[TextPart(type="text", text="ok")], details={}
+    )
 
-    event_renderer.handle({"type": "tool_execution_start", "tool_call_id": "tc1", "tool_name": "read", "args": {"path": "README.md"}})
-    event_renderer.handle({"type": "tool_execution_update", "tool_call_id": "tc1", "tool_name": "read", "partial_result": result})
+    event_renderer.handle(
+        {
+            "type": "tool_execution_start",
+            "tool_call_id": "tc1",
+            "tool_name": "read",
+            "args": {"path": "README.md"},
+        }
+    )
+    event_renderer.handle(
+        {
+            "type": "tool_execution_update",
+            "tool_call_id": "tc1",
+            "tool_name": "read",
+            "partial_result": result,
+        }
+    )
     assert stdout.getvalue() == ""
 
-    event_renderer.handle({"type": "tool_execution_end", "tool_call_id": "tc1", "tool_name": "read", "result": result, "is_error": False})
+    event_renderer.handle(
+        {
+            "type": "tool_execution_end",
+            "tool_call_id": "tc1",
+            "tool_name": "read",
+            "result": result,
+            "is_error": False,
+        }
+    )
 
     assert stdout.getvalue() == "• Explored read README.md\n"
 
 
 def test_event_renderer_does_not_duplicate_tool_result_message_after_tool_end() -> None:
     from loushang.coding.presentation.tui.plain import (
-        PlainCodingEventRenderer,
         PlainCodingUiRenderer,
+        build_plain_coding_event_projection,
     )
 
     stdout = StringIO()
-    event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
-    result: AgentToolResult[dict[str, object]] = AgentToolResult(content=[TextPart(type="text", text="ok")], details={})
+    event_renderer = build_plain_coding_event_projection(
+        PlainCodingUiRenderer(stdout=stdout)
+    )
+    result: AgentToolResult[dict[str, object]] = AgentToolResult(
+        content=[TextPart(type="text", text="ok")], details={}
+    )
     tool_result = ToolResultMessage(
         role="toolResult",
         tool_call_id="tc1",
@@ -380,8 +457,23 @@ def test_event_renderer_does_not_duplicate_tool_result_message_after_tool_end() 
         timestamp=0.0,
     )
 
-    event_renderer.handle({"type": "tool_execution_start", "tool_call_id": "tc1", "tool_name": "read", "args": {"path": "README.md"}})
-    event_renderer.handle({"type": "tool_execution_end", "tool_call_id": "tc1", "tool_name": "read", "result": result, "is_error": False})
+    event_renderer.handle(
+        {
+            "type": "tool_execution_start",
+            "tool_call_id": "tc1",
+            "tool_name": "read",
+            "args": {"path": "README.md"},
+        }
+    )
+    event_renderer.handle(
+        {
+            "type": "tool_execution_end",
+            "tool_call_id": "tc1",
+            "tool_name": "read",
+            "result": result,
+            "is_error": False,
+        }
+    )
     event_renderer.handle({"type": "message_end", "message": tool_result})
 
     assert stdout.getvalue() == "• Explored read README.md\n"
@@ -389,8 +481,8 @@ def test_event_renderer_does_not_duplicate_tool_result_message_after_tool_end() 
 
 def test_event_renderer_renders_tool_block_with_bounded_result_preview() -> None:
     from loushang.coding.presentation.tui.plain import (
-        PlainCodingEventRenderer,
         PlainCodingUiRenderer,
+        build_plain_coding_event_projection,
     )
     from loushang.coding.tools import (
         ToolDefinition,
@@ -404,7 +496,12 @@ def test_event_renderer_renders_tool_block_with_bounded_result_preview() -> None
     def render_call(args: object, theme: object, context: ToolRenderContext) -> str:
         return "bash printf lines"
 
-    def render_result(result: AgentToolResult[object], options: ToolRenderResultOptions, theme: object, context: ToolRenderContext) -> str:
+    def render_result(
+        result: AgentToolResult[object],
+        options: ToolRenderResultOptions,
+        theme: object,
+        context: ToolRenderContext,
+    ) -> str:
         return "\n".join([f"line {index}" for index in range(1, 8)])
 
     definition = ToolDefinition(
@@ -417,15 +514,32 @@ def test_event_renderer_renders_tool_block_with_bounded_result_preview() -> None
         render_result=render_result,
     )
     stdout = StringIO()
-    event_renderer = PlainCodingEventRenderer(
+    event_renderer = build_plain_coding_event_projection(
         PlainCodingUiRenderer(stdout=stdout),
         tool_definition_resolver=lambda name: definition if name == "bash" else None,
         max_tool_body_lines=3,
     )
-    result: AgentToolResult[dict[str, object]] = AgentToolResult(content=[TextPart(type="text", text="ignored")], details={})
+    result: AgentToolResult[dict[str, object]] = AgentToolResult(
+        content=[TextPart(type="text", text="ignored")], details={}
+    )
 
-    event_renderer.handle({"type": "tool_execution_start", "tool_call_id": "tc1", "tool_name": "bash", "args": {"command": "printf lines"}})
-    event_renderer.handle({"type": "tool_execution_end", "tool_call_id": "tc1", "tool_name": "bash", "result": result, "is_error": False})
+    event_renderer.handle(
+        {
+            "type": "tool_execution_start",
+            "tool_call_id": "tc1",
+            "tool_name": "bash",
+            "args": {"command": "printf lines"},
+        }
+    )
+    event_renderer.handle(
+        {
+            "type": "tool_execution_end",
+            "tool_call_id": "tc1",
+            "tool_name": "bash",
+            "result": result,
+            "is_error": False,
+        }
+    )
 
     assert stdout.getvalue() == (
         "• Ran bash printf lines\n"
@@ -438,28 +552,57 @@ def test_event_renderer_renders_tool_block_with_bounded_result_preview() -> None
 
 def test_event_renderer_includes_failed_tool_error_summary() -> None:
     from loushang.coding.presentation.tui.plain import (
-        PlainCodingEventRenderer,
         PlainCodingUiRenderer,
+        build_plain_coding_event_projection,
     )
 
     stdout = StringIO()
-    event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
+    event_renderer = build_plain_coding_event_projection(
+        PlainCodingUiRenderer(stdout=stdout)
+    )
     result: AgentToolResult[dict[str, object]] = AgentToolResult(
-        content=[TextPart(type="text", text='Validation failed for tool "write":\n  - path: is required')],
+        content=[
+            TextPart(
+                type="text",
+                text='Validation failed for tool "write":\n  - path: is required',
+            )
+        ],
         details={},
     )
 
-    event_renderer.handle({"type": "tool_execution_start", "tool_call_id": "tc1", "tool_name": "write", "args": {}})
-    event_renderer.handle({"type": "tool_execution_end", "tool_call_id": "tc1", "tool_name": "write", "result": result, "is_error": True})
+    event_renderer.handle(
+        {
+            "type": "tool_execution_start",
+            "tool_call_id": "tc1",
+            "tool_name": "write",
+            "args": {},
+        }
+    )
+    event_renderer.handle(
+        {
+            "type": "tool_execution_end",
+            "tool_call_id": "tc1",
+            "tool_name": "write",
+            "result": result,
+            "is_error": True,
+        }
+    )
 
-    assert stdout.getvalue() == '• Edited write failed: Validation failed for tool "write":\n'
+    assert (
+        stdout.getvalue()
+        == '• Edited write failed: Validation failed for tool "write":\n'
+    )
 
 
 def test_plain_renderer_prints_worked_divider_to_terminal_width(monkeypatch) -> None:
     from loushang.coding.presentation.tui import plain as renderer_module
     from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
 
-    monkeypatch.setattr(renderer_module.shutil, "get_terminal_size", lambda fallback: terminal_size((24, 24)))
+    monkeypatch.setattr(
+        renderer_module.shutil,
+        "get_terminal_size",
+        lambda fallback: terminal_size((24, 24)),
+    )
     stdout = StringIO()
     renderer = PlainCodingUiRenderer(stdout=stdout)
 
@@ -468,7 +611,9 @@ def test_plain_renderer_prints_worked_divider_to_terminal_width(monkeypatch) -> 
     assert stdout.getvalue() == "\n─ Worked for 1.2s ──────\n\n"
 
 
-def test_plain_renderer_prints_interruption_and_concise_error_without_traceback() -> None:
+def test_plain_renderer_prints_interruption_and_concise_error_without_traceback() -> (
+    None
+):
     from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
 
     stdout = StringIO()
@@ -488,19 +633,31 @@ def test_plain_renderer_prints_interruption_and_concise_error_without_traceback(
 
 def test_event_renderer_prints_retry_status() -> None:
     from loushang.coding.presentation.tui.plain import (
-        PlainCodingEventRenderer,
         PlainCodingUiRenderer,
+        build_plain_coding_event_projection,
     )
 
     stdout = StringIO()
-    event_renderer = PlainCodingEventRenderer(PlainCodingUiRenderer(stdout=stdout))
+    event_renderer = build_plain_coding_event_projection(
+        PlainCodingUiRenderer(stdout=stdout)
+    )
 
-    event_renderer.handle({"type": "auto_retry_start", "attempt": 2, "max_attempts": 3, "delay_ms": 1000, "error_message": "rate limit"})
+    event_renderer.handle(
+        {
+            "type": "auto_retry_start",
+            "attempt": 2,
+            "max_attempts": 3,
+            "delay_ms": 1000,
+            "error_message": "rate limit",
+        }
+    )
 
     assert stdout.getvalue() == "[retry] attempt 2/3 in 1000ms: rate limit\n"
 
 
-def test_plain_renderer_can_project_assistant_markdown_through_transcript_view() -> None:
+def test_plain_renderer_can_project_assistant_markdown_through_transcript_view() -> (
+    None
+):
     from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
     from loushang.tui.theme import ThemeResolver
 
@@ -508,7 +665,9 @@ def test_plain_renderer_can_project_assistant_markdown_through_transcript_view()
     renderer = PlainCodingUiRenderer(
         stdout=stdout,
         use_transcript_view=True,
-        transcript_theme=ThemeResolver(defaults={"markdown.heading.level2": {"bold": True}}),
+        transcript_theme=ThemeResolver(
+            defaults={"markdown.heading.level2": {"bold": True}}
+        ),
     )
 
     renderer.render_assistant("## Result\n\nUse `pytest`.")
@@ -537,7 +696,10 @@ def test_plain_renderer_can_project_tool_blocks_through_transcript_view() -> Non
         )
     )
 
-    assert stdout.getvalue() == "• Ran uv run pytest took 0.00s\n  $ uv run pytest\n  2 passed\n"
+    assert (
+        stdout.getvalue()
+        == "• Ran uv run pytest took 0.00s\n  $ uv run pytest\n  2 passed\n"
+    )
 
 
 def test_plain_renderer_buffers_deltas_then_projects_final_assistant_record() -> None:
@@ -548,7 +710,9 @@ def test_plain_renderer_buffers_deltas_then_projects_final_assistant_record() ->
     renderer = PlainCodingUiRenderer(
         stdout=stdout,
         use_transcript_view=True,
-        transcript_theme=ThemeResolver(defaults={"markdown.heading.level2": {"bold": True}}),
+        transcript_theme=ThemeResolver(
+            defaults={"markdown.heading.level2": {"bold": True}}
+        ),
     )
 
     renderer.begin_assistant()
@@ -579,7 +743,11 @@ def test_plain_renderer_collects_screen_transcript_without_stdout_writes() -> No
     renderer.write_assistant_delta("ult")
 
     assert stdout.getvalue() == ""
-    draft = strip_control_sequences(renderer.render_transcript(RenderConstraints(width=40, max_height=20)).lines[-1].text)
+    draft = strip_control_sequences(
+        renderer.render_transcript(RenderConstraints(width=40, max_height=20))
+        .lines[-1]
+        .text
+    )
     assert "Result" in draft
 
     renderer.end_assistant()

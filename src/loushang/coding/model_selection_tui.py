@@ -25,10 +25,12 @@ from loushang.harnesstui.selection.interaction import (
     ModelInteractionChooser as ModelPaletteChooser,
 )
 from loushang.harnesstui.selection.interaction import (
+    ModelInteractionPresentationCopy,
     ModelInteractionSnapshot,
+    present_model_interaction,
     run_model_interaction,
 )
-from loushang.tui import CommandPalette, CompletionProvider
+from loushang.tui import CompletionProvider
 
 
 @dataclass(frozen=True)
@@ -52,13 +54,6 @@ async def available_model_completion_provider(session: Any) -> CompletionProvide
     return model_completion_provider(choices, current_value=current_value)
 
 
-async def available_model_palette(
-    session: Any, *, title: str = "Models"
-) -> CommandPalette:
-    provider = await available_model_completion_provider(session)
-    return CommandPalette.from_completion_provider(provider, title=title)
-
-
 async def select_available_model(
     session: Any,
     *,
@@ -76,33 +71,13 @@ async def select_available_model(
         query=query,
         choose=choose,
     )
-    if resolution.kind == "list":
-        return format_model_choices(
-            resolution.matches,
-            current_value=snapshot.current_value,
-        )
-    if resolution.kind == "cancelled":
-        return "Model selection cancelled."
-    if resolution.kind == "empty":
-        if resolution.query:
-            return f"No models match: {resolution.query}"
-        return "No models available."
-    if resolution.kind == "ambiguous":
-        hint = (
-            "Use /model <provider:endpoint:model> or choose one from the model list."
-            if any(choice.endpoint_id for choice in resolution.matches)
-            else "Use /model <full model> to select one."
-        )
-        return "\n".join(
-            [
-                "Multiple models match:",
-                *(
-                    f"  {model_choice_display_label(choice)}"
-                    for choice in resolution.matches
-                ),
-                hint,
-            ]
-        )
+    presentation = present_model_interaction(
+        resolution,
+        current_value=snapshot.current_value,
+        copy=_MODEL_INTERACTION_COPY,
+    )
+    if presentation is not None:
+        return presentation
 
     assert resolution.choice is not None
     choice = resolution.choice
@@ -118,6 +93,26 @@ async def select_available_model(
     if warning := persistence_warning_message(result):
         return f"{message}, but {warning}"
     return message
+
+
+def _ambiguous_model_hint(matches: tuple[ModelChoice, ...]) -> str:
+    if any(choice.endpoint_id for choice in matches):
+        return "Use /model <provider:endpoint:model> or choose one from the model list."
+    return "Use /model <full model> to select one."
+
+
+_MODEL_INTERACTION_COPY = ModelInteractionPresentationCopy(
+    list_items=lambda choices, current: format_model_choices(
+        choices,
+        current_value=current,
+    ),
+    item_text=model_choice_display_label,
+    cancelled="Model selection cancelled.",
+    empty="No models available.",
+    no_match=lambda query: f"No models match: {query}",
+    ambiguous_title="Multiple models match:",
+    ambiguous_hint=_ambiguous_model_hint,
+)
 
 
 async def available_model_choices(session: Any) -> list[ModelChoice]:
@@ -320,7 +315,6 @@ async def _maybe_await(value: Any) -> Any:
 __all__ = [
     "available_model_choices",
     "available_model_completion_provider",
-    "available_model_palette",
     "current_model_choice_value",
     "format_available_models",
     "ModelChoice",

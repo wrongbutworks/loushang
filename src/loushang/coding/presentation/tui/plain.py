@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import shutil
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any
 
 from loushang.coding.presentation.tui.events import CodingConversationEventAdapter
 from loushang.coding.presentation.tui.tool_transcript import (
@@ -12,11 +12,10 @@ from loushang.coding.presentation.tui.tool_transcript import (
 )
 from loushang.harness.presentation import ToolDefinitionResolver
 from loushang.harnesstui.conversation.plain_target import (
-    PlainConversationProjectionTarget,
+    build_plain_conversation_projection,
 )
 from loushang.harnesstui.conversation.projection import (
     ConversationProjectionBinding,
-    ConversationProjector,
 )
 from loushang.harnesstui.conversation.tool_transcript import (
     ToolCallSnapshot,
@@ -93,74 +92,48 @@ class PlainCodingUiRenderer(PlainConversationRenderer):
     )
 
 
-@dataclass(init=False)
-class PlainCodingEventRenderer(ConversationProjectionBinding[dict[str, Any]]):
-    """Coding raw-event facade for the plain conversation target."""
+def build_plain_coding_event_projection(
+    renderer: PlainCodingUiRenderer,
+    tool_definition_resolver: ToolDefinitionResolver | None = None,
+    max_tool_body_lines: int = 8,
+    tool_calls: dict[str, ToolCallSnapshot] | None = None,
+    rendered_tool_results: set[str] | None = None,
+    rendered_assistant_errors: set[int | str] | None = None,
+    last_error_message: str | None = None,
+    render_user_messages: bool = True,
+) -> ConversationProjectionBinding[dict[str, Any]]:
+    """Build the Coding event adapter over a shared plain projection."""
 
-    renderer: PlainCodingUiRenderer
-    tool_definition_resolver: ToolDefinitionResolver | None = None
-    max_tool_body_lines: int = 8
-    render_user_messages: bool = True
-    _tool_projector: CodingToolTranscriptProjection = field(init=False, repr=False)
-
-    def __init__(
-        self,
-        renderer: PlainCodingUiRenderer,
-        tool_definition_resolver: ToolDefinitionResolver | None = None,
-        max_tool_body_lines: int = 8,
-        tool_calls: dict[str, ToolCallSnapshot] | None = None,
-        rendered_tool_results: set[str] | None = None,
-        rendered_assistant_errors: set[int] | None = None,
-        last_error_message: str | None = None,
-        render_user_messages: bool = True,
-    ) -> None:
-        self.renderer = renderer
-        self.tool_definition_resolver = tool_definition_resolver
-        self.max_tool_body_lines = max_tool_body_lines
-        self.render_user_messages = render_user_messages
-        self._tool_projector = build_coding_tool_transcript_projection(
+    tool_projection: CodingToolTranscriptProjection = (
+        build_coding_tool_transcript_projection(
             tool_definition_resolver=tool_definition_resolver,
             max_body_lines=max_tool_body_lines,
         )
-        projection = ConversationProjector(
-            target=PlainConversationProjectionTarget(renderer=renderer),
-            tool_projector=self._tool_projector.neutral_projector,
-            measure_tool_elapsed=False,
-            tool_finish_cleanup="before_projection",
-            tool_calls=tool_calls if tool_calls is not None else {},
-            rendered_tool_results=(
-                rendered_tool_results
-                if rendered_tool_results is not None
-                else set()
-            ),
-            rendered_assistant_errors=cast(
-                set[int | str],
-                rendered_assistant_errors
-                if rendered_assistant_errors is not None
-                else set(),
-            ),
-            last_error_message=last_error_message,
-        )
-        adapter = CodingConversationEventAdapter(
-            projection,
-            self._tool_projector,
-            recover_tool_updates=False,
-            project_tool_result_messages=True,
-            require_assistant_message_for_delta=False,
-            project_run_starts=False,
-            project_queue_updates=False,
-            project_user_messages=render_user_messages,
-            project_assistant_error_text=False,
-            project_compaction_details=False,
-        )
-        ConversationProjectionBinding.__init__(
-            self,
-            projector=projection,
-            event_handler=adapter.handle,
-        )
+    )
+    return build_plain_conversation_projection(
+        renderer,
+        tool_projector=tool_projection.neutral_projector,
+        event_handler_factory=lambda projection: (
+            CodingConversationEventAdapter(
+                projection,
+                tool_projection,
+                recover_tool_updates=False,
+                require_assistant_message_for_delta=False,
+                project_run_starts=False,
+                project_queue_updates=False,
+                project_user_messages=render_user_messages,
+                project_assistant_error_text=False,
+                project_compaction_details=False,
+            ).handle
+        ),
+        tool_calls=tool_calls,
+        rendered_tool_results=rendered_tool_results,
+        rendered_assistant_errors=rendered_assistant_errors,
+        last_error_message=last_error_message,
+    )
 
 
 __all__ = [
-    "PlainCodingEventRenderer",
     "PlainCodingUiRenderer",
+    "build_plain_coding_event_projection",
 ]

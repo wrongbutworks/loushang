@@ -133,9 +133,7 @@ def test_format_available_models_marks_current_model() -> None:
     text = asyncio.run(format_available_models(_Session()))
 
     assert text == (
-        "Available models:\n"
-        "* moonshot/kimi-for-coding (current)\n"
-        "  openai/gpt-5.4"
+        "Available models:\n* moonshot/kimi-for-coding (current)\n  openai/gpt-5.4"
     )
 
 
@@ -153,9 +151,7 @@ def test_format_available_models_lists_current_model_first() -> None:
     text = asyncio.run(format_available_models(_CurrentSecondSession()))
 
     assert text == (
-        "Available models:\n"
-        "* openai/gpt-5.4 (current)\n"
-        "  moonshot/kimi-for-coding"
+        "Available models:\n* openai/gpt-5.4 (current)\n  moonshot/kimi-for-coding"
     )
 
 
@@ -206,7 +202,9 @@ def test_available_model_completion_provider_uses_model_detail_descriptions() ->
     from loushang.coding.model_selection_tui import available_model_completion_provider
     from loushang.tui import CompletionItem, CompletionProvider
 
-    provider = asyncio.run(available_model_completion_provider(_SessionWithModelDetails()))
+    provider = asyncio.run(
+        available_model_completion_provider(_SessionWithModelDetails())
+    )
 
     assert provider == CompletionProvider(
         (
@@ -236,25 +234,6 @@ def test_available_model_completion_provider_lists_current_model_first() -> None
     assert provider.items[0].description == "current"
 
 
-def test_available_model_palette_reuses_structured_model_items() -> None:
-    from loushang.coding.model_selection_tui import available_model_palette
-    from loushang.tui import CommandPalette, CommandPaletteItem
-
-    palette = asyncio.run(available_model_palette(_Session(), title="Models"))
-
-    assert palette == CommandPalette(
-        items=(
-            CommandPaletteItem(
-                value="moonshot/kimi-for-coding",
-                label="moonshot/kimi-for-coding",
-                description="current",
-            ),
-            CommandPaletteItem(value="openai/gpt-5.4", label="openai/gpt-5.4"),
-        ),
-        title="Models",
-    )
-
-
 def test_select_available_model_sets_unique_match() -> None:
     from loushang.coding.model_selection_tui import select_available_model
 
@@ -274,9 +253,7 @@ def test_select_available_model_lists_models_when_query_is_empty() -> None:
     text = asyncio.run(select_available_model(session, query=""))
 
     assert text == (
-        "Available models:\n"
-        "* moonshot/kimi-for-coding (current)\n"
-        "  openai/gpt-5.4"
+        "Available models:\n* moonshot/kimi-for-coding (current)\n  openai/gpt-5.4"
     )
     assert session.set_model_calls == []
 
@@ -295,7 +272,9 @@ def test_select_available_model_uses_injected_palette_chooser() -> None:
     text = asyncio.run(select_available_model(session, query="", choose=choose))
 
     assert text == "Model set: openai/gpt-5.4"
-    assert session.set_model_calls == [ModelSelection(provider="openai", model_id="gpt-5.4")]
+    assert session.set_model_calls == [
+        ModelSelection(provider="openai", model_id="gpt-5.4")
+    ]
     assert seen
     assert [item.value for item in seen[0].items] == [
         "moonshot/kimi-for-coding",
@@ -308,7 +287,9 @@ def test_select_available_model_reports_cancelled_palette_choice() -> None:
 
     session = _Session()
 
-    text = asyncio.run(select_available_model(session, query="", choose=lambda _palette: None))
+    text = asyncio.run(
+        select_available_model(session, query="", choose=lambda _palette: None)
+    )
 
     assert text == "Model selection cancelled."
     assert session.set_model_calls == []
@@ -347,7 +328,9 @@ def test_select_available_model_reports_ambiguous_matches_with_hint() -> None:
     assert session.set_model_calls == []
 
 
-def test_select_available_model_uses_full_identity_for_duplicate_endpoint_choice() -> None:
+def test_select_available_model_uses_full_identity_for_duplicate_endpoint_choice() -> (
+    None
+):
     from loushang.coding.model_selection_tui import select_available_model
 
     session = _DuplicateEndpointSession()
@@ -384,7 +367,9 @@ def test_select_available_model_uses_preferred_endpoint_for_duplicate_label() ->
     assert session.default_model_calls == [(selection, "global")]
 
 
-def test_select_available_model_reports_duplicate_endpoint_label_as_ambiguous_without_preferred() -> None:
+def test_select_available_model_reports_duplicate_endpoint_label_as_ambiguous_without_preferred() -> (
+    None
+):
     from loushang.coding.model_selection_tui import select_available_model
 
     session = _AmbiguousDuplicateEndpointSession()
@@ -402,7 +387,9 @@ def test_select_available_model_reports_duplicate_endpoint_label_as_ambiguous_wi
 def test_available_model_completion_provider_marks_only_current_endpoint() -> None:
     from loushang.coding.model_selection_tui import available_model_completion_provider
 
-    provider = asyncio.run(available_model_completion_provider(_DuplicateEndpointCurrentSession()))
+    provider = asyncio.run(
+        available_model_completion_provider(_DuplicateEndpointCurrentSession())
+    )
 
     assert [item.value for item in provider.items] == [
         "dashscope:openai-completions:cn:qwen3.6-plus",
@@ -418,10 +405,14 @@ def test_available_model_completion_provider_marks_only_current_endpoint() -> No
     )
 
 
-def test_available_model_completion_provider_uses_agent_model_endpoint_for_current() -> None:
+def test_available_model_completion_provider_uses_agent_model_endpoint_for_current() -> (
+    None
+):
     from loushang.coding.model_selection_tui import available_model_completion_provider
 
-    provider = asyncio.run(available_model_completion_provider(_DuplicateEndpointAgentModelSession()))
+    provider = asyncio.run(
+        available_model_completion_provider(_DuplicateEndpointAgentModelSession())
+    )
 
     assert [item.value for item in provider.items] == [
         "dashscope:openai-completions:cn:qwen3.6-plus",
@@ -440,7 +431,9 @@ def test_available_model_completion_provider_uses_agent_model_endpoint_for_curre
 def test_available_model_completion_provider_dedupes_to_preferred_endpoint() -> None:
     from loushang.coding.model_selection_tui import available_model_completion_provider
 
-    provider = asyncio.run(available_model_completion_provider(_DuplicateEndpointSession()))
+    provider = asyncio.run(
+        available_model_completion_provider(_DuplicateEndpointSession())
+    )
 
     assert [item.value for item in provider.items] == [
         "dashscope:openai-responses:qwen3.6-plus",

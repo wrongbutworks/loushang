@@ -276,30 +276,33 @@ def test_run_coding_tui_interactive_replays_resumed_session_history(
             timestamp=3.0,
         ),
     ]
-    session.session_manager.get_branch = lambda: [
-        ConversationRecord(
-            record_id=f"record-{index}",
-            parent_id=f"record-{index - 1}" if index else None,
-            kind=AGENT_MESSAGE_KIND,
-            payload_version=1,
-            created_at=f"2026-07-16T00:00:0{index}Z",
-            payload=message,
-        )
-        for index, message in enumerate(session.context_messages)
-    ] + [
-        ConversationRecord(
-            record_id="record-3",
-            parent_id="record-2",
-            kind=CONTEXT_COMPACTION_CHECKPOINT_KIND,
-            payload_version=1,
-            created_at="2026-07-16T00:00:03Z",
-            payload=ContextCompactionCheckpoint(
-                summary="older context summary",
-                first_kept_record_id="record-0",
-                tokens_before=128,
-            ),
-        )
-    ]
+    session.session_manager.get_branch = lambda: (
+        [
+            ConversationRecord(
+                record_id=f"record-{index}",
+                parent_id=f"record-{index - 1}" if index else None,
+                kind=AGENT_MESSAGE_KIND,
+                payload_version=1,
+                created_at=f"2026-07-16T00:00:0{index}Z",
+                payload=message,
+            )
+            for index, message in enumerate(session.context_messages)
+        ]
+        + [
+            ConversationRecord(
+                record_id="record-3",
+                parent_id="record-2",
+                kind=CONTEXT_COMPACTION_CHECKPOINT_KIND,
+                payload_version=1,
+                created_at="2026-07-16T00:00:03Z",
+                payload=ContextCompactionCheckpoint(
+                    summary="older context summary",
+                    first_kept_record_id="record-0",
+                    tokens_before=128,
+                ),
+            )
+        ]
+    )
     captured: dict[str, object] = {}
 
     async def fake_screen_loop(**kwargs):
@@ -660,9 +663,7 @@ def test_run_coding_tui_interactive_screen_loop_dispatches_steer_and_followup(
     async def fake_screen_loop(**kwargs):
         captured.update(kwargs)
         await kwargs["action_host"].steer(ConversationTextAction("steer this"))
-        await kwargs["action_host"].follow_up(
-            ConversationTextAction("follow this")
-        )
+        await kwargs["action_host"].follow_up(ConversationTextAction("follow this"))
         return 0
 
     monkeypatch.setattr(mode, "run_action_host_conversation_screen", fake_screen_loop)
@@ -1022,7 +1023,9 @@ def test_screen_tui_failure_detaches_presenter_and_denies_pending(
         await shown.wait()
         raise RuntimeError("terminal failed")
 
-    monkeypatch.setattr(mode, "run_action_host_conversation_screen", failing_screen_loop)
+    monkeypatch.setattr(
+        mode, "run_action_host_conversation_screen", failing_screen_loop
+    )
 
     async def run() -> tuple[int, object]:
         exit_code = await mode.run_coding_tui(
@@ -1060,12 +1063,11 @@ def test_screen_tui_projector_failure_still_unbinds_presenter(
         def set_approval_presenter(self, presenter, *, dismisser=None) -> None:
             resolver.set_request_presenter(presenter, dismisser=dismisser)
 
-    class FailingProjector:
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            del args, kwargs
-            raise RuntimeError("projector failed")
+    def fail_projector(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise RuntimeError("projector failed")
 
-    monkeypatch.setattr(mode, "ScreenCodingEventProjector", FailingProjector)
+    monkeypatch.setattr(mode, "build_screen_coding_event_projection", fail_projector)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(

@@ -5,7 +5,6 @@ from functools import partial
 from pathlib import Path
 from typing import Any, TextIO
 
-from loushang.coding.event.presentation_policy import event_writes_transcript
 from loushang.coding.interaction.controller import CodingUiController
 from loushang.coding.interaction.intent import QuitIntent, parse_prompt_intent
 from loushang.coding.interaction.screen_host import (
@@ -29,8 +28,8 @@ from loushang.coding.presentation.tui.history import (
     session_history_records,
 )
 from loushang.coding.presentation.tui.plain import (
-    PlainCodingEventRenderer,
     PlainCodingUiRenderer,
+    build_plain_coding_event_projection,
 )
 from loushang.coding.presentation.tui.runtime import (
     pending_followups_reader,
@@ -38,7 +37,9 @@ from loushang.coding.presentation.tui.runtime import (
     session_keybindings,
     tool_definition_resolver,
 )
-from loushang.coding.presentation.tui.screen import ScreenCodingEventProjector
+from loushang.coding.presentation.tui.screen import (
+    build_screen_coding_event_projection,
+)
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.plain_app import build_plain_coding_tui_app
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
@@ -48,14 +49,17 @@ from loushang.coding.ui.startup import (
     CodingTuiStartupSnapshot,
     load_coding_tui_startup_snapshot,
 )
-from loushang.harnesstui.conversation.dispatch import StableEventStreamHandler
+from loushang.harnesstui.conversation.application_host import (
+    InstalledConversationHistory,
+    PreparedPlainConversationRun,
+    PreparedScreenConversationRun,
+    run_prepared_plain_conversation,
+    run_prepared_screen_conversation,
+)
 from loushang.harnesstui.conversation.host import (
     run_action_host_conversation_screen,
 )
-from loushang.harnesstui.conversation.run_context import (
-    open_interaction_run_context,
-    subscribe_events,
-)
+from loushang.harnesstui.conversation.run_context import StableEmit
 from loushang.harnesstui.status.persistence import (
     statusline_settings_from_store,
     statusline_settings_persistence_callback,
@@ -125,29 +129,15 @@ async def _run_screen_interactive_tui(
         now=time.monotonic,
     )
     tool_resolver = tool_definition_resolver(session)
-    app.transcript_source_factory = lambda: SessionTranscriptSource(
-        session,
-        tool_definition_resolver=tool_resolver,
-        active_window_state=app.state,
-    )
-    history_records = session_history_records(
-        session,
-        tool_definition_resolver=tool_resolver,
-    )
-    if history_records:
-        app.replace_transcript_window(history_records, reason="resume")
-        app.trim_active_transcript_window()
-        _trace(
-            "tui.resume_history",
-            record_count=len(history_records),
-            active_record_count=len(app.state.records),
-            evicted_record_count=app.state.evicted_prefix_record_count,
-            trimmed=app.state.evicted_prefix_record_count > 0,
+    history_records = tuple(
+        session_history_records(
+            session,
+            tool_definition_resolver=tool_resolver,
         )
+    )
     completion_provider = await _load_completion_provider(
         session, base_path=Path(snapshot.cwd)
     )
-    app.composer.set_completion_provider(completion_provider)
     controller = CodingUiController(runtime=runtime, session=session, verbose=verbose)
     action_host = ScreenCodingConversationActionHost(
         presenter=app,
@@ -176,69 +166,59 @@ async def _run_screen_interactive_tui(
         status_provider=status_provider,
         on_approval=lambda event: handle_screen_approval(session, event),
     )
-    unbind_approval_presenter = bind_screen_approval_presenter(
-        session,
-        surface_manager,
-        session_provider=lambda: runtime_session(runtime, session),
-    )
-
-    def unbind_session_transition() -> None:
-        return None
-
-    def unsubscribe() -> None:
-        return None
-
-    try:
-        unbind_session_transition = bind_screen_session_transition(
-            runtime,
-            surface_manager,
-        )
-        projector = ScreenCodingEventProjector(
-            app,
-            tool_definition_resolver=tool_resolver,
-            read_pending_steers=pending_steers_reader(session),
-            read_pending_followups=pending_followups_reader(session),
-            now=time.monotonic,
-        )
-        with log_context(
+    prepared = PreparedScreenConversationRun(
+        app=app,
+        action_host=action_host,
+        surface=surface_manager,
+        event_source=session,
+        event_listener_factory=lambda: (
+            build_screen_coding_event_projection(
+                app,
+                tool_definition_resolver=tool_resolver,
+                read_pending_steers=pending_steers_reader(session),
+                read_pending_followups=pending_followups_reader(session),
+                now=time.monotonic,
+            ).handle
+        ),
+        interaction_context=log_context(
             session_id=snapshot.session_observability_id,
             cwd=snapshot.cwd,
             mode="tui",
-        ):
-            try:
-                _trace_start(snapshot, interactive=True)
-                unsubscribe = subscribe_events(session, projector.handle)
-                exit_code = await run_action_host_conversation_screen(
-                    app=app,
-                    stdin=stdin,
-                    stdout=stdout,
-                    action_host=action_host,
-                    profile=CODING_SCREEN_RUN_PROFILE,
-                    handle_local=surface_manager.handle_text,
-                    handle_surface_intent=surface_manager.handle_surface_intent,
-                    should_exit=_screen_should_exit,
-                    is_local_command=surface_manager.is_local_command,
-                    keybindings=session_keybindings(session),
-                )
-                write_resume_hint_for_clean_exit(
-                    session=session,
-                    stdout=stdout,
-                    exit_code=exit_code,
-                )
-                return exit_code
-            finally:
-                try:
-                    _trace("tui.end")
-                finally:
-                    unsubscribe()
-    finally:
-        try:
-            unbind_session_transition()
-        finally:
-            try:
-                surface_manager.clear_approval_surfaces()
-            finally:
-                unbind_approval_presenter()
+        ),
+        profile=CODING_SCREEN_RUN_PROFILE,
+        should_exit=_screen_should_exit,
+        trace=_trace,
+        keybindings=session_keybindings(session),
+        history_records=history_records,
+        transcript_source_factory=lambda: SessionTranscriptSource(
+            session,
+            tool_definition_resolver=tool_resolver,
+            active_window_state=app.state,
+        ),
+        completion_provider=completion_provider,
+        bind_presenter=lambda: bind_screen_approval_presenter(
+            session,
+            surface_manager,
+            session_provider=lambda: runtime_session(runtime, session),
+        ),
+        bind_transition=lambda: bind_screen_session_transition(
+            runtime,
+            surface_manager,
+        ),
+        on_history_installed=_trace_resume_history,
+        on_start=lambda: _trace_start(snapshot, interactive=True),
+        on_clean_exit=lambda exit_code: write_resume_hint_for_clean_exit(
+            session=session,
+            stdout=stdout,
+            exit_code=exit_code,
+        ),
+    )
+    return await run_prepared_screen_conversation(
+        prepared,
+        stdin=stdin,
+        stdout=stdout,
+        screen_runner=run_action_host_conversation_screen,
+    )
 
 
 async def _run_plain_tui(
@@ -251,37 +231,14 @@ async def _run_plain_tui(
     verbose: bool,
 ) -> int:
     renderer = PlainCodingUiRenderer(stdout=stdout, stderr=stderr, verbose=verbose)
-    run_context = None
-    try:
-        snapshot = await load_coding_tui_startup_snapshot(
-            runtime=runtime, session=session
-        )
-        event_renderer = PlainCodingEventRenderer(
-            renderer,
-            tool_definition_resolver=tool_definition_resolver(session),
-        )
-        run_context = open_interaction_run_context(
-            event_source=session,
-            listener=event_renderer.handle,
-            interactive_listener_factory=lambda emit: (
-                StableEventStreamHandler(
-                    renderer=event_renderer,
-                    emit=emit,
-                    writes_stably=event_writes_transcript,
-                    event_type=lambda event: str(event.get("type") or "unknown"),
-                    trace=_trace,
-                ).handle
-            ),
-            exit_context=log_context(
-                session_id=snapshot.session_observability_id,
-                cwd=snapshot.cwd,
-                mode="tui",
-            ),
-            interactive=False,
-            trace=_trace,
-            on_open=lambda: _trace_start(snapshot, interactive=False),
-        )
-        app = build_plain_coding_tui_app(
+    snapshot = await load_coding_tui_startup_snapshot(runtime=runtime, session=session)
+    event_renderer = build_plain_coding_event_projection(
+        renderer,
+        tool_definition_resolver=tool_definition_resolver(session),
+    )
+
+    def build_app(emit: StableEmit):
+        return build_plain_coding_tui_app(
             runtime=runtime,
             session=session,
             renderer=renderer,
@@ -291,27 +248,38 @@ async def _run_plain_tui(
             model_label=snapshot.model_label,
             cwd=snapshot.cwd,
             branch=snapshot.branch,
-            emit=run_context.emit,
+            emit=emit,
             trace=_trace,
             now=time.monotonic,
             enable_debug=enable_session_debug,
             disable_debug=disable_session_debug,
         )
-        renderer.render_header(
+
+    prepared = PreparedPlainConversationRun(
+        event_source=session,
+        event_listener=event_renderer.handle,
+        interaction_context=log_context(
+            session_id=snapshot.session_observability_id,
+            cwd=snapshot.cwd,
+            mode="tui",
+        ),
+        build_app=build_app,
+        render_header=lambda: renderer.render_header(
             project_label=snapshot.project_label,
             cwd=snapshot.cwd,
             branch=snapshot.branch,
             session_label=snapshot.session_label,
             model_label=snapshot.model_label,
-        )
-        return await run_non_interactive_prompt_loop(
-            stdin=stdin,
-            stdout=stdout,
-            handle_prompt=app.handle_prompt,
-        )
-    finally:
-        if run_context is not None:
-            run_context.close()
+        ),
+        trace=_trace,
+        on_start=lambda: _trace_start(snapshot, interactive=False),
+    )
+    return await run_prepared_plain_conversation(
+        prepared,
+        stdin=stdin,
+        stdout=stdout,
+        prompt_runner=run_non_interactive_prompt_loop,
+    )
 
 
 def _screen_should_exit(text: str) -> bool:
@@ -326,6 +294,16 @@ def _trace_start(snapshot: CodingTuiStartupSnapshot, *, interactive: bool) -> No
         cwd=snapshot.cwd,
         branch=snapshot.branch,
         session=snapshot.session_label,
+    )
+
+
+def _trace_resume_history(history: InstalledConversationHistory) -> None:
+    _trace(
+        "tui.resume_history",
+        record_count=history.record_count,
+        active_record_count=history.active_record_count,
+        evicted_record_count=history.evicted_record_count,
+        trimmed=history.trimmed,
     )
 
 

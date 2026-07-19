@@ -8,10 +8,13 @@ from typing import Any, TextIO
 
 from loushang.coding.model_selection import ensure_usable_session_model
 from loushang.coding.presentation.tui.plain import (
-    PlainCodingEventRenderer,
     PlainCodingUiRenderer,
+    build_plain_coding_event_projection,
 )
 from loushang.coding.work_shell import CodingWorkShell
+from loushang.harnesstui.conversation.projection import (
+    ConversationProjectionBinding,
+)
 from loushang.work import EventLogBackend
 
 
@@ -42,7 +45,10 @@ async def run_prompt_command(
     """Run one product prompt and render the stable coding transcript."""
 
     renderer = PlainCodingUiRenderer(stdout=stdout, stderr=stderr)
-    event_renderer = PlainCodingEventRenderer(renderer, render_user_messages=False)
+    event_renderer = build_plain_coding_event_projection(
+        renderer,
+        render_user_messages=False,
+    )
 
     def unsubscribe() -> None:
         return None
@@ -116,7 +122,7 @@ async def run_prompt_command(
 async def _run_turn(
     session: Any,
     renderer: PlainCodingUiRenderer,
-    event_renderer: PlainCodingEventRenderer,
+    event_renderer: ConversationProjectionBinding[dict[str, Any]],
     prompt: str,
     *,
     images: list[object] | None = None,

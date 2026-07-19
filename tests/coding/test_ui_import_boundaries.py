@@ -395,15 +395,52 @@ def test_mode_is_only_the_coding_tui_composition_root() -> None:
 
     for token in (
         "ScreenCodingConversationActionHost",
-        "ScreenCodingEventProjector",
+        "build_screen_coding_event_projection",
+        "build_plain_coding_event_projection",
         "ScreenSurfaceManager",
         "run_action_host_conversation_screen",
         "CODING_SCREEN_RUN_PROFILE",
         "build_plain_coding_tui_app",
+        "PreparedScreenConversationRun",
+        "run_prepared_screen_conversation",
+        "PreparedPlainConversationRun",
+        "run_prepared_plain_conversation",
         "TuiLaunchProfile",
         "run_tui_launch_shell",
     ):
         assert token in source
+
+    assert "ScreenCodingEventProjector" not in source
+    assert "PlainCodingEventRenderer" not in source
+
+
+def test_prepared_application_host_owns_only_neutral_run_coordination() -> None:
+    shared = Path("src/loushang/harnesstui/conversation/application_host.py").read_text(
+        encoding="utf-8"
+    )
+    coding = Path("src/loushang/coding/ui/mode.py").read_text(encoding="utf-8")
+
+    for token in (
+        "loushang.coding",
+        "ScreenCodingTuiApp",
+        "CodingUiController",
+        "ScreenSurfaceManager",
+        "StatusProvider",
+        "handle_screen_approval",
+        "write_resume_hint_for_clean_exit",
+        "model_label",
+    ):
+        assert token not in shared
+        assert token in coding
+
+    for token in (
+        "PreparedScreenConversationRun",
+        "run_prepared_screen_conversation",
+        "PreparedPlainConversationRun",
+        "run_prepared_plain_conversation",
+    ):
+        assert token in shared
+        assert token in coding
 
 
 def test_generic_tui_launch_shell_does_not_own_product_or_harness_policy() -> None:
@@ -797,6 +834,16 @@ def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
 
     assert "loushang.harnesstui.commands.interaction" in command_adapter
     assert "loushang.harnesstui.selection.interaction" in model_adapter
+    assert "present_command_interaction" in command_interaction
+    assert "present_model_interaction" in model_interaction
+    for removed in (
+        "format_session_commands",
+        "session_command_completion_provider",
+        "session_command_palette",
+        "select_session_command",
+    ):
+        assert removed not in command_adapter
+    assert "available_model_palette" not in model_adapter
 
 
 def test_shared_completion_host_does_not_own_coding_catalog_or_path_policy() -> None:
@@ -918,7 +965,11 @@ def test_shared_screen_projection_target_does_not_own_coding_policy_or_copy() ->
         node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
     }
     assert "_ScreenProjectionTarget" not in class_names
-    assert "ScreenConversationProjectionTarget" in coding
+    assert "ScreenCodingEventProjector" not in class_names
+    assert "ScreenConversationProjectionTarget" in shared
+    assert "build_screen_conversation_projection" in shared
+    assert "build_screen_conversation_projection" in coding
+    assert "build_screen_coding_event_projection" in coding
     assert "tool_title_resolver=_tool_title" in coding
     assert "tool_record_projector=tool_block_to_record" in coding
     assert "retry {attempt}/{max_attempts}" in coding
