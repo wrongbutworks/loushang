@@ -61,7 +61,7 @@ def test_build_plain_coding_tui_app_wires_prompt_handler_without_legacy_status_a
         completion_provider=completion_provider,
     )
 
-    result = asyncio.run(app.handlers.handle_prompt("hello"))
+    result = asyncio.run(app.handle_prompt("hello"))
 
     assert result is None
     assert session.prompts == ["hello"]
@@ -142,7 +142,7 @@ def test_build_plain_coding_tui_app_wires_model_palette_chooser() -> None:
         model_palette_chooser=choose,
     )
 
-    result = asyncio.run(app.handlers.handle_prompt("/model"))
+    result = asyncio.run(app.handle_prompt("/model"))
 
     assert result is None
     assert emitted == ["model:select", "status:Model set: openai/gpt-5.4"]
@@ -205,7 +205,7 @@ def test_build_plain_coding_tui_app_wires_command_palette_chooser() -> None:
         command_palette_chooser=choose,
     )
 
-    result = asyncio.run(app.handlers.handle_prompt("/command"))
+    result = asyncio.run(app.handle_prompt("/command"))
 
     assert result is None
     assert emitted == ["command:select", "status:Command selected: /demo"]
@@ -258,7 +258,7 @@ def test_build_plain_coding_tui_app_renders_plain_settings_summary() -> None:
         disable_debug=lambda: None,
     )
 
-    result = asyncio.run(app.handlers.handle_prompt("/settings"))
+    result = asyncio.run(app.handle_prompt("/settings"))
 
     assert result is None
     assert emitted == ["settings:show", "status:Settings\nStatus line: true"]
@@ -318,7 +318,7 @@ def test_build_plain_coding_tui_app_wires_info_panel_presenter() -> None:
         info_panel_presenter=present,
     )
 
-    result = asyncio.run(app.handlers.handle_prompt("/hotkeys"))
+    result = asyncio.run(app.handle_prompt("/hotkeys"))
 
     assert result is None
     assert emitted == []

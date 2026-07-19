@@ -1,76 +1,29 @@
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Awaitable, Callable
-from contextlib import AbstractContextManager
-from typing import Any, TextIO, cast
+from typing import TextIO, cast
 
-from loushang.ai.types import ImagePart
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_input import ScreenInputRouter
+from loushang.coding.ui.screen_input import (
+    build_screen_input_router,
+)
+from loushang.harnesstui.conversation.attachments import PromptImageAttachment
+from loushang.harnesstui.conversation.control import (
+    ConversationActionHost,
+    ConversationTextAction,
+)
 from loushang.harnesstui.conversation.screen_runner import (
     ConversationInputRouterPort,
     ConversationScreenPort,
-    abort_active,
-    configure_runtime_for_terminal_context,
-    elapsed_since,
-    finish_active_task,
-    maybe_await,
-    pop_interrupt_pending_steer,
+    LocalCommandPredicate,
+    ShouldExit,
+    SurfaceIntentHandler,
+    TerminalModeFactory,
+    TerminalSizeProvider,
+    TextHandler,
     run_conversation_screen,
-    run_surface_intent_handler,
-    supports_keyword,
-    terminal_size,
-    write_startup_welcome,
 )
-from loushang.tui import _runner_utils
-from loushang.tui.input import InputIntent
 from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
-from loushang.tui.terminal import TerminalSize
-from loushang.tui.terminal_diagnostics import format_terminal_diagnostics
-
-PromptHandler = Callable[..., Awaitable[int | None] | int | None]
-TextHandler = Callable[..., Awaitable[int | None] | int | None]
-SurfaceIntentHandler = Callable[[InputIntent], Awaitable[int | None] | int | None]
-AbortHandler = Callable[[], Awaitable[object] | object]
-ShouldExit = Callable[[str], bool]
-LocalCommandPredicate = Callable[[str], bool]
-TerminalModeFactory = Callable[[TextIO, TextIO], AbstractContextManager[object]]
-TerminalSizeProvider = Callable[[], TerminalSize]
-
-_finish_tui_exit = _runner_utils.finish_tui_exit
-_flush_pending_input = _runner_utils.flush_pending_input
-_input_events_for_chunk = _runner_utils.input_events_for_chunk
-_poll_terminal_runtime = _runner_utils.poll_terminal_runtime
-_request_runtime_render = _runner_utils.request_runtime_render
-_terminal_runtime_wakeup_ms = _runner_utils.terminal_runtime_wakeup_ms
-_format_terminal_diagnostics = format_terminal_diagnostics
-
-_write_startup_welcome = write_startup_welcome
-_configure_runtime_for_terminal_context = configure_runtime_for_terminal_context
-_elapsed_since = elapsed_since
-_pop_interrupt_pending_steer = pop_interrupt_pending_steer
-_run_surface_intent_handler = run_surface_intent_handler
-_maybe_await = maybe_await
-_supports_keyword = supports_keyword
-_terminal_size = terminal_size
-
-
-async def _finish_coding_active_task(
-    *,
-    app: ScreenCodingTuiApp,
-    active_task: asyncio.Task[int | None],
-    started_at: float | None,
-) -> int | None:
-    return await finish_active_task(
-        app=app,
-        active_task=active_task,
-        started_at=started_at,
-        cancellation_message="Operation aborted",
-    )
-
-
-_finish_active_task = _finish_coding_active_task
 
 
 async def run_screen_coding_tui(
@@ -78,43 +31,35 @@ async def run_screen_coding_tui(
     app: ScreenCodingTuiApp,
     stdin: TextIO,
     stdout: TextIO,
-    handle_prompt: PromptHandler,
+    action_host: ConversationActionHost,
     handle_local: TextHandler | None = None,
-    handle_steer: TextHandler | None = None,
-    handle_followup: TextHandler | None = None,
     handle_surface_intent: SurfaceIntentHandler | None = None,
-    on_abort: AbortHandler,
     should_exit: ShouldExit,
     is_local_command: LocalCommandPredicate | None = None,
     keybindings: KeybindingManager | KeybindingConfig | None = None,
     terminal_mode_factory: TerminalModeFactory | None = None,
     terminal_size_provider: TerminalSizeProvider | None = None,
 ) -> int:
-    """Adapt Coding payloads and product copy to the shared screen runner."""
+    """Bind Coding attachments and copy to the shared conversation runner."""
 
     return await run_conversation_screen(
         app=app,
         stdin=stdin,
         stdout=stdout,
-        handle_prompt=_adapt_attachment_handler(handle_prompt),
+        handle_prompt=_bind_text_action(action_host.submit, source="prompt"),
         handle_local=handle_local,
-        handle_steer=(
-            _adapt_attachment_handler(handle_steer)
-            if handle_steer is not None
-            else None
-        ),
-        handle_followup=(
-            _adapt_attachment_handler(handle_followup)
-            if handle_followup is not None
-            else None
+        handle_steer=_bind_text_action(action_host.steer, source="steer"),
+        handle_followup=_bind_text_action(
+            action_host.follow_up,
+            source="follow_up",
         ),
         handle_surface_intent=handle_surface_intent,
-        on_abort=on_abort,
+        on_abort=action_host.abort,
         should_exit=should_exit,
         is_local_command=is_local_command,
         keybindings=keybindings,
         terminal_mode_factory=terminal_mode_factory,
-        terminal_size_provider=terminal_size_provider or _terminal_size,
+        terminal_size_provider=terminal_size_provider,
         input_router_factory=_coding_input_router_factory,
         interruption_message=(
             "Conversation interrupted - tell the model what to do differently."
@@ -132,76 +77,44 @@ def _coding_input_router_factory(
     width: int,
     height: int,
 ) -> ConversationInputRouterPort:
-    return cast(
-        ConversationInputRouterPort,
-        ScreenInputRouter(
-            app=cast(ScreenCodingTuiApp, app),
-            should_exit=should_exit,
-            is_local_command=is_local_command,
-            keybindings=keybindings,
-            width=width,
-            height=height,
-        ),
+    return build_screen_input_router(
+        app=cast(ScreenCodingTuiApp, app),
+        should_exit=should_exit,
+        is_local_command=is_local_command,
+        keybindings=keybindings,
+        width=width,
+        height=height,
     )
 
 
-async def _abort_active(
-    *,
-    app: ScreenCodingTuiApp,
-    active_task: Any,
-    on_abort: AbortHandler,
-) -> None:
-    await abort_active(
-        app=app,
-        active_task=active_task,
-        on_abort=on_abort,
-        interruption_message=(
-            "Conversation interrupted - tell the model what to do differently."
-        ),
-    )
+TextActionHandler = Callable[[ConversationTextAction], Awaitable[int | None]]
 
 
-async def _run_prompt_handler(
-    handler: PromptHandler,
-    text: str,
-    *,
-    images: tuple[ImagePart, ...] | None = None,
-) -> int | None:
-    result = await _call_text_handler(handler, text, images=images)
-    return result if isinstance(result, int) else None
-
-
-async def _run_text_handler(
-    handler: TextHandler,
-    text: str,
-    *,
-    images: tuple[ImagePart, ...] | None = None,
-) -> int | None:
-    result = await _call_text_handler(handler, text, images=images)
-    return result if isinstance(result, int) else None
-
-
-async def _call_text_handler(
-    handler: Callable[..., object],
-    text: str,
-    *,
-    images: tuple[ImagePart, ...] | None = None,
-) -> object:
-    if images is not None and _supports_keyword(handler, "images"):
-        return await _maybe_await(handler(text, images=images))
-    return await _maybe_await(handler(text))
-
-
-def _adapt_attachment_handler(handler: TextHandler) -> TextHandler:
+def _bind_text_action(handler: TextActionHandler, *, source: str) -> TextHandler:
     async def adapted(
         text: str,
         *,
         attachments: tuple[object, ...] | None = None,
     ) -> int | None:
-        images = cast(tuple[ImagePart, ...] | None, attachments)
-        return await _run_text_handler(handler, text, images=images)
+        prompt_attachments = tuple(
+            _require_prompt_image_attachment(attachment)
+            for attachment in attachments or ()
+        )
+        return await handler(
+            ConversationTextAction(
+                text=text,
+                attachments=prompt_attachments,
+                source=source,
+            )
+        )
 
     return adapted
+
+
+def _require_prompt_image_attachment(value: object) -> PromptImageAttachment:
+    if not isinstance(value, PromptImageAttachment):
+        raise TypeError("Coding prompt attachments must be prompt images")
+    return value
 
 
 __all__ = ["run_screen_coding_tui"]

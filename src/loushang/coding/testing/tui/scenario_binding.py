@@ -9,7 +9,7 @@ from loushang.coding.testing.tui.scenarios.budgets import (
     LONG_TRANSCRIPT_FRAME_BUDGET,
 )
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_input import ScreenInputRouter
+from loushang.coding.ui.screen_input import build_screen_input_router
 from loushang.coding.ui.screen_loop import run_screen_coding_tui
 from loushang.harnesstui.conversation.screen_runner import (
     AbortHandler,
@@ -23,6 +23,9 @@ from loushang.harnesstui.conversation.screen_runner import (
     TerminalModeFactory,
     TerminalSizeProvider,
     TextHandler,
+)
+from loushang.harnesstui.testing.action_host import (
+    CallbackConversationActionHost,
 )
 from loushang.harnesstui.testing.input_playback import (
     ConversationInputPlayback,
@@ -63,7 +66,7 @@ def coding_scenario_input_router_factory(
 
     return cast(
         ConversationPlaybackInputRouterPort[ConversationInputResultPort],
-        ScreenInputRouter(
+        build_screen_input_router(
             app=cast(ScreenCodingTuiApp, app),
             should_exit=should_exit,
             is_local_command=is_local_command,
@@ -108,12 +111,14 @@ async def run_coding_scenario_screen_loop(
         app=cast(ScreenCodingTuiApp, app),
         stdin=stdin,
         stdout=stdout,
-        handle_prompt=handle_prompt,
+        action_host=CallbackConversationActionHost(
+            submit=handle_prompt,
+            steer=handle_steer,
+            follow_up=handle_followup,
+            abort=on_abort,
+        ),
         handle_local=handle_local,
-        handle_steer=handle_steer,
-        handle_followup=handle_followup,
         handle_surface_intent=handle_surface_intent,
-        on_abort=on_abort,
         should_exit=should_exit,
         is_local_command=is_local_command,
         terminal_mode_factory=terminal_mode_factory,

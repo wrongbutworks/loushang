@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from loushang.coding.presentation.tui.history import session_history_records
 from loushang.coding.store.session_manager import SessionManager
-from loushang.coding.ui.session_history import session_history_records
 from loushang.tui.transcript import DisplayRecord
 
 

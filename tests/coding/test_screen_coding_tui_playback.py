@@ -10,16 +10,9 @@ from loushang.coding.testing.tui.playback import ScreenTuiInputPlayback
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_input import ScreenInputRouter
-from loushang.coding.ui.screen_loop import (
-    _flush_pending_input,
-    _format_terminal_diagnostics,
-    _input_events_for_chunk,
-    _poll_terminal_runtime,
-    _terminal_runtime_wakeup_ms,
-)
+from loushang.coding.ui.screen_input import build_screen_input_router
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
-from loushang.coding.ui.status_provider import CodingTuiStatusProvider
+from loushang.harnesstui.status.provider import StatusProvider
 from loushang.tui import (
     FakeTerminalPort,
     ImageBlock,
@@ -37,7 +30,14 @@ from loushang.tui import (
     TerminalSize,
     TuiRuntime,
     drain_input,
+    format_terminal_diagnostics,
     strip_control_sequences,
+)
+from loushang.tui._runner_utils import (
+    flush_pending_input,
+    input_events_for_chunk,
+    poll_terminal_runtime,
+    terminal_runtime_wakeup_ms,
 )
 
 
@@ -574,7 +574,7 @@ def test_screen_tui_playback_smokes_terminal_context_model_selector_and_resize()
     context = _PlaybackTerminalContext()
     session = _Session()
     app = _app()
-    app.terminal_diagnostics_provider = lambda: _format_terminal_diagnostics(context)
+    app.terminal_diagnostics_provider = lambda: format_terminal_diagnostics(context)
     app.composer.set_completion_provider(asyncio.run(coding_inline_completion_provider(session)))
     playback = _ScreenInteractivePlayback(
         app,
@@ -640,7 +640,7 @@ def test_screen_tui_model_selector_ignores_key_release_events() -> None:
 
 
 def test_screen_loop_filters_terminal_control_responses_before_routing() -> None:
-    events = _input_events_for_chunk(InputReader(), "\x1b[?7uhello")
+    events = input_events_for_chunk(InputReader(), "\x1b[?7uhello")
 
     assert len(events) == 1
     assert events[0].kind == "text"
@@ -651,8 +651,8 @@ def test_screen_loop_filters_split_terminal_control_responses_before_routing() -
     reader = InputReader()
     context = _ControlContext()
 
-    first = _input_events_for_chunk(reader, "\x1b[?", terminal_context=context)
-    second = _input_events_for_chunk(reader, "7uhello", terminal_context=context)
+    first = input_events_for_chunk(reader, "\x1b[?", terminal_context=context)
+    second = input_events_for_chunk(reader, "7uhello", terminal_context=context)
 
     assert first == ()
     assert len(second) == 1
@@ -666,8 +666,8 @@ def test_screen_loop_filters_split_terminal_control_responses_before_routing() -
 def test_screen_loop_keeps_split_escape_sequence_pending_until_complete() -> None:
     reader = InputReader()
 
-    first = _input_events_for_chunk(reader, "\x1b")
-    second = _input_events_for_chunk(reader, "[A")
+    first = input_events_for_chunk(reader, "\x1b")
+    second = input_events_for_chunk(reader, "[A")
 
     assert first == ()
     assert len(second) == 1
@@ -678,8 +678,8 @@ def test_screen_loop_keeps_split_escape_sequence_pending_until_complete() -> Non
 def test_screen_loop_flushes_pending_escape_explicitly() -> None:
     reader = InputReader()
 
-    first = _input_events_for_chunk(reader, "\x1b")
-    flushed = _flush_pending_input(reader)
+    first = input_events_for_chunk(reader, "\x1b")
+    flushed = flush_pending_input(reader)
 
     assert first == ()
     assert len(flushed) == 1
@@ -690,7 +690,7 @@ def test_screen_loop_flushes_pending_escape_explicitly() -> None:
 def test_screen_loop_passes_terminal_control_events_to_context() -> None:
     context = _ControlContext()
 
-    events = _input_events_for_chunk(InputReader(), "\x1b[6;18;9t", terminal_context=context)
+    events = input_events_for_chunk(InputReader(), "\x1b[6;18;9t", terminal_context=context)
 
     assert events == ()
     assert len(context.events) == 1
@@ -700,14 +700,14 @@ def test_screen_loop_passes_terminal_control_events_to_context() -> None:
 def test_screen_loop_reads_terminal_runtime_wakeup_delay() -> None:
     context = _RuntimeWakeupContext(delay_ms=42)
 
-    assert _terminal_runtime_wakeup_ms(context) == 42
+    assert terminal_runtime_wakeup_ms(context) == 42
     assert context.wakeup_calls == 1
 
 
 def test_screen_loop_polls_terminal_runtime_fallback() -> None:
     context = _RuntimeWakeupContext(delay_ms=0)
 
-    assert _poll_terminal_runtime(context) is True
+    assert poll_terminal_runtime(context) is True
     assert context.poll_calls == 1
 
 
@@ -731,7 +731,7 @@ class _ScreenInteractivePlayback:
             terminal=self.terminal,
         )
         self.app.surface_host = self.runtime.overlay_host()
-        self.router = ScreenInputRouter(
+        self.router = build_screen_input_router(
             app,
             should_exit=lambda _text: False,
             is_local_command=surface_manager.is_local_command,
@@ -756,9 +756,9 @@ class _ScreenInteractivePlayback:
         return tuple(steps)
 
     def _route_input(self, data: str) -> None:
-        events = list(_input_events_for_chunk(self.reader, data, terminal_context=self.terminal_context))
+        events = list(input_events_for_chunk(self.reader, data, terminal_context=self.terminal_context))
         if self.reader.has_pending:
-            events.extend(_flush_pending_input(self.reader, terminal_context=self.terminal_context))
+            events.extend(flush_pending_input(self.reader, terminal_context=self.terminal_context))
         for event in events:
             result = self.router.handle(event)
             if result.local_text is not None:
@@ -889,7 +889,7 @@ def _manager(app: ScreenCodingTuiApp, session: _Session) -> ScreenSurfaceManager
     return ScreenSurfaceManager(
         app=app,
         session=session,
-        status_provider=CodingTuiStatusProvider(
+        status_provider=StatusProvider(
             model_label=app.state.model_label,
             cwd=app.state.cwd,
             branch=app.state.branch,

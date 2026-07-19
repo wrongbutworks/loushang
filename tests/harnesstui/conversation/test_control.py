@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import FrozenInstanceError, dataclass
+from pathlib import Path
 
+import pytest
+
+from loushang.harnesstui.conversation.attachments import PromptImageAttachment
 from loushang.harnesstui.conversation.control import (
     AbortActionHandler,
+    ConversationActionHost,
     ConversationRunControl,
+    ConversationTextAction,
     FollowUpActionHandler,
     SteerActionHandler,
 )
@@ -43,6 +49,50 @@ class _ActionController:
 async def _emit(write, *, label: str) -> None:
     del label
     write()
+
+
+def test_conversation_text_action_is_an_immutable_neutral_value() -> None:
+    attachment = PromptImageAttachment(
+        bytes=b"png",
+        mime_type="image/png",
+        path=Path("/tmp/image.png"),
+        display_path=".loushang/clipboard/image.png",
+        marker="@.loushang/clipboard/image.png",
+    )
+    action = ConversationTextAction(
+        text="describe this",
+        attachments=(attachment,),
+        source="composer",
+    )
+
+    assert action.text == "describe this"
+    assert action.attachments == (attachment,)
+    assert action.source == "composer"
+    with pytest.raises(FrozenInstanceError):
+        action.text = "changed"  # type: ignore[misc]
+
+
+def test_conversation_action_host_is_structurally_implementable() -> None:
+    class Host:
+        async def submit(self, action: ConversationTextAction) -> int | None:
+            return len(action.attachments)
+
+        async def steer(self, action: ConversationTextAction) -> int | None:
+            return len(action.text)
+
+        async def follow_up(self, action: ConversationTextAction) -> int | None:
+            return 7 if action.source else None
+
+        async def abort(self) -> None:
+            return None
+
+    host: ConversationActionHost = Host()
+    action = ConversationTextAction("next", source="command")
+
+    assert asyncio.run(host.submit(action)) == 0
+    assert asyncio.run(host.steer(action)) == 4
+    assert asyncio.run(host.follow_up(action)) == 7
+    assert asyncio.run(host.abort()) is None
 
 
 def test_conversation_run_control_tracks_transient_ui_work() -> None:

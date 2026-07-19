@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def test_prompt_routing_keeps_running_inputs_pi_style() -> None:
-    from loushang.coding.ui.intent import (
+    from loushang.coding.interaction.intent import (
         CommandSelectIntent,
         CommandsIntent,
         DebugIntent,
@@ -14,10 +14,10 @@ def test_prompt_routing_keeps_running_inputs_pi_style() -> None:
         QuitIntent,
         SettingsIntent,
     )
-    from loushang.coding.ui.lifecycle import RunLifecycle
-    from loushang.coding.ui.prompt_routing import PromptRoute, route_prompt_intent
+    from loushang.coding.interaction.routing import PromptRoute, route_prompt_intent
+    from loushang.harnesstui.conversation.control import ConversationRunControl
 
-    lifecycle = RunLifecycle()
+    lifecycle = ConversationRunControl()
     lifecycle.begin_work()
 
     assert route_prompt_intent(FollowUpIntent("later"), lifecycle) is PromptRoute.FOLLOW_UP
@@ -33,11 +33,15 @@ def test_prompt_routing_keeps_running_inputs_pi_style() -> None:
 
 
 def test_prompt_routing_blocks_non_quit_inputs_while_abort_settles() -> None:
-    from loushang.coding.ui.intent import FollowUpIntent, PromptIntent, QuitIntent
-    from loushang.coding.ui.lifecycle import RunLifecycle
-    from loushang.coding.ui.prompt_routing import PromptRoute, route_prompt_intent
+    from loushang.coding.interaction.intent import (
+        FollowUpIntent,
+        PromptIntent,
+        QuitIntent,
+    )
+    from loushang.coding.interaction.routing import PromptRoute, route_prompt_intent
+    from loushang.harnesstui.conversation.control import ConversationRunControl
 
-    lifecycle = RunLifecycle()
+    lifecycle = ConversationRunControl()
     lifecycle.begin_work()
     lifecycle.mark_abort_requested()
 
@@ -47,7 +51,7 @@ def test_prompt_routing_blocks_non_quit_inputs_while_abort_settles() -> None:
 
 
 def test_prompt_routing_dispatches_idle_intents_except_debug_and_follow_up() -> None:
-    from loushang.coding.ui.intent import (
+    from loushang.coding.interaction.intent import (
         BashIntent,
         CommandSelectIntent,
         CommandsIntent,
@@ -60,10 +64,10 @@ def test_prompt_routing_dispatches_idle_intents_except_debug_and_follow_up() -> 
         QuitIntent,
         SettingsIntent,
     )
-    from loushang.coding.ui.lifecycle import RunLifecycle
-    from loushang.coding.ui.prompt_routing import PromptRoute, route_prompt_intent
+    from loushang.coding.interaction.routing import PromptRoute, route_prompt_intent
+    from loushang.harnesstui.conversation.control import ConversationRunControl
 
-    lifecycle = RunLifecycle()
+    lifecycle = ConversationRunControl()
 
     assert route_prompt_intent(DebugIntent(), lifecycle) is PromptRoute.DEBUG
     assert route_prompt_intent(ModelSelectIntent(), lifecycle) is PromptRoute.MODEL_SELECT

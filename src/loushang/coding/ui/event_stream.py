@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from loushang.coding.ui.event_policy import event_writes_transcript
+from loushang.coding.event.presentation_policy import event_writes_transcript
 from loushang.harnesstui.conversation.dispatch import (
     EventRenderer as SharedEventRenderer,
 )

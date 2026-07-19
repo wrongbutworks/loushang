@@ -29,12 +29,14 @@ Target source entrypoints remain:
 - `src/loushang/tui/`
 - `src/loushang/harnesstui/`
 - `src/loushang/coding/ui/`
+- `src/loushang/coding/presentation/tui/`
 
 `loushang.tui` is the generic terminal UI framework. The
 [`loushang.harnesstui`](../harnesstui/README.md) composition layer adapts neutral
-Harness conversation contracts into reusable TUI interaction. Product adapters
-such as `loushang.coding.ui` provide Coding-specific state, event projection,
-commands, policy, and runtime assembly.
+Harness conversation contracts into reusable TUI interaction.
+`loushang.coding.presentation.tui` owns Coding-specific raw event, tool,
+history, plain, and screen projection adapters. `loushang.coding.ui` retains
+concrete UI state, product surfaces, terminal bindings, and runtime composition.
 
 For status presentation, `loushang.tui` owns the generic status-bar widget and
 its layout, styling, invalidation, and rendering mechanics. A shared Harness
@@ -57,6 +59,23 @@ model-specific attachment values such as `ImagePart`.
 Clipboard-image acquisition resolves the host once into an ordered backend
 plan behind a common protocol. On macOS, the system `NSPasteboard` adapter is
 preferred, with `pngpaste` retained only as a compatibility fallback.
+
+## Coding UI Residual Boundary
+
+`loushang.coding.ui` is intentionally bounded to product UI composition and
+terminal bindings. Its retained owners are the mode/CLI entrypoints, concrete
+screen app and surfaces, plain/screen runner bindings, settings-page builder,
+input/clipboard policy, run/event context, completion, startup, and hotkey
+presentation. Raw intents, action control, model/settings facts, tool/event/
+history projection, approval binding, resume discovery, and Session-facing
+projection adapters live in their Coding feature packages instead.
+
+The package has a 2,200-line upper-budget gate. This is not an instruction to
+move `screen_app.py` into a shared layer: that file deliberately owns Coding's
+long-lived transcript presentation, cwd cache token, glyph/theme mapping, path
+compaction, tool-output preview, 320-line active-window policy, and render
+baseline reset reasons. Those contracts remain covered by the independent
+render-performance gate.
 
 Generic terminal diagnostics aggregation lives in
 `loushang.tui.terminal_diagnostics`. It combines terminal environment,

@@ -100,7 +100,13 @@ history over resize stability.
 
 `loushang.tui` is a generic TUI framework. It must not know coding product
 concepts such as sessions, models, tools, slash command semantics, diagnostics,
-or provider policy.
+provider policy, or Harness conversation contracts.
 
-`loushang.coding.ui` adapts coding runtime state and events into generic TUI
-UI parts, display records, surfaces, and intents.
+`loushang.harnesstui` composes product-neutral Harness conversation contracts
+with generic TUI records, widgets, surfaces, and interaction. It may depend on
+`loushang.harness` and `loushang.tui`, but never on Coding.
+
+Coding feature-local interaction, presentation, and policy adapters interpret
+raw Coding semantics. `loushang.coding.ui` is the final product shell: it owns
+runtime composition, concrete Coding surfaces, and terminal bindings rather
+than reusable conversation behavior.

@@ -49,8 +49,8 @@ def test_loushang_tui_public_models_are_not_owned_by_compat_module() -> None:
 
 
 def test_import_boundary_check_does_not_replace_loaded_tui_classes() -> None:
-    import loushang.coding.ui.command_list as command_list
-    import loushang.coding.ui.plain_renderer as renderer
+    import loushang.coding.commands.tui as command_list
+    import loushang.coding.presentation.tui.plain as renderer
     from loushang.tui import CompletionItem
     from loushang.tui.render import MarkdownBlock
 

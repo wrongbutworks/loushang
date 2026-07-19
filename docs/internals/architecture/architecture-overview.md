@@ -89,8 +89,10 @@ CLI / TUI
   `MethodPlan` 语义；method 是面向一类任务的结构化工作契约
 - `loushang.work` 提供 `WorkOperation`、`WorkRun`、`WorkEvent`、work event
   log 与 plan/step projection
-- `loushang.tui` 提供通用 terminal-native UI primitives，`loushang.coding.ui`
-  将 coding session 状态适配到 TUI
+- `loushang.tui` 提供通用 terminal-native UI primitives；
+  `loushang.harnesstui` 组合 product-neutral Harness conversation 与 TUI；
+  Coding feature-local adapter 解释产品状态，`loushang.coding.ui` 只保留最终
+  UI 装配、具体 surface 与 terminal binding
 - `loushang.channel` 提供 Work boundary protocol 和窄 JSONL framing adapter；
   capability negotiation 与 interaction request/response 仍是后续工作
 
@@ -101,7 +103,10 @@ CLI / TUI
 - `method` 提供方法资产与 plan/projection，定义角色、阶段、流程、约束、工作产物与验收预期
 - `work` 提供 run/event/log/projection
 - `tui` 提供通用终端 UI primitives
-- `coding` 提供产品化装配，并通过 `loushang.coding.ui` 连接 coding core 与 `loushang.tui`
+- `harnesstui` 提供可跨产品复用的 Harness/TUI conversation interaction 与
+  presentation composition；依赖 `harness` 和 `tui`，不依赖 `coding`
+- `coding` 提供产品化装配；产品语义留在 feature-local adapter，
+  `loushang.coding.ui` 只完成最终 UI composition 与 terminal binding
 - `channel` 定义边界通信协议类型，当前已落地最小 envelope / endpoint surface
 - `protocol` 提供不依赖产品、Harness、Agent 或 AI 的严格 JSON wire-value
   algebra，供上述层共同使用

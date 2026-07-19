@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
@@ -8,6 +10,7 @@ from loushang.harnesstui.testing.performance import (
     characterize_long_transcript_rendering,
 )
 from loushang.tui import RenderLoop
+from loushang.tui.transcript import UserPromptRecord
 
 
 @pytest.mark.tui_render_contract
@@ -83,3 +86,49 @@ def test_long_transcript_probe_stays_bounded_after_active_window_trim() -> None:
     assert second_metrics.render_loop_logical_line_count == first_metrics.render_loop_logical_line_count
     assert second_metrics.render_loop_operation_class == "changed_range_update"
     assert second_metrics.changed_line_range is not None
+
+@pytest.mark.anyio
+async def test_coding_performance_loader_adapts_persisted_session_history(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    import loushang.coding.testing.tui.performance as performance
+
+    loaded_paths: list[Path] = []
+    projected: list[tuple[object, object]] = []
+    resolver = object()
+
+    class FakeManager:
+        @classmethod
+        async def load(cls, path: Path) -> FakeManager:
+            loaded_paths.append(path)
+            return cls()
+
+        def build_session_context(self) -> str:
+            return "session context"
+
+    def fake_session_history_records(
+        session: object,
+        *,
+        tool_definition_resolver: object,
+    ) -> tuple[UserPromptRecord, ...]:
+        context = session.get_session_context()  # type: ignore[attr-defined]
+        projected.append((context, tool_definition_resolver))
+        return (UserPromptRecord("loaded"),)
+
+    monkeypatch.setattr(performance, "SessionManager", FakeManager)
+    monkeypatch.setattr(
+        performance,
+        "session_history_records",
+        fake_session_history_records,
+    )
+    session_path = tmp_path / "nested" / "session.jsonl"
+
+    records = await performance.load_session_history_records(
+        session_path,
+        tool_definition_resolver=resolver,
+    )
+
+    assert loaded_paths == [session_path.resolve()]
+    assert projected == [("session context", resolver)]
+    assert records == (UserPromptRecord("loaded"),)
