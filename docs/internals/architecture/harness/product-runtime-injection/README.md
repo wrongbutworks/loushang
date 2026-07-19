@@ -2,10 +2,11 @@
 
 ## Status
 
-Proposed design. This directory freezes requirements and the component map for
-dynamic Product runtime composition before introducing a new runtime API.
-It does not claim that profile resolution, plugin-provided stores, or runtime
-replacement are implemented today.
+The core runtime-profile contract, context-compaction binding, and standard
+resource-pack binding are implemented. This directory continues to define the
+requirements and component map for the remaining dynamic Product composition
+capabilities; plugin-provided stores and arbitrary runtime replacement are not
+implemented.
 
 ## Purpose
 
@@ -33,6 +34,7 @@ Harness defaults
 | [00 Requirements](00-requirements.md) | Product-facing requirements, constraints, non-goals, and acceptance criteria. | Core accepted |
 | [01 Component Inventory](01-component-inventory.md) | Index of runtime-injection components, their owners, dependencies, and migration relationship. | Core implemented |
 | [02 Context Compaction Binding](02-context-compaction-binding.md) | Selection, lifecycle, Product executor, and contribution contract for transcript compaction. | Implemented |
+| [03 Resource Packs Binding](03-resource-packs-binding.md) | Standard runtime binding for resources, prompts, skills, tools, and commands. | Implemented |
 | [Component Design Directory](components/README.md) | One detailed binding contract for each capability component. | Runtime profile implemented |
 
 Detailed component documents are added immediately before their corresponding
@@ -59,9 +61,9 @@ The current Coding-to-Harness work has already moved many mechanisms without a
 single dynamic composition contract: storage protocols, transcript profiles,
 context packing and compaction coordination, capabilities, resources,
 extensions, policy/approval, runtime bindings, and ordered runtime events.
-Coding now uses the runtime-profile core for its current store, transcript, and
-compaction selections; other Products and injectable capability families remain
-future adoption waves.
+Coding now uses the runtime-profile core for store, transcript, compaction, and
+standard resource-pack selections; other Products and injectable capability
+families remain future adoption waves.
 
 This directory is the design gate for the next ownership waves. It does not
 reopen completed boundaries. Instead, it specifies how Products, OEMs, and

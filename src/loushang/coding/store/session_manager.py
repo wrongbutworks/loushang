@@ -3,7 +3,7 @@ from __future__ import annotations
 import builtins
 from pathlib import Path
 
-from loushang.coding.capability_profile import (
+from loushang.coding.capability_plan import (
     coding_capability_snapshot_metadata,
     resolve_coding_capability_profile,
     validate_coding_capability_snapshot,

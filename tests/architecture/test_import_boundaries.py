@@ -166,6 +166,48 @@ def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> 
     assert offenders == []
 
 
+def test_capability_composition_runtime_has_no_product_dependency() -> None:
+    path = Path("src/loushang/harness/capabilities/composition_runtime.py")
+    offenders = [
+        imported
+        for imported in _absolute_imports(path)
+        if _matches_any(imported, ("loushang.coding",))
+    ]
+
+    assert offenders == []
+
+
+def test_coding_capability_binding_uses_harness_runtime_without_a_private_facade() -> (
+    None
+):
+    assert not Path("src/loushang/coding/capability_profile.py").exists()
+
+    expected_imports = {
+        Path("src/loushang/coding/bootstrap.py"): {
+            "loushang.coding.capability_plan.resolve_coding_capability_profile",
+            "loushang.harness.capabilities.bind_capability_composition_runtime",
+        },
+        Path("src/loushang/coding/session/agent_session.py"): {
+            "loushang.coding.capability_plan.resolve_coding_capability_profile",
+            "loushang.harness.capabilities.CapabilityCompositionRuntime",
+            "loushang.harness.capabilities.bind_capability_composition_runtime",
+        },
+        Path("src/loushang/coding/store/session_manager.py"): {
+            "loushang.coding.capability_plan.coding_capability_snapshot_metadata",
+            "loushang.coding.capability_plan.resolve_coding_capability_profile",
+            "loushang.coding.capability_plan.validate_coding_capability_snapshot",
+        },
+    }
+    missing: list[str] = []
+    for path, required in expected_imports.items():
+        imports = set(_absolute_imports(path))
+        missing.extend(
+            f"{path.as_posix()} missing {name}" for name in sorted(required - imports)
+        )
+
+    assert missing == []
+
+
 def test_harnesstui_does_not_import_product_or_model_layers() -> None:
     offenders = _find_forbidden_imports(
         ImportBoundary(
@@ -417,9 +459,9 @@ def test_transcript_compaction_capability_is_neutral_and_adopted() -> None:
     capability_source = Path(
         "src/loushang/harness/agent_transcript/compaction.py"
     ).read_text(encoding="utf-8")
-    runtime_profile_source = Path(
-        "src/loushang/coding/runtime_profile.py"
-    ).read_text(encoding="utf-8")
+    runtime_profile_source = Path("src/loushang/coding/runtime_profile.py").read_text(
+        encoding="utf-8"
+    )
     controller_source = Path(
         "src/loushang/coding/session/compaction_controller.py"
     ).read_text(encoding="utf-8")

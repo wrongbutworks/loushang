@@ -7,7 +7,7 @@ import pytest
 
 from loushang.ai.model import Capabilities, Model
 from loushang.coding.bootstrap import create_agent_session
-from loushang.coding.capability_profile import (
+from loushang.coding.capability_plan import (
     CODING_CAPABILITY_PROFILE_METADATA_KEY,
     resolve_coding_capability_profile,
 )
@@ -191,12 +191,17 @@ def test_agent_session_uses_and_disposes_selected_compaction_runtime(tmp_path) -
         compaction_capability = manager.get_runtime_capability("context.compaction")
         assert isinstance(compaction_capability, AgentTranscriptCompactionCapability)
         assert compaction_capability.implementation == TURN_AWARE_SUMMARY_IMPLEMENTATION
-        assert compaction_capability.implementation_version == TURN_AWARE_SUMMARY_VERSION
+        assert (
+            compaction_capability.implementation_version == TURN_AWARE_SUMMARY_VERSION
+        )
 
         session = create_agent_session(session_manager=manager, model=_model())
         capability_runtime = session._capability_runtime
 
-        assert session._compaction_controller.compaction_capability is compaction_capability
+        assert (
+            session._compaction_controller.compaction_capability
+            is compaction_capability
+        )
         assert capability_runtime is not None
         assert (
             session._tool_controller.prompt_section_composer

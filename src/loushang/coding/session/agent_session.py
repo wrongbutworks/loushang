@@ -17,10 +17,7 @@ from loushang.ai.api_registry import (
 )
 from loushang.ai.model import Model, ModelSelection, Provider
 from loushang.ai.types import AssistantMessage, ImagePart
-from loushang.coding.capability_profile import (
-    CodingCapabilityRuntimeBinding,
-    bind_coding_capability_runtime,
-)
+from loushang.coding.capability_plan import resolve_coding_capability_profile
 from loushang.coding.commands import SessionCommandDescriptor
 from loushang.coding.compaction import (
     compact,
@@ -98,6 +95,10 @@ from loushang.harness.agent_transcript import (
     SessionRecord,
     TranscriptNavigationResult,
 )
+from loushang.harness.capabilities import (
+    CapabilityCompositionRuntime,
+    bind_capability_composition_runtime,
+)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import (
     DiagnosticRecord,
@@ -172,7 +173,7 @@ class AgentSession:
         footer_data_provider: FooterDataProvider | None = None,
         exec_service: ExecService | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
-        capability_runtime: CodingCapabilityRuntimeBinding | None = None,
+        capability_runtime: CapabilityCompositionRuntime | None = None,
     ) -> None:
         self.agent = agent
         self._session_default_model = agent.model
@@ -189,7 +190,9 @@ class AgentSession:
         self.diagnostics_service = diagnostics_service
         self._package_materializer = package_materializer
         self._exec_service = exec_service or ExecService()
-        capability_runtime = capability_runtime or bind_coding_capability_runtime()
+        capability_runtime = capability_runtime or bind_capability_composition_runtime(
+            resolve_coding_capability_profile()
+        )
         self._capability_runtime = capability_runtime
         self.footer_data_provider = footer_data_provider or FooterDataProvider(
             self.session_manager.get_cwd()
