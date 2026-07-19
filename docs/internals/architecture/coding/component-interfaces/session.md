@@ -59,6 +59,8 @@
 - `recordBashResult(command, result, options?)`
 - `abortBash()`
 - `abortCompaction()`
+- `await refresh_resources()`
+- `request_resource_refresh()`
 - `await set_active_tools(...)`
 - `setSessionName(name)`
 - `await sendCustomMessage(message, options?)`
@@ -96,8 +98,8 @@
 - `supportsThinking()`
 - `supportsXhighThinking()`
 - `scopedModels`
-- `promptTemplates`
-- `resourceLoader`
+- `prompt_templates`
+- `resource_loader`
 - `isRetrying`
 - `autoRetryEnabled`
 - `isBashRunning`
@@ -166,7 +168,7 @@
   `<builtin:name>` / `<sdk:name>` provenance，extension tools 使用 registry entry metadata 透出真实 extension provenance
 - model / thinking / session-name SDK surface 对齐 `reference CLI`：`set_model()` / `setModel()` 与 `cycle_model()` / `cycleModel()` 是 async model-control API，
   会在模型实际变化后发出 `model_select`；thinking/session-name 仍是同步轻量状态更新
-- scoped model / resource SDK surface 对齐 `reference CLI`：`scopedModels` / `setScopedModels()` 参与 model cycling，`promptTemplates` / `resourceLoader` 直接投影 loader 结果
+- scoped model / resource SDK surface：`scopedModels` / `setScopedModels()` 参与 model cycling；`prompt_templates` 读取当前资源投影，公共刷新必须使用 `await refresh_resources()` 或 `request_resource_refresh()`，不允许调用方直接替换 resource bundle
 - retry / bash / compaction SDK surface 对齐 `reference CLI`：`isRetrying`、`autoRetryEnabled`、`setAutoRetryEnabled()`、`setAutoCompactionEnabled()`、`executeBash()`、`recordBashResult()`、`abortBash()`、`isBashRunning`、`hasPendingBashMessages`、`abortCompaction()` 都复用已有 runtime state
 - send SDK surface 对齐 `reference CLI` async runtime path：公开 `await sendCustomMessage()` / `await sendMessage()` / `await sendUserMessage()`，并复用 extension context 的 custom message、next-turn、streaming queue 和 command-preflight bypass 语义
 - thinking / context / state / stats / export SDK surface 对齐 `reference CLI`：公开 `getAvailableThinkingLevels()`、`supportsThinking()`、`supportsXhighThinking()`、`get_context_usage()`、`get_session_state()`、`get_session_stats()`、`exportToHtml()`、`exportToJsonl()`；

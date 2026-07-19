@@ -529,8 +529,10 @@ def test_session_facade_is_neutral_and_adopted() -> None:
 
     assert "loushang.coding" not in facade_source
     assert "execute_pi_style" not in facade_source
-    assert "SessionFacade" in session_source
+    assert "class AgentSession(SessionFacade):" in session_source
+    assert "_facade" not in session_source
     assert "SessionControlPort" in facade_source
+    assert "SessionResourcePort" in facade_source
     assert "def session_control" in session_source
     assert "SessionControlPort" in channel_source
     assert "_require_session_control" in rpc_source

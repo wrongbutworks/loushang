@@ -213,12 +213,28 @@ class _Maintenance:
         self.aborted = True
 
 
+class _Resources:
+    def __init__(self) -> None:
+        self.refreshes = 0
+        self.requests = 0
+
+    def get_prompt_templates(self) -> list[object]:
+        return ["review", "release"]
+
+    async def refresh_resources(self) -> None:
+        self.refreshes += 1
+
+    def request_resource_refresh(self) -> None:
+        self.requests += 1
+
+
 def _facade():
     runtime = _Runtime()
     command_execution = _CommandExecution()
     retry = _Retry()
     identity = _Identity()
     maintenance = _Maintenance()
+    resources = _Resources()
     return (
         SessionFacade.from_ports(
             runtime=runtime,
@@ -231,6 +247,7 @@ def _facade():
                 retry=retry,
                 identity=identity,
                 maintenance=maintenance,
+                resources=resources,
             ),
         ),
         runtime,
@@ -238,11 +255,12 @@ def _facade():
         retry,
         identity,
         maintenance,
+        resources,
     )
 
 
 def test_session_facade_composes_standard_read_and_queue_operations() -> None:
-    facade, runtime, _, _, identity, maintenance = _facade()
+    facade, runtime, _, _, identity, maintenance, resources = _facade()
 
     assert facade.get_state() == {"steering": ["steer"], "follow_up": ["follow"]}
     assert facade.get_session_context() == _Context("context")
@@ -264,6 +282,7 @@ def test_session_facade_composes_standard_read_and_queue_operations() -> None:
     assert facade.is_compacting is False
     assert facade.auto_retry_enabled is True
     assert facade.auto_compaction_enabled is True
+    assert facade.get_prompt_templates() == ["review", "release"]
 
     facade.steer("second steer")
     facade.follow_up("second follow")
@@ -279,6 +298,7 @@ def test_session_facade_composes_standard_read_and_queue_operations() -> None:
     async def update_controls() -> None:
         await facade.set_session_name("Renamed")
         assert await facade.compact("Keep the current task") == {"summary": "compacted"}
+        await facade.refresh_resources()
 
     asyncio.run(update_controls())
     facade.set_auto_retry_enabled(False)
@@ -291,10 +311,13 @@ def test_session_facade_composes_standard_read_and_queue_operations() -> None:
     assert maintenance.compaction_updates == [False]
     assert maintenance.compact_calls == ["Keep the current task"]
     assert maintenance.aborted is True
+    assert resources.refreshes == 1
+    facade.request_resource_refresh()
+    assert resources.requests == 1
 
 
 def test_session_facade_forwards_execution_events_and_controls() -> None:
-    facade, runtime, command_execution, retry, _, _ = _facade()
+    facade, runtime, command_execution, retry, _, _, _ = _facade()
     chunks: list[ExecOutputChunk] = []
     received: list[str] = []
 

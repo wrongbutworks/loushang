@@ -4568,7 +4568,7 @@ def test_agent_session_resource_refresh_rebuilds_prompt_and_tools_without_emitti
         base_prompt="base prompt",
     )
 
-    session._request_resource_refresh()
+    asyncio.run(session.refresh_resources())
 
     assert refresh_reasons == []
     assert session.resource_bundle is not None

@@ -16,10 +16,9 @@ from loushang.ai.api_registry import (
     get_default_api_provider_registry,
 )
 from loushang.ai.model import Model, ModelSelection, Provider
-from loushang.ai.types import AssistantMessage, ImagePart
+from loushang.ai.types import AssistantMessage
 from loushang.ai.utils import is_context_overflow
 from loushang.coding.capability_plan import resolve_coding_capability_profile
-from loushang.coding.commands import SessionCommandDescriptor
 from loushang.coding.compaction import (
     compact,
     generate_branch_summary,
@@ -90,7 +89,6 @@ from loushang.harness.agent_transcript import (
     AgentTranscriptRetryRuntime,
     CompactionResult,
     CompactionStatus,
-    SessionRecord,
     TranscriptNavigationResult,
 )
 from loushang.harness.capabilities import (
@@ -129,17 +127,12 @@ from loushang.harness.session import (
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
     SessionFacade,
-    SessionFacadePorts,
     SessionResourceRefreshRuntime,
     SessionRuntime,
     TranscriptRuntimePort,
     TurnPolicyPort,
 )
-from loushang.harness.session.inspection import (
-    AgentSessionInspector,
-    AgentSessionState,
-)
-from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.session.inspection import AgentSessionInspector
 from loushang.harness.workspace.exec import (
     ExecOutputChunk,
     ExecRequest,
@@ -168,7 +161,7 @@ def _retry_policy(settings: RetrySettings) -> RetryPolicy:
     )
 
 
-class AgentSession:
+class AgentSession(SessionFacade):
     def __init__(
         self,
         *,
@@ -455,7 +448,7 @@ class AgentSession:
             get_session_name=lambda: self.session_name,
             set_label=self._set_extension_label,
             list_commands=self.list_commands,
-            request_resource_refresh=self._request_resource_refresh,
+            request_resource_refresh=self.request_resource_refresh,
             shutdown=self.abort,
             record_diagnostic=self._record_extension_runtime_diagnostic,
             abort=self.abort,
@@ -522,18 +515,17 @@ class AgentSession:
                 self._get_compaction_settings().keep_recent_tokens
             ),
         )
-        self._facade = SessionFacade.from_ports(
+        super().__init__(
             runtime=self._session_runtime,
-            ports=SessionFacadePorts(
-                transcript=self.session_manager,
-                tools=self._tool_controller,
-                commands=self._command_controller,
-                command_execution=self._bash_controller,
-                view=self._session_inspector,
-                retry=self._retry_runtime,
-                identity=self,
-                maintenance=self,
-            ),
+            transcript=self.session_manager,
+            tools=self._tool_controller,
+            commands=self._command_controller,
+            command_execution=self._bash_controller,
+            view=self._session_inspector,
+            retry=self._retry_runtime,
+            identity=self,
+            maintenance=self,
+            resources=self._resource_refresh_runtime,
         )
         session_context = self.session_manager.build_session_context()
         self._apply_agent_transcript_context(session_context)
@@ -571,15 +563,6 @@ class AgentSession:
             with suppress(KeyError, ValueError):
                 resolved_model = self.model_registry.build_model(selection)
         self.agent.model = resolved_model
-
-    def get_state(self) -> AgentSessionState:
-        return self._facade.get_state()
-
-    def get_session_context(self) -> AgentTranscriptContext:
-        return self._facade.get_session_context()
-
-    def get_session_record(self) -> SessionRecord:
-        return self._facade.get_session_record()
 
     def set_approval_presenter(
         self,
@@ -619,28 +602,11 @@ class AgentSession:
     def get_model_selection(self) -> ModelSelection | None:
         return self._selection_controller.get_model_selection()
 
-    def get_active_tool_names(self) -> list[str]:
-        return self._facade.get_active_tool_names()
-
-    def get_all_tools(self) -> list[ToolDefinition]:
-        return self._facade.get_all_tools()
-
     def get_all_tool_infos(self) -> list[dict[str, object]]:
         return self._tool_controller.get_all_tool_infos()
 
-    def get_tool_definition(self, name: str) -> ToolDefinition | None:
-        return self._facade.get_tool_definition(name)
-
-    def list_commands(self) -> list[SessionCommandDescriptor]:
-        return self._facade.list_commands()
-
     def list_extensions(self) -> list[dict[str, object]]:
         return self._extension_runner.list_extensions()
-
-    async def execute_command_async(
-        self, invocation_name: str, args: str
-    ) -> CommandExecutionResult | None:
-        return await self._facade.execute_command_async(invocation_name, args)
 
     def _execute_resource_command(
         self, invocation_name: str, args: str
@@ -721,13 +687,13 @@ class AgentSession:
         return self._package_controller.uninstall_package(source, scope=scope)
 
     def get_context_usage(self):
-        return serialize_context_usage_payload(self._facade.get_context_usage())
+        return serialize_context_usage_payload(super().get_context_usage())
 
     def get_session_stats(self) -> dict[str, object]:
         return project_pi_session_stats(
             agent=self.agent,
             session_manager=self.session_manager,
-            context_usage=self._facade.get_context_usage(),
+            context_usage=super().get_context_usage(),
         )
 
     def export_to_jsonl(self, output_path: str | None = None) -> str:
@@ -790,7 +756,7 @@ class AgentSession:
 
     @property
     def session_file(self):
-        return self._facade.get_session_file()
+        return super().get_session_file()
 
     @property
     def extension_runner(self) -> ExtensionRunner | None:
@@ -804,7 +770,7 @@ class AgentSession:
     def session_control(self) -> SessionControlPort:
         """Expose common controls without exposing Coding protocol semantics."""
 
-        return self._facade
+        return self
 
     @property
     def session_name(self) -> str | None:
@@ -819,7 +785,7 @@ class AgentSession:
 
     @property
     def prompt_templates(self) -> list[PromptFragmentDescriptor]:
-        return self._resource_refresh_runtime.get_prompt_templates()
+        return super().get_prompt_templates()
 
     @property
     def settings_manager(self) -> SettingsManager | None:
@@ -833,56 +799,10 @@ class AgentSession:
         def project(event: RuntimeEvent[object]) -> AgentSessionEvent | None:
             return project_runtime_event_to_session_event(event)
 
-        return self._facade.subscribe(
+        return super().subscribe(
             listener,
             project=project,
         )
-
-    def subscribe_runtime_events(
-        self,
-        listener: RuntimeEventListener,
-    ) -> Callable[[], None]:
-        return self._facade.subscribe_runtime_events(listener)
-
-    # Run entrypoint.
-
-    async def prompt(
-        self,
-        user_input: str,
-        images: list[ImagePart] | None = None,
-        *,
-        streaming_behavior: str | None = None,
-        source: str | None = None,
-        preflight_result: Callable[[bool], None] | None = None,
-    ) -> None:
-        await self._facade.prompt(
-            user_input,
-            images=images,
-            streaming_behavior=streaming_behavior,
-            source=source,
-            preflight_result=preflight_result,
-        )
-
-    # Public facade: queued steering and follow-up messages.
-
-    def steer(self, user_input: str, images: list[ImagePart] | None = None) -> None:
-        self._facade.steer(user_input, images=images)
-
-    def follow_up(self, user_input: str, images: list[ImagePart] | None = None) -> None:
-        self._facade.follow_up(user_input, images=images)
-
-    @property
-    def pending_message_count(self) -> int:
-        return self._facade.pending_message_count
-
-    def get_steering_messages(self) -> list[str]:
-        return self._facade.get_steering_messages()
-
-    def get_follow_up_messages(self) -> list[str]:
-        return self._facade.get_follow_up_messages()
-
-    def clear_queue(self) -> dict[str, list[str]]:
-        return self._facade.clear_queue()
 
     # Public facade: model, thinking, tools, and session metadata.
 
@@ -954,18 +874,6 @@ class AgentSession:
             source_record_id=record_id,
         )
 
-    def get_user_messages_for_forking(self) -> list[dict[str, str]]:
-        return self._facade.get_user_messages_for_forking()
-
-    def get_entry_text(self, entry_id: str) -> str | None:
-        return self._facade.get_entry_text(entry_id)
-
-    def get_last_assistant_text(self) -> str | None:
-        return self._facade.get_last_assistant_text()
-
-    def get_recent_assistant_texts(self) -> tuple[str, ...]:
-        return self._facade.get_recent_assistant_texts()
-
     # Public facade: bash execution.
 
     async def execute_bash(
@@ -982,7 +890,7 @@ class AgentSession:
         on_output: Callable[[ExecOutputChunk], Awaitable[None] | None] | None = None,
         operations: object | None = None,
     ) -> dict[str, object]:
-        return await self._facade.execute_command_tool(
+        return await super().execute_command_tool(
             command,
             cwd=cwd,
             env=env,
@@ -1008,11 +916,11 @@ class AgentSession:
 
     @property
     def is_bash_running(self) -> bool:
-        return self._facade.is_command_running
+        return super().is_command_running
 
     @property
     def has_pending_bash_messages(self) -> bool:
-        return self._facade.has_pending_command_messages
+        return super().has_pending_command_messages
 
     # Public facade: extension runtime configuration.
 
@@ -1060,27 +968,11 @@ class AgentSession:
 
     # Public facade: run controls, retry, compaction, and tree navigation.
 
-    async def continue_run(self) -> None:
-        await self._facade.continue_run()
-
-    def abort(self) -> None:
-        self._facade.abort()
+    def abort(self) -> bool:
+        return super().abort()
 
     def abort_bash(self) -> None:
-        self._facade.abort_command()
-
-    async def wait_for_idle(self) -> None:
-        await self._facade.wait_for_idle()
-
-    def abort_retry(self) -> None:
-        self._facade.abort_retry()
-
-    async def wait_for_retry(self) -> None:
-        await self._facade.wait_for_retry()
-
-    @property
-    def is_retrying(self) -> bool:
-        return self._facade.is_retrying
+        super().abort_command()
 
     @property
     def auto_retry_enabled(self) -> bool:
@@ -1374,9 +1266,6 @@ class AgentSession:
 
     async def _set_extension_label(self, target_id: str, label: str | None) -> None:
         await self.session_manager.append_label(target_id, label)
-
-    def _request_resource_refresh(self) -> None:
-        self._resource_refresh_runtime.request_refresh()
 
     async def _send_message_from_extension(
         self, message: object, options: object | None = None
