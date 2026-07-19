@@ -36,19 +36,10 @@ HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/ui/event_stream.py \
 	src/loushang/coding/ui/follow_up_queue.py \
 	src/loushang/coding/ui/handlers.py \
-	src/loushang/coding/ui/lifecycle.py \
 	src/loushang/coding/ui/model_list.py \
-	src/loushang/coding/ui/pending_queue.py \
-	src/loushang/coding/ui/perf_probe.py \
 	src/loushang/coding/ui/plain_app.py \
 	src/loushang/coding/ui/plain_events.py \
 	src/loushang/coding/ui/plain_renderer.py \
-	src/loushang/coding/ui/plain_toolbar.py \
-	src/loushang/coding/ui/playback.py \
-	src/loushang/coding/ui/playback_fakes.py \
-	src/loushang/coding/ui/playback_runner.py \
-	src/loushang/coding/ui/playback_scenarios \
-	src/loushang/coding/ui/playback_suite.py \
 	src/loushang/coding/ui/prompt_dispatch.py \
 	src/loushang/coding/ui/prompt_result.py \
 	src/loushang/coding/ui/run_context.py \
@@ -56,18 +47,11 @@ HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/ui/screen_events.py \
 	src/loushang/coding/ui/screen_input.py \
 	src/loushang/coding/ui/screen_loop.py \
-	src/loushang/coding/ui/screen_state.py \
 	src/loushang/coding/ui/screen_surfaces.py \
-	src/loushang/coding/ui/settings_common.py \
 	src/loushang/coding/ui/settings_config.py \
 	src/loushang/coding/ui/settings_page.py \
-	src/loushang/coding/ui/settings_status_line.py \
-	src/loushang/coding/ui/status_line.py \
-	src/loushang/coding/ui/steer.py \
 	src/loushang/coding/ui/tool_blocks.py \
 	src/loushang/coding/ui/transcript_projection.py \
-	src/loushang/coding/ui/transcript_style.py \
-	src/loushang/coding/ui/transcript_reader.py \
 	src/loushang/coding/ui/transcript_source.py
 HARNESSTUI_TEST_PATHS := \
 	tests/harnesstui \
@@ -78,18 +62,12 @@ HARNESSTUI_TEST_PATHS := \
 	tests/tui/test_terminal_diagnostics.py \
 	tests/tui/test_transcript_region.py \
 	tests/architecture/test_import_boundaries.py \
-	tests/coding/test_coding_tui_playback_compatibility.py \
-	tests/coding/test_playback_suite_compatibility.py \
 	tests/coding/test_platform_utils.py \
 	tests/coding/test_terminal_diagnostics_compatibility.py \
 	tests/coding/test_ui_handlers.py \
 	tests/coding/test_ui_abort.py \
 	tests/coding/test_ui_event_stream.py \
 	tests/coding/test_ui_follow_up_queue.py \
-	tests/coding/test_ui_lifecycle.py \
-	tests/coding/test_ui_pending_queue.py \
-	tests/coding/test_ui_pending_queue_compatibility.py \
-	tests/coding/test_ui_perf_probe_compatibility.py \
 	tests/coding/test_ui_prompt_dispatch.py \
 	tests/coding/test_ui_prompt_result.py \
 	tests/coding/test_ui_run_context.py \
@@ -101,25 +79,20 @@ HARNESSTUI_TEST_PATHS := \
 	tests/coding/test_screen_coding_tui_loop.py \
 	tests/coding/test_screen_coding_tui_mode.py \
 	tests/coding/test_screen_coding_tui_perf_probe.py \
-	tests/coding/test_screen_coding_tui_state.py \
 	tests/coding/test_screen_coding_tui_surfaces.py \
 	tests/coding/test_screen_settings_page.py \
 	tests/coding/test_screen_tui_playback_runner.py \
-	tests/coding/test_screen_tui_transcript_reader.py \
 	tests/coding/test_tool_transcript_blocks.py \
 	tests/coding/test_ui_command_list.py \
 	tests/coding/test_ui_completion.py \
 	tests/coding/test_ui_conversation_event_adapter.py \
-	tests/coding/test_ui_control_compatibility.py \
 	tests/coding/test_ui_dispatch_compatibility.py \
 	tests/coding/test_ui_model_list.py \
 	tests/coding/test_ui_plain_app.py \
-	tests/coding/test_ui_plain_toolbar.py \
 	tests/coding/test_ui_plain_renderer.py \
 	tests/coding/test_ui_status_line.py \
 	tests/coding/test_ui_status_provider.py \
 	tests/coding/test_ui_transcript_projection.py \
-	tests/coding/test_ui_transcript_style_compatibility.py \
 	tests/coding/test_ui_transcript_source.py \
 	tests/coding/ui/test_screen_input.py
 

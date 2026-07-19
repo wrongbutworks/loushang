@@ -15,10 +15,12 @@ from loushang.coding.ui.intent import (
     QuitIntent,
     parse_prompt_intent,
 )
-from loushang.coding.ui.lifecycle import RunLifecycle
 from loushang.coding.ui.prompt_dispatch import PromptDispatchOutcome
 from loushang.coding.ui.prompt_routing import PromptRoute, route_prompt_intent
 from loushang.harness.commands import CommandEffect, CommandEffectKind
+from loushang.harnesstui.conversation.control import (
+    ConversationRunControl as RunLifecycle,
+)
 from loushang.harnesstui.conversation.queue import (
     pending_queue_view,
     restore_queued_messages,

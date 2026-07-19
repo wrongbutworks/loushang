@@ -14,7 +14,9 @@ from loushang.coding.ui.intent import (
     QuitIntent,
     SettingsIntent,
 )
-from loushang.coding.ui.lifecycle import RunLifecycle
+from loushang.harnesstui.conversation.control import (
+    ConversationRunControl as RunLifecycle,
+)
 
 
 class PromptRoute(Enum):

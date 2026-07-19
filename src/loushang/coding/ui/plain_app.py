@@ -19,7 +19,6 @@ from loushang.coding.ui.handlers import (
     InfoPanelPresenter,
 )
 from loushang.coding.ui.hotkeys import format_hotkeys
-from loushang.coding.ui.lifecycle import RunLifecycle
 from loushang.coding.ui.model_list import (
     ModelPaletteChooser,
     format_available_models,
@@ -39,7 +38,10 @@ from loushang.coding.ui.status_provider import (
     statusline_settings_from_settings_manager,
     statusline_settings_persistence_callback,
 )
-from loushang.coding.ui.steer import SteerHandler
+from loushang.harnesstui.conversation.control import (
+    ConversationRunControl as RunLifecycle,
+)
+from loushang.harnesstui.conversation.control import SteerActionHandler as SteerHandler
 from loushang.tui import CompletionProvider
 
 

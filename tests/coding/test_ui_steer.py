@@ -27,13 +27,13 @@ class _Controller:
 
 def test_steer_handler_sends_text_to_controller_and_traces() -> None:
     from loushang.coding.ui.controller import ControllerResult
-    from loushang.coding.ui.steer import SteerHandler
+    from loushang.harnesstui.conversation.control import SteerActionHandler
 
     controller = _Controller(ControllerResult(exit_code=3))
     renderer = _Renderer()
     traces: list[tuple[str, dict[str, object]]] = []
 
-    handler = SteerHandler(
+    handler = SteerActionHandler(
         lifecycle=_Lifecycle(),
         controller=controller,
         renderer=renderer,
@@ -54,7 +54,7 @@ def test_steer_handler_sends_text_to_controller_and_traces() -> None:
 
 def test_steer_handler_renders_controller_error() -> None:
     from loushang.coding.ui.controller import ControllerResult
-    from loushang.coding.ui.steer import SteerHandler
+    from loushang.harnesstui.conversation.control import SteerActionHandler
 
     controller = _Controller(ControllerResult(exit_code=2, error_message="steer failed"))
     renderer = _Renderer()
@@ -64,7 +64,7 @@ def test_steer_handler_renders_controller_error() -> None:
         emitted.append(label)
         write()
 
-    handler = SteerHandler(
+    handler = SteerActionHandler(
         lifecycle=_Lifecycle(),
         controller=controller,
         renderer=renderer,

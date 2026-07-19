@@ -331,12 +331,30 @@ These explicit modules are the stable testing entrypoints. The testing package
 initializer intentionally does not re-export them. Coding binds the neutral
 recipes into its concrete catalog under `loushang.coding.testing.tui.scenarios`
 and retains the app/router adapters, product-only scenarios, fakes, CLI runner,
-product copy, fixture volumes, and render-performance budgets. The former
-`loushang.coding.ui.playback*` modules remain temporary compatibility facades
-only; production UI modules do not own playback implementations. Persisted
-Coding Session materialization remains in
-`loushang.coding.testing.tui.performance`; the former
-`loushang.coding.ui.perf_probe` path is only a compatibility facade.
+product copy, fixture volumes, and render-performance budgets. The temporary
+`loushang.coding.ui.playback*` and `loushang.coding.ui.perf_probe` compatibility
+paths were retired after their consumers moved to the canonical testing
+packages. Persisted Coding Session materialization remains in
+`loushang.coding.testing.tui.performance`.
+
+## Canonical Import Cutover
+
+The temporary Coding UI re-export paths for conversation control and state,
+status and settings primitives, transcript reading and styling, playback, and
+performance probes are retired. New and existing consumers import their owners
+directly:
+
+- terminal settings and playback-suite primitives from `loushang.tui`;
+- neutral conversation, status, and performance support from
+  `loushang.harnesstui`;
+- Coding playback catalogs, fakes, runners, scenarios, and persisted-session
+  loading from `loushang.coding.testing.tui`.
+
+`loushang.coding.ui.cli` remains the product console entrypoint, while real
+Coding UI adapters that own product policy, copy, or runtime binding remain in
+`loushang.coding.ui`. The retired-module manifest in
+`tests/coding/test_ui_import_boundaries.py` prevents the compatibility paths
+from being recreated accidentally.
 
 ## Plain Conversation Presentation
 
