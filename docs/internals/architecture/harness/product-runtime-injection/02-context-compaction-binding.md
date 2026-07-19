@@ -2,10 +2,10 @@
 
 ## Status
 
-Accepted implementation contract for the `harness/context-compaction-binding`
-wave. The following two delivery commits replace Coding's private
-compaction-runtime facade with a Harness-owned, transcript-aware capability.
-They do not redefine compaction prompts or move model execution into Harness.
+Implemented by the `harness/context-compaction-binding` wave. Harness owns the
+selected, transcript-aware capability; Coding supplies its summary executor and
+extension translation. The wave does not redefine compaction prompts or move
+model execution into Harness.
 
 ## Purpose And Requirements
 
@@ -87,12 +87,17 @@ and cannot produce a compaction checkpoint.
 
 ## Binding, Refresh, And Resume
 
-The selected mechanism ID and version are session-stable because a resumed
-transcript must retain the same checkpoint semantics. The slot may refresh at a
-turn boundary only when the implementation and version are unchanged and the
-runtime is idle; the refreshed JSON configuration applies to the next
-compaction. Rebinding while a compaction is active fails rather than cancelling
-or replacing the active operation.
+The selected mechanism ID and version are session-stable in the current Coding
+binding because a resumed transcript must retain the same checkpoint semantics.
+The slot declares a `turn` refresh boundary, but this first adoption binds the
+mechanism for the session lifetime. A future Product refresh may apply only at
+an idle turn boundary and must retain implementation/version compatibility with
+existing checkpoints; it must fail rather than cancelling or replacing an
+active compaction.
+
+The selected JSON configuration supplies the mechanism policy. Coding's
+explicit `CompactionSettings` are a higher-priority Product override; when no
+such override is present, an OEM-selected configuration applies directly.
 
 The resolved runtime profile is persisted as session metadata. It records only
 the mechanism ID, version, and JSON configuration; it never serializes prompt

@@ -413,6 +413,35 @@ def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
     assert "Coding keeps" in boundary
 
 
+def test_transcript_compaction_capability_is_neutral_and_adopted() -> None:
+    capability_source = Path(
+        "src/loushang/harness/agent_transcript/compaction.py"
+    ).read_text(encoding="utf-8")
+    runtime_profile_source = Path(
+        "src/loushang/coding/runtime_profile.py"
+    ).read_text(encoding="utf-8")
+    controller_source = Path(
+        "src/loushang/coding/session/compaction_controller.py"
+    ).read_text(encoding="utf-8")
+    coding_executor_source = Path(
+        "src/loushang/coding/compaction/compaction.py"
+    ).read_text(encoding="utf-8")
+    binding = Path(
+        "docs/internals/architecture/harness/product-runtime-injection/"
+        "02-context-compaction-binding.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in capability_source
+    assert "ConversationCompactionPlanner" in capability_source
+    assert "TURN_AWARE_SUMMARY_IMPLEMENTATION" in runtime_profile_source
+    assert "create_agent_transcript_compaction_capability" in runtime_profile_source
+    assert "AgentTranscriptCompactionCapability" in controller_source
+    assert "ConversationCompactionPlanner" not in coding_executor_source
+    assert "CodingCompactionRuntime" not in runtime_profile_source
+    assert "CodingCompactionRuntime" not in controller_source
+    assert "Harness owns the mechanism" in binding
+
+
 def test_session_capabilities_runtime_is_neutral_and_adopted() -> None:
     capabilities_source = Path(
         "src/loushang/harness/session/capabilities.py"
@@ -1512,8 +1541,10 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
         Path("src/loushang/coding/control/settings_manager.py"): {
             "loushang.harness.config.LayeredConfig",
         },
-        Path("src/loushang/coding/compaction/compaction.py"): {
+        Path("src/loushang/harness/agent_transcript/compaction.py"): {
             "loushang.harness.context.ConversationCompactionPlanner",
+        },
+        Path("src/loushang/coding/compaction/compaction.py"): {
             "loushang.harness.context.summary.build_summary_prompt",
         },
         Path("src/loushang/coding/compaction/summary_quality.py"): {
@@ -1664,11 +1695,18 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
     assert "loushang.harness.journal.TranscriptRepository" not in (coding_store_imports)
     assert "loushang.harness.journal.BranchGraph" not in coding_store_imports
 
-    compaction_imports = set(
-        _absolute_imports(Path("src/loushang/coding/compaction/compaction.py"))
+    harness_compaction_imports = set(
+        _absolute_imports(Path("src/loushang/harness/agent_transcript/compaction.py"))
     )
     assert "loushang.harness.context.ConversationCompactionPlanner" in (
-        compaction_imports
+        harness_compaction_imports
+    )
+
+    coding_compaction_imports = set(
+        _absolute_imports(Path("src/loushang/coding/compaction/compaction.py"))
+    )
+    assert "loushang.harness.context.ConversationCompactionPlanner" not in (
+        coding_compaction_imports
     )
 
 

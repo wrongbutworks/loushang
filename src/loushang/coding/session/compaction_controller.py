@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import cast
 
 from loushang.agent import Agent
 from loushang.ai.types import AssistantMessage
@@ -12,19 +12,20 @@ from loushang.ai.utils import is_context_overflow
 from loushang.coding.compaction import (
     compact as run_compaction,
 )
-from loushang.coding.compaction import (
-    prepare_compaction,
-)
 from loushang.coding.control import CompactionSettings
 from loushang.coding.extensions import ExtensionRunner, SessionBeforeCompactEvent
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
+    TURN_AWARE_SUMMARY_IMPLEMENTATION,
+    TURN_AWARE_SUMMARY_VERSION,
+    AgentTranscriptCompactionCapability,
     AgentTranscriptCompactionRuntime,
     CompactionHookDecision,
     CompactionHookRequest,
     CompactionPreparation,
     CompactionResult,
     TranscriptCompactionPolicy,
+    create_agent_transcript_compaction_capability,
 )
 from loushang.harness.events import CompactionReason, SessionRuntimeEventPayload
 
@@ -34,7 +35,6 @@ SettingsProvider = Callable[[], CompactionSettings]
 RuntimeExceptionRecorder = Callable[..., None]
 ExtensionDiagnosticsSync = Callable[..., None]
 CompactionFunction = Callable[..., Awaitable[CompactionResult]]
-PrepareCompactionFunction = Callable[[list[Any], int], CompactionPreparation]
 CompactInternalRunner = Callable[..., Awaitable[CompactionResult | None]]
 ContinueRun = Callable[[], Awaitable[None]]
 ContextOverflowPredicate = Callable[[AssistantMessage, int], bool]
@@ -46,6 +46,19 @@ def _noop_record_runtime_exception(*, code: str, exc: Exception | str) -> None:
 
 def _noop_sync_extension_diagnostics(*, phase: str) -> None:
     del phase
+
+
+def _default_compaction_capability() -> AgentTranscriptCompactionCapability:
+    return create_agent_transcript_compaction_capability(
+        implementation=TURN_AWARE_SUMMARY_IMPLEMENTATION,
+        implementation_version=TURN_AWARE_SUMMARY_VERSION,
+        config={
+            "enabled": True,
+            "compactPercent": 80.0,
+            "reserveTokens": 8_192,
+            "keepRecentTokens": 32_768,
+        },
+    )
 
 
 @dataclass
@@ -61,20 +74,24 @@ class CompactionController:
     sync_extension_diagnostics: ExtensionDiagnosticsSync = (
         _noop_sync_extension_diagnostics
     )
-    compact_fn: CompactionFunction = run_compaction
-    prepare_compaction_fn: PrepareCompactionFunction = prepare_compaction
+    compaction_capability: AgentTranscriptCompactionCapability = field(
+        default_factory=_default_compaction_capability
+    )
+    execute_compaction_fn: CompactionFunction = run_compaction
     _runtime: AgentTranscriptCompactionRuntime = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._runtime = AgentTranscriptCompactionRuntime(
             transcript=self.session_manager,
-            get_policy=lambda: _compaction_policy(self.get_settings()),
+            get_policy=lambda: _compaction_policy(
+                self.get_settings(), self.compaction_capability.policy
+            ),
             get_model=lambda: self.agent.model,
             get_context_messages=lambda: list(
                 self.session_manager.build_session_context().messages
             ),
             refresh_context=self._refresh_agent_context,
-            prepare_compaction=self._prepare_compaction,
+            prepare_compaction=self.compaction_capability.prepare,
             execute_compaction=self._execute_compaction,
             dispatch_event=self.dispatch_event,
             has_queued_messages=self.agent.has_queued_messages,
@@ -113,7 +130,6 @@ class CompactionController:
         raise_on_error: bool = True,
         custom_instructions: str | None = None,
         compact_fn: CompactionFunction | None = None,
-        prepare_compaction_fn: PrepareCompactionFunction | None = None,
     ) -> CompactionResult | None:
         executor = (
             self._execute_compaction
@@ -122,28 +138,13 @@ class CompactionController:
                 compact_fn, preparation, instructions
             )
         )
-        preparation = (
-            self._prepare_compaction
-            if prepare_compaction_fn is None
-            else lambda entries, keep_recent_tokens: prepare_compaction_fn(
-                entries, keep_recent_tokens
-            )
-        )
         return await self._runtime.compact(
             reason=cast(CompactionReason, reason),
             will_retry=will_retry,
             raise_on_error=raise_on_error,
             custom_instructions=custom_instructions,
             execute_compaction=executor,
-            prepare_compaction=preparation,
         )
-
-    def _prepare_compaction(
-        self,
-        entries: list[object],
-        keep_recent_tokens: int,
-    ) -> CompactionPreparation:
-        return self.prepare_compaction_fn(entries, keep_recent_tokens)
 
     async def _execute_compaction(
         self,
@@ -151,7 +152,7 @@ class CompactionController:
         custom_instructions: str | None,
     ) -> CompactionResult:
         return await self._execute_with(
-            self.compact_fn,
+            self.execute_compaction_fn,
             preparation,
             custom_instructions,
         )
@@ -217,7 +218,15 @@ class CompactionController:
         )
 
 
-def _compaction_policy(settings: CompactionSettings) -> TranscriptCompactionPolicy:
+def _compaction_policy(
+    settings: CompactionSettings,
+    capability_policy: TranscriptCompactionPolicy,
+) -> TranscriptCompactionPolicy:
+    # Product settings are the explicit user/session override. Otherwise the
+    # selected Harness capability supplies the policy snapshot, including an
+    # OEM-provided configuration.
+    if settings == CompactionSettings():
+        return capability_policy
     return TranscriptCompactionPolicy(
         enabled=settings.enabled,
         reserve_tokens=settings.reserve_tokens,

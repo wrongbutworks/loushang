@@ -142,6 +142,10 @@ class AgentTranscriptCompactionCapability:
     configuration: TranscriptCompactionConfiguration
 
     def __post_init__(self) -> None:
+        if not isinstance(self.implementation, str) or not self.implementation:
+            raise ValueError("transcript compaction implementation must be non-empty")
+        if type(self.implementation_version) is not int:
+            raise TypeError("transcript compaction implementation version must be an integer")
         if self.implementation != TURN_AWARE_SUMMARY_IMPLEMENTATION:
             raise ValueError(
                 "unsupported transcript compaction implementation: "

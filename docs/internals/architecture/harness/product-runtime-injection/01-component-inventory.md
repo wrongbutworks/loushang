@@ -31,7 +31,7 @@ rules.
 | Conversation store | `harness.storage` | single, session-sealed | Planned | `ConversationStore`, Memory/File adapters |
 | Transcript profile | `harness.agent_transcript` | single, session-sealed | Planned | common Agent profile, codec registry, commit service |
 | Memory | `harness.context` | ordered-many | Planned | context items, packing, salience foundations |
-| Context compaction | `harness.context` + `harness.agent_transcript` | one selected mechanism plus Product executor ports | Contract accepted; cutover in progress | coordinator, strategies, turn-aware transcript planning, checkpoint runtime |
+| Context compaction | `harness.context` + `harness.agent_transcript` | one selected mechanism plus Product executor ports | Implemented | coordinator, strategies, turn-aware transcript planning, checkpoint runtime, bound capability |
 | Artifact store | focused Harness artifact contract or Work owner | typed single or per-kind | Deferred | Product/Work artifact semantics remain unresolved |
 | Prompt | `harness.capabilities.prompt` | ordered-many | Bound and snapshotted by Coding | section composition and templates |
 | Skill | `harness.resources` plus Product selection | ordered-many | Bound and snapshotted by Coding | descriptor, discovery, resource overlay |
@@ -55,7 +55,7 @@ than the order in which current Coding files happen to appear.
 | 0. Runtime profile foundation | requirements, profile resolution, binding lifecycle | `harness.runtime.profile` supplies the common contract; `coding.runtime_profile` is the first Product plan for store, transcript, and compaction defaults. | `runtime-profile-resolution.md` and contract tests. |
 | 1. Session coordination | binding lifecycle, prompt, tool/command contribution hooks | Reduce `coding.session` event, prompt, and queue coordination to Product adapters over Harness runtime/host mechanisms. | Runtime profile resolution and binding lifecycle designs. |
 | 2. Transcript and durable store | conversation store, transcript profile | Extend existing direct Store injection to declared profile selection; preserve sealed session semantics. | Conversation store and transcript profile binding designs. |
-| 3. Context runtime | memory and context compaction | Cut over Coding's compaction selection to a Harness mechanism and bind Product execution; memory remains a separate future component. | Context compaction binding design; memory binding design before memory cutover. |
+| 3. Context runtime | memory and context compaction | Coding selects a Harness compaction mechanism and binds Product execution; memory remains a separate future component. | Context compaction binding design complete; memory binding design before memory cutover. |
 | 4. Capability composition | resources, prompts, skills, tools, commands, policy/approval | Convert Product defaults and extension activation from ad hoc controller wiring to declared slot selections. | One detailed design per affected capability. |
 | 5. Product-specific artifacts and channels | artifact, presentation/theme, method, model/auth as accepted by their owners | Keep deferred until Work, Channel, Method, and AI boundaries accept their corresponding contracts. | Owner-specific detailed designs. |
 

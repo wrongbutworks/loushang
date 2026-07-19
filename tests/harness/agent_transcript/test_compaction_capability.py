@@ -8,9 +8,11 @@ from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.harness.agent_transcript import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
     TURN_AWARE_SUMMARY_VERSION,
+    AgentTranscriptCompactionCapability,
     AgentTranscriptRecord,
     AgentTranscriptSession,
     AgentTranscriptSessionStore,
+    TranscriptCompactionConfiguration,
     create_agent_transcript_compaction_capability,
 )
 from loushang.harness.conversation import ConversationHeader
@@ -94,6 +96,12 @@ def test_turn_aware_capability_validates_and_snapshots_configuration() -> None:
             implementation=TURN_AWARE_SUMMARY_IMPLEMENTATION,
             implementation_version=True,
             config=_config(),
+        )
+    with pytest.raises(TypeError, match="version must be an integer"):
+        AgentTranscriptCompactionCapability(
+            implementation=TURN_AWARE_SUMMARY_IMPLEMENTATION,
+            implementation_version=True,
+            configuration=TranscriptCompactionConfiguration.from_json(_config()),
         )
 
 

@@ -25,7 +25,6 @@ from loushang.coding.commands import SessionCommandDescriptor
 from loushang.coding.compaction import (
     compact,
     generate_branch_summary,
-    prepare_compaction,
 )
 from loushang.coding.control import (
     CompactionSettings,
@@ -92,6 +91,7 @@ from loushang.coding.session.usage_payload import serialize_context_usage_payloa
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
 from loushang.harness.agent_transcript import (
+    AgentTranscriptCompactionCapability,
     AgentTranscriptContext,
     CompactionResult,
     CompactionStatus,
@@ -142,12 +142,10 @@ SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]
 RuntimeEventListener = Callable[[RuntimeEvent[object]], Awaitable[None] | None]
 
 
-async def _run_default_compaction(**kwargs: object) -> object:
+async def _execute_coding_compaction(**kwargs: object) -> object:
+    """Run Coding's Product-owned summary executor for a Harness plan."""
+
     return await compact(**kwargs)
-
-
-def _prepare_default_compaction(*args: object, **kwargs: object) -> object:
-    return prepare_compaction(*args, **kwargs)
 
 
 class AgentSession:
@@ -279,7 +277,9 @@ class AgentSession:
             record_runtime_exception=self._record_runtime_exception,
             sync_extension_diagnostics=self._sync_extension_diagnostics,
         )
-        compaction_kwargs: dict[str, object] = {}
+        compaction_kwargs: dict[str, object] = {
+            "execute_compaction_fn": _execute_coding_compaction,
+        }
         runtime_capability = getattr(
             self.session_manager,
             "get_runtime_capability",
@@ -287,12 +287,8 @@ class AgentSession:
         )
         if callable(runtime_capability):
             runtime = runtime_capability("context.compaction")
-            compact_fn = getattr(runtime, "compact_fn", None)
-            prepare_compaction_fn = getattr(runtime, "prepare_compaction_fn", None)
-            if callable(compact_fn):
-                compaction_kwargs["compact_fn"] = compact_fn
-            if callable(prepare_compaction_fn):
-                compaction_kwargs["prepare_compaction_fn"] = prepare_compaction_fn
+            if isinstance(runtime, AgentTranscriptCompactionCapability):
+                compaction_kwargs["compaction_capability"] = runtime
         self._compaction_controller = CompactionController(
             agent=self.agent,
             session_manager=self.session_manager,

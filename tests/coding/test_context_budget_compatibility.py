@@ -21,9 +21,10 @@ def test_coding_context_budget_paths_share_harness_identity() -> None:
     assert usage.ContextUsageEstimate.__module__ == "loushang.harness.context.usage"
 
 
-def test_coding_context_estimator_returns_harness_record() -> None:
+def test_agent_transcript_context_estimator_returns_harness_record() -> None:
+    import loushang.coding.compaction as compaction
     from loushang.ai.types import UserMessage
-    from loushang.coding.compaction import estimate_context_tokens
+    from loushang.harness.agent_transcript import estimate_context_tokens
     from loushang.harness.context.usage import ContextUsageEstimate
 
     estimate = estimate_context_tokens(
@@ -34,3 +35,4 @@ def test_coding_context_estimator_returns_harness_record() -> None:
     assert estimate.usage_tokens == 0
     assert estimate.trailing_tokens == estimate.tokens
     assert estimate.last_usage_index is None
+    assert not hasattr(compaction, "estimate_context_tokens")
