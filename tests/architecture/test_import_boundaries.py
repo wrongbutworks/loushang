@@ -375,20 +375,14 @@ def test_coding_session_uses_harness_runtime_events_as_the_only_internal_stream(
     session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
-    controller_sources = [
-        Path(path).read_text(encoding="utf-8")
-        for path in (
-            "src/loushang/coding/session/compaction_controller.py",
-            "src/loushang/coding/session/tree_controller.py",
-        )
-    ]
 
     assert "SessionEventBus" not in session_source
     assert "self._event_bus" not in session_source
     assert not Path("src/loushang/coding/session/session_event_bus.py").exists()
     assert not Path("src/loushang/coding/session/retry_controller.py").exists()
     assert not Path("src/loushang/coding/session/session_view_controller.py").exists()
-    assert all("loushang.coding.event" not in source for source in controller_sources)
+    assert not Path("src/loushang/coding/session/compaction_controller.py").exists()
+    assert not Path("src/loushang/coding/session/tree_controller.py").exists()
     assert "project_runtime_event_to_session_event" in session_source
 
 
@@ -414,12 +408,6 @@ def test_agent_transcript_interaction_runtime_is_neutral_and_adopted() -> None:
     interaction_source = Path(
         "src/loushang/harness/agent_transcript/interaction.py"
     ).read_text(encoding="utf-8")
-    selection_source = Path(
-        "src/loushang/coding/session/selection_controller.py"
-    ).read_text(encoding="utf-8")
-    tree_source = Path("src/loushang/coding/session/tree_controller.py").read_text(
-        encoding="utf-8"
-    )
     session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
@@ -428,9 +416,11 @@ def test_agent_transcript_interaction_runtime_is_neutral_and_adopted() -> None:
     ).read_text(encoding="utf-8")
 
     assert "loushang.coding" not in interaction_source
-    assert "AgentTranscriptNavigationRuntime" in tree_source
-    assert "AgentTranscriptSelectionRuntime" in selection_source
+    assert "AgentTranscriptNavigationRuntime" in session_source
+    assert "AgentTranscriptSelectionRuntime" in session_source
     assert "AgentSessionInspector" in session_source
+    assert not Path("src/loushang/coding/session/tree_controller.py").exists()
+    assert not Path("src/loushang/coding/session/selection_controller.py").exists()
     assert "Product-supplied" in boundary
     assert "Coding keeps" in boundary
 
@@ -438,9 +428,6 @@ def test_agent_transcript_interaction_runtime_is_neutral_and_adopted() -> None:
 def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
     maintenance_source = Path(
         "src/loushang/harness/agent_transcript/maintenance.py"
-    ).read_text(encoding="utf-8")
-    compaction_source = Path(
-        "src/loushang/coding/session/compaction_controller.py"
     ).read_text(encoding="utf-8")
     session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
@@ -450,8 +437,9 @@ def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
     ).read_text(encoding="utf-8")
 
     assert "loushang.coding" not in maintenance_source
-    assert "AgentTranscriptCompactionRuntime" in compaction_source
+    assert "AgentTranscriptCompactionRuntime" in session_source
     assert "AgentTranscriptRetryRuntime" in session_source
+    assert not Path("src/loushang/coding/session/compaction_controller.py").exists()
     assert "Product-supplied" in boundary
     assert "Coding keeps" in boundary
 
@@ -463,9 +451,9 @@ def test_transcript_compaction_capability_is_neutral_and_adopted() -> None:
     runtime_profile_source = Path("src/loushang/coding/runtime_profile.py").read_text(
         encoding="utf-8"
     )
-    controller_source = Path(
-        "src/loushang/coding/session/compaction_controller.py"
-    ).read_text(encoding="utf-8")
+    session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
+        encoding="utf-8"
+    )
     coding_executor_source = Path(
         "src/loushang/coding/compaction/compaction.py"
     ).read_text(encoding="utf-8")
@@ -478,10 +466,10 @@ def test_transcript_compaction_capability_is_neutral_and_adopted() -> None:
     assert "ConversationCompactionPlanner" in capability_source
     assert "TURN_AWARE_SUMMARY_IMPLEMENTATION" in runtime_profile_source
     assert "create_agent_transcript_compaction_capability" in runtime_profile_source
-    assert "AgentTranscriptCompactionCapability" in controller_source
+    assert "AgentTranscriptCompactionCapability" in session_source
     assert "ConversationCompactionPlanner" not in coding_executor_source
     assert "CodingCompactionRuntime" not in runtime_profile_source
-    assert "CodingCompactionRuntime" not in controller_source
+    assert "CodingCompactionRuntime" not in session_source
     assert "Harness owns the mechanism" in binding
 
 
@@ -3010,9 +2998,6 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
         Path("src/loushang/coding/runtime/agent_session_runtime.py"): {
             "loushang.harness.session.SessionLifecycleRuntime",
         },
-        Path("src/loushang/coding/session/compaction_controller.py"): {
-            "loushang.harness.agent_transcript.AgentTranscriptCompactionRuntime",
-        },
         Path("src/loushang/coding/session/extension_runtime_controller.py"): {
             "loushang.harness.extensions.lifecycle.ExtensionRuntimeCoordinator",
         },
@@ -3027,9 +3012,9 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
         },
         Path("src/loushang/coding/session/agent_session.py"): {
             "loushang.harness.agent_transcript.AgentTranscriptRetryRuntime",
-        },
-        Path("src/loushang/coding/session/tree_controller.py"): {
+            "loushang.harness.agent_transcript.AgentTranscriptCompactionRuntime",
             "loushang.harness.agent_transcript.AgentTranscriptNavigationRuntime",
+            "loushang.harness.agent_transcript.AgentTranscriptSelectionRuntime",
         },
     }
     missing: list[str] = []

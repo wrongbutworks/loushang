@@ -84,7 +84,8 @@
 - usage / compaction fact chain 对齐 `reference CLI` 的分层语义：
   `loushang.ai` 只负责 provider usage、stop_reason、context overflow 的归一化事实；
   `coding.session.context_usage` 基于 session branch 和 normalized assistant usage 生成 `ContextUsageSnapshot`；
-  `CompactionController` 只消费 `CompactionDecision` 触发 threshold / overflow compaction，不直接散落 token 计算逻辑
+  `AgentSession` 直接绑定 Harness `AgentTranscriptCompactionRuntime`，只消费
+  `CompactionDecision` 触发 threshold / overflow compaction，不直接散落 token 计算逻辑
 - `ContextUsageSnapshot` 是 usage / compaction 的唯一事实对象，除 `tokens`、`context_window`、`percent`、`source` 外，
   还携带 `compact_percent`、`reserve_tokens`、`keep_recent_tokens`、`percent_threshold_tokens`、
   `reserve_threshold_tokens`、`threshold_tokens`、`threshold_reason`；
