@@ -89,7 +89,10 @@ def test_extension_runner_merges_resource_contributions_from_loaded_extensions()
         ExtensionRunner,
         LoadedExtension,
     )
-    from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle
+    from loushang.harness.resources.types import (
+        PromptFragmentDescriptor,
+        ResourceBundle,
+    )
 
     def _resources_discover(event, ctx):
         return ExtensionResourceContribution(
@@ -206,7 +209,7 @@ def test_extension_runner_keeps_legacy_four_argument_extension_tools() -> None:
 
 def test_extension_runner_resolves_duplicate_command_names() -> None:
     from loushang.coding.extensions.runner import ExtensionRunner
-    from loushang.coding.extensions.types import LoadedExtension, RegisteredCommand
+    from loushang.harness.extensions.types import LoadedExtension, RegisteredCommand
 
     async def _handler(args, ctx):
         del args, ctx
@@ -243,7 +246,7 @@ def test_extension_runner_resolves_duplicate_command_names() -> None:
 
 def test_extension_runner_preserves_package_command_source_info() -> None:
     from loushang.coding.extensions.runner import ExtensionRunner
-    from loushang.coding.extensions.types import LoadedExtension, RegisteredCommand
+    from loushang.harness.extensions.types import LoadedExtension, RegisteredCommand
 
     async def _handler(args, ctx):
         del args, ctx
@@ -276,7 +279,7 @@ def test_extension_runner_preserves_package_command_source_info() -> None:
 
 def test_extension_runner_avoids_command_alias_collision_with_literal_name() -> None:
     from loushang.coding.extensions.runner import ExtensionRunner
-    from loushang.coding.extensions.types import LoadedExtension, RegisteredCommand
+    from loushang.harness.extensions.types import LoadedExtension, RegisteredCommand
 
     async def _handler(args, ctx):
         del args, ctx
@@ -323,7 +326,7 @@ def test_extension_runner_avoids_command_alias_collision_with_literal_name() -> 
 
 def test_extension_runner_shortcut_collisions_are_first_wins() -> None:
     from loushang.coding.extensions.runner import ExtensionRunner
-    from loushang.coding.extensions.types import LoadedExtension, RegisteredShortcut
+    from loushang.harness.extensions.types import LoadedExtension, RegisteredShortcut
 
     first = LoadedExtension(name="one", source_path=Path("/tmp/one.py"))
     second = LoadedExtension(name="two", source_path=Path("/tmp/two.py"))
@@ -364,7 +367,7 @@ def test_extension_runner_shortcut_collisions_are_first_wins() -> None:
 
 def test_extension_runner_flag_collisions_are_first_wins() -> None:
     from loushang.coding.extensions.runner import ExtensionRunner
-    from loushang.coding.extensions.types import LoadedExtension, RegisteredFlag
+    from loushang.harness.extensions.types import LoadedExtension, RegisteredFlag
 
     first = LoadedExtension(name="one", source_path=Path("/tmp/one.py"))
     second = LoadedExtension(name="two", source_path=Path("/tmp/two.py"))
@@ -524,7 +527,7 @@ def test_extension_runner_emits_lifecycle_hooks_and_rejects_duplicate_tools() ->
 
 def test_extension_runner_records_hook_failures_as_diagnostics() -> None:
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.loader import ResourceBundle
+    from loushang.harness.resources.types import ResourceBundle
 
     def _broken_resources_discover(event, ctx):
         raise RuntimeError("boom")
@@ -1166,7 +1169,7 @@ def test_extension_runner_does_not_expose_or_bind_inactive_surfaces() -> None:
 
 def test_extension_runner_exposes_headless_renderer_and_diagnostic_snapshots() -> None:
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.loader import ResourceDiagnostic
+    from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
     def _renderer(message, options, theme):
         return (message, options, theme)
@@ -1200,7 +1203,7 @@ def test_extension_runner_resources_discover_accepts_pi_style_path_result(
     tmp_path,
 ) -> None:
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.loader import ResourceBundle
+    from loushang.harness.resources.types import ResourceBundle
 
     prompt_file = tmp_path / "prompts" / "plan.md"
     skill_file = tmp_path / "skills" / "debug" / "SKILL.md"
@@ -1245,7 +1248,7 @@ def test_extension_runner_resources_discover_accepts_pi_style_path_result(
 
 def test_extension_runner_resources_discover_awaits_async_path_result(tmp_path) -> None:
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.loader import ResourceBundle
+    from loushang.harness.resources.types import ResourceBundle
 
     prompt_file = tmp_path / "prompts" / "plan.md"
     prompt_file.parent.mkdir()
@@ -1281,7 +1284,7 @@ def test_extension_runner_resources_discover_path_result_reports_missing_paths(
     tmp_path,
 ) -> None:
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.loader import ResourceBundle
+    from loushang.harness.resources.types import ResourceBundle
 
     missing_prompt = tmp_path / "prompts" / "missing.md"
     missing_skill = tmp_path / "skills" / "missing"
@@ -2127,7 +2130,7 @@ def test_extension_runner_context_mutators_delegate_through_live_runtime_binding
     None
 ):
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.loader import ResourceDiagnostic
+    from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
     tracker: dict[str, object] = {}
     emitted_diagnostic = ResourceDiagnostic(code="demo", message="from extension")

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 
-def test_work_public_api_exposes_current_work_surface_without_multi_agent_types() -> None:
+def test_work_public_api_exposes_current_work_surface_without_multi_agent_types() -> (
+    None
+):
     import loushang.work as work
 
     assert set(work.__all__) == {
@@ -94,23 +96,15 @@ def test_work_projection_exports_remain_available_from_the_root_package() -> Non
     )
 
     assert work.WorkEventProjectionContext is WorkEventProjectionContext
-    assert (
-        work.project_agent_event_to_work_events
-        is project_agent_event_to_work_events
-    )
+    assert work.project_agent_event_to_work_events is project_agent_event_to_work_events
 
 
-def test_agent_fact_projection_is_work_owned_and_coding_alias_is_compatible() -> None:
+def test_agent_fact_projection_is_work_owned() -> None:
     import loushang.work as work
-    from loushang.coding.work_projection import CodingWorkFactProjectionContext
     from loushang.work.agent_projection import (
         AgentWorkFactProjectionContext,
         project_agent_event_to_work_facts,
     )
 
-    assert CodingWorkFactProjectionContext is AgentWorkFactProjectionContext
     assert work.AgentWorkFactProjectionContext is AgentWorkFactProjectionContext
-    assert (
-        work.project_agent_event_to_work_facts
-        is project_agent_event_to_work_facts
-    )
+    assert work.project_agent_event_to_work_facts is project_agent_event_to_work_facts

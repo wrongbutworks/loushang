@@ -4,8 +4,8 @@ from pathlib import Path
 
 
 def test_diagnostics_service_normalizes_and_queries_records() -> None:
-    from loushang.coding.loader import ResourceDiagnostic
     from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
+    from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
     service = DiagnosticsService()
     record = service.normalize_resource_diagnostic(
@@ -53,8 +53,8 @@ def test_diagnostics_service_filters_tool_correlated_records() -> None:
 
 
 def test_diagnostics_service_preserves_resource_diagnostic_details() -> None:
-    from loushang.coding.loader import ResourceDiagnostic
     from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
     service = DiagnosticsService()
     record = service.normalize_resource_diagnostic(

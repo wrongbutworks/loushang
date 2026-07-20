@@ -221,8 +221,9 @@ Update internal imports to the new path and delete
 Do not keep `loushang.runtime` as a compatibility shim.
 
 This phase stops at the value-type boundary. `loushang.coding.commands.catalog`,
-`loushang.coding.commands.slash`, session command execution, and UI command
-handlers remain owned by `loushang.coding`.
+session command execution, and UI command handlers remain owned by
+`loushang.coding`; slash parsing is owned by
+`loushang.harness.capabilities.commands`.
 
 ### Phase 2: Host and adapter contracts
 

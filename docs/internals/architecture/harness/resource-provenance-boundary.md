@@ -21,7 +21,8 @@ Harness owns two focused records:
 path and base-directory values supplied by an adapter rather than choosing a
 filesystem or serialization representation. Coding command surfaces may use
 `SourceInfo[str]`, while extension runtime surfaces may use
-`SourceInfo[pathlib.Path]`; both are instances of the same harness-owned class.
+`SourceInfo[pathlib.Path]`. These are the same harness-owned classes regardless
+of the product-facing path representation.
 
 `ResourceDiagnostic` carries a code, message, optional source path and resource
 identity, an opaque source-kind string, and neutral metadata. Harness does not
@@ -30,17 +31,17 @@ remediation text, or display policy.
 
 ## Compatibility
 
-Accepted coding paths remain available:
+`ResourceDiagnostic` is imported from its Harness owner. The remaining Coding
+source-information adapters are product projections, not resource-type shims:
 
 ```python
 from loushang.coding.source_info import SourceInfo
 from loushang.coding.extensions import SourceInfo
-from loushang.coding.loader import ResourceDiagnostic
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 ```
 
-These paths re-export the same harness-owned classes. Harness-owned classes
-keep their harness `__module__`; compatibility paths preserve imports, not
-duplicate implementations or coding-owned class identity.
+`ResourceDiagnostic` keeps its Harness `__module__`; deleted Coding resource
+facades do not preserve an alternate import path.
 
 `loushang.coding.source_info` remains a product adapter. It keeps string path
 projection for command/RPC surfaces, descriptor-to-source mapping, executable

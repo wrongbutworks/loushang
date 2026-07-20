@@ -15,7 +15,7 @@ from loushang.coding.policy.package_security import (
     PackageSecurityPolicy,
     PackageSourceSecurityReport,
 )
-from loushang.coding.policy.types import PolicyDecision
+from loushang.harness.policy import PolicyDecision
 
 __all__ = [
     "ApprovalDecision",

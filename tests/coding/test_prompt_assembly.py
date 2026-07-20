@@ -35,11 +35,11 @@ def test_default_system_prompt_includes_exploration_progress_guidelines() -> Non
 def test_assemble_prompt_returns_prompt_assembly() -> None:
     from pathlib import Path
 
-    from loushang.coding.loader import ResourceBundle
     from loushang.coding.prompt import assemble_prompt
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -83,8 +83,8 @@ def test_assemble_prompt_returns_prompt_assembly() -> None:
 def test_assemble_system_prompt_keeps_legacy_string_only_contract() -> None:
     from pathlib import Path
 
-    from loushang.coding.loader import ResourceBundle
     from loushang.coding.prompt import assemble_system_prompt
+    from loushang.harness.resources.types import ResourceBundle
 
     system_prompt = assemble_system_prompt(
         base_prompt="Base",
@@ -99,8 +99,11 @@ def test_assemble_system_prompt_keeps_legacy_string_only_contract() -> None:
 def test_assemble_prompt_wraps_context_files_with_paths_before_runtime_footer() -> None:
     from pathlib import Path
 
-    from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle
     from loushang.coding.prompt import assemble_prompt
+    from loushang.harness.resources.types import (
+        PromptFragmentDescriptor,
+        ResourceBundle,
+    )
 
     root_context = PromptFragmentDescriptor(
         name="AGENTS.md",
@@ -153,8 +156,11 @@ def test_assemble_prompt_includes_visible_skill_summaries_and_hides_explicit_onl
 ):
     from pathlib import Path
 
-    from loushang.coding.loader import ResourceBundle, SkillDescriptor
     from loushang.coding.prompt import assemble_prompt
+    from loushang.harness.resources.types import (
+        ResourceBundle,
+        SkillDescriptor,
+    )
 
     assembly = assemble_prompt(
         base_prompt="Base",
@@ -407,12 +413,12 @@ def test_exec_result_contract_defaults_and_shape() -> None:
 def test_preflight_user_input_expands_prompt_templates_and_skill_references() -> None:
     from pathlib import Path
 
-    from loushang.coding.loader import (
+    from loushang.coding.prompt import preflight_user_input
+    from loushang.harness.resources.types import (
         PromptFragmentDescriptor,
         ResourceBundle,
         SkillDescriptor,
     )
-    from loushang.coding.prompt import preflight_user_input
 
     resource_bundle = ResourceBundle(
         cwd=Path("/tmp/project"),
@@ -489,8 +495,11 @@ def test_preflight_user_input_substitutes_prompt_template_args_when_placeholders
 ):
     from pathlib import Path
 
-    from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle
     from loushang.coding.prompt import preflight_user_input
+    from loushang.harness.resources.types import (
+        PromptFragmentDescriptor,
+        ResourceBundle,
+    )
 
     resource_bundle = ResourceBundle(
         cwd=Path("/tmp/project"),
@@ -516,8 +525,11 @@ def test_preflight_user_input_keeps_legacy_arg_append_for_templates_without_plac
 ):
     from pathlib import Path
 
-    from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle
     from loushang.coding.prompt import preflight_user_input
+    from loushang.harness.resources.types import (
+        PromptFragmentDescriptor,
+        ResourceBundle,
+    )
 
     resource_bundle = ResourceBundle(
         cwd=Path("/tmp/project"),
@@ -543,8 +555,11 @@ def test_preflight_user_input_rejects_disabled_skills_but_allows_explicit_only_s
 ):
     from pathlib import Path
 
-    from loushang.coding.loader import ResourceBundle, SkillDescriptor
     from loushang.coding.prompt import assemble_prompt, preflight_user_input
+    from loushang.harness.resources.types import (
+        ResourceBundle,
+        SkillDescriptor,
+    )
 
     resource_bundle = ResourceBundle(
         cwd=Path("/tmp/project"),
@@ -594,8 +609,8 @@ def test_preflight_user_input_reports_unresolved_references_without_rewriting_te
 ):
     from pathlib import Path
 
-    from loushang.coding.loader import ResourceBundle
     from loushang.coding.prompt import preflight_user_input
+    from loushang.harness.resources.types import ResourceBundle
 
     result = preflight_user_input(
         "/missing-template keep original",

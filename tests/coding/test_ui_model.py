@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from loushang.ai.model import Model
-from loushang.coding.types import ModelSelection
+from loushang.ai.model import Model, ModelSelection
 
 
 class _Session:

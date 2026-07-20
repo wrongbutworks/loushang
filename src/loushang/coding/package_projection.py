@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.loader import DefaultResourceLoader
+from loushang.coding.resource_runtime import CodingResourceLoader
 from loushang.harness.resources.packages.catalog import (
     PackageCatalogBuilder,
     PackageCatalogDiagnostic,
@@ -142,7 +142,7 @@ def _summarize_coding_package_root(
     filters: dict[str | Path, PackageSourceConfig] | None = (
         {package_root: package_source} if package_source is not None else None
     )
-    loader = DefaultResourceLoader(
+    loader = CodingResourceLoader(
         package_roots=(package_root,), package_source_filters=filters
     )
     loader.discover_resources(cwd)

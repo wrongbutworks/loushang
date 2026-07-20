@@ -187,8 +187,8 @@ def test_prompt_plan_command_preserves_transcript_and_uses_one_work_run() -> Non
 
 def test_prompt_command_selects_usable_model_before_prompt() -> None:
     from loushang.ai import Model
+    from loushang.ai.model import ModelSelection
     from loushang.coding.prompt_command import run_prompt_command
-    from loushang.coding.types import ModelSelection
 
     kimi = Model(
         id="kimi-for-coding",

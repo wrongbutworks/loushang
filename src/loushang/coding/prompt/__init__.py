@@ -4,7 +4,7 @@ from loushang.coding.prompt.preflight import (
     preflight_user_input,
     preflight_user_input_async,
 )
-from loushang.coding.prompt.templates import (
+from loushang.harness.capabilities.prompt import (
     parse_prompt_template_args,
     prompt_template_has_args,
     substitute_prompt_template_args,

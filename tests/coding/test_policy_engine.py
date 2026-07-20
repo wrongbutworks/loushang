@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def test_policy_decision_helpers_cover_allow_deny_and_ask() -> None:
-    from loushang.coding.policy.types import PolicyDecision
+    from loushang.harness.policy import PolicyDecision
 
     assert PolicyDecision.allow() == PolicyDecision(disposition="allow", reason=None)
     assert PolicyDecision.deny("blocked") == PolicyDecision(

@@ -29,10 +29,10 @@ summary type, own UI rendering state, or call an AI provider.
 
 ## Coding Adapter
 
-Coding now imports the common context contracts and session lifecycle events
-from `loushang.harness.extensions.context`. Its `coding.extensions.types`
-module is a compatibility re-export only; it no longer defines a parallel
-context protocol, lifecycle record family, or runtime-binding subclass.
+Coding imports the common context contracts and session lifecycle events from
+`loushang.harness.extensions.context`. The legacy `coding.extensions.types`
+module is removed; Coding does not define a parallel context protocol,
+lifecycle record family, or runtime-binding subclass.
 
 Coding retains:
 

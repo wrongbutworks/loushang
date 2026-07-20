@@ -6,6 +6,7 @@ from pathlib import Path
 from loushang.ai.model import (
     Endpoint,
     Model,
+    ModelSelection,
     Provider,
     load_builtin_model_registry,
     load_model_registry_from_directory,
@@ -17,7 +18,6 @@ from loushang.ai.model.registry import (
     get_default_model_registry,
     resolve_model_ref,
 )
-from loushang.coding.types import ModelSelection
 from loushang.observability import get_log
 
 log = get_log(__name__).bind(component="ModelRegistry")

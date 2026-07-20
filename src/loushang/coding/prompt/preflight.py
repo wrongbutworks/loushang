@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
-from loushang.coding.commands.slash import split_slash_command
+from loushang.harness.capabilities.commands import split_slash_command
 from loushang.harness.capabilities.prompt import (
     DEFAULT_PROMPT_TEMPLATE_EXPANDER,
     PromptTemplateExpander,

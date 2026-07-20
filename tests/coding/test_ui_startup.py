@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from loushang.coding.types import ModelSelection
+from loushang.ai.model import ModelSelection
 
 
 def test_load_coding_tui_startup_view_resolves_model_and_session_metadata() -> None:

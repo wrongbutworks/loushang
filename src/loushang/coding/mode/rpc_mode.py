@@ -9,6 +9,7 @@ from math import isfinite
 from pathlib import Path
 from typing import Any, NotRequired, Required, TextIO, TypedDict, cast
 
+from loushang.ai.model import ModelSelection
 from loushang.channel import (
     JsonlCommand,
     JsonlCommandHost,
@@ -36,7 +37,6 @@ from loushang.coding.event import (
 )
 from loushang.coding.mode.base import ModeAdapter, ModeState
 from loushang.coding.mode.rpc_json import project_rpc_value
-from loushang.coding.types import ModelSelection
 from loushang.harness.agent_transcript import (
     SessionQuery,
     create_agent_transcript_message_codec,

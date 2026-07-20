@@ -741,10 +741,10 @@ def test_register_builtin_tools_forwards_external_tool_policy_to_read_only_tools
 def test_bash_tool_uses_policy_and_exec(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.policy.types import PolicyDecision
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -789,10 +789,10 @@ def test_bash_tool_uses_policy_and_exec(tmp_path) -> None:
 def test_bash_tool_does_not_double_invoke_policy_for_builtin_engines(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.policy.types import PolicyDecision
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -832,10 +832,10 @@ def test_bash_tool_does_not_double_invoke_policy_for_builtin_engines(tmp_path) -
 def test_bash_tool_accepts_pi_style_shell_command_string(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.policy.types import PolicyDecision
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -892,7 +892,7 @@ def test_bash_tool_applies_prefix_shell_path_and_spawn_hook(tmp_path) -> None:
     import asyncio
     from dataclasses import replace
 
-    from loushang.coding.policy.types import PolicyDecision
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace import (
         BashSpawnContext,
         create_bash_tool_definition,
@@ -962,7 +962,7 @@ def test_bash_tool_applies_prefix_shell_path_and_spawn_hook(tmp_path) -> None:
 def test_bash_tool_can_execute_through_custom_operations(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.policy.types import PolicyDecision
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace import create_bash_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
     from loushang.harness.workspace.exec import ExecResult
@@ -1021,7 +1021,7 @@ def test_bash_tool_can_execute_through_custom_operations(tmp_path) -> None:
 def test_bash_tool_requests_rolling_capture_by_default(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.policy.types import PolicyDecision
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace import create_bash_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
     from loushang.harness.workspace.exec import ExecResult
@@ -1062,7 +1062,7 @@ def test_bash_tool_requests_rolling_capture_by_default(tmp_path) -> None:
 def test_bash_tool_accepts_pi_style_request_aliases(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.policy.types import PolicyDecision
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace import create_bash_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
     from loushang.harness.workspace.exec import ExecResult
@@ -1119,7 +1119,7 @@ def test_bash_tool_rejects_conflicting_alias_parameters(tmp_path) -> None:
 
     import pytest
 
-    from loushang.coding.policy.types import PolicyDecision
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace import create_bash_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
     from loushang.harness.workspace.exec import ExecResult
@@ -1187,7 +1187,7 @@ def test_bash_tool_rejects_runtime_values_that_do_not_match_schema() -> None:
 
     import pytest
 
-    from loushang.coding.policy.types import PolicyDecision
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace import create_bash_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
     from loushang.harness.workspace.exec import ExecResult
@@ -1241,10 +1241,10 @@ def test_bash_tool_rejects_runtime_values_that_do_not_match_schema() -> None:
 def test_bash_tool_truncates_large_output_with_shared_tail_policy(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.policy.types import PolicyDecision
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -1295,7 +1295,7 @@ def test_bash_tool_truncates_large_output_with_shared_tail_policy(tmp_path) -> N
 def test_bash_tool_preserves_interleaved_stdout_and_stderr_output(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.policy.types import PolicyDecision
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace import create_bash_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
     from loushang.harness.workspace.exec import ExecOutputChunk, ExecResult
@@ -1344,7 +1344,7 @@ def test_bash_tool_error_message_preserves_interleaved_stdout_and_stderr(
 
     import pytest
 
-    from loushang.coding.policy.types import PolicyDecision
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace import create_bash_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
     from loushang.harness.workspace.exec import ExecOutputChunk, ExecResult
@@ -1391,7 +1391,7 @@ def test_bash_tool_rolling_artifact_details_count_full_output(tmp_path) -> None:
     import asyncio
     from pathlib import Path
 
-    from loushang.coding.policy.types import PolicyDecision
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace import create_bash_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
@@ -1443,7 +1443,7 @@ def test_bash_tool_rolling_artifact_details_count_full_output(tmp_path) -> None:
 def test_bash_tool_returns_no_output_placeholder(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.policy.types import PolicyDecision
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace import create_bash_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
     from loushang.harness.workspace.exec import ExecResult
@@ -1481,7 +1481,7 @@ def test_bash_tool_raises_for_nonzero_exit_code_with_buffered_output(tmp_path) -
 
     import pytest
 
-    from loushang.coding.policy.types import PolicyDecision
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace import create_bash_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
     from loushang.harness.workspace.exec import ExecResult
@@ -1579,11 +1579,11 @@ def test_bash_tool_policy_decisions_do_not_record_runtime_diagnostics(tmp_path) 
 
     import pytest
 
-    from loushang.coding.policy.types import PolicyDecision
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -1637,11 +1637,11 @@ def test_bash_tool_exec_timeout_does_not_record_runtime_diagnostics(tmp_path) ->
 
     import pytest
 
-    from loushang.coding.policy.types import PolicyDecision
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -1738,9 +1738,9 @@ def test_bash_tool_exec_exception_does_not_record_runtime_diagnostics_and_rerais
 ) -> None:
     import asyncio
 
-    from loushang.coding.policy.types import PolicyDecision
     from loushang.coding.tool_pack import register_coding_builtin_tools
     from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
     class AllowingPolicyEngine:

@@ -2872,8 +2872,8 @@ def test_run_cli_reports_list_sessions_with_unprintable_fields(tmp_path) -> None
 def test_run_cli_dispatches_print_mode_with_restored_session_and_model_override(
     tmp_path,
 ) -> None:
+    from loushang.ai.model import ModelSelection
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.types import ModelSelection
 
     runtime = FakeRuntime(FakeSession("session-1"))
     print_runner = FakeRunner()
@@ -2919,8 +2919,8 @@ def test_run_cli_dispatches_print_mode_with_restored_session_and_model_override(
 
 
 def test_run_cli_accepts_explicit_endpoint_model_override(tmp_path) -> None:
+    from loushang.ai.model import ModelSelection
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.types import ModelSelection
 
     runtime = FakeRuntime(FakeSession("session-1"))
     print_runner = FakeRunner()
@@ -2954,8 +2954,8 @@ def test_run_cli_accepts_explicit_endpoint_model_override(tmp_path) -> None:
 
 
 def test_apply_model_override_persists_global_default_with_endpoint() -> None:
+    from loushang.ai.model import ModelSelection
     from loushang.coding.cli.__main__ import _apply_model_and_thinking_overrides
-    from loushang.coding.types import ModelSelection
 
     session = FakeSession("session-1")
     settings_calls: list[tuple[ModelSelection | None, str]] = []
@@ -2990,8 +2990,8 @@ def test_apply_model_override_persists_global_default_with_endpoint() -> None:
 def test_run_cli_accepts_explicit_endpoint_model_override_with_colon_endpoint(
     tmp_path,
 ) -> None:
+    from loushang.ai.model import ModelSelection
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.types import ModelSelection
 
     runtime = FakeRuntime(FakeSession("session-1"))
     print_runner = FakeRunner()
@@ -6805,7 +6805,8 @@ def test_run_cli_lists_diagnostics_as_tsv_and_returns_early(tmp_path) -> None:
 
 def test_run_cli_lists_skills_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.loader import ResourceDiagnostic, SkillDescriptor
+    from loushang.harness.resources.diagnostics import ResourceDiagnostic
+    from loushang.harness.resources.types import SkillDescriptor
 
     session = FakeSession("session-1")
     session.resource_bundle.skills = [
@@ -6880,7 +6881,9 @@ def test_run_cli_lists_skills_as_json(tmp_path) -> None:
 
 def test_run_cli_lists_project_skill_provenance_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     skill_dir = tmp_path / "skills" / "debug"
     skill_dir.mkdir(parents=True)

@@ -9,7 +9,7 @@ from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 
-from loushang.coding.types import ModelSelection
+from loushang.ai.model import ModelSelection
 from loushang.harnesstui.conversation.attachments import PromptImageAttachment
 from loushang.harnesstui.conversation.control import ConversationTextAction
 from loushang.harnesstui.testing.action_host import (

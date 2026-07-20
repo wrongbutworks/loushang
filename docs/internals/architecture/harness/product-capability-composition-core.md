@@ -88,20 +88,19 @@ Coding and future Product adapters retain:
 
 These are Product semantics or integration effects, not composition mechanics.
 
-## Coding Compatibility
+## Coding Adapters
 
-Accepted Coding imports remain available:
+Coding retains product adapters while importing shared mechanics directly:
 
-- `coding.commands.slash` re-exports the neutral parser and completion helper;
+- slash parsing and completion come from `harness.capabilities.commands`;
 - `coding.commands.types.SessionCommandDescriptor` remains a real Coding
   adapter class so runtime type checks continue to work;
-- `coding.prompt.templates` and `coding.prompt.types` preserve established
-  imports while delegating shared behavior;
+- prompt template expansion comes from `harness.capabilities.prompt`;
 - Coding controllers inject handlers, policy, materialization, diagnostics,
   and prompt projection into the Harness mechanisms.
 
-The migration must preserve existing command dispatch order, prompt output,
-tool activation behavior, and public Coding import paths.
+The migration preserves command dispatch order, prompt output, and tool
+activation behavior without retaining legacy shared-utility submodule paths.
 
 ## Import And Validation Rules
 

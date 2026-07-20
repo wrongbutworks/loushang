@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from loushang.ai.model import ModelSelection
 from loushang.ai.model.domain import (
     Capabilities,
     Endpoint,
@@ -18,18 +19,12 @@ from loushang.ai.model.domain import (
     Pricing,
 )
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.loader import (
-    PromptFragmentDescriptor,
-    ResourceBundle,
-    SkillDescriptor,
-)
 from loushang.coding.session.types import (
     AgentSessionState,
     CommandSourceInfo,
     RunState,
     SessionCommandDescriptor,
 )
-from loushang.coding.types import ModelSelection
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
     CompactionResult,
@@ -43,6 +38,11 @@ from loushang.harness.diagnostics import (
     ErrorReport,
 )
 from loushang.harness.events import RuntimeEvent
+from loushang.harness.resources.types import (
+    PromptFragmentDescriptor,
+    ResourceBundle,
+    SkillDescriptor,
+)
 from loushang.harness.runtime import SessionOperationResult
 
 

@@ -34,16 +34,17 @@ from loushang.coding.event import (
     project_runtime_event_to_session_event,
 )
 from loushang.coding.extensions import ExtensionRunner
-from loushang.coding.loader import DefaultResourceLoader
-from loushang.coding.package.materializer import (
-    PackageMaterializer,
-    PackageProgressEvent,
-)
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
 from loushang.coding.platform.session_projection import (
     project_pi_session_stats,
 )
 from loushang.coding.policy import InteractiveApprovalResolver
+from loushang.coding.resource_runtime import (
+    CodingPackageMaterializer as PackageMaterializer,
+)
+from loushang.coding.resource_runtime import (
+    CodingResourceLoader as DefaultResourceLoader,
+)
 from loushang.coding.session.bash_controller import BashController
 from loushang.coding.session.builtin_commands import (
     BuiltinCommandBackend,
@@ -122,6 +123,7 @@ from loushang.harness.extensions.context import (
 from loushang.harness.extensions.session_runtime import ExtensionSessionRuntime
 from loushang.harness.host.retry import RetryPolicy
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.packages.materializer import PackageProgressEvent
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,

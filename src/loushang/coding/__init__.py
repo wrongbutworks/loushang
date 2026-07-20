@@ -1,3 +1,4 @@
+from loushang.ai.model import ModelSelection
 from loushang.coding.bootstrap import (
     AgentSessionServices,
     BootstrapServices,
@@ -20,12 +21,6 @@ from loushang.coding.control import (
     ToolSettings,
 )
 from loushang.coding.event import AgentSessionEvent, JsonEventView, select_events
-from loushang.coding.loader import (
-    DefaultResourceLoader,
-    ResourceBundle,
-    ResourceSnapshot,
-    ThemeDescriptor,
-)
 from loushang.coding.mode import (
     ModeAction,
     ModeActionType,
@@ -42,15 +37,6 @@ from loushang.coding.mode import (
     run_print_mode,
     run_rpc_mode,
 )
-from loushang.coding.plugin import (
-    InstalledPlugin,
-    PluginManager,
-    PluginManifest,
-    PluginRegistry,
-    PluginResolvedResources,
-    PluginResolver,
-    PluginSource,
-)
 from loushang.coding.policy import (
     ApprovalDecision,
     ApprovalRequest,
@@ -62,6 +48,10 @@ from loushang.coding.policy import (
     PolicyEnforcementError,
 )
 from loushang.coding.prompt import assemble_system_prompt
+from loushang.coding.resource_runtime import (
+    CodingResourceLoader as DefaultResourceLoader,
+)
+from loushang.coding.resource_runtime import CodingSkillLoader as SkillLoader
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.sdk_surface import (
     SdkSurfaceCompatibilityReport,
@@ -78,7 +68,6 @@ from loushang.coding.session import (
     TokenUsageTotals,
     TreeNavigationResult,
 )
-from loushang.coding.skill import SkillLoader
 from loushang.coding.store import SessionManager
 from loushang.coding.tool_pack import (
     CODING_BUILTIN_TOOL_NAMES,
@@ -89,7 +78,6 @@ from loushang.coding.tool_pack import (
     create_coding_tools,
     register_coding_builtin_tools,
 )
-from loushang.coding.types import ModelSelection
 
 __all__ = [
     "AgentSession",
@@ -114,15 +102,8 @@ __all__ = [
     "ExtensionFlagValues",
     "HeadlessApprovalResolver",
     "HeadlessApprovalMode",
-    "InstalledPlugin",
     "ModelRegistry",
     "ModelSelection",
-    "PluginManager",
-    "PluginManifest",
-    "PluginRegistry",
-    "PluginResolvedResources",
-    "PluginResolver",
-    "PluginSource",
     "PackageSecurityPolicy",
     "PackageSourceSecurityReport",
     "PolicyDecision",
@@ -136,10 +117,7 @@ __all__ = [
     "ModeConfig",
     "ModeName",
     "ModeState",
-    "ResourceBundle",
-    "ResourceSnapshot",
     "ToolSettings",
-    "ThemeDescriptor",
     "TreeNavigationResult",
     "SessionManager",
     "SdkSurfaceCompatibilityReport",

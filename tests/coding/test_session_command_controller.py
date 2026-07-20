@@ -10,15 +10,15 @@ from loushang.coding.extensions import (
     LoadedExtension,
     RegisteredCommand,
 )
-from loushang.coding.loader import (
-    PromptFragmentDescriptor,
-    ResourceBundle,
-    SkillDescriptor,
-)
 from loushang.coding.session.builtin_commands import BuiltinCommandBackend
 from loushang.coding.session.command_controller import CommandController
 from loushang.coding.store import SessionManager
 from loushang.harness.diagnostics import DiagnosticsService
+from loushang.harness.resources.types import (
+    PromptFragmentDescriptor,
+    ResourceBundle,
+    SkillDescriptor,
+)
 from loushang.tui.clipboard import ClipboardCopyResult
 
 

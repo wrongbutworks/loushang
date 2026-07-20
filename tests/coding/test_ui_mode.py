@@ -5,7 +5,7 @@ from io import StringIO
 from types import SimpleNamespace
 
 from loushang.ai import Model
-from loushang.coding.types import ModelSelection
+from loushang.ai.model import ModelSelection
 
 
 class _TTYStringIO(StringIO):
