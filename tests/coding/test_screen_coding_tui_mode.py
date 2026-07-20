@@ -68,6 +68,11 @@ class _Session:
         self.session_manager = SimpleNamespace(
             get_cwd=lambda: "/repo",
             get_session_file=lambda: Path("/tmp/254d6156.jsonl"),
+            get_branch=lambda: list(self.context_messages),
+        )
+        self.keybindings = {"tui.input.submit": ("enter", "ctrl+j")}
+        self.settings_manager = SimpleNamespace(
+            get_keybindings=lambda: self.keybindings,
         )
         self.current_model: object = ModelSelection(
             provider="unknown", model_id="unknown"
@@ -99,6 +104,9 @@ class _Session:
 
     def get_available_model_details(self) -> list[Model]:
         return self.model_details
+
+    def get_tool_definition(self, _name: str) -> None:
+        return None
 
     async def set_model(self, selection: object) -> None:
         if isinstance(selection, Model):
@@ -208,6 +216,7 @@ def test_run_coding_tui_interactive_uses_screen_loop(monkeypatch) -> None:
     ]
     assert exit_code == 0
     assert session.prompts == ["hello"]
+    assert captured["keybindings"] == session.keybindings
     assert assistant_records[-1].text == "hello back"
 
 

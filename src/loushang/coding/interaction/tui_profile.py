@@ -20,6 +20,7 @@ from loushang.coding.interaction.intent import (
     SettingsIntent,
     parse_prompt_intent,
 )
+from loushang.harnesstui.commands.source import materialize_command_items
 from loushang.harnesstui.conversation.action_presentation import (
     ConversationActionPresentationCopy,
 )
@@ -144,6 +145,12 @@ class CodingTuiProfile:
                 effect=effect.kind.value,
             )
         return ConversationHostDecision(ConversationHostRoute.LOCAL, local=action)
+
+
+async def snapshot_coding_command_catalog(session: object) -> CodingCommandCatalog:
+    getter = getattr(session, "list_commands", None)
+    items = await materialize_command_items(getter if callable(getter) else None)
+    return CodingCommandCatalog(session_commands=lambda: items)
 
 
 _PRESENTATION = {

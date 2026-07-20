@@ -185,7 +185,7 @@ def test_build_plain_coding_tui_app_wires_command_palette_chooser() -> None:
         session_id = "sid"
         session_name = "session-name"
 
-        def list_commands(self) -> list[object]:
+        async def list_commands(self) -> list[object]:
             return [SimpleNamespace(name="demo", description="Demo command")]
 
     class Renderer:

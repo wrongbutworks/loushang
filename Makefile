@@ -20,6 +20,8 @@ AI_OFFLINE_ENV := env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_
 HARNESSTUI_SHARED_SOURCES := \
 	src/loushang/harness/command_composition.py \
 	src/loushang/harness/host/types.py \
+	src/loushang/harness/workspace/git.py \
+	src/loushang/tui/clipboard.py \
 	src/loushang/tui/clipboard_image.py \
 	src/loushang/tui/launch.py \
 	src/loushang/tui/playback_suite.py \
@@ -30,12 +32,12 @@ HARNESSTUI_SHARED_SOURCES := \
 	src/loushang/harnesstui
 HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/platform/__init__.py \
-	src/loushang/coding/platform/clipboard_image.py \
+	src/loushang/coding/platform/footer_data_provider.py \
+	src/loushang/coding/session/builtin_commands.py \
 	src/loushang/coding/ui
 HARNESSTUI_TEST_SUPPORT := \
 	tests/coding/tui_support
 CODING_TUI_PRODUCT_SOURCES := \
-	src/loushang/coding/commands/tui.py \
 	src/loushang/coding/model_selection_tui.py \
 	src/loushang/coding/model_selection.py \
 	src/loushang/coding/prompt_command.py \
@@ -52,7 +54,9 @@ CODING_TUI_PRODUCT_SOURCES := \
 	src/loushang/coding/presentation/tui
 HARNESSTUI_TEST_PATHS := \
 	tests/harness/test_command_composition.py \
+	tests/harness/workspace/test_git.py \
 	tests/harnesstui \
+	tests/tui/test_clipboard.py \
 	tests/tui/test_clipboard_image.py \
 	tests/tui/test_import_boundaries.py \
 	tests/tui/test_launch.py \
@@ -60,7 +64,10 @@ HARNESSTUI_TEST_PATHS := \
 	tests/tui/test_settings.py \
 	tests/tui/test_terminal_diagnostics.py \
 	tests/tui/test_transcript_region.py \
+	tests/architecture/test_coding_wave_a_budget.py \
 	tests/architecture/test_import_boundaries.py \
+	tests/coding/test_footer_data_provider.py \
+	tests/coding/test_platform_text_utilities.py \
 	tests/coding/test_platform_utils.py \
 	tests/coding/test_prompt_command.py \
 	tests/coding/test_screen_conversation_action_host.py \
@@ -71,7 +78,6 @@ HARNESSTUI_TEST_PATHS := \
 	tests/coding/test_ui_startup.py \
 	tests/coding/test_ui_steer.py \
 	tests/coding/test_ui_import_boundaries.py \
-	tests/coding/test_tui_runtime_adapters.py \
 	tests/coding/test_screen_coding_tui_app.py \
 	tests/coding/test_screen_coding_tui_events.py \
 	tests/coding/test_screen_coding_tui_input.py \
@@ -84,8 +90,8 @@ HARNESSTUI_TEST_PATHS := \
 	tests/coding/test_screen_settings_page.py \
 	tests/coding/test_screen_tui_playback_harness.py \
 	tests/coding/test_screen_tui_playback_runner.py \
+	tests/coding/test_session_command_controller.py \
 	tests/coding/test_tool_transcript_blocks.py \
-	tests/coding/test_ui_command_list.py \
 	tests/coding/test_ui_completion.py \
 	tests/coding/test_ui_conversation_event_adapter.py \
 	tests/coding/test_ui_model_list.py \
@@ -150,7 +156,7 @@ test-tui:
 	. .venv/bin/activate && python -m pytest tests/tui -q
 
 test-tui-render-contract:
-	uv --cache-dir .uv-cache run pytest tests/tui tests/harnesstui tests/coding -m tui_render_contract -q
+	uv --cache-dir .uv-cache run --extra dev pytest tests/tui tests/harnesstui tests/coding -m tui_render_contract -q
 
 lint-ai:
 	. .venv/bin/activate && uv run ruff check src/loushang/ai examples/ai tests/ai tests/protocols scripts/ai

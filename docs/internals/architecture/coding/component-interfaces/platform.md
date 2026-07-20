@@ -2,29 +2,22 @@
 
 ## Role
 
-- host platform helpers used by coding CLI/TUI/runtime surfaces
-- thin boundary for terminal, text clipboard, git, stdout, version, and footer helper behavior
+- Coding-owned host policy and projections used by CLI/TUI/runtime surfaces
+- thin boundary for stdout, version, changelog, and footer behavior
 
 ## Owns
 
-- clipboard text helpers
-- compatibility aliases for TUI-owned clipboard-image acquisition
 - stdout takeover/restore guard
-- git branch helper
 - changelog/version lookup helpers
 - footer data provider projection helpers
 
 ## Depends On
 
-- host OS services
-- filesystem
-- git executable or repository metadata when available
-- `loushang.tui.clipboard_image` for legacy image-clipboard exports
+- `loushang.harness.workspace.git` for repository metadata
+- host OS and filesystem services used by the remaining Coding policy
 
 ## Commands
 
-- `copy_to_clipboard(...)`
-- `read_clipboard_image(...)` compatibility alias
 - `take_over_stdout(...)`
 - `restore_stdout(...)`
 - `write_raw_stdout(...)`
@@ -33,7 +26,6 @@
 ## Queries
 
 - `is_stdout_taken_over()`
-- `get_git_branch(...)`
 - `check_for_new_loushang_version(...)`
 - `parse_changelog(...)`
 - `footer_snapshot_to_mapping(...)`
@@ -44,8 +36,6 @@
 
 ## Key Data
 
-- `ClipboardCopyResult`
-- `ClipboardImage` compatibility alias
 - `ChangelogEntry`
 - `FooterSnapshot`
 - `FooterDataProvider`
@@ -54,13 +44,15 @@
 
 - mode lifecycle
 - TUI rendering policy
+- text clipboard copying, owned by `loushang.tui.clipboard`
 - clipboard-image acquisition, MIME normalization, and attachment adaptation
+- Git repository discovery, owned by `loushang.harness.workspace.git`
 - filesystem permission policy
 - session state
 
 ## Reference Implementation Alignment
 
-- Keeps platform-specific helpers outside session/runtime business logic.
-- Allows CLI/TUI/RPC surfaces to share host capability helpers without making `utils` a hidden business layer.
-- New code imports clipboard-image acquisition from `loushang.tui.clipboard_image`;
-  the Coding exports remain compatibility aliases.
+- Keeps Coding platform policy outside session/runtime business logic.
+- Internal callers import shared Git and clipboard capabilities directly from
+  their canonical Harness or TUI owners.
+- The retired Coding Git and clipboard paths have no compatibility aliases.

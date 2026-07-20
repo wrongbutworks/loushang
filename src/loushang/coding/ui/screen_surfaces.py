@@ -4,10 +4,6 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from loushang.coding.commands.catalog import CodingCommandCatalog
-from loushang.coding.commands.tui import (
-    coding_command_palette,
-    format_coding_commands,
-)
 from loushang.coding.interaction.intent import (
     CommandSelectIntent,
     CommandsIntent,
@@ -18,6 +14,7 @@ from loushang.coding.interaction.intent import (
     TerminalDiagnosticsIntent,
     parse_prompt_intent,
 )
+from loushang.coding.interaction.tui_profile import snapshot_coding_command_catalog
 from loushang.coding.model_selection import (
     get_session_model_selection,
     iter_scoped_model_selections,
@@ -34,6 +31,10 @@ from loushang.coding.ui.hotkeys import format_hotkeys
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.settings_page import build_coding_settings_page
 from loushang.harness.commands import CommandDef
+from loushang.harnesstui.commands.presentation import (
+    command_palette,
+    format_commands,
+)
 from loushang.harnesstui.selection.catalog import (
     model_choice_select_items,
     model_label_select_items,
@@ -69,6 +70,7 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         self.session = session
         self.status_provider = status_provider
         self.on_approval = on_approval
+        self._command_catalog_override = command_catalog
         self.command_catalog = command_catalog or CodingCommandCatalog(
             session_commands=_session_commands_provider(session)
         )
@@ -113,13 +115,6 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             raise TypeError("Coding surface manager requires ScreenCodingTuiApp")
         return app
 
-    def _list_command_catalog(self) -> CodingCommandCatalog | None:
-        return (
-            self.command_catalog
-            if isinstance(self.command_catalog, CodingCommandCatalog)
-            else None
-        )
-
     async def _decide_approval(
         self, payload: ApprovalSurfaceDecision | None = None
     ) -> bool | None:
@@ -139,23 +134,25 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         return await format_available_models(self.session, query=query)
 
     async def _format_commands(self, query: str) -> str:
-        return await format_coding_commands(
-            self.session,
-            query=query,
-            command_catalog=self._list_command_catalog(),
-        )
+        catalog = await self._presentation_command_catalog()
+        return format_commands(catalog.commands(), query=query)
 
     async def _build_command_selector(self) -> ScreenSurfaceView:
+        catalog = await self._presentation_command_catalog()
         return command_palette_surface_view(
-            await coding_command_palette(
-                self.session,
+            command_palette(
+                catalog.commands(),
                 title="Commands",
-                command_catalog=self._list_command_catalog(),
             ),
             title="Commands",
             purpose="command",
             max_visible=8,
         )
+
+    async def _presentation_command_catalog(self) -> ScreenSurfaceCommandCatalog:
+        if self._command_catalog_override is not None:
+            return self._command_catalog_override
+        return await snapshot_coding_command_catalog(self.session)
 
     async def _build_model_selector(self) -> ScreenSurfaceView:
         current_label = model_label_from_selection(

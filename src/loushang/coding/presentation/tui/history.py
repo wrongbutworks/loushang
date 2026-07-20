@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from functools import partial
 from pathlib import Path
-from typing import Any
 
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
 from loushang.coding.presentation.tui.tool_transcript import (
@@ -26,15 +26,12 @@ from loushang.harness.agent_transcript import (
     ApplicationMessage,
 )
 from loushang.harness.conversation import CommandExecutionRecord
+from loushang.harness.presentation import ToolDefinitionResolver
 from loushang.harnesstui.conversation.history import (
     ConversationHistoryProjector,
     HistoryRecordDisposition,
     project_context_branch_summary_payload,
     project_context_compaction_payload,
-)
-from loushang.harnesstui.conversation.screen_state import ScreenConversationState
-from loushang.harnesstui.conversation.source import (
-    MaterializedTranscriptSource,
 )
 from loushang.tui.transcript import (
     AssistantMessageRecord,
@@ -60,12 +57,12 @@ if set(TUI_TRANSCRIPT_DISPOSITIONS) != set(STANDARD_AGENT_TRANSCRIPT_KINDS):
 
 
 def session_history_records(
-    session: Any,
+    branch_items: Iterable[object],
     *,
-    tool_definition_resolver: Any | None = None,
+    tool_definition_resolver: ToolDefinitionResolver | None = None,
     max_tool_body_lines: int = 8,
 ) -> tuple[DisplayRecord, ...]:
-    transcript_items = _session_transcript_items(session)
+    transcript_items = tuple(branch_items)
     if not transcript_items:
         return ()
     tool_projector = build_coding_tool_transcript_projection(
@@ -89,23 +86,15 @@ def session_history_records(
 async def load_persisted_session_history_records(
     session_file: str | Path,
     *,
-    tool_definition_resolver: Any | None = None,
+    tool_definition_resolver: ToolDefinitionResolver | None = None,
 ) -> tuple[DisplayRecord, ...]:
     """Load a persisted Coding session into terminal transcript records."""
 
     manager = await SessionManager.load(Path(session_file).expanduser().resolve())
     return session_history_records(
-        _PersistedHistorySession(manager),
+        manager.get_branch(),
         tool_definition_resolver=tool_definition_resolver,
     )
-
-
-class _PersistedHistorySession:
-    def __init__(self, manager: SessionManager) -> None:
-        self.session_manager = manager
-
-    def get_session_context(self):
-        return self.session_manager.build_session_context()
 
 
 def _message_record(
@@ -125,42 +114,6 @@ def _message_record(
         text = _text_from_content(message.content).strip()
         return AssistantMessageRecord(text, stable=True) if text else None
     return None
-
-
-def _session_transcript_items(session: Any) -> list[object]:
-    manager = _safe_getattr(session, "session_manager", None)
-    get_branch = _safe_getattr(manager, "get_branch", None)
-    if callable(get_branch):
-        try:
-            records = get_branch()
-        except Exception:
-            records = None
-        if isinstance(records, list):
-            return list(records)
-    context_getter = getattr(session, "get_session_context", None)
-    if callable(context_getter):
-        try:
-            context = context_getter()
-        except Exception:
-            context = None
-        messages = _safe_getattr(context, "messages", None)
-        if isinstance(messages, list | tuple):
-            return list(messages)
-    messages = _safe_getattr(session, "messages", None)
-    if isinstance(messages, list):
-        return list(messages)
-    agent_state = _safe_getattr(_safe_getattr(session, "agent", None), "state", None)
-    messages = _safe_getattr(agent_state, "messages", None)
-    if isinstance(messages, list):
-        return list(messages)
-    return []
-
-
-def _safe_getattr(target: Any, name: str, default: object) -> object:
-    try:
-        return getattr(target, name, default)
-    except Exception:
-        return default
 
 
 def _text_from_content(content: object) -> str:
@@ -198,34 +151,7 @@ def _bash_state(command: CommandExecutionRecord):
     return "completed"
 
 
-# Transcript reader sources intentionally separate three data shapes:
-# - active window: bounded UI records plus current assistant draft.
-# - session history: full materialized session projection.
-# - session + live window: full history with active UI-only suffix records.
-class SessionTranscriptSource(MaterializedTranscriptSource):
-    """Bind Coding session materialization to the shared transcript source."""
-
-    def __init__(
-        self,
-        session: Any,
-        tool_definition_resolver: Any | None = None,
-        max_tool_body_lines: int = 8,
-        source_label: str = "Full transcript",
-        active_window_state: ScreenConversationState | None = None,
-    ) -> None:
-        super().__init__(
-            materialize_records=lambda: session_history_records(
-                session,
-                tool_definition_resolver=tool_definition_resolver,
-                max_tool_body_lines=max_tool_body_lines,
-            ),
-            source_label=source_label,
-            active_window_state=active_window_state,
-        )
-
-
 __all__ = [
-    "SessionTranscriptSource",
     "load_persisted_session_history_records",
     "session_history_records",
 ]

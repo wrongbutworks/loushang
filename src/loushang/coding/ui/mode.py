@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterable
 from functools import partial
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, Protocol, TextIO, cast
 
 from loushang.coding.interaction.controller import CodingUiController
 from loushang.coding.interaction.intent import QuitIntent, parse_prompt_intent
@@ -24,18 +25,11 @@ from loushang.coding.presentation.session import (
     thinking_level,
 )
 from loushang.coding.presentation.tui.history import (
-    SessionTranscriptSource,
     session_history_records,
 )
 from loushang.coding.presentation.tui.plain import (
     PlainCodingUiRenderer,
     build_plain_coding_event_projection,
-)
-from loushang.coding.presentation.tui.runtime import (
-    pending_followups_reader,
-    pending_steers_reader,
-    session_keybindings,
-    tool_definition_resolver,
 )
 from loushang.coding.presentation.tui.screen import (
     build_screen_coding_event_projection,
@@ -46,6 +40,7 @@ from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_input import CODING_SCREEN_RUN_PROFILE
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.coding.ui.startup import load_coding_tui_startup_view
+from loushang.harness.presentation import RenderableToolDefinition
 from loushang.harnesstui.conversation.application_host import (
     InstalledConversationHistory,
     PreparedPlainConversationRun,
@@ -58,6 +53,8 @@ from loushang.harnesstui.conversation.host import (
 )
 from loushang.harnesstui.conversation.resume import write_clean_exit_resume_hint
 from loushang.harnesstui.conversation.run_context import StableEmit
+from loushang.harnesstui.conversation.runtime_view import stable_string_queue_reader
+from loushang.harnesstui.conversation.source import MaterializedTranscriptSource
 from loushang.harnesstui.conversation.startup import ConversationStartupView
 from loushang.harnesstui.status.persistence import (
     statusline_settings_from_store,
@@ -66,10 +63,30 @@ from loushang.harnesstui.status.persistence import (
 from loushang.harnesstui.status.provider import StatusProvider
 from loushang.observability import get_log, log_context
 from loushang.tui import CompletionProvider
+from loushang.tui.keybindings import KeybindingConfig
 from loushang.tui.launch import TuiLaunchProfile, run_tui_launch_shell
 from loushang.tui.prompt import run_non_interactive_prompt_loop
+from loushang.tui.transcript import DisplayRecord
 
 log = get_log(__name__).bind(component="CodingUiMode")
+
+
+class _TranscriptBranchPort(Protocol):
+    def get_branch(self) -> Iterable[object]: ...
+
+
+class _SettingsKeybindingsPort(Protocol):
+    def get_keybindings(self) -> KeybindingConfig: ...
+
+
+class _CodingTuiSessionPort(Protocol):
+    @property
+    def session_manager(self) -> _TranscriptBranchPort: ...
+    @property
+    def settings_manager(self) -> _SettingsKeybindingsPort | None: ...
+    def get_tool_definition(self, name: str) -> RenderableToolDefinition | None: ...
+    def get_steering_messages(self) -> object: ...
+    def get_follow_up_messages(self) -> object: ...
 
 
 async def run_coding_tui(
@@ -119,6 +136,7 @@ async def _run_screen_interactive_tui(
     stderr: TextIO,
     verbose: bool,
 ) -> int:
+    session_port = cast(_CodingTuiSessionPort, session)
     snapshot = await load_coding_tui_startup_view(runtime=runtime, session=session)
     app = ScreenCodingTuiApp(
         model_label=snapshot.model_label,
@@ -127,13 +145,15 @@ async def _run_screen_interactive_tui(
         session_label=snapshot.session_label,
         now=time.monotonic,
     )
-    tool_resolver = tool_definition_resolver(session)
-    history_records = tuple(
-        session_history_records(
-            session,
+    tool_resolver = session_port.get_tool_definition
+
+    def materialize_history() -> tuple[DisplayRecord, ...]:
+        return session_history_records(
+            session_port.session_manager.get_branch(),
             tool_definition_resolver=tool_resolver,
         )
-    )
+
+    history_records = materialize_history()
     completion_provider = await _load_completion_provider(
         session, base_path=Path(snapshot.cwd)
     )
@@ -145,7 +165,7 @@ async def _run_screen_interactive_tui(
         verbose=verbose,
     )
 
-    settings_manager = getattr(session, "settings_manager", None)
+    settings_manager = session_port.settings_manager
     status_provider = StatusProvider(
         model_label=snapshot.model_label,
         cwd=snapshot.cwd,
@@ -174,8 +194,12 @@ async def _run_screen_interactive_tui(
             build_screen_coding_event_projection(
                 app,
                 tool_definition_resolver=tool_resolver,
-                read_pending_steers=pending_steers_reader(session),
-                read_pending_followups=pending_followups_reader(session),
+                read_pending_steers=stable_string_queue_reader(
+                    session_port.get_steering_messages
+                ),
+                read_pending_followups=stable_string_queue_reader(
+                    session_port.get_follow_up_messages
+                ),
                 now=time.monotonic,
             ).handle
         ),
@@ -187,11 +211,14 @@ async def _run_screen_interactive_tui(
         profile=CODING_SCREEN_RUN_PROFILE,
         should_exit=_screen_should_exit,
         trace=_trace,
-        keybindings=session_keybindings(session),
+        keybindings=(
+            settings_manager.get_keybindings()
+            if settings_manager is not None
+            else None
+        ),
         history_records=history_records,
-        transcript_source_factory=lambda: SessionTranscriptSource(
-            session,
-            tool_definition_resolver=tool_resolver,
+        transcript_source_factory=lambda: MaterializedTranscriptSource(
+            materialize_records=materialize_history,
             active_window_state=app.state,
         ),
         completion_provider=completion_provider,
@@ -229,11 +256,12 @@ async def _run_plain_tui(
     stderr: TextIO,
     verbose: bool,
 ) -> int:
+    session_port = cast(_CodingTuiSessionPort, session)
     renderer = PlainCodingUiRenderer(stdout=stdout, stderr=stderr, verbose=verbose)
     snapshot = await load_coding_tui_startup_view(runtime=runtime, session=session)
     event_renderer = build_plain_coding_event_projection(
         renderer,
-        tool_definition_resolver=tool_definition_resolver(session),
+        tool_definition_resolver=session_port.get_tool_definition,
     )
 
     def build_app(emit: StableEmit):

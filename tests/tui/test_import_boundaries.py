@@ -49,12 +49,12 @@ def test_loushang_tui_public_models_are_not_owned_by_compat_module() -> None:
 
 
 def test_import_boundary_check_does_not_replace_loaded_tui_classes() -> None:
-    import loushang.coding.commands.tui as command_list
     import loushang.coding.presentation.tui.plain as renderer
+    import loushang.harnesstui.commands.presentation as command_presentation
     from loushang.tui import CompletionProvider
     from loushang.tui.render import MarkdownBlock
 
-    original_completion_provider = command_list.CompletionProvider
+    original_completion_provider = command_presentation.CompletionProvider
     original_markdown_block = renderer.MarkdownBlock
     assert original_completion_provider is CompletionProvider
     assert original_markdown_block is MarkdownBlock

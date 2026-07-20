@@ -104,16 +104,15 @@ async def test_coding_performance_loader_adapts_persisted_session_history(
             loaded_paths.append(path)
             return cls()
 
-        def build_session_context(self) -> str:
-            return "session context"
+        def get_branch(self) -> list[str]:
+            return ["branch record"]
 
     def fake_session_history_records(
-        session: object,
+        branch_items: object,
         *,
         tool_definition_resolver: object,
     ) -> tuple[UserPromptRecord, ...]:
-        context = session.get_session_context()  # type: ignore[attr-defined]
-        projected.append((context, tool_definition_resolver))
+        projected.append((branch_items, tool_definition_resolver))
         return (UserPromptRecord("loaded"),)
 
     monkeypatch.setattr(history, "SessionManager", FakeManager)
@@ -130,5 +129,5 @@ async def test_coding_performance_loader_adapts_persisted_session_history(
     )
 
     assert loaded_paths == [session_path.resolve()]
-    assert projected == [("session context", resolver)]
+    assert projected == [(["branch record"], resolver)]
     assert records == (UserPromptRecord("loaded"),)

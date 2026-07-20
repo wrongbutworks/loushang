@@ -1,3 +1,5 @@
+"""Product-neutral Git workspace metadata discovery."""
+
 from __future__ import annotations
 
 import subprocess
@@ -22,7 +24,11 @@ class GitPaths:
 CommandRunner = Callable[..., CommandResult]
 
 
-def get_git_branch(cwd: str | Path, *, runner: CommandRunner | None = None) -> str | None:
+def get_git_branch(
+    cwd: str | Path,
+    *,
+    runner: CommandRunner | None = None,
+) -> str | None:
     git_paths = find_git_paths(cwd)
     if git_paths is None:
         return None
@@ -33,7 +39,10 @@ def get_git_branch(cwd: str | Path, *, runner: CommandRunner | None = None) -> s
     if content.startswith("ref: refs/heads/"):
         branch = content.removeprefix("ref: refs/heads/")
         if branch == ".invalid":
-            return _resolve_branch_with_git(git_paths.repo_dir, runner=runner) or "detached"
+            return (
+                _resolve_branch_with_git(git_paths.repo_dir, runner=runner)
+                or "detached"
+            )
         return branch
     return "detached"
 
@@ -64,22 +73,37 @@ def _paths_from_git_path(repo_dir: Path, git_path: Path) -> GitPaths | None:
                 return None
             common_dir_path = git_dir / "commondir"
             common_git_dir = (
-                (git_dir / common_dir_path.read_text(encoding="utf-8").strip()).resolve()
+                (
+                    git_dir
+                    / common_dir_path.read_text(encoding="utf-8").strip()
+                ).resolve()
                 if common_dir_path.exists()
                 else git_dir
             )
-            return GitPaths(repo_dir=repo_dir, common_git_dir=common_git_dir, head_path=head_path)
+            return GitPaths(
+                repo_dir=repo_dir,
+                common_git_dir=common_git_dir,
+                head_path=head_path,
+            )
         if git_path.is_dir():
             head_path = git_path / "HEAD"
             if not head_path.exists():
                 return None
-            return GitPaths(repo_dir=repo_dir, common_git_dir=git_path, head_path=head_path)
+            return GitPaths(
+                repo_dir=repo_dir,
+                common_git_dir=git_path,
+                head_path=head_path,
+            )
     except OSError:
         return None
     return None
 
 
-def _resolve_branch_with_git(repo_dir: Path, *, runner: CommandRunner | None = None) -> str | None:
+def _resolve_branch_with_git(
+    repo_dir: Path,
+    *,
+    runner: CommandRunner | None = None,
+) -> str | None:
     command_runner = _run_command if runner is None else runner
     result = command_runner(
         "git",
@@ -90,7 +114,12 @@ def _resolve_branch_with_git(repo_dir: Path, *, runner: CommandRunner | None = N
     return branch or None
 
 
-def _run_command(command: str, args: tuple[str, ...], *, cwd: Path) -> CommandResult:
+def _run_command(
+    command: str,
+    args: tuple[str, ...],
+    *,
+    cwd: Path,
+) -> CommandResult:
     try:
         result = subprocess.run(
             [command, *args],

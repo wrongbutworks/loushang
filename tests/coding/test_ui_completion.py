@@ -37,6 +37,12 @@ class _SessionWithQuit(_SessionWithCwd):
         ]
 
 
+class _AsyncSession(_Session):
+    async def list_commands(self) -> list[object]:
+        await asyncio.sleep(0)
+        return [SimpleNamespace(name="inspect", description="Inspect asynchronously")]
+
+
 def test_coding_completion_host_ignores_plain_prompts() -> None:
     from loushang.coding.ui.completion import coding_completion_host
 
@@ -59,6 +65,14 @@ def test_coding_completion_host_lists_matching_slash_commands() -> None:
             value="/models", label="/models", description="List models (builtin)"
         ),
     )
+
+
+def test_coding_completion_host_awaits_session_command_source() -> None:
+    from loushang.coding.ui.completion import coding_completion_host
+
+    completions = asyncio.run(coding_completion_host(_AsyncSession()).complete("/ins"))
+
+    assert "/inspect" in {item.value for item in completions}
 
 
 def test_coding_completion_host_lists_local_commands_missing_from_session() -> None:
