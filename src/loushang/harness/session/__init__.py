@@ -74,6 +74,13 @@ from loushang.harness.session.lifecycle import (
     TransitionCandidateCallback,
     TransitionReleaseCallback,
 )
+from loushang.harness.session.operations import (
+    SessionOperationAvailability,
+    SessionOperationCapability,
+    SessionOperationRuntime,
+    SessionOperationUnavailableError,
+    SessionPromptRequest,
+)
 from loushang.harness.session.prompt_controller import PromptController
 from loushang.harness.session.queue_controller import QueueController
 from loushang.harness.session.resource_refresh import (
@@ -142,12 +149,17 @@ __all__ = [
     "SessionFacadePorts",
     "SessionIdentityPort",
     "SessionMaintenancePort",
+    "SessionOperationAvailability",
+    "SessionOperationCapability",
+    "SessionOperationRuntime",
+    "SessionOperationUnavailableError",
     "SessionResourcePort",
     "SessionRetryPort",
     "SessionDiagnosticScope",
     "SessionDiagnosticScopeProvider",
     "SessionDiagnosticsRuntime",
     "SessionRuntime",
+    "SessionPromptRequest",
     "SessionStats",
     "SessionResourceRefreshRuntime",
     "SessionToolRuntime",

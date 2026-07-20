@@ -28,7 +28,11 @@ from loushang.coding.event import (
     should_emit_runtime_event_view,
 )
 from loushang.harness.events import RuntimeEvent
-from loushang.harness.session import SessionControlPort
+from loushang.harness.session import (
+    SessionControlPort,
+    SessionOperationRuntime,
+    SessionPromptRequest,
+)
 
 Unsubscribe = Callable[[], None]
 
@@ -49,6 +53,7 @@ class CodingChannelOperationPort:
         if event_view not in SUPPORTED_JSON_EVENT_VIEWS:
             raise ValueError(f"unsupported json event view: {event_view}")
         self._session = session
+        self._operations = SessionOperationRuntime(session)
         self._event_view = event_view
         self._event_select = normalize_event_select(event_select)
         self._listeners: list[ChannelDeliveryListener] = []
@@ -123,7 +128,7 @@ class CodingChannelOperationPort:
                 request_id=request.request_id,
             )
         try:
-            await _maybe_await(self._session.abort())
+            await _maybe_await(self._operations.abort())
         except Exception as error:
             return ChannelError(
                 code="cancellation_rejected",
@@ -170,10 +175,12 @@ class CodingChannelOperationPort:
         streaming_behavior: str | None,
     ) -> None:
         try:
-            await self._session.prompt(
-                text,
-                streaming_behavior=streaming_behavior,
-                source="channel",
+            await self._operations.prompt(
+                SessionPromptRequest(
+                    text=text,
+                    streaming_behavior=streaming_behavior,
+                    source="channel",
+                )
             )
         except asyncio.CancelledError:
             raise

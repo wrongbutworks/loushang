@@ -28,6 +28,12 @@ maintenance controls. It intentionally excludes model selection, provider
 authentication, extension UI, Product command schemas, Bash options, and
 presentation payloads.
 
+`SessionOperationRuntime` is the capability-grouped invocation layer over a
+bound `SessionControlPort`. It makes input, queue, lifecycle, identity, retry,
+and maintenance availability explicit without defining an RPC command schema.
+Products may expose only selected groups and retain their own request/response
+mapping, task lifecycle, and error wording.
+
 `SessionRuntime`, the Agent transcript profile, session capabilities runtime,
 and maintenance runtimes remain their own owners. The Facade only makes their
 already-bound operations available through one reusable Product surface.
@@ -65,8 +71,9 @@ it must not acquire Pi protocol vocabulary.
 
 `AgentSession.session_control` exposes `AgentSession` itself as the Harness
 `SessionControlPort`; there is no private facade object. The
-standard Coding Channel adapter consumes that port directly. Coding RPC routes
-common control commands through it, while retaining its legacy event
+standard Coding Channel adapter binds that port through
+`SessionOperationRuntime`. Coding RPC routes common control commands through
+the same operation runtime, while retaining its legacy event
 subscription fallback and Pi JSON projection: the latter carries Coding event
 names, aliases, correlation fields, and optional tool rendering, so it is a
 Product adapter rather than a Harness event schema.
@@ -85,7 +92,8 @@ policy is passed through the bound ports rather than imported.
   runtime, transcript, tools, commands, command tool, view, and retry port.
 - Coding session regressions preserve the public `AgentSession` behavior while
   it directly inherits the common `SessionFacade` operations.
-- Channel tests bind only `SessionControlPort`; RPC tests preserve Coding's
-  legacy event projection while its control commands use the same port.
+- Channel tests bind only `SessionControlPort` through the operation runtime;
+  RPC tests preserve Coding's legacy event projection while its control
+  commands use the same capability groups.
 - Architecture tests prohibit Coding imports and Pi protocol names in the
   Facade, and require Coding `AgentSession` to adopt it.
