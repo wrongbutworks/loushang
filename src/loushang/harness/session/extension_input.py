@@ -1,21 +1,45 @@
+"""Extension-originated input delivery for a live Agent session.
+
+This optional Agent/AI session component translates the standard extension
+input shape into ``ApplicationMessage`` delivery or a prepared user prompt. A
+Product supplies its queue and prompt runtime; it owns extension API aliases,
+policy, and presentation.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Protocol, cast
 from uuid import uuid4
 
-from loushang.agent import Agent
 from loushang.ai.types import ImagePart
 from loushang.harness.agent_transcript import ApplicationMessage
-from loushang.harness.session import ApplicationInputRuntime, QueueController
+from loushang.harness.session.application_input import ApplicationInputRuntime
+from loushang.harness.session.queue_controller import QueueController
+
+
+class ExtensionInputAgentPort(Protocol):
+    """Agent capabilities required for extension-delivered input."""
+
+    is_streaming: bool
+
+    async def prompt(
+        self,
+        prompt: object,
+        images: list[ImagePart] | None = None,
+    ) -> None: ...
+
 
 RunPrompt = Callable[[object, list[ImagePart] | None], Awaitable[None]]
 
 
 @dataclass
-class ExtensionMessageController:
-    agent: Agent
+class ExtensionInputRuntime:
+    """Deliver extension messages through one Product-bound session runtime."""
+
+    agent: ExtensionInputAgentPort
     queue_controller: QueueController
     application_inputs: ApplicationInputRuntime
     run_prompt: RunPrompt | None = None
@@ -68,7 +92,8 @@ class ExtensionMessageController:
                 self.queue_controller.queue_prepared_steering(text, images=images)
                 return
             raise RuntimeError(
-                "Agent is already processing. Specify deliverAs ('steer' or 'followUp') to queue the message."
+                "Agent is already processing. Specify deliverAs "
+                "('steer' or 'followUp') to queue the message."
             )
         await self._run_prompt(text, images=images)
 
@@ -83,7 +108,7 @@ class ExtensionMessageController:
         if self.run_prompt is not None:
             await self.run_prompt(prompt, images)
             return
-        await self.agent.prompt(prompt, images=images)  # type: ignore[arg-type]
+        await self.agent.prompt(prompt, images=images)
 
 
 def _normalize_extension_user_message_content(
@@ -102,7 +127,7 @@ def _normalize_extension_user_message_content(
                     text_parts.append(text)
                 continue
             if part_type == "image":
-                images.append(part)  # type: ignore[arg-type]
+                images.append(cast(ImagePart, part))
         return "\n".join(text_parts), images or None
     raise TypeError("send_user_message expects a string or content block list.")
 
@@ -133,3 +158,6 @@ def _delivery_mode(*, deliver_as: object, trigger_turn: bool, streaming: bool):
     if trigger_turn:
         return "trigger_turn"
     return "direct"
+
+
+__all__ = ["ExtensionInputRuntime"]
