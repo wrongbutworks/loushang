@@ -8,7 +8,7 @@ import pytest
 
 def test_extension_api_register_tool_accepts_decorated_tool() -> None:
     from loushang.coding.extensions.api import ExtensionAPI
-    from loushang.coding.tools import tool
+    from loushang.harness.tools.core import tool
 
     @tool()
     async def greet(name: str) -> str:
@@ -284,7 +284,7 @@ def test_extension_api_v1_core_types_are_available() -> None:
         ToolResultDecision,
     )
     from loushang.coding.loader import ResourceDiagnostic
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.tools.workspace import ToolDefinition
 
     async def _execute_tool(
         tool_name: str, arguments: dict[str, object], context, signal
@@ -352,7 +352,7 @@ def test_extension_api_v1_core_types_are_available() -> None:
 
 def test_extension_api_registers_hooks_and_tools() -> None:
     from loushang.coding.extensions.api import ExtensionAPI
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.tools.workspace import ToolDefinition
 
     async def _execute_tool(
         tool_name: str, arguments: dict[str, object], context, signal

@@ -1,3 +1,5 @@
+"""Registry conveniences for materialized workspace tools and tool packs."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -9,20 +11,17 @@ from loushang.harness.tools.contribution import (
     ToolResolutionResult,
     resolve_tool_contributions,
 )
-from loushang.harness.tools.core import (
-    ToolDefinition,
-)
-from loushang.harness.tools.core import (
-    ToolRegistry as HarnessToolRegistry,
-)
-from loushang.harness.tools.workspace.context import ToolContextProvider
-from loushang.harness.tools.workspace.normalize import tool_to_definition
-from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+from loushang.harness.tools.core import DecoratedTool, ToolDefinition
+from loushang.harness.tools.core import ToolRegistry as CoreToolRegistry
 
-from .authoring import DecoratedTool
+from .context import ToolContextProvider
+from .normalize import tool_to_definition
+from .wrapper import wrap_tool_definition
 
 
-class ToolRegistry(HarnessToolRegistry):
+class WorkspaceToolRegistry(CoreToolRegistry):
+    """A generic registry for workspace definitions and decorated tools."""
+
     def register_tool(
         self,
         tool: ToolDefinition | DecoratedTool | AgentTool[Any] | object,
@@ -89,6 +88,4 @@ class ToolRegistry(HarnessToolRegistry):
         )
 
 
-__all__ = [
-    "ToolRegistry",
-]
+__all__ = ["WorkspaceToolRegistry"]

@@ -916,7 +916,12 @@ def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
 ) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -940,7 +945,12 @@ def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
 def test_default_runtime_builder_maps_no_tools_to_empty_allowed_tools(tmp_path) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -961,7 +971,12 @@ def test_default_runtime_builder_maps_no_tools_to_empty_allowed_tools(tmp_path) 
 def test_default_runtime_builder_applies_resource_and_prompt_options(tmp_path) -> None:
     from loushang.coding.bootstrap import create_services
     from loushang.coding.cli.__main__ import default_runtime_builder
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -1018,7 +1033,12 @@ def test_default_runtime_builder_rebuilds_project_bound_services_for_session_cwd
         build_default_services,
         default_runtime_builder,
     )
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -1141,7 +1161,9 @@ def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
 ) -> None:
     from loushang.coding.cli import __main__ as cli_main
     from loushang.coding.policy import InteractiveApprovalResolver
-    from loushang.coding.tools import ToolRegistry
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     captured: dict[str, object] = {}
     runtime = FakeRuntime(FakeSession("unused"))
@@ -1213,11 +1235,15 @@ def test_cli_builtin_tool_registry_uses_settings_external_tool_policy(
 
     captured: dict[str, object] = {}
 
-    def fake_register_builtin_tools(registry, **kwargs):
+    def fake_register_coding_builtin_tools(registry, **kwargs):
         captured.update(kwargs)
         return registry
 
-    monkeypatch.setattr(cli_main, "register_builtin_tools", fake_register_builtin_tools)
+    monkeypatch.setattr(
+        cli_main,
+        "register_coding_builtin_tools",
+        fake_register_coding_builtin_tools,
+    )
     manager = SettingsManager(
         ControlConfig(tools=ToolSettings(external_tool_policy="required"))
     )
@@ -1232,7 +1258,7 @@ def test_cli_builtin_tool_registry_binds_headless_policy_from_settings(
 ) -> None:
     from loushang.coding.cli import __main__ as cli_main
     from loushang.coding.control import ControlConfig, SettingsManager, ToolSettings
-    from loushang.coding.tools import ToolContext
+    from loushang.harness.tools.workspace import ToolContext
 
     def context_provider(*, tool_call_id: str) -> ToolContext:
         return ToolContext(tool_call_id=tool_call_id, cwd=str(tmp_path))

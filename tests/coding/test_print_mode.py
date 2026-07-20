@@ -1438,7 +1438,7 @@ def test_print_mode_json_can_include_rendered_tool_event_payloads() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
     from loushang.coding.mode import PrintMode
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.tools.workspace import ToolDefinition
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update

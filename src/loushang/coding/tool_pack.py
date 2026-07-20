@@ -1,57 +1,59 @@
+"""Coding's selected workspace-tool pack.
+
+Concrete workspace tools, their protocols, and their render/runtime helpers are
+owned by :mod:`loushang.harness.tools.workspace`.  This module only describes
+how the Coding product selects and configures that reusable capability.
+"""
+
 from __future__ import annotations
 
 from dataclasses import replace
 from typing import Any
 
 from loushang.agent.types import AgentTool
+from loushang.coding.policy import ApprovalResolver, PolicyEngine
+from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.tools.contribution import (
+    ToolContribution,
+    ToolPackDefinition,
+    resolve_tool_contributions,
+)
+from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.context import ToolContextProvider
 from loushang.harness.tools.workspace.external_tools import (
+    ExternalToolDownloader,
+    ExternalToolPolicy,
+    ExternalToolResolver,
     GitHubReleaseExternalToolDownloader,
 )
 from loushang.harness.tools.workspace.factory import (
-    ALL_TOOL_NAMES,
     CORE_WORKSPACE_TOOL_NAMES,
-    READ_ONLY_TOOL_NAMES,
-    Tool,
-    ToolDef,
     ToolName,
     ToolsOptions,
-    allToolNames,
-    coreWorkspaceToolNames,
-    create_all_tool_definitions,
-    create_all_tools,
-    create_bash_tool,
-    create_edit_tool,
-    create_find_tool,
-    create_grep_tool,
-    create_ls_tool,
-    create_read_only_tool_definitions,
-    create_read_only_tools,
-    create_read_tool,
     create_tool,
-    create_write_tool,
-    createAllToolDefinitions,
-    createAllTools,
-    createBashTool,
-    createEditTool,
-    createFindTool,
-    createGrepTool,
-    createLsTool,
-    createReadOnlyToolDefinitions,
-    createReadOnlyTools,
-    createReadTool,
-    createTool,
-    createToolDefinition,
-    createWriteTool,
-    readOnlyToolNames,
 )
 from loushang.harness.tools.workspace.factory import (
-    create_tool_definition as _create_tool_definition,
+    create_tool_definition as create_workspace_tool_definition,
 )
-from loushang.harness.tools.workspace.types import ToolDefinition
+from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.workspace.exec import ExecService
+from loushang.harness.workspace.operations import ToolOperations
 
 CODING_TOOL_NAMES: tuple[ToolName, ...] = CORE_WORKSPACE_TOOL_NAMES
-codingToolNames: set[ToolName] = set(coreWorkspaceToolNames)
+CODING_BUILTIN_TOOL_NAMES: tuple[ToolName, ...] = (
+    "bash",
+    "read",
+    "ls",
+    "find",
+    "grep",
+    "write",
+    "edit",
+)
+CODING_BUILTIN_TOOL_PACK = ToolPackDefinition(
+    name="coding.builtin",
+    tools=CODING_BUILTIN_TOOL_NAMES,
+)
+
 _CODING_TOOL_TEXT: dict[ToolName, tuple[str, str]] = {
     "read": (
         "Read text files and images from the coding workspace. "
@@ -85,11 +87,12 @@ _CODING_TOOL_TEXT: dict[ToolName, tuple[str, str]] = {
 }
 
 
-def create_tool_definition(
+def create_coding_tool_definition(
     tool_name: ToolName,
     *,
     options: ToolsOptions | None = None,
 ) -> ToolDefinition:
+    """Create a workspace definition with Coding's copy and download default."""
     if (
         tool_name in {"find", "grep"}
         and options is not None
@@ -101,7 +104,7 @@ def create_tool_definition(
             options,
             external_tool_downloader=GitHubReleaseExternalToolDownloader(),
         )
-    definition = _create_tool_definition(tool_name, options=options)
+    definition = create_workspace_tool_definition(tool_name, options=options)
     description, prompt_snippet = _CODING_TOOL_TEXT[tool_name]
     return replace(
         definition,
@@ -114,7 +117,7 @@ def create_coding_tool_definitions(
     *, options: ToolsOptions | None = None
 ) -> list[ToolDefinition]:
     return [
-        create_tool_definition(tool_name, options=options)
+        create_coding_tool_definition(tool_name, options=options)
         for tool_name in CODING_TOOL_NAMES
     ]
 
@@ -138,60 +141,52 @@ def create_coding_tools(
     ]
 
 
-def createCodingToolDefinitions(
-    cwd: str | None = None,
-    options: ToolsOptions | None = None,
-) -> list[ToolDefinition]:
-    del cwd
-    return create_coding_tool_definitions(options=options)
-
-
-def createCodingTools(
-    cwd: str | None = None,
-    options: ToolsOptions | None = None,
-) -> list[AgentTool[Any]]:
-    return create_coding_tools(cwd=cwd, options=options)
+def register_coding_builtin_tools(
+    registry: WorkspaceToolRegistry,
+    *,
+    policy_engine: PolicyEngine | None = None,
+    approval_resolver: ApprovalResolver | None = None,
+    exec_service: ExecService | None = None,
+    diagnostics_service: DiagnosticsService | None = None,
+    operations: ToolOperations | None = None,
+    external_tool_resolver: ExternalToolResolver | None = None,
+    external_tool_downloader: ExternalToolDownloader | None = None,
+    external_tool_policy: ExternalToolPolicy | None = None,
+    allow_external_tool_downloads: bool = False,
+    require_external_tools: bool = False,
+) -> WorkspaceToolRegistry:
+    options = ToolsOptions(
+        policy_engine=policy_engine,
+        approval_resolver=approval_resolver,
+        exec_service=exec_service or ExecService(),
+        diagnostics_service=diagnostics_service,
+        operations=operations,
+        external_tool_resolver=external_tool_resolver,
+        external_tool_downloader=external_tool_downloader,
+        external_tool_policy=external_tool_policy,
+        allow_external_tool_downloads=allow_external_tool_downloads,
+        require_external_tools=require_external_tools,
+    )
+    contributions = tuple(
+        ToolContribution(create_coding_tool_definition(tool_name, options=options))
+        for tool_name in CODING_BUILTIN_TOOL_NAMES
+    )
+    result = resolve_tool_contributions(
+        contributions,
+        packs=(CODING_BUILTIN_TOOL_PACK,),
+        include_packs=(CODING_BUILTIN_TOOL_PACK.name,),
+    )
+    for definition in result.definitions:
+        registry.register_tool(definition)
+    return registry
 
 
 __all__ = [
-    "ALL_TOOL_NAMES",
+    "CODING_BUILTIN_TOOL_NAMES",
+    "CODING_BUILTIN_TOOL_PACK",
     "CODING_TOOL_NAMES",
-    "READ_ONLY_TOOL_NAMES",
-    "Tool",
-    "ToolDef",
-    "ToolName",
-    "ToolsOptions",
-    "allToolNames",
-    "codingToolNames",
-    "create_all_tool_definitions",
-    "create_all_tools",
-    "create_bash_tool",
+    "create_coding_tool_definition",
     "create_coding_tool_definitions",
     "create_coding_tools",
-    "create_edit_tool",
-    "create_find_tool",
-    "create_grep_tool",
-    "create_ls_tool",
-    "create_read_only_tool_definitions",
-    "create_read_only_tools",
-    "create_read_tool",
-    "create_tool",
-    "create_tool_definition",
-    "create_write_tool",
-    "createAllToolDefinitions",
-    "createAllTools",
-    "createBashTool",
-    "createCodingToolDefinitions",
-    "createCodingTools",
-    "createEditTool",
-    "createFindTool",
-    "createGrepTool",
-    "createLsTool",
-    "createReadOnlyToolDefinitions",
-    "createReadOnlyTools",
-    "createReadTool",
-    "createTool",
-    "createToolDefinition",
-    "createWriteTool",
-    "readOnlyToolNames",
+    "register_coding_builtin_tools",
 ]

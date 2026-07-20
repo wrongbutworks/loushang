@@ -734,11 +734,9 @@ def test_screen_approval_presenter_resolves_ask_tools_and_clears_pending(
         InteractiveApprovalResolver,
         PolicyEngine,
     )
-    from loushang.coding.tools import (
-        ToolContext,
-        ToolRegistry,
-        register_builtin_tools,
-    )
+    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.harness.tools.workspace import ToolContext
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
     resolver = InteractiveApprovalResolver(
         fallback=HeadlessApprovalResolver(mode="deny")
@@ -766,8 +764,8 @@ def test_screen_approval_presenter_resolves_ask_tools_and_clears_pending(
         def dismiss_approval(self, action_id: str) -> None:
             del action_id
 
-    registry = ToolRegistry()
-    register_builtin_tools(
+    registry = WorkspaceToolRegistry()
+    register_coding_builtin_tools(
         registry,
         policy_engine=PolicyEngine(ask_tools=["write"]),
         approval_resolver=resolver,

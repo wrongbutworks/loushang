@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 
-def test_tool_details_protocol_projection_adds_pi_aliases_without_mutating_source() -> None:
-    from loushang.coding.tools.protocol import project_tool_details_for_protocol
+def test_tool_details_protocol_projection_adds_pi_aliases_without_mutating_source() -> (
+    None
+):
+    from loushang.harness.tools.workspace.protocol import (
+        project_tool_details_for_protocol,
+    )
 
     details = {
         "full_output_path": "/tmp/full.log",
@@ -30,7 +34,9 @@ def test_tool_details_protocol_projection_adds_pi_aliases_without_mutating_sourc
 
 
 def test_tool_details_protocol_projection_preserves_existing_pi_aliases() -> None:
-    from loushang.coding.tools.protocol import project_tool_details_for_protocol
+    from loushang.harness.tools.workspace.protocol import (
+        project_tool_details_for_protocol,
+    )
 
     projected = project_tool_details_for_protocol(
         {
@@ -47,7 +53,9 @@ def test_tool_details_protocol_projection_preserves_existing_pi_aliases() -> Non
 
 
 def test_tool_artifact_paths_for_protocol_dedupes_projected_paths() -> None:
-    from loushang.coding.tools.protocol import tool_artifact_paths_for_protocol
+    from loushang.harness.tools.workspace.protocol import (
+        tool_artifact_paths_for_protocol,
+    )
 
     paths = tool_artifact_paths_for_protocol(
         {
@@ -62,7 +70,7 @@ def test_tool_artifact_paths_for_protocol_dedupes_projected_paths() -> None:
 
 
 def test_bash_result_protocol_projection_and_normalization_are_boundary_only() -> None:
-    from loushang.coding.tools.protocol import (
+    from loushang.harness.tools.workspace.protocol import (
         normalize_bash_result_from_protocol,
         project_bash_result_for_protocol,
     )
@@ -82,4 +90,3 @@ def test_bash_result_protocol_projection_and_normalization_are_boundary_only() -
     assert "exitCode" not in result
     assert "fullOutputPath" not in result
     assert normalize_bash_result_from_protocol(projected) == result
-

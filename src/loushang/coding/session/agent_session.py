@@ -75,7 +75,6 @@ from loushang.coding.session.types import (
 )
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager
-from loushang.coding.tools import ToolRegistry
 from loushang.harness.agent_transcript import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
     TURN_AWARE_SUMMARY_VERSION,
@@ -145,6 +144,7 @@ from loushang.harness.session import (
     TurnPolicyPort,
 )
 from loushang.harness.session.inspection import AgentSessionInspector
+from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import (
     ExecOutputChunk,
     ExecRequest,
@@ -185,7 +185,7 @@ class AgentSession(SessionFacade):
         resource_loader: DefaultResourceLoader | None = None,
         resource_bundle: ResourceBundle | None = None,
         extension_runner: ExtensionRunner | None = None,
-        tool_registry: ToolRegistry | None = None,
+        tool_registry: WorkspaceToolRegistry | None = None,
         allowed_tool_names: list[str] | None = None,
         active_tool_names: list[str] | None = None,
         default_activate_new_tools: bool | None = None,

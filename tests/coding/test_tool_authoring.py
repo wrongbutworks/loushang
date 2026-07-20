@@ -6,13 +6,10 @@ from typing import Any
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
-from loushang.coding.tools import (
-    ToolContext,
-    ToolDefinition,
-    tool,
-    tool_to_definition,
-    wrap_tool_definition,
-)
+from loushang.harness.tools.core import ToolDefinition, tool
+from loushang.harness.tools.workspace import ToolContext
+from loushang.harness.tools.workspace.normalize import tool_to_definition
+from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
 
 async def _dummy_execute(
@@ -55,7 +52,9 @@ async def show_context(path: str, ctx: ToolContext) -> str:
 
 @tool()
 async def explicit_result(name: str) -> AgentToolResult[dict[str, str]]:
-    return AgentToolResult(content=[TextPart(type="text", text=name)], details={"name": name})
+    return AgentToolResult(
+        content=[TextPart(type="text", text=name)], details={"name": name}
+    )
 
 
 @tool()
@@ -109,11 +108,13 @@ def test_tool_to_definition_preserves_explicit_decorated_metadata() -> None:
 
 
 def test_authoring_private_spec_attr_is_direct_import_only() -> None:
-    from loushang.coding.tools import authoring
-    from loushang.coding.tools.authoring import _TOOL_SPEC_ATTR
+    import loushang.harness.tools.core as authoring
+    from loushang.harness.tools.core import _TOOL_SPEC_ATTR
 
     assert _TOOL_SPEC_ATTR == "__loushang_tool_spec__"
-    assert "_TOOL_SPEC_ATTR" not in authoring.__all__
+    assert (
+        not hasattr(authoring, "__all__") or "_TOOL_SPEC_ATTR" not in authoring.__all__
+    )
 
 
 def test_tool_to_definition_rejects_duck_typed_tool_like_objects() -> None:
@@ -124,7 +125,13 @@ def test_tool_to_definition_rejects_duck_typed_tool_like_objects() -> None:
         parameters: dict[str, object] = {}
         prepare_arguments = None
 
-        async def execute(self, tool_call_id: str, params: dict[str, object], signal=None, on_update=None):
+        async def execute(
+            self,
+            tool_call_id: str,
+            params: dict[str, object],
+            signal=None,
+            on_update=None,
+        ):
             del tool_call_id, params, signal, on_update
             return AgentToolResult(content=[], details={})
 
@@ -180,7 +187,9 @@ def test_decorated_tool_rejects_unsupported_plain_return_values() -> None:
     except TypeError as exc:
         assert "unsupported plain return type" in str(exc)
     else:
-        raise AssertionError("expected unsupported plain return type to raise TypeError")
+        raise AssertionError(
+            "expected unsupported plain return type to raise TypeError"
+        )
 
 
 def test_decorated_tool_exceptions_propagate_to_agent_loop_boundary() -> None:

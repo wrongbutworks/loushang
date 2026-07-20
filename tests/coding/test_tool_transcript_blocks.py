@@ -25,7 +25,7 @@ def _project(
     from loushang.coding.presentation.tui.tool_transcript import (
         build_coding_tool_transcript_projection,
     )
-    from loushang.coding.tools import create_all_tool_definitions
+    from loushang.harness.tools.workspace import create_all_tool_definitions
 
     definitions = create_all_tool_definitions()
     projector = build_coding_tool_transcript_projection(

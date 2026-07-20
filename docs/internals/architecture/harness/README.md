@@ -199,8 +199,11 @@ planning, work event persistence, or AI provider behavior.
   defines canonical Harness Git and Native TUI clipboard ownership, direct
   Product adoption, and retired Coding platform paths.
 - [Workspace Tool Pack Boundary](workspace-tool-pack-boundary.md) defines
-  reusable concrete read/search/edit/exec ownership, Coding compatibility
-  adapters, and the product-owned activation and policy boundary.
+  reusable concrete read/search/edit/exec ownership and the product-owned
+  activation and policy boundary.
+- [Tool Facade Extinction Boundary](tool-facade-extinction-boundary.md) records
+  removal of `coding.tools`, direct Harness ownership imports, and Coding's
+  narrow default tool-pack adapter.
 - [Harness Lane Development Workflow](development-workflow.md) defines how the
   long-lived `lane/harness` branch stays isolated from `main` until the
   migration is bootable and validated.

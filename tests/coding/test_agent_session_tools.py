@@ -4,7 +4,7 @@ import asyncio
 from datetime import date
 
 from loushang.agent.types import AgentToolResult
-from loushang.coding.tools import ToolContext
+from loushang.harness.tools.workspace import ToolContext
 
 
 def _runtime_footer(cwd: str) -> str:
@@ -16,9 +16,12 @@ def test_session_materialized_decorated_tool_receives_session_cwd(tmp_path) -> N
 
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
-    from loushang.coding import SessionManager, ToolRegistry
+    from loushang.coding import SessionManager
     from loushang.coding.session import AgentSession
-    from loushang.coding.tools import tool
+    from loushang.harness.tools.core import tool
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     @tool()
     async def show_session_cwd(ctx: ToolContext) -> str:
@@ -132,9 +135,15 @@ def test_agent_session_tracks_active_tool_names_and_runtime_tools(tmp_path) -> N
 
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
-    from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
+    from loushang.coding import SessionManager
     from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -202,9 +211,15 @@ def test_agent_session_builtin_tools_command_can_restore_active_tools(tmp_path) 
 
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
-    from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
+    from loushang.coding import SessionManager
     from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -280,9 +295,15 @@ def test_agent_session_exposes_standard_tool_surfaces(tmp_path) -> None:
 
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
-    from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
+    from loushang.coding import SessionManager
     from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -354,9 +375,15 @@ def test_agent_session_allowed_tool_names_filter_visible_and_active_tools(
 
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
-    from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
+    from loushang.coding import SessionManager
     from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     registry = ToolRegistry()
     register_builtin_tools(registry)
@@ -417,11 +444,17 @@ def test_agent_session_extension_context_register_tool_refreshes_active_tools_an
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
+    from loushang.coding import SessionManager
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
-    from loushang.coding.tools import ToolDefinition
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     async def execute_dynamic(
         tool_call_id: str, params: dict[str, object], signal=None, on_update=None
@@ -487,9 +520,7 @@ def test_agent_session_extension_context_register_tool_refreshes_active_tools_an
         in session.agent.system_prompt
     )
     dynamic_tool_info = next(
-        tool
-        for tool in session.get_all_tool_infos()
-        if tool["name"] == "dynamic_tool"
+        tool for tool in session.get_all_tool_infos() if tool["name"] == "dynamic_tool"
     )
     assert dynamic_tool_info["sourceInfo"] == {
         "path": "<inline:1>",
@@ -504,10 +535,13 @@ def test_agent_session_extension_api_register_tool_after_runtime_bind_updates_se
     tmp_path,
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding import SessionManager, ToolRegistry
+    from loushang.coding import SessionManager
     from loushang.coding.extensions import ExtensionAPI, ExtensionRunner
     from loushang.coding.session import AgentSession
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     async def execute_dynamic(
         tool_call_id: str, params: dict[str, object], signal=None, on_update=None
@@ -561,10 +595,16 @@ def test_agent_session_dynamic_extension_tools_respect_allowed_tool_names(
     tmp_path,
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
+    from loushang.coding import SessionManager
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.session import AgentSession
-    from loushang.coding.tools import ToolDefinition
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     async def execute_dynamic(
         tool_call_id: str, params: dict[str, object], signal=None, on_update=None
@@ -654,9 +694,12 @@ def test_agent_session_get_all_tools_projects_sdk_source_info(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.agent.types import AgentToolResult
     from loushang.ai.model import Capabilities, Model
-    from loushang.coding import SessionManager, ToolRegistry
+    from loushang.coding import SessionManager
     from loushang.coding.session import AgentSession
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     async def execute_custom_tool(
         tool_call_id: str, params: dict[str, object], signal=None, on_update=None
@@ -733,9 +776,15 @@ def test_agent_session_tracks_multiple_builtin_tool_names(tmp_path) -> None:
 
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
-    from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
+    from loushang.coding import SessionManager
     from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -794,9 +843,15 @@ def test_agent_session_tracks_mutation_builtin_tool_names(tmp_path) -> None:
 
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
-    from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
+    from loushang.coding import SessionManager
     from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -858,7 +913,10 @@ def test_session_active_tools_still_materialize_after_substrate_migration(
     from loushang.ai.model import Capabilities, Model
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, tool
+    from loushang.harness.tools.core import tool
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     @tool()
     async def show_session_cwd(ctx: ToolContext) -> str:
@@ -900,7 +958,7 @@ def test_bash_tool_forwards_exec_updates_and_preview_metadata(tmp_path) -> None:
 
     from loushang.coding.exec import ExecOutputChunk, ExecRequest, ExecResult
     from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.tools.workspace import create_bash_tool_definition
 
     seen_updates: list[AgentToolResult[dict[str, object]]] = []
 
@@ -963,7 +1021,7 @@ def test_bash_tool_details_include_pi_style_truncation_schema(tmp_path) -> None:
 
     from loushang.coding.exec import ExecRequest, ExecResult
     from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.tools.workspace import create_bash_tool_definition
 
     stdout_artifact_path = str(tmp_path / "stdout.log")
 
@@ -1006,7 +1064,7 @@ def test_bash_tool_full_output_path_uses_stderr_artifact_when_stdout_is_present(
 
     from loushang.coding.exec import ExecRequest, ExecResult
     from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.tools.workspace import create_bash_tool_definition
 
     stderr_artifact_path = str(tmp_path / "stderr.log")
 
@@ -1044,12 +1102,18 @@ def test_agent_session_execute_bash_records_command_execution(tmp_path) -> None:
 
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
-    from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
+    from loushang.coding import SessionManager
     from loushang.coding.exec import ExecOutputChunk, ExecResult
     from loushang.coding.policy.types import PolicyDecision
     from loushang.coding.session import AgentSession
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
     from loushang.harness.agent_transcript import COMMAND_EXECUTION_KIND
     from loushang.harness.conversation import CommandExecutionRecord
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     class AllowingPolicyEngine:
         def evaluate_action(self, *, tool_name: str, exec_request):
@@ -1131,12 +1195,18 @@ def test_agent_session_abort_bash_cancels_active_execution_and_records_command(
 
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
-    from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
+    from loushang.coding import SessionManager
     from loushang.coding.exec import ExecOutputChunk, ExecResult
     from loushang.coding.policy.types import PolicyDecision
     from loushang.coding.session import AgentSession
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
     from loushang.harness.agent_transcript import COMMAND_EXECUTION_KIND
     from loushang.harness.conversation import CommandExecutionRecord
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     class AllowingPolicyEngine:
         def evaluate_action(self, *, tool_name: str, exec_request):

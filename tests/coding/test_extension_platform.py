@@ -260,7 +260,7 @@ def test_extension_loader_attaches_manifest_policy_and_surface_snapshot(
     extension_file = extension_dir / "extension.py"
     extension_file.write_text(
         """
-from loushang.coding.tools import ToolDefinition
+from loushang.harness.tools.workspace import ToolDefinition
 
 
 async def _execute_tool(tool_name, arguments, context, signal):

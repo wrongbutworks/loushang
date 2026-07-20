@@ -4,6 +4,11 @@
 
 Implemented on `lane/harness` as the Slice 1 boundary design.
 
+> Historical compatibility notes in this document are superseded by
+> [Tool Facade Extinction Boundary](tool-facade-extinction-boundary.md):
+> `loushang.coding.tools` no longer exists and consumers import Harness owners
+> directly.
+
 The closure audit and migration status are recorded in
 [Slice 1 Closure Status](slice-1-status.md). This document remains the boundary
 reference for approval, tools-core, tool-contribution, and presentation

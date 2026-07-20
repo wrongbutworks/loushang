@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from loushang.agent import Agent
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.store import SessionManager
-from loushang.coding.tools import ToolRegistry
 from loushang.harness.session import (
     SessionCommandExecutionRuntime,
     UserCommandHookResult,
@@ -18,10 +17,11 @@ from loushang.harness.tools.workspace.protocol import (
     normalize_bash_result_from_protocol,
     project_bash_result_for_protocol,
 )
+from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import ExecOutputChunk
 
 ExtensionRunnerProvider = Callable[[], ExtensionRunner | None]
-ToolRegistryProvider = Callable[[], ToolRegistry | None]
+ToolRegistryProvider = Callable[[], WorkspaceToolRegistry | None]
 ExtensionDiagnosticsSync = Callable[..., None]
 OutputCallback = Callable[[ExecOutputChunk], Awaitable[None] | None]
 PiStyleOutputCallback = Callable[[str], Awaitable[None] | None]

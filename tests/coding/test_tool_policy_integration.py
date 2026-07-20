@@ -6,7 +6,7 @@ import pytest
 
 
 def _tool_context_provider(*, cwd: str):
-    from loushang.coding.tools import ToolContext
+    from loushang.harness.tools.workspace import ToolContext
 
     def _provider(*, tool_call_id: str) -> ToolContext:
         return ToolContext(tool_call_id=tool_call_id, cwd=cwd)
@@ -15,7 +15,7 @@ def _tool_context_provider(*, cwd: str):
 
 
 def _tool_context_provider_with_events(*, cwd: str, events: list[dict[str, object]]):
-    from loushang.coding.tools import ToolContext
+    from loushang.harness.tools.workspace import ToolContext
 
     async def emit_event(event: dict[str, object]) -> None:
         events.append(event)
@@ -28,14 +28,27 @@ def _tool_context_provider_with_events(*, cwd: str, events: list[dict[str, objec
 
 def test_global_policy_engine_blocks_write_tool_before_mutation(tmp_path) -> None:
     from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     registry = ToolRegistry()
-    register_builtin_tools(registry, policy_engine=PolicyEngine(blocked_tools=["write"]))
-    runtime_tool = registry.materialize_tool("write", context_provider=_tool_context_provider(cwd=str(tmp_path)))
+    register_builtin_tools(
+        registry, policy_engine=PolicyEngine(blocked_tools=["write"])
+    )
+    runtime_tool = registry.materialize_tool(
+        "write", context_provider=_tool_context_provider(cwd=str(tmp_path))
+    )
 
     with pytest.raises(PermissionError) as exc:
-        asyncio.run(runtime_tool.execute("call-write-policy", {"path": "blocked.txt", "content": "blocked"}))
+        asyncio.run(
+            runtime_tool.execute(
+                "call-write-policy", {"path": "blocked.txt", "content": "blocked"}
+            )
+        )
 
     assert "write" in str(exc.value)
     assert getattr(exc.value, "tool_result_details", None) == {
@@ -53,14 +66,23 @@ def test_global_policy_engine_blocks_write_tool_before_mutation(tmp_path) -> Non
 
 def test_global_policy_engine_blocks_bash_by_tool_name(tmp_path) -> None:
     from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     registry = ToolRegistry()
     register_builtin_tools(registry, policy_engine=PolicyEngine(blocked_tools=["bash"]))
     runtime_tool = registry.materialize_tool("bash")
 
     with pytest.raises(PermissionError) as exc:
-        asyncio.run(runtime_tool.execute("call-bash-policy", {"command": "pwd", "cwd": str(tmp_path)}))
+        asyncio.run(
+            runtime_tool.execute(
+                "call-bash-policy", {"command": "pwd", "cwd": str(tmp_path)}
+            )
+        )
 
     assert "bash" in str(exc.value)
 
@@ -69,7 +91,12 @@ def test_default_tool_registration_does_not_enable_policy_by_default(tmp_path) -
     import asyncio
 
     from loushang.coding.exec.types import ExecResult
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     class RecordingExecService:
         def __init__(self) -> None:
@@ -83,7 +110,11 @@ def test_default_tool_registration_does_not_enable_policy_by_default(tmp_path) -
     exec_service = RecordingExecService()
     register_builtin_tools(registry, exec_service=exec_service)
     runtime_tool = registry.materialize_tool("bash")
-    result = asyncio.run(runtime_tool.execute("call-bash-no-policy", {"command": "printf ok", "cwd": str(tmp_path)}))
+    result = asyncio.run(
+        runtime_tool.execute(
+            "call-bash-no-policy", {"command": "printf ok", "cwd": str(tmp_path)}
+        )
+    )
 
     assert result.content[0].text == "ok"
     assert len(exec_service.requests) == 1
@@ -92,14 +123,26 @@ def test_default_tool_registration_does_not_enable_policy_by_default(tmp_path) -
 
 def test_default_approval_resolver_denies_ask_policy_before_write(tmp_path) -> None:
     from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     registry = ToolRegistry()
     register_builtin_tools(registry, policy_engine=PolicyEngine(ask_tools=["write"]))
-    runtime_tool = registry.materialize_tool("write", context_provider=_tool_context_provider(cwd=str(tmp_path)))
+    runtime_tool = registry.materialize_tool(
+        "write", context_provider=_tool_context_provider(cwd=str(tmp_path))
+    )
 
     with pytest.raises(PermissionError) as exc:
-        asyncio.run(runtime_tool.execute("call-write-approval-default", {"path": "needs-approval.txt", "content": "x"}))
+        asyncio.run(
+            runtime_tool.execute(
+                "call-write-approval-default",
+                {"path": "needs-approval.txt", "content": "x"},
+            )
+        )
 
     assert "write" in str(exc.value)
     details = getattr(exc.value, "tool_result_details", None)
@@ -123,7 +166,12 @@ def test_default_approval_resolver_denies_ask_policy_before_write(tmp_path) -> N
 
 def test_sync_approval_resolver_can_allow_ask_policy_for_write(tmp_path) -> None:
     from loushang.coding.policy import ApprovalDecision, PolicyEngine
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     class AllowingResolver:
         def __init__(self) -> None:
@@ -140,10 +188,14 @@ def test_sync_approval_resolver_can_allow_ask_policy_for_write(tmp_path) -> None
         policy_engine=PolicyEngine(ask_tools=["write"]),
         approval_resolver=resolver,
     )
-    runtime_tool = registry.materialize_tool("write", context_provider=_tool_context_provider(cwd=str(tmp_path)))
+    runtime_tool = registry.materialize_tool(
+        "write", context_provider=_tool_context_provider(cwd=str(tmp_path))
+    )
 
     result = asyncio.run(
-        runtime_tool.execute("call-write-approval-allow", {"path": "approved.txt", "content": "approved"})
+        runtime_tool.execute(
+            "call-write-approval-allow", {"path": "approved.txt", "content": "approved"}
+        )
     )
 
     assert (tmp_path / "approved.txt").read_text(encoding="utf-8") == "approved"
@@ -156,7 +208,12 @@ def test_sync_approval_resolver_can_allow_ask_policy_for_write(tmp_path) -> None
 
 def test_ask_policy_allow_emits_tool_approval_audit_events(tmp_path) -> None:
     from loushang.coding.policy import ApprovalDecision, PolicyEngine
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     class AllowingResolver:
         def resolve(self, request):
@@ -171,11 +228,16 @@ def test_ask_policy_allow_emits_tool_approval_audit_events(tmp_path) -> None:
     )
     runtime_tool = registry.materialize_tool(
         "write",
-        context_provider=_tool_context_provider_with_events(cwd=str(tmp_path), events=events),
+        context_provider=_tool_context_provider_with_events(
+            cwd=str(tmp_path), events=events
+        ),
     )
 
     asyncio.run(
-        runtime_tool.execute("call-write-approval-audit", {"path": "approved-audit.txt", "content": "approved"})
+        runtime_tool.execute(
+            "call-write-approval-audit",
+            {"path": "approved-audit.txt", "content": "approved"},
+        )
     )
 
     assert [event["type"] for event in events] == [
@@ -224,18 +286,32 @@ def test_ask_policy_allow_emits_tool_approval_audit_events(tmp_path) -> None:
 
 def test_deny_policy_emits_tool_policy_evaluated_audit_event(tmp_path) -> None:
     from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     events: list[dict[str, object]] = []
     registry = ToolRegistry()
-    register_builtin_tools(registry, policy_engine=PolicyEngine(blocked_tools=["write"]))
+    register_builtin_tools(
+        registry, policy_engine=PolicyEngine(blocked_tools=["write"])
+    )
     runtime_tool = registry.materialize_tool(
         "write",
-        context_provider=_tool_context_provider_with_events(cwd=str(tmp_path), events=events),
+        context_provider=_tool_context_provider_with_events(
+            cwd=str(tmp_path), events=events
+        ),
     )
 
     with pytest.raises(PermissionError):
-        asyncio.run(runtime_tool.execute("call-write-deny-audit", {"path": "blocked-audit.txt", "content": "blocked"}))
+        asyncio.run(
+            runtime_tool.execute(
+                "call-write-deny-audit",
+                {"path": "blocked-audit.txt", "content": "blocked"},
+            )
+        )
 
     assert events == [
         {
@@ -255,7 +331,12 @@ def test_deny_policy_emits_tool_policy_evaluated_audit_event(tmp_path) -> None:
 
 def test_async_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -> None:
     from loushang.coding.policy import ApprovalDecision, PolicyEngine
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     class DenyingResolver:
         async def resolve(self, request):
@@ -267,10 +348,16 @@ def test_async_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -> None
         policy_engine=PolicyEngine(ask_tools=["write"]),
         approval_resolver=DenyingResolver(),
     )
-    runtime_tool = registry.materialize_tool("write", context_provider=_tool_context_provider(cwd=str(tmp_path)))
+    runtime_tool = registry.materialize_tool(
+        "write", context_provider=_tool_context_provider(cwd=str(tmp_path))
+    )
 
     with pytest.raises(PermissionError) as exc:
-        asyncio.run(runtime_tool.execute("call-write-approval-deny", {"path": "denied.txt", "content": "denied"}))
+        asyncio.run(
+            runtime_tool.execute(
+                "call-write-approval-deny", {"path": "denied.txt", "content": "denied"}
+            )
+        )
 
     assert str(exc.value) == "denied write"
     details = getattr(exc.value, "tool_result_details", None)
@@ -298,7 +385,12 @@ def test_interactive_approval_resolver_can_allow_ask_policy_for_write(tmp_path) 
         InteractiveApprovalResolver,
         PolicyEngine,
     )
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     presented: dict[str, object] = {}
     presented_event = asyncio.Event()
@@ -307,7 +399,9 @@ def test_interactive_approval_resolver_can_allow_ask_policy_for_write(tmp_path) 
         presented.update(payload)
         presented_event.set()
 
-    resolver = InteractiveApprovalResolver(fallback=HeadlessApprovalResolver(mode="deny"))
+    resolver = InteractiveApprovalResolver(
+        fallback=HeadlessApprovalResolver(mode="deny")
+    )
     resolver.set_request_presenter(present_request)
 
     registry = ToolRegistry()
@@ -316,11 +410,16 @@ def test_interactive_approval_resolver_can_allow_ask_policy_for_write(tmp_path) 
         policy_engine=PolicyEngine(ask_tools=["write"]),
         approval_resolver=resolver,
     )
-    runtime_tool = registry.materialize_tool("write", context_provider=_tool_context_provider(cwd=str(tmp_path)))
+    runtime_tool = registry.materialize_tool(
+        "write", context_provider=_tool_context_provider(cwd=str(tmp_path))
+    )
 
     async def run() -> None:
         execute = asyncio.create_task(
-            runtime_tool.execute("call-write-approval-allow-interactive", {"path": "approved.txt", "content": "ok"})
+            runtime_tool.execute(
+                "call-write-approval-allow-interactive",
+                {"path": "approved.txt", "content": "ok"},
+            )
         )
         await presented_event.wait()
         action_id = presented.get("action_id")
@@ -338,7 +437,12 @@ def test_interactive_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -
         InteractiveApprovalResolver,
         PolicyEngine,
     )
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     presented: dict[str, object] = {}
     presented_event = asyncio.Event()
@@ -347,7 +451,9 @@ def test_interactive_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -
         presented.update(payload)
         presented_event.set()
 
-    resolver = InteractiveApprovalResolver(fallback=HeadlessApprovalResolver(mode="deny"))
+    resolver = InteractiveApprovalResolver(
+        fallback=HeadlessApprovalResolver(mode="deny")
+    )
     resolver.set_request_presenter(present_request)
 
     registry = ToolRegistry()
@@ -356,20 +462,29 @@ def test_interactive_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -
         policy_engine=PolicyEngine(ask_tools=["write"]),
         approval_resolver=resolver,
     )
-    runtime_tool = registry.materialize_tool("write", context_provider=_tool_context_provider(cwd=str(tmp_path)))
+    runtime_tool = registry.materialize_tool(
+        "write", context_provider=_tool_context_provider(cwd=str(tmp_path))
+    )
 
     async def run() -> str:
         execute = asyncio.create_task(
-            runtime_tool.execute("call-write-approval-deny-interactive", {"path": "denied.txt", "content": "x"})
+            runtime_tool.execute(
+                "call-write-approval-deny-interactive",
+                {"path": "denied.txt", "content": "x"},
+            )
         )
         await presented_event.wait()
         action_id = presented.get("action_id")
         assert isinstance(action_id, str)
-        await resolver.handle_result(action_id=action_id, approved=False, reason="interactive reject")
+        await resolver.handle_result(
+            action_id=action_id, approved=False, reason="interactive reject"
+        )
         try:
             await execute
         except PermissionError as exc:
-            return getattr(exc, "tool_result_details", {}).get("approval_action_id", "missing")
+            return getattr(exc, "tool_result_details", {}).get(
+                "approval_action_id", "missing"
+            )
         raise AssertionError("write tool execution should be rejected")
 
     approval_action_id = asyncio.run(run())
@@ -380,7 +495,12 @@ def test_interactive_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -
 
 def test_headless_approval_resolver_modes_are_stable(tmp_path) -> None:
     from loushang.coding.policy import HeadlessApprovalResolver, PolicyEngine
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     allow_registry = ToolRegistry()
     register_builtin_tools(
@@ -388,9 +508,15 @@ def test_headless_approval_resolver_modes_are_stable(tmp_path) -> None:
         policy_engine=PolicyEngine(ask_tools=["write"]),
         approval_resolver=HeadlessApprovalResolver(mode="allow"),
     )
-    allow_tool = allow_registry.materialize_tool("write", context_provider=_tool_context_provider(cwd=str(tmp_path)))
+    allow_tool = allow_registry.materialize_tool(
+        "write", context_provider=_tool_context_provider(cwd=str(tmp_path))
+    )
 
-    asyncio.run(allow_tool.execute("call-write-headless-allow", {"path": "allowed.txt", "content": "ok"}))
+    asyncio.run(
+        allow_tool.execute(
+            "call-write-headless-allow", {"path": "allowed.txt", "content": "ok"}
+        )
+    )
 
     deny_registry = ToolRegistry()
     register_builtin_tools(
@@ -398,12 +524,21 @@ def test_headless_approval_resolver_modes_are_stable(tmp_path) -> None:
         policy_engine=PolicyEngine(ask_tools=["write"]),
         approval_resolver=HeadlessApprovalResolver(mode="deny", reason="headless deny"),
     )
-    deny_tool = deny_registry.materialize_tool("write", context_provider=_tool_context_provider(cwd=str(tmp_path)))
+    deny_tool = deny_registry.materialize_tool(
+        "write", context_provider=_tool_context_provider(cwd=str(tmp_path))
+    )
 
     with pytest.raises(PermissionError) as exc:
-        asyncio.run(deny_tool.execute("call-write-headless-deny", {"path": "denied-headless.txt", "content": "x"}))
+        asyncio.run(
+            deny_tool.execute(
+                "call-write-headless-deny",
+                {"path": "denied-headless.txt", "content": "x"},
+            )
+        )
 
     assert (tmp_path / "allowed.txt").read_text(encoding="utf-8") == "ok"
     assert str(exc.value) == "headless deny"
-    assert getattr(exc.value, "tool_result_details", None)["approval_decision"] == "deny"
+    assert (
+        getattr(exc.value, "tool_result_details", None)["approval_decision"] == "deny"
+    )
     assert not (tmp_path / "denied-headless.txt").exists()

@@ -6,15 +6,17 @@ def test_wrap_tool_definition_exposes_agent_tool_contract() -> None:
 
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.tools.types import ToolDefinition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.core import ToolDefinition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     calls: list[dict[str, object]] = []
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del signal, on_update
         calls.append({"tool_call_id": tool_call_id, "params": params})
-        return AgentToolResult(content=[TextPart(type="text", text="ok")], details={"seen": True})
+        return AgentToolResult(
+            content=[TextPart(type="text", text="ok")], details={"seen": True}
+        )
 
     definition = ToolDefinition(
         name="demo",
@@ -39,8 +41,8 @@ def test_wrap_tool_definition_exposes_agent_tool_contract() -> None:
 def test_wrap_tool_definition_exposes_custom_execution_mode() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.tools.types import ToolDefinition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.core import ToolDefinition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -61,12 +63,12 @@ def test_wrap_tool_definition_exposes_custom_execution_mode() -> None:
 def test_wrap_tool_definition_preserves_tool_renderers() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.tools.types import (
+    from loushang.harness.tools.core import (
         ToolDefinition,
         ToolRenderContext,
         ToolRenderResultOptions,
     )
-    from loushang.coding.tools.wrapper import (
+    from loushang.harness.tools.workspace.wrapper import (
         create_tool_definition_from_tool,
         wrap_tool_definition,
     )
@@ -78,9 +80,13 @@ def test_wrap_tool_definition_preserves_tool_renderers() -> None:
     def render_call(args, theme, context: ToolRenderContext):
         return {"text": f"call {args['path']} {theme['accent']} {context.toolCallId}"}
 
-    def render_result(result, options: ToolRenderResultOptions, theme, context: ToolRenderContext):
+    def render_result(
+        result, options: ToolRenderResultOptions, theme, context: ToolRenderContext
+    ):
         del result, theme
-        return {"text": f"result expanded={options.expanded} partial={context.isPartial}"}
+        return {
+            "text": f"result expanded={options.expanded} partial={context.isPartial}"
+        }
 
     definition = ToolDefinition(
         name="read",
@@ -108,8 +114,8 @@ def test_pi_style_wrapper_aliases_delegate_to_python_helpers() -> None:
 
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.tools.types import ToolDefinition
-    from loushang.coding.tools.wrapper import (
+    from loushang.harness.tools.core import ToolDefinition
+    from loushang.harness.tools.workspace.wrapper import (
         createToolDefinitionFromAgentTool,
         wrapToolDefinition,
         wrapToolDefinitions,

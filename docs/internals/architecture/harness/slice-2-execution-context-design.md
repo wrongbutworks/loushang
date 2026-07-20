@@ -81,7 +81,7 @@ or how a session records diagnostics.
 
 ## Current Coding Mapping
 
-`loushang.coding.tools.context.ToolContext` is a product context. It currently
+`loushang.harness.tools.workspace.context.ToolContext` is a product context. It currently
 contains:
 
 - `tool_call_id`
