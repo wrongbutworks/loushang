@@ -283,7 +283,7 @@ def test_extension_api_v1_core_types_are_available() -> None:
         ToolCallDecision,
         ToolResultDecision,
     )
-    from loushang.coding.loader import ResourceDiagnostic
+    from loushang.harness.resources.diagnostics import ResourceDiagnostic
     from loushang.harness.tools.workspace import ToolDefinition
 
     async def _execute_tool(
@@ -591,7 +591,7 @@ def test_extension_loader_build_extension_adapts_context_and_session_refresh(
     tmp_path,
 ) -> None:
     from loushang.coding.extensions.loader import ExtensionLoader
-    from loushang.coding.loader import ExtensionDescriptor
+    from loushang.harness.resources.types import ExtensionDescriptor
 
     extension_file = tmp_path / "legacy_builder_v2.py"
     extension_file.write_text(

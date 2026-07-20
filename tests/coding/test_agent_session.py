@@ -440,14 +440,14 @@ def test_agent_session_prompt_expands_preflight_references_and_records_unresolve
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.loader import (
+    from loushang.coding.session import AgentSession
+    from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.resources.types import (
         PromptFragmentDescriptor,
         ResourceBundle,
         SkillDescriptor,
     )
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
-    from loushang.harness.diagnostics import DiagnosticsService
 
     prompted_texts: list[str] = []
 
@@ -574,9 +574,12 @@ def test_agent_session_input_hook_transforms_before_prompt_preflight(tmp_path) -
         InputEventResult,
         LoadedExtension,
     )
-    from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.resources.types import (
+        PromptFragmentDescriptor,
+        ResourceBundle,
+    )
 
     prompted_texts: list[str] = []
     seen: list[tuple[str, str]] = []
@@ -1417,13 +1420,13 @@ def test_agent_session_get_commands_aggregates_extension_prompt_and_skill_source
         LoadedExtension,
         RegisteredCommand,
     )
-    from loushang.coding.loader import (
+    from loushang.coding.session import AgentSession
+    from loushang.coding.store import SessionManager
+    from loushang.harness.resources.types import (
         PromptFragmentDescriptor,
         ResourceBundle,
         SkillDescriptor,
     )
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
 
     async def _handler(args: str, ctx):
         del args, ctx
@@ -1522,9 +1525,12 @@ def test_agent_session_list_commands_hides_disabled_skills_but_keeps_explicit_on
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.loader import ResourceBundle, SkillDescriptor
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.resources.types import (
+        ResourceBundle,
+        SkillDescriptor,
+    )
 
     session = AgentSession(
         agent=Agent(),
@@ -1708,13 +1714,13 @@ def test_agent_session_execute_command_async_expands_prompt_and_skill_commands(
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.loader import (
+    from loushang.coding.session import AgentSession
+    from loushang.coding.store import SessionManager
+    from loushang.harness.resources.types import (
         PromptFragmentDescriptor,
         ResourceBundle,
         SkillDescriptor,
     )
-    from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
 
     session = AgentSession(
         agent=Agent(),
@@ -1776,9 +1782,12 @@ def test_agent_session_execute_command_async_prefers_extension_over_prompt(
         LoadedExtension,
         RegisteredCommand,
     )
-    from loushang.coding.loader import PromptFragmentDescriptor, ResourceBundle
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.resources.types import (
+        PromptFragmentDescriptor,
+        ResourceBundle,
+    )
 
     calls: list[str] = []
 
@@ -2086,10 +2095,10 @@ def test_agent_session_execute_command_async_keeps_resource_diagnostic_for_unres
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.resources.types import ResourceBundle
 
     diagnostics_service = DiagnosticsService()
     session = AgentSession(
@@ -2884,7 +2893,9 @@ def test_agent_session_rejects_pi_style_extension_provider_config(tmp_path) -> N
 def test_agent_session_exposes_standard_scoped_models_and_resources(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import ModelRegistry
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
     from loushang.coding.session import AgentSession, ModelSelection
     from loushang.coding.store import SessionManager
 
@@ -3934,13 +3945,15 @@ def test_agent_session_reload_extensions_refreshes_resources_before_session_star
         ExtensionRunner,
         LoadedExtension,
     )
-    from loushang.coding.loader import (
-        DefaultResourceLoader,
-        PromptFragmentDescriptor,
-        ResourceBundle,
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.resources.types import (
+        PromptFragmentDescriptor,
+        ResourceBundle,
+    )
 
     seen: list[list[str]] = []
     reload_calls: list[str] = []
@@ -4488,7 +4501,9 @@ def test_agent_session_extension_can_request_resource_refresh(tmp_path) -> None:
 
     from loushang.agent import Agent
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -4578,9 +4593,12 @@ def test_agent_session_resource_refresh_rebuilds_prompt_and_tools_without_emitti
 
     from loushang.agent import Agent
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.loader import DefaultResourceLoader, ResourceBundle
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.core import tool
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -4643,10 +4661,13 @@ def test_agent_session_resource_refresh_rebuilds_prompt_and_tools_without_emitti
 def test_agent_session_records_reload_failures_as_diagnostics(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.loader import DefaultResourceLoader, ResourceBundle
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.resources.types import ResourceBundle
 
     class _BrokenReloadLoader(DefaultResourceLoader):
         def reload_resources(self, cwd):
@@ -4695,14 +4716,16 @@ def test_agent_session_records_bind_failures_as_diagnostics(tmp_path) -> None:
         ExtensionRunner,
         LoadedExtension,
     )
-    from loushang.coding.loader import (
-        DefaultResourceLoader,
-        PromptFragmentDescriptor,
-        ResourceBundle,
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.resources.types import (
+        PromptFragmentDescriptor,
+        ResourceBundle,
+    )
 
     class _BrokenBindRunner(ExtensionRunner):
         def __init__(self, extensions) -> None:
@@ -5029,7 +5052,9 @@ def test_agent_session_exposes_session_scoped_diagnostics(tmp_path) -> None:
 def test_agent_session_get_packages_projects_materializer_state(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.plugin import PackageMaterializer
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -5057,15 +5082,17 @@ def test_agent_session_records_remote_package_manifest_diagnostics(tmp_path) -> 
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package import (
-        PackageMaterializationRecord,
-        PackageMaterializer,
-        PackageSourceConfig,
-    )
     from loushang.coding.policy import PackageSecurityPolicy
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.resources.packages.materializer import (
+        PackageMaterializationRecord,
+    )
+    from loushang.harness.resources.packages.source import PackageSourceConfig
 
     source = "https://packages.example.invalid/review-pack.git"
 
@@ -5145,7 +5172,9 @@ def test_agent_session_materialize_package_returns_policy_denied_record(
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.plugin import PackageMaterializer
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -5175,9 +5204,14 @@ def test_agent_session_updates_and_removes_materialized_packages(tmp_path) -> No
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.plugin import PackageMaterializationRecord, PackageMaterializer
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.resources.packages.materializer import (
+        PackageMaterializationRecord,
+    )
 
     source = "https://packages.example.invalid/review-pack.git"
     settings = SettingsManager(ControlConfig(plugin_sources=(source,)))
@@ -5228,12 +5262,14 @@ def test_agent_session_installs_and_uninstalls_package_with_settings(tmp_path) -
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package import (
-        PackageMaterializationRecord,
-        PackageMaterializer,
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.resources.packages.materializer import (
+        PackageMaterializationRecord,
+    )
 
     source = "https://packages.example.invalid/review-pack.git"
 
@@ -5280,7 +5316,9 @@ def test_agent_session_installs_and_uninstalls_local_package_with_settings(
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package import PackageMaterializer
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -5319,12 +5357,14 @@ def test_agent_session_install_package_does_not_persist_failed_materialization(
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package import (
-        PackageMaterializationRecord,
-        PackageMaterializer,
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.resources.packages.materializer import (
+        PackageMaterializationRecord,
+    )
 
     source = "https://packages.example.invalid/review-pack.git"
 
@@ -5360,13 +5400,17 @@ def test_agent_session_install_package_refreshes_resources_for_current_session(
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.loader import DefaultResourceLoader
-    from loushang.coding.package import (
-        PackageMaterializationRecord,
-        PackageMaterializer,
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
+    )
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.resources.packages.materializer import (
+        PackageMaterializationRecord,
+    )
 
     source = "https://packages.example.invalid/review-pack.git"
 
@@ -5413,12 +5457,14 @@ def test_agent_session_emits_package_progress_events(tmp_path) -> None:
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package import (
-        PackageMaterializationRecord,
-        PackageMaterializer,
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.resources.packages.materializer import (
+        PackageMaterializationRecord,
+    )
 
     source = "https://packages.example.invalid/review-pack.git"
 
@@ -5462,12 +5508,14 @@ def test_agent_session_updates_all_packages_and_checks_updates(tmp_path) -> None
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package import (
-        PackageMaterializationRecord,
-        PackageMaterializer,
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.resources.packages.materializer import (
+        PackageMaterializationRecord,
+    )
 
     source = "https://packages.example.invalid/review-pack.git"
     calls: list[str] = []
@@ -5501,21 +5549,36 @@ def test_agent_session_updates_all_packages_and_checks_updates(tmp_path) -> None
     assert updates == []
 
 
-def test_agent_session_updates_and_checks_configured_package_sources(tmp_path) -> None:
+def test_agent_session_updates_and_checks_configured_package_sources(
+    tmp_path, monkeypatch
+) -> None:
     import asyncio
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package import (
-        PackageMaterializationRecord,
-        PackageMaterializer,
-        PackageSourceConfig,
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.resources.packages.materializer import (
+        PackageMaterializationRecord,
+    )
+    from loushang.harness.resources.packages.source import PackageSourceConfig
 
     source = "https://packages.example.invalid/review-pack.git"
     calls: list[str] = []
+
+    async def _failed_remote_check(
+        source: str, timeout_seconds: float | None = None
+    ) -> tuple[str | None, str]:
+        del source, timeout_seconds
+        return None, "remote check unavailable"
+
+    monkeypatch.setattr(
+        "loushang.harness.resources.packages.materializer._remote_git_head_result_async",
+        _failed_remote_check,
+    )
 
     async def backend(
         record: PackageMaterializationRecord,
@@ -5559,13 +5622,15 @@ def test_agent_session_update_packages_dedupes_configured_sources_by_identity(
 
     from loushang.agent import Agent
     from loushang.coding.control import SettingsManager
-    from loushang.coding.package import (
-        PackageMaterializationRecord,
-        PackageMaterializer,
-    )
     from loushang.coding.policy import PackageSecurityPolicy
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.resources.packages.materializer import (
+        PackageMaterializationRecord,
+    )
 
     global_settings = tmp_path / "global" / "settings.json"
     project_settings = tmp_path / "project" / ".loushang" / "settings.json"
@@ -5620,7 +5685,9 @@ def test_agent_session_package_projection_dedupes_pinned_versions_by_package_ide
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import SettingsManager
-    from loushang.coding.package import PackageMaterializer
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -5661,8 +5728,12 @@ def test_agent_session_configures_package_roots_from_all_settings_scopes(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import SettingsManager
-    from loushang.coding.loader import DefaultResourceLoader
-    from loushang.coding.package import PackageMaterializer
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
+    )
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -5710,8 +5781,12 @@ def test_agent_session_configures_same_relative_package_roots_from_distinct_scop
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import SettingsManager
-    from loushang.coding.loader import DefaultResourceLoader
-    from loushang.coding.package import PackageMaterializer
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
+    )
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
 
@@ -5754,21 +5829,36 @@ def test_agent_session_configures_same_relative_package_roots_from_distinct_scop
     )
 
 
-def test_agent_session_records_package_update_check_failures(tmp_path) -> None:
+def test_agent_session_records_package_update_check_failures(
+    tmp_path, monkeypatch
+) -> None:
     import asyncio
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package import (
-        PackageMaterializationRecord,
-        PackageMaterializer,
-        PackageSourceConfig,
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.resources.packages.materializer import (
+        PackageMaterializationRecord,
+    )
+    from loushang.harness.resources.packages.source import PackageSourceConfig
 
     source = (tmp_path / "missing.git").as_uri()
+
+    async def _failed_remote_check(
+        source: str, timeout_seconds: float | None = None
+    ) -> tuple[str | None, str]:
+        del source, timeout_seconds
+        return None, "Failed to check remote package update: unavailable"
+
+    monkeypatch.setattr(
+        "loushang.harness.resources.packages.materializer._remote_git_head_result_async",
+        _failed_remote_check,
+    )
 
     async def backend(
         record: PackageMaterializationRecord,

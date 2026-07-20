@@ -72,8 +72,8 @@ def test_executable_source_identity_gracefully_degrades_outside_git(tmp_path) ->
 
 
 def test_source_info_from_resource_descriptor_projects_package_provenance() -> None:
-    from loushang.coding.loader import PromptFragmentDescriptor
     from loushang.coding.source_info import source_info_from_resource_descriptor
+    from loushang.harness.resources.types import PromptFragmentDescriptor
 
     descriptor = PromptFragmentDescriptor(
         name="review",
@@ -95,8 +95,8 @@ def test_source_info_from_resource_descriptor_projects_package_provenance() -> N
 
 
 def test_source_info_from_resource_descriptor_projects_project_local_provenance() -> None:
-    from loushang.coding.loader import SkillDescriptor
     from loushang.coding.source_info import source_info_from_resource_descriptor
+    from loushang.harness.resources.types import SkillDescriptor
 
     descriptor = SkillDescriptor(
         name="debug",

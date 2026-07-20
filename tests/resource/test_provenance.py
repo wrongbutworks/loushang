@@ -21,12 +21,14 @@ def test_coding_source_info_paths_preserve_harness_owner_identity() -> None:
 
 
 def test_coding_resource_diagnostic_paths_preserve_harness_owner_identity() -> None:
-    from loushang.coding.loader import ResourceDiagnostic as LoaderResourceDiagnostic
-    from loushang.coding.loader.types import (
-        ResourceDiagnostic as LoaderTypesResourceDiagnostic,
-    )
     from loushang.harness.resources.diagnostics import (
         ResourceDiagnostic as HarnessResourceDiagnostic,
+    )
+    from loushang.harness.resources.diagnostics import (
+        ResourceDiagnostic as LoaderResourceDiagnostic,
+    )
+    from loushang.harness.resources.diagnostics import (
+        ResourceDiagnostic as LoaderTypesResourceDiagnostic,
     )
 
     assert LoaderResourceDiagnostic is LoaderTypesResourceDiagnostic is HarnessResourceDiagnostic

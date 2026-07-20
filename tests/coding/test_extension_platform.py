@@ -143,7 +143,7 @@ kind = "observe"
 
 def test_extension_loader_reports_removed_provider_hook_manifest(tmp_path) -> None:
     from loushang.coding.extensions.loader import ExtensionLoader
-    from loushang.coding.loader import ExtensionDescriptor
+    from loushang.harness.resources.types import ExtensionDescriptor
 
     extension_dir = tmp_path / "provider-hooks"
     extension_dir.mkdir()
@@ -253,7 +253,7 @@ def test_extension_loader_attaches_manifest_policy_and_surface_snapshot(
     tmp_path,
 ) -> None:
     from loushang.coding.extensions.loader import ExtensionLoader
-    from loushang.coding.loader import ExtensionDescriptor
+    from loushang.harness.resources.types import ExtensionDescriptor
 
     extension_dir = tmp_path / "review"
     extension_dir.mkdir()
@@ -348,7 +348,7 @@ def test_extension_runner_lists_extension_visibility_snapshot() -> None:
         ExtensionSurfaceDescriptor,
         LoadedExtension,
     )
-    from loushang.coding.loader import ResourceDiagnostic
+    from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
     manifest = ExtensionManifest(
         id="acme.review",

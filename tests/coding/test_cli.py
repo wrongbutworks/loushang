@@ -6805,7 +6805,8 @@ def test_run_cli_lists_diagnostics_as_tsv_and_returns_early(tmp_path) -> None:
 
 def test_run_cli_lists_skills_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.loader import ResourceDiagnostic, SkillDescriptor
+    from loushang.harness.resources.diagnostics import ResourceDiagnostic
+    from loushang.harness.resources.types import SkillDescriptor
 
     session = FakeSession("session-1")
     session.resource_bundle.skills = [
@@ -6880,7 +6881,9 @@ def test_run_cli_lists_skills_as_json(tmp_path) -> None:
 
 def test_run_cli_lists_project_skill_provenance_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     skill_dir = tmp_path / "skills" / "debug"
     skill_dir.mkdir(parents=True)

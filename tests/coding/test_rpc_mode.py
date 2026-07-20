@@ -18,11 +18,6 @@ from loushang.ai.model.domain import (
     Pricing,
 )
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.loader import (
-    PromptFragmentDescriptor,
-    ResourceBundle,
-    SkillDescriptor,
-)
 from loushang.coding.session.types import (
     AgentSessionState,
     CommandSourceInfo,
@@ -43,6 +38,11 @@ from loushang.harness.diagnostics import (
     ErrorReport,
 )
 from loushang.harness.events import RuntimeEvent
+from loushang.harness.resources.types import (
+    PromptFragmentDescriptor,
+    ResourceBundle,
+    SkillDescriptor,
+)
 from loushang.harness.runtime import SessionOperationResult
 
 
