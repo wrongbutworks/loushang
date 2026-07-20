@@ -3016,6 +3016,7 @@ def test_agent_session_exposes_standard_runtime_facades(tmp_path) -> None:
     )
 
     control = session.session_control
+    assert control is session
     assert control.session_id == session.session_id
     assert control.session_name == session.session_name
     assert session.is_retrying is False
