@@ -6,9 +6,11 @@ from loushang.work.types import (
     ArtifactStatus,
     DeliveryHint,
     WorkEvent,
+    WorkEventFact,
     WorkOperation,
     WorkPlanRun,
     WorkRun,
+    WorkRunSpec,
     WorkRunStatus,
     WorkStepDeviation,
     WorkStepRun,
@@ -24,9 +26,26 @@ if TYPE_CHECKING:
         JsonlEventLogBackend,
     )
     from loushang.work.plan_projection import project_work_plan_runs
+    from loushang.work.ports import (
+        WorkAcceptPort,
+        WorkCancelPort,
+        WorkDomainExecutor,
+        WorkExecutionContext,
+        WorkQueryPort,
+        WorkSubscribePort,
+        WorkWaitPort,
+    )
     from loushang.work.projection import (
         WorkEventProjectionContext,
         project_agent_event_to_work_events,
+    )
+    from loushang.work.runtime import (
+        DuplicateWorkOperationError,
+        UnknownWorkRunError,
+        WorkLifecycleOwnershipError,
+        WorkRunTerminalError,
+        WorkRuntime,
+        WorkRuntimeError,
     )
 
 _LAZY_EXPORTS = {
@@ -53,6 +72,25 @@ _LAZY_EXPORTS = {
         "loushang.work.plan_projection",
         "project_work_plan_runs",
     ),
+    "WorkAcceptPort": ("loushang.work.ports", "WorkAcceptPort"),
+    "WorkCancelPort": ("loushang.work.ports", "WorkCancelPort"),
+    "WorkDomainExecutor": ("loushang.work.ports", "WorkDomainExecutor"),
+    "WorkExecutionContext": ("loushang.work.ports", "WorkExecutionContext"),
+    "WorkQueryPort": ("loushang.work.ports", "WorkQueryPort"),
+    "WorkSubscribePort": ("loushang.work.ports", "WorkSubscribePort"),
+    "WorkWaitPort": ("loushang.work.ports", "WorkWaitPort"),
+    "DuplicateWorkOperationError": (
+        "loushang.work.runtime",
+        "DuplicateWorkOperationError",
+    ),
+    "UnknownWorkRunError": ("loushang.work.runtime", "UnknownWorkRunError"),
+    "WorkLifecycleOwnershipError": (
+        "loushang.work.runtime",
+        "WorkLifecycleOwnershipError",
+    ),
+    "WorkRunTerminalError": ("loushang.work.runtime", "WorkRunTerminalError"),
+    "WorkRuntime": ("loushang.work.runtime", "WorkRuntime"),
+    "WorkRuntimeError": ("loushang.work.runtime", "WorkRuntimeError"),
 }
 
 
@@ -70,6 +108,7 @@ __all__ = [
     "ArtifactRef",
     "ArtifactStatus",
     "DeliveryHint",
+    "DuplicateWorkOperationError",
     "EventLogBackend",
     "EventLogEntry",
     "EventPosition",
@@ -77,10 +116,24 @@ __all__ = [
     "JsonlEventLogBackend",
     "WorkEventProjectionContext",
     "WorkEvent",
+    "WorkEventFact",
+    "WorkAcceptPort",
+    "WorkCancelPort",
+    "WorkDomainExecutor",
+    "WorkExecutionContext",
+    "WorkLifecycleOwnershipError",
     "WorkOperation",
     "WorkPlanRun",
     "WorkRun",
     "WorkRunStatus",
+    "WorkRunSpec",
+    "WorkRunTerminalError",
+    "WorkRuntime",
+    "WorkRuntimeError",
+    "UnknownWorkRunError",
+    "WorkQueryPort",
+    "WorkSubscribePort",
+    "WorkWaitPort",
     "WorkStepDeviation",
     "WorkStepRun",
     "WorkStepStatus",

@@ -53,6 +53,31 @@ class WorkOperation:
 
 
 @dataclass(frozen=True)
+class WorkEventFact:
+    """A domain fact that Work will correlate, sequence, and persist."""
+
+    kind: str
+    payload: Mapping[str, object]
+    delivery_hint: DeliveryHint = "coalesce"
+    source_event_ref: str | None = None
+
+
+@dataclass(frozen=True)
+class WorkRunSpec:
+    """Work-owned lifecycle metadata supplied when an operation is accepted."""
+
+    run_id: str | None = None
+    method_id: str | None = None
+    plan_id: str | None = None
+    step_id: str | None = None
+    run_event_payload: Mapping[str, object] = field(default_factory=dict)
+    scope_event_payload: Mapping[str, object] = field(default_factory=dict)
+    emit_plan_start: bool = True
+    emit_plan_completion: bool = True
+    emit_plan_failure: bool = True
+
+
+@dataclass(frozen=True)
 class WorkRun:
     run_id: str
     operation_id: str
@@ -129,10 +154,12 @@ __all__ = [
     "ArtifactStatus",
     "DeliveryHint",
     "WorkEvent",
+    "WorkEventFact",
     "WorkOperation",
     "WorkPlanRun",
     "WorkRun",
     "WorkRunStatus",
+    "WorkRunSpec",
     "WorkStepDeviation",
     "WorkStepRun",
     "WorkStepStatus",
