@@ -16,6 +16,7 @@ from loushang.coding.event import (
     should_emit_runtime_event_view,
 )
 from loushang.coding.mode.base import ModeAdapter, ModeState
+from loushang.coding.work_executor import SubmitCodingTurn
 from loushang.coding.work_shell import CodingWorkShell
 from loushang.harness.conversation import NativeConversationHeaderCodec
 from loushang.harness.events import RuntimeEvent
@@ -24,6 +25,10 @@ from loushang.protocol import require_json_value
 from loushang.work import EventLogBackend
 
 _HEADER_CODEC = NativeConversationHeaderCodec()
+
+
+class _CodingPrintFailure(RuntimeError):
+    pass
 
 
 def serialize_session_header(header) -> dict[str, object]:
@@ -194,6 +199,60 @@ class PrintMode(ModeAdapter):
                     await self.dispose()
                 except Exception as exc:
                     self.stderr.write(f"Error: {exc}\n")
+                    exit_code = 1
+        return exit_code
+
+    async def run_plan(
+        self,
+        turns: Sequence[SubmitCodingTurn],
+        *,
+        dispose: bool = True,
+    ) -> int:
+        """Run one fixed MethodPlan through the Work-owned step sequencer."""
+
+        if self.work_event_log is None:
+            raise ValueError("Work event log is required for planned execution")
+
+        def unsubscribe() -> None:
+            return None
+
+        async def after_turn(
+            turn: SubmitCodingTurn, turn_index: int, turn_count: int
+        ) -> None:
+            del turn, turn_index, turn_count
+            assistant_failure = _last_assistant_failure_message(self.session)
+            if assistant_failure is not None:
+                raise _CodingPrintFailure(assistant_failure)
+
+        exit_code = 0
+        try:
+            if self.output_mode == "json":
+                header = self.session.session_manager.get_header()
+                self._write_json_line(serialize_session_header(header))
+            unsubscribe = self._subscribe_to_events()
+            shell = CodingWorkShell(
+                session=self.session,
+                event_log=self.work_event_log,
+            )
+            await shell.submit_coding_plan(
+                turns,
+                session_id=_work_session_id(self.session),
+                after_turn=after_turn,
+                wait_for_idle_after_prompt=True,
+            )
+        except _CodingPrintFailure as error:
+            self.stderr.write(f"{error}\n")
+            exit_code = 1
+        except Exception as error:
+            self.stderr.write(f"Error: {error}\n")
+            exit_code = 1
+        finally:
+            unsubscribe()
+            if dispose:
+                try:
+                    await self.dispose()
+                except Exception as error:
+                    self.stderr.write(f"Error: {error}\n")
                     exit_code = 1
         return exit_code
 
@@ -572,6 +631,34 @@ async def run_print_mode(
         follow_up_messages=follow_up_messages,
         dispose=dispose,
     )
+
+
+async def run_print_plan_mode(
+    *,
+    runtime: Any,
+    session: Any,
+    turns: Sequence[SubmitCodingTurn],
+    stdout: TextIO,
+    stderr: TextIO | None = None,
+    output_mode: Literal["text", "json"] = "text",
+    event_view: JsonEventView = "full",
+    event_select: Sequence[str] | str | None = None,
+    render_tool_events: bool = False,
+    work_event_log: EventLogBackend,
+    dispose: bool = True,
+) -> int:
+    mode = PrintMode(
+        runtime=runtime,
+        session=session,
+        stdout=stdout,
+        stderr=stderr,
+        output_mode=output_mode,
+        event_view=event_view,
+        event_select=event_select,
+        render_tool_events=render_tool_events,
+        work_event_log=work_event_log,
+    )
+    return await mode.run_plan(turns, dispose=dispose)
 
 
 async def _prompt_session(

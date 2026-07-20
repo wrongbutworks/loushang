@@ -70,13 +70,16 @@ In particular, Pi-style `executeBash` options and result aliases remain in
 it must not acquire Pi protocol vocabulary.
 
 `AgentSession.session_control` exposes `AgentSession` itself as the Harness
-`SessionControlPort`; there is no private facade object. The
-standard Coding Channel adapter binds that port through
-`SessionOperationRuntime`. Coding RPC routes common control commands through
-the same operation runtime, while retaining its legacy event
+`SessionControlPort`; there is no private facade object. Coding RPC routes
+common control commands through `SessionOperationRuntime`, while retaining its legacy event
 subscription fallback and Pi JSON projection: the latter carries Coding event
 names, aliases, correlation fields, and optional tool rendering, so it is a
 Product adapter rather than a Harness event schema.
+
+The standard Coding Channel adapter instead admits a `WorkOperation` into
+`loushang.work.WorkRuntime`; it remains an injected Channel port and does not
+give Channel a Harness dependency. Its Coding domain executor owns the Work
+execution and cancellation linkage to the bound session.
 
 ## Dependency Rule
 
@@ -92,8 +95,8 @@ policy is passed through the bound ports rather than imported.
   runtime, transcript, tools, commands, command tool, view, and retry port.
 - Coding session regressions preserve the public `AgentSession` behavior while
   it directly inherits the common `SessionFacade` operations.
-- Channel tests bind only `SessionControlPort` through the operation runtime;
-  RPC tests preserve Coding's legacy event projection while its control
-  commands use the same capability groups.
+- Channel tests bind an injected Coding Work operation port; RPC tests preserve
+  Coding's legacy event projection while its control commands use the shared
+  capability groups.
 - Architecture tests prohibit Coding imports and Pi protocol names in the
   Facade, and require Coding `AgentSession` to adopt it.

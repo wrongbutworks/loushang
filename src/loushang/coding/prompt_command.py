@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import inspect
+import time
+import traceback
 from collections.abc import Mapping, Sequence
 from typing import Any, TextIO
 
@@ -9,6 +11,7 @@ from loushang.coding.presentation.tui.plain import (
     PlainCodingUiRenderer,
     build_plain_coding_event_projection,
 )
+from loushang.coding.work_executor import SubmitCodingTurn
 from loushang.coding.work_shell import CodingWorkShell
 from loushang.harnesstui.conversation.plain_prompt_host import (
     PlainPromptHostPorts,
@@ -98,6 +101,93 @@ async def run_prompt_command(
             dispose=dispose,
         )
     )
+
+
+class _CodingPromptFailure(RuntimeError):
+    pass
+
+
+async def run_prompt_plan_command(
+    *,
+    runtime: Any,
+    session: Any,
+    turns: Sequence[SubmitCodingTurn],
+    stdout: TextIO,
+    stderr: TextIO,
+    work_event_log: EventLogBackend,
+    verbose: bool = False,
+    dispose: bool = True,
+) -> int:
+    """Render and execute a fixed MethodPlan as one Work-owned run."""
+
+    renderer = PlainCodingUiRenderer(stdout=stdout, stderr=stderr)
+    event_renderer = build_plain_coding_event_projection(
+        renderer,
+        render_user_messages=False,
+    )
+    started_at = 0.0
+    previous_error: str | None = None
+
+    def before_turn(
+        turn: SubmitCodingTurn, turn_index: int, turn_count: int
+    ) -> None:
+        del turn_index, turn_count
+        nonlocal started_at, previous_error
+        started_at = time.monotonic()
+        previous_error = event_renderer.last_error_message
+        renderer.render_user(turn.text)
+
+    def after_turn(
+        turn: SubmitCodingTurn, turn_index: int, turn_count: int
+    ) -> None:
+        del turn, turn_index, turn_count
+        assistant_failure = _last_assistant_failure_message(session)
+        if (
+            assistant_failure is None
+            and event_renderer.last_error_message != previous_error
+        ):
+            assistant_failure = event_renderer.last_error_message
+        if assistant_failure is not None:
+            raise _CodingPromptFailure(assistant_failure)
+        renderer.render_worked(time.monotonic() - started_at)
+
+    def unsubscribe() -> None:
+        return None
+
+    exit_code = 0
+    try:
+        await ensure_usable_session_model(session)
+        unsubscribe = session.subscribe(event_renderer.handle)
+        shell = CodingWorkShell(session=session, event_log=work_event_log)
+        await shell.submit_coding_plan(
+            turns,
+            session_id=_work_session_id(session),
+            before_turn=before_turn,
+            after_turn=after_turn,
+            wait_for_idle_after_prompt=True,
+        )
+    except _CodingPromptFailure:
+        exit_code = 1
+    except Exception as error:
+        renderer.render_error(str(error) or type(error).__name__)
+        if verbose:
+            traceback.print_exception(
+                type(error), error, error.__traceback__, file=stderr
+            )
+        exit_code = 1
+    finally:
+        unsubscribe()
+        if dispose:
+            try:
+                await _dispose_runtime_or_session(runtime, session)
+            except Exception as error:
+                renderer.render_error(str(error) or type(error).__name__)
+                if verbose:
+                    traceback.print_exception(
+                        type(error), error, error.__traceback__, file=stderr
+                    )
+                exit_code = 1
+    return exit_code
 
 
 async def _run_prompt_session(
@@ -224,4 +314,4 @@ def _work_session_id(session: Any) -> str:
     return "session"
 
 
-__all__ = ["run_prompt_command"]
+__all__ = ["run_prompt_command", "run_prompt_plan_command"]

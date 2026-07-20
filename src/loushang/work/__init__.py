@@ -14,10 +14,15 @@ from loushang.work.types import (
     WorkRunStatus,
     WorkStepDeviation,
     WorkStepRun,
+    WorkStepSpec,
     WorkStepStatus,
 )
 
 if TYPE_CHECKING:
+    from loushang.work.agent_projection import (
+        AgentWorkFactProjectionContext,
+        project_agent_event_to_work_facts,
+    )
     from loushang.work.event_log import (
         EventLogBackend,
         EventLogEntry,
@@ -29,6 +34,7 @@ if TYPE_CHECKING:
     from loushang.work.ports import (
         WorkAcceptPort,
         WorkCancelPort,
+        WorkDomainCancellation,
         WorkDomainExecutor,
         WorkExecutionContext,
         WorkQueryPort,
@@ -39,6 +45,7 @@ if TYPE_CHECKING:
         WorkEventProjectionContext,
         project_agent_event_to_work_events,
     )
+    from loushang.work.run_projection import WorkRunReplayError, project_work_runs
     from loushang.work.runtime import (
         DuplicateWorkOperationError,
         UnknownWorkRunError,
@@ -49,6 +56,14 @@ if TYPE_CHECKING:
     )
 
 _LAZY_EXPORTS = {
+    "AgentWorkFactProjectionContext": (
+        "loushang.work.agent_projection",
+        "AgentWorkFactProjectionContext",
+    ),
+    "project_agent_event_to_work_facts": (
+        "loushang.work.agent_projection",
+        "project_agent_event_to_work_facts",
+    ),
     "EventLogBackend": ("loushang.work.event_log", "EventLogBackend"),
     "EventLogEntry": ("loushang.work.event_log", "EventLogEntry"),
     "EventPosition": ("loushang.work.event_log", "EventPosition"),
@@ -72,9 +87,18 @@ _LAZY_EXPORTS = {
         "loushang.work.plan_projection",
         "project_work_plan_runs",
     ),
+    "project_work_runs": ("loushang.work.run_projection", "project_work_runs"),
+    "WorkRunReplayError": (
+        "loushang.work.run_projection",
+        "WorkRunReplayError",
+    ),
     "WorkAcceptPort": ("loushang.work.ports", "WorkAcceptPort"),
     "WorkCancelPort": ("loushang.work.ports", "WorkCancelPort"),
     "WorkDomainExecutor": ("loushang.work.ports", "WorkDomainExecutor"),
+    "WorkDomainCancellation": (
+        "loushang.work.ports",
+        "WorkDomainCancellation",
+    ),
     "WorkExecutionContext": ("loushang.work.ports", "WorkExecutionContext"),
     "WorkQueryPort": ("loushang.work.ports", "WorkQueryPort"),
     "WorkSubscribePort": ("loushang.work.ports", "WorkSubscribePort"),
@@ -105,6 +129,7 @@ def __getattr__(name: str) -> object:
 
 
 __all__ = [
+    "AgentWorkFactProjectionContext",
     "ArtifactRef",
     "ArtifactStatus",
     "DeliveryHint",
@@ -120,6 +145,7 @@ __all__ = [
     "WorkAcceptPort",
     "WorkCancelPort",
     "WorkDomainExecutor",
+    "WorkDomainCancellation",
     "WorkExecutionContext",
     "WorkLifecycleOwnershipError",
     "WorkOperation",
@@ -127,6 +153,7 @@ __all__ = [
     "WorkRun",
     "WorkRunStatus",
     "WorkRunSpec",
+    "WorkRunReplayError",
     "WorkRunTerminalError",
     "WorkRuntime",
     "WorkRuntimeError",
@@ -135,8 +162,11 @@ __all__ = [
     "WorkSubscribePort",
     "WorkWaitPort",
     "WorkStepDeviation",
+    "WorkStepSpec",
     "WorkStepRun",
     "WorkStepStatus",
     "project_agent_event_to_work_events",
+    "project_agent_event_to_work_facts",
     "project_work_plan_runs",
+    "project_work_runs",
 ]

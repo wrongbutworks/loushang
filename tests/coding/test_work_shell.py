@@ -641,6 +641,60 @@ def test_coding_work_shell_unsubscribes_once_on_success_failure_and_cancellation
     asyncio.run(scenario())
 
 
+def test_coding_work_shell_runs_method_plan_as_one_sequential_work_run() -> None:
+    from loushang.coding.work_executor import SubmitCodingTurn
+    from loushang.coding.work_shell import CodingWorkShell
+    from loushang.work import InMemoryEventLogBackend
+
+    async def scenario() -> None:
+        event_log = InMemoryEventLogBackend()
+        session = FakePromptSession(events=[])
+        shell = CodingWorkShell(session=session, event_log=event_log)
+        turns = (
+            SubmitCodingTurn(
+                text="inspect",
+                method_id="method-1",
+                plan_id="plan-1",
+                step_id="step-1",
+                step_index=0,
+                step_title="Inspect",
+            ),
+            SubmitCodingTurn(
+                text="verify",
+                method_id="method-1",
+                plan_id="plan-1",
+                step_id="step-2",
+                step_index=1,
+                step_title="Verify",
+            ),
+        )
+
+        run = await shell.submit_coding_plan(
+            turns,
+            session_id="session-1",
+            operation_id="op-1",
+            run_id="run-1",
+        )
+
+        assert run.status == "completed"
+        assert session.prompts == ["inspect", "verify"]
+        entries = event_log.query(run_id="run-1")
+        assert {entry.run_id for entry in entries} == {"run-1"}
+        assert [entry.payload["kind"] for entry in entries] == [
+            "SubmitCodingTurn",
+            "WorkRunStarted",
+            "WorkPlanStarted",
+            "WorkStepStarted",
+            "WorkStepCompleted",
+            "WorkStepStarted",
+            "WorkStepCompleted",
+            "WorkPlanCompleted",
+            "WorkRunCompleted",
+        ]
+
+    asyncio.run(scenario())
+
+
 def test_agent_start_and_end_are_non_terminal_invocation_facts() -> None:
     from loushang.coding.work_shell import CodingWorkShell
     from loushang.work import InMemoryEventLogBackend

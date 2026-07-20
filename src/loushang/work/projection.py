@@ -1,4 +1,4 @@
-"""Compatibility projection surface; Coding owns Agent-event product policy."""
+"""Compatibility surface that adds WorkEvent identity to Work-owned facts."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
-from loushang.coding.work_projection import (
-    CodingWorkFactProjectionContext,
+from loushang.work.agent_projection import (
+    AgentWorkFactProjectionContext,
     project_agent_event_to_work_facts,
 )
 from loushang.work.types import WorkEvent
@@ -35,7 +35,7 @@ def project_agent_event_to_work_events(
 ) -> list[WorkEvent]:
     facts = project_agent_event_to_work_facts(
         event,
-        context=CodingWorkFactProjectionContext(
+        context=AgentWorkFactProjectionContext(
             source_event_ref=context.source_event_ref,
             message_serializer=context.message_serializer,
         ),

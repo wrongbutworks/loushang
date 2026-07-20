@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 from datetime import UTC, datetime
 from io import StringIO
@@ -17,7 +18,7 @@ from loushang.coding.mode.channel_mode import (
     run_channel_mode,
 )
 from loushang.harness.events import RuntimeEvent, RuntimeEventView
-from loushang.work import WorkOperation
+from loushang.work import WorkEvent, WorkOperation
 
 
 class _FakeSession:
@@ -26,7 +27,6 @@ class _FakeSession:
         self.listeners = []
         self.prompt_calls: list[dict[str, object]] = []
         self.abort_calls = 0
-        self.idle_waits = 0
         self.release = asyncio.Event()
         self.unsubscribe_calls = 0
 
@@ -65,11 +65,13 @@ class _FakeSession:
         self.release.set()
 
     async def wait_for_idle(self) -> None:
-        self.idle_waits += 1
+        await self.release.wait()
 
     def emit(self, event: RuntimeEvent[object]) -> None:
         for listener in tuple(self.listeners):
-            listener(event)
+            result = listener(event)
+            if inspect.isawaitable(result):
+                asyncio.get_running_loop().create_task(result)
 
 
 def test_coding_channel_port_accepts_standard_turn_and_projects_runtime_event() -> None:
@@ -91,15 +93,23 @@ def test_coding_channel_port_accepts_standard_turn_and_projects_runtime_event() 
                 "source": "channel",
             }
         ]
-        assert len(deliveries) == 1
-        delivery = deliveries[0]
+        work_events = [
+            delivery.envelope.payload
+            for delivery in deliveries
+            if isinstance(delivery.envelope.payload, WorkEvent)
+        ]
+        assert [event.kind for event in work_events] == ["WorkRunStarted"]
+        delivery = next(
+            delivery
+            for delivery in deliveries
+            if isinstance(delivery.envelope.payload, RuntimeEventView)
+        )
         assert isinstance(delivery.envelope.payload, RuntimeEventView)
         assert delivery.envelope.payload.correlation_id == "operation-1"
         assert delivery.envelope.payload.payload["type"] == "queue_update"
 
         session.release.set()
         await asyncio.sleep(0)
-        assert session.idle_waits == 1
         unsubscribe()
         port.close()
 
@@ -159,9 +169,14 @@ def test_channel_host_correlates_coding_runtime_views_to_standard_request() -> N
             json.loads(line) for line in stdout.getvalue().splitlines() if line.strip()
         ]
         assert frames[0]["frame_type"] == "operation_accepted"
-        assert frames[1]["frame_type"] == "event"
-        assert frames[1]["request_id"] == "request-1"
-        assert frames[1]["envelope"]["payload"]["correlation_id"] == "operation-1"
+        event_frames = [frame for frame in frames if frame["frame_type"] == "event"]
+        assert event_frames[0]["request_id"] == "request-1"
+        runtime_frame = next(
+            frame
+            for frame in event_frames
+            if "correlation_id" in frame["envelope"]["payload"]
+        )
+        assert runtime_frame["envelope"]["payload"]["correlation_id"] == "operation-1"
 
         session.release.set()
         await asyncio.sleep(0)
@@ -193,15 +208,13 @@ def test_run_channel_mode_uses_active_session_and_releases_subscription() -> Non
             json.loads(line) for line in stdout.getvalue().splitlines() if line.strip()
         ]
         assert exit_code == 0
-        assert frames == [
-            {
-                "frame_type": "operation_accepted",
-                "operation_id": "operation-1",
-                "request_id": "request-1",
-                "run_id": None,
-            }
-        ]
-        assert session.unsubscribe_calls == 1
+        assert frames[0]["frame_type"] == "operation_accepted"
+        assert frames[0]["operation_id"] == "operation-1"
+        assert frames[0]["request_id"] == "request-1"
+        assert frames[0]["run_id"].startswith("run-")
+        # Channel releases its RuntimeEventView transport subscription and the
+        # Coding executor releases its independent Work-fact projection.
+        assert session.unsubscribe_calls == 2
 
     asyncio.run(scenario())
 

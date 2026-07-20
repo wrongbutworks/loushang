@@ -150,7 +150,8 @@ independent from product packages.
 | --- | --- | --- | --- |
 | `work/types.py` | `WorkOperation`, `WorkRun`, `WorkEvent`, plan/step run data, `ArtifactRef` | Work primitive | Keep artifact references generic; product packages own concrete artifact content. |
 | `work/event_log.py` | Event log protocol, in-memory backend, JSONL backend | Work primitive | Keep. |
-| `work/projection.py` | Generic mapping from agent-like events to `WorkEvent` | Work primitive | Keep. It accepts mappings and does not need product imports. |
+| `work/agent_projection.py` | Standard Agent/tool event mapping to `WorkEventFact` | Work boundary adapter | Keep. It is the explicit upper-layer adapter to Agent/AI codecs and must not import a product. |
+| `work/projection.py` | Adds run identity and sequence to standard facts as `WorkEvent` | Work primitive | Keep. It depends only on the Work-owned Agent projection. |
 | `work/plan_projection.py` | Plan/step run projection from work log entries | Work primitive | Keep. |
 | `work/coding.py` | Compatibility re-export for `CodingWorkShell` | Transitional compatibility | Do not expand. Implementation lives in `loushang.coding.work_shell`. |
 | `work/__init__.py` | Work exports | Work primitive plus lazy compatibility exports | Avoid eager product imports. |
