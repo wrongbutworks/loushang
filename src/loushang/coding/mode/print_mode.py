@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import inspect
 import json
 import sys
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal, TextIO
 
+from loushang.channel import dispose_product_host
 from loushang.coding.event import (
     SUPPORTED_JSON_EVENT_VIEWS,
     JsonEventView,
@@ -141,13 +141,7 @@ class PrintMode(ModeAdapter):
         if self._disposed:
             return 0
         self._disposed = True
-        disposer = getattr(self.runtime, "dispose", None)
-        if not callable(disposer):
-            disposer = getattr(self.session, "dispose", None)
-        if callable(disposer):
-            result = disposer()
-            if inspect.isawaitable(result):
-                await result
+        await dispose_product_host(self.runtime, self.session)
         return 0
 
     def render_event(self, event: object) -> None:

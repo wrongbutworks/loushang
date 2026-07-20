@@ -21,8 +21,10 @@ src/loushang/channel/
   json_codec.py
   jsonl_command_host.py
   json_projection.py
+  product_host.py
   remote_ui.py
   rpc_jsonl.py
+  stdout_guard.py
   types.py
 ```
 
@@ -49,6 +51,16 @@ The `rpc_jsonl` surface provides:
   one-frame JSONL encoding only; and
 - `project_channel_value` for documented dataclass, `Path`, mapping, list, and
   tuple transport projection without arbitrary-object coercion.
+
+`product_host.py` provides reusable Product-host lifecycle mechanics without a
+wire schema: `ProductHostAction` / `ProductHostAdapter`, line-input
+`ProductHostRuntime`, and `ProductHostTaskTracker`. Standard Channel JSONL and
+Product-specific compatibility hosts may share those mechanics while retaining
+their separate protocols.
+
+`stdout_guard.py` preserves a raw protocol stdout stream while routing incidental
+process output to stderr. It is available to any Product whose JSON or JSONL
+transport requires a clean stdout contract.
 
 The Product-owned JSONL command-host surface provides:
 
@@ -81,6 +93,10 @@ stdio JSONL loop over an injected `ChannelHostPort`: a Product port accepts a
 `RuntimeEventView` frames. `request_id` supplies transport correlation while
 `operation_id` and `run_id` retain Work ownership. See
 [Channel Host Boundary](channel-host-boundary.md).
+
+[Product Host Runtime Boundary](product-host-runtime-boundary.md) records the
+separate lower-level host lifecycle shared by standard Channel and
+Product-specific host adapters.
 
 `jsonl_command_host.py` supplies a separate, injected strict-JSON input loop
 for Product-owned JSONL command schemas. It does not define a second standard
@@ -123,7 +139,8 @@ The current channel package does not implement:
 - replay or audit storage
 - UI layout, widgets, rendering, or a universal UI wire protocol
 - direct agent loop or product session control
+- a universal Product RPC command schema
 
-The next likely implementation step is channel capability negotiation and
-interaction request/response contracts. Those must remain independent of the
-legacy Coding RPC widget and editor payloads.
+Capability negotiation and interaction request/response contracts remain
+future work. They must remain independent of legacy Coding RPC widget and
+editor payloads.

@@ -24,6 +24,19 @@ from loushang.channel.jsonl_command_host import (
     JsonlCommandHostErrorReason,
     JsonlCommandPort,
 )
+from loushang.channel.product_host import (
+    ProductHostAction,
+    ProductHostActionType,
+    ProductHostAdapter,
+    ProductHostRuntime,
+    ProductHostState,
+    ProductHostStateReader,
+    ProductHostStreams,
+    ProductHostTaskTracker,
+    dispatch_product_host_action,
+    dispose_product_host,
+    normalize_product_host_action,
+)
 from loushang.channel.remote_ui import RemoteUiContext
 from loushang.channel.rpc_jsonl import (
     ChannelError,
@@ -38,6 +51,14 @@ from loushang.channel.rpc_jsonl import (
     encode_rpc_jsonl_frame,
     rpc_jsonl_frame_from_json,
     rpc_jsonl_frame_to_json,
+)
+from loushang.channel.stdout_guard import (
+    flush_raw_stdout,
+    is_stdout_taken_over,
+    restore_stdout,
+    stdout_guard,
+    take_over_stdout,
+    write_raw_stdout,
 )
 from loushang.channel.types import (
     ChannelEndpoint,
@@ -65,6 +86,15 @@ __all__ = [
     "ChannelRpcFrame",
     "ChannelRpcFrameKind",
     "ChannelUnsubscribe",
+    "ProductHostAction",
+    "ProductHostActionType",
+    "ProductHostAdapter",
+    "ProductHostRuntime",
+    "ProductHostStreams",
+    "ProductHostState",
+    "ProductHostStateReader",
+    "ProductHostTaskTracker",
+    "dispose_product_host",
     "JsonlCommand",
     "JsonlCommandErrorListener",
     "JsonlCommandHost",
@@ -78,6 +108,14 @@ __all__ = [
     "decode_rpc_jsonl_frame",
     "encode_rpc_jsonl_frame",
     "project_channel_value",
+    "dispatch_product_host_action",
+    "normalize_product_host_action",
     "rpc_jsonl_frame_from_json",
     "rpc_jsonl_frame_to_json",
+    "flush_raw_stdout",
+    "is_stdout_taken_over",
+    "restore_stdout",
+    "stdout_guard",
+    "take_over_stdout",
+    "write_raw_stdout",
 ]

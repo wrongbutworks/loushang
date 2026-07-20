@@ -13,6 +13,8 @@ from loushang.channel import (
     JsonlCommand,
     JsonlCommandHost,
     JsonlCommandHostError,
+    ProductHostRuntime,
+    ProductHostTaskTracker,
     RemoteUiContext,
 )
 from loushang.coding.commands import complete_slash_commands
@@ -141,13 +143,14 @@ class RpcMode(ModeAdapter):
         self.event_view = event_view
         self.event_select = normalize_event_select(event_select)
         self.render_tool_events = render_tool_events
+        self._host_runtime = ProductHostRuntime(stdin=stdin)
         self.session = self._require_current_session()
         self._session_control = self._find_session_control(self.session)
         self._tool_render_runtime: ToolRenderRuntime | None = None
         self._tool_definition_resolver: ToolDefinitionResolver | None = None
         self._configure_tool_rendering(self.session)
         self._unsubscribe = self._subscribe_to_events(self.session)
-        self._background_tasks: set[asyncio.Task[None]] = set()
+        self._task_tracker = ProductHostTaskTracker()
         self._active_prompt_task: asyncio.Task[None] | None = None
         self._active_bash_task: asyncio.Task[None] | None = None
         self.extension_ui_context = RpcExtensionUIContext(self._write_json_line)
@@ -164,6 +167,7 @@ class RpcMode(ModeAdapter):
         return await self.run()
 
     async def stop(self) -> int:
+        self._host_runtime.stop()
         self._command_host.stop()
         self._unsubscribe()
         return 0
@@ -188,6 +192,7 @@ class RpcMode(ModeAdapter):
         return 0
 
     async def dispose(self) -> int:
+        self._host_runtime.stop()
         self._command_host.stop()
         self._unsubscribe()
         disposer = getattr(self.runtime, "dispose", None)
@@ -200,13 +205,12 @@ class RpcMode(ModeAdapter):
 
     async def run(self) -> int:
         try:
-            await self._command_host.run()
-            await self._drain_background_tasks()
-            return 0
-        except Exception as exc:
-            self.stderr.write(f"Error: {exc}\n")
-            return 1
+            return await self._host_runtime.run(
+                self._handle_line,
+                handle_failure=self._handle_host_failure,
+            )
         finally:
+            await self._task_tracker.drain()
             self._command_host.stop()
             self._unsubscribe()
 
@@ -226,6 +230,14 @@ class RpcMode(ModeAdapter):
                 "pendingMessageCount": 0,
                 "model": None,
             }
+
+    async def _handle_host_failure(self, error: Exception) -> None:
+        self.stderr.write(f"Error: {error}\n")
+
+    async def _drain_background_tasks(self) -> None:
+        """Compatibility hook over the Channel-owned task tracker."""
+
+        await self._task_tracker.drain()
 
     async def _handle_line(self, line: str) -> None:
         """Test-facing adapter for the Channel-owned JSONL command host."""
@@ -312,7 +324,7 @@ class RpcMode(ModeAdapter):
             )
         )
         self._active_prompt_task = task
-        self._track_background_task(task)
+        self._task_tracker.track(task)
 
     async def _run_prompt(
         self,
@@ -1645,7 +1657,7 @@ class RpcMode(ModeAdapter):
             )
         )
         self._active_bash_task = task
-        self._track_background_task(task)
+        self._task_tracker.track(task)
 
     async def _run_bash(
         self,
@@ -1852,19 +1864,6 @@ class RpcMode(ModeAdapter):
             return
         self._tool_render_runtime = ToolRenderRuntime(cwd=_session_cwd(session))
         self._tool_definition_resolver = _tool_definition_resolver(session)
-
-    def _track_background_task(self, task: asyncio.Task[None]) -> None:
-        self._background_tasks.add(task)
-
-        def cleanup(done: asyncio.Task[None]) -> None:
-            self._background_tasks.discard(done)
-
-        task.add_done_callback(cleanup)
-
-    async def _drain_background_tasks(self) -> None:
-        while self._background_tasks:
-            await asyncio.sleep(0)
-            await asyncio.gather(*list(self._background_tasks), return_exceptions=True)
 
     def _ensure_no_active_bash(self, *, command: str) -> None:
         task = self._active_bash_task

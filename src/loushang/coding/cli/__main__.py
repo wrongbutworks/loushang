@@ -16,6 +16,7 @@ from typing import Any, TextIO
 
 from loushang.ai.model.registry import get_default_model_registry
 from loushang.ai.types import ImagePart
+from loushang.channel import ProductHostStreams, dispose_product_host, stdout_guard
 from loushang.coding.bootstrap import (
     BootstrapServices,
     create_agent_session_runtime,
@@ -48,7 +49,6 @@ from loushang.coding.observability import (
     coding_startup_observability_context,
 )
 from loushang.coding.package.projection import collect_package_entries
-from loushang.coding.platform.output_guard import stdout_guard
 from loushang.coding.policy import (
     ApprovalResolver,
     HeadlessApprovalResolver,
@@ -279,9 +279,10 @@ async def run_cli(
     tui_runner=run_coding_tui,
 ) -> int:
     raw_argv = list(argv or ())
-    stdin = sys.stdin if stdin is None else stdin
-    stdout = sys.stdout if stdout is None else stdout
-    stderr = sys.stderr if stderr is None else stderr
+    streams = ProductHostStreams.resolve(stdin=stdin, stdout=stdout, stderr=stderr)
+    stdin = streams.stdin
+    stdout = streams.stdout
+    stderr = streams.stderr
     bootstrap_args, parse_error_code = _parse_args_for_cli(
         raw_argv,
         stderr=stderr,
@@ -755,14 +756,7 @@ async def run_cli(
 
 
 async def _dispose_runtime_or_session(runtime: Any, session: Any) -> None:
-    disposer = getattr(runtime, "dispose", None)
-    if not callable(disposer):
-        disposer = getattr(session, "dispose", None)
-    if not callable(disposer):
-        return
-    result = disposer()
-    if inspect.isawaitable(result):
-        await result
+    await dispose_product_host(runtime, session)
 
 
 def _prepared_turn_policy_metadata(
