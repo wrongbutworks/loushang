@@ -10,11 +10,14 @@ from uuid import uuid4
 from loushang.work.event_log import EventLogBackend, EventLogEntry, EventPosition
 from loushang.work.ports import (
     WorkDomainCancellation,
+    WorkDomainExecutionResolver,
     WorkDomainExecutor,
+    WorkExecutionBinding,
     WorkExecutionContext,
 )
 from loushang.work.types import (
     DeliveryHint,
+    WorkCancellationOutcome,
     WorkEvent,
     WorkEventFact,
     WorkOperation,
@@ -60,14 +63,25 @@ class WorkLifecycleOwnershipError(WorkRuntimeError):
     pass
 
 
+class WorkCancellationFailedError(WorkRuntimeError):
+    pass
+
+
+class WorkCancellationTimeoutError(WorkCancellationFailedError):
+    pass
+
+
 @dataclass
 class _RunState:
     operation: WorkOperation
     spec: WorkRunSpec
     run: WorkRun
+    executor: WorkDomainExecutor
+    cancellation: WorkDomainCancellation | None
     sequence: int = 0
     task: asyncio.Task[None] | None = None
-    cancellation_task: asyncio.Task[object] | None = None
+    cancellation_task: asyncio.Task[WorkCancellationOutcome] | None = None
+    cancellation_outcome: WorkCancellationOutcome | None = None
     error: BaseException | None = None
     terminal: bool = False
     current_step: WorkStepSpec | None = None
@@ -111,15 +125,35 @@ class WorkRuntime:
     def __init__(
         self,
         *,
-        executor: WorkDomainExecutor,
         event_log: EventLogBackend,
+        executor: WorkDomainExecutor | None = None,
         cancellation: WorkDomainCancellation | None = None,
+        resolver: WorkDomainExecutionResolver | None = None,
+        cancellation_timeout: float | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
+        if (executor is None) == (resolver is None):
+            raise ValueError("provide exactly one of executor or resolver")
+        if resolver is not None and cancellation is not None:
+            raise ValueError("resolver owns the per-operation cancellation capability")
+        if cancellation_timeout is not None and cancellation_timeout <= 0:
+            raise ValueError("cancellation_timeout must be positive")
         self._executor = executor
         self._cancellation = cancellation
+        self._resolver = resolver
+        self._cancellation_timeout = cancellation_timeout
         self._event_log = event_log
         self._clock = clock
+        self._replay_checkpoint = event_log.checkpoint()
+        from loushang.work.run_projection import project_work_runs
+
+        historical_runs = project_work_runs(
+            event_log.query(), mark_incomplete_orphaned=True
+        )
+        self._historical_runs = {run.run_id: run for run in historical_runs}
+        self._historical_operation_runs = {
+            run.operation_id: run.run_id for run in historical_runs
+        }
         self._states: dict[str, _RunState] = {}
         self._operation_runs: dict[str, str] = {}
         self._event_listeners: list[WorkEventListener] = []
@@ -136,6 +170,7 @@ class WorkRuntime:
             )
         resolved_spec = spec or WorkRunSpec()
         _validate_spec(resolved_spec)
+        binding = self._resolve_execution(operation, resolved_spec)
         run_id = resolved_spec.run_id or f"run-{uuid4().hex}"
         if self._find_run(run_id) is not None:
             raise DuplicateWorkOperationError(f"run already exists: {run_id}")
@@ -151,7 +186,13 @@ class WorkRuntime:
             plan_id=resolved_spec.plan_id,
             current_step_id=first_step_id,
         )
-        state = _RunState(operation=operation, spec=resolved_spec, run=run)
+        state = _RunState(
+            operation=operation,
+            spec=resolved_spec,
+            run=run,
+            executor=binding.executor,
+            cancellation=binding.cancellation,
+        )
         self._append_operation(state)
         self._states[run_id] = state
         self._operation_runs[operation.operation_id] = run_id
@@ -186,37 +227,37 @@ class WorkRuntime:
         if state.run.status == "running":
             self._begin_cancelling(state)
 
-        cancellation_error: BaseException | None = None
-        cancellation_settled = False
-        if self._cancellation is not None:
+        if state.cancellation is not None:
             if state.cancellation_task is None:
                 state.cancellation_task = asyncio.create_task(
-                    self._cancellation.cancel_and_wait(
-                        state.operation,
-                        _ExecutionContext(runtime=self, state=state),
-                    ),
+                    self._drive_domain_cancellation(state),
                     name=f"work-cancel:{run_id}",
                 )
-            try:
-                cancellation_result = await asyncio.shield(state.cancellation_task)
-                cancellation_settled = cancellation_result is not False
-            except BaseException as error:
-                cancellation_error = error
+            outcome = await self._await_cancellation_outcome(state)
+        else:
+            outcome = WorkCancellationOutcome.unsupported()
+            state.cancellation_outcome = outcome
 
         task = state.task
         if task is not None and not task.done():
-            if (
-                self._cancellation is None
-                or not cancellation_settled
-                or cancellation_error is not None
-            ):
+            if outcome.status != "settled":
                 task.cancel()
-            with suppress(asyncio.CancelledError):
-                await task
+            try:
+                with suppress(asyncio.CancelledError):
+                    await self._await_execution_after_cancellation(task)
+            except TimeoutError:
+                timeout_error = WorkCancellationTimeoutError(
+                    f"run {run_id} did not settle after cancellation"
+                )
+                outcome = WorkCancellationOutcome.failed(timeout_error)
+                state.cancellation_outcome = outcome
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
         if not state.terminal:
-            self._finish_cancelled(state, asyncio.CancelledError())
-        if cancellation_error is not None:
-            raise cancellation_error
+            self._finish_cancellation_outcome(state, outcome)
+        if outcome.status == "failed":
+            raise _cancellation_error(outcome)
         return state.run
 
     def get_run(self, run_id: str) -> WorkRun:
@@ -229,16 +270,21 @@ class WorkRuntime:
         run_id = self._operation_runs.get(operation_id)
         if run_id is not None:
             return self._states[run_id].run
+        historical_run_id = self._historical_operation_runs.get(operation_id)
+        if historical_run_id is not None:
+            return self._historical_runs[historical_run_id]
         from loushang.work.run_projection import project_work_runs
 
-        return next(
-            (
-                run
-                for run in project_work_runs(self._event_log.query())
-                if run.operation_id == operation_id
-            ),
-            None,
+        runs = project_work_runs(
+            self._event_log.query(operation_id=operation_id),
+            mark_incomplete_orphaned=True,
         )
+        if not runs:
+            return None
+        run = runs[0]
+        self._historical_runs[run.run_id] = run
+        self._historical_operation_runs[run.operation_id] = run.run_id
+        return run
 
     def active_runs(self, *, session_id: str | None = None) -> tuple[WorkRun, ...]:
         return tuple(
@@ -253,19 +299,33 @@ class WorkRuntime:
     ) -> tuple[WorkRun, ...]:
         from loushang.work.run_projection import project_work_runs
 
-        return project_work_runs(
+        runs = project_work_runs(
             self._event_log.query(run_id=run_id, session_id=session_id)
         )
+        return tuple(
+            self._states[run.run_id].run
+            if run.run_id in self._states
+            else self._historical_runs.get(run.run_id, run)
+            for run in runs
+        )
+
+    @property
+    def replay_checkpoint(self) -> EventPosition:
+        """High-water mark whose incomplete runs were classified as orphaned."""
+
+        return self._replay_checkpoint
 
     def query(
         self,
         *,
+        operation_id: str | None = None,
         run_id: str | None = None,
         session_id: str | None = None,
         after: EventPosition | None = None,
         limit: int | None = None,
     ) -> list[EventLogEntry]:
         return self._event_log.query(
+            operation_id=operation_id,
             run_id=run_id,
             session_id=session_id,
             after=after,
@@ -275,11 +335,13 @@ class WorkRuntime:
     def subscribe(
         self,
         *,
+        operation_id: str | None = None,
         run_id: str | None = None,
         session_id: str | None = None,
         after: EventPosition | None = None,
     ) -> AsyncIterator[EventLogEntry]:
         return self._event_log.subscribe(
+            operation_id=operation_id,
             run_id=run_id,
             session_id=session_id,
             after=after,
@@ -301,13 +363,26 @@ class WorkRuntime:
             with suppress(BaseException):
                 await self.cancel(run.run_id)
 
+    def _resolve_execution(
+        self, operation: WorkOperation, spec: WorkRunSpec
+    ) -> WorkExecutionBinding:
+        if self._resolver is not None:
+            return self._resolver.resolve(operation, spec)
+        executor = self._executor
+        if executor is None:  # Guarded by the constructor; keeps narrowing explicit.
+            raise WorkRuntimeError("Work runtime has no domain executor")
+        return WorkExecutionBinding(
+            executor=executor,
+            cancellation=self._cancellation,
+        )
+
     async def _execute(self, state: _RunState) -> None:
         try:
             if state.run.status == "accepted":
                 self._start(state)
             steps = _steps(state.spec)
             if not steps:
-                await self._executor.execute(
+                await state.executor.execute(
                     state.operation,
                     _ExecutionContext(runtime=self, state=state),
                 )
@@ -316,7 +391,7 @@ class WorkRuntime:
                     if state.run.status == "cancelling":
                         raise asyncio.CancelledError()
                     self._start_step(state, step, index)
-                    await self._executor.execute(
+                    await state.executor.execute(
                         state.operation,
                         _ExecutionContext(runtime=self, state=state),
                     )
@@ -328,23 +403,103 @@ class WorkRuntime:
                     self._activate_first_step(state)
                 if state.run.status == "running":
                     self._begin_cancelling(state)
-                self._finish_cancelled(state, error)
+                outcome = await self._settled_cancellation_outcome(state)
+                self._finish_cancellation_outcome(state, outcome, cancelled=error)
         except Exception as error:
             if not state.terminal:
                 if state.run.status == "cancelling":
-                    self._finish_cancelled(state, asyncio.CancelledError())
+                    outcome = await self._settled_cancellation_outcome(state)
+                    self._finish_cancellation_outcome(state, outcome)
                 else:
                     self._finish_failed(state, error)
         else:
             if not state.terminal:
                 if state.run.status == "cancelling":
-                    cancellation_task = state.cancellation_task
-                    if cancellation_task is not None:
-                        with suppress(BaseException):
-                            await asyncio.shield(cancellation_task)
-                    self._finish_cancelled(state, asyncio.CancelledError())
+                    outcome = await self._settled_cancellation_outcome(state)
+                    self._finish_cancellation_outcome(state, outcome)
                 else:
                     self._finish_completed(state)
+
+    async def _drive_domain_cancellation(
+        self, state: _RunState
+    ) -> WorkCancellationOutcome:
+        cancellation = state.cancellation
+        if cancellation is None:
+            return WorkCancellationOutcome.unsupported()
+        try:
+            outcome = await cancellation.cancel_and_wait(
+                state.operation,
+                _ExecutionContext(runtime=self, state=state),
+            )
+        except BaseException as error:
+            outcome = WorkCancellationOutcome.failed(error)
+        if not isinstance(outcome, WorkCancellationOutcome):
+            outcome = WorkCancellationOutcome.failed(
+                WorkCancellationFailedError(
+                    "domain cancellation must return WorkCancellationOutcome"
+                )
+            )
+        state.cancellation_outcome = outcome
+        return outcome
+
+    async def _await_cancellation_outcome(
+        self, state: _RunState
+    ) -> WorkCancellationOutcome:
+        task = state.cancellation_task
+        if task is None:
+            outcome = WorkCancellationOutcome.unsupported()
+        try:
+            if task is None:
+                pass
+            elif self._cancellation_timeout is None:
+                outcome = await asyncio.shield(task)
+            else:
+                outcome = await asyncio.wait_for(
+                    asyncio.shield(task), timeout=self._cancellation_timeout
+                )
+        except TimeoutError:
+            if task is not None:
+                task.cancel()
+                with suppress(BaseException):
+                    await task
+            outcome = WorkCancellationOutcome.failed(
+                WorkCancellationTimeoutError(
+                    f"domain cancellation timed out for run {state.run.run_id}"
+                )
+            )
+        state.cancellation_outcome = outcome
+        return outcome
+
+    async def _settled_cancellation_outcome(
+        self, state: _RunState
+    ) -> WorkCancellationOutcome:
+        if state.cancellation_outcome is not None:
+            return state.cancellation_outcome
+        return await self._await_cancellation_outcome(state)
+
+    async def _await_execution_after_cancellation(
+        self, task: asyncio.Task[None]
+    ) -> None:
+        if self._cancellation_timeout is None:
+            await task
+            return
+        await asyncio.wait_for(
+            asyncio.shield(task), timeout=self._cancellation_timeout
+        )
+
+    def _finish_cancellation_outcome(
+        self,
+        state: _RunState,
+        outcome: WorkCancellationOutcome,
+        *,
+        cancelled: asyncio.CancelledError | None = None,
+    ) -> None:
+        if state.terminal:
+            return
+        if outcome.status == "failed":
+            self._finish_failed(state, _cancellation_error(outcome))
+            return
+        self._finish_cancelled(state, cancelled or asyncio.CancelledError())
 
     def _start(self, state: _RunState) -> None:
         if state.run.status != "accepted":
@@ -353,7 +508,7 @@ class WorkRuntime:
         self._publish_lifecycle(
             state, kind="WorkRunStarted", payload=state.spec.run_event_payload
         )
-        if state.spec.plan_id is not None and state.spec.emit_plan_start:
+        if state.spec.plan_id is not None:
             self._publish_lifecycle(
                 state,
                 kind="WorkPlanStarted",
@@ -405,7 +560,7 @@ class WorkRuntime:
 
     def _finish_completed(self, state: _RunState) -> None:
         terminal_run = replace(state.run, status="completed")
-        if state.spec.plan_id is not None and state.spec.emit_plan_completion:
+        if state.spec.plan_id is not None:
             self._publish_lifecycle(
                 state,
                 kind="WorkPlanCompleted",
@@ -424,7 +579,7 @@ class WorkRuntime:
         if state.step_active:
             self._publish_lifecycle(state, kind="WorkStepFailed", payload=failure_payload)
             state.step_active = False
-        if state.spec.plan_id is not None and state.spec.emit_plan_failure:
+        if state.spec.plan_id is not None:
             self._publish_lifecycle(state, kind="WorkPlanFailed", payload=failure_payload)
         state.run = terminal_run
         self._publish_terminal(
@@ -584,7 +739,7 @@ class WorkRuntime:
         state = self._states.get(run_id)
         if state is not None:
             return state.run
-        return next(iter(self.query_runs(run_id=run_id)), None)
+        return self._historical_runs.get(run_id)
 
 
 def _steps(spec: WorkRunSpec) -> tuple[WorkStepSpec, ...]:
@@ -632,9 +787,22 @@ def _event_log_entry(event: WorkEvent) -> EventLogEntry:
     )
 
 
+def _cancellation_error(outcome: WorkCancellationOutcome) -> Exception:
+    error = outcome.error
+    if isinstance(error, Exception):
+        return error
+    if error is not None:
+        return WorkCancellationFailedError(
+            f"domain cancellation failed: {type(error).__name__}: {error}"
+        )
+    return WorkCancellationFailedError("domain cancellation failed")
+
+
 __all__ = [
     "DuplicateWorkOperationError",
     "UnknownWorkRunError",
+    "WorkCancellationFailedError",
+    "WorkCancellationTimeoutError",
     "WorkLifecycleOwnershipError",
     "WorkRunTerminalError",
     "WorkRuntime",

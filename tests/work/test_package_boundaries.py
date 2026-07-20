@@ -28,6 +28,9 @@ def test_work_runtime_is_product_neutral_and_harness_does_not_import_work() -> N
     coding_executor = Path("src/loushang/coding/work_executor.py").read_text(
         encoding="utf-8"
     )
+    coding_runtime = Path("src/loushang/coding/work_runtime.py").read_text(
+        encoding="utf-8"
+    )
     harness_source = "\n".join(
         path.read_text(encoding="utf-8")
         for path in Path("src/loushang/harness").rglob("*.py")
@@ -42,9 +45,13 @@ def test_work_runtime_is_product_neutral_and_harness_does_not_import_work() -> N
 
     assert "WorkRunStarted" not in coding_shell
     assert "WorkRunCompleted" not in coding_shell
+    assert "from loushang.work.runtime import WorkRuntime" not in coding_shell
     assert "event_log.append" not in coding_shell
     assert "WorkRunStarted" not in coding_executor
     assert "WorkRunCompleted" not in coding_executor
+    assert "WorkDomainExecutionResolver" not in coding_runtime
+    assert "class _CodingExecutionResolver" in coding_runtime
+    assert "WorkRuntime(" in coding_runtime
 
     assert "loushang.work" not in harness_source
     assert not Path("src/loushang/harness/work").exists()

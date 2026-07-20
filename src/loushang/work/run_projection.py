@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from loushang.work.event_log import EventLogEntry
 from loushang.work.types import WorkRun, WorkRunStatus
@@ -24,7 +24,11 @@ class _ReplayState:
     terminal: bool = False
 
 
-def project_work_runs(entries: Iterable[EventLogEntry]) -> tuple[WorkRun, ...]:
+def project_work_runs(
+    entries: Iterable[EventLogEntry],
+    *,
+    mark_incomplete_orphaned: bool = False,
+) -> tuple[WorkRun, ...]:
     """Rebuild WorkRun read models while validating lifecycle invariants."""
 
     states: dict[str, _ReplayState] = {}
@@ -68,7 +72,15 @@ def project_work_runs(entries: Iterable[EventLogEntry]) -> tuple[WorkRun, ...]:
         state.last_sequence = entry.sequence
         _apply_event(state, entry)
 
-    return tuple(states[run_id].run for run_id in order)
+    runs = tuple(states[run_id].run for run_id in order)
+    if not mark_incomplete_orphaned:
+        return runs
+    return tuple(
+        replace(run, status="orphaned")
+        if run.status in {"accepted", "running", "cancelling"}
+        else run
+        for run in runs
+    )
 
 
 def _run_from_operation(entry: EventLogEntry) -> WorkRun:
@@ -108,7 +120,11 @@ def _apply_event(state: _ReplayState, entry: EventLogEntry) -> None:
         _require_status(entry, status, {"running"})
         status = "cancelling"
     elif kind in _TERMINAL_KINDS:
-        allowed = {"cancelling"} if kind == "WorkRunCancelled" else {"running"}
+        allowed = (
+            {"cancelling"}
+            if kind == "WorkRunCancelled"
+            else {"running", "cancelling"}
+        )
         _require_status(entry, status, allowed)
         status = _TERMINAL_KINDS[kind]
         state.terminal = True

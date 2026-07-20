@@ -423,7 +423,7 @@ def test_coding_work_shell_records_plan_and_step_lifecycle_events() -> None:
     asyncio.run(scenario())
 
 
-def test_coding_work_shell_can_suppress_plan_boundaries_for_middle_step() -> None:
+def test_coding_work_shell_always_emits_plan_boundaries_for_a_planned_run() -> None:
     from loushang.coding.work_shell import CodingWorkShell
     from loushang.work import InMemoryEventLogBackend
 
@@ -446,8 +446,6 @@ def test_coding_work_shell_can_suppress_plan_boundaries_for_middle_step() -> Non
             step_id="verify",
             step_index=1,
             step_title="Run focused checks",
-            emit_plan_start=False,
-            emit_plan_completion=False,
         )
 
         assert run.status == "completed"
@@ -455,15 +453,17 @@ def test_coding_work_shell_can_suppress_plan_boundaries_for_middle_step() -> Non
         assert [entry.payload["kind"] for entry in entries] == [
             "SubmitCodingTurn",
             "WorkRunStarted",
+            "WorkPlanStarted",
             "WorkStepStarted",
             "WorkStepCompleted",
+            "WorkPlanCompleted",
             "WorkRunCompleted",
         ]
 
     asyncio.run(scenario())
 
 
-def test_coding_work_shell_records_plan_failure_even_when_plan_boundaries_are_suppressed() -> (
+def test_coding_work_shell_records_complete_plan_failure_lifecycle() -> (
     None
 ):
     from loushang.coding.work_shell import CodingWorkShell
@@ -489,8 +489,6 @@ def test_coding_work_shell_records_plan_failure_even_when_plan_boundaries_are_su
                 step_id="verify",
                 step_index=1,
                 step_title="Run focused checks",
-                emit_plan_start=False,
-                emit_plan_completion=False,
             )
         except RuntimeError as error:
             assert str(error) == "middle step failed"
@@ -501,6 +499,7 @@ def test_coding_work_shell_records_plan_failure_even_when_plan_boundaries_are_su
         assert [entry.payload["kind"] for entry in entries] == [
             "SubmitCodingTurn",
             "WorkRunStarted",
+            "WorkPlanStarted",
             "WorkStepStarted",
             "WorkStepFailed",
             "WorkPlanFailed",
@@ -691,6 +690,48 @@ def test_coding_work_shell_runs_method_plan_as_one_sequential_work_run() -> None
             "WorkPlanCompleted",
             "WorkRunCompleted",
         ]
+
+    asyncio.run(scenario())
+
+
+def test_coding_work_shell_facades_share_one_session_scoped_work_runtime() -> None:
+    from loushang.coding.work_runtime import CodingWorkRuntime
+    from loushang.coding.work_shell import CodingWorkShell
+    from loushang.work import InMemoryEventLogBackend
+
+    async def scenario() -> None:
+        event_log = InMemoryEventLogBackend()
+        session = FakePromptSession(events=[])
+        coding_runtime = CodingWorkRuntime(session=session, event_log=event_log)
+        first_shell = CodingWorkShell(
+            session=session,
+            event_log=event_log,
+            coding_runtime=coding_runtime,
+        )
+        second_shell = CodingWorkShell(
+            session=session,
+            event_log=event_log,
+            coding_runtime=coding_runtime,
+        )
+
+        first = await first_shell.submit_coding_turn(
+            "first",
+            session_id="session-1",
+            operation_id="op-first",
+            run_id="run-first",
+        )
+        second = await second_shell.submit_coding_turn(
+            "second",
+            session_id="session-1",
+            operation_id="op-second",
+            run_id="run-second",
+        )
+
+        assert first.status == second.status == "completed"
+        assert first_shell.coding_runtime is second_shell.coding_runtime
+        assert coding_runtime.work_runtime.get_run_for_operation("op-first") == first
+        assert coding_runtime.work_runtime.get_run_for_operation("op-second") == second
+        assert event_log.checkpoint().offset == 6
 
     asyncio.run(scenario())
 

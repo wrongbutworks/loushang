@@ -53,9 +53,12 @@ class EventLogEntry:
 class EventLogBackend(Protocol):
     def append(self, entry: EventLogEntry) -> EventPosition: ...
 
+    def checkpoint(self) -> EventPosition: ...
+
     def query(
         self,
         *,
+        operation_id: str | None = None,
         run_id: str | None = None,
         session_id: str | None = None,
         after: EventPosition | None = None,
@@ -65,6 +68,7 @@ class EventLogBackend(Protocol):
     def subscribe(
         self,
         *,
+        operation_id: str | None = None,
         run_id: str | None = None,
         session_id: str | None = None,
         after: EventPosition | None = None,
@@ -73,6 +77,7 @@ class EventLogBackend(Protocol):
 
 @dataclass
 class _Subscriber:
+    operation_id: str | None
     run_id: str | None
     session_id: str | None
     queue: asyncio.Queue[EventLogEntry] = field(default_factory=asyncio.Queue)
@@ -81,50 +86,127 @@ class _Subscriber:
 class _EventLogState:
     def __init__(self) -> None:
         self._entries: list[tuple[EventPosition, EventLogEntry]] = []
+        self._entries_by_operation: dict[
+            str, list[tuple[EventPosition, EventLogEntry]]
+        ] = {}
+        self._entries_by_run: dict[str, list[tuple[EventPosition, EventLogEntry]]] = {}
+        self._entries_by_session: dict[
+            str, list[tuple[EventPosition, EventLogEntry]]
+        ] = {}
         self._subscribers: list[_Subscriber] = []
 
     def _append_stored(self, entry: EventLogEntry) -> EventPosition:
         position = EventPosition(offset=len(self._entries) + 1)
-        self._entries.append((position, entry))
+        self._index(position, entry)
         for subscriber in list(self._subscribers):
             if _matches(
-                entry, run_id=subscriber.run_id, session_id=subscriber.session_id
+                entry,
+                operation_id=subscriber.operation_id,
+                run_id=subscriber.run_id,
+                session_id=subscriber.session_id,
             ):
                 subscriber.queue.put_nowait(entry)
         return position
 
+    def _append_loaded(self, entry: EventLogEntry) -> EventPosition:
+        position = EventPosition(offset=len(self._entries) + 1)
+        self._index(position, entry)
+        return position
+
+    def _index(self, position: EventPosition, entry: EventLogEntry) -> None:
+        positioned = (position, entry)
+        self._entries.append(positioned)
+        self._entries_by_operation.setdefault(entry.operation_id, []).append(positioned)
+        self._entries_by_run.setdefault(entry.run_id, []).append(positioned)
+        self._entries_by_session.setdefault(entry.session_id, []).append(positioned)
+
+    def checkpoint(self) -> EventPosition:
+        return EventPosition(offset=len(self._entries))
+
     def query(
         self,
         *,
+        operation_id: str | None = None,
         run_id: str | None = None,
         session_id: str | None = None,
         after: EventPosition | None = None,
         limit: int | None = None,
     ) -> list[EventLogEntry]:
         selected: list[EventLogEntry] = []
-        for position, entry in self._entries:
+        positioned_entries = self._candidate_entries(
+            operation_id=operation_id,
+            run_id=run_id,
+            session_id=session_id,
+        )
+        for position, entry in positioned_entries:
             if after is not None and position <= after:
                 continue
-            if not _matches(entry, run_id=run_id, session_id=session_id):
+            if not _matches(
+                entry,
+                operation_id=operation_id,
+                run_id=run_id,
+                session_id=session_id,
+            ):
                 continue
             selected.append(_snapshot_entry(entry))
             if limit is not None and len(selected) >= limit:
                 break
         return selected
 
+    def _candidate_entries(
+        self,
+        *,
+        operation_id: str | None,
+        run_id: str | None,
+        session_id: str | None,
+    ) -> list[tuple[EventPosition, EventLogEntry]]:
+        candidates = [
+            entries
+            for value, entries in (
+                (
+                    operation_id,
+                    self._entries_by_operation.get(operation_id, [])
+                    if operation_id is not None
+                    else self._entries,
+                ),
+                (
+                    run_id,
+                    self._entries_by_run.get(run_id, [])
+                    if run_id is not None
+                    else self._entries,
+                ),
+                (
+                    session_id,
+                    self._entries_by_session.get(session_id, [])
+                    if session_id is not None
+                    else self._entries,
+                ),
+            )
+            if value is not None
+        ]
+        return min(candidates, key=len) if candidates else self._entries
+
     def subscribe(
         self,
         *,
+        operation_id: str | None = None,
         run_id: str | None = None,
         session_id: str | None = None,
         after: EventPosition | None = None,
     ) -> AsyncIterator[EventLogEntry]:
         async def stream() -> AsyncIterator[EventLogEntry]:
-            subscriber = _Subscriber(run_id=run_id, session_id=session_id)
+            subscriber = _Subscriber(
+                operation_id=operation_id,
+                run_id=run_id,
+                session_id=session_id,
+            )
             self._subscribers.append(subscriber)
             try:
                 for entry in self.query(
-                    run_id=run_id, session_id=session_id, after=after
+                    operation_id=operation_id,
+                    run_id=run_id,
+                    session_id=session_id,
+                    after=after,
                 ):
                     yield entry
                 while True:
@@ -164,13 +246,18 @@ class JsonlEventLogBackend(_EventLogState):
             return
         snapshot: JsonlSnapshot[object, EventLogEntry] = self._journal.load()
         for entry in snapshot.records:
-            position = EventPosition(offset=len(self._entries) + 1)
-            self._entries.append((position, entry))
+            self._append_loaded(entry)
 
 
 def _matches(
-    entry: EventLogEntry, *, run_id: str | None, session_id: str | None
+    entry: EventLogEntry,
+    *,
+    operation_id: str | None,
+    run_id: str | None,
+    session_id: str | None,
 ) -> bool:
+    if operation_id is not None and entry.operation_id != operation_id:
+        return False
     if run_id is not None and entry.run_id != run_id:
         return False
     if session_id is not None and entry.session_id != session_id:

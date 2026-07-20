@@ -15,6 +15,7 @@ from typing import (
 )
 
 from loushang.coding.event import JsonEventView
+from loushang.coding.work_runtime import CodingWorkRuntime
 from loushang.work import EventLogBackend
 
 ModeName = Literal["text", "print", "json", "rpc"]
@@ -140,6 +141,7 @@ def create_mode_adapter(
     stderr: TextIO | None = None,
     session: Any | None = None,
     work_event_log: EventLogBackend | None = None,
+    coding_work_runtime: CodingWorkRuntime | None = None,
     method_id: str | None = None,
     plan_id: str | None = None,
     step_id: str | None = None,
@@ -149,8 +151,6 @@ def create_mode_adapter(
     audit_policy: Mapping[str, object] | None = None,
     plan_facts: Mapping[str, object] | None = None,
     step_facts: Mapping[str, object] | None = None,
-    emit_plan_start: bool = True,
-    emit_plan_completion: bool = True,
 ) -> ModeAdapter:
     """Create the concrete adapter for a configured coding mode."""
 
@@ -182,6 +182,7 @@ def create_mode_adapter(
         event_select=config.event_select,
         render_tool_events=config.render_tool_events,
         work_event_log=work_event_log,
+        coding_work_runtime=coding_work_runtime,
         method_id=method_id,
         plan_id=plan_id,
         step_id=step_id,
@@ -191,8 +192,6 @@ def create_mode_adapter(
         audit_policy=audit_policy,
         plan_facts=plan_facts,
         step_facts=step_facts,
-        emit_plan_start=emit_plan_start,
-        emit_plan_completion=emit_plan_completion,
     )
 
 
@@ -208,6 +207,7 @@ async def run_mode(
     images: list[object] | None = None,
     follow_up_messages: Sequence[str] = (),
     work_event_log: EventLogBackend | None = None,
+    coding_work_runtime: CodingWorkRuntime | None = None,
     method_id: str | None = None,
     plan_id: str | None = None,
     step_id: str | None = None,
@@ -217,8 +217,6 @@ async def run_mode(
     audit_policy: Mapping[str, object] | None = None,
     plan_facts: Mapping[str, object] | None = None,
     step_facts: Mapping[str, object] | None = None,
-    emit_plan_start: bool = True,
-    emit_plan_completion: bool = True,
     dispose: bool = True,
 ) -> int:
     adapter = create_mode_adapter(
@@ -229,6 +227,7 @@ async def run_mode(
         stdout=stdout,
         stderr=stderr,
         work_event_log=work_event_log,
+        coding_work_runtime=coding_work_runtime,
         method_id=method_id,
         plan_id=plan_id,
         step_id=step_id,
@@ -238,8 +237,6 @@ async def run_mode(
         audit_policy=audit_policy,
         plan_facts=plan_facts,
         step_facts=step_facts,
-        emit_plan_start=emit_plan_start,
-        emit_plan_completion=emit_plan_completion,
     )
     if config.mode == "rpc":
         return await adapter.start(user_input)
