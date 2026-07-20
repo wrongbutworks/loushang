@@ -47,6 +47,7 @@ from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRunt
 from loushang.harness.session import (
     SessionOperationRuntime,
     SessionPromptRequest,
+    require_session_operation_session,
 )
 
 _THINKING_LEVEL_ORDER: tuple[str, ...] = (
@@ -589,12 +590,13 @@ class RpcMode(ModeAdapter):
     ) -> None:
         previous = self.session
         try:
-            session = await self.runtime.new_session(
+            operation = await self.runtime.new_session_operation(
                 cwd=self._optional_path(payload.get("cwd")),
                 parent_session=self._optional_string(
                     payload, "parentSession", "parent_session"
                 ),
             )
+            session = require_session_operation_session(operation)
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -621,7 +623,8 @@ class RpcMode(ModeAdapter):
         if not isinstance(session_id, str) or not session_id:
             raise ValueError("switch_session requires sessionId")
         try:
-            session = await self.runtime.switch_session(session_id)
+            operation = await self.runtime.restore_session_operation(session_id)
+            session = require_session_operation_session(operation)
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -649,16 +652,12 @@ class RpcMode(ModeAdapter):
             position = payload.get("position", "before")
             if position not in {"before", "at"}:
                 raise ValueError("fork position must be 'before' or 'at'")
-            fork_with_result = getattr(self.runtime, "fork_session_with_result", None)
-            if callable(fork_with_result):
-                session, text = await fork_with_result(entry_id, position=position)
-            else:
-                text = (
-                    self._extract_session_entry_text(entry_id)
-                    if position == "before"
-                    else None
-                )
-                session = await self.runtime.fork_session(entry_id)
+            operation = await self.runtime.fork_session_operation(
+                entry_id,
+                position=position,
+            )
+            session = require_session_operation_session(operation)
+            text = operation.payload
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -682,7 +681,8 @@ class RpcMode(ModeAdapter):
         del payload
         previous = self.session
         try:
-            session = await self.runtime.clone_session()
+            operation = await self.runtime.fork_session_operation(None, position="at")
+            session = require_session_operation_session(operation)
         except Exception as error:
             self._write_response_error(
                 id=command_id,

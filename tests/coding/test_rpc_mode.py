@@ -43,6 +43,7 @@ from loushang.harness.diagnostics import (
     ErrorReport,
 )
 from loushang.harness.events import RuntimeEvent
+from loushang.harness.runtime import SessionOperationResult
 
 
 def _assistant_message(text: str) -> AssistantMessage:
@@ -535,7 +536,7 @@ class FakeRuntime:
         self.new_session_calls: list[dict[str, object]] = []
         self.switch_session_calls: list[object] = []
         self.fork_session_calls: list[str] = []
-        self.fork_session_with_result_calls: list[tuple[str, str]] = []
+        self.fork_session_operation_calls: list[tuple[str | None, str]] = []
         self._next_session: FakeSession | None = None
         self.session_summaries = list(session_summaries or [])
         self.list_session_summaries_calls = 0
@@ -567,42 +568,57 @@ class FakeRuntime:
     def queue_next_session(self, session: FakeSession) -> None:
         self._next_session = session
 
-    async def new_session(self, *, cwd=None, parent_session=None):
+    async def new_session_operation(self, *, cwd=None, parent_session=None):
         self.new_session_calls.append({"cwd": cwd, "parent_session": parent_session})
         assert self._next_session is not None
+        previous = self._current_session
         self._current_session = self._next_session
         self._next_session = None
-        return self._current_session
+        return SessionOperationResult(
+            previous=previous,
+            current=self._current_session,
+            payload=None,
+            cancelled=False,
+        )
 
-    async def switch_session(self, session_id):
+    async def restore_session_operation(self, session_id):
         self.switch_session_calls.append(session_id)
         assert self._next_session is not None
+        previous = self._current_session
         self._current_session = self._next_session
         self._next_session = None
-        return self._current_session
+        return SessionOperationResult(
+            previous=previous,
+            current=self._current_session,
+            payload=None,
+            cancelled=False,
+        )
 
-    async def fork_session(self, entry_id: str):
-        self.fork_session_calls.append(entry_id)
+    async def fork_session_operation(
+        self, entry_id: str | None, *, position: str = "at"
+    ):
+        self.fork_session_operation_calls.append((entry_id, position))
         assert self._next_session is not None
-        self._current_session = self._next_session
-        self._next_session = None
-        return self._current_session
-
-    async def fork_session_with_result(self, entry_id: str, *, position: str = "at"):
-        self.fork_session_with_result_calls.append((entry_id, position))
+        resolved_entry_id = entry_id
+        if resolved_entry_id is None:
+            resolved_entry_id = self._current_session.session_manager.get_leaf_id()
+            if not isinstance(resolved_entry_id, str) or not resolved_entry_id:
+                raise ValueError("Cannot clone session: no current entry selected")
+        self.fork_session_calls.append(resolved_entry_id)
         selected_text = (
-            self._current_session.get_entry_text(entry_id)
-            if position == "before"
+            self._current_session.get_entry_text(resolved_entry_id)
+            if entry_id is not None and position == "before"
             else None
         )
-        session = await self.fork_session(entry_id)
-        return session, selected_text
-
-    async def clone_session(self):
-        leaf_id = self._current_session.session_manager.get_leaf_id()
-        if not isinstance(leaf_id, str) or not leaf_id:
-            raise ValueError("Cannot clone session: no current entry selected")
-        return await self.fork_session(leaf_id)
+        previous = self._current_session
+        self._current_session = self._next_session
+        self._next_session = None
+        return SessionOperationResult(
+            previous=previous,
+            current=self._current_session,
+            payload=selected_text,
+            cancelled=False,
+        )
 
     def list_session_summaries(self) -> list[object]:
         self.list_session_summaries_calls += 1
@@ -1886,7 +1902,7 @@ def test_rpc_mode_fork_response_includes_selected_user_text() -> None:
         "cancelled": False,
         "text": "selected text",
     }
-    assert runtime.fork_session_with_result_calls == [("entry-42", "before")]
+    assert runtime.fork_session_operation_calls == [("entry-42", "before")]
 
 
 def test_rpc_mode_fork_accepts_at_position() -> None:
@@ -1915,7 +1931,7 @@ def test_rpc_mode_fork_accepts_at_position() -> None:
     asyncio.run(scenario())
 
     assert _parse_jsonl(stdout)[0]["data"] == {"cancelled": False, "text": None}
-    assert runtime.fork_session_with_result_calls == [("entry-42", "at")]
+    assert runtime.fork_session_operation_calls == [("entry-42", "at")]
 
 
 @pytest.mark.parametrize(
