@@ -9,7 +9,11 @@ from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.loader import ResourceBundle
 from loushang.coding.session.tool_controller import ToolController
 from loushang.coding.store import SessionManager
-from loushang.coding.tools import ToolContext, ToolDefinition, ToolRegistry, tool
+from loushang.harness.tools.core import tool
+from loushang.harness.tools.workspace import ToolContext, ToolDefinition
+from loushang.harness.tools.workspace.registry import (
+    WorkspaceToolRegistry as ToolRegistry,
+)
 
 
 async def _execute_noop(

@@ -8,7 +8,7 @@ def test_extension_loader_supports_register_api_modules(tmp_path) -> None:
     extension_file = tmp_path / "register_extension.py"
     extension_file.write_text(
         """
-from loushang.coding.tools import ToolDefinition
+from loushang.harness.tools.workspace import ToolDefinition
 
 
 async def _execute_tool(tool_name, arguments, context, signal):
@@ -56,7 +56,7 @@ def test_extension_loader_keeps_build_extension_compatibility(tmp_path) -> None:
     extension_file = tmp_path / "legacy_builder.py"
     extension_file.write_text(
         """
-from loushang.coding.tools import ToolDefinition
+from loushang.harness.tools.workspace import ToolDefinition
 
 
 async def _execute_tool(tool_name, arguments, context, signal):
@@ -154,4 +154,6 @@ def test_extension_loader_records_invalid_export_diagnostics(tmp_path) -> None:
     )
 
     assert loaded == []
-    assert [diagnostic.code for diagnostic in loader.get_diagnostics()] == ["invalid_extension_export"]
+    assert [diagnostic.code for diagnostic in loader.get_diagnostics()] == [
+        "invalid_extension_export"
+    ]

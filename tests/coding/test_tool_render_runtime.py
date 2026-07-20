@@ -4,7 +4,8 @@ from __future__ import annotations
 def test_tool_render_runtime_preserves_state_and_last_rendered_per_tool_call() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.tools import ToolDefinition, ToolRenderRuntime
+    from loushang.harness.presentation import ToolRenderRuntime
+    from loushang.harness.tools.workspace import ToolDefinition
 
     invalidated: list[str] = []
     observations: list[tuple[str, object | None, bool, bool, int]] = []
@@ -17,14 +18,30 @@ def test_tool_render_runtime_preserves_state_and_last_rendered_per_tool_call() -
         del theme
         calls = context.state.setdefault("calls", 0) + 1
         context.state["calls"] = calls
-        observations.append(("call", context.last_rendered, context.execution_started, context.args_complete, calls))
+        observations.append(
+            (
+                "call",
+                context.last_rendered,
+                context.execution_started,
+                context.args_complete,
+                calls,
+            )
+        )
         context.invalidate()
         return {"text": f"call-{calls}-{args['path']}"}
 
     def render_result(result, options, theme, context):
         del result, theme
         calls = int(context.state["calls"])
-        observations.append(("result", context.last_rendered, context.is_partial, options.expanded, calls))
+        observations.append(
+            (
+                "result",
+                context.last_rendered,
+                context.is_partial,
+                options.expanded,
+                calls,
+            )
+        )
         return {"text": f"result-{calls}-{options.expanded}"}
 
     definition = ToolDefinition(
@@ -36,7 +53,9 @@ def test_tool_render_runtime_preserves_state_and_last_rendered_per_tool_call() -
         render_call=render_call,
         render_result=render_result,
     )
-    runtime = ToolRenderRuntime(cwd="/repo", theme={"accent": "blue"}, on_invalidate=invalidated.append)
+    runtime = ToolRenderRuntime(
+        cwd="/repo", theme={"accent": "blue"}, on_invalidate=invalidated.append
+    )
 
     first_call = runtime.render_call(
         definition,
@@ -75,7 +94,8 @@ def test_tool_render_runtime_preserves_state_and_last_rendered_per_tool_call() -
 def test_tool_render_runtime_keeps_renderer_state_isolated_by_tool_call_id() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.tools import ToolDefinition, ToolRenderRuntime
+    from loushang.harness.presentation import ToolRenderRuntime
+    from loushang.harness.tools.workspace import ToolDefinition
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -104,7 +124,8 @@ def test_tool_render_runtime_keeps_renderer_state_isolated_by_tool_call_id() -> 
 def test_tool_render_runtime_renders_tool_execution_events_with_partial_flags() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.tools import ToolDefinition, ToolRenderRuntime
+    from loushang.harness.presentation import ToolRenderRuntime
+    from loushang.harness.tools.workspace import ToolDefinition
 
     observations: list[tuple[str, object | None, bool, bool, bool, object | None]] = []
 
@@ -115,7 +136,16 @@ def test_tool_render_runtime_renders_tool_execution_events_with_partial_flags() 
     def render_call(args, theme, context):
         del theme
         context.state["path"] = args["path"]
-        observations.append(("call", context.last_rendered, context.is_partial, context.expanded, context.is_error, context.args))
+        observations.append(
+            (
+                "call",
+                context.last_rendered,
+                context.is_partial,
+                context.expanded,
+                context.is_error,
+                context.args,
+            )
+        )
         return {"text": f"call {args['path']}"}
 
     def render_result(result, options, theme, context):
@@ -130,7 +160,9 @@ def test_tool_render_runtime_renders_tool_execution_events_with_partial_flags() 
                 context.args,
             )
         )
-        return {"text": f"{context.state['path']} {result.content[0].text} partial={options.isPartial}"}
+        return {
+            "text": f"{context.state['path']} {result.content[0].text} partial={options.isPartial}"
+        }
 
     definition = ToolDefinition(
         name="read",
@@ -147,7 +179,12 @@ def test_tool_render_runtime_renders_tool_execution_events_with_partial_flags() 
         return definition if name == "read" else None
 
     start = runtime.render_event(
-        {"type": "tool_execution_start", "tool_call_id": "call-1", "tool_name": "read", "args": {"path": "README.md"}},
+        {
+            "type": "tool_execution_start",
+            "tool_call_id": "call-1",
+            "tool_name": "read",
+            "args": {"path": "README.md"},
+        },
         resolver,
     )
     partial = runtime.render_event(
@@ -156,7 +193,9 @@ def test_tool_render_runtime_renders_tool_execution_events_with_partial_flags() 
             "tool_call_id": "call-1",
             "tool_name": "read",
             "args": {"path": "README.md"},
-            "partial_result": AgentToolResult(content=[TextPart(type="text", text="partial")], details={}),
+            "partial_result": AgentToolResult(
+                content=[TextPart(type="text", text="partial")], details={}
+            ),
         },
         resolver,
     )
@@ -165,7 +204,9 @@ def test_tool_render_runtime_renders_tool_execution_events_with_partial_flags() 
             "type": "tool_execution_end",
             "tool_call_id": "call-1",
             "tool_name": "read",
-            "result": AgentToolResult(content=[TextPart(type="text", text="final")], details={}),
+            "result": AgentToolResult(
+                content=[TextPart(type="text", text="final")], details={}
+            ),
             "is_error": True,
         },
         resolver,
@@ -183,7 +224,7 @@ def test_tool_render_runtime_renders_tool_execution_events_with_partial_flags() 
 
 
 def test_tool_render_runtime_ignores_non_renderable_tool_events() -> None:
-    from loushang.coding.tools import ToolRenderRuntime
+    from loushang.harness.presentation import ToolRenderRuntime
 
     runtime = ToolRenderRuntime()
 
@@ -192,4 +233,14 @@ def test_tool_render_runtime_ignores_non_renderable_tool_events() -> None:
         return None
 
     assert runtime.render_event({"type": "message_start"}, resolver) is None
-    assert runtime.render_event({"type": "tool_execution_start", "tool_call_id": "call-1", "tool_name": "missing"}, resolver) is None
+    assert (
+        runtime.render_event(
+            {
+                "type": "tool_execution_start",
+                "tool_call_id": "call-1",
+                "tool_name": "missing",
+            },
+            resolver,
+        )
+        is None
+    )

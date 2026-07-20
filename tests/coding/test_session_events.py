@@ -356,7 +356,8 @@ def test_project_session_event_can_attach_rendered_tool_payloads() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
     from loushang.coding.event import project_session_event
-    from loushang.coding.tools import ToolDefinition, ToolRenderRuntime
+    from loushang.harness.presentation import ToolRenderRuntime
+    from loushang.harness.tools.workspace import ToolDefinition
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -476,7 +477,8 @@ def test_project_session_event_marks_rendered_tool_error_status() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
     from loushang.coding.event import project_session_event
-    from loushang.coding.tools import ToolDefinition, ToolRenderRuntime
+    from loushang.harness.presentation import ToolRenderRuntime
+    from loushang.harness.tools.workspace import ToolDefinition
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -517,7 +519,8 @@ def test_project_session_event_structures_tool_ui_state_and_bash_artifacts() -> 
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
     from loushang.coding.event import project_session_event
-    from loushang.coding.tools import ToolDefinition, ToolRenderRuntime
+    from loushang.harness.presentation import ToolRenderRuntime
+    from loushang.harness.tools.workspace import ToolDefinition
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -589,7 +592,8 @@ def test_project_session_event_uses_distinct_event_and_presentation_views() -> N
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
     from loushang.coding.event import project_session_event
-    from loushang.coding.tools import ToolDefinition, ToolRenderRuntime
+    from loushang.harness.presentation import ToolRenderRuntime
+    from loushang.harness.tools.workspace import ToolDefinition
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -663,7 +667,8 @@ def test_project_session_event_omits_rendered_tool_payload_when_renderer_fails()
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
     from loushang.coding.event import project_session_event
-    from loushang.coding.tools import ToolDefinition, ToolRenderRuntime
+    from loushang.harness.presentation import ToolRenderRuntime
+    from loushang.harness.tools.workspace import ToolDefinition
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update

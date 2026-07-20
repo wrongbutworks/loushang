@@ -484,11 +484,11 @@ def test_event_renderer_renders_tool_block_with_bounded_result_preview() -> None
         PlainCodingUiRenderer,
         build_plain_coding_event_projection,
     )
-    from loushang.coding.tools import (
-        ToolDefinition,
+    from loushang.harness.presentation import (
         ToolRenderContext,
         ToolRenderResultOptions,
     )
+    from loushang.harness.tools.workspace import ToolDefinition
 
     async def execute(*args, **kwargs):  # pragma: no cover - renderer-only test helper
         raise AssertionError("not used")

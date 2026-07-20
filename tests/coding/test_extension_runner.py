@@ -62,7 +62,7 @@ async def _execute_tool(tool_name: str, arguments: dict[str, object], context, s
 
 
 def _tool(name: str):
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.tools.workspace import ToolDefinition
 
     return ToolDefinition(
         name=name,
@@ -123,7 +123,7 @@ def test_extension_runner_wraps_extension_tools_with_context() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.tools.workspace import ToolDefinition
 
     seen: dict[str, object] = {}
 
@@ -166,7 +166,7 @@ def test_extension_runner_keeps_legacy_four_argument_extension_tools() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.tools.workspace import ToolDefinition
 
     seen: dict[str, object] = {}
 
@@ -2475,7 +2475,9 @@ def test_extension_runner_command_context_new_and_switch_session_delegate_throug
         assert await context.new_session({"parent_session": "parent-2"}) == {
             "cancelled": False
         }
-        assert await context.switch_session("/tmp/session.jsonl") == {"cancelled": False}
+        assert await context.switch_session("/tmp/session.jsonl") == {
+            "cancelled": False
+        }
         assert await context.switch_session(
             "/tmp/other.jsonl", {"withSession": "ignored"}
         ) == {"cancelled": False}

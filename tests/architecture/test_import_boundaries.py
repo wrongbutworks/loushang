@@ -7,6 +7,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 UNRESOLVED_RELATIVE_IMPORT = "<unresolved-relative-import>"
 
 
@@ -2529,11 +2531,6 @@ def test_coding_internal_exec_imports_use_harness_owner() -> None:
 
 
 def test_coding_internal_workspace_operation_imports_use_harness_owner() -> None:
-    compatibility_paths = {
-        "src/loushang/coding/__init__.py",
-        "src/loushang/coding/tools/__init__.py",
-        "src/loushang/coding/tools/operations.py",
-    }
     legacy_symbols = (
         "loushang.coding.tools.operations.EditOperations",
         "loushang.coding.tools.operations.FindOperations",
@@ -2548,8 +2545,6 @@ def test_coding_internal_workspace_operation_imports_use_harness_owner() -> None
     )
     offenders: list[str] = []
     for path in sorted(Path("src/loushang/coding").rglob("*.py")):
-        if path.as_posix() in compatibility_paths:
-            continue
         for imported in _absolute_imports(path):
             if _matches_any(imported, legacy_symbols):
                 offenders.append(f"{path.as_posix()} imports {imported}")
@@ -2583,8 +2578,8 @@ def test_harness_workspace_operation_boundary_is_documented() -> None:
     required_phrases = {
         "Harness Workspace Operation Boundary",
         "`loushang.harness.workspace.operations`",
-        "same harness-owned protocols, class, and singleton",
-        "keeps all `normalize_*_operations` functions",
+        "The focused harness module is the public owner",
+        "`loushang.coding.tools.operations` is removed",
         "does not select an allowed root",
         "must not import coding, method, work, TUI, AI, provider, or product packages",
     }
@@ -2597,27 +2592,14 @@ def test_harness_workspace_operation_boundary_is_documented() -> None:
     )
     assert "Workspace Operation Boundary" in readme_text
 
-    inventory_text = Path(
-        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
-    ).read_text(encoding="utf-8")
-    assert "`loushang.harness.workspace.operations`" in inventory_text
-    assert "workspace operation implementation complete" in inventory_text
-
 
 def test_coding_internal_mutation_queue_imports_use_harness_owner() -> None:
-    compatibility_paths = {
-        "src/loushang/coding/__init__.py",
-        "src/loushang/coding/tools/__init__.py",
-        "src/loushang/coding/tools/file_mutation_queue.py",
-    }
     legacy_symbols = (
         "loushang.coding.tools.file_mutation_queue.run_with_file_mutation_queue",
         "loushang.coding.tools.file_mutation_queue.with_file_mutation_queue",
     )
     offenders: list[str] = []
     for path in sorted(Path("src/loushang/coding").rglob("*.py")):
-        if path.as_posix() in compatibility_paths:
-            continue
         for imported in _absolute_imports(path):
             if _matches_any(imported, legacy_symbols):
                 offenders.append(f"{path.as_posix()} imports {imported}")
@@ -2652,7 +2634,7 @@ def test_harness_workspace_path_and_mutation_boundary_is_documented() -> None:
         "`loushang.harness.workspace.paths`",
         "`loushang.harness.workspace.mutation_queue`",
         "The engine does not enable product syntax or correction policy by itself",
-        "the Pi/coding `@` reference prefix",
+        "Coding's product tool pack chooses its accepted input syntax",
         "must not import coding, method, work, TUI, AI, provider, or product packages",
     }
     assert (
@@ -2663,12 +2645,6 @@ def test_harness_workspace_path_and_mutation_boundary_is_documented() -> None:
         encoding="utf-8"
     )
     assert "Workspace Path And Mutation Boundary" in readme_text
-
-    inventory_text = Path(
-        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
-    ).read_text(encoding="utf-8")
-    assert "`loushang.harness.workspace.paths`" in inventory_text
-    assert "workspace path and mutation implementation complete" in inventory_text
 
 
 def test_harness_tools_core_does_not_expose_pi_style_module_aliases() -> None:
@@ -2726,13 +2702,6 @@ def test_harness_workspace_tool_pack_boundary_is_documented() -> None:
 
 
 def test_coding_internal_workspace_tool_imports_use_harness_owners() -> None:
-    compatibility_paths = {
-        "src/loushang/coding/__init__.py",
-        "src/loushang/coding/tools/__init__.py",
-        "src/loushang/coding/tools/builtins.py",
-        "src/loushang/coding/tools/factory.py",
-        "src/loushang/coding/tools/registry.py",
-    }
     legacy_prefixes = tuple(
         f"loushang.coding.tools.{module_name}"
         for module_name in (
@@ -2763,8 +2732,6 @@ def test_coding_internal_workspace_tool_imports_use_harness_owners() -> None:
     )
     offenders: list[str] = []
     for path in sorted(Path("src/loushang/coding").rglob("*.py")):
-        if path.as_posix() in compatibility_paths:
-            continue
         for imported in _absolute_imports(path):
             if _matches_any(imported, legacy_prefixes):
                 offenders.append(f"{path.as_posix()} imports {imported}")
@@ -2772,22 +2739,33 @@ def test_coding_internal_workspace_tool_imports_use_harness_owners() -> None:
     assert offenders == []
 
 
-def test_harness_slice1_compatibility_lifecycle_is_documented() -> None:
+def test_harness_tool_facade_extinction_is_documented_and_enforced() -> None:
+    import loushang.coding as coding
+
+    assert not Path("src/loushang/coding/tools").exists()
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("loushang.coding.tools")
+
+    offenders: list[str] = []
+    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
+        for imported in _absolute_imports(path):
+            if imported.startswith("loushang.coding.tools"):
+                offenders.append(f"{path.as_posix()} imports {imported}")
+    assert offenders == []
+    assert "ToolDefinition" not in coding.__all__
+
     text = " ".join(
-        Path(
-            "docs/internals/architecture/harness/slice-1-approval-tools-presentation-design.md"
-        )
+        Path("docs/internals/architecture/harness/tool-facade-extinction-boundary.md")
         .read_text(encoding="utf-8")
         .split()
     )
 
     required_phrases = {
-        "`__module__`",
-        "harness-owned classes keep their harness `__module__`",
-        "coding compatibility shims preserve import paths, not class module identity",
-        "Pi-style wrapper aliases stay in `loushang.coding.tools.wrapper`",
-        "internal-only shims",
-        "public SDK compatibility paths",
+        "Harness Tool Facade Extinction Boundary",
+        "`loushang.coding.tools` is removed",
+        "`loushang.coding.tool_pack` is the only Coding module",
+        "`WorkspaceToolRegistry`",
+        "must not be recreated as a compatibility shim",
     }
 
     assert sorted(phrase for phrase in required_phrases if phrase not in text) == []
@@ -2833,7 +2811,7 @@ def test_harness_slice2_execution_context_design_is_documented() -> None:
         "neutral execution context",
         "product execution adapter",
         "runtime dynamic extension registration",
-        "`loushang.coding.tools.context.ToolContext`",
+        "`loushang.harness.tools.workspace.context.ToolContext`",
         "`ExtensionRuntimeBindings.register_tool`",
         "`ToolController.register_runtime_tool`",
         "`harness.tools.contribution`",

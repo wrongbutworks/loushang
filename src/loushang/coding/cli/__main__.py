@@ -70,7 +70,7 @@ from loushang.coding.source_info import (
     executable_source_identity,
     format_source_identity_text,
 )
-from loushang.coding.tools import ToolRegistry, register_builtin_tools
+from loushang.coding.tool_pack import register_coding_builtin_tools
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.work_executor import SubmitCodingTurn
@@ -89,6 +89,7 @@ from loushang.harness.tools.workspace.read import (
     format_image_dimension_note,
     image_exceeds_inline_limits,
 )
+from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.method import MethodCompiler, MethodContext, MethodLoader
 from loushang.work import JsonlEventLogBackend, project_work_plan_runs
 
@@ -119,8 +120,8 @@ def build_builtin_tool_registry(
     diagnostics_service: object | None = None,
     settings_manager: object | None = None,
     approval_resolver: ApprovalResolver | None = None,
-) -> ToolRegistry:
-    registry = ToolRegistry()
+) -> WorkspaceToolRegistry:
+    registry = WorkspaceToolRegistry()
     tool_settings = _tool_settings_from_settings_manager(settings_manager)
     resolved_approval_resolver = (
         approval_resolver
@@ -130,7 +131,7 @@ def build_builtin_tool_registry(
     get_external_tool_policy = getattr(
         settings_manager, "get_external_tool_policy", None
     )
-    register_builtin_tools(
+    register_coding_builtin_tools(
         registry,
         diagnostics_service=diagnostics_service,
         external_tool_policy=get_external_tool_policy()
@@ -203,7 +204,7 @@ def default_runtime_builder(
     cwd: Path,
     session_dir: Path,
     services: BootstrapServices,
-    tool_registry: ToolRegistry,
+    tool_registry: WorkspaceToolRegistry,
     approval_resolver: InteractiveApprovalResolver | None = None,
 ):
     if args.no_tools:
@@ -237,7 +238,7 @@ def _invoke_runtime_builder(
     cwd: Path,
     session_dir: Path,
     services: BootstrapServices,
-    tool_registry: ToolRegistry,
+    tool_registry: WorkspaceToolRegistry,
     approval_resolver: InteractiveApprovalResolver | None | object = _MISSING,
 ):
     kwargs = {
@@ -404,7 +405,7 @@ async def run_cli(
         else:
             approval_resolver = configured_approval_resolver
         if runtime_args.no_builtin_tools:
-            tool_registry = ToolRegistry()
+            tool_registry = WorkspaceToolRegistry()
         else:
             tool_registry = build_builtin_tool_registry(
                 diagnostics_service=getattr(
@@ -839,12 +840,8 @@ def _prepared_turns_to_work_turns(
                 audit_policy=_prepared_turn_policy_metadata(
                     prepared_turn, "audit_policy"
                 ),
-                plan_facts=_prepared_turn_policy_metadata(
-                    prepared_turn, "plan_facts"
-                ),
-                step_facts=_prepared_turn_policy_metadata(
-                    prepared_turn, "step_facts"
-                ),
+                plan_facts=_prepared_turn_policy_metadata(prepared_turn, "plan_facts"),
+                step_facts=_prepared_turn_policy_metadata(prepared_turn, "step_facts"),
                 follow_up_messages=follow_up_messages
                 if index == len(prepared_turns) - 1
                 else (),
@@ -3208,7 +3205,7 @@ async def _collect_extension_flags_for_help(
             bootstrap_args, project_root, resolved_services
         )
         if bootstrap_args.no_builtin_tools:
-            tool_registry = ToolRegistry()
+            tool_registry = WorkspaceToolRegistry()
         else:
             tool_registry = build_builtin_tool_registry(
                 diagnostics_service=getattr(

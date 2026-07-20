@@ -16,7 +16,10 @@ from loushang.ai.types import (
 from loushang.coding.session import AgentSession
 from loushang.coding.store import SessionManager
 from loushang.coding.store.file_codec import load_session_file
-from loushang.coding.tools import ToolDefinition, ToolRegistry
+from loushang.harness.tools.workspace import ToolDefinition
+from loushang.harness.tools.workspace.registry import (
+    WorkspaceToolRegistry as ToolRegistry,
+)
 
 
 def _build_export_session(

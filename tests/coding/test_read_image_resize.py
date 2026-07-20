@@ -39,12 +39,16 @@ class _FakeImage:
         self.width = max(1, round(self.width * scale))
         self.height = max(1, round(self.height * scale))
 
-    def save(self, buffer, *, format: str, quality: int | None = None, optimize: bool = False) -> None:
+    def save(
+        self, buffer, *, format: str, quality: int | None = None, optimize: bool = False
+    ) -> None:
         del format, quality, optimize
         buffer.write(b"x" * (self.width * self.height * self.byte_scale))
 
 
-def _install_fake_pillow(monkeypatch, image: _FakeImage, *, transpose_to: _FakeImage | None = None) -> list[_FakeImage]:
+def _install_fake_pillow(
+    monkeypatch, image: _FakeImage, *, transpose_to: _FakeImage | None = None
+) -> list[_FakeImage]:
     opened_images: list[_FakeImage] = []
     pil_module = ModuleType("PIL")
     image_module = ModuleType("PIL.Image")
@@ -72,8 +76,10 @@ def _install_fake_pillow(monkeypatch, image: _FakeImage, *, transpose_to: _FakeI
     return opened_images
 
 
-def test_pillow_resizer_progressively_reduces_dimensions_until_payload_fits(monkeypatch) -> None:
-    from loushang.coding.tools import PillowReadImageResizer
+def test_pillow_resizer_progressively_reduces_dimensions_until_payload_fits(
+    monkeypatch,
+) -> None:
+    from loushang.harness.tools.workspace import PillowReadImageResizer
 
     _install_fake_pillow(monkeypatch, _FakeImage(16, 16))
     resizer = PillowReadImageResizer(
@@ -83,7 +89,9 @@ def test_pillow_resizer_progressively_reduces_dimensions_until_payload_fits(monk
         jpeg_qualities=(80,),
     )
 
-    result = resizer.resize_image(b"payload", mime_type="image/png", dimensions=(16, 16))
+    result = resizer.resize_image(
+        b"payload", mime_type="image/png", dimensions=(16, 16)
+    )
 
     assert result is not None
     assert result.original_dimensions == (16, 16)
@@ -92,7 +100,7 @@ def test_pillow_resizer_progressively_reduces_dimensions_until_payload_fits(monk
 
 
 def test_pillow_resizer_applies_exif_transpose_before_resizing(monkeypatch) -> None:
-    from loushang.coding.tools import PillowReadImageResizer
+    from loushang.harness.tools.workspace import PillowReadImageResizer
 
     opened = _FakeImage(16, 8)
     transposed = _FakeImage(8, 16)
@@ -104,7 +112,9 @@ def test_pillow_resizer_applies_exif_transpose_before_resizing(monkeypatch) -> N
         jpeg_qualities=(80,),
     )
 
-    result = resizer.resize_image(b"payload", mime_type="image/jpeg", dimensions=(16, 8))
+    result = resizer.resize_image(
+        b"payload", mime_type="image/jpeg", dimensions=(16, 8)
+    )
 
     assert result is not None
     assert result.original_dimensions == (8, 16)
@@ -113,14 +123,16 @@ def test_pillow_resizer_applies_exif_transpose_before_resizing(monkeypatch) -> N
 
 
 def test_default_pillow_resizer_backend_is_available_from_runtime_dependency() -> None:
-    from loushang.coding.tools import PillowReadImageResizer
+    from loushang.harness.tools.workspace import PillowReadImageResizer
 
     assert PillowReadImageResizer().is_available() is True
 
 
 def test_pillow_is_declared_as_runtime_dependency() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    pyproject = tomllib.loads((project_root / "pyproject.toml").read_text(encoding="utf-8"))
+    pyproject = tomllib.loads(
+        (project_root / "pyproject.toml").read_text(encoding="utf-8")
+    )
     dependencies = pyproject["project"]["dependencies"]
 
     assert any(dependency.lower().startswith("pillow") for dependency in dependencies)

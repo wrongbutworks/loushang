@@ -16,7 +16,12 @@ from loushang.ai.types import (
 )
 from loushang.coding.diagnostics import DiagnosticRecord, DiagnosticsService
 from loushang.coding.store import SessionManager
-from loushang.coding.tools import ToolRegistry, register_builtin_tools
+from loushang.coding.tool_pack import (
+    register_coding_builtin_tools as register_builtin_tools,
+)
+from loushang.harness.tools.workspace.registry import (
+    WorkspaceToolRegistry as ToolRegistry,
+)
 
 
 def test_context_usage_shape_is_stable() -> None:

@@ -58,18 +58,18 @@ def test_coding_top_level_exports_stable_sdk_surface() -> None:
         "SummaryEvaluationResult",
         "SummaryEvaluationSuiteResult",
         "SummaryQualityReport",
-        "ToolDefinition",
-        "ToolRegistry",
-        "ToolsOptions",
         "check_sdk_surface_compatibility",
         "create_agent_session",
         "create_agent_session_from_services",
         "create_agent_session_result",
         "create_agent_session_runtime",
         "create_agent_session_services",
-        "create_all_tool_definitions",
+        "CODING_BUILTIN_TOOL_PACK",
+        "CODING_TOOL_NAMES",
+        "create_coding_tool_definition",
         "create_coding_tool_definitions",
-        "create_read_only_tool_definitions",
+        "create_coding_tools",
+        "register_coding_builtin_tools",
         "create_services",
         "evaluate_summary_case",
         "evaluate_summary_cases",
@@ -287,15 +287,20 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
     )
     assert from_services.session.settings_manager is agent_services.settings_manager
 
-    read_only_defs = coding.create_read_only_tool_definitions()
-    all_defs = coding.create_all_tool_definitions()
+    from loushang.harness.tools.workspace import (
+        ToolDefinition,
+        create_all_tool_definitions,
+        create_read_only_tool_definitions,
+    )
+
+    read_only_defs = create_read_only_tool_definitions()
+    all_defs = create_all_tool_definitions()
     assert {"read", "grep", "ls", "find"}.issubset(
         {definition.name for definition in read_only_defs}
     )
     assert {"read", "bash", "edit", "write"}.issubset(set(all_defs))
     assert all(
-        isinstance(definition, coding.ToolDefinition)
-        for definition in all_defs.values()
+        isinstance(definition, ToolDefinition) for definition in all_defs.values()
     )
 
     runtime = coding.create_agent_session_runtime(

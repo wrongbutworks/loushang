@@ -8,7 +8,6 @@ from typing import Any, Protocol
 from loushang.agent.types import AgentTool
 from loushang.coding.prompt import assemble_prompt
 from loushang.coding.store import SessionManager
-from loushang.coding.tools import ToolRegistry
 from loushang.harness.capabilities.prompt import PromptSectionComposer
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.activation import ResourceActivationRuntime
@@ -17,6 +16,7 @@ from loushang.harness.session import SessionToolRuntime
 from loushang.harness.tools.contribution import resolve_tool_contributions
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.context import ToolContext
+from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
 _DEFAULT_ACTIVE_TOOL_NAMES: tuple[str, ...] = (
     "read",
@@ -52,7 +52,7 @@ class ToolController:
 
     agent: AgentPort
     session_manager: SessionManager
-    tool_registry: ToolRegistry | None
+    tool_registry: WorkspaceToolRegistry | None
     allowed_tool_names: set[str] | None
     initial_active_tool_names: list[str]
     base_prompt: str
@@ -138,9 +138,9 @@ class ToolController:
     def default_active_tool_names(self) -> list[str]:
         return self._runtime.default_active_names()
 
-    def ensure_tool_registry(self) -> ToolRegistry:
+    def ensure_tool_registry(self) -> WorkspaceToolRegistry:
         if self.tool_registry is None:
-            self.tool_registry = ToolRegistry()
+            self.tool_registry = WorkspaceToolRegistry()
             self._runtime.set_tool_registry(self.tool_registry)
         return self.tool_registry
 
@@ -177,9 +177,7 @@ class ToolController:
         del definition
         return self.default_activate_new_tools and name not in _BUILTIN_TOOL_NAMES
 
-    def _rebuild_prompt(
-        self, active_definitions: list[ToolDefinition] | None
-    ) -> None:
+    def _rebuild_prompt(self, active_definitions: list[ToolDefinition] | None) -> None:
         if self.show_empty_tool_prompt and active_definitions is None:
             active_definitions = []
         tool_prompt = (

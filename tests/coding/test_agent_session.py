@@ -1245,7 +1245,12 @@ def test_agent_session_execute_bash_uses_extension_user_bash_operations(
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     class RecordingOperations:
         def __init__(self) -> None:
@@ -4016,7 +4021,10 @@ def test_agent_session_set_active_tools_emits_session_refresh(tmp_path) -> None:
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, tool
+    from loushang.harness.tools.core import tool
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     @tool()
     async def read_file() -> str:
@@ -4069,7 +4077,10 @@ def test_agent_session_refresh_does_not_reemit_session_start(tmp_path) -> None:
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, tool
+    from loushang.harness.tools.core import tool
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     @tool()
     async def read_file() -> str:
@@ -4408,7 +4419,10 @@ def test_extension_session_refresh_actions_do_not_recursively_emit_refresh(
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, tool
+    from loushang.harness.tools.core import tool
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     @tool()
     async def read_file() -> str:
@@ -4567,7 +4581,10 @@ def test_agent_session_resource_refresh_rebuilds_prompt_and_tools_without_emitti
     from loushang.coding.loader import DefaultResourceLoader, ResourceBundle
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, tool
+    from loushang.harness.tools.core import tool
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     @tool()
     async def read_file() -> str:

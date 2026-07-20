@@ -28,7 +28,6 @@ from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession
 from loushang.coding.source_info import executable_source_identity
 from loushang.coding.store import SessionManager
-from loushang.coding.tools import ToolRegistry
 from loushang.coding.types import ModelSelection
 from loushang.harness.agent_transcript import context_item_to_model_message
 from loushang.harness.capabilities import bind_capability_composition_runtime
@@ -57,6 +56,7 @@ from loushang.harness.tools.contribution import (
     ToolResolutionResult,
     resolve_tool_contributions,
 )
+from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import ExecService
 
 AgentFactory = Callable[..., Agent]
@@ -302,7 +302,7 @@ def create_agent_session(
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel | None = None,
     tools: list[AgentTool[Any]] | None = None,
-    tool_registry: ToolRegistry | None = None,
+    tool_registry: WorkspaceToolRegistry | None = None,
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
@@ -380,7 +380,7 @@ def create_agent_session(
         if no_tools_mode == "all":
             allowed_tool_names_set = set()
         if resolved_tool_registry is None and tools:
-            resolved_tool_registry = ToolRegistry()
+            resolved_tool_registry = WorkspaceToolRegistry()
             for tool in tools:
                 resolved_tool_registry.register_tool(tool)
 
@@ -400,7 +400,7 @@ def create_agent_session(
             session_id=session_id,
         )
         if no_tools_mode == "all" and resolved_tool_registry is None:
-            resolved_tool_registry = ToolRegistry()
+            resolved_tool_registry = WorkspaceToolRegistry()
         resolved_active_tool_names = _resolve_initial_active_tool_names(
             active_tool_names=active_tool_names,
             allowed_tool_names_set=allowed_tool_names_set,
@@ -802,7 +802,7 @@ def create_agent_session_from_services(
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel | None = None,
     tools: list[AgentTool[Any]] | None = None,
-    tool_registry: ToolRegistry | None = None,
+    tool_registry: WorkspaceToolRegistry | None = None,
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
@@ -846,7 +846,7 @@ def create_agent_session_result(
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel | None = None,
     tools: list[AgentTool[Any]] | None = None,
-    tool_registry: ToolRegistry | None = None,
+    tool_registry: WorkspaceToolRegistry | None = None,
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,
@@ -1002,7 +1002,7 @@ def _resolve_initial_active_tool_names(
     active_tool_names: list[str] | None,
     allowed_tool_names_set: set[str] | None,
     no_tools_mode: NoToolsMode | None,
-    tool_registry: ToolRegistry | None,
+    tool_registry: WorkspaceToolRegistry | None,
 ) -> list[str] | None:
     if no_tools_mode == "all":
         return []
@@ -1017,7 +1017,7 @@ def _resolve_initial_active_tool_names(
     return names
 
 
-def _non_builtin_tool_names(tool_registry: ToolRegistry | None) -> list[str]:
+def _non_builtin_tool_names(tool_registry: WorkspaceToolRegistry | None) -> list[str]:
     if tool_registry is None:
         return []
     builtin_names = {"bash", "read", "ls", "find", "grep", "write", "edit"}
@@ -1121,15 +1121,15 @@ def _register_extension_tools(
     *,
     extension_runner: ExtensionRunner,
     resource_bundle: ResourceBundle,
-    tool_registry: ToolRegistry | None,
+    tool_registry: WorkspaceToolRegistry | None,
     pack_composer: CapabilityPackComposer | None = None,
-) -> tuple[ResourceBundle, ToolRegistry | None, list[ResourceDiagnostic]]:
+) -> tuple[ResourceBundle, WorkspaceToolRegistry | None, list[ResourceDiagnostic]]:
     extension_tools = extension_runner.list_tool_definitions()
     if not extension_tools:
         return resource_bundle, tool_registry, []
     resolved_tool_registry = tool_registry
     if resolved_tool_registry is None:
-        resolved_tool_registry = ToolRegistry()
+        resolved_tool_registry = WorkspaceToolRegistry()
 
     resolution = _resolve_extension_tool_contributions(
         extension_runner=extension_runner,
@@ -1154,7 +1154,7 @@ def _register_extension_tools(
 def _resolve_extension_tool_contributions(
     *,
     extension_runner: ExtensionRunner,
-    tool_registry: ToolRegistry,
+    tool_registry: WorkspaceToolRegistry,
     pack_composer: CapabilityPackComposer | None = None,
 ) -> ToolResolutionResult:
     return resolve_tool_contributions(
@@ -1429,7 +1429,7 @@ def create_agent_session_runtime(
     system_prompt: str | None = None,
     thinking_level: ThinkingLevel | None = None,
     tools: list[AgentTool[Any]] | None = None,
-    tool_registry: ToolRegistry | None = None,
+    tool_registry: WorkspaceToolRegistry | None = None,
     allowed_tool_names: list[str] | None = None,
     active_tool_names: list[str] | None = None,
     no_tools: NoToolsMode | bool | None = None,

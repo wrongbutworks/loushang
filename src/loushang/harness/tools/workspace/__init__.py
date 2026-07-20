@@ -20,11 +20,19 @@ from .edit_diff import EditEntry, apply_text_edits, build_unified_diff
 from .external_tools import (
     DownloadingExternalToolResolver,
     ExternalToolDownloader,
+    ExternalToolDownloadTransport,
     ExternalToolName,
     ExternalToolPolicy,
     ExternalToolResolver,
     GitHubReleaseExternalToolDownloader,
     LocalExternalToolResolver,
+    ManagedExternalToolInstall,
+    ToolDownloadConfig,
+    UrllibExternalToolDownloadTransport,
+    default_external_tools_dir,
+    ensure_external_tool,
+    get_managed_external_tool_install,
+    resolve_external_tool,
 )
 from .factory import (
     ALL_TOOL_NAMES,
@@ -63,11 +71,28 @@ from .grep import (
     create_grep_tool_definition,
 )
 from .ls import LsToolDetails, LsToolInput, LsToolOptions, create_ls_tool_definition
+from .operations import (
+    LOCAL_TOOL_OPERATIONS,
+    EditOperations,
+    FindOperations,
+    GrepOperations,
+    LocalToolOperations,
+    LsOperations,
+    ReadOperations,
+    ToolOperations,
+    WriteOperations,
+    resolve_operation,
+)
 from .policy import (
     PolicyDecisionLike,
     PolicyEnforcementError,
     ToolPolicyEvaluator,
     enforce_tool_policy,
+)
+from .presentation import (
+    get_tool_text_output,
+    render_tool_result_presentation,
+    render_tool_result_text,
 )
 from .read import (
     PillowReadImageResizer,
@@ -78,7 +103,17 @@ from .read import (
     ReadToolOptions,
     create_read_tool_definition,
 )
+from .registry import WorkspaceToolRegistry
+from .runtime import (
+    MaybeAwaitable,
+    emit_tool_update,
+    is_tool_aborted,
+    prepare_tool_arguments,
+    raise_if_tool_aborted,
+    resolve_maybe_awaitable,
+)
 from .types import ToolDefinition, ToolTruncationDetails
+from .wrapper import wrap_tool_definition, wrap_tool_definitions
 from .write import (
     WriteToolDetails,
     WriteToolInput,
@@ -97,6 +132,7 @@ __all__ = [
     "BashToolInput",
     "BashToolOptions",
     "DownloadingExternalToolResolver",
+    "ExternalToolDownloadTransport",
     "EditEntry",
     "EditToolDetails",
     "EditToolInput",
@@ -116,12 +152,17 @@ __all__ = [
     "GrepToolMatch",
     "GrepToolOptions",
     "LocalExternalToolResolver",
+    "LOCAL_TOOL_OPERATIONS",
+    "LocalToolOperations",
+    "ManagedExternalToolInstall",
+    "MaybeAwaitable",
     "LsToolDetails",
     "LsToolInput",
     "LsToolOptions",
     "PillowReadImageResizer",
     "PolicyDecisionLike",
     "PolicyEnforcementError",
+    "ReadOperations",
     "ReadImageResizeResult",
     "ReadImageResizer",
     "ReadToolDetails",
@@ -130,14 +171,23 @@ __all__ = [
     "ToolContext",
     "ToolContextProvider",
     "ToolDefinition",
+    "ToolDownloadConfig",
     "ToolEventSink",
     "ToolName",
     "ToolPolicyEvaluator",
+    "ToolOperations",
     "ToolTruncationDetails",
     "ToolsOptions",
     "WriteToolDetails",
     "WriteToolInput",
     "WriteToolOptions",
+    "WorkspaceToolRegistry",
+    "WriteOperations",
+    "EditOperations",
+    "FindOperations",
+    "GrepOperations",
+    "LsOperations",
+    "UrllibExternalToolDownloadTransport",
     "apply_text_edits",
     "build_unified_diff",
     "create_all_tool_definitions",
@@ -163,5 +213,20 @@ __all__ = [
     "create_tool_definition",
     "create_write_tool",
     "create_write_tool_definition",
+    "default_external_tools_dir",
+    "emit_tool_update",
     "enforce_tool_policy",
+    "ensure_external_tool",
+    "get_managed_external_tool_install",
+    "get_tool_text_output",
+    "is_tool_aborted",
+    "prepare_tool_arguments",
+    "raise_if_tool_aborted",
+    "render_tool_result_presentation",
+    "render_tool_result_text",
+    "resolve_external_tool",
+    "resolve_maybe_awaitable",
+    "resolve_operation",
+    "wrap_tool_definition",
+    "wrap_tool_definitions",
 ]

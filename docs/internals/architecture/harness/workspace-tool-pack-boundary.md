@@ -6,8 +6,8 @@
 pack. The owner includes read, list, find, grep, write, edit, and process
 execution definitions together with the support code required to run them.
 
-This is an ownership lift-and-shift. It preserves accepted Coding import paths
-while avoiding an unrelated public API redesign in the same batch.
+This is the canonical public owner. Products import it directly rather than
+through a product compatibility facade.
 
 ## Harness Ownership
 
@@ -42,25 +42,26 @@ Coding retains:
 registration, settings, and persisted model selection do not move into Harness.
 Request authentication remains AI-owned and does not move into Harness.
 
-## Compatibility
+## Product Composition
 
-The accepted `loushang.coding.tools.*` implementation modules are module-level
-aliases to their Harness owners. The thin Coding factory adds product metadata
-and the product-selected managed downloader. `coding.tools.builtins` remains the
-product activation adapter.
+`loushang.coding.tool_pack` adds Coding metadata and the product-selected
+managed downloader, then registers Coding's selected tool pack through
+`WorkspaceToolRegistry`. It is not a generic tools facade.
 
 The shared external-tool locator accepts the legacy `LOUSHANG_CODING_BIN_DIR`
 and `LOUSHANG_CODING_AGENT_DIR` environment aliases and reuses an existing
 `~/.loushang/coding/bin` directory. New installs default to the neutral
 `~/.loushang/tools/bin` location.
 
-These compatibility paths can be simplified after downstream imports have
-moved. Their existence does not permit new implementation code in Coding.
+`loushang.coding.tools` is not an accepted compatibility path. Generic callers
+must import their concrete Harness owner, and Pi-style aliases are not carried
+forward.
 
 ## Evidence
 
 - Harness tests construct and execute workspace tools without importing Coding.
-- Coding compatibility tests verify module and public type identity.
+- Coding tests verify its selected metadata and activation without recreating a
+  generic tool owner.
 - Architecture tests reject product imports from Harness and pin the product
   factory/builtin ownership split.
 - Focused Coding tool tests prove existing execution, renderer, policy,

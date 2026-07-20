@@ -592,7 +592,7 @@ def test_bash_policy_evaluates_effective_command_after_prefix(tmp_path) -> None:
     import pytest
 
     from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.tools.workspace import create_bash_tool_definition
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
@@ -620,7 +620,7 @@ def test_bash_policy_evaluates_configured_shell_path(tmp_path) -> None:
     import pytest
 
     from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.tools.workspace import create_bash_tool_definition
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
@@ -649,7 +649,7 @@ def test_bash_policy_blocks_destructive_shell_stdin_before_execution(tmp_path) -
     import pytest
 
     from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.tools.workspace import create_bash_tool_definition
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
@@ -761,7 +761,7 @@ def test_bash_policy_resolves_relative_path_from_execution_cwd(
     import pytest
 
     from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.tools.workspace import create_bash_tool_definition
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
@@ -803,7 +803,7 @@ def test_bash_policy_blocks_relative_stdin_symlink_without_explicit_cwd(
     import pytest
 
     from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.tools.workspace import create_bash_tool_definition
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
@@ -835,7 +835,7 @@ def test_bash_policy_fails_safe_when_env_wrapper_changes_cwd(tmp_path) -> None:
     import pytest
 
     from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.tools.workspace import create_bash_tool_definition
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
@@ -875,7 +875,7 @@ def test_bash_policy_fails_safe_when_env_wrapper_changes_executable_path(
     import pytest
 
     from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.tools.workspace import create_bash_tool_definition
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
@@ -911,7 +911,7 @@ def test_bash_policy_blocks_shell_startup_stdin_before_execution(tmp_path) -> No
     import pytest
 
     from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.tools.workspace import create_bash_tool_definition
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
@@ -962,7 +962,7 @@ def test_bash_policy_keeps_direct_argv_out_of_shell_payload_matching(
 
     from loushang.coding.exec import ExecResult
     from loushang.coding.policy import PolicyEngine
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.tools.workspace import create_bash_tool_definition
 
     requests = []
 
@@ -998,8 +998,8 @@ def test_bash_legacy_policy_wraps_getter_failure_and_invalid_decision(
 
     import pytest
 
-    from loushang.coding.tools import create_bash_tool_definition
     from loushang.harness.policy import PolicyEvaluationError
+    from loushang.harness.tools.workspace import create_bash_tool_definition
 
     class UnexpectedExecService:
         async def execute(self, request, **kwargs):
@@ -1072,12 +1072,12 @@ def test_bash_approval_and_audit_use_effective_spawned_command(tmp_path) -> None
 
     from loushang.coding.exec import ExecResult
     from loushang.coding.policy import ApprovalDecision, PolicyEngine
-    from loushang.coding.tools import (
+    from loushang.harness.tools.workspace import (
         BashSpawnContext,
         ToolContext,
         create_bash_tool_definition,
     )
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     approval_requests = []
     exec_requests = []
@@ -1158,8 +1158,11 @@ def test_bash_approval_and_audit_preserve_direct_wrapper_argv(tmp_path) -> None:
 
     from loushang.coding.exec import ExecResult
     from loushang.coding.policy import ApprovalDecision, PolicyEngine
-    from loushang.coding.tools import ToolContext, create_bash_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
+    from loushang.harness.tools.workspace import (
+        ToolContext,
+        create_bash_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     approval_requests = []
     exec_requests = []
@@ -1220,8 +1223,8 @@ def test_bash_policy_and_execution_share_frozen_path_and_cwd(
 ) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_bash_tool_definition
     from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace import create_bash_tool_definition
 
     original_cwd = tmp_path / "original"
     changed_cwd = tmp_path / "changed"
@@ -1260,7 +1263,7 @@ def test_bash_without_policy_freezes_path_and_cwd_before_async_update(
 ) -> None:
     import asyncio
 
-    from loushang.coding.tools import create_bash_tool_definition
+    from loushang.harness.tools.workspace import create_bash_tool_definition
 
     original_cwd = tmp_path / "original"
     changed_cwd = tmp_path / "changed"
@@ -1298,10 +1301,13 @@ def test_bash_approval_wait_cannot_change_startup_environment_or_leak_secrets(
 ) -> None:
     import asyncio
 
-    from loushang.coding.tools import ToolContext, create_bash_tool_definition
-    from loushang.coding.tools.wrapper import wrap_tool_definition
     from loushang.harness.approval import ApprovalDecision
     from loushang.harness.policy import PolicyDecision
+    from loushang.harness.tools.workspace import (
+        ToolContext,
+        create_bash_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
     marker = tmp_path / "approval-race"
     inherited_secret = "must-not-appear-in-control-plane-projections"

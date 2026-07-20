@@ -23,7 +23,9 @@ def _ai_model_registry(
 ) -> AiModelRegistry:
     providers: dict[str, Provider] = {}
     for endpoint in endpoints:
-        provider = providers.get(endpoint.provider_id, Provider(id=endpoint.provider_id))
+        provider = providers.get(
+            endpoint.provider_id, Provider(id=endpoint.provider_id)
+        )
         provider_endpoints = dict(provider.endpoints)
         provider_endpoints[endpoint.id] = endpoint
         providers[provider.id] = replace(provider, endpoints=provider_endpoints)
@@ -646,7 +648,12 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     project_root = tmp_path / "project"
     nested = project_root / "work" / "deep"
@@ -695,7 +702,12 @@ def test_create_agent_session_applies_allowed_tool_names_to_default_active_tools
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -731,7 +743,12 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
         ResourceBundle,
     )
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     extension_file = tmp_path / "extensions" / "dynamic.py"
     extension_file.parent.mkdir(parents=True)
@@ -740,7 +757,7 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
             [
                 "from loushang.agent.types import AgentToolResult",
                 "from loushang.ai.types import TextPart",
-                "from loushang.coding.tools import ToolDefinition",
+                "from loushang.harness.tools.workspace import ToolDefinition",
                 "",
                 "async def _execute(tool_call_id, params, signal=None, on_update=None):",
                 "    return AgentToolResult(content=[TextPart(type='text', text='ok')], details={})",
@@ -816,7 +833,12 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
         ResourceBundle,
     )
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     extension_file = tmp_path / "extensions" / "dynamic.py"
     extension_file.parent.mkdir(parents=True)
@@ -825,7 +847,7 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
             [
                 "from loushang.agent.types import AgentToolResult",
                 "from loushang.ai.types import TextPart",
-                "from loushang.coding.tools import ToolDefinition",
+                "from loushang.harness.tools.workspace import ToolDefinition",
                 "",
                 "async def _execute(tool_call_id, params, signal=None, on_update=None):",
                 "    return AgentToolResult(content=[TextPart(type='text', text='ok')], details={})",
@@ -892,7 +914,12 @@ def test_create_agent_session_runtime_applies_allowed_tool_names(tmp_path) -> No
 
     from loushang.coding.bootstrap import create_agent_session_runtime
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     project = tmp_path / "project"
     project.mkdir()
@@ -1348,7 +1375,12 @@ def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
 def test_create_agent_session_includes_tool_prompt_from_registry(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     services = create_services(system_prompt="Base system prompt.")
     manager = asyncio.run(
@@ -1376,7 +1408,12 @@ def test_create_agent_session_synthesizes_definitions_from_legacy_tools(
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolRegistry, register_builtin_tools
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     services = create_services(system_prompt="Base system prompt.")
     manager = asyncio.run(
@@ -1421,11 +1458,9 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
     from loushang.agent.types import AgentToolResult
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import (
-        ToolDefinition,
-        ToolRegistry,
-        register_builtin_tools,
-    )
+    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
     async def execute_custom_tool(
         tool_call_id: str, params: dict[str, object], signal=None, on_update=None
@@ -1439,8 +1474,8 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
             session_dir=tmp_path / "sessions", cwd=str(tmp_path), persist=False
         )
     )
-    registry = ToolRegistry()
-    register_builtin_tools(registry)
+    registry = WorkspaceToolRegistry()
+    register_coding_builtin_tools(registry)
     registry.register_tool(
         ToolDefinition(
             name="custom_tool",
@@ -1492,8 +1527,14 @@ def test_create_agent_session_marks_failing_builtin_tool_result_as_error(
 ) -> None:
     import asyncio
 
-    from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
+    from loushang.coding import SessionManager
     from loushang.coding.bootstrap import create_agent_session
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     async def stream_fn(model, context, options=None):
         if any(
@@ -1709,8 +1750,14 @@ def test_create_agent_session_marks_failing_mutation_builtin_tool_result_as_erro
 ) -> None:
     import asyncio
 
-    from loushang.coding import SessionManager, ToolRegistry, register_builtin_tools
+    from loushang.coding import SessionManager
     from loushang.coding.bootstrap import create_agent_session
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     (tmp_path / "main.py").write_text("alpha\n", encoding="utf-8")
 
@@ -1969,7 +2016,7 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
         ResourceBundle,
     )
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.tools.workspace import ToolDefinition
 
     async def _execute_tool(
         tool_name: str, arguments: dict[str, object], context, signal
@@ -2067,7 +2114,7 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
         ResourceBundle,
     )
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.tools.workspace import ToolDefinition
 
     extension_file = tmp_path / "extensions" / "guard.py"
     extension_file.parent.mkdir(parents=True)
@@ -2077,7 +2124,7 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
                 "from loushang.agent.types import AgentToolResult",
                 "from loushang.ai.types import TextPart",
                 "from loushang.coding.extensions import ToolCallDecision, ToolResultDecision",
-                "from loushang.coding.tools import ToolDefinition",
+                "from loushang.harness.tools.workspace import ToolDefinition",
                 "",
                 "async def _ext_execute(tool_name, arguments, context, signal):",
                 "    return AgentToolResult(",
@@ -2208,7 +2255,7 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
         ResourceBundle,
     )
     from loushang.coding.store import SessionManager
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.tools.workspace import ToolDefinition
 
     extension_file = tmp_path / "extensions" / "conflict.py"
     extension_file.parent.mkdir(parents=True)
@@ -2217,7 +2264,7 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
             [
                 "from loushang.agent.types import AgentToolResult",
                 "from loushang.ai.types import TextPart",
-                "from loushang.coding.tools import ToolDefinition",
+                "from loushang.harness.tools.workspace import ToolDefinition",
                 "",
                 "async def _ext_execute(tool_name, arguments, context, signal):",
                 "    return AgentToolResult(",
@@ -2307,7 +2354,7 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
 def test_extension_tool_contribution_projection_preserves_source_info(tmp_path) -> None:
     from loushang.coding.bootstrap import _extension_tool_contributions
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.tools import ToolDefinition
+    from loushang.harness.tools.workspace import ToolDefinition
 
     async def _execute_tool(
         tool_name: str, arguments: dict[str, object], context, signal
@@ -2349,8 +2396,11 @@ def test_register_extension_tools_uses_harness_resolver_for_dry_run_conflicts(
 ) -> None:
     import loushang.coding.bootstrap as bootstrap
     from loushang.coding.loader import ResourceBundle
-    from loushang.coding.tools import ToolDefinition, ToolRegistry
     from loushang.harness.tools.contribution import resolve_tool_contributions
+    from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     async def _execute_tool(
         tool_name: str, arguments: dict[str, object], context, signal
@@ -2416,8 +2466,11 @@ def test_register_extension_tools_registers_resolver_output_only(
 ) -> None:
     import loushang.coding.bootstrap as bootstrap
     from loushang.coding.loader import ResourceBundle
-    from loushang.coding.tools import ToolDefinition, ToolRegistry
     from loushang.harness.tools.contribution import ToolResolutionResult
+    from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     async def _execute_tool(
         tool_name: str, arguments: dict[str, object], context, signal
@@ -2461,7 +2514,10 @@ def test_register_extension_tools_registers_resolver_output_only(
 def test_register_extension_tools_preserves_resolver_source_info(tmp_path) -> None:
     import loushang.coding.bootstrap as bootstrap
     from loushang.coding.loader import ResourceBundle
-    from loushang.coding.tools import ToolDefinition, ToolRegistry
+    from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
 
     async def _execute_tool(
         tool_name: str, arguments: dict[str, object], context, signal
