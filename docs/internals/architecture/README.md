@@ -32,6 +32,7 @@ history, experimental notes, or legacy documents.
 - [Channel](channel/README.md)
 - [Coding](coding/loushang-coding-system-context.md)
 - [Method](method/README.md)
+- [Work](work/README.md)
 - [TUI](tui/README.md)
 - [Monorepo Conventions](loushang-monorepo-conventions.md)
 

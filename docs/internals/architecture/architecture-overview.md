@@ -70,6 +70,8 @@ loushang/
 `loushang-tui` 子系统文档请参见 [Loushang-TUI Architecture](./tui/README.md)。
 `loushang-harness` 的产品适配器 substrate 方向请参见
 [ARD-002: Harness Product Adapter Substrate](./agent/ARD-002-harness-product-adapter-substrate.md)。
+`loushang-work` 的业务工作与方法履约边界请参见
+[Loushang Work Architecture](./work/README.md)。
 
 ## Architecture Stack
 
@@ -87,8 +89,8 @@ CLI / TUI
 
 - `loushang.method` 提供 method resource、compile、projection 和 fixed
   `MethodPlan` 语义；method 是面向一类任务的结构化工作契约
-- `loushang.work` 提供 `WorkOperation`、`WorkRun`、`WorkEvent`、work event
-  log 与 plan/step projection
+- `loushang.work` 接受具有可判定终局的业务意图，拥有 `WorkRun`、可选 method
+  plan/step 的真实履约、权威终态、`WorkEvent`、event log、query 和 replay
 - `loushang.tui` 提供通用 terminal-native UI primitives；
   `loushang.harnesstui` 组合 product-neutral Harness conversation 与 TUI；
   Coding feature-local adapter 解释产品状态，`loushang.coding.ui` 只保留最终
@@ -101,7 +103,8 @@ CLI / TUI
 - `agent` 定义 agent loop 与运行语义
 - `ai` 定义模型/provider/streaming/tool-call 兼容层
 - `method` 提供方法资产与 plan/projection，定义角色、阶段、流程、约束、工作产物与验收预期
-- `work` 提供 run/event/log/projection
+- `work` 提供业务 work 的 acceptance、run/plan/step lifecycle、terminal
+  outcome、event log、query 和 replay；Method 可选
 - `tui` 提供通用终端 UI primitives
 - `harnesstui` 提供可跨产品复用的 Harness/TUI conversation interaction 与
   presentation composition；依赖 `harness` 和 `tui`，不依赖 `coding`
@@ -128,7 +131,7 @@ CLI / TUI
 
 下一步建议继续完善：
 
-1. `loushang.work` 与 method plan/step failure projection 的硬化
+1. `loushang.work` 的 run-bound plan binding、动态输入与 outcome 验证
 2. channel capability negotiation and interaction request/response contracts
 3. TUI method status layer 与 `WorkEvent` / `WorkPlanRun` projection
 4. public CLI reference 对 method/work/package surface 的补齐
