@@ -44,7 +44,6 @@ def test_coding_top_level_exports_stable_sdk_surface() -> None:
         "ExtensionFlagValues",
         "HeadlessApprovalMode",
         "HeadlessApprovalResolver",
-        "ResourceBundle",
         "SdkSurfaceCompatibilityReport",
         "SdkSurfaceSnapshot",
         "SessionManager",

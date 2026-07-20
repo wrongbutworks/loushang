@@ -20,10 +20,14 @@ from loushang.coding.control.settings_store import (
     default_project_settings_path,
 )
 from loushang.coding.extensions import ExtensionRunner
-from loushang.coding.loader import DefaultResourceLoader
-from loushang.coding.package import GitPackageMaterializerBackend, PackageMaterializer
 from loushang.coding.policy import InteractiveApprovalResolver
 from loushang.coding.prompt import assemble_prompt
+from loushang.coding.resource_runtime import (
+    CodingPackageMaterializer as PackageMaterializer,
+)
+from loushang.coding.resource_runtime import (
+    CodingResourceLoader as DefaultResourceLoader,
+)
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession
 from loushang.coding.source_info import executable_source_identity
@@ -45,6 +49,9 @@ from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.resources.activation import SkillActivationRuntime
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.layout import resolve_user_resource_roots
+from loushang.harness.resources.packages.materializer import (
+    GitPackageMaterializerBackend,
+)
 from loushang.harness.resources.packages.roots import resolve_package_resource_roots
 from loushang.harness.resources.packages.source_resolver import (
     PackageSourceResolver,

@@ -54,7 +54,7 @@ from loushang.coding.observability import (
     coding_observability_context,
     coding_startup_observability_context,
 )
-from loushang.coding.package.projection import collect_package_entries
+from loushang.coding.package_projection import collect_package_entries
 from loushang.coding.policy import (
     ApprovalResolver,
     HeadlessApprovalResolver,

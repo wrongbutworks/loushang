@@ -7,11 +7,13 @@ from typing import cast
 
 from loushang.coding.control import SettingsManager
 from loushang.coding.control.settings_manager import SettingsScope
-from loushang.coding.loader import DefaultResourceLoader
-from loushang.coding.package.projection import (
+from loushang.coding.package_projection import (
     collect_coding_package_catalog,
     project_package_entries,
     serialize_package_materialization_record,
+)
+from loushang.coding.resource_runtime import (
+    CodingResourceLoader as DefaultResourceLoader,
 )
 from loushang.coding.store import SessionManager
 from loushang.harness.diagnostics.service import DiagnosticsService

@@ -2872,39 +2872,30 @@ def test_harness_dependency_first_migration_rule_is_documented() -> None:
 
 
 def test_resource_package_runtime_has_harness_owners() -> None:
-    from loushang.coding.loader import (
-        DefaultResourceLoader,
-    )
-    from loushang.coding.loader import (
-        ResourceBundle as CodingResourceBundle,
-    )
-    from loushang.coding.package import (
-        PackageMaterializer as CodingPackageMaterializer,
-    )
-    from loushang.coding.package import (
-        PackageSourceConfig as CodingPackageSourceConfig,
-    )
-    from loushang.coding.plugin import PluginManager as CodingPluginManager
+    import loushang.coding as coding
     from loushang.coding.policy import PolicyDecision as CodingPolicyDecision
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer,
+        CodingResourceLoader,
+        CodingSkillLoader,
+    )
     from loushang.harness.policy import PolicyDecision
     from loushang.harness.resources.loader import ResourceLoader
     from loushang.harness.resources.packages import (
         PackageCatalogBuilder,
         PackageMaterializer,
-        PackageSourceConfig,
         PackageSourceResolver,
     )
-    from loushang.harness.resources.plugins import PluginManager
-    from loushang.harness.resources.types import ResourceBundle
+    from loushang.harness.resources.skills import SkillLoader
 
-    assert CodingResourceBundle is ResourceBundle
-    assert CodingPackageSourceConfig is PackageSourceConfig
-    assert CodingPluginManager is PluginManager
     assert CodingPolicyDecision is PolicyDecision
-    assert issubclass(DefaultResourceLoader, ResourceLoader)
+    assert issubclass(CodingResourceLoader, ResourceLoader)
     assert issubclass(CodingPackageMaterializer, PackageMaterializer)
+    assert issubclass(CodingSkillLoader, SkillLoader)
     assert PackageCatalogBuilder.__module__.startswith("loushang.harness")
     assert PackageSourceResolver.__module__.startswith("loushang.harness")
+    assert "ResourceBundle" not in coding.__all__
+    assert "PluginManager" not in coding.__all__
 
 
 def test_coding_internal_resource_consumers_use_harness_owners() -> None:
