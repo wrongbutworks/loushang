@@ -13,10 +13,15 @@ from typing import Literal, Protocol
 
 from loushang.agent.types import AgentMessage
 from loushang.ai.model import ModelSelection
+from loushang.ai.types import AssistantMessage
 from loushang.harness.agent_transcript import (
+    AGENT_MESSAGE_KIND,
+    CONTEXT_COMPACTION_CHECKPOINT_KIND,
     AgentTranscriptInspector,
     AgentTranscriptSession,
+    ContextCompactionCheckpoint,
     build_context_usage_snapshot,
+    calculate_context_tokens,
     estimate_context_tokens,
 )
 from loushang.harness.host.types import RunState
@@ -206,6 +211,7 @@ class AgentSessionInspector:
     def build_session_stats(self) -> SessionStats:
         context_usage = self.get_context_usage()
         counts = self._transcript.message_counts()
+        branch_entries = list(self.session.get_branch())
         return SessionStats(
             session_id=self.get_session_id(),
             session_name=self.get_session_name(),
@@ -219,6 +225,7 @@ class AgentSessionInspector:
             branch_count=self._transcript.branch_leaf_count(),
             last_model_selection=self.get_model_selection(),
             context_usage=context_usage,
+            tokens=_build_token_usage_totals(branch_entries),
         )
 
     def get_user_messages_for_forking(self) -> list[dict[str, str]]:
@@ -236,6 +243,57 @@ class AgentSessionInspector:
 
     def get_recent_assistant_texts(self) -> tuple[str, ...]:
         return self._transcript.recent_assistant_texts(self.agent.state.messages)
+
+
+def _build_token_usage_totals(branch_entries: list[object]) -> TokenUsageTotals:
+    latest_compaction = _latest_compaction_with_index(branch_entries)
+    input_tokens = 0
+    output_tokens = 0
+    cache_read_tokens = 0
+    cache_write_tokens = 0
+    total_tokens = 0
+    start_index = 0
+
+    if latest_compaction is not None:
+        compaction, index = latest_compaction
+        input_tokens += compaction.tokens_before
+        total_tokens += compaction.tokens_before
+        start_index = index + 1
+
+    for entry in branch_entries[start_index:]:
+        if getattr(entry, "kind", None) != AGENT_MESSAGE_KIND:
+            continue
+        message = getattr(entry, "payload", None)
+        if not isinstance(message, AssistantMessage):
+            continue
+        if message.stop_reason in {"aborted", "error"}:
+            continue
+        usage = message.usage
+        input_tokens += int(getattr(usage, "input", 0) or 0)
+        output_tokens += int(getattr(usage, "output", 0) or 0)
+        cache_read_tokens += int(getattr(usage, "cache_read", 0) or 0)
+        cache_write_tokens += int(getattr(usage, "cache_write", 0) or 0)
+        total_tokens += calculate_context_tokens(usage)
+
+    return TokenUsageTotals(
+        input=input_tokens,
+        output=output_tokens,
+        cache_read=cache_read_tokens,
+        cache_write=cache_write_tokens,
+        total=total_tokens,
+    )
+
+
+def _latest_compaction_with_index(
+    entries: list[object],
+) -> tuple[ContextCompactionCheckpoint, int] | None:
+    for index in range(len(entries) - 1, -1, -1):
+        entry = entries[index]
+        if getattr(entry, "kind", None) != CONTEXT_COMPACTION_CHECKPOINT_KIND:
+            continue
+        if isinstance(getattr(entry, "payload", None), ContextCompactionCheckpoint):
+            return entry.payload, index
+    return None
 
 
 __all__ = [

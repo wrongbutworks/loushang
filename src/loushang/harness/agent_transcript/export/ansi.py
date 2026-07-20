@@ -129,15 +129,13 @@ def _apply_codes(codes: list[int], style: _TextStyle) -> None:
         elif 30 <= code <= 37:
             style.fg = _ANSI_COLORS[code - 30]
         elif code == 38:
-            consumed = _apply_extended_color(codes, index, foreground=True, style=style)
-            index += consumed
+            index += _apply_extended_color(codes, index, foreground=True, style=style)
         elif code == 39:
             style.fg = None
         elif 40 <= code <= 47:
             style.bg = _ANSI_COLORS[code - 40]
         elif code == 48:
-            consumed = _apply_extended_color(codes, index, foreground=False, style=style)
-            index += consumed
+            index += _apply_extended_color(codes, index, foreground=False, style=style)
         elif code == 49:
             style.bg = None
         elif 90 <= code <= 97:
@@ -147,7 +145,9 @@ def _apply_codes(codes: list[int], style: _TextStyle) -> None:
         index += 1
 
 
-def _apply_extended_color(codes: list[int], index: int, *, foreground: bool, style: _TextStyle) -> int:
+def _apply_extended_color(
+    codes: list[int], index: int, *, foreground: bool, style: _TextStyle
+) -> int:
     if len(codes) > index + 2 and codes[index + 1] == 5:
         color = _color_256_to_hex(codes[index + 2])
         if foreground:

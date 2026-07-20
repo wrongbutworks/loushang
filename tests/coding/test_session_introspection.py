@@ -15,10 +15,6 @@ from loushang.ai.types import (
     UserMessage,
 )
 from loushang.coding.diagnostics import DiagnosticRecord, DiagnosticsService
-from loushang.coding.session.introspection import (
-    build_context_usage,
-    build_session_stats,
-)
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry, register_builtin_tools
 
@@ -146,7 +142,9 @@ def _model() -> Model:
 
 
 def test_build_context_usage_counts_messages_and_tools(tmp_path) -> None:
-    usage = build_context_usage(_build_session_with_tool_turn(tmp_path))
+    usage = _build_session_with_tool_turn(
+        tmp_path
+    )._session_inspector.get_context_usage()
     assert usage is not None
     assert usage.message_count >= 3
     assert usage.tool_call_count == 1
@@ -154,7 +152,9 @@ def test_build_context_usage_counts_messages_and_tools(tmp_path) -> None:
 
 
 def test_build_context_usage_uses_best_effort_token_estimate(tmp_path) -> None:
-    usage = build_context_usage(_build_session_with_tool_turn(tmp_path))
+    usage = _build_session_with_tool_turn(
+        tmp_path
+    )._session_inspector.get_context_usage()
     assert usage is not None
     assert usage.estimated_context_tokens is not None
 
@@ -197,7 +197,7 @@ def test_build_context_usage_uses_session_compaction_settings(tmp_path) -> None:
         ),
     )
 
-    usage = build_context_usage(session)
+    usage = session._session_inspector.get_context_usage()
 
     assert usage is not None
     assert usage.compact_percent == 80
@@ -213,7 +213,7 @@ def test_build_session_stats_includes_context_usage_and_session_metadata(
     tmp_path,
 ) -> None:
     session = _build_session_with_tool_turn(tmp_path)
-    stats = build_session_stats(session)
+    stats = session._session_inspector.build_session_stats()
     assert stats.session_id == session.session_id
     assert stats.context_usage is not None
 
@@ -330,7 +330,7 @@ def test_build_session_stats_reports_token_totals_after_compaction(tmp_path) -> 
     agent.state.set_messages(manager.build_session_context().messages)
     session = coding_session.AgentSession(agent=agent, session_manager=manager)
 
-    stats = build_session_stats(session)
+    stats = session._session_inspector.build_session_stats()
 
     assert stats.tokens.total == 220_000
     assert stats.tokens.input == 220_000
@@ -372,6 +372,6 @@ def test_build_session_stats_tracks_active_tools_and_diagnostics(tmp_path) -> No
         diagnostics_service=diagnostics,
     )
 
-    stats = build_session_stats(session)
+    stats = session._session_inspector.build_session_stats()
     assert stats.active_tool_count == len(session.get_active_tool_names())
     assert stats.has_diagnostics is True
