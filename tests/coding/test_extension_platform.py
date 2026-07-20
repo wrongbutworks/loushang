@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 
 def test_extension_manifest_parser_accepts_capability_manifest(tmp_path) -> None:
-    from loushang.coding.extensions.manifest import parse_extension_manifest
+    from loushang.harness.extensions.manifest import parse_extension_manifest
 
     manifest_path = tmp_path / "loushang-extension.toml"
     manifest_path.write_text(
@@ -58,7 +58,7 @@ packages = ["acme-sdk>=0.3"]
 def test_extension_manifest_parser_normalizes_identifiers_and_rejects_blank_id(
     tmp_path,
 ) -> None:
-    from loushang.coding.extensions.manifest import parse_extension_manifest
+    from loushang.harness.extensions.manifest import parse_extension_manifest
 
     manifest_path = tmp_path / "loushang-extension.toml"
     manifest_path.write_text(
@@ -87,8 +87,8 @@ def test_extension_manifest_parser_normalizes_identifiers_and_rejects_blank_id(
 
 
 def test_extension_manifest_rejects_removed_provider_hooks(tmp_path) -> None:
-    from loushang.coding.extensions.contributions import surfaces_from_loaded_extension
-    from loushang.coding.extensions.manifest import parse_extension_manifest
+    from loushang.harness.extensions.contributions import surfaces_from_loaded_extension
+    from loushang.harness.extensions.manifest import parse_extension_manifest
 
     manifest_path = tmp_path / "loushang-extension.toml"
     manifest_path.write_text(
@@ -190,7 +190,7 @@ kind = "observe"
 def test_extension_manifest_parser_reports_invalid_input_without_throwing(
     tmp_path,
 ) -> None:
-    from loushang.coding.extensions.manifest import parse_extension_manifest
+    from loushang.harness.extensions.manifest import parse_extension_manifest
 
     manifest_path = tmp_path / "loushang-extension.toml"
     manifest_path.write_text(
@@ -219,7 +219,7 @@ level = "root"
 def test_extension_manifest_parser_keeps_manifest_for_partial_surface_declaration_errors(
     tmp_path,
 ) -> None:
-    from loushang.coding.extensions.manifest import parse_extension_manifest
+    from loushang.harness.extensions.manifest import parse_extension_manifest
 
     manifest_path = tmp_path / "loushang-extension.toml"
     manifest_path.write_text(
@@ -465,11 +465,11 @@ def test_extension_runner_lists_extension_visibility_snapshot() -> None:
 def test_extension_inventory_indexes_loaded_extension_surfaces(tmp_path) -> None:
     from pathlib import Path
 
-    from loushang.coding.extensions.contributions import (
+    from loushang.harness.extensions.contributions import (
         ExtensionInventory,
         ExtensionSurfaceDescriptor,
     )
-    from loushang.coding.extensions.types import LoadedExtension
+    from loushang.harness.extensions.types import LoadedExtension
 
     extension = LoadedExtension(
         name="review",
@@ -505,7 +505,7 @@ def test_extension_inventory_does_not_silently_overwrite_duplicate_keys() -> Non
 
     import pytest
 
-    from loushang.coding.extensions.contributions import (
+    from loushang.harness.extensions.contributions import (
         DuplicateExtensionSurfaceKeyError,
         ExtensionInventory,
         ExtensionSurfaceDescriptor,

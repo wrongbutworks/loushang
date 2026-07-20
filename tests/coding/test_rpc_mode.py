@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from loushang.ai.model import ModelSelection
 from loushang.ai.model.domain import (
     Capabilities,
     Endpoint,
@@ -24,7 +25,6 @@ from loushang.coding.session.types import (
     RunState,
     SessionCommandDescriptor,
 )
-from loushang.coding.types import ModelSelection
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
     CompactionResult,

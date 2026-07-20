@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from loushang.ai.model import Capabilities, Endpoint, Model, Provider
+from loushang.ai.model import Capabilities, Endpoint, Model, ModelSelection, Provider
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.coding.control.model_registry import ModelRegistry
-from loushang.coding.types import ModelSelection
 
 
 def _model(model_id: str, *, endpoint: str) -> Model:
@@ -43,7 +42,9 @@ def _registry(*, primary_preferred: bool = True) -> ModelRegistry:
 
 
 def test_control_model_registry_resolves_provider_model_to_preferred_endpoint() -> None:
-    model = _registry().build_model(ModelSelection(provider="provider", model_id="chat"))
+    model = _registry().build_model(
+        ModelSelection(provider="provider", model_id="chat")
+    )
 
     assert model.endpoint_id == "primary"
 

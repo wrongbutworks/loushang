@@ -1,48 +1,16 @@
 from loushang.coding.extensions.api import ExtensionAPI
-from loushang.coding.extensions.contributions import (
-    ContributionDescriptor,
-    ContributionRegistry,
-    DuplicateContributionKeyError,
-    DuplicateExtensionSurfaceKeyError,
-    ExtensionInventory,
-    ExtensionSurfaceDescriptor,
-    ExtensionSurfaceType,
-    surfaces_from_loaded_extension,
-)
 from loushang.coding.extensions.hooks import HookDispatcher, HookKind
 from loushang.coding.extensions.loader import ExtensionLoader
-from loushang.coding.extensions.manifest import (
-    ExtensionDependencyDeclaration,
-    ExtensionHookDeclaration,
-    ExtensionManifest,
-    ExtensionManifestParseResult,
-    ExtensionPermissionDeclaration,
-    parse_extension_manifest,
-)
 from loushang.coding.extensions.policy import (
     ExtensionPolicyDecision,
     policy_from_manifest,
 )
 from loushang.coding.extensions.runner import ExtensionRunner
-from loushang.coding.extensions.types import (
-    VALID_EXTENSION_EVENTS,
-    BeforeAgentStartResult,
-    ContextResult,
+from loushang.harness.extensions.context import (
     ExtensionCommandContext,
     ExtensionContext,
-    ExtensionResourceContribution,
     ExtensionRuntimeBindings,
-    InputEvent,
-    InputEventResult,
-    InputSource,
-    LoadedExtension,
-    RegisteredCommand,
-    RegisteredFlag,
-    RegisteredShortcut,
     ReplacedSessionContext,
-    ResolvedCommand,
-    ResolvedFlag,
-    ResolvedShortcut,
     SessionActionDecision,
     SessionBeforeCompactEvent,
     SessionBeforeCompactResult,
@@ -54,10 +22,44 @@ from loushang.coding.extensions.types import (
     SessionRefreshEvent,
     SessionShutdownEvent,
     SessionStartEvent,
-    SourceInfo,
+)
+from loushang.harness.extensions.contributions import (
+    ContributionDescriptor,
+    ContributionRegistry,
+    DuplicateContributionKeyError,
+    DuplicateExtensionSurfaceKeyError,
+    ExtensionInventory,
+    ExtensionSurfaceDescriptor,
+    ExtensionSurfaceType,
+    surfaces_from_loaded_extension,
+)
+from loushang.harness.extensions.events import VALID_EXTENSION_EVENTS
+from loushang.harness.extensions.manifest import (
+    ExtensionDependencyDeclaration,
+    ExtensionHookDeclaration,
+    ExtensionManifest,
+    ExtensionManifestParseResult,
+    ExtensionPermissionDeclaration,
+    parse_extension_manifest,
+)
+from loushang.harness.extensions.types import (
+    BeforeAgentStartResult,
+    ContextResult,
+    ExtensionResourceContribution,
+    InputEvent,
+    InputEventResult,
+    InputSource,
+    LoadedExtension,
+    RegisteredCommand,
+    RegisteredFlag,
+    RegisteredShortcut,
+    ResolvedCommand,
+    ResolvedFlag,
+    ResolvedShortcut,
     ToolCallDecision,
     ToolResultDecision,
 )
+from loushang.harness.resources.source import SourceInfo
 
 __all__ = [
     "BeforeAgentStartResult",

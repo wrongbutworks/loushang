@@ -209,7 +209,7 @@ def test_extension_runner_keeps_legacy_four_argument_extension_tools() -> None:
 
 def test_extension_runner_resolves_duplicate_command_names() -> None:
     from loushang.coding.extensions.runner import ExtensionRunner
-    from loushang.coding.extensions.types import LoadedExtension, RegisteredCommand
+    from loushang.harness.extensions.types import LoadedExtension, RegisteredCommand
 
     async def _handler(args, ctx):
         del args, ctx
@@ -246,7 +246,7 @@ def test_extension_runner_resolves_duplicate_command_names() -> None:
 
 def test_extension_runner_preserves_package_command_source_info() -> None:
     from loushang.coding.extensions.runner import ExtensionRunner
-    from loushang.coding.extensions.types import LoadedExtension, RegisteredCommand
+    from loushang.harness.extensions.types import LoadedExtension, RegisteredCommand
 
     async def _handler(args, ctx):
         del args, ctx
@@ -279,7 +279,7 @@ def test_extension_runner_preserves_package_command_source_info() -> None:
 
 def test_extension_runner_avoids_command_alias_collision_with_literal_name() -> None:
     from loushang.coding.extensions.runner import ExtensionRunner
-    from loushang.coding.extensions.types import LoadedExtension, RegisteredCommand
+    from loushang.harness.extensions.types import LoadedExtension, RegisteredCommand
 
     async def _handler(args, ctx):
         del args, ctx
@@ -326,7 +326,7 @@ def test_extension_runner_avoids_command_alias_collision_with_literal_name() -> 
 
 def test_extension_runner_shortcut_collisions_are_first_wins() -> None:
     from loushang.coding.extensions.runner import ExtensionRunner
-    from loushang.coding.extensions.types import LoadedExtension, RegisteredShortcut
+    from loushang.harness.extensions.types import LoadedExtension, RegisteredShortcut
 
     first = LoadedExtension(name="one", source_path=Path("/tmp/one.py"))
     second = LoadedExtension(name="two", source_path=Path("/tmp/two.py"))
@@ -367,7 +367,7 @@ def test_extension_runner_shortcut_collisions_are_first_wins() -> None:
 
 def test_extension_runner_flag_collisions_are_first_wins() -> None:
     from loushang.coding.extensions.runner import ExtensionRunner
-    from loushang.coding.extensions.types import LoadedExtension, RegisteredFlag
+    from loushang.harness.extensions.types import LoadedExtension, RegisteredFlag
 
     first = LoadedExtension(name="one", source_path=Path("/tmp/one.py"))
     second = LoadedExtension(name="two", source_path=Path("/tmp/two.py"))

@@ -5,7 +5,7 @@ from contextlib import suppress
 from types import SimpleNamespace
 
 from loushang.ai import Model
-from loushang.coding.types import ModelSelection
+from loushang.ai.model import ModelSelection
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.harnesstui.selection.model import (
@@ -1076,9 +1076,9 @@ def test_screen_surface_manager_command_surface_inserts_selected_command() -> No
     assert app.active_surface.presentation == "bottom"
     assert isinstance(app.active_surface.content, CommandSurface)
     assert app.active_surface.content.max_visible == 8
-    assert app.active_surface.handle_input(
-        InputEvent(kind="text", text="report")
-    ) is None
+    assert (
+        app.active_surface.handle_input(InputEvent(kind="text", text="report")) is None
+    )
     intent = app.active_surface.handle_input(InputEvent(kind="key", key="enter"))
     assert intent == InputIntent(kind="command", text="/report")
 

@@ -65,9 +65,9 @@ Coding keeps:
 
 `loushang.coding.extensions.loader.ExtensionLoader` now only injects the Coding
 API factory, Coding permission policy, and legacy event names into the Harness
-loader. The Coding `manifest`, `events`, `contributions`, and `wrapper` modules
-are compatibility re-exports. Shared records imported through
-`coding.extensions.types` are the same Harness-owned objects.
+loader. The legacy Coding `manifest`, `events`, `contributions`, `wrapper`, and
+`types` submodules are removed. Shared records are imported directly from their
+Harness owners.
 
 ## Runtime Composition
 
@@ -201,18 +201,21 @@ shortcuts are first-wins and produce diagnostics for rejected contributions.
 Products may replace this policy later by supplying a different registry layer;
 the core does not infer user intent.
 
-## Compatibility
+## Canonical Imports
 
-Accepted Coding imports remain valid, including:
+Coding product adapters remain available from `loushang.coding.extensions`, but
+shared extension contracts use their Harness owners directly:
 
 ```python
 from loushang.coding.extensions import ExtensionLoader, LoadedExtension
-from loushang.coding.extensions.manifest import parse_extension_manifest
+from loushang.harness.extensions.manifest import parse_extension_manifest
 from loushang.coding.extensions.policy import ExtensionPolicyDecision
 ```
 
-Compatibility paths preserve import behavior and class identity. New
-cross-product code should import the focused Harness owner directly.
+The legacy `coding.extensions.manifest` submodule is removed. New
+cross-product code imports the focused Harness owner directly. Any selected
+values exposed through the product package remain the same Harness-owned
+objects; no legacy shared-utility submodule path is retained.
 
 ## Dependency Direction
 

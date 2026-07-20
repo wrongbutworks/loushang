@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from loushang.agent import ThinkingLevel
+from loushang.ai.model import ModelSelection
 from loushang.coding.control.types import (
     BranchSummarySettings,
     CompactionSettings,
@@ -30,7 +31,6 @@ from loushang.coding.control.types import (
     TreeFilterMode,
     WarningSettings,
 )
-from loushang.coding.types import ModelSelection
 from loushang.harness.config import (
     ConfigFieldSpec,
     ConfigLayer,

@@ -14,8 +14,8 @@ STRESS_SCENARIO_PATH = Path(
 @pytest.mark.parametrize("path", SCENARIO_PATHS, ids=lambda path: path.name)
 def test_workflow_scenario_matrix(path: Path, tmp_path) -> None:
     from loushang.coding.workflow import load_workflow, run_workflow
-    from loushang.coding.workflow.fake_runtime import FakeWorkflowAdapter
     from loushang.coding.workflow.report import format_workflow_report
+    from loushang.harness.scenario.fake_runtime import FakeWorkflowAdapter
 
     workflow = load_workflow(path)
 
@@ -28,8 +28,8 @@ def test_workflow_scenario_matrix(path: Path, tmp_path) -> None:
 
 def test_repeated_control_mix_scenario_exists_and_passes(tmp_path) -> None:
     from loushang.coding.workflow import load_workflow, run_workflow
-    from loushang.coding.workflow.fake_runtime import FakeWorkflowAdapter
     from loushang.coding.workflow.report import format_workflow_report
+    from loushang.harness.scenario.fake_runtime import FakeWorkflowAdapter
 
     workflow = load_workflow(STRESS_SCENARIO_PATH)
 

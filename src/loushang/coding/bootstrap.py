@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from loushang.agent import Agent, AgentTool, StreamFn, ThinkingLevel
-from loushang.ai.model import Model
+from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.types import Message, TextPart
 from loushang.coding.capability_plan import resolve_coding_capability_profile
@@ -32,7 +32,6 @@ from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession
 from loushang.coding.source_info import executable_source_identity
 from loushang.coding.store import SessionManager
-from loushang.coding.types import ModelSelection
 from loushang.harness.agent_transcript import context_item_to_model_message
 from loushang.harness.capabilities import bind_capability_composition_runtime
 from loushang.harness.capabilities.packs import (

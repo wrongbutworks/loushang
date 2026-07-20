@@ -4,23 +4,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 
-def test_coding_contribution_paths_share_harness_identity() -> None:
+def test_coding_extension_package_exports_harness_contribution_types() -> None:
     from loushang.coding import extensions
-    from loushang.coding.extensions import contributions as compatibility
     from loushang.harness import contributions as owner
-
-    names = (
-        "ContributionDescriptor",
-        "ContributionRegistry",
-        "ContributionType",
-        "DuplicateContributionKeyError",
-        "DuplicateExtensionSurfaceKeyError",
-        "ExtensionInventory",
-        "ExtensionSurfaceDescriptor",
-        "ExtensionSurfaceType",
-    )
-    for name in names:
-        assert getattr(compatibility, name) is getattr(owner, name)
 
     package_names = (
         "ContributionDescriptor",
@@ -39,8 +25,8 @@ def test_coding_contribution_paths_share_harness_identity() -> None:
 
 
 def test_loaded_extension_projection_creates_harness_records() -> None:
-    from loushang.coding.extensions.contributions import surfaces_from_loaded_extension
     from loushang.harness.contributions import ContributionDescriptor
+    from loushang.harness.extensions.contributions import surfaces_from_loaded_extension
 
     extension = SimpleNamespace(
         name="review",

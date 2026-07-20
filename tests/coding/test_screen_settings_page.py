@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from loushang.coding.types import ModelSelection
+from loushang.ai.model import ModelSelection
 from loushang.coding.ui.settings_page import build_coding_settings_page
 from loushang.harnesstui.settings.workflow import SettingsPageView
 from loushang.harnesstui.status.line import StatusLinePreviewSnapshot

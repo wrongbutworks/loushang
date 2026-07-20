@@ -14,6 +14,7 @@ from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Any, TextIO
 
+from loushang.ai.model import ModelSelection
 from loushang.ai.model.registry import get_default_model_registry
 from loushang.ai.types import ImagePart
 from loushang.channel import ProductHostStreams, dispose_product_host, stdout_guard
@@ -71,7 +72,6 @@ from loushang.coding.source_info import (
     format_source_identity_text,
 )
 from loushang.coding.tool_pack import register_coding_builtin_tools
-from loushang.coding.types import ModelSelection
 from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.work_executor import SubmitCodingTurn
 from loushang.coding.work_runtime import CodingWorkRuntime

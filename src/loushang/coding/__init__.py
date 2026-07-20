@@ -1,3 +1,4 @@
+from loushang.ai.model import ModelSelection
 from loushang.coding.bootstrap import (
     AgentSessionServices,
     BootstrapServices,
@@ -77,7 +78,6 @@ from loushang.coding.tool_pack import (
     create_coding_tools,
     register_coding_builtin_tools,
 )
-from loushang.coding.types import ModelSelection
 
 __all__ = [
     "AgentSession",

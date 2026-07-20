@@ -54,7 +54,7 @@ def test_extension_command_registration_surface_matches_pi_style_signature() -> 
 
 
 def test_extension_command_context_is_distinct_from_extension_context() -> None:
-    from loushang.coding.extensions.types import (
+    from loushang.harness.extensions.context import (
         ExtensionCommandContext,
         ExtensionContext,
     )
@@ -64,7 +64,8 @@ def test_extension_command_context_is_distinct_from_extension_context() -> None:
 
 def test_extension_api_registers_command_flag_and_shortcut() -> None:
     from loushang.coding.extensions.api import ExtensionAPI
-    from loushang.coding.extensions.types import ResolvedCommand, SourceInfo
+    from loushang.harness.extensions.types import ResolvedCommand
+    from loushang.harness.resources.source import SourceInfo
 
     api = ExtensionAPI(name="demo", source_path=Path("/tmp/demo.py"))
 
@@ -217,7 +218,7 @@ def test_extension_api_exec_command_delegates_to_runtime_binding() -> None:
 def test_registered_command_requires_async_handler() -> None:
     import pytest
 
-    from loushang.coding.extensions.types import RegisteredCommand
+    from loushang.harness.extensions.types import RegisteredCommand
 
     def _sync_handler(args, ctx):
         del args, ctx
@@ -244,7 +245,7 @@ def test_extension_api_annotates_flag_type_as_literal() -> None:
     from typing import Literal, get_type_hints
 
     from loushang.coding.extensions.api import ExtensionAPI
-    from loushang.coding.extensions.types import RegisteredFlag
+    from loushang.harness.extensions.types import RegisteredFlag
 
     register_flag_hints = get_type_hints(ExtensionAPI.register_flag)
     registered_flag_hints = get_type_hints(RegisteredFlag)
@@ -275,8 +276,8 @@ def test_extension_api_rejects_invalid_flag_default_for_type() -> None:
 
 
 def test_extension_api_v1_core_types_are_available() -> None:
-    from loushang.coding.extensions.types import (
-        VALID_EXTENSION_EVENTS,
+    from loushang.harness.extensions.events import VALID_EXTENSION_EVENTS
+    from loushang.harness.extensions.types import (
         BeforeAgentStartResult,
         ContextResult,
         LoadedExtension,
@@ -400,7 +401,7 @@ def test_extension_api_rejects_unknown_event_names() -> None:
 
 
 def test_extension_api_v2_core_types_include_session_refresh() -> None:
-    from loushang.coding.extensions.types import VALID_EXTENSION_EVENTS
+    from loushang.harness.extensions.events import VALID_EXTENSION_EVENTS
 
     assert "session_refresh" in VALID_EXTENSION_EVENTS
 
@@ -449,7 +450,7 @@ def test_extension_api_v2_core_types_include_session_control_hooks() -> None:
         SessionBeforeSwitchEvent,
         SessionBeforeTreeEvent,
     )
-    from loushang.coding.extensions.types import VALID_EXTENSION_EVENTS
+    from loushang.harness.extensions.events import VALID_EXTENSION_EVENTS
 
     assert "session_before_switch" in VALID_EXTENSION_EVENTS
     assert "session_before_fork" in VALID_EXTENSION_EVENTS
@@ -525,13 +526,10 @@ def test_extension_api_uses_product_neutral_runtime_context_contract() -> None:
     from collections.abc import Awaitable, Callable
     from typing import get_args, get_origin, get_type_hints
 
-    from loushang.coding.extensions.types import (
+    from loushang.harness.extensions.context import (
         ExtensionCommandContext,
         ExtensionContext,
         ExtensionRuntimeBindings,
-    )
-    from loushang.harness.extensions.context import (
-        ExtensionContext as HarnessExtensionContext,
     )
     from loushang.harness.runtime import ProductRuntimeBindings
 
@@ -542,7 +540,6 @@ def test_extension_api_uses_product_neutral_runtime_context_contract() -> None:
     send_user_message_hints = get_type_hints(ExtensionContext.send_user_message)
     runtime_binding_hints = get_type_hints(ExtensionRuntimeBindings)
 
-    assert ExtensionContext is HarnessExtensionContext
     assert ExtensionRuntimeBindings is ProductRuntimeBindings
     assert get_model_selection_hints["return"] == object | None
     assert set_model_hints["selection"] is object

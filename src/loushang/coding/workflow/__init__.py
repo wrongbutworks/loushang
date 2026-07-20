@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from loushang.coding.workflow.command import run_prompt_steps_workflow
-from loushang.coding.workflow.events import (
+from loushang.coding.workflow.runner import AgentSessionWorkflowAdapter, run_workflow
+from loushang.harness.scenario.events import (
     EventPattern,
     WorkflowEvent,
     event_matches,
     find_event,
 )
-from loushang.coding.workflow.loader import load_workflow, resolve_workflow_files
-from loushang.coding.workflow.runner import AgentSessionWorkflowAdapter, run_workflow
-from loushang.coding.workflow.schema import (
+from loushang.harness.scenario.loader import load_workflow, resolve_workflow_files
+from loushang.harness.scenario.schema import (
     AbortStep,
     CheckResult,
     CommandExpectation,
