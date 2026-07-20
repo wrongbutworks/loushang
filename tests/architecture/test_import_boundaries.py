@@ -363,10 +363,17 @@ def test_scenario_runtime_is_product_neutral_and_never_executes_shell() -> None:
 
 
 def test_coding_work_projection_subscribes_to_runtime_events() -> None:
-    source = Path("src/loushang/coding/work_shell.py").read_text(encoding="utf-8")
+    shell_source = Path("src/loushang/coding/work_shell.py").read_text(
+        encoding="utf-8"
+    )
+    executor_source = Path("src/loushang/coding/work_executor.py").read_text(
+        encoding="utf-8"
+    )
 
-    assert "subscribe_runtime_events" in source
-    assert "self.session.subscribe(listener)" not in source
+    assert "subscribe_runtime_events" in executor_source
+    assert "self.session.subscribe(listener)" not in executor_source
+    assert "WorkRuntime" in shell_source
+    assert "subscribe_runtime_events" not in shell_source
 
 
 def test_coding_session_uses_harness_runtime_events_as_the_only_internal_stream() -> (

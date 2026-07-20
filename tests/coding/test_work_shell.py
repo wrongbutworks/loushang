@@ -570,3 +570,109 @@ def test_coding_work_shell_records_step_and_plan_failures_before_run_failure() -
         assert entries[6].payload["payload"]["step_id"] == "inspect"
 
     asyncio.run(scenario())
+
+
+def test_coding_work_shell_unsubscribes_once_on_success_failure_and_cancellation() -> (
+    None
+):
+    from loushang.coding.work_shell import CodingWorkShell
+    from loushang.work import InMemoryEventLogBackend
+
+    class TrackingSession:
+        def __init__(self, outcome: str) -> None:
+            self.outcome = outcome
+            self.listener = None
+            self.prompt_started = asyncio.Event()
+            self.unsubscribe_calls = 0
+
+        def subscribe_runtime_events(self, listener):
+            self.listener = listener
+
+            def unsubscribe() -> None:
+                self.unsubscribe_calls += 1
+                self.listener = None
+
+            return unsubscribe
+
+        async def prompt(self, text: str, images=None) -> None:
+            del text, images
+            self.prompt_started.set()
+            if self.outcome == "failure":
+                raise RuntimeError("prompt failed")
+            if self.outcome == "cancellation":
+                await asyncio.Event().wait()
+
+    async def scenario() -> None:
+        for outcome in ("success", "failure", "cancellation"):
+            event_log = InMemoryEventLogBackend()
+            session = TrackingSession(outcome)
+            shell = CodingWorkShell(session=session, event_log=event_log)
+            task = asyncio.create_task(
+                shell.submit_coding_turn(
+                    outcome,
+                    session_id="session-1",
+                    operation_id=f"op-{outcome}",
+                    run_id=f"run-{outcome}",
+                )
+            )
+            await session.prompt_started.wait()
+            if outcome == "cancellation":
+                task.cancel()
+            try:
+                await task
+            except RuntimeError:
+                assert outcome == "failure"
+            except asyncio.CancelledError:
+                assert outcome == "cancellation"
+
+            assert session.unsubscribe_calls == 1
+            assert session.listener is None
+            entries = event_log.query(run_id=f"run-{outcome}")
+            terminal_kinds = {
+                "WorkRunCompleted",
+                "WorkRunFailed",
+                "WorkRunCancelled",
+            }
+            assert sum(
+                entry.payload["kind"] in terminal_kinds for entry in entries
+            ) == 1
+            assert entries[-1].payload["kind"] in terminal_kinds
+
+    asyncio.run(scenario())
+
+
+def test_agent_start_and_end_are_non_terminal_invocation_facts() -> None:
+    from loushang.coding.work_shell import CodingWorkShell
+    from loushang.work import InMemoryEventLogBackend
+
+    async def scenario() -> None:
+        event_log = InMemoryEventLogBackend()
+        shell = CodingWorkShell(
+            session=FakePromptSession(
+                events=[
+                    {"type": "agent_start"},
+                    {"type": "agent_end", "messages": []},
+                ]
+            ),
+            event_log=event_log,
+        )
+
+        await shell.submit_coding_turn(
+            "run",
+            session_id="session-1",
+            operation_id="op-1",
+            run_id="run-1",
+        )
+
+        kinds = [entry.payload["kind"] for entry in event_log.query(run_id="run-1")]
+        assert kinds == [
+            "SubmitCodingTurn",
+            "WorkRunStarted",
+            "AgentInvocationStarted",
+            "AgentInvocationCompleted",
+            "WorkRunCompleted",
+        ]
+        assert kinds.count("WorkRunStarted") == 1
+        assert kinds.count("WorkRunCompleted") == 1
+
+    asyncio.run(scenario())
