@@ -208,14 +208,15 @@ workflows 中使用 `method`，但轻量 turn 可以直接使用 `loushang.harne
 
 ### loushang-work
 
-跨产品工作运行语义、事件日志与 projection 层。
+跨产品业务工作与可选方法履约运行时。它接受具有可判定终局的业务意图，并拥有
+该承诺的权威运行事实、事件日志与 projection。
 
 负责：
 
 - `WorkOperation`
 - `WorkRun`
 - `WorkEvent`
-- future `ArtifactRef`
+- `ArtifactRef`
 - artifact references / work product projections
 - work event log
 - plan/step lifecycle projection
@@ -229,8 +230,12 @@ workflows 中使用 `method`，但轻量 turn 可以直接使用 `loushang.harne
 - 外部 transport
 - coding / design / research / ppt / cowork 产品语义
 
-`work` 是 coding、design、research、ppt、cowork 等产品线共享的工作事实与投影抽象。
-它不依赖这些产品线，也不依赖 `method`。
+`work` 是 coding、design、research、ppt、cowork 等产品线共享的业务工作抽象。
+Method 可选；选用 Method 时，Work 拥有编译后 plan 的一次真实履约。它不依赖这些
+产品线，也不依赖 `method` 类型。
+
+详细边界、状态机和 SPEM 2.0 对齐关系参见
+[Loushang Work Architecture](./work/README.md)。
 
 Artifact 分层规则：
 
@@ -326,7 +331,7 @@ external host/client -> loushang.channel -> loushang.work -> domain app
 - `channel` 提供目标边界通信，当前未作为源码包落地
 - `tui` 提供通用终端交互原语
 - `method` 提供可选的方法组织与 plan/projection
-- `work` 提供运行、事件、日志与 projection
+- `work` 提供业务 work acceptance、运行终态、事件、日志与 projection
 - `coding` 提供 coding 产品装配；feature-local adapter 解释 Coding 语义，
   `loushang.coding.ui` 只保留最终 UI composition、具体 surface 和 terminal
   binding
