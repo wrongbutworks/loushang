@@ -11,13 +11,14 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
+from loushang.coding.compaction import evaluate_coding_summary_fixture
 from loushang.coding.compaction.adapter import (
     execute_coding_branch_summary,
     execute_coding_compaction,
 )
-from loushang.coding.compaction.summary_quality import (
-    SummaryQualityReport,
-    validate_summary_contract,
+from loushang.coding.compaction.profiles import (
+    CODING_BRANCH_SUMMARY_PROFILE,
+    CODING_COMPACTION_SUMMARY_PROFILE,
 )
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
@@ -33,6 +34,7 @@ from loushang.harness.agent_transcript import (
 from loushang.harness.agent_transcript import (
     prepare_turn_aware_compaction as prepare_compaction,
 )
+from loushang.harness.context import SummaryValidationReport, validate_summary
 from loushang.harness.context.budget import calculate_compaction_budget
 
 
@@ -81,8 +83,7 @@ async def test_complete_text_calls_root_complete_with_options(monkeypatch) -> No
 
 def test_compaction_package_exports_product_symbols() -> None:
     assert CompactionResult is not None
-    assert SummaryQualityReport is not None
-    assert callable(validate_summary_contract)
+    assert callable(evaluate_coding_summary_fixture)
 
 
 def test_calculate_context_tokens_prefers_total_tokens() -> None:
@@ -773,14 +774,9 @@ def test_harness_exports_turn_aware_compaction_surface() -> None:
     assert callable(prepare_turn_aware_compaction)
 
 
-def test_validate_summary_contract_accepts_structured_compaction_summary_with_file_tags() -> (
+def test_validate_summary_accepts_structured_compaction_summary_with_resource_tags() -> (
     None
 ):
-    from loushang.coding.compaction import (
-        SummaryQualityReport,
-        validate_summary_contract,
-    )
-
     summary = """## Goal
 Continue aligning loushang coding with pi coding.
 
@@ -811,17 +807,15 @@ README.md
 </read-files>
 
 <modified-files>
-src/loushang/coding/compaction/summary_quality.py
+src/loushang/harness/context/summary_evaluation.py
 </modified-files>"""
 
-    report = validate_summary_contract(summary, summary_type="compaction")
+    report = validate_summary(summary, CODING_COMPACTION_SUMMARY_PROFILE)
 
-    assert report == SummaryQualityReport(summary_type="compaction")
+    assert report == SummaryValidationReport(profile_id="coding.compaction")
 
 
-def test_validate_summary_contract_reports_missing_and_placeholder_sections() -> None:
-    from loushang.coding.compaction import validate_summary_contract
-
+def test_validate_summary_reports_missing_and_placeholder_sections() -> None:
     summary = """## Goal
 [What is the user trying to accomplish?]
 
@@ -830,7 +824,7 @@ def test_validate_summary_contract_reports_missing_and_placeholder_sections() ->
 - [x] Something happened.
 """
 
-    report = validate_summary_contract(summary, summary_type="compaction")
+    report = validate_summary(summary, CODING_COMPACTION_SUMMARY_PROFILE)
 
     assert report.ok is False
     assert report.missing_sections == (
@@ -842,11 +836,7 @@ def test_validate_summary_contract_reports_missing_and_placeholder_sections() ->
     assert report.placeholder_sections == ("Goal",)
 
 
-def test_validate_summary_contract_accepts_branch_summary_without_critical_context() -> (
-    None
-):
-    from loushang.coding.compaction import validate_summary_contract
-
+def test_validate_summary_accepts_branch_summary_without_critical_context() -> None:
     summary = """The user explored a different conversation branch before returning here.
 Summary of that exploration:
 
@@ -873,7 +863,7 @@ Try a branch-specific refactor.
 1. Return to the main branch.
 """
 
-    report = validate_summary_contract(summary, summary_type="branch")
+    report = validate_summary(summary, CODING_BRANCH_SUMMARY_PROFILE)
 
     assert report.ok is True
     assert report.missing_sections == ()

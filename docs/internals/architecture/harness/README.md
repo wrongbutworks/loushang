@@ -65,6 +65,10 @@ planning, work event persistence, or AI provider behavior.
   ownership of transcript repositories, rebuildable projection indexes,
   layered configuration, explainable salience, and summary-profile mechanics
   while preserving Product schemas, prompts, defaults, and artifact semantics.
+- [Summary Evaluation Boundary](summary-evaluation-boundary.md) defines
+  profile-driven structured-summary evaluation and resource-operation evidence
+  while Products retain prompts, profile selection, production decoration, and
+  product-specific semantic checks.
 - [Product Configuration Runtime Boundary](product-configuration-runtime-boundary.md)
   defines transactional layered configuration, declarative Product schema
   adapters, scoped change records, injected value resolution, and activation

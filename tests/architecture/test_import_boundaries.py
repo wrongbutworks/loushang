@@ -1871,6 +1871,7 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
     assert "parent-linked transcript repositories" in inventory_text
     assert "`loushang.harness.config`" in inventory_text
     assert "summary-profile mechanics" in inventory_text
+    assert "SummaryResourceOperations" in inventory_text
 
     expected_imports = {
         Path("src/loushang/coding/store/session_manager.py"): {
@@ -1886,8 +1887,9 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
             "loushang.harness.context.SummaryProfile",
             "loushang.harness.context.build_summary_prompt",
         },
-        Path("src/loushang/coding/compaction/summary_quality.py"): {
-            "loushang.harness.context.validate_summary",
+        Path("src/loushang/harness/context/summary_evaluation.py"): {
+            "loushang.harness.context.summary.SummaryProfile",
+            "loushang.harness.context.summary.validate_summary",
         },
     }
     missing: list[str] = []
@@ -1897,6 +1899,24 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
             f"{path.as_posix()} missing {name}" for name in sorted(required - imports)
         )
     assert missing == []
+
+    assert not Path("src/loushang/coding/compaction/summary_quality.py").exists()
+    summary_evaluation_imports = set(
+        _absolute_imports(Path("src/loushang/harness/context/summary_evaluation.py"))
+    )
+    assert not any(
+        imported.startswith("loushang.coding")
+        for imported in summary_evaluation_imports
+    )
+
+    assert "Summary Evaluation Boundary" in readme_text
+    summary_evaluation_design = Path(
+        "docs/internals/architecture/harness/summary-evaluation-boundary.md"
+    )
+    assert summary_evaluation_design.exists()
+    assert "SummaryResourceOperations" in summary_evaluation_design.read_text(
+        encoding="utf-8"
+    )
 
     assert "import json" not in Path("src/loushang/work/event_log.py").read_text(
         encoding="utf-8"
