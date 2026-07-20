@@ -1,12 +1,19 @@
 from __future__ import annotations
 
-from loushang.harness.capabilities.commands import CommandCatalog, CommandDescriptor
-from loushang.harness.command_composition import (
+import importlib
+
+import pytest
+
+from loushang.harness.commands import (
+    EMPTY_LOCAL_COMMAND_CATALOG_PROFILE,
+    CommandCatalog,
+    CommandDef,
+    CommandDescriptor,
+    CommandKind,
+    LocalCommandCatalogProfile,
     MixedCommandCatalog,
     MixedCommandCatalogPorts,
-    MixedCommandCatalogProfile,
 )
-from loushang.harness.commands import CommandDef, CommandKind
 
 
 def _command(name: str, *, kind: CommandKind = CommandKind.LOCAL_UI) -> CommandDef:
@@ -28,17 +35,35 @@ def _session_command(descriptor: CommandDescriptor[object]) -> CommandDef:
     )
 
 
-def _profile() -> MixedCommandCatalogProfile:
+def _profile() -> LocalCommandCatalogProfile:
     settings = _command("settings")
     model = _command("model")
-    return MixedCommandCatalogProfile(
+    return LocalCommandCatalogProfile(
         local_commands_by_name={
             settings.name: settings,
             model.name: model,
         },
-        local_commands_by_route={"settings_route": settings},
+        local_command_names_by_route={"settings_route": settings.name},
         local_commands_accepting_args=frozenset({"model"}),
     )
+
+
+def test_default_local_command_profile_is_empty() -> None:
+    assert not EMPTY_LOCAL_COMMAND_CATALOG_PROFILE.local_commands_by_name
+    assert not EMPTY_LOCAL_COMMAND_CATALOG_PROFILE.local_command_names_by_route
+    assert not EMPTY_LOCAL_COMMAND_CATALOG_PROFILE.local_commands_accepting_args
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    (
+        "loushang.harness.capabilities.commands",
+        "loushang.harness.command_composition",
+    ),
+)
+def test_legacy_command_modules_are_absent(module_name: str) -> None:
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module(module_name)
 
 
 def test_mixed_catalog_routes_and_validates_product_local_commands() -> None:
@@ -50,6 +75,52 @@ def test_mixed_catalog_routes_and_validates_product_local_commands() -> None:
     assert catalog.lookup("/settings extra") is None
     assert catalog.lookup("/model provider/model") == _command("model")
     assert catalog.lookup("plain text") is None
+
+
+def test_local_command_profile_composes_immutable_product_selection() -> None:
+    profile = _profile()
+    help_command = _command("help")
+
+    selected = profile.select({"settings"})
+    added = selected.with_additions(
+        {"help": help_command},
+        routes={"help_route": "help"},
+    )
+    replaced = added.with_replacements(
+        {
+            "settings": CommandDef(
+                id="test.local.settings.override",
+                name="settings",
+                kind=CommandKind.LOCAL_UI,
+                description="Override settings",
+            )
+        }
+    )
+
+    assert tuple(profile.local_commands_by_name) == ("settings", "model")
+    assert tuple(selected.local_commands_by_name) == ("settings",)
+    assert selected.local_command_names_by_route == {"settings_route": "settings"}
+    assert added.command_for_route("help_route") == help_command
+    assert (
+        replaced.local_commands_by_name["settings"].description == "Override settings"
+    )
+    assert replaced.without({"settings"}).command_for_route("settings_route") is None
+
+
+def test_local_command_profile_rejects_implicit_overrides_and_invalid_routes() -> None:
+    profile = _profile()
+
+    with pytest.raises(ValueError, match="must not replace existing commands"):
+        profile.with_additions({"settings": _command("settings")})
+
+    with pytest.raises(ValueError, match="must target existing commands"):
+        profile.with_replacements({"help": _command("help")})
+
+    with pytest.raises(ValueError, match="must reference a declared command name"):
+        LocalCommandCatalogProfile(
+            local_commands_by_name={"settings": _command("settings")},
+            local_command_names_by_route={"settings_route": "missing"},
+        )
 
 
 def test_mixed_catalog_preserves_session_resolution_and_invocation_payload() -> None:

@@ -2802,7 +2802,7 @@ def test_harness_neutrality_evidence_gate_is_documented() -> None:
         "a minimal reference adapter",
         "a product-neutral test fixture",
         "A renamed Coding fixture is not sufficient",
-        "product imports, product defaults, or product-specific storage and UI semantics",
+        "Product imports, Product-exclusive defaults, or product-specific storage and UI semantics",
         "its absence is not a migration blocker",
     }
     assert sorted(phrase for phrase in required_phrases if phrase not in text) == []
@@ -3228,6 +3228,12 @@ def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
 def test_product_capability_composition_core_is_documented_and_adopted() -> None:
     import loushang.harness as harness
     import loushang.harness.capabilities as capabilities
+    from loushang.coding.prompt.preflight import (
+        PromptPreflightResult as CodingPromptPreflightResult,
+    )
+    from loushang.coding.prompt.types import PromptAssembly as CodingPromptAssembly
+    from loushang.harness.capabilities.prompt_assembly import PromptAssembly
+    from loushang.harness.capabilities.prompt_preflight import PromptPreflightResult
 
     capability_symbols = {
         "CommandCatalog",
@@ -3262,10 +3268,11 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
     required_phrases = {
         "Harness Product Capability Composition Core Boundary",
         "Implementation complete for integration into `lane/harness`",
-        "`loushang.harness.capabilities.commands`",
+        "`loushang.harness.commands`",
         "`loushang.harness.capabilities.prompt`",
         "`loushang.harness.capabilities.tools`",
-        "Product supplies every section",
+        "standard `/skill:<name>` and `/<prompt>` resource preflight",
+        "Product adapters should be small",
         "Coding and future Product adapters retain",
         "full non-live repository suite remain merge gates",
     }
@@ -3285,19 +3292,26 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
     assert (
         "product capability composition core implementation complete" in inventory_text
     )
+    assert CodingPromptAssembly is PromptAssembly
+    assert CodingPromptPreflightResult is PromptPreflightResult
 
     expected_imports = {
         Path("src/loushang/coding/commands/catalog.py"): {
-            "loushang.harness.capabilities.commands.CommandCatalog",
+            "loushang.harness.commands.CommandCatalog",
+        },
+        Path("src/loushang/coding/bootstrap.py"): {
+            "loushang.harness.capabilities.prompt_assembly.assemble_prompt",
         },
         Path("src/loushang/coding/prompt/assembler.py"): {
-            "loushang.harness.capabilities.prompt.PromptSection",
-            "loushang.harness.capabilities.prompt.PromptSectionComposer",
+            "loushang.harness.capabilities.prompt_assembly.PromptAssembly",
+            "loushang.harness.capabilities.prompt_assembly.assemble_prompt",
         },
         Path("src/loushang/coding/session/command_controller.py"): {
+            "loushang.harness.capabilities.prompt_preflight.PromptPreflightResult",
             "loushang.harness.session.SessionCommandRuntime",
         },
         Path("src/loushang/coding/session/tool_controller.py"): {
+            "loushang.harness.capabilities.prompt_assembly.assemble_prompt",
             "loushang.harness.session.SessionToolRuntime",
         },
     }
@@ -3308,6 +3322,29 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
             f"{path.as_posix()} missing {name}" for name in sorted(required - imports)
         )
     assert missing == []
+
+    product_neutral_boundaries = (
+        ImportBoundary(
+            name="harness commands",
+            root=Path("src/loushang/harness/commands"),
+            forbidden_prefixes=("loushang.coding",),
+        ),
+        ImportBoundary(
+            name="harness prompt assembly",
+            root=Path("src/loushang/harness/capabilities/prompt_assembly.py"),
+            forbidden_prefixes=("loushang.coding",),
+        ),
+        ImportBoundary(
+            name="harness prompt preflight",
+            root=Path("src/loushang/harness/capabilities/prompt_preflight.py"),
+            forbidden_prefixes=("loushang.coding",),
+        ),
+    )
+    assert [
+        offender
+        for boundary in product_neutral_boundaries
+        for offender in _find_forbidden_imports(boundary)
+    ] == []
 
 
 def test_tool_output_projection_core_is_documented_and_adopted() -> None:

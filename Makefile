@@ -18,7 +18,7 @@ DIST_BINARY := dist/$(BINARY_NAME)
 AI_OFFLINE_ENV := env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_OAUTH_TOKEN -u ANTHROPIC_BASE_URL -u ARK_API_KEY -u BAIDU_QIANFAN_API_KEY -u COPILOT_GITHUB_TOKEN -u DASHSCOPE_API_KEY -u DEEPSEEK_API_KEY -u GH_TOKEN -u GITHUB_TOKEN -u HUNYUAN_API_KEY -u MINIMAX_API_KEY -u MOONSHOT_API_KEY -u OPENAI_API_KEY -u QIANFAN_API_KEY -u STEPFUN_API_KEY -u STEP_API_KEY -u ZAI_API_KEY
 
 HARNESSTUI_SHARED_SOURCES := \
-	src/loushang/harness/command_composition.py \
+	src/loushang/harness/commands \
 	src/loushang/harness/host/types.py \
 	src/loushang/harness/workspace/git.py \
 	src/loushang/tui/clipboard.py \
@@ -53,7 +53,7 @@ CODING_TUI_PRODUCT_SOURCES := \
 	src/loushang/coding/presentation/session.py \
 	src/loushang/coding/presentation/tui
 HARNESSTUI_TEST_PATHS := \
-	tests/harness/test_command_composition.py \
+	tests/harness/commands/test_catalog.py \
 	tests/harness/workspace/test_git.py \
 	tests/harnesstui \
 	tests/tui/test_clipboard.py \

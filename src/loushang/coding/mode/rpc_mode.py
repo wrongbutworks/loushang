@@ -18,7 +18,6 @@ from loushang.channel import (
     ProductHostTaskTracker,
     RemoteUiContext,
 )
-from loushang.coding.commands import complete_slash_commands
 from loushang.coding.diagnostics.serialization import (
     serialize_diagnostic,
     serialize_diagnostic_summary,
@@ -41,6 +40,7 @@ from loushang.harness.agent_transcript import (
     SessionQuery,
     create_agent_transcript_message_codec,
 )
+from loushang.harness.commands import complete_slash_commands
 from loushang.harness.diagnostics.types import DiagnosticsQuery
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime

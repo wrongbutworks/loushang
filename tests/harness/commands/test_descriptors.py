@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from loushang.harness.capabilities.commands import (
+from loushang.harness.commands import (
     CommandCatalog,
     CommandDescriptor,
     CommandDispatchOutcome,
@@ -124,9 +124,9 @@ def test_completion_projects_descriptor_metadata() -> None:
             "argumentHint": "<PR-URL>",
         }
     ]
-    assert complete_slash_commands("/inspect", (
-        _command("review", source="prompt", aliases=("inspect",)),
-    )) == [
+    assert complete_slash_commands(
+        "/inspect", (_command("review", source="prompt", aliases=("inspect",)),)
+    ) == [
         {
             "value": "/inspect",
             "label": "/inspect",
