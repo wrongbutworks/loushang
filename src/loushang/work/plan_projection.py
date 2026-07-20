@@ -39,7 +39,10 @@ def project_work_plan_runs(entries: Iterable[EventLogEntry]) -> tuple[WorkPlanRu
 
 
 def _starts_new_plan_attempt(kind: str, plan_state: _PlanState) -> bool:
-    return plan_state.status in {"completed", "failed", "cancelled"} and kind in {"SubmitCodingTurn", "WorkPlanStarted"}
+    return plan_state.status in {"completed", "failed", "cancelled"} and kind in {
+        "SubmitCodingTurn",
+        "WorkPlanStarted",
+    }
 
 
 @dataclass
@@ -71,6 +74,8 @@ class _PlanState:
         elif kind == "WorkPlanFailed":
             self.status = "failed"
             self.error = _entry_string_payload_value(entry, "error") or self.error
+        elif kind == "WorkPlanCancelled":
+            self.status = "cancelled"
         elif self.status == "accepted" and kind != "SubmitCodingTurn":
             self.status = "running"
 
@@ -137,6 +142,7 @@ class _StepState:
     started_sequence: int | None = None
     completed_sequence: int | None = None
     failed_sequence: int | None = None
+    cancelled_sequence: int | None = None
     error: str | None = None
     deviation: WorkStepDeviation | None = None
     planned_constraint: dict[str, object] | None = None
@@ -186,6 +192,9 @@ class _StepState:
             self.status = "failed"
             self.failed_sequence = entry.sequence
             self.error = _entry_string_payload_value(entry, "error") or self.error
+        elif kind == "WorkStepCancelled":
+            self.status = "cancelled"
+            self.cancelled_sequence = entry.sequence
 
     def to_step_run(self) -> WorkStepRun:
         metadata = _without_none(
@@ -195,6 +204,7 @@ class _StepState:
                 "started_sequence": self.started_sequence,
                 "completed_sequence": self.completed_sequence,
                 "failed_sequence": self.failed_sequence,
+                "cancelled_sequence": self.cancelled_sequence,
                 "error": self.error,
                 "deviation": asdict(self.deviation) if self.deviation is not None else None,
                 "planned_constraint": self.planned_constraint,

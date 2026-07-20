@@ -28,15 +28,15 @@ def test_project_agent_start_and_end_events() -> None:
         {"type": "agent_end", "messages": []}, context=_context(2)
     )
 
-    assert [event.kind for event in started] == ["WorkRunStarted"]
+    assert [event.kind for event in started] == ["AgentInvocationStarted"]
     assert started[0].event_id == "event-1"
-    assert started[0].delivery_hint == "immediate"
+    assert started[0].delivery_hint == "coalesce"
     assert started[0].payload == {"source_type": "agent_start"}
     assert started[0].source_event_ref == "agent-event-1"
 
-    assert [event.kind for event in completed] == ["WorkRunCompleted"]
+    assert [event.kind for event in completed] == ["AgentInvocationCompleted"]
     assert completed[0].event_id == "event-2"
-    assert completed[0].delivery_hint == "immediate"
+    assert completed[0].delivery_hint == "coalesce"
     assert completed[0].payload == {"source_type": "agent_end", "messages": []}
 
 
