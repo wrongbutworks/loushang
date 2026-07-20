@@ -54,11 +54,6 @@ from loushang.coding.session.builtin_commands import (
 from loushang.coding.session.command_controller import CommandController
 from loushang.coding.session.export_html import export_session_to_html
 from loushang.coding.session.export_jsonl import export_session_to_jsonl
-from loushang.coding.session.extension_event_sink import ExtensionEventSink
-from loushang.coding.session.extension_hooks import ExtensionHooks
-from loushang.coding.session.extension_message_controller import (
-    ExtensionMessageController,
-)
 from loushang.coding.session.extension_provider_controller import (
     ExtensionProviderController,
 )
@@ -67,9 +62,6 @@ from loushang.coding.session.extension_replacement_controller import (
 )
 from loushang.coding.session.extension_runtime_bindings import (
     ExtensionRuntimeBindingFactory,
-)
-from loushang.coding.session.extension_runtime_controller import (
-    ExtensionRuntimeController,
 )
 from loushang.coding.session.package_controller import PackageController
 from loushang.coding.session.session_settings_controller import (
@@ -127,6 +119,7 @@ from loushang.harness.extensions.context import (
     SessionShutdownEvent,
     SessionStartEvent,
 )
+from loushang.harness.extensions.session_runtime import ExtensionSessionRuntime
 from loushang.harness.host.retry import RetryPolicy
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.types import (
@@ -137,6 +130,9 @@ from loushang.harness.resources.watcher import ResourceChangeWatcher
 from loushang.harness.runtime import CancellationSignal
 from loushang.harness.session import (
     AfterTurnPolicyPort,
+    ExtensionAgentEventRuntime,
+    ExtensionAgentHookRuntime,
+    ExtensionInputRuntime,
     SessionControlPort,
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
@@ -382,8 +378,8 @@ class AgentSession(SessionFacade):
             ),
             pack_composer=capability_runtime.command_pack_composer,
         )
-        self._extension_event_sink = ExtensionEventSink(
-            get_extension_runner=lambda: self._extension_runner,
+        self._extension_event_sink = ExtensionAgentEventRuntime(
+            get_extension_runtime=lambda: self._extension_runner,
             get_cwd=self.session_manager.get_cwd,
         )
         self._retry_runtime = AgentTranscriptRetryRuntime(
@@ -439,7 +435,7 @@ class AgentSession(SessionFacade):
                 check_auto_compaction=self._check_auto_compaction,
             ),
         )
-        self._extension_message_controller = ExtensionMessageController(
+        self._extension_message_controller = ExtensionInputRuntime(
             agent=self.agent,
             queue_controller=self._session_runtime.queue,
             application_inputs=self._session_runtime.application_inputs,
@@ -494,8 +490,8 @@ class AgentSession(SessionFacade):
             get_ui_context=lambda: self._extension_ui_context,
             exec_command=self._exec_command_from_extension,
         )
-        self._extension_runtime_controller = ExtensionRuntimeController(
-            extension_runner=self._extension_runner,
+        self._extension_runtime_controller = ExtensionSessionRuntime(
+            extension_runtime=self._extension_runner,
             build_bindings=self._extension_runtime_binding_factory.build,
             session_start_event=self._session_start_event,
             refresh_resources=self._refresh_resources_for_extension_runtime_async,
@@ -1632,9 +1628,9 @@ class AgentSession(SessionFacade):
     def _wire_extension_hooks(self) -> None:
         if self._extension_runner is None:
             return
-        ExtensionHooks(
+        ExtensionAgentHookRuntime(
             agent=self.agent,
-            extension_runner=self._extension_runner,
+            extension_runtime=self._extension_runner,
             get_cwd=self.session_manager.get_cwd,
         ).install()
 

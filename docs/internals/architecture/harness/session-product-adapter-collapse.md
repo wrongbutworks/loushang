@@ -31,6 +31,11 @@ an inspection controller merely to adapt Coding policy.
 - Historical private forwarding methods that had no production consumer have
   been removed from `AgentSession`; callers use the composed Harness runtime
   or Product adapter directly.
+- `ExtensionInputRuntime`, `ExtensionAgentHookRuntime`, and
+  `ExtensionAgentEventRuntime` now own standard extension input delivery,
+  Agent hook composition, and lifecycle-event mirroring. `ExtensionSessionRuntime`
+  owns bind/refresh/invalidation coordination. The removed Coding controllers
+  were implementation-only wrappers around these product-neutral mechanics.
 
 ## Product Boundary
 

@@ -1,7 +1,10 @@
+"""Bind and refresh an extension runtime for one Product session."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from loushang.harness.extensions.context import SessionRefreshEvent, SessionStartEvent
 from loushang.harness.extensions.lifecycle import (
@@ -10,6 +13,21 @@ from loushang.harness.extensions.lifecycle import (
 )
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
+
+class SessionExtensionRuntimePort(Protocol):
+    """Extension runtime operations common to a bound Product session."""
+
+    def bind_runtime(self, bindings: object) -> None: ...
+
+    def refresh_runtime(self, bindings: object) -> None: ...
+
+    async def emit_session_start(self, event: SessionStartEvent) -> None: ...
+
+    async def emit_session_refresh(self, event: SessionRefreshEvent) -> None: ...
+
+    def invalidate_contexts(self, message: str) -> None: ...
+
+
 BuildBindings = Callable[[], object]
 RefreshResources = Callable[[], object | None]
 RecordRuntimeDiagnostic = Callable[[ResourceDiagnostic], None]
@@ -17,8 +35,10 @@ SyncExtensionDiagnostics = Callable[..., None]
 
 
 @dataclass
-class ExtensionRuntimeController:
-    extension_runner: object | None
+class ExtensionSessionRuntime:
+    """Adapt the neutral extension lifecycle coordinator to one session."""
+
+    extension_runtime: SessionExtensionRuntimePort | None
     build_bindings: BuildBindings
     session_start_event: SessionStartEvent
     refresh_resources: RefreshResources
@@ -30,27 +50,19 @@ class ExtensionRuntimeController:
     ) = field(init=False, default=None)
 
     def __post_init__(self) -> None:
-        runner = self.extension_runner
-        if runner is None:
+        extension_runtime = self.extension_runtime
+        if extension_runtime is None:
             return
         self._coordinator = ExtensionRuntimeCoordinator(
             build_bindings=self.build_bindings,
-            bind_runtime=lambda bindings: getattr(runner, "bind_runtime")(bindings),
-            refresh_runtime=lambda bindings: getattr(runner, "refresh_runtime")(
-                bindings
-            ),
-            emit_session_start=lambda event: getattr(runner, "emit_session_start")(
-                event
-            ),
-            emit_session_refresh=lambda event: getattr(runner, "emit_session_refresh")(
-                event
-            ),
+            bind_runtime=extension_runtime.bind_runtime,
+            refresh_runtime=extension_runtime.refresh_runtime,
+            emit_session_start=extension_runtime.emit_session_start,
+            emit_session_refresh=extension_runtime.emit_session_refresh,
             refresh_resources=self.refresh_resources,
             record_failure=self._record_failure,
             sync_diagnostics=lambda: self.sync_extension_diagnostics(phase="runtime"),
-            invalidate_contexts_driver=lambda message: _invalidate_contexts(
-                runner, message
-            ),
+            invalidate_contexts_driver=extension_runtime.invalidate_contexts,
         )
 
     @property
@@ -65,9 +77,7 @@ class ExtensionRuntimeController:
         await coordinator.bind(
             self._start_event_for_reason(reason),
             reload=reason == "reload",
-            stale_context_message=(
-                "Extension context is stale after extension reload."
-            ),
+            stale_context_message="Extension context is stale after extension reload.",
         )
 
     def bind_bindings(self) -> None:
@@ -126,7 +136,4 @@ _FAILURE_DIAGNOSTICS: dict[ExtensionRuntimeOperation, tuple[str, str]] = {
 }
 
 
-def _invalidate_contexts(runner: object, message: str) -> None:
-    invalidator = getattr(runner, "invalidate_contexts", None)
-    if callable(invalidator):
-        invalidator(message)
+__all__ = ["ExtensionSessionRuntime", "SessionExtensionRuntimePort"]

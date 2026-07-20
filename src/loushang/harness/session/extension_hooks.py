@@ -1,21 +1,62 @@
+"""Composition of Agent hooks contributed by a Product extension runtime."""
+
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
+from typing import Any, Protocol
 
-from loushang.agent import Agent
+from loushang.agent import AbortSignal
 from loushang.agent.tool_output import STRICT_JSON_TOOL_OUTPUT_PROJECTOR
 from loushang.agent.types import AfterToolCallResult, BeforeToolCallResult
 from loushang.ai.types import ToolCall
-from loushang.coding.extensions import ExtensionRunner
 
 CwdProvider = Callable[[], str]
+BeforeToolCallHook = Callable[
+    [Any, AbortSignal], Awaitable[BeforeToolCallResult | None]
+]
+AfterToolCallHook = Callable[[Any, AbortSignal], Awaitable[AfterToolCallResult | None]]
+ContextTransformHook = Callable[[list[object], AbortSignal], Awaitable[list[object]]]
+
+
+class ExtensionAgentHookPort(Protocol):
+    """Extension callbacks that can participate in an Agent loop."""
+
+    async def emit_context(
+        self,
+        messages: list[object],
+        signal: AbortSignal,
+        *,
+        cwd: str = "",
+    ) -> list[object]: ...
+
+    async def before_tool_call(
+        self,
+        context: object,
+        signal: AbortSignal,
+    ) -> BeforeToolCallResult | None: ...
+
+    async def after_tool_call(
+        self,
+        context: object,
+        signal: AbortSignal,
+    ) -> AfterToolCallResult | None: ...
+
+
+class ExtensionHookAgentPort(Protocol):
+    """Mutable Agent hook slots used by the extension hook runtime."""
+
+    transform_context: ContextTransformHook | None
+    before_tool_call: BeforeToolCallHook | None
+    after_tool_call: AfterToolCallHook | None
 
 
 @dataclass
-class ExtensionHooks:
-    agent: Agent
-    extension_runner: ExtensionRunner
+class ExtensionAgentHookRuntime:
+    """Install extension context and tool hooks without Product imports."""
+
+    agent: ExtensionHookAgentPort
+    extension_runtime: ExtensionAgentHookPort
     get_cwd: CwdProvider
 
     def install(self) -> None:
@@ -27,7 +68,7 @@ class ExtensionHooks:
             current_messages = messages
             if existing_transform is not None:
                 current_messages = await existing_transform(current_messages, signal)
-            return await self.extension_runner.emit_context(
+            return await self.extension_runtime.emit_context(
                 current_messages,
                 signal,
                 cwd=self.get_cwd(),
@@ -41,7 +82,7 @@ class ExtensionHooks:
                     hook
                     for hook in (
                         existing_before,
-                        self.extension_runner.before_tool_call,
+                        self.extension_runtime.before_tool_call,
                     )
                     if hook is not None
                 ],
@@ -53,7 +94,10 @@ class ExtensionHooks:
                 signal,
                 [
                     hook
-                    for hook in (existing_after, self.extension_runner.after_tool_call)
+                    for hook in (
+                        existing_after,
+                        self.extension_runtime.after_tool_call,
+                    )
                     if hook is not None
                 ],
             )
@@ -63,7 +107,13 @@ class ExtensionHooks:
         self.agent.after_tool_call = _after_tool_call
 
 
-async def compose_before_tool_call_hooks(context, signal, hooks):
+async def compose_before_tool_call_hooks(
+    context: Any,
+    signal: AbortSignal,
+    hooks: Sequence[BeforeToolCallHook],
+) -> BeforeToolCallResult | None:
+    """Run before hooks in order while preserving prior modifications."""
+
     current_context = context
     changed = False
 
@@ -90,7 +140,7 @@ async def compose_before_tool_call_hooks(context, signal, hooks):
     )
 
 
-def _apply_before_tool_call_result(context, result: BeforeToolCallResult):
+def _apply_before_tool_call_result(context: Any, result: BeforeToolCallResult):
     tool_name = result.tool_name or context.tool_call.name
     arguments = result.arguments if result.arguments is not None else context.args
     return replace(
@@ -106,7 +156,13 @@ def _apply_before_tool_call_result(context, result: BeforeToolCallResult):
     )
 
 
-async def compose_after_tool_call_hooks(context, signal, hooks):
+async def compose_after_tool_call_hooks(
+    context: Any,
+    signal: AbortSignal,
+    hooks: Sequence[AfterToolCallHook],
+) -> AfterToolCallResult | None:
+    """Run after hooks in order while preserving result projection semantics."""
+
     current_context = context
     changed = False
 
@@ -170,3 +226,11 @@ async def compose_after_tool_call_hooks(context, signal, hooks):
         terminate=current_context.result.terminate,
         projector=current_context.result.projector,
     )
+
+
+__all__ = [
+    "ExtensionAgentHookRuntime",
+    "ExtensionAgentHookPort",
+    "compose_after_tool_call_hooks",
+    "compose_before_tool_call_hooks",
+]

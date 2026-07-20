@@ -613,14 +613,19 @@ def test_package_session_operations_are_neutral_and_adopted() -> None:
     assert "Coding Binding" in boundary
 
 
-def test_extension_message_controller_is_a_product_api_adapter() -> None:
-    source = Path(
-        "src/loushang/coding/session/extension_message_controller.py"
+def test_extension_input_runtime_is_harness_owned() -> None:
+    source = Path("src/loushang/harness/session/extension_input.py").read_text(
+        encoding="utf-8"
+    )
+    coding_adapter_source = Path(
+        "src/loushang/coding/session/agent_session.py"
     ).read_text(encoding="utf-8")
 
     assert "ApplicationInputRuntime" in source
+    assert "loushang.coding" not in source
     assert "SessionManager" not in source
     assert "append_message(" not in source
+    assert "ExtensionInputRuntime" in coding_adapter_source
 
 
 def test_product_transcript_session_is_neutral_and_adopted() -> None:
@@ -2005,6 +2010,7 @@ def test_harness_extension_runtime_core_boundary_is_documented() -> None:
         "`loushang.harness.extensions`",
         "`ExtensionContributionAPI`",
         "`ExtensionRuntime`",
+        "`ExtensionSessionRuntime`",
         "same Harness-owned objects",
         "Coding keeps",
         "must not import coding, method, work, TUI, AI",
@@ -2048,6 +2054,16 @@ def test_harness_extension_runtime_core_boundary_is_documented() -> None:
         if _matches_any(imported, forbidden_prefixes)
     ]
     assert offenders == []
+
+    session_extension_paths = (
+        Path("src/loushang/harness/extensions/session_runtime.py"),
+        Path("src/loushang/harness/session/extension_events.py"),
+        Path("src/loushang/harness/session/extension_hooks.py"),
+        Path("src/loushang/harness/session/extension_input.py"),
+    )
+    for path in session_extension_paths:
+        imports = _absolute_imports(path)
+        assert not any(imported.startswith("loushang.coding") for imported in imports)
 
 
 def test_harness_extension_context_runtime_is_documented_and_adopted() -> None:
@@ -3004,7 +3020,7 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
             "loushang.harness.session.SessionLifecycleRuntime",
             "loushang.harness.session.AgentTranscriptSessionRuntime",
         },
-        Path("src/loushang/coding/session/extension_runtime_controller.py"): {
+        Path("src/loushang/harness/extensions/session_runtime.py"): {
             "loushang.harness.extensions.lifecycle.ExtensionRuntimeCoordinator",
         },
         Path("src/loushang/harness/session/prompt_controller.py"): {
@@ -3021,6 +3037,8 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
             "loushang.harness.agent_transcript.AgentTranscriptCompactionRuntime",
             "loushang.harness.agent_transcript.AgentTranscriptNavigationRuntime",
             "loushang.harness.agent_transcript.AgentTranscriptSelectionRuntime",
+            "loushang.harness.extensions.session_runtime.ExtensionSessionRuntime",
+            "loushang.harness.session.ExtensionInputRuntime",
         },
     }
     missing: list[str] = []

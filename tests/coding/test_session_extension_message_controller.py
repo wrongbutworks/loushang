@@ -7,11 +7,12 @@ import pytest
 
 from loushang.agent import Agent
 from loushang.ai.types import TextPart
-from loushang.coding.session.extension_message_controller import (
-    ExtensionMessageController,
-)
 from loushang.coding.store import SessionManager
-from loushang.harness.session import ApplicationInputRuntime, QueueController
+from loushang.harness.session import (
+    ApplicationInputRuntime,
+    ExtensionInputRuntime,
+    QueueController,
+)
 
 
 def _preflight(text: str):
@@ -71,7 +72,7 @@ def test_extension_message_controller_persists_custom_message_and_emits_events(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     queue_controller = _queue_controller(agent, queue_updates)
-    controller = ExtensionMessageController(
+    controller = ExtensionInputRuntime(
         agent=agent,
         queue_controller=queue_controller,
         application_inputs=_application_inputs(
@@ -106,7 +107,7 @@ def test_extension_message_controller_queues_streaming_messages_by_deliver_as(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     queue_controller = _queue_controller(agent, queue_updates)
-    controller = ExtensionMessageController(
+    controller = ExtensionInputRuntime(
         agent=agent,
         queue_controller=queue_controller,
         application_inputs=_application_inputs(
@@ -144,7 +145,7 @@ def test_extension_message_controller_validates_streaming_user_message_deliver_a
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     queue_controller = _queue_controller(agent, queue_updates)
-    controller = ExtensionMessageController(
+    controller = ExtensionInputRuntime(
         agent=agent,
         queue_controller=queue_controller,
         application_inputs=_application_inputs(
