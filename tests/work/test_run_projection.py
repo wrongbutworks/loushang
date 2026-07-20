@@ -114,3 +114,46 @@ def test_project_work_runs_rejects_non_increasing_and_post_terminal_events() -> 
                 replace(started, entry_id="late", event_id="event-3", sequence=3),
             )
         )
+
+
+def test_restarted_runtime_marks_incomplete_historical_run_as_orphaned() -> None:
+    from loushang.work import EventLogEntry, InMemoryEventLogBackend, WorkRuntime
+
+    class Executor:
+        async def execute(self, operation, context):
+            del operation, context
+
+    event_log = InMemoryEventLogBackend()
+    event_log.append(
+        EventLogEntry(
+            entry_id="operation",
+            entry_type="operation",
+            operation_id="op-orphan",
+            event_id=None,
+            run_id="run-orphan",
+            session_id="session-1",
+            sequence=0,
+            payload={"kind": "DoWork", "domain": "test", "payload": {}},
+            created_at=_clock(),
+        )
+    )
+    event_log.append(
+        EventLogEntry(
+            entry_id="started",
+            entry_type="event",
+            operation_id="op-orphan",
+            event_id="event-1",
+            run_id="run-orphan",
+            session_id="session-1",
+            sequence=1,
+            payload={"kind": "WorkRunStarted", "payload": {}},
+            created_at=_clock(),
+        )
+    )
+
+    restarted = WorkRuntime(executor=Executor(), event_log=event_log, clock=_clock)
+
+    assert restarted.replay_checkpoint.offset == 2
+    assert restarted.get_run("run-orphan").status == "orphaned"
+    assert restarted.get_run_for_operation("op-orphan").status == "orphaned"
+    assert restarted.query_runs()[0].status == "orphaned"

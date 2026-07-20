@@ -12,7 +12,10 @@ WorkRunStatus: TypeAlias = Literal[
     "completed",
     "failed",
     "cancelled",
+    "orphaned",
 ]
+
+WorkCancellationStatus: TypeAlias = Literal["settled", "unsupported", "failed"]
 
 WorkStepStatus: TypeAlias = Literal[
     "pending",
@@ -63,6 +66,34 @@ class WorkEventFact:
 
 
 @dataclass(frozen=True)
+class WorkCancellationOutcome:
+    """Explicit result of asking a domain invocation to settle after cancellation."""
+
+    status: WorkCancellationStatus
+    error: BaseException | None = field(default=None, compare=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if self.status not in {"settled", "unsupported", "failed"}:
+            raise ValueError(f"unsupported Work cancellation status: {self.status}")
+        if self.status == "failed" and self.error is None:
+            raise ValueError("failed Work cancellation requires an error")
+        if self.status != "failed" and self.error is not None:
+            raise ValueError(f"{self.status} Work cancellation cannot carry an error")
+
+    @classmethod
+    def settled(cls) -> WorkCancellationOutcome:
+        return cls(status="settled")
+
+    @classmethod
+    def unsupported(cls) -> WorkCancellationOutcome:
+        return cls(status="unsupported")
+
+    @classmethod
+    def failed(cls, error: BaseException) -> WorkCancellationOutcome:
+        return cls(status="failed", error=error)
+
+
+@dataclass(frozen=True)
 class WorkStepSpec:
     """One Work-owned sequential step in an accepted run."""
 
@@ -80,9 +111,6 @@ class WorkRunSpec:
     step_id: str | None = None
     run_event_payload: Mapping[str, object] = field(default_factory=dict)
     scope_event_payload: Mapping[str, object] = field(default_factory=dict)
-    emit_plan_start: bool = True
-    emit_plan_completion: bool = True
-    emit_plan_failure: bool = True
     steps: tuple[WorkStepSpec, ...] = ()
 
 
@@ -164,6 +192,8 @@ __all__ = [
     "DeliveryHint",
     "WorkEvent",
     "WorkEventFact",
+    "WorkCancellationOutcome",
+    "WorkCancellationStatus",
     "WorkOperation",
     "WorkPlanRun",
     "WorkRun",

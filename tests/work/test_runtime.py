@@ -117,6 +117,141 @@ def test_work_runtime_accepts_runs_and_owns_success_lifecycle() -> None:
     asyncio.run(scenario())
 
 
+def test_work_runtime_records_cancellation_driver_failure_as_failed_terminal() -> None:
+    from loushang.work import (
+        InMemoryEventLogBackend,
+        WorkCancellationOutcome,
+        WorkRuntime,
+    )
+
+    async def scenario() -> None:
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        class Executor:
+            async def execute(self, operation, context):
+                del operation, context
+                started.set()
+                await release.wait()
+
+        failure = RuntimeError("abort transport failed")
+
+        class Cancellation:
+            async def cancel_and_wait(self, operation, context):
+                del operation, context
+                return WorkCancellationOutcome.failed(failure)
+
+        runtime = WorkRuntime(
+            executor=Executor(),
+            cancellation=Cancellation(),
+            event_log=InMemoryEventLogBackend(),
+            clock=_clock,
+        )
+        await runtime.accept(_operation(), spec=_spec())
+        await started.wait()
+
+        with pytest.raises(RuntimeError, match="abort transport failed"):
+            await runtime.cancel("run-1")
+
+        assert runtime.get_run("run-1").status == "failed"
+        kinds = [entry.payload["kind"] for entry in runtime.query(run_id="run-1")]
+        assert kinds[-4:] == [
+            "WorkRunCancelling",
+            "WorkStepFailed",
+            "WorkPlanFailed",
+            "WorkRunFailed",
+        ]
+        assert kinds.count("WorkRunFailed") == 1
+        assert "WorkRunCancelled" not in kinds
+
+    asyncio.run(scenario())
+
+
+def test_work_runtime_times_out_cancellation_as_failed_terminal() -> None:
+    from loushang.work import (
+        InMemoryEventLogBackend,
+        WorkCancellationTimeoutError,
+        WorkRuntime,
+    )
+
+    async def scenario() -> None:
+        started = asyncio.Event()
+        never = asyncio.Event()
+
+        class Executor:
+            async def execute(self, operation, context):
+                del operation, context
+                started.set()
+                await never.wait()
+
+        class Cancellation:
+            async def cancel_and_wait(self, operation, context):
+                del operation, context
+                await never.wait()
+                raise AssertionError("unreachable")
+
+        runtime = WorkRuntime(
+            executor=Executor(),
+            cancellation=Cancellation(),
+            event_log=InMemoryEventLogBackend(),
+            cancellation_timeout=0.01,
+            clock=_clock,
+        )
+        await runtime.accept(_operation(), spec=_spec())
+        await started.wait()
+
+        with pytest.raises(WorkCancellationTimeoutError, match="timed out"):
+            await runtime.cancel("run-1")
+
+        assert runtime.get_run("run-1").status == "failed"
+        assert runtime.query(run_id="run-1")[-1].payload["kind"] == "WorkRunFailed"
+
+    asyncio.run(scenario())
+
+
+def test_work_runtime_resolves_execution_capabilities_per_operation() -> None:
+    from loushang.work import (
+        InMemoryEventLogBackend,
+        WorkExecutionBinding,
+        WorkOperation,
+        WorkRuntime,
+    )
+
+    calls: list[str] = []
+
+    class Executor:
+        def __init__(self, label: str) -> None:
+            self.label = label
+
+        async def execute(self, operation, context):
+            del operation, context
+            calls.append(self.label)
+
+    class Resolver:
+        def resolve(self, operation, spec):
+            del spec
+            return WorkExecutionBinding(executor=Executor(operation.operation_id))
+
+    async def scenario() -> None:
+        runtime = WorkRuntime(
+            resolver=Resolver(),
+            event_log=InMemoryEventLogBackend(),
+            clock=_clock,
+        )
+        first = await runtime.accept(
+            WorkOperation("op-a", "DoWork", "session-1", "test", {})
+        )
+        await runtime.wait(first.run_id)
+        second = await runtime.accept(
+            WorkOperation("op-b", "DoWork", "session-1", "test", {})
+        )
+        await runtime.wait(second.run_id)
+
+        assert calls == ["op-a", "op-b"]
+
+    asyncio.run(scenario())
+
+
 def test_work_runtime_orders_step_plan_and_run_failure_and_reraises() -> None:
     from loushang.work import InMemoryEventLogBackend, WorkRuntime
 
@@ -202,7 +337,11 @@ def test_work_runtime_cancel_transitions_and_terminal_order_are_deterministic() 
 
 
 def test_work_runtime_uses_domain_cancel_and_settle_once_before_terminal() -> None:
-    from loushang.work import InMemoryEventLogBackend, WorkRuntime
+    from loushang.work import (
+        InMemoryEventLogBackend,
+        WorkCancellationOutcome,
+        WorkRuntime,
+    )
 
     async def scenario() -> None:
         started = asyncio.Event()
@@ -227,7 +366,7 @@ def test_work_runtime_uses_domain_cancel_and_settle_once_before_terminal() -> No
                 release.set()
                 await settled.wait()
                 calls.append("waited")
-                return True
+                return WorkCancellationOutcome.settled()
 
         runtime = WorkRuntime(
             executor=Executor(),
