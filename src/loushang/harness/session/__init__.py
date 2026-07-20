@@ -88,6 +88,10 @@ from loushang.harness.session.runtime import (
     TranscriptRuntimePort,
     TurnPolicyPort,
 )
+from loushang.harness.session.transcript_lifecycle import (
+    AgentTranscriptSessionRuntime,
+    require_session_operation_session,
+)
 
 __all__ = [
     "AgentEventRouter",
@@ -97,6 +101,7 @@ __all__ = [
     "AgentSessionInspector",
     "AgentSessionState",
     "AgentStateInspectionPort",
+    "AgentTranscriptSessionRuntime",
     "ApplicationInputDelivery",
     "ApplicationInputRuntime",
     "CommandRuntimeSource",
@@ -158,4 +163,5 @@ __all__ = [
     "UserCommandRequest",
     "SessionViewPort",
     "command_result_from_tool_result",
+    "require_session_operation_session",
 ]

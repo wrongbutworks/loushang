@@ -48,11 +48,13 @@ These are Product semantics, not reusable Host/Session mechanics. Moving them
 to Harness would create false neutrality and make Research, Design, PPT, and
 OEM adapters depend on Coding vocabulary.
 
-`AgentSessionRuntime` remains a Coding lifecycle adapter. It uses
-`SessionLifecycleRuntime` for the transition transaction and retains only the
-Coding file-store, cwd, extension, diagnostics, session-index, and presentation
-ports. This wave does not move ModelRegistry, authentication, Coding extension
-APIs, code tools, or UI projection.
+`AgentTranscriptSessionRuntime` composes the common lifecycle transaction with
+the transcript directory/catalog runtime. `AgentSessionRuntime` binds that
+facade directly and retains only the Coding file-store, cwd acceptance,
+`before` fork interpretation, extension hooks, diagnostics, package APIs,
+session-index policy, and presentation ports. This wave does not move
+ModelRegistry, authentication, Coding extension APIs, code tools, or UI
+projection.
 
 ## Verification
 

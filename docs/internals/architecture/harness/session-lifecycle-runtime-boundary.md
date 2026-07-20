@@ -17,6 +17,12 @@ replacement, and disposal. It composes the existing `SessionTransitionHost`
 and `SessionOperationCoordinator`; it does not introduce a second lock,
 replacement protocol, or transcript repository.
 
+`AgentTranscriptSessionRuntime` is the optional Agent-transcript profile
+facade above that transaction runtime. It joins `SessionLifecycleRuntime` with
+`AgentTranscriptDirectoryRuntime`, exposing the standard active-session
+operations and current session-reference resolution. It does not choose a
+store, transcript binding, Product hooks, fork interpretation, or presentation.
+
 ## Harness Ownership
 
 Harness owns:
@@ -37,6 +43,9 @@ Harness owns:
   add positions and resolve them against its own tree/payload semantics.
 - the common missing-cwd decision shape: error by default, or a
   Product-selected fallback cwd when that policy is requested.
+- `AgentTranscriptSessionRuntime`, which composes an already-configured
+  lifecycle transaction with transcript directory/index operations. It owns no
+  additional replacement state or lifecycle lock.
 
 The default fork resolver merely selects the supplied record. It never reads a
 message role, prompt, summary, branch, or Product tree payload.
@@ -108,6 +117,12 @@ must not import Agent, AI, Coding, another Product, storage implementations,
 extensions, Work, Method, or UI. It is therefore suitable for a Product whose
 session object is not an Agent session.
 
+`harness.session.transcript_lifecycle` may depend on the neutral lifecycle
+runtime and the optional Agent transcript directory profile, but must not
+depend on Coding or another Product. The facade is deliberately not placed in
+`harness.agent_transcript`: directory/catalog ownership alone does not imply
+ownership of active-session replacement.
+
 `loushang.harness.session` remains an optional profile package and is not
 exported from top-level `loushang.harness.__all__`.
 
@@ -120,5 +135,6 @@ failure isolation. Coding characterization tests cover the configured
 fallback, callback order, diagnostics, and serialized replacements.
 
 The migration is complete only while `harness.session.lifecycle` has no
-Product import, Coding delegates active-session transactions to this runtime,
-and focused plus full non-live tests pass.
+Product import, `harness.session.transcript_lifecycle` has no Coding import,
+Coding delegates active-session transactions and directory-backed operations
+to these runtimes, and focused plus full non-live tests pass.
