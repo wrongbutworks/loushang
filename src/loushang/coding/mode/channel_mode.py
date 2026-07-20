@@ -27,10 +27,13 @@ from loushang.coding.event import (
     project_runtime_event_to_json_views,
     should_emit_runtime_event_view,
 )
-from loushang.coding.work_executor import CodingDomainExecutor
+from loushang.coding.work_runtime import (
+    CodingOperationInProgressError,
+    CodingWorkRuntime,
+)
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.session import SessionControlPort
-from loushang.work import InMemoryEventLogBackend, WorkEvent, WorkRuntime
+from loushang.work import InMemoryEventLogBackend, WorkEvent
 from loushang.work.event_log import EventLogBackend
 
 Unsubscribe = Callable[[], None]
@@ -49,6 +52,7 @@ class CodingChannelOperationPort:
         event_view: JsonEventView = "full",
         event_select: Sequence[str] | str | None = None,
         work_event_log: EventLogBackend | None = None,
+        coding_work_runtime: CodingWorkRuntime | None = None,
     ) -> None:
         if event_view not in SUPPORTED_JSON_EVENT_VIEWS:
             raise ValueError(f"unsupported json event view: {event_view}")
@@ -57,12 +61,11 @@ class CodingChannelOperationPort:
         self._event_select = normalize_event_select(event_select)
         self._listeners: list[ChannelDeliveryListener] = []
         self._runtime_unsubscribe: Unsubscribe | None = None
-        executor = CodingDomainExecutor(session=session)
-        self._work_runtime = WorkRuntime(
-            executor=executor,
-            cancellation=executor,
+        self._coding_runtime = coding_work_runtime or CodingWorkRuntime(
+            session=session,
             event_log=work_event_log or InMemoryEventLogBackend(),
         )
+        self._work_runtime = self._coding_runtime.work_runtime
         self._work_unsubscribe = self._work_runtime.subscribe_events(
             self._on_work_event
         )
@@ -107,7 +110,15 @@ class CodingChannelOperationPort:
                 message=str(error),
             )
 
-        accepted = await self._work_runtime.accept(operation)
+        try:
+            accepted = await self._coding_runtime.accept_operation(operation)
+        except CodingOperationInProgressError:
+            return _operation_error(
+                request,
+                code="operation_in_progress",
+                message="the active Coding session already has a Channel operation.",
+                retryable=True,
+            )
         return ChannelOperationAccepted(
             request_id=request.request_id,
             operation_id=operation.operation_id,
@@ -118,7 +129,12 @@ class CodingChannelOperationPort:
         self, request: ChannelOperationCancelRequest
     ) -> ChannelOperationCancelled | ChannelError:
         run = self._work_runtime.get_run_for_operation(request.operation_id)
-        if run is None or run.status in {"completed", "failed", "cancelled"}:
+        if run is None or run.status in {
+            "completed",
+            "failed",
+            "cancelled",
+            "orphaned",
+        }:
             return ChannelError(
                 code="unknown_operation",
                 message="the Coding session has no active operation with this id.",
@@ -128,7 +144,7 @@ class CodingChannelOperationPort:
             await self._work_runtime.cancel(run.run_id)
         except Exception as error:
             return ChannelError(
-                code="cancellation_rejected",
+                code="cancellation_failed",
                 message=str(error) or type(error).__name__,
                 request_id=request.request_id,
             )
@@ -252,6 +268,8 @@ async def run_channel_mode(
     stderr: TextIO | None = None,
     event_view: JsonEventView = "full",
     event_select: Sequence[str] | str | None = None,
+    work_event_log: EventLogBackend | None = None,
+    coding_work_runtime: CodingWorkRuntime | None = None,
 ) -> int:
     """Run the standard Channel JSONL host against the active Coding session."""
 
@@ -260,6 +278,8 @@ async def run_channel_mode(
         session=session,
         event_view=event_view,
         event_select=event_select,
+        work_event_log=work_event_log,
+        coding_work_runtime=coding_work_runtime,
     )
     host = ChannelHost(port=port, stdin=stdin, stdout=stdout, stderr=stderr)
     try:

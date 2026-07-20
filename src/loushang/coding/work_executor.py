@@ -13,7 +13,12 @@ from loushang.work.agent_projection import (
     project_agent_event_to_work_facts,
 )
 from loushang.work.ports import WorkExecutionContext
-from loushang.work.types import WorkOperation, WorkRunSpec, WorkStepSpec
+from loushang.work.types import (
+    WorkCancellationOutcome,
+    WorkOperation,
+    WorkRunSpec,
+    WorkStepSpec,
+)
 
 RuntimeEventListener = Callable[[RuntimeEvent[object]], Awaitable[None] | None]
 CodingTurnHook = Callable[
@@ -56,9 +61,6 @@ class SubmitCodingTurn:
     audit_policy: Mapping[str, object] | None = None
     plan_facts: Mapping[str, object] | None = None
     step_facts: Mapping[str, object] | None = None
-    emit_plan_start: bool = True
-    emit_plan_completion: bool = True
-    emit_plan_failure: bool = True
     streaming_behavior: str | None = None
     source: str | None = None
     follow_up_messages: tuple[str, ...] = ()
@@ -118,9 +120,6 @@ class SubmitCodingTurn:
             step_id=self.step_id,
             run_event_payload={"source_type": "work_shell"},
             scope_event_payload=scope_payload,
-            emit_plan_start=self.emit_plan_start,
-            emit_plan_completion=self.emit_plan_completion,
-            emit_plan_failure=self.emit_plan_failure,
         )
 
     def to_step_spec(self) -> WorkStepSpec:
@@ -145,7 +144,7 @@ class CodingDomainExecutor:
         self,
         operation: WorkOperation,
         context: WorkExecutionContext,
-    ) -> object:
+    ) -> WorkCancellationOutcome:
         if operation.kind != "SubmitCodingTurn" or operation.domain != "coding":
             raise ValueError(
                 f"Coding executor cannot execute {operation.domain}:{operation.kind}"
@@ -193,14 +192,14 @@ class CodingDomainExecutor:
         del operation, context
         abort = getattr(self.session, "abort", None)
         if not callable(abort):
-            return False
+            return WorkCancellationOutcome.unsupported()
         result = abort()
         if inspect.isawaitable(result):
             await result
         wait_for_idle = getattr(self.session, "wait_for_idle", None)
         if callable(wait_for_idle):
             await wait_for_idle()
-        return True
+        return WorkCancellationOutcome.settled()
 
     def _resolve_turn(
         self, operation: WorkOperation, context: WorkExecutionContext

@@ -17,6 +17,7 @@ from loushang.coding.event import (
 )
 from loushang.coding.mode.base import ModeAdapter, ModeState
 from loushang.coding.work_executor import SubmitCodingTurn
+from loushang.coding.work_runtime import CodingWorkRuntime
 from loushang.coding.work_shell import CodingWorkShell
 from loushang.harness.conversation import NativeConversationHeaderCodec
 from loushang.harness.events import RuntimeEvent
@@ -48,6 +49,7 @@ class PrintMode(ModeAdapter):
         event_select: Sequence[str] | str | None = None,
         render_tool_events: bool = False,
         work_event_log: EventLogBackend | None = None,
+        coding_work_runtime: CodingWorkRuntime | None = None,
         method_id: str | None = None,
         plan_id: str | None = None,
         step_id: str | None = None,
@@ -57,8 +59,6 @@ class PrintMode(ModeAdapter):
         audit_policy: Mapping[str, object] | None = None,
         plan_facts: Mapping[str, object] | None = None,
         step_facts: Mapping[str, object] | None = None,
-        emit_plan_start: bool = True,
-        emit_plan_completion: bool = True,
     ) -> None:
         if output_mode not in {"text", "json"}:
             raise ValueError(f"unsupported output mode: {output_mode}")
@@ -87,6 +87,7 @@ class PrintMode(ModeAdapter):
         self.event_select = normalize_event_select(event_select)
         self.render_tool_events = render_tool_events
         self.work_event_log = work_event_log
+        self.coding_work_runtime = coding_work_runtime
         self.method_id = method_id
         self.plan_id = plan_id
         self.step_id = step_id
@@ -96,8 +97,6 @@ class PrintMode(ModeAdapter):
         self.audit_policy = audit_policy
         self.plan_facts = plan_facts
         self.step_facts = step_facts
-        self.emit_plan_start = emit_plan_start
-        self.emit_plan_completion = emit_plan_completion
         self._tool_render_runtime: ToolRenderRuntime | None = None
         self._tool_definition_resolver: ToolDefinitionResolver | None = None
         self._disposed = False
@@ -178,17 +177,12 @@ class PrintMode(ModeAdapter):
             await self._prompt_session(
                 user_input,
                 images=images,
-                emit_plan_start=self.emit_plan_start,
-                emit_plan_completion=self.emit_plan_completion
-                and not follow_up_messages,
             )
             await self.session.wait_for_idle()
-            for follow_up_index, message in enumerate(follow_up_messages):
+            for message in follow_up_messages:
                 await self._prompt_session(
                     message,
-                    emit_plan_start=False,
-                    emit_plan_completion=self.emit_plan_completion
-                    and follow_up_index == len(follow_up_messages) - 1,
+                    include_work_metadata=False,
                 )
                 await self.session.wait_for_idle()
             assistant_failure = _last_assistant_failure_message(self.session)
@@ -239,6 +233,7 @@ class PrintMode(ModeAdapter):
             shell = CodingWorkShell(
                 session=self.session,
                 event_log=self.work_event_log,
+                coding_runtime=self.coding_work_runtime,
             )
             await shell.submit_coding_plan(
                 turns,
@@ -379,28 +374,31 @@ class PrintMode(ModeAdapter):
         user_input: str,
         *,
         images: list[object] | None = None,
-        emit_plan_start: bool = True,
-        emit_plan_completion: bool = True,
+        include_work_metadata: bool = True,
     ) -> None:
         if self.work_event_log is None:
             await _prompt_session(self.session, user_input, images=images)
             return
-        shell = CodingWorkShell(session=self.session, event_log=self.work_event_log)
+        shell = CodingWorkShell(
+            session=self.session,
+            event_log=self.work_event_log,
+            coding_runtime=self.coding_work_runtime,
+        )
         await shell.submit_coding_turn(
             user_input,
             session_id=_work_session_id(self.session),
             images=images,
-            method_id=self.method_id,
-            plan_id=self.plan_id,
-            step_id=self.step_id,
-            step_index=self.step_index,
-            step_title=self.step_title,
-            planned_constraint=self.planned_constraint,
-            audit_policy=self.audit_policy,
-            plan_facts=self.plan_facts,
-            step_facts=self.step_facts,
-            emit_plan_start=emit_plan_start,
-            emit_plan_completion=emit_plan_completion,
+            method_id=self.method_id if include_work_metadata else None,
+            plan_id=self.plan_id if include_work_metadata else None,
+            step_id=self.step_id if include_work_metadata else None,
+            step_index=self.step_index if include_work_metadata else None,
+            step_title=self.step_title if include_work_metadata else None,
+            planned_constraint=(
+                self.planned_constraint if include_work_metadata else None
+            ),
+            audit_policy=self.audit_policy if include_work_metadata else None,
+            plan_facts=self.plan_facts if include_work_metadata else None,
+            step_facts=self.step_facts if include_work_metadata else None,
         )
 
 
@@ -596,6 +594,7 @@ async def run_print_mode(
     event_select: Sequence[str] | str | None = None,
     render_tool_events: bool = False,
     work_event_log: EventLogBackend | None = None,
+    coding_work_runtime: CodingWorkRuntime | None = None,
     method_id: str | None = None,
     plan_id: str | None = None,
     step_id: str | None = None,
@@ -605,8 +604,6 @@ async def run_print_mode(
     audit_policy: Mapping[str, object] | None = None,
     plan_facts: Mapping[str, object] | None = None,
     step_facts: Mapping[str, object] | None = None,
-    emit_plan_start: bool = True,
-    emit_plan_completion: bool = True,
     dispose: bool = True,
 ) -> int:
     mode = PrintMode(
@@ -619,6 +616,7 @@ async def run_print_mode(
         event_select=event_select,
         render_tool_events=render_tool_events,
         work_event_log=work_event_log,
+        coding_work_runtime=coding_work_runtime,
         method_id=method_id,
         plan_id=plan_id,
         step_id=step_id,
@@ -628,8 +626,6 @@ async def run_print_mode(
         audit_policy=audit_policy,
         plan_facts=plan_facts,
         step_facts=step_facts,
-        emit_plan_start=emit_plan_start,
-        emit_plan_completion=emit_plan_completion,
     )
     return await mode.run_once(
         user_input,
@@ -651,6 +647,7 @@ async def run_print_plan_mode(
     event_select: Sequence[str] | str | None = None,
     render_tool_events: bool = False,
     work_event_log: EventLogBackend,
+    coding_work_runtime: CodingWorkRuntime | None = None,
     dispose: bool = True,
 ) -> int:
     mode = PrintMode(
@@ -663,6 +660,7 @@ async def run_print_plan_mode(
         event_select=event_select,
         render_tool_events=render_tool_events,
         work_event_log=work_event_log,
+        coding_work_runtime=coding_work_runtime,
     )
     return await mode.run_plan(turns, dispose=dispose)
 

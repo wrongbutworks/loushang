@@ -3049,8 +3049,6 @@ def test_run_cli_dash_p_with_fixed_method_executes_each_step(tmp_path) -> None:
     assert first_call["step_facts"]["step_id"] == "inspect"
     assert first_call["step_facts"]["title"] == "Inspect current changes"
     assert first_call["step_facts"]["step_index"] == 0
-    assert first_call["emit_plan_start"] is True
-    assert first_call["emit_plan_completion"] is False
     assert "Read changed files and summarize intent." in first_call["prompt"]
     assert first_call["prompt"].endswith("User request:\n\ncheck src/app.py")
     assert second_call["method_id"] == "method:task:review"
@@ -3068,8 +3066,6 @@ def test_run_cli_dash_p_with_fixed_method_executes_each_step(tmp_path) -> None:
     assert second_call["step_facts"]["step_id"] == "verify"
     assert second_call["step_facts"]["title"] == "Run focused checks"
     assert second_call["step_facts"]["step_index"] == 1
-    assert second_call["emit_plan_start"] is False
-    assert second_call["emit_plan_completion"] is True
     assert "Run focused tests or explain why they cannot run." in second_call["prompt"]
     assert second_call["prompt"].endswith("User request:\n\ncheck src/app.py")
 
@@ -3695,8 +3691,6 @@ def test_run_cli_mode_print_with_fixed_method_executes_each_step(tmp_path) -> No
     assert first_call["step_facts"]["step_id"] == "inspect"
     assert first_call["step_facts"]["title"] == "Inspect current changes"
     assert first_call["step_facts"]["step_index"] == 0
-    assert first_call["emit_plan_start"] is True
-    assert first_call["emit_plan_completion"] is False
     assert "Read changed files and summarize intent." in first_call["user_input"]
     assert first_call["user_input"].endswith("User request:\n\ncheck src/app.py")
     assert first_call["output_mode"] == "text"
@@ -3715,8 +3709,6 @@ def test_run_cli_mode_print_with_fixed_method_executes_each_step(tmp_path) -> No
     assert second_call["step_facts"]["step_id"] == "verify"
     assert second_call["step_facts"]["title"] == "Run focused checks"
     assert second_call["step_facts"]["step_index"] == 1
-    assert second_call["emit_plan_start"] is False
-    assert second_call["emit_plan_completion"] is True
     assert (
         "Run focused tests or explain why they cannot run." in second_call["user_input"]
     )
@@ -4520,8 +4512,6 @@ def test_run_cli_default_path_with_fixed_method_executes_each_step(tmp_path) -> 
     assert first_call["plan_id"] == "plan:method:task:review"
     assert first_call["step_id"] == "inspect"
     assert first_call["step_index"] == 0
-    assert first_call["emit_plan_start"] is True
-    assert first_call["emit_plan_completion"] is False
     assert "Read changed files and summarize intent." in first_call["user_input"]
     assert first_call["user_input"].endswith("User request:\n\ncheck src/app.py")
     assert second_call["config"].mode == "json"
@@ -4529,8 +4519,6 @@ def test_run_cli_default_path_with_fixed_method_executes_each_step(tmp_path) -> 
     assert second_call["plan_id"] == "plan:method:task:review"
     assert second_call["step_id"] == "verify"
     assert second_call["step_index"] == 1
-    assert second_call["emit_plan_start"] is False
-    assert second_call["emit_plan_completion"] is True
     assert (
         "Run focused tests or explain why they cannot run." in second_call["user_input"]
     )

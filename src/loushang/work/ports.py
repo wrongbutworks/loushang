@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from typing import Protocol
 
 from loushang.work.event_log import EventLogEntry, EventPosition
 from loushang.work.types import (
+    WorkCancellationOutcome,
     WorkEvent,
     WorkEventFact,
     WorkOperation,
@@ -48,7 +50,25 @@ class WorkDomainCancellation(Protocol):
         self,
         operation: WorkOperation,
         context: WorkExecutionContext,
-    ) -> Awaitable[object]: ...
+    ) -> Awaitable[WorkCancellationOutcome]: ...
+
+
+@dataclass(frozen=True)
+class WorkExecutionBinding:
+    """The domain capabilities resolved once for one accepted operation."""
+
+    executor: WorkDomainExecutor
+    cancellation: WorkDomainCancellation | None = None
+
+
+class WorkDomainExecutionResolver(Protocol):
+    """Resolve focused domain capabilities without teaching Work product details."""
+
+    def resolve(
+        self,
+        operation: WorkOperation,
+        spec: WorkRunSpec,
+    ) -> WorkExecutionBinding: ...
 
 
 class WorkAcceptPort(Protocol):
@@ -72,6 +92,7 @@ class WorkSubscribePort(Protocol):
     def subscribe(
         self,
         *,
+        operation_id: str | None = None,
         run_id: str | None = None,
         session_id: str | None = None,
         after: EventPosition | None = None,
@@ -82,6 +103,7 @@ class WorkQueryPort(Protocol):
     def query(
         self,
         *,
+        operation_id: str | None = None,
         run_id: str | None = None,
         session_id: str | None = None,
         after: EventPosition | None = None,
@@ -97,6 +119,8 @@ __all__ = [
     "WorkCancelPort",
     "WorkDomainExecutor",
     "WorkDomainCancellation",
+    "WorkDomainExecutionResolver",
+    "WorkExecutionBinding",
     "WorkEventPublisher",
     "WorkExecutionContext",
     "WorkQueryPort",

@@ -12,6 +12,7 @@ from loushang.coding.presentation.tui.plain import (
     build_plain_coding_event_projection,
 )
 from loushang.coding.work_executor import SubmitCodingTurn
+from loushang.coding.work_runtime import CodingWorkRuntime
 from loushang.coding.work_shell import CodingWorkShell
 from loushang.harnesstui.conversation.plain_prompt_host import (
     PlainPromptHostPorts,
@@ -32,6 +33,7 @@ async def run_prompt_command(
     follow_up_messages: Sequence[str] = (),
     verbose: bool = False,
     work_event_log: EventLogBackend | None = None,
+    coding_work_runtime: CodingWorkRuntime | None = None,
     method_id: str | None = None,
     plan_id: str | None = None,
     step_id: str | None = None,
@@ -41,8 +43,6 @@ async def run_prompt_command(
     audit_policy: Mapping[str, object] | None = None,
     plan_facts: Mapping[str, object] | None = None,
     step_facts: Mapping[str, object] | None = None,
-    emit_plan_start: bool = True,
-    emit_plan_completion: bool = True,
     dispose: bool = True,
 ) -> int:
     """Run one product prompt and render the stable coding transcript."""
@@ -54,22 +54,22 @@ async def run_prompt_command(
     )
 
     async def submit_turn(text: str, turn_index: int, turn_count: int) -> None:
+        del turn_count
         await _run_prompt_session(
             session,
             text,
             images=images if turn_index == 0 else None,
             work_event_log=work_event_log,
-            method_id=method_id,
-            plan_id=plan_id,
-            step_id=step_id,
-            step_index=step_index,
-            step_title=step_title,
-            planned_constraint=planned_constraint,
-            audit_policy=audit_policy,
-            plan_facts=plan_facts,
-            step_facts=step_facts,
-            emit_plan_start=emit_plan_start if turn_index == 0 else False,
-            emit_plan_completion=emit_plan_completion and turn_index == turn_count - 1,
+            coding_work_runtime=coding_work_runtime,
+            method_id=method_id if turn_index == 0 else None,
+            plan_id=plan_id if turn_index == 0 else None,
+            step_id=step_id if turn_index == 0 else None,
+            step_index=step_index if turn_index == 0 else None,
+            step_title=step_title if turn_index == 0 else None,
+            planned_constraint=planned_constraint if turn_index == 0 else None,
+            audit_policy=audit_policy if turn_index == 0 else None,
+            plan_facts=plan_facts if turn_index == 0 else None,
+            step_facts=step_facts if turn_index == 0 else None,
         )
 
     def resolve_failure(previous_error: str | None) -> str | None:
@@ -115,6 +115,7 @@ async def run_prompt_plan_command(
     stdout: TextIO,
     stderr: TextIO,
     work_event_log: EventLogBackend,
+    coding_work_runtime: CodingWorkRuntime | None = None,
     verbose: bool = False,
     dispose: bool = True,
 ) -> int:
@@ -158,7 +159,11 @@ async def run_prompt_plan_command(
     try:
         await ensure_usable_session_model(session)
         unsubscribe = session.subscribe(event_renderer.handle)
-        shell = CodingWorkShell(session=session, event_log=work_event_log)
+        shell = CodingWorkShell(
+            session=session,
+            event_log=work_event_log,
+            coding_runtime=coding_work_runtime,
+        )
         await shell.submit_coding_plan(
             turns,
             session_id=_work_session_id(session),
@@ -196,6 +201,7 @@ async def _run_prompt_session(
     *,
     images: list[object] | None = None,
     work_event_log: EventLogBackend | None = None,
+    coding_work_runtime: CodingWorkRuntime | None = None,
     method_id: str | None = None,
     plan_id: str | None = None,
     step_id: str | None = None,
@@ -205,13 +211,15 @@ async def _run_prompt_session(
     audit_policy: Mapping[str, object] | None = None,
     plan_facts: Mapping[str, object] | None = None,
     step_facts: Mapping[str, object] | None = None,
-    emit_plan_start: bool = True,
-    emit_plan_completion: bool = True,
 ) -> None:
     if work_event_log is None:
         await _prompt_session(session, user_input, images=images)
         return
-    shell = CodingWorkShell(session=session, event_log=work_event_log)
+    shell = CodingWorkShell(
+        session=session,
+        event_log=work_event_log,
+        coding_runtime=coding_work_runtime,
+    )
     await shell.submit_coding_turn(
         user_input,
         session_id=_work_session_id(session),
@@ -225,8 +233,6 @@ async def _run_prompt_session(
         audit_policy=audit_policy,
         plan_facts=plan_facts,
         step_facts=step_facts,
-        emit_plan_start=emit_plan_start,
-        emit_plan_completion=emit_plan_completion,
     )
 
 

@@ -74,6 +74,7 @@ from loushang.coding.tools import ToolRegistry, register_builtin_tools
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.work_executor import SubmitCodingTurn
+from loushang.coding.work_runtime import CodingWorkRuntime
 from loushang.coding.workflow import run_prompt_steps_workflow
 from loushang.harness.agent_transcript import SessionQuery
 from loushang.harness.extensions.types import ResolvedFlag
@@ -529,6 +530,11 @@ async def run_cli(
             stderr.write(f"Error: {method_error}.\n")
             return 2
         work_event_log = _resolve_work_event_log(args.work_log, project_root)
+        coding_work_runtime = (
+            CodingWorkRuntime(session=session, event_log=work_event_log)
+            if work_event_log is not None
+            else None
+        )
         with coding_observability_context(
             args=args,
             session=session,
@@ -639,6 +645,7 @@ async def run_cli(
                         stderr=stderr,
                         verbose=args.verbose,
                         work_event_log=work_event_log,
+                        coding_work_runtime=coding_work_runtime,
                     )
                 for turn_index, prepared_turn in enumerate(prepared_turns):
                     is_first_turn = turn_index == 0
@@ -667,6 +674,7 @@ async def run_cli(
                         else (),
                         verbose=args.verbose,
                         work_event_log=work_event_log,
+                        coding_work_runtime=coding_work_runtime,
                         method_id=prepared_turn.method_id,
                         plan_id=prepared_turn.plan_id,
                         step_id=prepared_turn.step_id,
@@ -676,8 +684,6 @@ async def run_cli(
                         audit_policy=audit_policy,
                         plan_facts=plan_facts,
                         step_facts=step_facts,
-                        emit_plan_start=is_first_turn,
-                        emit_plan_completion=is_last_turn,
                         dispose=is_last_turn,
                     )
                     if exit_code != 0:
@@ -725,8 +731,6 @@ async def run_cli(
                         audit_policy=audit_policy,
                         plan_facts=plan_facts,
                         step_facts=step_facts,
-                        emit_plan_start=is_first_turn,
-                        emit_plan_completion=is_last_turn,
                         dispose=is_last_turn,
                     )
                     if exit_code != 0:
@@ -753,6 +757,7 @@ async def run_cli(
                     output_mode=output_mode,
                     render_tool_events=args.render_tool_events,
                     work_event_log=work_event_log,
+                    coding_work_runtime=coding_work_runtime,
                 )
 
             for turn_index, prepared_turn in enumerate(prepared_turns):
@@ -782,6 +787,7 @@ async def run_cli(
                     stdout=stdout,
                     stderr=stderr,
                     work_event_log=work_event_log,
+                    coding_work_runtime=coding_work_runtime,
                     method_id=prepared_turn.method_id,
                     plan_id=prepared_turn.plan_id,
                     step_id=prepared_turn.step_id,
@@ -791,8 +797,6 @@ async def run_cli(
                     audit_policy=audit_policy,
                     plan_facts=plan_facts,
                     step_facts=step_facts,
-                    emit_plan_start=is_first_turn,
-                    emit_plan_completion=is_last_turn,
                     dispose=is_last_turn,
                 )
                 if exit_code != 0:
