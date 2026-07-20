@@ -3,30 +3,28 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Any
 
-from loushang.harness.capabilities.commands import (
-    CommandCatalog,
-    CommandDescriptor,
-)
-from loushang.harness.command_composition import (
-    MixedCommandCatalog,
-    MixedCommandCatalogPorts,
-    MixedCommandCatalogProfile,
-)
+from loushang.coding.commands.profile import CODING_COMMAND_CATALOG_PROFILE
 from loushang.harness.commands import (
+    CommandCatalog,
     CommandDef,
+    CommandDescriptor,
     CommandEffect,
     CommandEffectKind,
     CommandKind,
+    MixedCommandCatalog,
+    MixedCommandCatalogPorts,
 )
 
 SessionCommandsProvider = Callable[[], Iterable[object]]
 
 
 class CodingCommandCatalog:
-    def __init__(self, *, session_commands: SessionCommandsProvider | None = None) -> None:
+    def __init__(
+        self, *, session_commands: SessionCommandsProvider | None = None
+    ) -> None:
         self._session_commands = session_commands
         self._catalog = MixedCommandCatalog(
-            profile=_CODING_COMMAND_CATALOG_PROFILE,
+            profile=CODING_COMMAND_CATALOG_PROFILE,
             ports=MixedCommandCatalogPorts(
                 session_catalog=(
                     self._session_catalog if session_commands is not None else None
@@ -76,6 +74,7 @@ class CodingCommandCatalog:
             if (descriptor := _session_command_descriptor(raw_command)) is not None
         )
 
+
 def _route_value(route: object) -> str:
     value = getattr(route, "value", route)
     return value if isinstance(value, str) else str(value)
@@ -86,7 +85,9 @@ def _string_attr(value: Any, name: str) -> str | None:
     return raw if isinstance(raw, str) and raw else None
 
 
-def _session_command_descriptor(raw_command: object) -> CommandDescriptor[object] | None:
+def _session_command_descriptor(
+    raw_command: object,
+) -> CommandDescriptor[object] | None:
     name = _string_attr(raw_command, "name")
     invocation_name = _string_attr(raw_command, "invocation_name") or name
     if invocation_name is None:
@@ -121,75 +122,6 @@ def _session_command_def(descriptor: CommandDescriptor[object]) -> CommandDef:
         aliases=descriptor.aliases,
         argument_hint=descriptor.argument_hint,
     )
-
-
-_LOCAL_COMMANDS_BY_ROUTE_VALUE: dict[str, CommandDef] = {
-    "model_select": CommandDef(
-        id="coding.ui.model",
-        name="model",
-        kind=CommandKind.LOCAL_UI,
-        description="Select model",
-        source="local",
-    ),
-    "models": CommandDef(
-        id="coding.ui.models",
-        name="models",
-        kind=CommandKind.LOCAL_UI,
-        description="Show available models",
-        source="local",
-    ),
-    "command_select": CommandDef(
-        id="coding.ui.command",
-        name="command",
-        kind=CommandKind.LOCAL_UI,
-        description="Select command",
-        source="local",
-    ),
-    "commands": CommandDef(
-        id="coding.ui.commands",
-        name="commands",
-        kind=CommandKind.LOCAL_UI,
-        description="Show commands",
-        source="local",
-    ),
-    "hotkeys": CommandDef(
-        id="coding.ui.hotkeys",
-        name="hotkeys",
-        kind=CommandKind.LOCAL_UI,
-        description="Show keyboard shortcuts",
-        source="local",
-    ),
-    "settings": CommandDef(
-        id="coding.ui.settings",
-        name="settings",
-        kind=CommandKind.LOCAL_UI,
-        description="Open settings",
-        source="local",
-    ),
-    "config": CommandDef(
-        id="coding.ui.config",
-        name="config",
-        kind=CommandKind.LOCAL_UI,
-        description="Open settings",
-        source="local",
-    ),
-    "terminal": CommandDef(
-        id="coding.ui.terminal",
-        name="terminal",
-        kind=CommandKind.LOCAL_UI,
-        description="Show terminal diagnostics",
-        source="local",
-    ),
-}
-_LOCAL_COMMANDS_BY_NAME: dict[str, CommandDef] = {
-    command.name: command for command in _LOCAL_COMMANDS_BY_ROUTE_VALUE.values()
-}
-_LOCAL_COMMANDS_ACCEPT_ARGS = frozenset({"command", "commands", "model", "models"})
-_CODING_COMMAND_CATALOG_PROFILE = MixedCommandCatalogProfile(
-    local_commands_by_name=_LOCAL_COMMANDS_BY_NAME,
-    local_commands_by_route=_LOCAL_COMMANDS_BY_ROUTE_VALUE,
-    local_commands_accepting_args=_LOCAL_COMMANDS_ACCEPT_ARGS,
-)
 
 
 __all__ = ["CodingCommandCatalog", "SessionCommandsProvider"]

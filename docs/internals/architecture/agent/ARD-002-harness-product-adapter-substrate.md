@@ -220,10 +220,11 @@ Update internal imports to the new path and delete
 `src/loushang/runtime/__init__.py` plus `src/loushang/runtime/commands.py`.
 Do not keep `loushang.runtime` as a compatibility shim.
 
-This phase stops at the value-type boundary. `loushang.coding.commands.catalog`,
-session command execution, and UI command handlers remain owned by
-`loushang.coding`; slash parsing is owned by
-`loushang.harness.capabilities.commands`.
+The command substrate now includes value types, descriptors, parsing,
+completion, dispatch, and immutable local/session catalog composition under
+`loushang.harness.commands`. `loushang.coding.commands.catalog`, session
+command execution, local command vocabulary, and UI command handlers remain
+owned by `loushang.coding`.
 
 ### Phase 2: Host and adapter contracts
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def test_parse_slash_command_splits_name_args_and_mcp_marker() -> None:
-    from loushang.coding.commands import parse_slash_command
+    from loushang.harness.commands import parse_slash_command
 
     parsed = parse_slash_command("/deploy prod now")
     assert parsed is not None
@@ -10,11 +10,15 @@ def test_parse_slash_command_splits_name_args_and_mcp_marker() -> None:
 
     mcp = parse_slash_command("/mcp__ide__diagnostics (MCP) current file")
     assert mcp is not None
-    assert (mcp.name, mcp.args, mcp.is_mcp) == ("mcp__ide__diagnostics (MCP)", "current file", True)
+    assert (mcp.name, mcp.args, mcp.is_mcp) == (
+        "mcp__ide__diagnostics (MCP)",
+        "current file",
+        True,
+    )
 
 
 def test_parse_slash_command_rejects_non_commands_and_empty_names() -> None:
-    from loushang.coding.commands import parse_slash_command
+    from loushang.harness.commands import parse_slash_command
 
     assert parse_slash_command("deploy prod") is None
     assert parse_slash_command(" /deploy prod") is None
@@ -57,8 +61,8 @@ def test_complete_slash_commands_filters_by_prefix_and_marks_conflicts() -> None
     from loushang.coding.commands import (
         CommandSourceInfo,
         SessionCommandDescriptor,
-        complete_slash_commands,
     )
+    from loushang.harness.commands import complete_slash_commands
 
     completions = complete_slash_commands(
         "/de",
@@ -116,7 +120,7 @@ def test_session_command_descriptor_remains_a_runtime_class() -> None:
         CommandSourceInfo,
         SessionCommandDescriptor,
     )
-    from loushang.harness.capabilities.commands import CommandDescriptor
+    from loushang.harness.commands import CommandDescriptor
 
     command = SessionCommandDescriptor(
         name="review",

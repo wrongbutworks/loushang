@@ -21,7 +21,7 @@ from loushang.coding.control.settings_store import (
 )
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.policy import InteractiveApprovalResolver
-from loushang.coding.prompt import assemble_prompt
+from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
 from loushang.coding.resource_runtime import (
     CodingPackageMaterializer as PackageMaterializer,
 )
@@ -38,6 +38,7 @@ from loushang.harness.capabilities.packs import (
     CapabilityPack,
     CapabilityPackComposer,
 )
+from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.config import (
     ConfigActivationRuntime,
     ConfigActivationStep,
@@ -357,6 +358,8 @@ def create_agent_session(
             *(append_system_prompt or ()),
         ]
         base_prompt = _append_system_prompt_fragments(base_prompt, append_fragments)
+        if not base_prompt.strip():
+            base_prompt = DEFAULT_CODING_SYSTEM_PROMPT
         prompt_assembly = assemble_prompt(
             base_prompt=base_prompt,
             resource_bundle=resource_bundle,

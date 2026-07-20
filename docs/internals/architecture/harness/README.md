@@ -183,9 +183,10 @@ planning, work event persistence, or AI provider behavior.
   import staging, and navigation transaction ownership while preserving Product
   messages, policy, persistence, events, and UI.
 - [Product Capability Composition Core Boundary](product-capability-composition-core.md)
-  defines shared command catalog and dispatch, prompt composition and template
-  expansion, and tool activation coordination while preserving Product content,
-  defaults, policy, side effects, and presentation.
+  defines shared command catalog and dispatch, standard resource-aware prompt
+  assembly/preflight and template expansion, and tool activation coordination
+  while preserving only Product-exclusive content, policy, side effects, and
+  presentation.
 - [OEM And Extension Architecture](oem-extension-architecture.md) describes how
   OEM customisation, extension contributions, and harness upgrades interact,
   including override mechanisms, extension categories, surface-type gaps, and

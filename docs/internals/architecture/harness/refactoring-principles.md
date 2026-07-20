@@ -11,16 +11,20 @@ home for product semantics.
 
 ## Core Rule
 
-Harness owns reusable mechanisms and reusable concrete implementations.
-Products own their irreducible policy and domain semantics.
+Harness owns reusable mechanisms, cross-product conventions, and reusable
+concrete defaults. Products own only behavior that is irreducibly exclusive to
+their product identity or domain.
 
 The default destination is Harness. Code remains in a product only when the
-product boundary is explicit and testable. A Product exception must show at
-least one of these properties:
+product boundary is explicit and testable. The fact that code currently has
+one Product consumer, contains user-facing wording, or chooses a default is not
+enough to keep it in that Product. A Product exception must show at least one
+of these properties:
 
-- it defines product goals, domain language, completion criteria, prompts,
-  skills, or artifact semantics;
-- it chooses product defaults, tool-pack activation, context salience,
+- it defines product-exclusive goals, domain language, completion criteria,
+  prompts, skills, or artifact semantics that are not useful as a standard
+  Harness convention;
+- it chooses product-exclusive defaults, tool-pack activation, context salience,
   risk/approval behavior, permissions, storage, commands, or presentation;
 - it integrates product UI, product-exclusive compatibility/resource formats,
   or a domain-specific external system;
@@ -34,12 +38,15 @@ Put code in Harness when all of these are true:
   work, or AI provider semantics;
 - it describes a contract, helper engine, registry, resolver, lifecycle shape,
   neutral record, or reusable concrete capability;
-- product adapters can choose defaults, policy, activation, storage, and UI
-  behavior outside harness.
+- products can override the standard defaults and inject product-exclusive
+  policy, activation, storage, and UI behavior outside Harness.
 
-Keep code out of Harness when it decides what a specific product should do,
-which tools should be enabled by default, how a product prompt is assembled,
-how product artifacts are materialized, or how a product UI should behave.
+Keep code out of Harness only when it decides what one specific Product should
+do in terms that cannot be generalized without importing or encoding that
+Product. A useful overridable default, standard resource convention, or
+resource-aware prompt workflow belongs in Harness even though it necessarily
+makes choices. Product adapters replace or extend those choices where their
+domain genuinely differs.
 
 ## Neutrality Evidence Gate
 
@@ -49,8 +56,9 @@ is present:
 
 - a boundary decision names the product-neutral mechanism, the product policy
   left behind, and explicit non-goals;
-- the Harness API uses product-neutral vocabulary and carries no product
-  imports, product defaults, or product-specific storage and UI semantics;
+- the Harness API uses product-neutral vocabulary and carries no Product
+  imports, Product-exclusive defaults, or product-specific storage and UI
+  semantics;
 - the existing product adapter proves compatibility with current behavior;
 - an independent contract probe exercises the proposed API without Coding
   runtime objects or Coding vocabulary;

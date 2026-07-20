@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from loushang.harness.capabilities.commands import CommandDescriptor
+from loushang.harness.commands import CommandDescriptor
 from loushang.harness.resources.source import SourceInfo
 
 SlashCommandSource = Literal["builtin", "extension", "prompt", "skill"]

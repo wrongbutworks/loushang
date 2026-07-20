@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from loushang.agent.types import AgentTool
-from loushang.coding.prompt import assemble_prompt
 from loushang.coding.store import SessionManager
 from loushang.harness.capabilities.prompt import PromptSectionComposer
+from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.activation import ResourceActivationRuntime
 from loushang.harness.resources.types import ResourceBundle
@@ -185,13 +185,14 @@ class ToolController:
             if self.show_empty_tool_prompt and active_definitions == []
             else None
         )
+        resource_bundle = self.get_resource_bundle()
         prompt_assembly = assemble_prompt(
             base_prompt=self.base_prompt,
-            resource_bundle=self.get_resource_bundle(),
+            resource_bundle=resource_bundle,
             tool_definitions=active_definitions,
             tool_prompt=tool_prompt,
             resource_activation=self.resource_activation_runtime.activate(
-                self.get_resource_bundle()
+                resource_bundle
             ),
             prompt_section_composer=self.prompt_section_composer,
         )
