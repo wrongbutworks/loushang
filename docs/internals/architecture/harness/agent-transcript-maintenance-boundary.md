@@ -48,8 +48,8 @@ A Product supplies:
 - context application, retry continuation, and Product presentation;
 - model catalog, authentication, provider behavior, and approval policy.
 
-Coding binds these ports through thin `CompactionController` and
-`RetryController` adapters. Coding keeps its exact compaction and branch
+Coding binds compaction ports directly in `AgentSession`; the retry runtime is
+already bound there as well. Coding keeps its exact compaction and branch
 summary prompts, model invocation, Coding extension hook mapping, diagnostics
 projection, default settings, and TUI/RPC/HTML output projection.
 
@@ -65,7 +65,7 @@ overflow classification are injected through callbacks rather than imported.
 
 - Harness tests cover context checkpoint staleness, compaction checkpoint
   commit/event ordering, and retry completion without importing Coding.
-- Coding tests preserve compaction prompt/hook behavior, retry policy mapping,
-  session state, and display projections.
+- Coding session tests preserve compaction prompt/hook behavior, retry policy
+  mapping, session state, and display projections.
 - Architecture tests prohibit a Coding import from maintenance and require the
-  Coding adapters to import the Harness runtimes.
+  Coding session binding to consume the Harness runtimes directly.

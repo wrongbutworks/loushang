@@ -52,10 +52,11 @@ A Product supplies:
 - context application to its Agent/runtime state;
 - TUI, RPC, HTML, CLI, and Work projections.
 
-Coding binds these ports through thin `SelectionController`, `TreeController`,
-and `SessionViewController` adapters. Its `before_session_tree` hook remains
-Coding-owned; the adapter converts a Product summary result to the Harness
-`BranchSummaryOutput` before persistence.
+Coding binds these ports directly in `AgentSession`; no Coding interaction
+controller sits between the Product callback and the Harness runtime. Its
+`before_session_tree` hook remains Coding-owned, and the Product binding
+converts a Product summary result to the Harness `BranchSummaryOutput` before
+persistence.
 
 Coding keeps model/auth resolution, summary prompt and model behavior,
 extension semantics, diagnostics, and Product presentation.
@@ -72,7 +73,7 @@ branch navigation does not acquire a dependency on the Agent loop.
 
 - Harness tests cover selection persistence, inspection, leaf navigation,
   summary commit ordering, and common events without importing Coding.
-- Coding controller tests preserve model selection, extension refresh, editor
+- Coding session tests preserve model selection, extension refresh, editor
   recovery, summary, and Pi-compatible read projections.
 - Architecture tests forbid a Coding import from the interaction runtime and
-  require Coding's controllers to adopt the Harness owners.
+  require `AgentSession` to bind the Harness owners directly.
