@@ -17,8 +17,8 @@ from loushang.ai import (
     Usage,
     UserMessage,
 )
+from loushang.ai.model import ModelSelection
 from loushang.coding.policy import tui as tui_policy
-from loushang.coding.types import ModelSelection
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,

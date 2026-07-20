@@ -9,14 +9,20 @@ def _runtime_footer(cwd: Path) -> str:
 
 
 def test_loader_exports_snapshot_and_theme_symbols() -> None:
-    from loushang.coding.loader import ResourceSnapshot, ThemeDescriptor
+    from loushang.harness.resources.types import (
+        ResourceSnapshot,
+        ThemeDescriptor,
+    )
 
     assert ResourceSnapshot is not None
     assert ThemeDescriptor is not None
 
 
 def test_resource_snapshot_to_bundle_preserves_agents_and_active_prompt_order() -> None:
-    from loushang.coding.loader import PromptFragmentDescriptor, ResourceSnapshot
+    from loushang.harness.resources.types import (
+        PromptFragmentDescriptor,
+        ResourceSnapshot,
+    )
 
     agents = PromptFragmentDescriptor(
         name="AGENTS.md",
@@ -62,7 +68,9 @@ def test_resource_snapshot_to_bundle_preserves_agents_and_active_prompt_order() 
 
 
 def test_default_resource_loader_discovers_agents_md_from_parent_dirs(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     project_root = tmp_path / "project"
     nested = project_root / "src" / "feature"
@@ -87,7 +95,9 @@ def test_default_resource_loader_discovers_agents_md_from_parent_dirs(tmp_path) 
 
 
 def test_default_resource_loader_stacks_global_and_ancestor_context_files(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     user_root = tmp_path / "user"
     workspace_root = tmp_path / "workspace"
@@ -137,7 +147,9 @@ def test_default_resource_loader_stacks_global_and_ancestor_context_files(tmp_pa
 
 
 def test_default_resource_loader_can_disable_context_files(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     project_root = tmp_path / "project"
     nested = project_root / "src" / "feature"
@@ -154,7 +166,9 @@ def test_default_resource_loader_can_disable_context_files(tmp_path) -> None:
 
 
 def test_default_resource_loader_exposes_user_global_skill_candidates_and_project_precedence(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     user_root = tmp_path / "user"
     project_root = tmp_path / "project"
@@ -186,7 +200,9 @@ def test_default_resource_loader_exposes_user_global_skill_candidates_and_projec
 
 
 def test_default_resource_loader_loads_explicit_resource_paths_when_defaults_disabled(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -240,7 +256,9 @@ def test_default_resource_loader_loads_explicit_resource_paths_when_defaults_dis
 
 
 def test_default_resource_loader_resolves_system_prompt_sources_as_text_or_files(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     append_file = tmp_path / "append.txt"
     append_file.write_text("Append from file", encoding="utf-8")
@@ -256,7 +274,9 @@ def test_default_resource_loader_resolves_system_prompt_sources_as_text_or_files
 
 
 def test_default_resource_loader_discovers_extension_descriptors_and_reports_invalid_entries(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     project_root = tmp_path / "project"
     nested = project_root / "src" / "feature"
@@ -286,7 +306,9 @@ def test_default_resource_loader_discovers_extension_descriptors_and_reports_inv
 
 
 def test_default_resource_loader_discovers_prompt_and_skill_descriptors_into_snapshot_and_bundle(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     project_root = tmp_path / "project"
     nested = project_root / "src" / "feature"
@@ -331,7 +353,9 @@ def test_default_resource_loader_discovers_prompt_and_skill_descriptors_into_sna
 
 
 def test_default_resource_loader_parses_skill_frontmatter_metadata(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     project_root = tmp_path / "project"
     skill_dir = project_root / "skills" / "debugging"
@@ -359,7 +383,9 @@ def test_default_resource_loader_parses_skill_frontmatter_metadata(tmp_path) -> 
 
 
 def test_default_resource_loader_parses_prompt_argument_hint_frontmatter(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     project_root = tmp_path / "project"
     prompts_dir = project_root / "prompts"
@@ -384,7 +410,9 @@ def test_default_resource_loader_parses_prompt_argument_hint_frontmatter(tmp_pat
 
 
 def test_default_resource_loader_reports_invalid_prompt_frontmatter(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     project_root = tmp_path / "project"
     prompts_dir = project_root / "prompts"
@@ -409,7 +437,9 @@ def test_default_resource_loader_reports_invalid_prompt_frontmatter(tmp_path) ->
 
 
 def test_default_resource_loader_reports_invalid_skill_frontmatter_without_loading_skill(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     project_root = tmp_path / "project"
     skill_dir = project_root / "skills" / "broken"
@@ -437,7 +467,9 @@ def test_default_resource_loader_reports_invalid_skill_frontmatter_without_loadi
 
 
 def test_default_resource_loader_reports_skill_frontmatter_validation_diagnostics(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     project_root = tmp_path / "project"
     skill_dir = project_root / "skills" / "Debugging"
@@ -463,7 +495,9 @@ def test_default_resource_loader_reports_skill_frontmatter_validation_diagnostic
 
 
 def test_default_resource_loader_recursively_discovers_skills_and_skips_ignored_directories(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     project_root = tmp_path / "project"
     nested_skill = project_root / "skills" / "workflows" / "debugging"
@@ -511,7 +545,9 @@ def test_default_resource_loader_recursively_discovers_skills_and_skips_ignored_
 
 
 def test_default_resource_loader_applies_skill_ignore_files(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     project_root = tmp_path / "project"
     skills_dir = project_root / "skills"
@@ -555,7 +591,10 @@ def test_default_resource_loader_prefers_project_local_prompt_when_built_in_cand
     tmp_path, monkeypatch
 ) -> None:
     import loushang.harness.resources.loader as loader_module
-    from loushang.coding.loader import DefaultResourceLoader, PromptFragmentDescriptor
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.harness.resources.types import PromptFragmentDescriptor
 
     project_root = tmp_path / "project"
     prompts_dir = project_root / "prompts"
@@ -602,7 +641,9 @@ def test_default_resource_loader_prefers_project_local_prompt_when_built_in_cand
 
 
 def test_default_resource_loader_discovers_external_package_resources_before_built_in(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     project_root = tmp_path / "project"
     package_root = tmp_path / "packages" / "review-pack"
@@ -622,7 +663,9 @@ def test_default_resource_loader_discovers_external_package_resources_before_bui
 
 
 def test_default_resource_loader_reports_missing_invalid_and_empty_package_roots(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     project_root = tmp_path / "project"
     missing_root = tmp_path / "packages" / "missing-pack"
@@ -647,7 +690,10 @@ def test_default_resource_loader_reports_missing_invalid_and_empty_package_roots
 
 
 def test_default_resource_loader_exposes_package_resource_summaries_and_filtered_diagnostics(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader, PackageResourceSummary
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.harness.resources.types import PackageResourceSummary
 
     project_root = tmp_path / "project"
     package_root = tmp_path / "packages" / "review-pack"
@@ -688,7 +734,9 @@ def test_default_resource_loader_exposes_package_resource_summaries_and_filtered
 
 
 def test_default_resource_loader_reload_resources_refreshes_cached_bundle(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -712,7 +760,9 @@ def test_default_resource_loader_reload_resources_refreshes_cached_bundle(tmp_pa
 
 
 def test_default_resource_loader_returns_empty_bundle_when_no_agents_md_exists(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     loader = DefaultResourceLoader()
     bundle = loader.discover_resources(tmp_path)
@@ -730,7 +780,10 @@ def test_default_resource_loader_returns_empty_bundle_when_no_agents_md_exists(t
 
 def test_prompt_same_precedence_collision_disables_only_that_prompt_identity(tmp_path, monkeypatch) -> None:
     import loushang.harness.resources.loader as loader_module
-    from loushang.coding.loader import DefaultResourceLoader, PromptFragmentDescriptor
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.harness.resources.types import PromptFragmentDescriptor
 
     root = tmp_path / "project"
     root.mkdir()
@@ -769,7 +822,10 @@ def test_prompt_same_precedence_collision_disables_only_that_prompt_identity(tmp
 
 def test_skill_same_precedence_collision_disables_only_that_skill_identity(tmp_path, monkeypatch) -> None:
     import loushang.harness.resources.loader as loader_module
-    from loushang.coding.loader import DefaultResourceLoader, SkillDescriptor
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.harness.resources.types import SkillDescriptor
 
     root = tmp_path / "project"
     root.mkdir()
@@ -811,7 +867,10 @@ def test_skill_same_precedence_collision_disables_only_that_skill_identity(tmp_p
 
 def test_theme_same_precedence_collision_keeps_first_winner_and_records_loser(tmp_path, monkeypatch) -> None:
     import loushang.harness.resources.loader as loader_module
-    from loushang.coding.loader import DefaultResourceLoader, ThemeDescriptor
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.harness.resources.types import ThemeDescriptor
 
     root = tmp_path / "project"
     root.mkdir()
@@ -837,7 +896,9 @@ def test_theme_same_precedence_collision_keeps_first_winner_and_records_loser(tm
 
 def test_theme_discovery_skips_non_json_entries_and_records_diagnostic(tmp_path, monkeypatch) -> None:
     import loushang.harness.resources.loader as loader_module
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     root = tmp_path / "project"
     themes_dir = root / "themes"
@@ -859,7 +920,9 @@ def test_theme_discovery_skips_non_json_entries_and_records_diagnostic(tmp_path,
 
 def test_theme_discovery_reports_invalid_json_theme_diagnostic(tmp_path, monkeypatch) -> None:
     import loushang.harness.resources.loader as loader_module
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     root = tmp_path / "project"
     themes_dir = root / "themes"
@@ -881,7 +944,9 @@ def test_theme_discovery_reports_invalid_json_theme_diagnostic(tmp_path, monkeyp
 
 def test_theme_discovery_reports_non_object_theme_schema_diagnostic(tmp_path, monkeypatch) -> None:
     import loushang.harness.resources.loader as loader_module
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     root = tmp_path / "project"
     themes_dir = root / "themes"
@@ -903,7 +968,10 @@ def test_theme_discovery_reports_non_object_theme_schema_diagnostic(tmp_path, mo
 
 def test_extension_same_name_candidates_remain_active_after_precedence_sort(tmp_path, monkeypatch) -> None:
     import loushang.harness.resources.loader as loader_module
-    from loushang.coding.loader import DefaultResourceLoader, ExtensionDescriptor
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.harness.resources.types import ExtensionDescriptor
 
     root = tmp_path / "project"
     root.mkdir()
@@ -952,7 +1020,9 @@ def test_extension_same_name_candidates_remain_active_after_precedence_sort(tmp_
 
 
 def test_agents_md_stays_outside_named_prompt_collision_model(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     root = tmp_path / "project"
     prompts_dir = root / "prompts"
@@ -975,8 +1045,8 @@ def test_project_local_precedes_external_package_and_built_in() -> None:
 
 
 def test_same_tier_candidates_are_sorted_by_source_root_order_then_canonical_path() -> None:
-    from loushang.coding.loader import PromptFragmentDescriptor
     from loushang.harness.resources.loader import _candidate_sort_key
+    from loushang.harness.resources.types import PromptFragmentDescriptor
 
     a = PromptFragmentDescriptor(
         name="repo",
@@ -997,8 +1067,10 @@ def test_same_tier_candidates_are_sorted_by_source_root_order_then_canonical_pat
 
 
 def test_resource_loader_applies_package_source_filters(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
-    from loushang.coding.package import PackageSourceConfig
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.harness.resources.packages.source import PackageSourceConfig
 
     package_root = tmp_path / "packages" / "review-pack"
     (package_root / "prompts").mkdir(parents=True)
@@ -1025,8 +1097,10 @@ def test_resource_loader_applies_package_source_filters(tmp_path) -> None:
 
 
 def test_resource_loader_applies_package_filter_override_patterns(tmp_path) -> None:
-    from loushang.coding.loader import DefaultResourceLoader
-    from loushang.coding.package import PackageSourceConfig
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.harness.resources.packages.source import PackageSourceConfig
 
     package_root = tmp_path / "packages" / "review-pack"
     (package_root / "prompts").mkdir(parents=True)

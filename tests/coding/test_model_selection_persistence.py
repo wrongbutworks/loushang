@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from loushang.coding.types import ModelSelection
+from loushang.ai.model import ModelSelection
 
 
 class _SettingsManager:
@@ -117,7 +117,9 @@ def test_apply_model_selection_does_not_persist_when_runtime_switch_fails() -> N
     assert session.settings_manager.default_model_calls == []
 
 
-def test_apply_model_selection_reports_persistence_failure_after_runtime_switch() -> None:
+def test_apply_model_selection_reports_persistence_failure_after_runtime_switch() -> (
+    None
+):
     from loushang.coding.model_selection import apply_model_selection
 
     session = _Session()

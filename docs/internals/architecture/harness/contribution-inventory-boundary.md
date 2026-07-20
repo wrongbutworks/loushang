@@ -38,26 +38,25 @@ remediation.
 
 ## Coding Adapter
 
-`loushang.coding.extensions.contributions` remains a compatibility module.
 `surfaces_from_loaded_extension`, `contributions_from_loaded_extension`, and
-manifest/runtime projection now live in
-`loushang.harness.extensions.contributions`. Coding re-exports those functions
-and the Harness descriptor/registry classes without maintaining another
-implementation.
+manifest/runtime projection live in
+`loushang.harness.extensions.contributions`. The legacy
+`loushang.coding.extensions.contributions` module is removed; Coding imports
+the Harness owner directly.
 
 ## Compatibility
 
-Accepted Coding imports remain available:
+The Coding extension package may expose selected Harness values as part of its
+product API, but shared implementations are imported from their owners:
 
 ```python
 from loushang.coding.extensions import ExtensionInventory
 from loushang.coding.extensions import ExtensionSurfaceDescriptor
-from loushang.coding.extensions.contributions import ContributionRegistry
+from loushang.harness.extensions.contributions import ContributionRegistry
 ```
 
-These paths re-export the same harness-owned classes. Harness-owned classes
-keep their harness `__module__`; compatibility paths preserve imports, not a
-second implementation or Coding-owned class identity.
+Harness-owned classes keep their harness `__module__`; Coding does not define a
+second implementation or a legacy submodule import path.
 
 Existing constructor fields, registry methods, insertion ordering, duplicate
 visibility, exception attributes, and error text remain unchanged. No broad

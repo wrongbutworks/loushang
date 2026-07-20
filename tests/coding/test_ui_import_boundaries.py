@@ -1020,33 +1020,46 @@ def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
     assert "available_model_palette" not in model_adapter
 
 
-def test_shared_command_composition_keeps_coding_definitions_and_raw_adaptation_outside() -> None:
-    shared = Path("src/loushang/harness/command_composition.py").read_text(
+def test_shared_command_catalog_keeps_coding_definitions_and_raw_adaptation_outside() -> None:
+    shared = Path("src/loushang/harness/commands/catalog.py").read_text(
+        encoding="utf-8"
+    )
+    descriptors = Path("src/loushang/harness/commands/descriptors.py").read_text(
         encoding="utf-8"
     )
     coding = Path("src/loushang/coding/commands/catalog.py").read_text(
         encoding="utf-8"
     )
+    profile = Path("src/loushang/coding/commands/profile.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "loushang.coding" not in shared
+    assert "loushang.coding" not in descriptors
 
     for token in (
         "coding.ui.model",
         "coding.session.",
         "CommandEffectKind",
-        "invocation_name\") or name",
         "raw_command",
     ):
         assert token not in shared
+
+    for token in ("coding.ui.model", "coding.ui.config", "model_select", "terminal"):
+        assert token in profile
+
+    for token in ("coding.session.", "CommandEffectKind", "raw_command"):
         assert token in coding
 
-    for token in (
-        "MixedCommandCatalog",
-        "MixedCommandCatalogPorts",
-        "MixedCommandCatalogProfile",
-    ):
+    for token in ("MixedCommandCatalog", "MixedCommandCatalogPorts"):
         assert token in shared
         assert token in coding
+
+    assert "LocalCommandCatalogProfile" in shared
+    assert "LocalCommandCatalogProfile" in profile
+
+    for token in ("CommandCatalog", "CommandDescriptor", "split_slash_command"):
+        assert token in descriptors
 
 
 def test_shared_model_choice_catalog_keeps_session_and_endpoint_acquisition_outside() -> None:

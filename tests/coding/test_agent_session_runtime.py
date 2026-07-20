@@ -298,7 +298,7 @@ async def test_runtime_lists_session_summaries(tmp_path) -> None:
 @_async_test
 async def test_runtime_finds_session_summaries(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.agent_transcript import SessionQuery
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -384,9 +384,9 @@ async def test_runtime_delete_session_refuses_current_session(tmp_path) -> None:
 async def test_runtime_rename_session_records_failure_diagnostic(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -427,9 +427,9 @@ async def test_runtime_rename_session_records_failure_diagnostic(tmp_path) -> No
 async def test_runtime_delete_session_records_failure_diagnostic(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -502,7 +502,7 @@ async def test_runtime_finds_all_session_summaries_across_session_dirs(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.agent_transcript import SessionQuery
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -530,7 +530,7 @@ async def test_runtime_finds_all_session_summaries_across_session_dirs(
 @_async_test
 async def test_runtime_exposes_indexed_session_summary_facades(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.agent_transcript import SessionQuery
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -790,10 +790,14 @@ async def test_runtime_fork_session_before_user_message_returns_selected_text(
     )
     third_id = await session.session_manager.append_message(_user_message("tail"))
 
-    forked, selected_text = await runtime.fork_session_with_result(
-        third_id, position="before"
+    fork_result = await runtime.fork_session_operation(
+        third_id,
+        position="before",
     )
+    forked = fork_result.current
+    selected_text = fork_result.payload
 
+    assert forked is not None
     assert runtime.get_current_session() is forked
     assert selected_text == "tail"
     assert [entry.record_id for entry in forked.session_manager.get_branch()] == [
@@ -820,7 +824,7 @@ async def test_runtime_fork_before_requires_user_message(tmp_path) -> None:
     )
 
     with pytest.raises(ValueError, match="requires a user message entry"):
-        await runtime.fork_session_with_result(assistant_id, position="before")
+        await runtime.fork_session_operation(assistant_id, position="before")
 
 
 @_async_test
@@ -888,7 +892,8 @@ async def test_runtime_new_session_operation_runs_setup_and_with_session(
                 "withSession",
                 (
                     ctx.cwd,
-                    ctx.session_manager is runtime.get_current_session().session_manager,
+                    ctx.session_manager
+                    is runtime.get_current_session().session_manager,
                 ),
             )
         )
@@ -1002,9 +1007,9 @@ async def test_runtime_replacement_callback_failures_keep_replacement_and_record
 ) -> None:
     import pytest
 
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -1050,9 +1055,7 @@ async def test_runtime_replacement_callback_failures_keep_replacement_and_record
         raise RuntimeError("withSession boom")
 
     with pytest.raises(RuntimeError, match="withSession boom"):
-        await runtime.restore_session_operation(
-            target_file, with_session=_with_session
-        )
+        await runtime.restore_session_operation(target_file, with_session=_with_session)
 
     current = runtime.get_current_session()
     records = diagnostics_service.get_diagnostics(
@@ -1348,9 +1351,9 @@ async def test_runtime_import_from_jsonl_cleans_copied_file_when_stored_cwd_is_m
 async def test_runtime_import_from_jsonl_records_failure_diagnostic(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.coding.runtime import AgentSessionRuntime, MissingSessionCwdError
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -1445,9 +1448,9 @@ async def test_runtime_restore_rejects_session_when_stored_cwd_is_missing(
 async def test_runtime_restore_session_records_failure_diagnostic(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.coding.runtime import AgentSessionRuntime, MissingSessionCwdError
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -1671,11 +1674,11 @@ async def test_runtime_import_from_jsonl_records_before_switch_failure_and_flush
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     project_root = tmp_path / "project"
     import_dir = tmp_path / "imports"
@@ -2443,7 +2446,6 @@ async def test_extension_command_replacement_callbacks_require_async_callables(
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.extensions import (
         ExtensionRunner,
         LoadedExtension,
@@ -2452,6 +2454,7 @@ async def test_extension_command_replacement_callbacks_require_async_callables(
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     async def _new_command(args: str, ctx):
         del args
@@ -2504,7 +2507,7 @@ async def test_extension_command_replacement_callbacks_require_async_callables(
 @_async_test
 async def test_runtime_exposes_diagnostics_snapshot(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime, create_services
-    from loushang.coding.diagnostics import DiagnosticsQuery
+    from loushang.harness.diagnostics import DiagnosticsQuery
 
     services = create_services()
     services.diagnostics_service.record(
@@ -2550,7 +2553,7 @@ async def test_runtime_exposes_diagnostics_snapshot(tmp_path) -> None:
 @_async_test
 async def test_runtime_exposes_current_session_diagnostics(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime, create_services
-    from loushang.coding.diagnostics import DiagnosticsQuery
+    from loushang.harness.diagnostics import DiagnosticsQuery
 
     services = create_services()
     runtime = create_agent_session_runtime(
@@ -2722,11 +2725,11 @@ async def test_runtime_syncs_extension_lifecycle_failure_diagnostics(tmp_path) -
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     diagnostics_service = DiagnosticsService()
 
@@ -3090,11 +3093,11 @@ async def test_runtime_replacement_records_shutdown_emit_failure_and_keeps_repla
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     class BrokenShutdownRunner(ExtensionRunner):
         async def emit_session_shutdown(self, event) -> None:
@@ -3237,10 +3240,10 @@ async def test_runtime_replacements_are_serialized(tmp_path) -> None:
 async def test_runtime_dispose_records_session_index_flush_failure(
     tmp_path, monkeypatch
 ) -> None:
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.store import SessionManager
     from loushang.harness.agent_transcript import AgentTranscriptSessionCatalog
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -3398,7 +3401,9 @@ async def test_runtime_restore_session_rejects_ambiguous_session_id_prefix(
     import pytest
 
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.store.file_codec import write_session_file
+    from loushang.harness.agent_transcript.file_store import (
+        write_agent_transcript_file as write_session_file,
+    )
     from loushang.harness.conversation import ConversationHeader
 
     project = tmp_path / "project"

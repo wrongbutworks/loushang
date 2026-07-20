@@ -2,7 +2,13 @@
 
 ## Status
 
-Accepted
+Superseded by the zero-compatibility resource facade cutover.
+
+The package/plugin distinction and CLI/RPC wire semantics remain valid, but
+the former `coding.package.*` and `coding.plugin.*` paths were removed. Generic
+package and plugin APIs are now imported from `loushang.harness.resources`;
+Coding binds product defaults in `coding.resource_runtime` and retains its
+wire projection in `coding.package_projection`.
 
 ## Context
 
@@ -184,7 +190,7 @@ for the user's project.
   plugins
 - `list_plugins()`: clear; it returns plugin manifest/source projection
 
-### Compatibility names
+### Historical Compatibility Names
 
 The package lifecycle code now has canonical names under
 `loushang.coding.package.*`. These older names remain as compatibility aliases
@@ -250,7 +256,7 @@ Do not rename public-ish CLI/RPC/session methods casually. Prefer a staged path:
 - `rpc`
 - `cli`
 
-## Follow-up
+## Superseded Follow-up
 
 - Evaluate when to deprecate `loushang.coding.plugin.materializer` and
   `loushang.coding.plugin.package_projection` imports.

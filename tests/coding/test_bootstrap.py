@@ -553,8 +553,8 @@ def test_audit_cwd_bound_services_reports_project_settings_mismatch(tmp_path) ->
 
 def test_audit_cwd_bound_services_accepts_matching_resource_bundle(tmp_path) -> None:
     from loushang.coding.bootstrap import audit_cwd_bound_services, create_services
-    from loushang.coding.loader import ResourceBundle
     from loushang.coding.store import SessionManager
+    from loushang.harness.resources.types import ResourceBundle
 
     project = tmp_path / "project"
     project.mkdir()
@@ -737,14 +737,16 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import (
-        DefaultResourceLoader,
-        ExtensionDescriptor,
-        ResourceBundle,
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.store import SessionManager
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.resources.types import (
+        ExtensionDescriptor,
+        ResourceBundle,
     )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -827,14 +829,16 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import (
-        DefaultResourceLoader,
-        ExtensionDescriptor,
-        ResourceBundle,
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.store import SessionManager
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.resources.types import (
+        ExtensionDescriptor,
+        ResourceBundle,
     )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -1814,7 +1818,9 @@ def test_create_agent_session_passes_resource_loader_into_agent_session(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
     from loushang.coding.store import SessionManager
 
     class _RecordingLoader(DefaultResourceLoader):
@@ -2009,13 +2015,15 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
     from pathlib import Path
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import (
-        DefaultResourceLoader,
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.coding.store import SessionManager
+    from loushang.harness.resources.types import (
         ExtensionDescriptor,
         PromptFragmentDescriptor,
         ResourceBundle,
     )
-    from loushang.coding.store import SessionManager
     from loushang.harness.tools.workspace import ToolDefinition
 
     async def _execute_tool(
@@ -2108,12 +2116,14 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import (
-        DefaultResourceLoader,
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.coding.store import SessionManager
+    from loushang.harness.resources.types import (
         ExtensionDescriptor,
         ResourceBundle,
     )
-    from loushang.coding.store import SessionManager
     from loushang.harness.tools.workspace import ToolDefinition
 
     extension_file = tmp_path / "extensions" / "guard.py"
@@ -2249,12 +2259,14 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import (
-        DefaultResourceLoader,
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
+    from loushang.coding.store import SessionManager
+    from loushang.harness.resources.types import (
         ExtensionDescriptor,
         ResourceBundle,
     )
-    from loushang.coding.store import SessionManager
     from loushang.harness.tools.workspace import ToolDefinition
 
     extension_file = tmp_path / "extensions" / "conflict.py"
@@ -2395,7 +2407,7 @@ def test_register_extension_tools_uses_harness_resolver_for_dry_run_conflicts(
     monkeypatch,
 ) -> None:
     import loushang.coding.bootstrap as bootstrap
-    from loushang.coding.loader import ResourceBundle
+    from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.contribution import resolve_tool_contributions
     from loushang.harness.tools.workspace import ToolDefinition
     from loushang.harness.tools.workspace.registry import (
@@ -2465,7 +2477,7 @@ def test_register_extension_tools_registers_resolver_output_only(
     monkeypatch,
 ) -> None:
     import loushang.coding.bootstrap as bootstrap
-    from loushang.coding.loader import ResourceBundle
+    from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.contribution import ToolResolutionResult
     from loushang.harness.tools.workspace import ToolDefinition
     from loushang.harness.tools.workspace.registry import (
@@ -2513,7 +2525,7 @@ def test_register_extension_tools_registers_resolver_output_only(
 
 def test_register_extension_tools_preserves_resolver_source_info(tmp_path) -> None:
     import loushang.coding.bootstrap as bootstrap
-    from loushang.coding.loader import ResourceBundle
+    from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace import ToolDefinition
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -2562,9 +2574,9 @@ def test_create_agent_session_passes_compaction_settings_to_session(
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import CompactionSettings
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import CompactionResult
 
     services = create_services()
     services.settings_manager.update_settings(
@@ -2606,7 +2618,10 @@ def test_create_agent_session_passes_compaction_settings_to_session(
             tokens_before=preparation.tokens_before,
         )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
 
     result = asyncio.run(session.compact())
 
@@ -2689,12 +2704,12 @@ def test_create_agent_session_records_resource_loading_diagnostics(tmp_path) -> 
     from pathlib import Path
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.loader import (
-        DefaultResourceLoader,
-        ResourceBundle,
-        ResourceDiagnostic,
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.store import SessionManager
+    from loushang.harness.resources.diagnostics import ResourceDiagnostic
+    from loushang.harness.resources.types import ResourceBundle
 
     class _Loader(DefaultResourceLoader):
         def discover_resources(self, cwd):
@@ -2819,7 +2834,9 @@ def test_create_agent_session_records_executable_source_identity_diagnostic(
 
 def test_create_agent_session_records_package_lockfile_diagnostics(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.package import PackageMaterializer
+    from loushang.coding.resource_runtime import (
+        CodingPackageMaterializer as PackageMaterializer,
+    )
     from loushang.coding.store import SessionManager
 
     lockfile = tmp_path / "package-lock.json"

@@ -1,16 +1,23 @@
-from loushang.coding.prompt.assembler import assemble_prompt, assemble_system_prompt
+from loushang.coding.prompt.assembler import (
+    PromptAssembly,
+    assemble_prompt,
+    assemble_system_prompt,
+)
+from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
 from loushang.coding.prompt.preflight import (
     PromptPreflightResult,
     preflight_user_input,
     preflight_user_input_async,
 )
-from loushang.coding.prompt.templates import (
+from loushang.harness.capabilities.prompt import (
     parse_prompt_template_args,
     prompt_template_has_args,
     substitute_prompt_template_args,
 )
 
 __all__ = [
+    "DEFAULT_CODING_SYSTEM_PROMPT",
+    "PromptAssembly",
     "PromptPreflightResult",
     "assemble_prompt",
     "assemble_system_prompt",

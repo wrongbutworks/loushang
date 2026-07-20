@@ -26,10 +26,10 @@ from loushang.ai.types import AssistantMessage, TextPart, ToolCall, Usage, UserM
 from loushang.coding import (
     AgentSession,
     AgentSessionRuntime,
-    ToolDefinition,
     create_agent_session_runtime,
     create_services,
 )
+from loushang.harness.tools.core import ToolDefinition
 
 ENV_EXAMPLES_MODEL_CATALOG = "LOUSHANG_EXAMPLES_MODEL_CATALOG"
 ENV_EXAMPLES_SESSION_DIR = "LOUSHANG_EXAMPLES_SESSION_DIR"

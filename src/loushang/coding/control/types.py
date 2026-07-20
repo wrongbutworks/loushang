@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Literal, TypedDict
 
 from loushang.agent import ThinkingLevel
-from loushang.coding.types import ModelSelection
+from loushang.ai.model import ModelSelection
 from loushang.harness.resources.packages.source import PackageSourceConfig
 
 QueueMode = Literal["all", "one-at-a-time"]
@@ -140,7 +140,9 @@ class ControlConfig:
     warnings: WarningSettings = field(default_factory=WarningSettings)
     method: MethodSettings = field(default_factory=MethodSettings)
     tools: ToolSettings = field(default_factory=ToolSettings)
-    statusline: StatusLineControlSettings = field(default_factory=StatusLineControlSettings)
+    statusline: StatusLineControlSettings = field(
+        default_factory=StatusLineControlSettings
+    )
     session_dir: str | None = None
     resource_roots: tuple[str, ...] = ()
     package_roots: tuple[str, ...] = ()
@@ -148,6 +150,7 @@ class ControlConfig:
     plugin_sources: tuple[str, ...] = ()
     disabled_skills: tuple[str, ...] = ()
     disabled_plugins: tuple[str, ...] = ()
+
 
 __all__ = [
     "BranchSummarySettings",

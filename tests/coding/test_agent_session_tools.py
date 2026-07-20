@@ -136,11 +136,11 @@ def test_agent_session_tracks_active_tool_names_and_runtime_tools(tmp_path) -> N
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -212,11 +212,11 @@ def test_agent_session_builtin_tools_command_can_restore_active_tools(tmp_path) 
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -296,11 +296,11 @@ def test_agent_session_exposes_standard_tool_surfaces(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -376,11 +376,11 @@ def test_agent_session_allowed_tool_names_filter_visible_and_active_tools(
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -446,11 +446,11 @@ def test_agent_session_extension_context_register_tool_refreshes_active_tools_an
     from loushang.agent import Agent
     from loushang.coding import SessionManager
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace import ToolDefinition
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -777,11 +777,11 @@ def test_agent_session_tracks_multiple_builtin_tool_names(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -844,11 +844,11 @@ def test_agent_session_tracks_mutation_builtin_tool_names(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -956,9 +956,9 @@ def test_session_active_tools_still_materialize_after_substrate_migration(
 def test_bash_tool_forwards_exec_updates_and_preview_metadata(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecOutputChunk, ExecRequest, ExecResult
     from loushang.coding.policy import PolicyEngine
     from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.workspace.exec import ExecOutputChunk, ExecRequest, ExecResult
 
     seen_updates: list[AgentToolResult[dict[str, object]]] = []
 
@@ -1019,9 +1019,9 @@ def test_bash_tool_forwards_exec_updates_and_preview_metadata(tmp_path) -> None:
 def test_bash_tool_details_include_pi_style_truncation_schema(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecRequest, ExecResult
     from loushang.coding.policy import PolicyEngine
     from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.workspace.exec import ExecRequest, ExecResult
 
     stdout_artifact_path = str(tmp_path / "stdout.log")
 
@@ -1062,9 +1062,9 @@ def test_bash_tool_full_output_path_uses_stderr_artifact_when_stdout_is_present(
 ) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecRequest, ExecResult
     from loushang.coding.policy import PolicyEngine
     from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.workspace.exec import ExecRequest, ExecResult
 
     stderr_artifact_path = str(tmp_path / "stderr.log")
 
@@ -1103,17 +1103,17 @@ def test_agent_session_execute_bash_records_command_execution(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.exec import ExecOutputChunk, ExecResult
-    from loushang.coding.policy.types import PolicyDecision
     from loushang.coding.session import AgentSession
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.agent_transcript import COMMAND_EXECUTION_KIND
     from loushang.harness.conversation import CommandExecutionRecord
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
+    from loushang.harness.workspace.exec import ExecOutputChunk, ExecResult
 
     class AllowingPolicyEngine:
         def evaluate_action(self, *, tool_name: str, exec_request):
@@ -1196,17 +1196,17 @@ def test_agent_session_abort_bash_cancels_active_execution_and_records_command(
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.exec import ExecOutputChunk, ExecResult
-    from loushang.coding.policy.types import PolicyDecision
     from loushang.coding.session import AgentSession
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.agent_transcript import COMMAND_EXECUTION_KIND
     from loushang.harness.conversation import CommandExecutionRecord
+    from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
+    from loushang.harness.workspace.exec import ExecOutputChunk, ExecResult
 
     class AllowingPolicyEngine:
         def evaluate_action(self, *, tool_name: str, exec_request):

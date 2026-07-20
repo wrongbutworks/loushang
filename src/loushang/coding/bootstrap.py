@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from loushang.agent import Agent, AgentTool, StreamFn, ThinkingLevel
-from loushang.ai.model import Model
+from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.types import Message, TextPart
 from loushang.coding.capability_plan import resolve_coding_capability_profile
@@ -20,21 +20,25 @@ from loushang.coding.control.settings_store import (
     default_project_settings_path,
 )
 from loushang.coding.extensions import ExtensionRunner
-from loushang.coding.loader import DefaultResourceLoader
-from loushang.coding.package import GitPackageMaterializerBackend, PackageMaterializer
 from loushang.coding.policy import InteractiveApprovalResolver
-from loushang.coding.prompt import assemble_prompt
+from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
+from loushang.coding.resource_runtime import (
+    CodingPackageMaterializer as PackageMaterializer,
+)
+from loushang.coding.resource_runtime import (
+    CodingResourceLoader as DefaultResourceLoader,
+)
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession
 from loushang.coding.source_info import executable_source_identity
 from loushang.coding.store import SessionManager
-from loushang.coding.types import ModelSelection
 from loushang.harness.agent_transcript import context_item_to_model_message
 from loushang.harness.capabilities import bind_capability_composition_runtime
 from loushang.harness.capabilities.packs import (
     CapabilityPack,
     CapabilityPackComposer,
 )
+from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.config import (
     ConfigActivationRuntime,
     ConfigActivationStep,
@@ -45,6 +49,9 @@ from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.resources.activation import SkillActivationRuntime
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.layout import resolve_user_resource_roots
+from loushang.harness.resources.packages.materializer import (
+    GitPackageMaterializerBackend,
+)
 from loushang.harness.resources.packages.roots import resolve_package_resource_roots
 from loushang.harness.resources.packages.source_resolver import (
     PackageSourceResolver,
@@ -351,6 +358,8 @@ def create_agent_session(
             *(append_system_prompt or ()),
         ]
         base_prompt = _append_system_prompt_fragments(base_prompt, append_fragments)
+        if not base_prompt.strip():
+            base_prompt = DEFAULT_CODING_SYSTEM_PROMPT
         prompt_assembly = assemble_prompt(
             base_prompt=base_prompt,
             resource_bundle=resource_bundle,

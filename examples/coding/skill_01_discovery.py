@@ -16,7 +16,7 @@ from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import Capabilities, Model
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.coding import create_agent_session_runtime
-from loushang.coding.skill import SkillLoader
+from loushang.coding.resource_runtime import CodingSkillLoader as SkillLoader
 
 SKILL_REVIEW = """\
 ---

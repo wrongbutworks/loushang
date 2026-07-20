@@ -94,7 +94,7 @@ def test_build_plain_coding_tui_app_wires_prompt_handler_without_legacy_status_a
 
 
 def test_build_plain_coding_tui_app_wires_model_palette_chooser() -> None:
-    from loushang.coding.types import ModelSelection
+    from loushang.ai.model import ModelSelection
     from loushang.coding.ui.plain_app import build_plain_coding_tui_app
     from loushang.tui import CommandPalette
 

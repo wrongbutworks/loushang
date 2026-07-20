@@ -74,8 +74,8 @@ resolver mechanics:
 
 `ApprovalRequest` may carry product policy context only as opaque metadata.
 For example, a current `policy_decision` field must become `object | None` or
-a neutral metadata mapping. Harness must not import
-`loushang.coding.policy.types.PolicyDecision`.
+a neutral metadata mapping. Harness must not import Coding policy modules; the
+neutral value is owned by `loushang.harness.policy.PolicyDecision`.
 
 Approval contracts should fail fast on invalid neutral values. In Slice 1,
 `ApprovalDecision` validates its disposition, and `resolve_approval` validates

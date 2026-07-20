@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
-from loushang.coding.types import ModelSelection
+from loushang.ai.model import ModelSelection
 
 
 class _Session:

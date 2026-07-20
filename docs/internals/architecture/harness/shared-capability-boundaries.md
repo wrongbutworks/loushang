@@ -194,7 +194,8 @@ Product adapters own:
 - product built-in package content and registration;
 - trust, permissions, package filters, and remote-source policy;
 - product-specific resource validation;
-- resource injection into prompts or tools.
+- Product-exclusive resource injection into prompts or tools; standard prompt,
+  skill, and context projection remains a Harness capability.
 
 If `loushang.resource.frontmatter` becomes part of the shared substrate, migrate
 it intentionally into `loushang.harness.resources.frontmatter` rather than
@@ -202,27 +203,33 @@ expanding `loushang.resource` into a broad top-level subsystem.
 
 ## Prompt
 
-Harness may own prompt assembly contracts and deterministic mechanisms:
+Harness may own prompt assembly contracts, deterministic mechanisms, and
+standard concrete behavior:
 
 - prepared prompt value types;
 - prompt section records;
 - trace/diagnostic records;
 - ordered composition;
-- injectable template argument parsing and placeholder expansion.
+- injectable template argument parsing and placeholder expansion;
+- a neutral default system prompt;
+- standard project-context, prompt-fragment, skill, tool, and runtime-footer
+  projection;
+- standard prompt/skill resource preflight and diagnostics.
 
 Product adapters own:
 
-- system prompt text;
-- product instructions;
-- selection of standard/compatibility instruction conventions;
-- projection, salience, and ordering of loaded instruction resources;
-- template content and selection;
-- section ordering;
-- domain-specific preflight.
+- Product-exclusive system prompt text and instructions;
+- overrides to standard/compatibility instruction conventions;
+- domain-only resource projection, salience, or ordering;
+- Product-owned template content and selection;
+- domain-specific sections and preflight beyond the standard resource commands.
 
-Prompt defaults are product behavior. Neutral section composition and template
-expansion live in `loushang.harness.capabilities.prompt`; Product adapters still
-choose every section, its content, and its order.
+An overridable default is not Product-owned merely because it makes a choice.
+Neutral section composition and template expansion live in
+`loushang.harness.capabilities.prompt`; the standard resource-aware assembler
+and preflight live beside it in `prompt_assembly` and `prompt_preflight`.
+Products inject a domain prompt or override sections only where their behavior
+genuinely differs.
 
 ## Commands
 
@@ -239,7 +246,7 @@ Product adapters own:
 - source precedence values and activation choices;
 - concrete handlers, resource projection, diagnostics, routing, and UI.
 
-`loushang.harness.capabilities.commands` provides the neutral mechanism.
+`loushang.harness.commands` provides the neutral mechanism.
 Products decide what a command means and what effects its handler may perform.
 
 ## Context

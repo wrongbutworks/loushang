@@ -6,11 +6,6 @@ from typing import cast
 
 from loushang.coding.commands import CommandSourceInfo, SessionCommandDescriptor
 from loushang.coding.extensions import ExtensionRunner
-from loushang.coding.prompt import (
-    PromptPreflightResult,
-    preflight_user_input,
-    preflight_user_input_async,
-)
 from loushang.coding.session.builtin_commands import (
     BuiltinCommandBackend,
     execute_builtin_command_async,
@@ -23,12 +18,17 @@ from loushang.coding.source_info import (
     source_info_from_resource_descriptor,
 )
 from loushang.coding.store import SessionManager
-from loushang.harness.capabilities.commands import (
+from loushang.harness.capabilities.packs import CapabilityPackComposer
+from loushang.harness.capabilities.prompt_preflight import (
+    PromptPreflightResult,
+    preflight_user_input,
+    preflight_user_input_async,
+)
+from loushang.harness.commands import (
     CommandDispatchOutcome,
     ParsedSlashCommand,
     split_slash_command,
 )
-from loushang.harness.capabilities.packs import CapabilityPackComposer
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.extensions.types import ResolvedCommand
 from loushang.harness.resources.diagnostics import ResourceDiagnostic

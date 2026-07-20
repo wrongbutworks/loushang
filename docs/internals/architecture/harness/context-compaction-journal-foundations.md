@@ -16,9 +16,12 @@ The follow-on
 transcript repository, rebuildable projection index, structural salience, and
 summary-profile mechanics. The later
 [Agent Transcript Profile](agent-transcript-profile-boundary.md) adds the
-optional common Agent schema and codecs; domain-specific Product payloads,
-exact prompt text, AI calls, artifact semantics, and storage policy remain
-outside Harness.
+optional common Agent schema and codecs. The subsequent
+[Agent Transcript Maintenance Runtime](agent-transcript-maintenance-boundary.md)
+also moves standard summary message serialization and AI completion execution
+into that optional profile. Domain-specific payloads, exact prompt text,
+model/credential selection, artifact decoration, and storage policy remain
+Product-owned.
 
 The implementation should use one semantic task branch,
 `harness/context-compaction-journal`, with three delivery batches for
@@ -84,8 +87,9 @@ closes the in-memory checkpoint/replay and specialized cut-planner gaps:
 opaque-record turn grouping, split-turn/non-cut planning, previous-summary
 accounting, metadata cut groups, repository/catalog/query, and replay now live
 in Harness. Journal-offset checkpoints remain deferred. The optional Agent
-profile owns common codecs; domain codecs, prompts, model calls, and artifact
-semantics remain Product-owned.
+profile owns common codecs and standard summary execution; domain codecs,
+prompt content, model/credential selection, and artifact semantics remain
+Product-owned.
 
 ## Motivation And Existing Evidence
 

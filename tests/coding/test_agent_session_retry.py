@@ -351,9 +351,9 @@ def test_agent_session_retry_max_retries_emits_final_failure(
 ) -> None:
     from loushang.agent import AbortSignal, Agent
     from loushang.coding.control import ControlConfig, RetrySettings, SettingsManager
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -442,9 +442,9 @@ def test_agent_session_records_non_retryable_assistant_error_as_provider_diagnos
     tmp_path,
 ) -> None:
     from loushang.agent import AbortSignal, Agent
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)

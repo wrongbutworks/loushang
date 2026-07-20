@@ -23,7 +23,7 @@ EXTENSION_SOURCE = """
 from pathlib import Path
 
 from loushang.coding.extensions import ExtensionResourceContribution
-from loushang.coding.loader import PromptFragmentDescriptor
+from loushang.harness.resources.types import PromptFragmentDescriptor
 
 
 def register(api):

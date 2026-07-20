@@ -4,7 +4,7 @@ from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Literal
 
-from loushang.coding.types import ModelSelection
+from loushang.ai.model import ModelSelection
 
 
 class RecordingTerminalContext:

@@ -5,10 +5,17 @@ import subprocess
 from pathlib import Path
 
 from loushang.coding.control import ControlConfig, SettingsManager
-from loushang.coding.loader import DefaultResourceLoader
-from loushang.coding.package import PackageMaterializer, PythonPackageInstallerBackend
+from loushang.coding.resource_runtime import (
+    CodingPackageMaterializer as PackageMaterializer,
+)
+from loushang.coding.resource_runtime import (
+    CodingResourceLoader as DefaultResourceLoader,
+)
 from loushang.coding.session.package_controller import PackageController
 from loushang.coding.store import SessionManager
+from loushang.harness.resources.packages.materializer import (
+    PythonPackageInstallerBackend,
+)
 
 
 def test_package_controller_installs_local_package_updates_settings_and_refreshes_once(

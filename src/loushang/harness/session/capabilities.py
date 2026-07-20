@@ -16,13 +16,6 @@ from typing import Any, Generic, Protocol, TypeVar
 
 from loushang.agent import AbortController
 from loushang.agent.types import AgentTool, ensure_agent_tool, is_agent_tool_like
-from loushang.harness.capabilities.commands import (
-    CommandHandler,
-    CommandHandlerBinding,
-    ParsedSlashCommand,
-    dispatch_command_async,
-    normalize_command_name,
-)
 from loushang.harness.capabilities.packs import (
     CapabilityPack,
     CapabilityPackComposer,
@@ -31,6 +24,13 @@ from loushang.harness.capabilities.packs import (
 from loushang.harness.capabilities.tools import (
     ToolActivationChange,
     ToolActivationCoordinator,
+)
+from loushang.harness.commands import (
+    CommandHandler,
+    CommandHandlerBinding,
+    ParsedSlashCommand,
+    dispatch_command_async,
+    normalize_command_name,
 )
 from loushang.harness.conversation import CommandExecutionRecord
 from loushang.harness.tools.contribution import (

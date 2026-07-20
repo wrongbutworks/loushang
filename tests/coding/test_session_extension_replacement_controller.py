@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 
 import pytest
 
 from loushang.coding.session.extension_replacement_controller import (
     ExtensionReplacementController,
 )
+from loushang.harness.runtime import SessionOperationResult
 
 
 class Session:
@@ -24,21 +26,67 @@ class RuntimeHost:
         self.after = after
         self.calls: list[tuple[str, object]] = []
 
-    def get_current_session(self) -> Session:
-        return self.current
-
-    async def fork_session_with_result(self, entry_id: str, *, position: str = "at"):
-        self.calls.append(("fork_with_result", (entry_id, position)))
+    async def fork_session_operation(
+        self,
+        entry_id: str,
+        *,
+        position: str = "at",
+        with_session=None,
+    ) -> SessionOperationResult[Session, str | None]:
+        self.calls.append(("fork_operation", (entry_id, position)))
+        previous = self.current
         self.current = self.after
-        return self.after, "selected text"
+        await _run_callback(with_session, self.after.create_replaced_session_context())
+        return SessionOperationResult(
+            previous=previous,
+            current=self.after,
+            payload="selected text",
+            cancelled=False,
+        )
 
-    async def new_session(self, *, parent_session: str | None = None) -> None:
-        self.calls.append(("new_session", parent_session))
+    async def new_session_operation(
+        self,
+        *,
+        parent_session: str | None = None,
+        setup=None,
+        with_session=None,
+    ) -> SessionOperationResult[Session, None]:
+        self.calls.append(("new_operation", parent_session))
+        previous = self.current
         self.current = self.after
+        await _run_callback(setup, self.after.session_manager)
+        await _run_callback(with_session, self.after.create_replaced_session_context())
+        return SessionOperationResult(
+            previous=previous,
+            current=self.after,
+            payload=None,
+            cancelled=False,
+        )
 
-    async def switch_session(self, session_path: str) -> None:
-        self.calls.append(("switch_session", session_path))
+    async def restore_session_operation(
+        self,
+        session_path: str,
+        *,
+        with_session=None,
+    ) -> SessionOperationResult[Session, None]:
+        self.calls.append(("restore_operation", session_path))
+        previous = self.current
         self.current = self.after
+        await _run_callback(with_session, self.after.create_replaced_session_context())
+        return SessionOperationResult(
+            previous=previous,
+            current=self.after,
+            payload=None,
+            cancelled=False,
+        )
+
+
+async def _run_callback(callback, argument) -> None:
+    if callback is None:
+        return
+    if not inspect.iscoroutinefunction(callback):
+        raise TypeError("withSession callback must be an async callable.")
+    await callback(argument)
 
 
 class CommandContext:
@@ -66,18 +114,26 @@ class Runner:
 class ReplacedSession:
     def __init__(self, runner: Runner | None = None) -> None:
         self.extension_runner = runner
-        self.session_manager = type("SessionManager", (), {"get_cwd": lambda self: "/tmp/project"})()
+        self.session_manager = type(
+            "SessionManager", (), {"get_cwd": lambda self: "/tmp/project"}
+        )()
         self.messages: list[tuple[object, object | None]] = []
         self.user_messages: list[tuple[object, object | None]] = []
 
-    async def _send_message_from_extension(self, message: object, options: object | None = None) -> None:
+    async def _send_message_from_extension(
+        self, message: object, options: object | None = None
+    ) -> None:
         self.messages.append((message, options))
 
-    async def _send_user_message_from_extension_async(self, content: object, options: object | None = None) -> None:
+    async def _send_user_message_from_extension_async(
+        self, content: object, options: object | None = None
+    ) -> None:
         self.user_messages.append((content, options))
 
 
-def test_extension_replacement_controller_forks_and_runs_with_session_callback() -> None:
+def test_extension_replacement_controller_forks_and_runs_with_session_callback() -> (
+    None
+):
     before = Session("before")
     after = Session("after")
     host = RuntimeHost(before, after)
@@ -88,18 +144,22 @@ def test_extension_replacement_controller_forks_and_runs_with_session_callback()
 
     controller = ExtensionReplacementController(get_runtime_host=lambda: host)
 
-    result = asyncio.run(controller.fork("entry-1", {"position": "before", "withSession": _with_session}))
+    result = asyncio.run(
+        controller.fork("entry-1", {"position": "before", "withSession": _with_session})
+    )
 
     assert result == {
         "cancelled": False,
         "selected_text": "selected text",
         "selectedText": "selected text",
     }
-    assert host.calls == [("fork_with_result", ("entry-1", "before"))]
+    assert host.calls == [("fork_operation", ("entry-1", "before"))]
     assert events == [("withSession", "context:after")]
 
 
-def test_extension_replacement_controller_new_session_runs_setup_before_with_session() -> None:
+def test_extension_replacement_controller_new_session_runs_setup_before_with_session() -> (
+    None
+):
     before = Session("before")
     after = Session("after")
     host = RuntimeHost(before, after)
@@ -124,27 +184,39 @@ def test_extension_replacement_controller_new_session_runs_setup_before_with_ses
     )
 
     assert result == {"cancelled": False}
-    assert host.calls == [("new_session", "parent.jsonl")]
+    assert host.calls == [("new_operation", "parent.jsonl")]
     assert events == [("setup", "manager:after"), ("withSession", "context:after")]
 
 
-def test_extension_replacement_controller_reports_cancelled_without_runtime_host() -> None:
+def test_extension_replacement_controller_reports_cancelled_without_runtime_host() -> (
+    None
+):
     controller = ExtensionReplacementController(get_runtime_host=lambda: None)
 
     assert asyncio.run(controller.fork("entry-1")) == {"cancelled": True}
     assert asyncio.run(controller.new_session()) == {"cancelled": True}
-    assert asyncio.run(controller.switch_session("/tmp/session.jsonl")) == {"cancelled": True}
+    assert asyncio.run(controller.switch_session("/tmp/session.jsonl")) == {
+        "cancelled": True
+    }
 
 
-def test_extension_replacement_controller_validates_callbacks_and_fork_position() -> None:
+def test_extension_replacement_controller_validates_callbacks_and_fork_position() -> (
+    None
+):
     host = RuntimeHost(Session("before"), Session("after"))
     controller = ExtensionReplacementController(get_runtime_host=lambda: host)
 
     with pytest.raises(ValueError, match="Unsupported fork position"):
         asyncio.run(controller.fork("entry-1", {"position": "after"}))
 
-    with pytest.raises(TypeError, match="withSession callback must be an async callable"):
-        asyncio.run(controller.switch_session("/tmp/session.jsonl", {"withSession": lambda context: None}))
+    with pytest.raises(
+        TypeError, match="withSession callback must be an async callable"
+    ):
+        asyncio.run(
+            controller.switch_session(
+                "/tmp/session.jsonl", {"withSession": lambda context: None}
+            )
+        )
 
 
 def test_extension_replacement_controller_creates_replaced_command_context() -> None:
@@ -173,7 +245,9 @@ def test_extension_replacement_controller_creates_replaced_command_context() -> 
     ]
 
 
-def test_extension_replacement_controller_replaced_context_send_methods_obey_stale_guard() -> None:
+def test_extension_replacement_controller_replaced_context_send_methods_obey_stale_guard() -> (
+    None
+):
     runner = Runner()
     session = ReplacedSession(runner)
     controller = ExtensionReplacementController(get_runtime_host=lambda: None)

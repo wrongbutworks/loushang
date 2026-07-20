@@ -5,7 +5,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
-from loushang.coding.types import ModelSelection
+from loushang.ai.model import ModelSelection
 
 T = TypeVar("T")
 

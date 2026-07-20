@@ -6,7 +6,7 @@ from typing import Any
 
 from loushang.agent.types import AgentTool, AgentToolResult
 from loushang.ai.types import TextPart
-from loushang.harness.capabilities.commands import (
+from loushang.harness.commands import (
     CommandDescriptor,
     CommandDispatchOutcome,
 )
@@ -58,7 +58,9 @@ class _ToolRegistry:
         self.materialized: list[list[str]] = []
 
     def get_definition(self, name: str) -> ToolDefinition:
-        return next(definition for definition in self.definitions if definition.name == name)
+        return next(
+            definition for definition in self.definitions if definition.name == name
+        )
 
     def get_source_info(self, name: str) -> object | None:
         self.get_definition(name)
@@ -227,9 +229,7 @@ def test_command_execution_runtime_streams_and_commits_one_record() -> None:
         refresh_context=_refresh,
     )
 
-    result = asyncio.run(
-        runtime.execute("printf done", on_output=chunks.append)
-    )
+    result = asyncio.run(runtime.execute("printf done", on_output=chunks.append))
 
     assert result["output"] == "complete\\n"
     assert executed == [

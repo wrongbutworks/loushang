@@ -65,6 +65,10 @@ planning, work event persistence, or AI provider behavior.
   ownership of transcript repositories, rebuildable projection indexes,
   layered configuration, explainable salience, and summary-profile mechanics
   while preserving Product schemas, prompts, defaults, and artifact semantics.
+- [Summary Evaluation Boundary](summary-evaluation-boundary.md) defines
+  profile-driven structured-summary evaluation and resource-operation evidence
+  while Products retain prompts, profile selection, production decoration, and
+  product-specific semantic checks.
 - [Product Configuration Runtime Boundary](product-configuration-runtime-boundary.md)
   defines transactional layered configuration, declarative Product schema
   adapters, scoped change records, injected value resolution, and activation
@@ -179,9 +183,10 @@ planning, work event persistence, or AI provider behavior.
   import staging, and navigation transaction ownership while preserving Product
   messages, policy, persistence, events, and UI.
 - [Product Capability Composition Core Boundary](product-capability-composition-core.md)
-  defines shared command catalog and dispatch, prompt composition and template
-  expansion, and tool activation coordination while preserving Product content,
-  defaults, policy, side effects, and presentation.
+  defines shared command catalog and dispatch, standard resource-aware prompt
+  assembly/preflight and template expansion, and tool activation coordination
+  while preserving only Product-exclusive content, policy, side effects, and
+  presentation.
 - [OEM And Extension Architecture](oem-extension-architecture.md) describes how
   OEM customisation, extension contributions, and harness upgrades interact,
   including override mechanisms, extension categories, surface-type gaps, and

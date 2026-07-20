@@ -12,6 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from loushang.harness.runtime import SessionOperationResult
+
 
 def _command_descriptor(item: dict[str, object]) -> SimpleNamespace:
     source_info = item.get("source_info")
@@ -215,6 +217,55 @@ class FakeRuntime:
     async def fork_session(self, entry_id: str) -> FakeSession:
         self.fork_session_calls.append(entry_id)
         return self._current_session
+
+    async def new_session_operation(
+        self,
+        *,
+        cwd: str | None = None,
+        parent_session: str | None = None,
+    ) -> SessionOperationResult[FakeSession, None]:
+        del parent_session
+        if cwd is None:
+            raise ValueError("Fake runtime requires cwd")
+        previous = self._current_session
+        session = await self.new_session(cwd=cwd)
+        return SessionOperationResult(
+            previous=previous,
+            current=session,
+            payload=None,
+            cancelled=False,
+        )
+
+    async def restore_session_operation(
+        self,
+        session_id: str,
+    ) -> SessionOperationResult[FakeSession, None]:
+        previous = self._current_session
+        session = await self.restore_session(session_id)
+        return SessionOperationResult(
+            previous=previous,
+            current=session,
+            payload=None,
+            cancelled=False,
+        )
+
+    async def fork_session_operation(
+        self,
+        entry_id: str | None,
+        *,
+        position: str = "at",
+    ) -> SessionOperationResult[FakeSession, None]:
+        del position
+        if entry_id is None:
+            raise ValueError("Fake runtime requires an explicit fork entry")
+        previous = self._current_session
+        session = await self.fork_session(entry_id)
+        return SessionOperationResult(
+            previous=previous,
+            current=session,
+            payload=None,
+            cancelled=False,
+        )
 
     def list_sessions(self) -> list[object]:
         self.list_sessions_calls += 1
@@ -2283,7 +2334,7 @@ def test_run_cli_lists_all_sessions_when_requested(tmp_path) -> None:
 
 def test_run_cli_list_sessions_supports_query_filters(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.agent_transcript import SessionQuery
 
     records = [
         SimpleNamespace(
@@ -2347,7 +2398,7 @@ def test_run_cli_list_sessions_supports_query_filters(tmp_path) -> None:
 
 def test_run_cli_list_sessions_supports_no_diagnostics_filter(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.agent_transcript import SessionQuery
 
     runtime = FakeRuntime(FakeSession("unused"), records=[])
     stdout = StringIO()
@@ -2376,7 +2427,7 @@ def test_run_cli_list_sessions_supports_all_sessions_with_query_filters(
     tmp_path,
 ) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.agent_transcript import SessionQuery
 
     runtime = FakeRuntime(
         FakeSession("unused"),
@@ -2425,7 +2476,7 @@ def test_run_cli_list_sessions_supports_all_sessions_with_query_filters(
 
 def test_run_cli_list_sessions_can_use_session_index(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.agent_transcript import SessionQuery
 
     runtime = FakeRuntime(
         FakeSession("unused"),
@@ -2476,7 +2527,7 @@ def test_run_cli_list_sessions_can_use_session_index(tmp_path) -> None:
 
 def test_run_cli_list_sessions_can_refresh_all_session_indexes(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.agent_transcript import SessionQuery
 
     runtime = FakeRuntime(FakeSession("unused"), records=[])
     stdout = StringIO()
@@ -2821,8 +2872,8 @@ def test_run_cli_reports_list_sessions_with_unprintable_fields(tmp_path) -> None
 def test_run_cli_dispatches_print_mode_with_restored_session_and_model_override(
     tmp_path,
 ) -> None:
+    from loushang.ai.model import ModelSelection
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.types import ModelSelection
 
     runtime = FakeRuntime(FakeSession("session-1"))
     print_runner = FakeRunner()
@@ -2868,8 +2919,8 @@ def test_run_cli_dispatches_print_mode_with_restored_session_and_model_override(
 
 
 def test_run_cli_accepts_explicit_endpoint_model_override(tmp_path) -> None:
+    from loushang.ai.model import ModelSelection
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.types import ModelSelection
 
     runtime = FakeRuntime(FakeSession("session-1"))
     print_runner = FakeRunner()
@@ -2903,8 +2954,8 @@ def test_run_cli_accepts_explicit_endpoint_model_override(tmp_path) -> None:
 
 
 def test_apply_model_override_persists_global_default_with_endpoint() -> None:
+    from loushang.ai.model import ModelSelection
     from loushang.coding.cli.__main__ import _apply_model_and_thinking_overrides
-    from loushang.coding.types import ModelSelection
 
     session = FakeSession("session-1")
     settings_calls: list[tuple[ModelSelection | None, str]] = []
@@ -2939,8 +2990,8 @@ def test_apply_model_override_persists_global_default_with_endpoint() -> None:
 def test_run_cli_accepts_explicit_endpoint_model_override_with_colon_endpoint(
     tmp_path,
 ) -> None:
+    from loushang.ai.model import ModelSelection
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.types import ModelSelection
 
     runtime = FakeRuntime(FakeSession("session-1"))
     print_runner = FakeRunner()
@@ -6649,7 +6700,7 @@ def test_run_cli_lists_commands_as_json(tmp_path) -> None:
 
 def test_run_cli_lists_diagnostics_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.diagnostics import DiagnosticRecord
+    from loushang.harness.diagnostics import DiagnosticRecord
 
     session = FakeSession("session-1")
     session.set_diagnostics(
@@ -6707,7 +6758,7 @@ def test_run_cli_lists_diagnostics_as_json(tmp_path) -> None:
 
 def test_run_cli_lists_diagnostics_as_tsv_and_returns_early(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.diagnostics import DiagnosticRecord
+    from loushang.harness.diagnostics import DiagnosticRecord
 
     session = FakeSession("session-1")
     session.set_diagnostics(
@@ -6754,7 +6805,8 @@ def test_run_cli_lists_diagnostics_as_tsv_and_returns_early(tmp_path) -> None:
 
 def test_run_cli_lists_skills_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.loader import ResourceDiagnostic, SkillDescriptor
+    from loushang.harness.resources.diagnostics import ResourceDiagnostic
+    from loushang.harness.resources.types import SkillDescriptor
 
     session = FakeSession("session-1")
     session.resource_bundle.skills = [
@@ -6829,7 +6881,9 @@ def test_run_cli_lists_skills_as_json(tmp_path) -> None:
 
 def test_run_cli_lists_project_skill_provenance_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.loader import DefaultResourceLoader
+    from loushang.coding.resource_runtime import (
+        CodingResourceLoader as DefaultResourceLoader,
+    )
 
     skill_dir = tmp_path / "skills" / "debug"
     skill_dir.mkdir(parents=True)
@@ -8487,7 +8541,7 @@ def test_run_cli_reports_list_diagnostics_invalid_limit(tmp_path) -> None:
 
 def test_run_cli_bridges_startup_problem_to_diagnostics(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.diagnostics import DiagnosticsService
+    from loushang.harness.diagnostics import DiagnosticsService
     from loushang.observability import get_log, reset_observability
 
     class StartupProblemRuntime(FakeRuntime):

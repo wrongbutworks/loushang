@@ -14,6 +14,7 @@ from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Any, TextIO
 
+from loushang.ai.model import ModelSelection
 from loushang.ai.model.registry import get_default_model_registry
 from loushang.ai.types import ImagePart
 from loushang.channel import ProductHostStreams, dispose_product_host, stdout_guard
@@ -54,7 +55,7 @@ from loushang.coding.observability import (
     coding_observability_context,
     coding_startup_observability_context,
 )
-from loushang.coding.package.projection import collect_package_entries
+from loushang.coding.package_projection import collect_package_entries
 from loushang.coding.policy import (
     ApprovalResolver,
     HeadlessApprovalResolver,
@@ -71,7 +72,6 @@ from loushang.coding.source_info import (
     format_source_identity_text,
 )
 from loushang.coding.tool_pack import register_coding_builtin_tools
-from loushang.coding.types import ModelSelection
 from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.work_executor import SubmitCodingTurn
 from loushang.coding.work_runtime import CodingWorkRuntime
@@ -83,6 +83,7 @@ from loushang.harness.resources.plugins import (
     is_remote_plugin_source,
 )
 from loushang.harness.scenario.loader import load_workflow, resolve_workflow_files
+from loushang.harness.session import require_session_operation_session
 from loushang.harness.tools.workspace.path_utils import resolve_tool_path
 from loushang.harness.tools.workspace.read import (
     PillowReadImageResizer,
@@ -1638,22 +1639,32 @@ def _record_package_policy_diagnostic(
 
 async def _resolve_session(args: CliArgs, runtime: Any, project_root: Path):
     if isinstance(args.resume, str):
-        session = await runtime.restore_session(args.resume)
+        session = require_session_operation_session(
+            await runtime.restore_session_operation(args.resume)
+        )
     elif args.continue_ or args.resume:
         latest_session_file = _resolve_latest_session_file(runtime)
         if latest_session_file is None:
             raise RuntimeError(
                 "No existing session found. Use --session or --resume <session> to restore a specific session."
             )
-        session = await runtime.restore_session(latest_session_file)
+        session = require_session_operation_session(
+            await runtime.restore_session_operation(latest_session_file)
+        )
     elif args.session:
-        session = await runtime.restore_session(args.session)
+        session = require_session_operation_session(
+            await runtime.restore_session_operation(args.session)
+        )
     else:
-        session = await runtime.new_session(cwd=str(project_root))
+        session = require_session_operation_session(
+            await runtime.new_session_operation(cwd=str(project_root))
+        )
 
     if args.fork:
         try:
-            session = await runtime.fork_session(args.fork)
+            session = require_session_operation_session(
+                await runtime.fork_session_operation(args.fork, position="at")
+            )
         except Exception as error:
             raise RuntimeError(f"Failed to fork session: {error}") from error
     return session

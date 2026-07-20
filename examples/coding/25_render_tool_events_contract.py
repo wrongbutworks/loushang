@@ -18,8 +18,8 @@ if str(SRC_ROOT) not in sys.path:
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
 from loushang.coding.mode import PrintMode
-from loushang.coding.tools import ToolDefinition
 from loushang.harness.conversation import ConversationHeader
+from loushang.harness.tools.core import ToolDefinition
 
 
 async def _execute(

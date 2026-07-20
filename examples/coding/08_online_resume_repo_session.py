@@ -18,9 +18,13 @@ from _support import (
 )
 
 from loushang.coding import (
-    ToolRegistry,
     create_agent_session_runtime,
-    register_builtin_tools,
+)
+from loushang.coding import (
+    register_coding_builtin_tools as register_builtin_tools,
+)
+from loushang.harness.tools.workspace.registry import (
+    WorkspaceToolRegistry as ToolRegistry,
 )
 
 EXAMPLE_FIRST_REQUEST = (

@@ -19,11 +19,9 @@ from loushang.ai.model import Model, ModelSelection, Provider
 from loushang.ai.types import AssistantMessage
 from loushang.ai.utils import is_context_overflow
 from loushang.coding.capability_plan import resolve_coding_capability_profile
-from loushang.coding.compaction import (
-    BranchSummaryDetails,
-    BranchSummaryResult,
-    compact,
-    generate_branch_summary,
+from loushang.coding.compaction.adapter import (
+    execute_coding_branch_summary,
+    execute_coding_compaction,
 )
 from loushang.coding.control import (
     CompactionSettings,
@@ -36,16 +34,17 @@ from loushang.coding.event import (
     project_runtime_event_to_session_event,
 )
 from loushang.coding.extensions import ExtensionRunner
-from loushang.coding.loader import DefaultResourceLoader
-from loushang.coding.package.materializer import (
-    PackageMaterializer,
-    PackageProgressEvent,
-)
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
 from loushang.coding.platform.session_projection import (
     project_pi_session_stats,
 )
 from loushang.coding.policy import InteractiveApprovalResolver
+from loushang.coding.resource_runtime import (
+    CodingPackageMaterializer as PackageMaterializer,
+)
+from loushang.coding.resource_runtime import (
+    CodingResourceLoader as DefaultResourceLoader,
+)
 from loushang.coding.session.bash_controller import BashController
 from loushang.coding.session.builtin_commands import (
     BuiltinCommandBackend,
@@ -94,6 +93,7 @@ from loushang.harness.agent_transcript import (
     TranscriptNavigationPlan,
     TranscriptNavigationResult,
     create_agent_transcript_compaction_capability,
+    normalize_branch_summary_output,
 )
 from loushang.harness.capabilities import (
     CapabilityCompositionRuntime,
@@ -123,6 +123,7 @@ from loushang.harness.extensions.context import (
 from loushang.harness.extensions.session_runtime import ExtensionSessionRuntime
 from loushang.harness.host.retry import RetryPolicy
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.packages.materializer import PackageProgressEvent
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
@@ -152,7 +153,6 @@ from loushang.harness.workspace.exec import (
     ExecService,
     ExecUpdateCallback,
 )
-from loushang.protocol import JSONValue, require_json_value
 
 SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]
 RuntimeEventListener = Callable[[RuntimeEvent[object]], Awaitable[None] | None]
@@ -161,7 +161,7 @@ RuntimeEventListener = Callable[[RuntimeEvent[object]], Awaitable[None] | None]
 async def _execute_coding_compaction(**kwargs: object) -> object:
     """Run Coding's Product-owned summary executor for a Harness plan."""
 
-    return await compact(**kwargs)
+    return await execute_coding_compaction(**kwargs)
 
 
 def _retry_policy(settings: RetrySettings) -> RetryPolicy:
@@ -369,9 +369,18 @@ class AgentSession(SessionFacade):
                 new_session=self._new_session_from_extension,
                 resume_session=self._switch_session_from_extension,
                 fork_session=self._fork_from_extension,
-                clone_session=self._clone_from_builtin,
+                clone_session=lambda: (
+                    self._extension_replacement_controller.clone_session()
+                ),
                 navigate_tree=self._navigate_tree_from_extension,
-                import_session=self._import_from_builtin,
+                import_session=(
+                    lambda input_path, cwd_override=None: (
+                        self._extension_replacement_controller.import_session(
+                            input_path,
+                            cwd_override,
+                        )
+                    )
+                ),
                 get_active_tool_names=self.get_active_tool_names,
                 get_all_tools=self.get_all_tool_infos,
                 set_active_tools=self.set_active_tools,
@@ -1196,7 +1205,7 @@ class AgentSession(SessionFacade):
             ),
             decision.label if decision.label is not None else label,
             (
-                _branch_summary_output(decision.summary, from_hook=True)
+                normalize_branch_summary_output(decision.summary, from_hook=True)
                 if decision.summary is not None
                 else None
             ),
@@ -1215,14 +1224,13 @@ class AgentSession(SessionFacade):
             entries: Sequence[object],
             signal: CancellationSignal,
         ) -> BranchSummaryOutput:
-            result = await generate_branch_summary(
+            return await execute_coding_branch_summary(
                 entries,
                 model=self.agent.model,
                 signal=signal,
                 custom_instructions=custom_instructions,
                 replace_instructions=replace_instructions,
             )
-            return _branch_summary_output(result, from_hook=False)
 
         return run
 
@@ -1573,53 +1581,6 @@ class AgentSession(SessionFacade):
             session_path, options
         )
 
-    async def _clone_from_builtin(self) -> dict[str, object]:
-        runtime_host = self._extension_runtime_host
-        if runtime_host is None:
-            return {"cancelled": True}
-        clone = getattr(runtime_host, "clone", None)
-        if callable(clone):
-            result = clone()
-            if asyncio.iscoroutine(result):
-                result = await result
-            return dict(result) if isinstance(result, dict) else {"cancelled": False}
-        clone_session = getattr(runtime_host, "clone_session", None)
-        if callable(clone_session):
-            previous = getattr(runtime_host, "get_current_session", lambda: None)()
-            result = clone_session()
-            if asyncio.iscoroutine(result):
-                result = await result
-            current = getattr(runtime_host, "get_current_session", lambda: result)()
-            return {"cancelled": current is previous}
-        return {"cancelled": True}
-
-    async def _import_from_builtin(
-        self, input_path: str, cwd_override: str | None = None
-    ) -> dict[str, object]:
-        runtime_host = self._extension_runtime_host
-        if runtime_host is None:
-            return {"cancelled": True}
-        importer = getattr(runtime_host, "import_from_jsonl", None)
-        if not callable(importer):
-            return {"cancelled": True}
-        result = importer(input_path, cwd_override)
-        if asyncio.iscoroutine(result):
-            result = await result
-        return dict(result) if isinstance(result, dict) else {"cancelled": False}
-
-    async def _run_extension_replaced_session_callbacks(
-        self,
-        session: object | None,
-        options: object | None,
-        *,
-        include_setup: bool = False,
-    ) -> None:
-        await self._extension_replacement_controller.run_replaced_session_callbacks(
-            session,
-            options,
-            include_setup=include_setup,
-        )
-
     def _record_extension_runtime_diagnostic(
         self, diagnostic: ResourceDiagnostic
     ) -> None:
@@ -1872,29 +1833,6 @@ def _compaction_policy(
         compact_percent=settings.compact_percent,
         keep_recent_tokens=settings.keep_recent_tokens,
     )
-
-
-def _branch_summary_output(
-    result: BranchSummaryResult,
-    *,
-    from_hook: bool,
-) -> BranchSummaryOutput:
-    return BranchSummaryOutput(
-        summary=result.summary,
-        details=_project_branch_summary_details(result.details),
-        from_hook=from_hook,
-        aborted=result.aborted,
-        error=result.error,
-    )
-
-
-def _project_branch_summary_details(details: object | None) -> JSONValue:
-    if isinstance(details, BranchSummaryDetails):
-        return {
-            "readFiles": list(details.read_files),
-            "modifiedFiles": list(details.modified_files),
-        }
-    return require_json_value(details, name="branch_summary.details")
 
 
 def _models_are_equal(left: Model | None, right: Model | None) -> bool:

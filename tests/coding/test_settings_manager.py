@@ -635,7 +635,7 @@ def test_settings_manager_exposes_resource_and_package_source_getters_and_setter
     tmp_path,
 ) -> None:
     from loushang.coding.control import SettingsManager
-    from loushang.coding.package import PackageSourceConfig
+    from loushang.harness.resources.packages.source import PackageSourceConfig
 
     manager = SettingsManager(global_settings_path=tmp_path / "settings.json")
 
@@ -676,7 +676,7 @@ def test_settings_manager_exposes_resource_and_package_source_getters_and_setter
 
 def test_settings_manager_initial_config_preserves_package_sources() -> None:
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.package import PackageSourceConfig
+    from loushang.harness.resources.packages.source import PackageSourceConfig
 
     source = PackageSourceConfig(
         source="https://packages.example.invalid/review-pack.git",
