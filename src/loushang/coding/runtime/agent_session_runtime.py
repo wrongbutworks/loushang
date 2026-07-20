@@ -5,7 +5,6 @@ import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from time import monotonic
 from types import SimpleNamespace
 from typing import Literal
 
@@ -14,8 +13,7 @@ from loushang.coding.session import AgentSession
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
-    SessionQuery,
-    SessionRecord,
+    AgentTranscriptDirectoryRuntime,
     SessionSummary,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
@@ -33,7 +31,6 @@ from loushang.harness.extensions.context import (
     SessionStartEvent,
 )
 from loushang.harness.runtime import (
-    CoalescingScheduler,
     SessionOperationFailure,
     SessionOperationPhase,
     SessionOperationResult,
@@ -213,7 +210,7 @@ class _CodingSessionLifecycleStore:
         return session
 
 
-class AgentSessionRuntime:
+class AgentSessionRuntime(AgentTranscriptDirectoryRuntime):
     def __init__(
         self,
         *,
@@ -226,7 +223,19 @@ class AgentSessionRuntime:
         session_index_refresh_interval: float = 0.5,
         session_index_flush_delay: float = 0.25,
     ) -> None:
-        self.session_dir = Path(session_dir)
+        self._diagnostics_service = diagnostics_service
+        super().__init__(
+            session_dir=session_dir,
+            auto_refresh_session_index=auto_refresh_session_index,
+            session_index_refresh_interval=session_index_refresh_interval,
+            session_index_flush_delay=session_index_flush_delay,
+            record_index_refresh_failure=lambda exc, all_sessions: (
+                self._record_session_index_flush_failure(
+                    exc,
+                    all_sessions=all_sessions,
+                )
+            ),
+        )
         self.session_factory = session_factory
         self._session_factory_accepts_start_event = _accepts_session_start_event(
             session_factory
@@ -251,16 +260,6 @@ class AgentSessionRuntime:
             ),
         )
         self._session_host = self._lifecycle.transition_host
-        self._diagnostics_service = diagnostics_service
-        self.auto_refresh_session_index = auto_refresh_session_index
-        self.session_index_refresh_interval = session_index_refresh_interval
-        self.session_index_flush_delay = session_index_flush_delay
-        self._last_session_index_refresh = 0.0
-        self._session_index_flush = CoalescingScheduler[bool](
-            self._flush_scheduled_session_index,
-            merge=lambda left, right: left or right,
-            delay_seconds=session_index_flush_delay,
-        )
         if current_session is not None:
             self._open_session_approvals(current_session)
             self._bind_runtime_host(current_session)
@@ -523,17 +522,6 @@ class AgentSessionRuntime:
     def get_current_session(self) -> AgentSession | None:
         return self._current_session
 
-    def list_sessions(self) -> list[SessionRecord]:
-        return SessionManager.list(self.session_dir)
-
-    def list_session_summaries(self) -> list[SessionSummary]:
-        return SessionManager.list_summaries(self.session_dir)
-
-    def find_session_summaries(
-        self, query: SessionQuery | None = None
-    ) -> list[SessionSummary]:
-        return SessionManager.find_sessions(self.session_dir, query)
-
     async def rename_session(
         self, session_id: str | Path, name: str | None
     ) -> SessionSummary:
@@ -542,7 +530,7 @@ class AgentSessionRuntime:
             session_file = self._resolve_session_file(session_id)
             summary = await SessionManager.rename_session(session_file, name)
             if self.auto_refresh_session_index:
-                self._schedule_session_index_flush()
+                self.request_session_index_refresh()
             return summary
         except Exception as exc:
             self._record_session_operation_failure(
@@ -568,7 +556,7 @@ class AgentSessionRuntime:
                 current_session_file=_session_file_from_session(self._current_session),
             )
             if deleted and self.auto_refresh_session_index:
-                self._schedule_session_index_flush()
+                self.request_session_index_refresh()
             return deleted
         except Exception as exc:
             self._record_session_operation_failure(
@@ -583,46 +571,6 @@ class AgentSessionRuntime:
                 },
             )
             raise
-
-    def list_all_session_summaries(self) -> list[SessionSummary]:
-        return SessionManager.list_all_summaries(self.session_dir.parent)
-
-    def find_all_session_summaries(
-        self, query: SessionQuery | None = None
-    ) -> list[SessionSummary]:
-        return SessionManager.find_all_sessions(self.session_dir.parent, query)
-
-    def refresh_session_index(self) -> list[SessionSummary]:
-        return SessionManager.refresh_index(self.session_dir)
-
-    def refresh_all_session_indexes(self) -> list[SessionSummary]:
-        return SessionManager.refresh_all_indexes(self.session_dir.parent)
-
-    def list_indexed_session_summaries(
-        self, *, refresh: bool = False
-    ) -> list[SessionSummary]:
-        if self.auto_refresh_session_index and not refresh:
-            self._schedule_session_index_flush_if_due()
-        return SessionManager.list_indexed_summaries(self.session_dir, refresh=refresh)
-
-    def find_indexed_session_summaries(
-        self, query: SessionQuery | None = None
-    ) -> list[SessionSummary]:
-        return SessionManager.find_indexed_sessions(self.session_dir, query)
-
-    def list_all_indexed_session_summaries(
-        self, *, refresh: bool = False
-    ) -> list[SessionSummary]:
-        if self.auto_refresh_session_index and not refresh:
-            self._schedule_session_index_flush_if_due(all_sessions=True)
-        return SessionManager.list_all_indexed_summaries(
-            self.session_dir.parent, refresh=refresh
-        )
-
-    def find_all_indexed_session_summaries(
-        self, query: SessionQuery | None = None
-    ) -> list[SessionSummary]:
-        return SessionManager.find_all_indexed_sessions(self.session_dir.parent, query)
 
     def get_last_diagnostics(self, limit: int = 50) -> list[DiagnosticRecord]:
         diagnostics_service = self._diagnostics_service
@@ -799,9 +747,6 @@ class AgentSessionRuntime:
             metadata=self._lifecycle_metadata(operation="dispose"),
         )
 
-    async def drain_session_index_flush(self) -> None:
-        await self._session_index_flush.drain()
-
     def _lifecycle_metadata(
         self,
         *,
@@ -902,7 +847,7 @@ class AgentSessionRuntime:
             self.auto_refresh_session_index
             and transition.metadata.get("schedule_index", True) is not False
         ):
-            self._schedule_session_index_flush()
+            self.request_session_index_refresh()
         options = transition.metadata.get("options")
         if isinstance(options, dict):
             await self._run_replacement_callbacks(
@@ -973,51 +918,6 @@ class AgentSessionRuntime:
             self._record_session_shutdown_failure(session=session, event=event, exc=exc)
         finally:
             self._sync_session_extension_diagnostics(session)
-
-    def _refresh_session_index_now(self) -> list[SessionSummary]:
-        summaries = SessionManager.refresh_index(self.session_dir)
-        self._last_session_index_refresh = monotonic()
-        return summaries
-
-    def _refresh_all_session_indexes_now(self) -> list[SessionSummary]:
-        summaries = SessionManager.refresh_all_indexes(self.session_dir.parent)
-        self._last_session_index_refresh = monotonic()
-        return summaries
-
-    def _flush_session_index_now(
-        self, *, all_sessions: bool, raise_on_error: bool = True
-    ) -> list[SessionSummary]:
-        try:
-            if all_sessions:
-                return self._refresh_all_session_indexes_now()
-            return self._refresh_session_index_now()
-        except Exception as exc:
-            self._record_session_index_flush_failure(exc, all_sessions=all_sessions)
-            if raise_on_error:
-                raise
-            return []
-
-    def _schedule_session_index_flush_if_due(
-        self, *, all_sessions: bool = False
-    ) -> None:
-        if self._session_index_refresh_due():
-            self._schedule_session_index_flush(all_sessions=all_sessions)
-
-    def _schedule_session_index_flush(self, *, all_sessions: bool = False) -> None:
-        self._session_index_flush.delay_seconds = self.session_index_flush_delay
-        self._session_index_flush.schedule(all_sessions)
-
-    def _flush_scheduled_session_index(self, all_sessions: bool) -> None:
-        self._flush_session_index_now(
-            all_sessions=all_sessions,
-            raise_on_error=False,
-        )
-
-    def _session_index_refresh_due(self) -> bool:
-        return (
-            monotonic() - self._last_session_index_refresh
-            >= self.session_index_refresh_interval
-        )
 
     def _create_session(
         self, manager: SessionManager, start_event: SessionStartEvent

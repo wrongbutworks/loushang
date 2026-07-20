@@ -3240,6 +3240,7 @@ async def test_runtime_dispose_records_session_index_flush_failure(
     from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import AgentTranscriptSessionCatalog
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -3265,12 +3266,14 @@ async def test_runtime_dispose_records_session_index_flush_failure(
     async def scenario() -> DummySession:
         session = await runtime.create_session(cwd=str(project))
 
-        def _fail_refresh_index(cls, session_dir):
-            del cls, session_dir
+        def _fail_refresh_index(self):
+            del self
             raise RuntimeError("index boom")
 
         monkeypatch.setattr(
-            SessionManager, "refresh_index", classmethod(_fail_refresh_index)
+            AgentTranscriptSessionCatalog,
+            "refresh_index",
+            _fail_refresh_index,
         )
         await runtime.dispose()
         return session

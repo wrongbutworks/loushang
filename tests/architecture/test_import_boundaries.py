@@ -1533,6 +1533,17 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
         imported.startswith("loushang.coding") for imported in catalog_imports
     )
 
+    directory_runtime_imports = set(
+        _absolute_imports(Path("src/loushang/harness/agent_transcript/directory.py"))
+    )
+    assert (
+        "loushang.harness.agent_transcript.catalog.AgentTranscriptSessionCatalog"
+        in (directory_runtime_imports)
+    )
+    assert not any(
+        imported.startswith("loushang.coding") for imported in directory_runtime_imports
+    )
+
     session_manager_imports = set(
         _absolute_imports(Path("src/loushang/coding/store/session_manager.py"))
     )
@@ -1540,6 +1551,15 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
         "loushang.harness.agent_transcript.ProductTranscriptSession"
         in session_manager_imports
     )
+
+    runtime_source = Path(
+        "src/loushang/coding/runtime/agent_session_runtime.py"
+    ).read_text(encoding="utf-8")
+    assert "class AgentSessionRuntime(AgentTranscriptDirectoryRuntime):" in (
+        runtime_source
+    )
+    assert "SessionManager.list_summaries" not in runtime_source
+    assert "SessionManager.refresh_index" not in runtime_source
 
 
 def test_harness_agent_transcript_lifecycle_is_documented_and_adopted() -> None:
@@ -2847,7 +2867,7 @@ def test_harness_product_runtime_core_is_documented_and_adopted() -> None:
             "loushang.harness.runtime.RuntimeBindingState",
         },
         Path("src/loushang/coding/runtime/agent_session_runtime.py"): {
-            "loushang.harness.runtime.CoalescingScheduler",
+            "loushang.harness.agent_transcript.AgentTranscriptDirectoryRuntime",
             "loushang.harness.session.SessionLifecycleRuntime",
         },
     }

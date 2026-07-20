@@ -37,6 +37,12 @@ The catalog uses `ConversationCatalog`, `ConversationRepository`, and
 implementation. Native loading remains current-format-only and retains the
 file-store loader's corruption and partial-tail policy.
 
+`AgentTranscriptDirectoryRuntime` is the optional runtime layer above that
+catalog. It owns current-root and all-root queries, direct or coalesced index
+refresh, and deterministic drain on disposal/tests. It does not create or
+replace an active session, choose a Product root or retention policy, or
+classify Product diagnostics.
+
 Products choose their session roots, whether persistence is enabled, the
 runtime transcript profile, product-specific projected fields, retention,
 display names, and CLI/RPC/TUI presentation. `coding.store.SessionManager`
@@ -59,10 +65,11 @@ current Native file catalog with product policy.
 ## Verification
 
 - Harness tests cover Native discovery, direct and root-level query, projection
-  index refresh/load, branch context, and annotation labels without importing
-  Coding.
+  index refresh/load and coalesced scheduling, branch context, and annotation
+  labels without importing Coding.
 - Coding session tests exercise the same owner through its compatibility
   facade.
 - Import-boundary tests require `SessionManager` to delegate to
-  `AgentTranscriptSessionCatalog`, require the catalog to use
+  `AgentTranscriptSessionCatalog`, require `AgentSessionRuntime` to consume
+  `AgentTranscriptDirectoryRuntime`, require the catalog to use
   `ConversationCatalog`, and prohibit catalog imports from Coding.
