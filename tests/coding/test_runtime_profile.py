@@ -13,12 +13,14 @@ from loushang.coding.capability_plan import (
 )
 from loushang.coding.runtime_profile import CODING_RUNTIME_PROFILE_METADATA_KEY
 from loushang.coding.store import SessionManager
-from loushang.coding.store.file_codec import write_session_file
 from loushang.harness.agent_transcript import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
     TURN_AWARE_SUMMARY_VERSION,
     AgentTranscriptCompactionCapability,
     AgentTranscriptProfile,
+)
+from loushang.harness.agent_transcript.file_store import (
+    write_agent_transcript_file as write_session_file,
 )
 from loushang.harness.runtime import RuntimeProfileSnapshot
 from loushang.harness.storage import FileConversationStore, MemoryConversationStore

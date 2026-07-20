@@ -1,28 +1,25 @@
 from __future__ import annotations
 
 
-def test_coding_context_budget_paths_share_harness_identity() -> None:
+def test_coding_context_budget_facades_are_removed() -> None:
+    import importlib.util
+
     import loushang.coding as coding
     import loushang.coding.compaction as compaction
-    from loushang.coding.compaction import policy, types
     from loushang.harness.context import budget, usage
 
-    assert compaction.CompactionBudget is budget.CompactionBudget
-    assert policy.CompactionBudget is budget.CompactionBudget
-    assert compaction.calculate_compaction_budget is budget.calculate_compaction_budget
-    assert policy.calculate_compaction_budget is budget.calculate_compaction_budget
-
-    assert coding.ContextUsageEstimate is usage.ContextUsageEstimate
-    assert compaction.ContextUsageEstimate is usage.ContextUsageEstimate
-    assert types.ContextUsageEstimate is usage.ContextUsageEstimate
-
+    assert importlib.util.find_spec("loushang.coding.compaction.policy") is None
+    assert not hasattr(coding, "ContextUsageEstimate")
+    assert not hasattr(compaction, "calculate_compaction_budget")
     assert budget.CompactionBudget.__module__ == "loushang.harness.context.budget"
-    assert budget.calculate_compaction_budget.__module__ == "loushang.harness.context.budget"
+    assert (
+        budget.calculate_compaction_budget.__module__
+        == "loushang.harness.context.budget"
+    )
     assert usage.ContextUsageEstimate.__module__ == "loushang.harness.context.usage"
 
 
 def test_agent_transcript_context_estimator_returns_harness_record() -> None:
-    import loushang.coding.compaction as compaction
     from loushang.ai.types import UserMessage
     from loushang.harness.agent_transcript import estimate_context_tokens
     from loushang.harness.context.usage import ContextUsageEstimate
@@ -35,4 +32,3 @@ def test_agent_transcript_context_estimator_returns_harness_record() -> None:
     assert estimate.usage_tokens == 0
     assert estimate.trailing_tokens == estimate.tokens
     assert estimate.last_usage_index is None
-    assert not hasattr(compaction, "estimate_context_tokens")

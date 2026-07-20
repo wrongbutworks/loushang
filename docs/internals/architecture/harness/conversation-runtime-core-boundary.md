@@ -32,6 +32,7 @@ artifact vocabulary. Agent-backed Products may select the follow-on common
 
 `loushang.harness.context.conversation` owns:
 
+- `ConversationCompactionPlanner` and its product-neutral planning contract;
 - opaque-record turn grouping;
 - recent-token cut-point selection;
 - non-cut roles such as tool results;
@@ -58,8 +59,8 @@ A Product supplies the semantics that cannot be inferred by Harness:
 - product state initialization and reduction;
 - catalog discovery roots, accepted filenames, summary fields, match/scoring
   rules, index location, and fail-fast or per-item projection-error policy;
-- exact compaction and branch-summary prompts, model calls, retry behavior,
-  content serialization, and artifact extraction;
+- exact compaction and branch-summary prompts/profiles, model and credential
+  selection, domain artifact decoration, and product error wording;
 - command-record projection into its Agent message and UI/event protocols.
 
 The split is deliberately asymmetric: the neutral core owns control mechanics,
@@ -74,29 +75,28 @@ schemas, codecs, and replay projection described here; Product storage-root,
 prompt, artifact, and presentation policy remain Coding-owned.
 
 Coding now uses `AgentTranscriptSessionStore` as the single open-session commit
-owner over an injected `ConversationStore`. `coding.store.file_codec` remains
-the Product-owned Native codec and journal factory; file locking, revision CAS,
-and durable append are implemented by the Harness File backend. Successful
-Agent transcript mutations return the record paired with the backend's exact
-`CommitReceipt`; Product event projection does not infer revision from a later
-snapshot.
+owner over an injected `ConversationStore`. The optional Agent transcript
+profile owns the current Native codec, journal factory, file locking, revision
+CAS, and durable append; Coding chooses the storage root and runtime binding.
+Successful Agent transcript mutations return the record paired with the
+backend's exact `CommitReceipt`; Product event projection does not infer
+revision from a later snapshot.
 
 `SessionManager` is an async Product adapter. It delegates active branches,
 children, tree, fork, lowest common ancestor, branch delta, replay, transcript
 commit, and backend persistence to Harness. Coding retains:
 
-- Native codec composition and exact JSONL formatting;
 - label, cwd, naming, retention, recovery, and session-file policy;
 - `SessionSummary` fields, message text/preview, diagnostics, and relevance
   scoring;
 - Product catalog/index/query projection and backend selection.
 
-Coding compaction now maps `SessionEntry` records into
-`ConversationCompactionPlanner`. The former local cut-point, latest-checkpoint,
-turn-start, tool-result, and kept-id algorithms have been removed. Coding keeps
-its public compatibility plan/preparation records, message estimator, aggregate
-usage estimator, prompts, model invocation, file-operation details, and summary
-artifact projection.
+Coding compaction uses the Agent transcript profile's planner and standard
+summary executor. The former local cut-point, latest-checkpoint, turn-start,
+tool-result, kept-id, message serialization, model-call, and branch-summary
+algorithms have been removed. Coding keeps prompt/profile selection, model and
+credential selection, file-operation decoration, extension hook mapping, and
+summary presentation.
 
 `BashExecutionMessage` specializes `CommandExecutionRecord`; the historical
 `bashExecution` role and JSON fields remain Coding-owned.
@@ -122,8 +122,8 @@ artifact projection.
 - Aggregate context usage and per-record cut estimates remain distinct.
 - Metadata immediately preceding a retained message stays inside the retained
   checkpoint boundary.
-- Product prompts, model calls, artifact details, and summary wire payloads are
-  byte- and behavior-compatible.
+- Product prompt/profile selection, artifact details, and summary presentation
+  remain behavior-compatible.
 
 ## Neutrality Evidence
 

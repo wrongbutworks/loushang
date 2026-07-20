@@ -271,9 +271,9 @@ def test_assemble_prompt_uses_tool_prompt_snippets_and_hides_tools_without_snipp
 
 
 def test_tuple_backed_inputs_snapshot_mutable_constructors() -> None:
-    from loushang.coding.exec.types import ExecRequest
     from loushang.coding.prompt.types import PromptAssembly
     from loushang.harness.tools.core import ToolDefinition
+    from loushang.harness.workspace.exec import ExecRequest
 
     command = ["bash", "-lc", "echo hi"]
     env = [["A", "1"], ["B", "2"]]
@@ -312,9 +312,9 @@ def test_tuple_backed_inputs_snapshot_mutable_constructors() -> None:
 
 
 def test_tuple_backed_constructors_reject_bare_strings() -> None:
-    from loushang.coding.exec.types import ExecRequest
     from loushang.coding.prompt.types import PromptAssembly
     from loushang.harness.tools.core import ToolDefinition
+    from loushang.harness.workspace.exec import ExecRequest
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -356,8 +356,8 @@ def test_tuple_backed_constructors_reject_bare_strings() -> None:
 
 
 def test_tool_definition_prompt_guidelines_reject_non_strings() -> None:
-    from loushang.coding.exec.types import ExecRequest
     from loushang.harness.tools.core import ToolDefinition
+    from loushang.harness.workspace.exec import ExecRequest
 
     bad_env_values = [["A=1"], ["A"], [("A",)], [("A", "1", "extra")]]
     bad_prompt_guideline_values = [[1], [("A",)], [["nested"]]]
@@ -393,7 +393,7 @@ def test_tool_definition_prompt_guidelines_reject_non_strings() -> None:
 
 
 def test_exec_result_contract_defaults_and_shape() -> None:
-    from loushang.coding.exec.types import ExecResult
+    from loushang.harness.workspace.exec import ExecResult
 
     assert ExecResult(exit_code=7, stdout="out", stderr="err") == ExecResult(
         exit_code=7,

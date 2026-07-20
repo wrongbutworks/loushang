@@ -20,13 +20,13 @@ from _support import (
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
-from loushang.coding import ToolDefinition
+from loushang.harness.tools.core import ToolDefinition
 
 EXTENSION_SOURCE = """
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
 from loushang.coding.extensions import ToolCallDecision, ToolResultDecision
-from loushang.coding.tools import ToolDefinition
+from loushang.harness.tools.core import ToolDefinition
 
 
 async def _guarded_execute(tool_call_id, params, signal=None, on_update=None):

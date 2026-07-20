@@ -2283,7 +2283,7 @@ def test_run_cli_lists_all_sessions_when_requested(tmp_path) -> None:
 
 def test_run_cli_list_sessions_supports_query_filters(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.agent_transcript import SessionQuery
 
     records = [
         SimpleNamespace(
@@ -2347,7 +2347,7 @@ def test_run_cli_list_sessions_supports_query_filters(tmp_path) -> None:
 
 def test_run_cli_list_sessions_supports_no_diagnostics_filter(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.agent_transcript import SessionQuery
 
     runtime = FakeRuntime(FakeSession("unused"), records=[])
     stdout = StringIO()
@@ -2376,7 +2376,7 @@ def test_run_cli_list_sessions_supports_all_sessions_with_query_filters(
     tmp_path,
 ) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.agent_transcript import SessionQuery
 
     runtime = FakeRuntime(
         FakeSession("unused"),
@@ -2425,7 +2425,7 @@ def test_run_cli_list_sessions_supports_all_sessions_with_query_filters(
 
 def test_run_cli_list_sessions_can_use_session_index(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.agent_transcript import SessionQuery
 
     runtime = FakeRuntime(
         FakeSession("unused"),
@@ -2476,7 +2476,7 @@ def test_run_cli_list_sessions_can_use_session_index(tmp_path) -> None:
 
 def test_run_cli_list_sessions_can_refresh_all_session_indexes(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.store import SessionQuery
+    from loushang.harness.agent_transcript import SessionQuery
 
     runtime = FakeRuntime(FakeSession("unused"), records=[])
     stdout = StringIO()
@@ -6649,7 +6649,7 @@ def test_run_cli_lists_commands_as_json(tmp_path) -> None:
 
 def test_run_cli_lists_diagnostics_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.diagnostics import DiagnosticRecord
+    from loushang.harness.diagnostics import DiagnosticRecord
 
     session = FakeSession("session-1")
     session.set_diagnostics(
@@ -6707,7 +6707,7 @@ def test_run_cli_lists_diagnostics_as_json(tmp_path) -> None:
 
 def test_run_cli_lists_diagnostics_as_tsv_and_returns_early(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.diagnostics import DiagnosticRecord
+    from loushang.harness.diagnostics import DiagnosticRecord
 
     session = FakeSession("session-1")
     session.set_diagnostics(
@@ -8487,7 +8487,7 @@ def test_run_cli_reports_list_diagnostics_invalid_limit(tmp_path) -> None:
 
 def test_run_cli_bridges_startup_problem_to_diagnostics(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.diagnostics import DiagnosticsService
+    from loushang.harness.diagnostics import DiagnosticsService
     from loushang.observability import get_log, reset_observability
 
     class StartupProblemRuntime(FakeRuntime):

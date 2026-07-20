@@ -61,22 +61,16 @@ phase, source, level, and correlation values.
 
 ## Coding Adapters
 
-Accepted Coding paths remain compatibility modules:
+The generic Coding diagnostic facade is removed. Product and extension code
+imports records, query values, and `DiagnosticsService` from the canonical
+owners in `loushang.harness.diagnostics`; Coding retains only
+`coding.diagnostics.serialization` and `coding.diagnostics.problem_bridge` as
+its product projections.
 
-```python
-from loushang.coding.diagnostics import DiagnosticRecord
-from loushang.coding.diagnostics import DiagnosticsQuery
-from loushang.coding.diagnostics import DiagnosticsService
-```
-
-`loushang.coding.diagnostics.types` and
-`loushang.coding.diagnostics.service` re-export the same Harness-owned objects.
-`loushang.coding.diagnostics` continues to combine those compatibility exports
-with Coding-owned serialization functions.
-
-Harness-owned classes keep their Harness `__module__`; compatibility paths
-preserve imports, not duplicate implementations or Coding-owned class
-identity. Coding internal consumers import the focused Harness owner directly.
+Harness diagnostic symbols are public from the focused
+`loushang.harness.diagnostics` subpackage, but are not promoted to top-level
+`loushang.harness.__all__`. Coding internal consumers import the focused owner
+directly.
 
 ## Coding-Owned Behavior
 
@@ -107,19 +101,20 @@ loushang.harness.diagnostics.service       -> loushang.harness.resources.diagnos
 
 Harness diagnostics must not import coding, method, work, TUI, AI, agent
 runtime, provider, observability, or product packages. No diagnostic symbols
-are added to top-level `loushang.harness.__all__` or the focused
-`loushang.harness.diagnostics.__all__`.
+are added to top-level `loushang.harness.__all__`; the focused diagnostics
+subpackage is the canonical public owner.
 
-## Compatibility
+## Migration Result
 
-Existing constructor fields, frozen-record behavior, callable aliases, service
+Existing record fields, frozen-record behavior, callable aliases, service
 method signatures, query filtering, deduplication, occurrence counts,
 fingerprint payloads, summary counts, error reports, startup-check behavior,
-and serialized Coding payloads remain unchanged.
+and serialized Coding payloads remain unchanged. Only the generic ownership
+path changes.
 
-Private service helpers are implementation details and are not compatibility
-exports. The accepted public compatibility surface is the record, callable,
-and `DiagnosticsService` API exported by `loushang.coding.diagnostics`.
+Private service helpers are implementation details. The public generic surface
+is the record, callable, and `DiagnosticsService` API exported by
+`loushang.harness.diagnostics`.
 
 ## Validation
 
@@ -131,7 +126,7 @@ The migration must prove:
 - source, phase, level, correlation, code, and limit filters are preserved;
 - summary and error-report occurrence semantics are preserved;
 - resource, exception, and startup-check normalization are preserved;
-- accepted Coding imports share Harness object identity;
+- Product and Coding consumers import the canonical owners;
 - Coding serializers and problem bridge still project the same payloads;
 - Coding internal consumers use Harness owners directly;
 - Harness import boundaries and top-level export discipline still pass.

@@ -90,13 +90,13 @@ def test_global_policy_engine_blocks_bash_by_tool_name(tmp_path) -> None:
 def test_default_tool_registration_does_not_enable_policy_by_default(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec.types import ExecResult
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
+    from loushang.harness.workspace.exec import ExecResult
 
     class RecordingExecService:
         def __init__(self) -> None:

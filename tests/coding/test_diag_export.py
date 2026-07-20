@@ -5,7 +5,7 @@ import zipfile
 from types import SimpleNamespace
 
 from loushang.coding.diag_export import export_diagnostics_bundle
-from loushang.coding.diagnostics import DiagnosticRecord
+from loushang.harness.diagnostics import DiagnosticRecord
 
 
 def test_export_diagnostics_bundle_collects_latest_artifacts(tmp_path) -> None:

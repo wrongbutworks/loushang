@@ -14,21 +14,21 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from _support import build_kimi_model, describe_model  # noqa: E402
+from _support import build_kimi_model, describe_model
 
-from loushang.ai.types import (  # noqa: E402
+from loushang.ai.types import (
     AssistantMessage,
     TextPart,
     ToolCall,
     Usage,
     UserMessage,
 )
-from loushang.coding import (  # noqa: E402
-    CompactionPreparation,
+from loushang.coding.compaction import (
     SummaryEvaluationCase,
-    compact,
     evaluate_summary_case,
 )
+from loushang.coding.compaction.adapter import execute_coding_compaction
+from loushang.harness.agent_transcript import CompactionPreparation
 
 SAMPLE_SUMMARY = """## Goal
 Harden the session index lifecycle and runtime diagnostics.
@@ -117,7 +117,9 @@ async def _real_summary() -> str:
     print(f"Model: {model_info['model']}")
     print(f"Endpoint: {model_info['endpoint']}")
     print()
-    result = await compact(preparation=_fixed_preparation(), model=model, api_key="")
+    result = await execute_coding_compaction(
+        preparation=_fixed_preparation(), model=model, api_key=""
+    )
     return result.summary
 
 

@@ -2499,8 +2499,8 @@ def test_extension_runner_command_context_exec_command_delegates_through_binding
 ):
     import asyncio
 
-    from loushang.coding.exec import ExecOutputChunk, ExecResult
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
+    from loushang.harness.workspace.exec import ExecOutputChunk, ExecResult
 
     calls: list[tuple[object, object, dict[str, object]]] = []
     updates: list[ExecOutputChunk] = []
@@ -2625,7 +2625,6 @@ def test_extension_runner_context_exposes_standard_ui_namespace_and_has_ui() -> 
 
 
 def test_extension_runner_emits_tree_and_compact_decision_hooks() -> None:
-    from loushang.coding.compaction import BranchSummaryResult, CompactionResult
     from loushang.coding.extensions import (
         ExtensionRunner,
         LoadedExtension,
@@ -2636,6 +2635,7 @@ def test_extension_runner_emits_tree_and_compact_decision_hooks() -> None:
         SessionBeforeTreeEvent,
         SessionBeforeTreeResult,
     )
+    from loushang.harness.agent_transcript import BranchSummaryOutput, CompactionResult
 
     seen: list[tuple[str, str]] = []
 
@@ -2658,7 +2658,7 @@ def test_extension_runner_emits_tree_and_compact_decision_hooks() -> None:
         del ctx
         seen.append(("tree2", event.target_id))
         return SessionBeforeTreeResult(
-            summary=BranchSummaryResult(summary="summarized"),
+            summary=BranchSummaryOutput(summary="summarized"),
             custom_instructions="custom",
             label="tree2",
         )
@@ -2721,7 +2721,7 @@ def test_extension_runner_emits_tree_and_compact_decision_hooks() -> None:
     )
 
     assert tree_decision == SessionBeforeTreeResult(
-        summary=BranchSummaryResult(summary="summarized"),
+        summary=BranchSummaryOutput(summary="summarized"),
         custom_instructions="custom",
         label="tree2",
     )

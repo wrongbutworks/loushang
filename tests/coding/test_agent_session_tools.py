@@ -956,9 +956,9 @@ def test_session_active_tools_still_materialize_after_substrate_migration(
 def test_bash_tool_forwards_exec_updates_and_preview_metadata(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecOutputChunk, ExecRequest, ExecResult
     from loushang.coding.policy import PolicyEngine
     from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.workspace.exec import ExecOutputChunk, ExecRequest, ExecResult
 
     seen_updates: list[AgentToolResult[dict[str, object]]] = []
 
@@ -1019,9 +1019,9 @@ def test_bash_tool_forwards_exec_updates_and_preview_metadata(tmp_path) -> None:
 def test_bash_tool_details_include_pi_style_truncation_schema(tmp_path) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecRequest, ExecResult
     from loushang.coding.policy import PolicyEngine
     from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.workspace.exec import ExecRequest, ExecResult
 
     stdout_artifact_path = str(tmp_path / "stdout.log")
 
@@ -1062,9 +1062,9 @@ def test_bash_tool_full_output_path_uses_stderr_artifact_when_stdout_is_present(
 ) -> None:
     import asyncio
 
-    from loushang.coding.exec import ExecRequest, ExecResult
     from loushang.coding.policy import PolicyEngine
     from loushang.harness.tools.workspace import create_bash_tool_definition
+    from loushang.harness.workspace.exec import ExecRequest, ExecResult
 
     stderr_artifact_path = str(tmp_path / "stderr.log")
 
@@ -1103,7 +1103,6 @@ def test_agent_session_execute_bash_records_command_execution(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.exec import ExecOutputChunk, ExecResult
     from loushang.coding.policy.types import PolicyDecision
     from loushang.coding.session import AgentSession
     from loushang.coding.tool_pack import (
@@ -1114,6 +1113,7 @@ def test_agent_session_execute_bash_records_command_execution(tmp_path) -> None:
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
+    from loushang.harness.workspace.exec import ExecOutputChunk, ExecResult
 
     class AllowingPolicyEngine:
         def evaluate_action(self, *, tool_name: str, exec_request):
@@ -1196,7 +1196,6 @@ def test_agent_session_abort_bash_cancels_active_execution_and_records_command(
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
     from loushang.coding import SessionManager
-    from loushang.coding.exec import ExecOutputChunk, ExecResult
     from loushang.coding.policy.types import PolicyDecision
     from loushang.coding.session import AgentSession
     from loushang.coding.tool_pack import (
@@ -1207,6 +1206,7 @@ def test_agent_session_abort_bash_cancels_active_execution_and_records_command(
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
+    from loushang.harness.workspace.exec import ExecOutputChunk, ExecResult
 
     class AllowingPolicyEngine:
         def evaluate_action(self, *, tool_name: str, exec_request):
