@@ -14,11 +14,11 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from loushang.coding.diagnostics import DiagnosticRecord, DiagnosticsService
 from loushang.coding.store import SessionManager
 from loushang.coding.tool_pack import (
     register_coding_builtin_tools as register_builtin_tools,
 )
+from loushang.harness.diagnostics import DiagnosticRecord, DiagnosticsService
 from loushang.harness.tools.workspace.registry import (
     WorkspaceToolRegistry as ToolRegistry,
 )

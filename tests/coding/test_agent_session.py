@@ -440,7 +440,6 @@ def test_agent_session_prompt_expands_preflight_references_and_records_unresolve
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.loader import (
         PromptFragmentDescriptor,
         ResourceBundle,
@@ -448,6 +447,7 @@ def test_agent_session_prompt_expands_preflight_references_and_records_unresolve
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     prompted_texts: list[str] = []
 
@@ -954,9 +954,9 @@ def test_agent_session_records_tool_execution_error_diagnostic_with_correlation(
     from loushang.agent import Agent
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     async def scenario() -> DiagnosticsService:
         manager = await SessionManager.new(
@@ -1241,7 +1241,6 @@ def test_agent_session_execute_bash_uses_extension_user_bash_operations(
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.exec import ExecOutputChunk, ExecRequest, ExecResult
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
@@ -1251,6 +1250,7 @@ def test_agent_session_execute_bash_uses_extension_user_bash_operations(
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
+    from loushang.harness.workspace.exec import ExecOutputChunk, ExecRequest, ExecResult
 
     class RecordingOperations:
         def __init__(self) -> None:
@@ -1617,7 +1617,6 @@ def test_agent_session_extension_command_context_exec_command_uses_exec_service(
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.exec import ExecOutputChunk, ExecResult
     from loushang.coding.extensions import (
         ExtensionRunner,
         LoadedExtension,
@@ -1625,6 +1624,7 @@ def test_agent_session_extension_command_context_exec_command_uses_exec_service(
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.workspace.exec import ExecOutputChunk, ExecResult
 
     class RecordingExecService:
         def __init__(self) -> None:
@@ -1995,7 +1995,6 @@ def test_agent_session_execute_command_async_records_errors(tmp_path) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.extensions import (
         ExtensionRunner,
         LoadedExtension,
@@ -2003,6 +2002,7 @@ def test_agent_session_execute_command_async_records_errors(tmp_path) -> None:
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     async def _handler(args: str, ctx):
         del args, ctx
@@ -2057,9 +2057,9 @@ def test_agent_session_execute_command_async_returns_none_for_unknown_command(
     tmp_path,
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -2086,10 +2086,10 @@ def test_agent_session_execute_command_async_keeps_resource_diagnostic_for_unres
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.loader import ResourceBundle
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     diagnostics_service = DiagnosticsService()
     session = AgentSession(
@@ -2786,10 +2786,10 @@ def test_agent_session_rejects_pi_style_extension_provider_config(tmp_path) -> N
     from loushang.agent import Agent
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.control import ModelRegistry
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.extensions import ExtensionAPI, ExtensionRunner
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     def _build_session(api: ExtensionAPI) -> tuple[AiModelRegistry, DiagnosticsService]:
         ai_registry = AiModelRegistry()
@@ -4343,10 +4343,10 @@ def test_agent_session_invalid_extension_refresh_model_change_keeps_top_level_mo
 ) -> None:
     from loushang.agent import Agent
     from loushang.ai.model import Capabilities, Model
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     next_model = Model(
         id="next-model",
@@ -4642,11 +4642,11 @@ def test_agent_session_resource_refresh_rebuilds_prompt_and_tools_without_emitti
 
 def test_agent_session_records_reload_failures_as_diagnostics(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.loader import DefaultResourceLoader, ResourceBundle
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     class _BrokenReloadLoader(DefaultResourceLoader):
         def reload_resources(self, cwd):
@@ -4690,7 +4690,6 @@ def test_agent_session_records_bind_failures_as_diagnostics(tmp_path) -> None:
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.extensions import (
         ExtensionResourceContribution,
         ExtensionRunner,
@@ -4703,6 +4702,7 @@ def test_agent_session_records_bind_failures_as_diagnostics(tmp_path) -> None:
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     class _BrokenBindRunner(ExtensionRunner):
         def __init__(self, extensions) -> None:
@@ -4773,9 +4773,9 @@ def test_agent_session_records_bind_failures_as_diagnostics(tmp_path) -> None:
 
 def test_agent_session_exposes_session_metadata_and_messages(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=True)
@@ -4978,9 +4978,9 @@ def test_agent_session_set_session_name_emits_session_info_changed(tmp_path) -> 
 
 def test_agent_session_exposes_session_scoped_diagnostics(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
 
     diagnostics = DiagnosticsService()
     session = AgentSession(
@@ -5057,7 +5057,6 @@ def test_agent_session_records_remote_package_manifest_diagnostics(tmp_path) -> 
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.package import (
         PackageMaterializationRecord,
         PackageMaterializer,
@@ -5066,6 +5065,7 @@ def test_agent_session_records_remote_package_manifest_diagnostics(tmp_path) -> 
     from loushang.coding.policy import PackageSecurityPolicy
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     source = "https://packages.example.invalid/review-pack.git"
 
@@ -5112,9 +5112,9 @@ def test_agent_session_records_remote_package_manifest_diagnostics(tmp_path) -> 
 def test_agent_session_records_package_catalog_diagnostics(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     catalog_path = tmp_path / "catalog.json"
     catalog_path.write_text("{not json", encoding="utf-8")
@@ -5759,7 +5759,6 @@ def test_agent_session_records_package_update_check_failures(tmp_path) -> None:
 
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.package import (
         PackageMaterializationRecord,
         PackageMaterializer,
@@ -5767,6 +5766,7 @@ def test_agent_session_records_package_update_check_failures(tmp_path) -> None:
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     source = (tmp_path / "missing.git").as_uri()
 
@@ -5811,9 +5811,9 @@ def test_agent_session_records_package_update_check_failures(tmp_path) -> None:
 def test_agent_session_records_package_version_conflict_diagnostics(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     first = tmp_path / "plugins" / "debug-pack-a"
     second = tmp_path / "plugins" / "debug-pack-b"
@@ -5891,9 +5891,9 @@ def test_agent_session_exposes_jsonl_and_html_export_methods(tmp_path) -> None:
 
 def test_agent_session_exposes_diagnostics_views(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     diagnostics_service = DiagnosticsService()
     diagnostics_service.record(

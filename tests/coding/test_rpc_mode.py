@@ -18,13 +18,6 @@ from loushang.ai.model.domain import (
     Pricing,
 )
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.compaction import CompactionResult
-from loushang.coding.diagnostics import (
-    DiagnosticRecord,
-    DiagnosticsQuery,
-    DiagnosticSummary,
-    ErrorReport,
-)
 from loushang.coding.loader import (
     PromptFragmentDescriptor,
     ResourceBundle,
@@ -36,10 +29,19 @@ from loushang.coding.session.types import (
     RunState,
     SessionCommandDescriptor,
 )
-from loushang.coding.store import SessionQuery
 from loushang.coding.types import ModelSelection
-from loushang.harness.agent_transcript import AGENT_MESSAGE_KIND
+from loushang.harness.agent_transcript import (
+    AGENT_MESSAGE_KIND,
+    CompactionResult,
+    SessionQuery,
+)
 from loushang.harness.conversation import ConversationRecord
+from loushang.harness.diagnostics import (
+    DiagnosticRecord,
+    DiagnosticsQuery,
+    DiagnosticSummary,
+    ErrorReport,
+)
 from loushang.harness.events import RuntimeEvent
 
 

@@ -47,27 +47,31 @@ A Product supplies:
 
 - model catalog and model object construction;
 - model/auth side effects and model-selection defaults;
-- branch-summary prompt, model call, detail projection, and error wording;
+- branch-summary prompt/profile, model selection, domain detail decoration, and
+  error wording;
 - extension before-hooks, cancellation policy, diagnostics, and Product events;
 - context application to its Agent/runtime state;
 - TUI, RPC, HTML, CLI, and Work projections.
 
 Coding binds these ports directly in `AgentSession`; no Coding interaction
 controller sits between the Product callback and the Harness runtime. Its
-`before_session_tree` hook remains Coding-owned, and the Product binding
-converts a Product summary result to the Harness `BranchSummaryOutput` before
-persistence.
+`before_session_tree` hook remains Coding-owned; hook results are normalized to
+the standard `BranchSummaryOutput` before persistence.
 
-Coding keeps model/auth resolution, summary prompt and model behavior,
-extension semantics, diagnostics, and Product presentation.
+Coding keeps model/auth resolution, summary prompt/profile selection, code
+artifact decoration, extension semantics, diagnostics, and Product
+presentation. The standard branch-summary model invocation, message
+serialization, cancellation, and normalized output are Harness behavior.
 
 ## Dependency Rule
 
-`harness.agent_transcript` may import the stable Agent message type aliases,
-`loushang.ai.types`, and the pure value objects in `loushang.ai.model`. It must
-not import Coding, model/provider registries, authentication, provider calls,
-or Product UI. `CancellationController` lives in neutral `harness.runtime` so
-branch navigation does not acquire a dependency on the Agent loop.
+`harness.agent_transcript` may import stable Agent message type aliases,
+`loushang.ai.types`, and pure value objects in `loushang.ai.model`. Its
+dedicated `summarization` module may additionally call the public
+`loushang.ai` completion surface. It must not import Coding, model/provider
+registries, authentication resolution, provider implementations, or Product
+UI. `CancellationController` lives in neutral `harness.runtime` so branch
+navigation does not acquire a dependency on the Agent loop.
 
 ## Verification
 

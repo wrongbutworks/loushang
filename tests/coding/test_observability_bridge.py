@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 
 def test_coding_observability_context_bridges_problems_to_diagnostics(tmp_path) -> None:
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.observability import coding_observability_context
+    from loushang.harness.diagnostics import DiagnosticsService
     from loushang.observability import get_log, get_problem_store
 
     diagnostics = DiagnosticsService()
@@ -42,8 +42,8 @@ def test_coding_observability_context_bridges_problems_to_diagnostics(tmp_path) 
 
 
 def test_coding_observability_context_maps_config_problem_to_model_diagnostic(tmp_path) -> None:
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.observability import coding_observability_context
+    from loushang.harness.diagnostics import DiagnosticsService
     from loushang.observability import get_log
 
     diagnostics = DiagnosticsService()
@@ -168,8 +168,8 @@ def test_coding_observability_context_reuses_startup_label_for_default_files(mon
 def test_coding_observability_context_preserves_existing_trace_when_bridging_problems(tmp_path) -> None:
     import json
 
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.observability import coding_observability_context
+    from loushang.harness.diagnostics import DiagnosticsService
     from loushang.observability import (
         configure_observability,
         get_log,
@@ -199,8 +199,8 @@ def test_coding_observability_context_preserves_existing_trace_when_bridging_pro
 def test_coding_observability_context_restores_existing_trace_after_exit(tmp_path) -> None:
     import json
 
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.observability import coding_observability_context
+    from loushang.harness.diagnostics import DiagnosticsService
     from loushang.observability import (
         configure_observability,
         get_log,

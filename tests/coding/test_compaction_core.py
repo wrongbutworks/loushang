@@ -11,16 +11,19 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from loushang.coding.compaction import (
-    BranchSummaryDetails,
-    BranchSummaryResult,
-    CompactionPreparation,
-    CompactionResult,
-    compact,
-    generate_branch_summary,
+from loushang.coding.compaction.adapter import (
+    execute_coding_branch_summary,
+    execute_coding_compaction,
+)
+from loushang.coding.compaction.summary_quality import (
+    SummaryQualityReport,
+    validate_summary_contract,
 )
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
+    BranchSummaryOutput,
+    CompactionPreparation,
+    CompactionResult,
     calculate_context_tokens,
     estimate_context_tokens,
 )
@@ -36,7 +39,7 @@ from loushang.harness.context.budget import calculate_compaction_budget
 @pytest.mark.anyio
 async def test_complete_text_calls_root_complete_with_options(monkeypatch) -> None:
     from loushang.ai import Context
-    from loushang.coding.compaction import compaction as compaction_module
+    from loushang.harness.agent_transcript import summarization as summary_module
 
     captured: dict[str, object] = {}
 
@@ -64,24 +67,19 @@ async def test_complete_text_calls_root_complete_with_options(monkeypatch) -> No
             timestamp=0.0,
         )
 
-    monkeypatch.setattr(compaction_module, "complete", fake_complete)
+    monkeypatch.setattr(summary_module, "complete", fake_complete)
     options = CallOptions(auth=ApiKeyAuth("key"), headers={"x-test": "1"})
     context = Context(
         messages=[UserMessage(role="user", content="summarize", timestamp=0.0)]
     )
 
-    result = await compaction_module._complete_text("model", context, options)
+    result = await summary_module._complete_text("model", context, options)
 
     assert result == "summary text"
     assert captured == {"model": "model", "context": context, "options": options}
 
 
 def test_compaction_package_exports_product_symbols() -> None:
-    from loushang.coding.compaction import (
-        SummaryQualityReport,
-        validate_summary_contract,
-    )
-
     assert CompactionResult is not None
     assert SummaryQualityReport is not None
     assert callable(validate_summary_contract)
@@ -764,16 +762,15 @@ def test_plan_compaction_partitions_do_not_overlap_when_all_context_is_kept(
 
 
 def test_harness_exports_turn_aware_compaction_surface() -> None:
-    from loushang.coding import CompactionResult as TopLevelCompactionResult
-    from loushang.coding import (
-        validate_summary_contract as top_level_validate_summary_contract,
+    from loushang.harness.agent_transcript import (
+        CompactionResult as HarnessCompactionResult,
     )
-    from loushang.coding.compaction import validate_summary_contract
-    from loushang.harness.agent_transcript import prepare_turn_aware_compaction
+    from loushang.harness.agent_transcript import (
+        prepare_turn_aware_compaction,
+    )
 
-    assert TopLevelCompactionResult is CompactionResult
+    assert HarnessCompactionResult is CompactionResult
     assert callable(prepare_turn_aware_compaction)
-    assert top_level_validate_summary_contract is validate_summary_contract
 
 
 def test_validate_summary_contract_accepts_structured_compaction_summary_with_file_tags() -> (
@@ -884,15 +881,17 @@ Try a branch-specific refactor.
 
 
 def test_top_level_package_exports_branch_summary_surface() -> None:
-    from loushang.coding import BranchSummaryDetails as TopLevelBranchSummaryDetails
-    from loushang.coding import TreeNavigationResult as TopLevelTreeNavigationResult
-    from loushang.coding import (
-        generate_branch_summary as top_level_generate_branch_summary,
+    import loushang.coding as coding
+    from loushang.harness.agent_transcript import (
+        BranchSummaryOutput as HarnessBranchSummaryOutput,
+    )
+    from loushang.harness.agent_transcript import (
+        execute_branch_summary,
     )
 
-    assert TopLevelBranchSummaryDetails is not None
-    assert TopLevelTreeNavigationResult is not None
-    assert callable(top_level_generate_branch_summary)
+    assert not hasattr(coding, "BranchSummaryDetails")
+    assert HarnessBranchSummaryOutput is BranchSummaryOutput
+    assert callable(execute_branch_summary)
 
 
 def test_tree_navigation_result_is_exported() -> None:
@@ -902,29 +901,26 @@ def test_tree_navigation_result_is_exported() -> None:
 
 
 @pytest.mark.anyio
-async def test_generate_branch_summary_returns_summary_text(monkeypatch) -> None:
+async def test_generate_branch_summary_returns_summary_text() -> None:
     captured: dict[str, object] = {}
 
-    async def _fake_complete(*args, **kwargs):
-        captured["options"] = args[2] if len(args) > 2 else kwargs.get("options")
+    async def _fake_complete(model, context, options=None):
+        del model, context
+        captured["options"] = options
         return "branch summary"
 
-    monkeypatch.setattr(
-        "loushang.coding.compaction.branch_summarization._complete_text",
-        _fake_complete,
-    )
-
-    result = await generate_branch_summary(
+    result = await execute_coding_branch_summary(
         [UserMessage(role="user", content="old summary", timestamp=0.0)],
         model=object(),
         signal=None,
         reserve_tokens=1024,
+        completer=_fake_complete,
     )
 
-    assert result == BranchSummaryResult(
+    assert result == BranchSummaryOutput(
         summary="The user explored a different conversation branch before returning here.\n"
         "Summary of that exploration:\n\nbranch summary",
-        details=BranchSummaryDetails(read_files=[], modified_files=[]),
+        details=None,
     )
     options = captured["options"]
     assert isinstance(options, CallOptions)
@@ -932,9 +928,9 @@ async def test_generate_branch_summary_returns_summary_text(monkeypatch) -> None
 
 
 @pytest.mark.anyio
-async def test_generate_branch_summary_uses_serialized_prompt_and_file_details(
-    monkeypatch,
-) -> None:
+async def test_generate_branch_summary_uses_serialized_prompt_and_file_details() -> (
+    None
+):
     captured: dict[str, object] = {}
 
     async def _fake_complete(model, context, options=None):
@@ -943,13 +939,8 @@ async def test_generate_branch_summary_uses_serialized_prompt_and_file_details(
         captured["options"] = options
         return "branch summary"
 
-    monkeypatch.setattr(
-        "loushang.coding.compaction.branch_summarization._complete_text",
-        _fake_complete,
-    )
-
     signal = object()
-    result = await generate_branch_summary(
+    result = await execute_coding_branch_summary(
         [
             UserMessage(
                 role="user",
@@ -995,6 +986,7 @@ async def test_generate_branch_summary_uses_serialized_prompt_and_file_details(
         signal=signal,
         custom_instructions="Keep exact paths.",
         reserve_tokens=1024,
+        completer=_fake_complete,
     )
 
     context = captured["context"]
@@ -1015,23 +1007,19 @@ async def test_generate_branch_summary_uses_serialized_prompt_and_file_details(
     assert result.summary.endswith(
         "<read-files>\nREADME.md\n</read-files>\n\n<modified-files>\nsrc/app.py\n</modified-files>"
     )
-    assert result.details.read_files == ["README.md"]
-    assert result.details.modified_files == ["src/app.py"]
+    assert result.details == {
+        "readFiles": ["README.md"],
+        "modifiedFiles": ["src/app.py"],
+    }
 
 
 @pytest.mark.anyio
-async def test_compact_returns_summary_result(monkeypatch) -> None:
-    async def fake_summarize_messages(**kwargs):
-        preparation = kwargs["preparation"]
-        api_key = kwargs["api_key"]
-        assert preparation.tokens_before == 42
-        assert api_key == "test-key"
+async def test_compact_returns_summary_result() -> None:
+    async def fake_completer(model, context, options=None):
+        del model, context
+        assert isinstance(options, CallOptions)
+        assert options.auth == ApiKeyAuth("test-key")
         return "summary text"
-
-    monkeypatch.setattr(
-        "loushang.coding.compaction.compaction._summarize_messages",
-        fake_summarize_messages,
-    )
 
     preparation = CompactionPreparation(
         first_kept_entry_id="e2",
@@ -1047,7 +1035,12 @@ async def test_compact_returns_summary_result(monkeypatch) -> None:
         tokens_before=42,
     )
 
-    result = await compact(preparation=preparation, model=object(), api_key="test-key")
+    result = await execute_coding_compaction(
+        preparation=preparation,
+        model=object(),
+        api_key="test-key",
+        completer=fake_completer,
+    )
 
     assert result == CompactionResult(
         summary="summary text",
@@ -1058,17 +1051,13 @@ async def test_compact_returns_summary_result(monkeypatch) -> None:
 
 
 @pytest.mark.anyio
-async def test_compact_passes_custom_instructions_to_summarizer(monkeypatch) -> None:
+async def test_compact_passes_custom_instructions_to_summarizer() -> None:
     captured: dict[str, object] = {}
 
-    async def fake_summarize_messages(**kwargs):
-        captured.update(kwargs)
+    async def fake_completer(model, context, options=None):
+        del model, options
+        captured["prompt"] = context.messages[0].content[0].text
         return "summary text"
-
-    monkeypatch.setattr(
-        "loushang.coding.compaction.compaction._summarize_messages",
-        fake_summarize_messages,
-    )
 
     preparation = CompactionPreparation(
         first_kept_entry_id="e2",
@@ -1084,21 +1073,20 @@ async def test_compact_passes_custom_instructions_to_summarizer(monkeypatch) -> 
         tokens_before=42,
     )
 
-    result = await compact(
+    result = await execute_coding_compaction(
         preparation=preparation,
         model=object(),
         api_key="test-key",
         custom_instructions="Keep API details.",
+        completer=fake_completer,
     )
 
     assert result.summary == "summary text"
-    assert captured["custom_instructions"] == "Keep API details."
+    assert "Additional focus: Keep API details." in captured["prompt"]
 
 
 @pytest.mark.anyio
-async def test_compact_serializes_conversation_and_previous_summary_for_llm(
-    monkeypatch,
-) -> None:
+async def test_compact_serializes_conversation_and_previous_summary_for_llm() -> None:
     captured: dict[str, object] = {}
 
     async def fake_complete(model, context, options=None):
@@ -1106,10 +1094,6 @@ async def test_compact_serializes_conversation_and_previous_summary_for_llm(
         captured["context"] = context
         captured["options"] = options
         return "summary text"
-
-    monkeypatch.setattr(
-        "loushang.coding.compaction.compaction._complete_text", fake_complete
-    )
 
     preparation = CompactionPreparation(
         first_kept_entry_id="e2",
@@ -1135,12 +1119,13 @@ async def test_compact_serializes_conversation_and_previous_summary_for_llm(
     )
 
     signal = object()
-    result = await compact(
+    result = await execute_coding_compaction(
         preparation=preparation,
         model="model",
         headers={"x-test": "1"},
         signal=signal,
         custom_instructions="Keep exact file paths.",
+        completer=fake_complete,
     )
 
     context = captured["context"]
@@ -1161,18 +1146,12 @@ async def test_compact_serializes_conversation_and_previous_summary_for_llm(
 
 
 @pytest.mark.anyio
-async def test_compact_split_turn_forwards_call_options_to_both_summaries(
-    monkeypatch,
-) -> None:
+async def test_compact_split_turn_forwards_call_options_to_both_summaries() -> None:
     captured: list[tuple[object, object, object | None]] = []
 
     async def fake_complete(model, context, options=None):
         captured.append((model, context, options))
         return f"summary-{len(captured)}"
-
-    monkeypatch.setattr(
-        "loushang.coding.compaction.compaction._complete_text", fake_complete
-    )
 
     preparation = CompactionPreparation(
         first_kept_entry_id="e2",
@@ -1195,12 +1174,13 @@ async def test_compact_split_turn_forwards_call_options_to_both_summaries(
     )
 
     signal = object()
-    result = await compact(
+    result = await execute_coding_compaction(
         preparation=preparation,
         model="model",
         api_key="test-key",
         headers={"x-test": "1"},
         signal=signal,
+        completer=fake_complete,
     )
 
     assert (
@@ -1220,15 +1200,10 @@ async def test_compact_split_turn_forwards_call_options_to_both_summaries(
 
 
 @pytest.mark.anyio
-async def test_compact_appends_file_operation_summary_details(monkeypatch) -> None:
-    async def fake_summarize_messages(**kwargs):
-        del kwargs
+async def test_compact_appends_file_operation_summary_details() -> None:
+    async def fake_completer(model, context, options=None):
+        del model, context, options
         return "summary text"
-
-    monkeypatch.setattr(
-        "loushang.coding.compaction.compaction._summarize_messages",
-        fake_summarize_messages,
-    )
 
     preparation = CompactionPreparation(
         first_kept_entry_id="e2",
@@ -1271,7 +1246,12 @@ async def test_compact_appends_file_operation_summary_details(monkeypatch) -> No
         tokens_before=42,
     )
 
-    result = await compact(preparation=preparation, model=object(), api_key="test-key")
+    result = await execute_coding_compaction(
+        preparation=preparation,
+        model=object(),
+        api_key="test-key",
+        completer=fake_completer,
+    )
 
     assert (
         result.summary

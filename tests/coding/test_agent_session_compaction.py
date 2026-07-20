@@ -77,7 +77,6 @@ def test_agent_session_compact_appends_compaction_and_rebuilds_context(
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
@@ -86,6 +85,7 @@ def test_agent_session_compact_appends_compaction_and_rebuilds_context(
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import CompactionResult
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -152,7 +152,10 @@ def test_agent_session_compact_appends_compaction_and_rebuilds_context(
             details={"source": "test"},
         )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
     session.subscribe(events.append)
 
     result = asyncio.run(session.compact())
@@ -212,7 +215,6 @@ def test_agent_session_exposes_compaction_service_surface(
     tmp_path, monkeypatch
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
@@ -220,6 +222,7 @@ def test_agent_session_exposes_compaction_service_surface(
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import CompactionResult
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -264,7 +267,10 @@ def test_agent_session_exposes_compaction_service_surface(
             tokens_before=preparation.tokens_before,
         )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
 
     assert session.get_compaction_status().is_compacting is False
     result = asyncio.run(session.compact_session(custom_instructions="preserve tasks"))
@@ -278,15 +284,15 @@ def test_agent_session_compact_emits_error_event_on_failure(
     tmp_path, monkeypatch
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.compaction import CompactionPreparation
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
         SettingsManager,
     )
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import CompactionPreparation
+    from loushang.harness.diagnostics import DiagnosticsService
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -344,7 +350,8 @@ def test_agent_session_compact_emits_error_event_on_failure(
         _fake_prepare,
     )
     monkeypatch.setattr(
-        "loushang.coding.session.agent_session.compact", _failing_compact
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _failing_compact,
     )
     session.subscribe(events.append)
 
@@ -380,7 +387,6 @@ def test_agent_session_compact_respects_extension_before_compact_cancellation(
         ControlConfig,
         SettingsManager,
     )
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.extensions import (
         ExtensionRunner,
         LoadedExtension,
@@ -388,6 +394,7 @@ def test_agent_session_compact_respects_extension_before_compact_cancellation(
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -466,7 +473,6 @@ def test_agent_session_compact_respects_extension_before_compact_result_override
     tmp_path, monkeypatch
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
@@ -479,6 +485,7 @@ def test_agent_session_compact_respects_extension_before_compact_result_override
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import CompactionResult
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -546,7 +553,8 @@ def test_agent_session_compact_respects_extension_before_compact_result_override
     )
 
     monkeypatch.setattr(
-        "loushang.coding.session.agent_session.compact", _failing_compact
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _failing_compact,
     )
     result = asyncio.run(session.compact())
 
@@ -582,7 +590,6 @@ def test_agent_session_auto_compacts_after_agent_end_when_threshold_exceeded(
     tmp_path, monkeypatch
 ) -> None:
     from loushang.agent import AbortSignal, Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
@@ -590,6 +597,7 @@ def test_agent_session_auto_compacts_after_agent_end_when_threshold_exceeded(
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import CompactionResult
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -662,7 +670,10 @@ def test_agent_session_auto_compacts_after_agent_end_when_threshold_exceeded(
             tokens_before=preparation.tokens_before,
         )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
     session.subscribe(events.append)
 
     async def scenario() -> None:
@@ -690,7 +701,6 @@ def test_agent_session_auto_compaction_uses_compact_percent_threshold(
     tmp_path, monkeypatch
 ) -> None:
     from loushang.agent import AbortSignal, Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
@@ -698,6 +708,7 @@ def test_agent_session_auto_compaction_uses_compact_percent_threshold(
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import CompactionResult
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -773,7 +784,10 @@ def test_agent_session_auto_compaction_uses_compact_percent_threshold(
             tokens_before=preparation.tokens_before,
         )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
     session.subscribe(events.append)
 
     async def scenario() -> None:
@@ -864,7 +878,8 @@ def test_agent_session_auto_compaction_ignores_stale_assistant_usage_before_late
         raise AssertionError("stale assistant usage should not trigger compaction")
 
     monkeypatch.setattr(
-        "loushang.coding.session.agent_session.compact", _unexpected_compact
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _unexpected_compact,
     )
 
     result = asyncio.run(session.maybe_compact_after_turn(stale_assistant))
@@ -877,7 +892,6 @@ def test_agent_session_auto_compacts_error_message_using_last_successful_usage(
     tmp_path, monkeypatch
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
@@ -885,6 +899,7 @@ def test_agent_session_auto_compacts_error_message_using_last_successful_usage(
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import CompactionResult
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -946,7 +961,10 @@ def test_agent_session_auto_compacts_error_message_using_last_successful_usage(
             tokens_before=preparation.tokens_before,
         )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
     session.subscribe(events.append)
 
     result = asyncio.run(session.maybe_compact_after_turn(error))
@@ -963,7 +981,6 @@ def test_agent_session_compacts_before_prompt_when_previous_usage_crossed_thresh
     tmp_path, monkeypatch
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
@@ -971,6 +988,7 @@ def test_agent_session_compacts_before_prompt_when_previous_usage_crossed_thresh
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import CompactionResult
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -1038,7 +1056,10 @@ def test_agent_session_compacts_before_prompt_when_previous_usage_crossed_thresh
         calls.append("prompt")
         assert any(getattr(message, "role", None) == "user" for message in messages)
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
     monkeypatch.setattr(session.agent, "prompt", _fake_prompt)
 
     asyncio.run(session.prompt("next request"))
@@ -1132,7 +1153,8 @@ def test_agent_session_streaming_control_does_not_pre_prompt_compact(
         )
 
     monkeypatch.setattr(
-        "loushang.coding.session.agent_session.compact", _unexpected_compact
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _unexpected_compact,
     )
 
     asyncio.run(session.prompt("queued control", streaming_behavior=streaming_behavior))
@@ -1149,7 +1171,6 @@ def test_agent_session_threshold_auto_compaction_resumes_agent_level_queue(
     tmp_path, monkeypatch
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
@@ -1157,6 +1178,7 @@ def test_agent_session_threshold_auto_compaction_resumes_agent_level_queue(
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import CompactionResult
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -1220,7 +1242,10 @@ def test_agent_session_threshold_auto_compaction_resumes_agent_level_queue(
         nonlocal continue_runs
         continue_runs += 1
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
     monkeypatch.setattr(session.agent, "continue_run", _continue_run)
 
     async def scenario() -> None:
@@ -1241,7 +1266,6 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
     tmp_path, monkeypatch
 ) -> None:
     from loushang.agent import AbortSignal, Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
@@ -1249,6 +1273,7 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import CompactionResult
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -1314,7 +1339,10 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
             tokens_before=preparation.tokens_before,
         )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
     continue_runs = 0
 
     async def _continue_run() -> None:
@@ -1347,7 +1375,6 @@ def test_agent_session_overflow_recovery_is_limited_to_one_attempt(
     tmp_path, monkeypatch
 ) -> None:
     from loushang.agent import AbortSignal, Agent
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import (
         CompactionSettings,
         ControlConfig,
@@ -1355,6 +1382,7 @@ def test_agent_session_overflow_recovery_is_limited_to_one_attempt(
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import CompactionResult
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -1430,7 +1458,10 @@ def test_agent_session_overflow_recovery_is_limited_to_one_attempt(
         nonlocal continue_runs
         continue_runs += 1
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
     monkeypatch.setattr(session, "continue_run", _continue_run)
     session.subscribe(events.append)
 

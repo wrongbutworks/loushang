@@ -130,8 +130,9 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
 def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> None:
     harness_root = Path("src/loushang/harness")
     profile_allowlists = {
-        harness_root / "agent_transcript": (
-            "loushang.ai.model",
+            harness_root / "agent_transcript": (
+                "loushang.ai",
+                "loushang.ai.model",
             "loushang.ai.types",
             "loushang.ai.json_codec",
             "loushang.agent.types",
@@ -483,7 +484,7 @@ def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
     assert "AgentTranscriptCompactionRuntime" in session_source
     assert "AgentTranscriptRetryRuntime" in session_source
     assert not Path("src/loushang/coding/session/compaction_controller.py").exists()
-    assert "Product-supplied" in boundary
+    assert "Product-selected" in boundary
     assert "Coding keeps" in boundary
 
 
@@ -518,8 +519,11 @@ def test_transcript_compaction_capability_is_neutral_and_adopted() -> None:
     session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
-    coding_executor_source = Path(
-        "src/loushang/coding/compaction/compaction.py"
+    summary_executor_source = Path(
+        "src/loushang/harness/agent_transcript/summarization.py"
+    ).read_text(encoding="utf-8")
+    coding_adapter_source = Path(
+        "src/loushang/coding/compaction/adapter.py"
     ).read_text(encoding="utf-8")
     binding = Path(
         "docs/internals/architecture/harness/product-runtime-injection/"
@@ -531,7 +535,11 @@ def test_transcript_compaction_capability_is_neutral_and_adopted() -> None:
     assert "TURN_AWARE_SUMMARY_IMPLEMENTATION" in runtime_profile_source
     assert "create_agent_transcript_compaction_capability" in runtime_profile_source
     assert "AgentTranscriptCompactionCapability" in session_source
-    assert "ConversationCompactionPlanner" not in coding_executor_source
+    assert "loushang.coding" not in summary_executor_source
+    assert "execute_transcript_compaction" in summary_executor_source
+    assert "execute_branch_summary" in summary_executor_source
+    assert "ConversationCompactionPlanner" not in coding_adapter_source
+    assert "execute_transcript_compaction" in coding_adapter_source
     assert "CodingCompactionRuntime" not in runtime_profile_source
     assert "CodingCompactionRuntime" not in session_source
     assert "Harness owns the mechanism" in binding
@@ -1372,7 +1380,7 @@ def test_harness_context_and_journal_symbols_are_not_top_level_exports() -> None
     assert context_symbols.isdisjoint(set(harness.__all__))
 
 
-def test_harness_diagnostics_symbols_are_not_package_exports() -> None:
+def test_harness_diagnostics_symbols_are_subpackage_exports_only() -> None:
     import loushang.harness as harness
     import loushang.harness.diagnostics as diagnostics
 
@@ -1390,7 +1398,7 @@ def test_harness_diagnostics_symbols_are_not_package_exports() -> None:
     }
 
     assert diagnostic_symbols.isdisjoint(set(harness.__all__))
-    assert diagnostics.__all__ == []
+    assert set(diagnostics.__all__) == diagnostic_symbols
 
 
 def test_harness_host_symbols_are_not_package_exports() -> None:
@@ -1463,13 +1471,7 @@ def test_conversation_runtime_core_does_not_import_channel_implementations() -> 
     assert offenders == []
 
 
-def test_coding_internal_diagnostics_imports_use_harness_owners() -> None:
-    compatibility_paths = {
-        "src/loushang/coding/__init__.py",
-        "src/loushang/coding/diagnostics/__init__.py",
-        "src/loushang/coding/diagnostics/service.py",
-        "src/loushang/coding/diagnostics/types.py",
-    }
+def test_coding_diagnostics_facades_are_extinct() -> None:
     legacy_symbols = (
         "loushang.coding.DiagnosticRecord",
         "loushang.coding.DiagnosticSummary",
@@ -1501,13 +1503,13 @@ def test_coding_internal_diagnostics_imports_use_harness_owners() -> None:
     )
     offenders: list[str] = []
     for path in sorted(Path("src/loushang/coding").rglob("*.py")):
-        if path.as_posix() in compatibility_paths:
-            continue
         for imported in _absolute_imports(path):
             if _matches_any(imported, legacy_symbols):
                 offenders.append(f"{path.as_posix()} imports {imported}")
 
     assert offenders == []
+    assert not Path("src/loushang/coding/diagnostics/service.py").exists()
+    assert not Path("src/loushang/coding/diagnostics/types.py").exists()
 
 
 def test_harness_diagnostics_core_boundary_is_documented() -> None:
@@ -1520,7 +1522,7 @@ def test_harness_diagnostics_core_boundary_is_documented() -> None:
         "Harness Diagnostics Core Boundary",
         "`loushang.harness.diagnostics.types`",
         "`loushang.harness.diagnostics.service`",
-        "same Harness-owned objects",
+        "canonical owners",
         "`coding.diagnostics.serialization`",
         "`coding.diagnostics.problem_bridge`",
         "must not import coding, method, work, TUI, AI, agent runtime, provider, observability, or product packages",
@@ -1541,13 +1543,7 @@ def test_harness_diagnostics_core_boundary_is_documented() -> None:
     assert "diagnostics core implementation complete" in inventory_text
 
 
-def test_coding_internal_context_budget_imports_use_harness_owners() -> None:
-    compatibility_paths = {
-        "src/loushang/coding/__init__.py",
-        "src/loushang/coding/compaction/__init__.py",
-        "src/loushang/coding/compaction/policy.py",
-        "src/loushang/coding/compaction/types.py",
-    }
+def test_coding_context_budget_facades_are_extinct() -> None:
     legacy_symbols = (
         "loushang.coding.ContextUsageEstimate",
         "loushang.coding.compaction.CompactionBudget",
@@ -1559,13 +1555,12 @@ def test_coding_internal_context_budget_imports_use_harness_owners() -> None:
     )
     offenders: list[str] = []
     for path in sorted(Path("src/loushang/coding").rglob("*.py")):
-        if path.as_posix() in compatibility_paths:
-            continue
         for imported in _absolute_imports(path):
             if _matches_any(imported, legacy_symbols):
                 offenders.append(f"{path.as_posix()} imports {imported}")
 
     assert offenders == []
+    assert not Path("src/loushang/coding/compaction/policy.py").exists()
 
 
 def test_harness_context_budget_and_accounting_boundary_is_documented() -> None:
@@ -1578,7 +1573,7 @@ def test_harness_context_budget_and_accounting_boundary_is_documented() -> None:
         "Harness Context Budget And Accounting Boundary",
         "`loushang.harness.context.budget`",
         "`loushang.harness.context.usage`",
-        "same Harness-owned objects",
+        "canonical owners",
         "This migration establishes budget and accounting ownership only",
         "must not import coding, method, work, TUI, AI, agent runtime, provider, or product packages",
     }
@@ -1648,20 +1643,11 @@ def test_harness_context_compaction_and_journal_design_is_documented() -> None:
 
 def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
     expected_imports = {
-        Path("src/loushang/coding/compaction/service.py"): {
-            "loushang.harness.context.compaction.CompactionCoordinator",
-        },
         Path("src/loushang/harness/agent_transcript/file_store.py"): {
             "loushang.harness.conversation.NativeConversationHeaderCodec",
             "loushang.harness.conversation.NativeConversationRecordCodec",
             "loushang.harness.journal.JsonlJournal",
             "loushang.harness.journal.journal_file_lock",
-        },
-        Path("src/loushang/coding/store/file_codec.py"): {
-            "loushang.harness.agent_transcript.file_store.AgentTranscriptFileError",
-        },
-        Path("src/loushang/coding/store/file_lock.py"): {
-            "loushang.harness.agent_transcript.file_store.agent_transcript_file_lock",
         },
         Path("src/loushang/coding/store/session_manager.py"): {
             "loushang.harness.agent_transcript.AgentTranscriptLifecycle",
@@ -1900,8 +1886,9 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
         Path("src/loushang/harness/agent_transcript/compaction.py"): {
             "loushang.harness.context.ConversationCompactionPlanner",
         },
-        Path("src/loushang/coding/compaction/compaction.py"): {
-            "loushang.harness.context.summary.build_summary_prompt",
+        Path("src/loushang/harness/agent_transcript/summarization.py"): {
+            "loushang.harness.context.SummaryProfile",
+            "loushang.harness.context.build_summary_prompt",
         },
         Path("src/loushang/coding/compaction/summary_quality.py"): {
             "loushang.harness.context.validate_summary",
@@ -1915,9 +1902,6 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
         )
     assert missing == []
 
-    assert "import json" not in Path(
-        "src/loushang/coding/store/file_codec.py"
-    ).read_text(encoding="utf-8")
     assert "import json" not in Path("src/loushang/work/event_log.py").read_text(
         encoding="utf-8"
     )
@@ -2038,10 +2022,7 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
 
     coding_store_imports = {
         imported
-        for path in (
-            Path("src/loushang/coding/store/file_codec.py"),
-            Path("src/loushang/coding/store/session_manager.py"),
-        )
+        for path in (Path("src/loushang/coding/store/session_manager.py"),)
         for imported in _absolute_imports(path)
     }
     assert "loushang.harness.agent_transcript.ProductTranscriptSession" in (
@@ -2058,7 +2039,7 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
     )
 
     coding_compaction_imports = set(
-        _absolute_imports(Path("src/loushang/coding/compaction/compaction.py"))
+        _absolute_imports(Path("src/loushang/coding/compaction/adapter.py"))
     )
     assert "loushang.harness.context.ConversationCompactionPlanner" not in (
         coding_compaction_imports
@@ -2512,22 +2493,15 @@ def test_coding_extension_compatibility_paths_share_harness_owners() -> None:
     assert CodingLoaded is HarnessLoaded
 
 
-def test_coding_internal_exec_imports_use_harness_owner() -> None:
-    compatibility_paths = {
-        "src/loushang/coding/__init__.py",
-        "src/loushang/coding/exec/__init__.py",
-        "src/loushang/coding/exec/service.py",
-        "src/loushang/coding/exec/types.py",
-    }
+def test_coding_exec_facade_is_extinct() -> None:
     offenders: list[str] = []
     for path in sorted(Path("src/loushang/coding").rglob("*.py")):
-        if path.as_posix() in compatibility_paths:
-            continue
         for imported in _absolute_imports(path):
             if imported.startswith("loushang.coding.exec"):
                 offenders.append(f"{path.as_posix()} imports {imported}")
 
     assert offenders == []
+    assert not Path("src/loushang/coding/exec").exists()
 
 
 def test_coding_internal_workspace_operation_imports_use_harness_owner() -> None:
@@ -3428,15 +3402,7 @@ def test_coding_internal_session_type_imports_use_owners() -> None:
     assert offenders == []
 
 
-def test_coding_internal_store_alias_imports_use_harness_owners() -> None:
-    compatibility_paths = {
-        "src/loushang/coding/__init__.py",
-        "src/loushang/coding/store/__init__.py",
-        "src/loushang/coding/store/backend.py",
-        "src/loushang/coding/store/file_codec.py",
-        "src/loushang/coding/store/file_lock.py",
-        "src/loushang/coding/store/types.py",
-    }
+def test_coding_store_alias_facades_are_extinct() -> None:
     legacy_symbols = (
         "loushang.coding.store.CodingSessionFileLayout",
         "loushang.coding.store.SessionFileError",
@@ -3461,13 +3427,18 @@ def test_coding_internal_store_alias_imports_use_harness_owners() -> None:
     )
     offenders: list[str] = []
     for path in sorted(Path("src/loushang/coding").rglob("*.py")):
-        if path.as_posix() in compatibility_paths:
-            continue
         for imported in _absolute_imports(path):
             if _matches_any(imported, legacy_symbols):
                 offenders.append(f"{path.as_posix()} imports {imported}")
 
     assert offenders == []
+    for path in (
+        "src/loushang/coding/store/backend.py",
+        "src/loushang/coding/store/file_codec.py",
+        "src/loushang/coding/store/file_lock.py",
+        "src/loushang/coding/store/types.py",
+    ):
+        assert not Path(path).exists()
 
 
 def test_coding_internal_scenario_imports_use_harness_owner() -> None:
@@ -3497,11 +3468,7 @@ def test_coding_internal_scenario_imports_use_harness_owner() -> None:
     assert offenders == []
 
 
-def test_coding_internal_compaction_type_imports_use_harness_owner() -> None:
-    compatibility_paths = {
-        "src/loushang/coding/compaction/__init__.py",
-        "src/loushang/coding/compaction/types.py",
-    }
+def test_coding_compaction_type_facades_are_extinct() -> None:
     legacy_symbols = (
         "loushang.coding.compaction.types.CompactionPlan",
         "loushang.coding.compaction.types.CompactionPreparation",
@@ -3511,8 +3478,6 @@ def test_coding_internal_compaction_type_imports_use_harness_owner() -> None:
     )
     offenders: list[str] = []
     for path in sorted(Path("src/loushang/coding").rglob("*.py")):
-        if path.as_posix() in compatibility_paths:
-            continue
         for imported in _absolute_imports(path):
             if _matches_any(imported, legacy_symbols):
                 offenders.append(f"{path.as_posix()} imports {imported}")

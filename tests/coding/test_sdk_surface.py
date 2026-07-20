@@ -41,11 +41,6 @@ def test_coding_top_level_exports_stable_sdk_surface() -> None:
         "CreateAgentSessionResult",
         "CwdBoundServicesAudit",
         "CwdBoundServicesAuditIssue",
-        "DiagnosticRecord",
-        "DiagnosticSummary",
-        "DiagnosticsQuery",
-        "DiagnosticsService",
-        "ErrorReport",
         "ExtensionFlagValues",
         "HeadlessApprovalMode",
         "HeadlessApprovalResolver",
@@ -53,11 +48,6 @@ def test_coding_top_level_exports_stable_sdk_surface() -> None:
         "SdkSurfaceCompatibilityReport",
         "SdkSurfaceSnapshot",
         "SessionManager",
-        "SessionQuery",
-        "SummaryEvaluationCase",
-        "SummaryEvaluationResult",
-        "SummaryEvaluationSuiteResult",
-        "SummaryQualityReport",
         "check_sdk_surface_compatibility",
         "create_agent_session",
         "create_agent_session_from_services",
@@ -71,11 +61,6 @@ def test_coding_top_level_exports_stable_sdk_surface() -> None:
         "create_coding_tools",
         "register_coding_builtin_tools",
         "create_services",
-        "evaluate_summary_case",
-        "evaluate_summary_cases",
-        "evaluate_summary_fixture",
-        "load_summary_evaluation_cases",
-        "validate_summary_contract",
     }
 
     assert expected_names.issubset(set(coding.__all__))
@@ -243,6 +228,7 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
     tmp_path,
 ) -> None:
     import loushang.coding as coding
+    from loushang.harness.diagnostics import DiagnosticsQuery
 
     project_root = tmp_path / "project"
     import_dir = tmp_path / "imports"
@@ -338,9 +324,7 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
     ] == ["imported"]
     assert runtime.get_packages() == []
     assert (
-        runtime.get_diagnostics_summary(
-            coding.DiagnosticsQuery(level="error")
-        ).total_count
+        runtime.get_diagnostics_summary(DiagnosticsQuery(level="error")).total_count
         == 0
     )
-    assert runtime.get_diagnostics(coding.DiagnosticsQuery(source="session")) == []
+    assert runtime.get_diagnostics(DiagnosticsQuery(source="session")) == []

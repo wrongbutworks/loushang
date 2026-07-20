@@ -3,9 +3,10 @@
 ## Status
 
 Implemented by the `harness/context-compaction-binding` wave. Harness owns the
-selected, transcript-aware capability; Coding supplies its summary executor and
-extension translation. The wave does not redefine compaction prompts or move
-model execution into Harness.
+selected, transcript-aware capability. Harness supplies the standard Agent
+transcript summary executor; Coding supplies its prompt/profile binding,
+file-operation decoration, and extension translation. The wave does not move
+Coding prompt content or model/credential policy into Harness.
 
 ## Purpose And Requirements
 
@@ -69,21 +70,23 @@ Harness owns the mechanism and all product-neutral behavior:
 - mechanism identifier, version, configuration validation, snapshot semantics,
   and binding lifecycle.
 
-The Product supplies three bounded ports:
+The Product supplies three bounded bindings:
 
-1. a summary executor that transforms `CompactionPreparation` into
-   `CompactionResult`;
+1. a summary profile, selected model/completion policy, and optional JSON-safe
+   summary decoration for the Harness executor;
 2. an optional pre-compaction adapter, such as a Product extension hook;
 3. an optional post-commit projection adapter.
 
-The executor may call a model and use Product prompts, but it cannot choose a
-different cut point or append a transcript record. Only Harness commits the
-checkpoint. Coding therefore retains its code-change/file-operation summary
-format, prompts, model/auth resolution, extension event translation, commands,
-settings defaults, and UI/RPC projections.
+The Harness executor may call the stable AI completion surface, but it cannot
+choose a different cut point or append a transcript record. Only Harness
+commits the checkpoint. Coding therefore retains its code-change/file-operation
+summary format, prompts, model/auth policy, extension event translation,
+commands, settings defaults, and UI/RPC projections.
 
-Branch summarization is not context compaction. It remains a Product operation
-and cannot produce a compaction checkpoint.
+Branch summarization is not context compaction: it cannot produce a compaction
+checkpoint. It is nevertheless a standard Agent transcript operation owned by
+the same Harness summary runtime; a Product selects its prompt/profile and
+domain detail decoration.
 
 ## Binding, Refresh, And Resume
 

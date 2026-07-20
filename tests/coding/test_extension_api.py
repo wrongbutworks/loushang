@@ -158,8 +158,8 @@ def test_extension_api_exec_command_delegates_to_runtime_binding() -> None:
     import asyncio
     from types import SimpleNamespace
 
-    from loushang.coding.exec import ExecOutputChunk, ExecResult
     from loushang.coding.extensions.api import ExtensionAPI
+    from loushang.harness.workspace.exec import ExecOutputChunk, ExecResult
 
     calls: list[tuple[object, object, dict[str, object]]] = []
     updates: list[ExecOutputChunk] = []

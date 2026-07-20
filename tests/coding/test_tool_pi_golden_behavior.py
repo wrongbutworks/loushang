@@ -43,9 +43,9 @@ def test_bash_provider_schema_is_pi_style_while_internal_schema_stays_enhanced()
 def test_bash_provider_schema_does_not_block_internal_enhanced_arguments(
     tmp_path,
 ) -> None:
-    from loushang.coding.exec.types import ExecResult
     from loushang.harness.tools.workspace import ToolsOptions, create_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecResult
 
     class RecordingOperations:
         def __init__(self) -> None:
@@ -89,9 +89,9 @@ def test_bash_provider_schema_does_not_block_internal_enhanced_arguments(
 
 
 def test_bash_defaults_to_session_cwd_from_tool_context(tmp_path) -> None:
-    from loushang.coding.exec.types import ExecResult
     from loushang.harness.tools.workspace import ToolsOptions, create_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecResult
 
     class RecordingOperations:
         def __init__(self) -> None:
@@ -121,9 +121,9 @@ def test_bash_defaults_to_session_cwd_from_tool_context(tmp_path) -> None:
 def test_bash_golden_result_keeps_stderr_model_visible_and_preserves_artifacts(
     tmp_path,
 ) -> None:
-    from loushang.coding.exec.types import ExecResult
     from loushang.harness.tools.workspace import ToolsOptions, create_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecResult
 
     stdout_path = str(tmp_path / "stdout.log")
     stderr_path = str(tmp_path / "stderr.log")
@@ -366,9 +366,9 @@ def test_read_offset_beyond_eof_uses_pi_error_boundary(tmp_path) -> None:
 def test_bash_timeout_and_cancelled_results_use_pi_error_boundaries(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.exec.types import ExecResult
     from loushang.harness.tools.workspace import ToolsOptions, create_tool_definition
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecResult
 
     class TimeoutOperations:
         def execute(self, request, *, signal=None, on_update=None):

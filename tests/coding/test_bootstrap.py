@@ -2562,9 +2562,9 @@ def test_create_agent_session_passes_compaction_settings_to_session(
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.compaction import CompactionResult
     from loushang.coding.control import CompactionSettings
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import CompactionResult
 
     services = create_services()
     services.settings_manager.update_settings(
@@ -2606,7 +2606,10 @@ def test_create_agent_session_passes_compaction_settings_to_session(
             tokens_before=preparation.tokens_before,
         )
 
-    monkeypatch.setattr("loushang.coding.session.agent_session.compact", _fake_compact)
+    monkeypatch.setattr(
+        "loushang.coding.session.agent_session._execute_coding_compaction",
+        _fake_compact,
+    )
 
     result = asyncio.run(session.compact())
 

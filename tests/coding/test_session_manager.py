@@ -555,7 +555,8 @@ async def test_list_summaries_and_find_sessions_query_across_session_files(
     tmp_path,
 ) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager, SessionQuery
+    from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import SessionQuery
 
     first = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project-a", persist=True
@@ -811,7 +812,8 @@ async def test_session_manager_delete_session_file_refuses_current_session_alias
 async def test_find_sessions_matches_parent_session_across_symlink_aliases(
     tmp_path,
 ) -> None:
-    from loushang.coding.store import SessionManager, SessionQuery
+    from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import SessionQuery
 
     real_dir = tmp_path / "real"
     alias_a = tmp_path / "alias-a"
@@ -847,7 +849,8 @@ async def test_find_sessions_supports_quoted_phrase_regex_and_named_filter(
     tmp_path,
 ) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager, SessionQuery
+    from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import SessionQuery
 
     first = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project", persist=True
@@ -895,7 +898,8 @@ async def test_find_sessions_relevance_sort_scores_earlier_matches_before_recent
     tmp_path,
 ) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager, SessionQuery
+    from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import SessionQuery
 
     early_match = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project", persist=True
@@ -933,7 +937,8 @@ async def test_session_summary_searches_all_messages_and_uses_message_modified_t
     tmp_path,
 ) -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-    from loushang.coding.store import SessionManager, SessionQuery
+    from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import SessionQuery
 
     first = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project-a", persist=True
@@ -1043,7 +1048,8 @@ async def test_session_metadata_accepts_message_timestamps_in_milliseconds(
 
 @_async_test
 async def test_session_summary_indexes_diagnostic_custom_entries(tmp_path) -> None:
-    from loushang.coding.store import SessionManager, SessionQuery
+    from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import SessionQuery
 
     clean = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/clean", persist=True
@@ -1100,7 +1106,8 @@ async def test_session_summary_indexes_diagnostic_custom_entries(tmp_path) -> No
 @_async_test
 async def test_session_manager_writes_and_queries_session_index(tmp_path) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager, SessionQuery
+    from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import SessionQuery
 
     first = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project-a", persist=True
@@ -1306,7 +1313,8 @@ async def test_session_manager_rebuilds_nested_stale_indexes_during_all_index_qu
 async def test_find_sessions_rejects_negative_limit(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.store import SessionManager, SessionQuery
+    from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import SessionQuery
 
     with pytest.raises(ValueError, match="limit"):
         SessionManager.find_sessions(tmp_path, SessionQuery(limit=-1))
@@ -1346,7 +1354,10 @@ async def test_session_manager_open_rejects_invalid_empty_session_file(
 ) -> None:
     import pytest
 
-    from loushang.coding.store import SessionFileError, SessionManager
+    from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript.file_store import (
+        AgentTranscriptFileError as SessionFileError,
+    )
 
     session_file = tmp_path / "empty.jsonl"
     session_file.write_text("", encoding="utf-8")
@@ -1368,7 +1379,10 @@ async def test_session_manager_open_rejects_invalid_header_session_file(
 ) -> None:
     import pytest
 
-    from loushang.coding.store import SessionFileError, SessionManager
+    from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript.file_store import (
+        AgentTranscriptFileError as SessionFileError,
+    )
 
     session_file = tmp_path / "broken.jsonl"
     session_file.write_text("not-json\n", encoding="utf-8")
@@ -1387,7 +1401,10 @@ async def test_session_manager_open_rejects_missing_header_session_file(
 ) -> None:
     import pytest
 
-    from loushang.coding.store import SessionFileError, SessionManager
+    from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript.file_store import (
+        AgentTranscriptFileError as SessionFileError,
+    )
 
     session_file = tmp_path / "not-session.jsonl"
     session_file.write_text(
@@ -1412,7 +1429,10 @@ async def test_session_manager_rejects_session_v3_without_rewriting_it(
 
     import pytest
 
-    from loushang.coding.store import SessionFileError, SessionManager
+    from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript.file_store import (
+        AgentTranscriptFileError as SessionFileError,
+    )
 
     session_file = tmp_path / "session-v3.jsonl"
     values = [

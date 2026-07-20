@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from loushang.coding.control import ControlConfig, SettingsManager
-from loushang.coding.diagnostics import DiagnosticsService
 from loushang.coding.package import (
     PackageMaterializationRecord,
     PackageMaterializer,
@@ -9,6 +8,7 @@ from loushang.coding.package import (
     PackageSourceConfig,
 )
 from loushang.coding.package.source_manager import PackageSourceResolver
+from loushang.harness.diagnostics import DiagnosticsService
 
 
 def test_package_source_resolver_installs_missing_configured_sources_and_emits_progress(tmp_path) -> None:

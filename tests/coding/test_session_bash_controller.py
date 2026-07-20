@@ -5,10 +5,10 @@ import asyncio
 from loushang.agent import Agent
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
-from loushang.coding.exec import ExecOutputChunk
 from loushang.coding.session.bash_controller import BashController
 from loushang.coding.store import SessionManager
 from loushang.harness.conversation import CommandExecutionRecord
+from loushang.harness.workspace.exec import ExecOutputChunk
 
 
 def test_bash_controller_executes_tool_forwards_output_and_records_context(

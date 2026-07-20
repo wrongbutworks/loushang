@@ -355,9 +355,9 @@ def test_navigate_tree_with_summary_appends_branch_summary_and_emits_events(
     tmp_path, monkeypatch
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.compaction import BranchSummaryDetails, BranchSummaryResult
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import BranchSummaryOutput
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -400,16 +400,13 @@ def test_navigate_tree_with_summary_appends_branch_summary_and_emits_events(
     async def _fake_generate(entries_or_messages, **kwargs):
         assert len(entries_or_messages) == 2
         assert "api_key" not in kwargs
-        return BranchSummaryResult(
+        return BranchSummaryOutput(
             summary="branch return summary",
-            details=BranchSummaryDetails(
-                read_files=["README.md"],
-                modified_files=["src/app.py"],
-            ),
+            details={"readFiles": ["README.md"], "modifiedFiles": ["src/app.py"]},
         )
 
     monkeypatch.setattr(
-        "loushang.coding.session.agent_session.generate_branch_summary",
+        "loushang.coding.session.agent_session.execute_coding_branch_summary",
         _fake_generate,
     )
     session.subscribe(events.append)
@@ -456,7 +453,6 @@ def test_navigate_tree_uses_extension_before_tree_summary_override(
     tmp_path, monkeypatch
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.compaction import BranchSummaryResult
     from loushang.coding.extensions import (
         ExtensionRunner,
         LoadedExtension,
@@ -464,6 +460,7 @@ def test_navigate_tree_uses_extension_before_tree_summary_override(
     )
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import BranchSummaryOutput
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -508,7 +505,7 @@ def test_navigate_tree_uses_extension_before_tree_summary_override(
                     hooks={
                         "session_before_tree": [
                             lambda event, ctx: SessionBeforeTreeResult(
-                                summary=BranchSummaryResult(
+                                summary=BranchSummaryOutput(
                                     summary="extension summary",
                                     details={"source": "tree"},
                                 ),
@@ -535,7 +532,7 @@ def test_navigate_tree_uses_extension_before_tree_summary_override(
         )
 
     monkeypatch.setattr(
-        "loushang.coding.session.agent_session.generate_branch_summary",
+        "loushang.coding.session.agent_session.execute_coding_branch_summary",
         _fake_generate,
     )
 
@@ -571,9 +568,9 @@ def test_abort_branch_summary_cancels_inflight_navigation(
     tmp_path, monkeypatch
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.compaction import BranchSummaryResult
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import BranchSummaryOutput
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -620,10 +617,10 @@ def test_abort_branch_summary_cancels_inflight_navigation(
         started.set()
         while not signal.aborted:
             await asyncio.sleep(0)
-        return BranchSummaryResult(aborted=True)
+        return BranchSummaryOutput(aborted=True)
 
     monkeypatch.setattr(
-        "loushang.coding.session.agent_session.generate_branch_summary",
+        "loushang.coding.session.agent_session.execute_coding_branch_summary",
         _fake_generate,
     )
     session.subscribe(events.append)
@@ -655,9 +652,9 @@ def test_navigate_tree_records_branch_summary_failure_in_diagnostics(
     tmp_path, monkeypatch
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.diagnostics import DiagnosticsService
     from loushang.coding.session import AgentSession
     from loushang.coding.store import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -699,7 +696,7 @@ def test_navigate_tree_records_branch_summary_failure_in_diagnostics(
         raise RuntimeError("branch summary boom")
 
     monkeypatch.setattr(
-        "loushang.coding.session.agent_session.generate_branch_summary",
+        "loushang.coding.session.agent_session.execute_coding_branch_summary",
         _failing_generate,
     )
 
