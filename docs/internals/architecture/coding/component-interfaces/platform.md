@@ -3,11 +3,10 @@
 ## Role
 
 - Coding-owned host policy and projections used by CLI/TUI/runtime surfaces
-- thin boundary for stdout, version, changelog, and footer behavior
+- thin boundary for version, changelog, and footer behavior
 
 ## Owns
 
-- stdout takeover/restore guard
 - changelog/version lookup helpers
 - footer data provider projection helpers
 
@@ -16,16 +15,8 @@
 - `loushang.harness.workspace.git` for repository metadata
 - host OS and filesystem services used by the remaining Coding policy
 
-## Commands
-
-- `take_over_stdout(...)`
-- `restore_stdout(...)`
-- `write_raw_stdout(...)`
-- `flush_raw_stdout(...)`
-
 ## Queries
 
-- `is_stdout_taken_over()`
 - `check_for_new_loushang_version(...)`
 - `parse_changelog(...)`
 - `footer_snapshot_to_mapping(...)`
@@ -43,6 +34,7 @@
 ## Out Of Scope
 
 - mode lifecycle
+- structured stdout protection, owned by `loushang.channel.stdout_guard`
 - TUI rendering policy
 - text clipboard copying, owned by `loushang.tui.clipboard`
 - clipboard-image acquisition, MIME normalization, and attachment adaptation

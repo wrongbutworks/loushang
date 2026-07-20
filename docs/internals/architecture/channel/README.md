@@ -24,6 +24,7 @@ src/loushang/channel/
   product_host.py
   remote_ui.py
   rpc_jsonl.py
+  stdout_guard.py
   types.py
 ```
 
@@ -56,6 +57,10 @@ wire schema: `ProductHostAction` / `ProductHostAdapter`, line-input
 `ProductHostRuntime`, and `ProductHostTaskTracker`. Standard Channel JSONL and
 Product-specific compatibility hosts may share those mechanics while retaining
 their separate protocols.
+
+`stdout_guard.py` preserves a raw protocol stdout stream while routing incidental
+process output to stderr. It is available to any Product whose JSON or JSONL
+transport requires a clean stdout contract.
 
 The Product-owned JSONL command-host surface provides:
 

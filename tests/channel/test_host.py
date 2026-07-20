@@ -63,7 +63,9 @@ class _FakePort:
         self.listener(delivery)
 
 
-def test_channel_host_runs_standard_operation_request_and_releases_subscription() -> None:
+def test_channel_host_runs_standard_operation_request_and_releases_subscription() -> (
+    None
+):
     port = _FakePort()
     request = _operation_request(request_id="request-1", operation_id="operation-1")
     stdout = StringIO()
@@ -228,11 +230,7 @@ def _operation_request(
 
 
 def _output_frames(stream: StringIO) -> list[dict[str, object]]:
-    return [
-        json.loads(line)
-        for line in stream.getvalue().splitlines()
-        if line.strip()
-    ]
+    return [json.loads(line) for line in stream.getvalue().splitlines() if line.strip()]
 
 
 def _created_at():

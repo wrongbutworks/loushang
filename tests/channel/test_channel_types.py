@@ -32,9 +32,11 @@ def test_channel_public_api_exposes_boundary_and_jsonl_surfaces() -> None:
         "ProductHostActionType",
         "ProductHostAdapter",
         "ProductHostRuntime",
+        "ProductHostStreams",
         "ProductHostState",
         "ProductHostStateReader",
         "ProductHostTaskTracker",
+        "dispose_product_host",
         "JsonlCommand",
         "JsonlCommandErrorListener",
         "JsonlCommandHost",
@@ -52,6 +54,12 @@ def test_channel_public_api_exposes_boundary_and_jsonl_surfaces() -> None:
         "project_channel_value",
         "rpc_jsonl_frame_from_json",
         "rpc_jsonl_frame_to_json",
+        "flush_raw_stdout",
+        "is_stdout_taken_over",
+        "restore_stdout",
+        "stdout_guard",
+        "take_over_stdout",
+        "write_raw_stdout",
     }
 
 

@@ -8,8 +8,10 @@ import pytest
 from loushang.channel import (
     ProductHostAction,
     ProductHostRuntime,
+    ProductHostStreams,
     ProductHostTaskTracker,
     dispatch_product_host_action,
+    dispose_product_host,
     normalize_product_host_action,
 )
 
@@ -165,3 +167,52 @@ def test_product_host_task_tracker_drains_and_discards_completed_tasks() -> None
 def test_product_host_action_rejects_unknown_type() -> None:
     with pytest.raises(ValueError, match="Unsupported product host action"):
         normalize_product_host_action({"type": "unknown"})
+
+
+def test_product_host_streams_use_injected_or_process_streams(monkeypatch) -> None:
+    import sys
+
+    process_stdin = StringIO()
+    process_stdout = StringIO()
+    process_stderr = StringIO()
+    monkeypatch.setattr(sys, "stdin", process_stdin)
+    monkeypatch.setattr(sys, "stdout", process_stdout)
+    monkeypatch.setattr(sys, "stderr", process_stderr)
+
+    assert ProductHostStreams.resolve() == ProductHostStreams(
+        stdin=process_stdin,
+        stdout=process_stdout,
+        stderr=process_stderr,
+    )
+
+    assert ProductHostStreams.resolve(stdout=StringIO()).stdin is process_stdin
+
+
+def test_dispose_product_host_uses_the_first_supported_candidate() -> None:
+    class _NoDispose:
+        pass
+
+    class _SyncDisposable:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def dispose(self) -> None:
+            self.calls += 1
+
+    class _AsyncDisposable:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def dispose(self) -> None:
+            self.calls += 1
+
+    async def scenario() -> None:
+        sync = _SyncDisposable()
+        async_disposable = _AsyncDisposable()
+
+        assert await dispose_product_host(_NoDispose(), sync, async_disposable)
+        assert sync.calls == 1
+        assert async_disposable.calls == 0
+        assert not await dispose_product_host(_NoDispose())
+
+    asyncio.run(scenario())

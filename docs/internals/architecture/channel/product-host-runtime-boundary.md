@@ -10,7 +10,9 @@ injected Product-facing host. It provides three independent mechanisms:
 - `ProductHostRuntime` for asynchronous, line-oriented input until EOF, stop,
   or one terminal handler failure; and
 - `ProductHostTaskTracker` for draining Product-started background tasks during
-  orderly host shutdown.
+  orderly host shutdown;
+- `ProductHostStreams` and `dispose_product_host(...)` for process stdio
+  binding and explicit Product-selected shutdown fallback.
 
 These mechanisms do not define a client wire schema. `ChannelHost` continues
 to own the standard Channel JSONL operation protocol; a Product's legacy RPC
@@ -48,6 +50,11 @@ Coding preserves `ModeAction`, `ModeAdapter`, and `dispatch_mode_action` as
 compatibility names. Their generic lifecycle semantics delegate to
 `channel.product_host`; Coding retains `ModeConfig`, mode selection, Print
 mode construction, work-specific options, and its `ModeState` projection.
+
+Coding CLI resolves injected or process stdio through `ProductHostStreams` and
+uses `dispose_product_host(runtime, session)` for the generic shutdown fallback.
+Its `--mode`, `--tui`, `--render-tool-events`, and command flags remain Coding
+grammar: Channel deliberately supplies no universal CLI parser.
 
 `ChannelHost` uses `ProductHostRuntime` for standard Channel JSONL input.
 `RpcMode` uses the same input runtime and task tracker, but remains the owner

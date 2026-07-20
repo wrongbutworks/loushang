@@ -10,7 +10,9 @@ adopt without sharing a wire schema.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import io
+import sys
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, TextIO, TypeAlias, TypeVar, cast, get_args
@@ -30,6 +32,31 @@ ProductHostInputHandler = Callable[[str], Awaitable[None] | None]
 ProductHostFailureHandler = Callable[[Exception], Awaitable[None] | None]
 ProductHostStateReader = Callable[["ProductHostAdapter"], ProductHostState]
 TaskT = TypeVar("TaskT")
+
+
+@dataclass(frozen=True)
+class ProductHostStreams:
+    """Resolved stdio streams for a Product-owned process host."""
+
+    stdin: TextIO
+    stdout: TextIO
+    stderr: TextIO
+
+    @classmethod
+    def resolve(
+        cls,
+        *,
+        stdin: TextIO | None = None,
+        stdout: TextIO | None = None,
+        stderr: TextIO | None = None,
+    ) -> "ProductHostStreams":
+        """Bind injected streams, falling back to the process standard streams."""
+
+        return cls(
+            stdin=sys.stdin if stdin is None else stdin,
+            stdout=sys.stdout if stdout is None else stdout,
+            stderr=sys.stderr if stderr is None else stderr,
+        )
 
 
 @dataclass(frozen=True)
@@ -195,6 +222,24 @@ class ProductHostTaskTracker:
             await asyncio.gather(*tuple(self._tasks), return_exceptions=True)
 
 
+async def dispose_product_host(*candidates: object) -> bool:
+    """Dispose the first candidate that exposes an async or sync ``dispose`` hook.
+
+    A Product decides which runtime object owns shutdown. This helper only
+    centralizes the common fallback needed by CLI and embedded hosts.
+    """
+
+    for candidate in candidates:
+        disposer = getattr(candidate, "dispose", None)
+        if not callable(disposer):
+            continue
+        result = disposer()
+        if inspect.isawaitable(result):
+            await result
+        return True
+    return False
+
+
 async def _resolve(value: Awaitable[None] | None) -> None:
     if value is not None:
         await value
@@ -216,9 +261,11 @@ __all__ = [
     "ProductHostActionType",
     "ProductHostAdapter",
     "ProductHostRuntime",
+    "ProductHostStreams",
     "ProductHostState",
     "ProductHostStateReader",
     "ProductHostTaskTracker",
+    "dispose_product_host",
     "dispatch_product_host_action",
     "normalize_product_host_action",
 ]
