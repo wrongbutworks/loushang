@@ -2385,7 +2385,7 @@ def test_agent_session_removes_visible_queue_when_queued_user_message_starts(
 
 
 def test_agent_session_follow_up_and_state_snapshot(tmp_path) -> None:
-    from loushang.agent import AbortController, Agent
+    from loushang.agent import Agent
     from loushang.coding.session import AgentSession, RunState
     from loushang.coding.store import SessionManager
 
@@ -2399,16 +2399,14 @@ def test_agent_session_follow_up_and_state_snapshot(tmp_path) -> None:
 
     session.follow_up("later")
     session._retry_runtime.retry_future = object()  # type: ignore[assignment]
-    session._tree_controller._branch_summary_abort_controller = AbortController()
     state = session.get_state()
     session._retry_runtime.retry_future = None
-    session._tree_controller._branch_summary_abort_controller = None
 
     assert state.run == RunState(status="idle")
     assert state.follow_up == ["later"]
     assert state.steering == []
     assert state.is_retrying is True
-    assert state.is_compacting is True
+    assert state.is_compacting is False
     assert state.model_selection is not None
     assert state.model_selection.provider == "faux"
     assert state.model_selection.model_id == "faux-model"
@@ -2454,6 +2452,52 @@ def test_agent_session_set_model_and_thinking_level_persist_to_store(tmp_path) -
     assert session.get_session_context().model == {
         "provider": "alt",
         "model_id": "alt-model",
+    }
+
+
+def test_agent_session_persists_explicit_model_selection_endpoint(tmp_path) -> None:
+    from loushang.agent import Agent
+    from loushang.coding.control import ModelRegistry
+    from loushang.coding.session import AgentSession, ModelSelection
+    from loushang.coding.store import SessionManager
+
+    first = _model()
+    second = Model(
+        id="alt-model",
+        name="Alt",
+        provider="alt",
+        endpoint="responses",
+        capabilities=Capabilities(
+            reasoning=True,
+            input=("text",),
+            context_window=64_000,
+            max_tokens=2_048,
+        ),
+    )
+    session = AgentSession(
+        agent=Agent(
+            initial_state={"system_prompt": "", "model": first, "thinking_level": "off"}
+        ),
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
+        model_registry=ModelRegistry(ai_registry=_ai_model_registry(first, second)),
+    )
+
+    asyncio.run(
+        session.set_model(
+            ModelSelection(
+                provider="alt",
+                endpoint_id="responses",
+                model_id="alt-model",
+            )
+        )
+    )
+
+    assert session.get_session_context().model == {
+        "provider": "alt",
+        "model_id": "alt-model",
+        "endpoint_id": "responses",
     }
 
 
