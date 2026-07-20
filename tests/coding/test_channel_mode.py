@@ -26,6 +26,7 @@ class _FakeSession:
         self.listeners = []
         self.prompt_calls: list[dict[str, object]] = []
         self.abort_calls = 0
+        self.idle_waits = 0
         self.release = asyncio.Event()
         self.unsubscribe_calls = 0
 
@@ -63,6 +64,9 @@ class _FakeSession:
         self.abort_calls += 1
         self.release.set()
 
+    async def wait_for_idle(self) -> None:
+        self.idle_waits += 1
+
     def emit(self, event: RuntimeEvent[object]) -> None:
         for listener in tuple(self.listeners):
             listener(event)
@@ -95,6 +99,7 @@ def test_coding_channel_port_accepts_standard_turn_and_projects_runtime_event() 
 
         session.release.set()
         await asyncio.sleep(0)
+        assert session.idle_waits == 1
         unsubscribe()
         port.close()
 

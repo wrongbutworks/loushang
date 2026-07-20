@@ -111,13 +111,15 @@ class SessionOperationRuntime:
         on_preflight: Callable[[bool], None] | None = None,
     ) -> None:
         self._require(SessionOperationCapability.INPUT)
-        await self._control.prompt(
-            request.text,
-            images=list(request.images) or None,
-            streaming_behavior=request.streaming_behavior,
-            source=request.source,
-            preflight_result=on_preflight,
-        )
+        prompt_kwargs: dict[str, object] = {
+            "streaming_behavior": request.streaming_behavior,
+            "source": request.source,
+        }
+        if on_preflight is not None:
+            prompt_kwargs["preflight_result"] = on_preflight
+        if request.images:
+            prompt_kwargs["images"] = list(request.images)
+        await self._control.prompt(request.text, **prompt_kwargs)
         await self._control.wait_for_idle()
 
     def steer(self, text: str, *, images: Iterable[ImagePart] = ()) -> None:
