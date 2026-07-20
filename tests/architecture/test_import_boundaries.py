@@ -548,11 +548,36 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     assert "SessionControlPort" in facade_source
     assert "SessionResourcePort" in facade_source
     assert "def session_control" in session_source
-    assert "SessionControlPort" in channel_source
-    assert "_require_session_control" in rpc_source
+    assert "SessionOperationRuntime" in channel_source
+    assert "SessionOperationRuntime" in rpc_source
+    assert "_require_session_control" not in rpc_source
     assert "Product Binding" in boundary
     assert "Coding Binding" in boundary
     assert "Pi-style" in boundary
+
+
+def test_session_rpc_operations_are_neutral_and_adopted() -> None:
+    operations_source = Path("src/loushang/harness/session/operations.py").read_text(
+        encoding="utf-8"
+    )
+    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+        encoding="utf-8"
+    )
+    channel_adapter_source = Path("src/loushang/coding/mode/channel_mode.py").read_text(
+        encoding="utf-8"
+    )
+    boundary = Path(
+        "docs/internals/architecture/harness/session-rpc-operations-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in operations_source
+    assert "loushang.channel" not in operations_source
+    assert "json" not in operations_source
+    assert "SessionOperationAvailability" in operations_source
+    assert "SessionOperationRuntime" in rpc_source
+    assert "SessionOperationRuntime" in channel_adapter_source
+    assert "capability-grouped" in boundary
+    assert "must not import Harness" in boundary
 
 
 def test_channel_product_host_runtime_is_neutral_and_adopted() -> None:

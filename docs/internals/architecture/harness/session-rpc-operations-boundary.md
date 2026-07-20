@@ -2,8 +2,8 @@
 
 ## Decision
 
-`loushang.harness.session.operations` owns typed, reusable operations over an
-already-bound `SessionControlPort`. It is a capability runtime, not an RPC
+`loushang.harness.session.operations` owns typed, reusable capability-grouped
+operations over an already-bound `SessionControlPort`. It is a capability runtime, not an RPC
 protocol. A Product decides which capability groups to bind and maps its own
 transport requests, response schema, error wording, and task lifecycle to the
 runtime.
