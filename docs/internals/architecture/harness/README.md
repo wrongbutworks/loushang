@@ -106,6 +106,10 @@ planning, work event persistence, or AI provider behavior.
 - [Agent Transcript Maintenance Runtime Boundary](agent-transcript-maintenance-boundary.md)
   defines common context accounting, compaction/retry lifecycle, checkpoint
   persistence, and runtime events while Products retain strategy and policy.
+- [Agent Transcript Export Boundary](agent-transcript-export-boundary.md)
+  defines portable JSONL/HTML transcript exports, standard document rendering,
+  and the narrow Product presentation profile while Products retain semantic
+  render hooks, themes, output paths, and command/API projection.
 - [Session Capabilities Runtime Boundary](session-capabilities-boundary.md)
   defines live tool activation, dynamic command composition and dispatch, and
   selected command-tool execution while Products retain policy, command

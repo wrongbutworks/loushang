@@ -449,6 +449,27 @@ def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
     assert "Coding keeps" in boundary
 
 
+def test_agent_transcript_export_runtime_is_neutral_and_adopted() -> None:
+    export_root = Path("src/loushang/harness/agent_transcript/export")
+    coding_adapter = Path("src/loushang/coding/session/export.py")
+    boundary = Path(
+        "docs/internals/architecture/harness/agent-transcript-export-boundary.md"
+    )
+
+    assert export_root.exists()
+    assert not any(
+        imported.startswith("loushang.coding")
+        for path in export_root.rglob("*.py")
+        for imported in _absolute_imports(path)
+    )
+    assert "TranscriptExportRequest" in coding_adapter.read_text(encoding="utf-8")
+    assert "TranscriptHtmlExportProfile" in coding_adapter.read_text(encoding="utf-8")
+    assert not Path("src/loushang/coding/session/export_html/index.py").exists()
+    assert not Path("src/loushang/coding/session/export_html/tool_renderer.py").exists()
+    assert not Path("src/loushang/coding/session/export_jsonl.py").exists()
+    assert "Agent Transcript Export Boundary" in boundary.read_text(encoding="utf-8")
+
+
 def test_transcript_compaction_capability_is_neutral_and_adopted() -> None:
     capability_source = Path(
         "src/loushang/harness/agent_transcript/compaction.py"

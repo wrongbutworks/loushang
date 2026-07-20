@@ -26,7 +26,10 @@ def render_markdown(text: str) -> str:
 
 def _render_paragraphs(text: str) -> list[str]:
     blocks = [block.strip("\n") for block in re.split(r"\n{2,}", text) if block.strip()]
-    return ["<p>" + _render_inline(block).replace("\n", "<br />") + "</p>" for block in blocks]
+    return [
+        "<p>" + _render_inline(block).replace("\n", "<br />") + "</p>"
+        for block in blocks
+    ]
 
 
 def _render_inline(text: str) -> str:

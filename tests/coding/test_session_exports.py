@@ -83,7 +83,7 @@ def _build_export_session(
 
 
 def test_export_session_to_jsonl_writes_branch_entries_and_header(tmp_path) -> None:
-    from loushang.coding.session.export_jsonl import export_session_to_jsonl
+    from loushang.coding.session.export import export_session_to_jsonl
 
     session = _build_export_session(tmp_path)
 
@@ -108,7 +108,7 @@ def test_agent_session_exposes_standard_export_methods(tmp_path) -> None:
 
 
 def test_export_session_to_jsonl_defaults_to_generated_filename(tmp_path) -> None:
-    from loushang.coding.session.export_jsonl import export_session_to_jsonl
+    from loushang.coding.session.export import export_session_to_jsonl
 
     cwd = tmp_path / "project"
     cwd.mkdir()
@@ -130,7 +130,7 @@ def test_export_session_to_jsonl_defaults_to_generated_filename(tmp_path) -> Non
 def test_export_session_to_jsonl_rechains_current_branch_parent_ids(tmp_path) -> None:
     import json
 
-    from loushang.coding.session.export_jsonl import export_session_to_jsonl
+    from loushang.coding.session.export import export_session_to_jsonl
 
     manager = asyncio.run(
         SessionManager.new(
@@ -183,7 +183,7 @@ def test_export_session_to_jsonl_rechains_current_branch_parent_ids(tmp_path) ->
 
 
 def test_render_transcript_uses_stable_message_ids() -> None:
-    from loushang.coding.session.export_html.tool_renderer import render_transcript
+    from loushang.harness.agent_transcript.export import render_transcript
 
     html = render_transcript(
         [
@@ -207,7 +207,7 @@ def test_render_transcript_uses_stable_message_ids() -> None:
 def test_render_transcript_renders_markdown_code_fences_with_syntax_highlighting() -> (
     None
 ):
-    from loushang.coding.session.export_html.tool_renderer import render_transcript
+    from loushang.harness.agent_transcript.export import render_transcript
 
     html = render_transcript(
         [
@@ -245,7 +245,7 @@ def test_render_transcript_renders_markdown_code_fences_with_syntax_highlighting
 
 
 def test_export_session_to_html_writes_template_based_document(tmp_path) -> None:
-    from loushang.coding.session.export_html import export_session_to_html
+    from loushang.coding.session.export import export_session_to_html
 
     session = _build_export_session(tmp_path)
 
@@ -258,7 +258,7 @@ def test_export_session_to_html_writes_template_based_document(tmp_path) -> None
 
 
 def test_export_session_to_html_includes_tool_and_stats_sections(tmp_path) -> None:
-    from loushang.coding.session.export_html import export_session_to_html
+    from loushang.coding.session.export import export_session_to_html
 
     session = _build_export_session(tmp_path)
 
@@ -270,7 +270,7 @@ def test_export_session_to_html_includes_tool_and_stats_sections(tmp_path) -> No
 
 
 def test_export_session_to_html_script_loads_embedded_session_data(tmp_path) -> None:
-    from loushang.coding.session.export_html import export_session_to_html
+    from loushang.coding.session.export import export_session_to_html
 
     session = _build_export_session(tmp_path)
 
@@ -293,7 +293,7 @@ def test_export_session_to_html_script_loads_embedded_session_data(tmp_path) -> 
 def test_export_session_to_html_tool_results_include_presentation_notices(
     tmp_path,
 ) -> None:
-    from loushang.coding.session.export_html.tool_renderer import render_tool_sections
+    from loushang.harness.agent_transcript.export import render_tool_sections
 
     html = render_tool_sections(
         [
@@ -317,7 +317,7 @@ def test_export_session_to_html_tool_results_include_presentation_notices(
 
 
 def test_export_session_to_html_tool_results_convert_ansi_to_html() -> None:
-    from loushang.coding.session.export_html.tool_renderer import render_tool_sections
+    from loushang.harness.agent_transcript.export import render_tool_sections
 
     html = render_tool_sections(
         [
@@ -338,7 +338,7 @@ def test_export_session_to_html_tool_results_convert_ansi_to_html() -> None:
 
 
 def test_export_session_to_html_uses_tool_renderers(tmp_path) -> None:
-    from loushang.coding.session.export_html import export_session_to_html
+    from loushang.coding.session.export import export_session_to_html
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -389,7 +389,7 @@ def test_export_session_to_html_uses_tool_renderers(tmp_path) -> None:
 
 
 def test_render_tool_sections_falls_back_when_tool_renderer_fails() -> None:
-    from loushang.coding.session.export_html.tool_renderer import render_tool_sections
+    from loushang.harness.agent_transcript.export import render_tool_sections
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -427,7 +427,7 @@ def test_render_tool_sections_falls_back_when_tool_renderer_fails() -> None:
 
 
 def test_render_tool_sections_uses_shared_renderer_runtime_state() -> None:
-    from loushang.coding.session.export_html.tool_renderer import render_tool_sections
+    from loushang.harness.agent_transcript.export import render_tool_sections
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -508,7 +508,7 @@ def test_export_session_to_html_embeds_entry_tree_and_summary_entries(tmp_path) 
     import json
     import re
 
-    from loushang.coding.session.export_html import export_session_to_html
+    from loushang.coding.session.export import export_session_to_html
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -585,10 +585,10 @@ def test_export_session_to_html_embeds_entry_tree_and_summary_entries(tmp_path) 
 
 def test_product_transcript_dispositions_cover_every_standard_kind() -> None:
     from loushang.coding.presentation.tui.history import TUI_TRANSCRIPT_DISPOSITIONS
-    from loushang.coding.session.export_html.tool_renderer import (
+    from loushang.harness.agent_transcript import STANDARD_AGENT_TRANSCRIPT_KINDS
+    from loushang.harness.agent_transcript.export import (
         HTML_TRANSCRIPT_DISPOSITIONS,
     )
-    from loushang.harness.agent_transcript import STANDARD_AGENT_TRANSCRIPT_KINDS
 
     expected = set(STANDARD_AGENT_TRANSCRIPT_KINDS)
     assert set(HTML_TRANSCRIPT_DISPOSITIONS) == expected
@@ -602,7 +602,7 @@ def test_export_session_to_html_embeds_system_prompt_and_tool_definitions(
     import json
     import re
 
-    from loushang.coding.session.export_html import export_session_to_html
+    from loushang.coding.session.export import export_session_to_html
 
     async def execute_probe(tool_call_id, params, signal, on_update):
         return AgentToolResult(content=[TextPart(type="text", text="ok")])
@@ -659,7 +659,7 @@ def test_export_session_to_html_embeds_system_prompt_and_tool_definitions(
 
 def test_export_session_to_html_uses_custom_renderer_and_theme(tmp_path) -> None:
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.session.export_html import export_session_to_html
+    from loushang.coding.session.export import export_session_to_html
 
     def _renderer(message, options, theme):
         assert options == {"format": "html_export"}
