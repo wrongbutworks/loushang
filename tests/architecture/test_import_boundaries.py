@@ -85,8 +85,8 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
             ),
             allowed_paths=frozenset(
                 {
+                    "src/loushang/work/agent_projection.py",
                     "src/loushang/work/coding.py",
-                    "src/loushang/work/projection.py",
                 }
             ),
         ),
@@ -374,6 +374,42 @@ def test_coding_work_projection_subscribes_to_runtime_events() -> None:
     assert "self.session.subscribe(listener)" not in executor_source
     assert "WorkRuntime" in shell_source
     assert "subscribe_runtime_events" not in shell_source
+
+
+def test_agent_work_projection_is_work_owned_with_thin_coding_compatibility() -> None:
+    work_projection = Path("src/loushang/work/agent_projection.py").read_text(
+        encoding="utf-8"
+    )
+    work_event_projection = Path("src/loushang/work/projection.py").read_text(
+        encoding="utf-8"
+    )
+    coding_projection = Path("src/loushang/coding/work_projection.py").read_text(
+        encoding="utf-8"
+    )
+    coding_executor = Path("src/loushang/coding/work_executor.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "def project_agent_event_to_work_facts" in work_projection
+    assert "loushang.coding" not in work_projection
+    assert "loushang.coding" not in work_event_projection
+    assert "loushang.work.agent_projection" in coding_projection
+    assert "loushang.work.agent_projection" in coding_executor
+    assert "def project_agent_event_to_work_facts" not in coding_projection
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import loushang.work.agent_projection; "
+            "assert not any(name == 'loushang.coding' or "
+            "name.startswith('loushang.coding.') for name in sys.modules)",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_coding_session_uses_harness_runtime_events_as_the_only_internal_stream() -> (
@@ -1092,6 +1128,7 @@ forbidden = sorted(
     or name.startswith("loushang.agent.")
     or name == "loushang.ai"
     or name.startswith("loushang.ai.")
+    or name == "loushang.work.agent_projection"
     or name == "loushang.work.projection"
 )
 assert forbidden == [], forbidden

@@ -5,6 +5,7 @@ def test_work_public_api_exposes_current_work_surface_without_multi_agent_types(
     import loushang.work as work
 
     assert set(work.__all__) == {
+        "AgentWorkFactProjectionContext",
         "ArtifactRef",
         "ArtifactStatus",
         "DeliveryHint",
@@ -20,6 +21,7 @@ def test_work_public_api_exposes_current_work_surface_without_multi_agent_types(
         "WorkAcceptPort",
         "WorkCancelPort",
         "WorkDomainExecutor",
+        "WorkDomainCancellation",
         "WorkExecutionContext",
         "WorkLifecycleOwnershipError",
         "WorkOperation",
@@ -27,6 +29,7 @@ def test_work_public_api_exposes_current_work_surface_without_multi_agent_types(
         "WorkRun",
         "WorkRunStatus",
         "WorkRunSpec",
+        "WorkRunReplayError",
         "WorkRunTerminalError",
         "WorkRuntime",
         "WorkRuntimeError",
@@ -35,10 +38,13 @@ def test_work_public_api_exposes_current_work_surface_without_multi_agent_types(
         "WorkSubscribePort",
         "WorkWaitPort",
         "WorkStepDeviation",
+        "WorkStepSpec",
         "WorkStepRun",
         "WorkStepStatus",
         "project_agent_event_to_work_events",
+        "project_agent_event_to_work_facts",
         "project_work_plan_runs",
+        "project_work_runs",
     }
 
     assert not hasattr(work, "AgentLane")
@@ -65,7 +71,13 @@ def test_work_ports_are_split_by_runtime_capability() -> None:
     assert set(WorkSubscribePort.__dict__) >= {"subscribe"}
     assert set(WorkQueryPort.__dict__) >= {"query"}
     assert set(WorkDomainExecutor.__dict__) >= {"execute"}
-    assert set(WorkExecutionContext.__dict__) >= {"run_id", "publish"}
+    assert set(WorkExecutionContext.__dict__) >= {
+        "run_id",
+        "step_id",
+        "step_index",
+        "step_payload",
+        "publish",
+    }
 
 
 def test_work_projection_exports_remain_available_from_the_root_package() -> None:
@@ -79,4 +91,20 @@ def test_work_projection_exports_remain_available_from_the_root_package() -> Non
     assert (
         work.project_agent_event_to_work_events
         is project_agent_event_to_work_events
+    )
+
+
+def test_agent_fact_projection_is_work_owned_and_coding_alias_is_compatible() -> None:
+    import loushang.work as work
+    from loushang.coding.work_projection import CodingWorkFactProjectionContext
+    from loushang.work.agent_projection import (
+        AgentWorkFactProjectionContext,
+        project_agent_event_to_work_facts,
+    )
+
+    assert CodingWorkFactProjectionContext is AgentWorkFactProjectionContext
+    assert work.AgentWorkFactProjectionContext is AgentWorkFactProjectionContext
+    assert (
+        work.project_agent_event_to_work_facts
+        is project_agent_event_to_work_facts
     )
