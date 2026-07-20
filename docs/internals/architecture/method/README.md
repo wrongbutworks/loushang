@@ -28,7 +28,7 @@ Method = Work Contract
 Skill  = Local expertise or capability guidance
 Tool   = Executable action
 Policy = Permission and approval boundary
-Work   = Runtime event, log, and projection layer
+Work   = Business intent enactment and authoritative runtime facts
 ```
 
 ## Current Boundary
@@ -52,7 +52,8 @@ Work   = Runtime event, log, and projection layer
 - Native TUI rendering or playback
 
 Coding-specific method usage is bridged through `loushang.coding.domain`.
-Runtime execution observability is projected through `loushang.work`.
+When a method is enacted, `loushang.work` owns the resulting run, plan, step,
+outcome, event-log, replay, artifact-reference, and deviation facts.
 
 ## Relation To Agent Harness And Products
 
@@ -111,7 +112,34 @@ Tool should execute concrete actions. Tools are not methods; a method can sugges
 
 Policy should define permission, approval, and safety boundaries. Method metadata can carry policy hints, but enforcement belongs to the domain/runtime layer that executes the turn.
 
-Work should record runtime execution. Method plans and steps become observable through work events, work logs, and inspection surfaces.
+Work should own the real enactment of an accepted business intent. A compiled and
+tailored `MethodPlan` remains a reusable process definition; product binding turns
+it into a run-specific enactment manifest, and Work owns the resulting plan and
+step occurrences, terminal outcome, events, logs, and inspection surfaces.
+
+Method and Work are therefore related but optional:
+
+- Method answers how a class of work should be performed.
+- Work answers what happened in this accepted instance and how it ended.
+- A Work can exist without Method; a `MethodPlan` does not become a Work until it
+  is accepted and enacted.
+
+Work admission and action approval are separate decisions. Admission decides
+whether the system accepts a business commitment. Approval mechanics belong to
+Harness and product policy/UI; Work only records correlated facts and their
+business effect.
+
+## SPEM 2.0 Relationship
+
+The Method vocabulary is informed by [OMG SPEM 2.0](https://www.omg.org/spec/SPEM/2.0/PDF),
+especially its separation of Method Content from Process and its process-enactment
+scenarios. LouShang currently claims only SPEM-aligned terminology and a partial
+subset, not SPEM compliance.
+
+`loushang.method` owns definitions, selection, compilation, and tailoring.
+`loushang.work` is the runtime enactment layer; it is not SPEM `WorkDefinition`
+and must not copy the SPEM metamodel. The detailed current/target mapping lives in
+[Loushang Work Architecture](../work/README.md#spem-20-alignment).
 
 ## Meta-Phase And Meta-Role
 
@@ -139,6 +167,7 @@ These fields are not yet closed enums. The experimental methodology documents re
 ## Related Documents
 
 - [Architecture Overview](../architecture-overview.md)
+- [Loushang Work Architecture](../work/README.md)
 - [Coding Domain Component](../coding/component-interfaces/domain.md)
 - [Method Compatibility Note](../coding/component-interfaces/method.md)
 - [Method P1 Resource Compatibility Design](../../specs/2026-06-02-method-p1-resource-compatibility-design.md)
