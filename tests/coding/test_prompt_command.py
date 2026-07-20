@@ -106,6 +106,85 @@ def test_prompt_command_renders_stable_transcript_and_worked() -> None:
     asyncio.run(scenario())
 
 
+def test_prompt_plan_command_preserves_transcript_and_uses_one_work_run() -> None:
+    from loushang.coding.prompt_command import run_prompt_plan_command
+    from loushang.coding.work_executor import SubmitCodingTurn
+    from loushang.work import InMemoryEventLogBackend
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.dispose_calls = 0
+
+        async def dispose(self) -> None:
+            self.dispose_calls += 1
+
+    class FakeSession:
+        session_id = "session-1"
+
+        def __init__(self) -> None:
+            self.prompts: list[str] = []
+            self.listeners = []
+            self.runtime_listeners = []
+            self.wait_calls = 0
+
+        def get_model_selection(self):
+            return None
+
+        def subscribe(self, listener):
+            self.listeners.append(listener)
+            return lambda: self.listeners.remove(listener)
+
+        def subscribe_runtime_events(self, listener):
+            self.runtime_listeners.append(listener)
+            return lambda: self.runtime_listeners.remove(listener)
+
+        async def prompt(self, text: str, images=None) -> None:
+            del images
+            self.prompts.append(text)
+
+        async def wait_for_idle(self) -> None:
+            self.wait_calls += 1
+
+    async def scenario() -> None:
+        runtime = FakeRuntime()
+        session = FakeSession()
+        event_log = InMemoryEventLogBackend()
+        turns = (
+            SubmitCodingTurn(
+                "inspect", plan_id="plan-1", step_id="step-1", step_index=0
+            ),
+            SubmitCodingTurn(
+                "verify", plan_id="plan-1", step_id="step-2", step_index=1
+            ),
+        )
+        stdout = StringIO()
+
+        exit_code = await run_prompt_plan_command(
+            runtime=runtime,
+            session=session,
+            turns=turns,
+            stdout=stdout,
+            stderr=StringIO(),
+            work_event_log=event_log,
+        )
+
+        assert exit_code == 0
+        assert session.prompts == ["inspect", "verify"]
+        assert session.wait_calls == 2
+        assert runtime.dispose_calls == 1
+        assert "› inspect\n" in stdout.getvalue()
+        assert "› verify\n" in stdout.getvalue()
+        entries = event_log.query()
+        assert len({entry.run_id for entry in entries}) == 1
+        assert [
+            entry.payload["kind"]
+            for entry in entries
+            if entry.payload["kind"].startswith("WorkRun")
+        ] == ["WorkRunStarted", "WorkRunCompleted"]
+
+    asyncio.run(scenario())
+
+
 def test_prompt_command_selects_usable_model_before_prompt() -> None:
     from loushang.ai import Model
     from loushang.coding.prompt_command import run_prompt_command

@@ -4,6 +4,8 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+import pytest
+
 
 def _operation():
     from loushang.work import WorkOperation
@@ -195,6 +197,167 @@ def test_work_runtime_cancel_transitions_and_terminal_order_are_deterministic() 
         assert (
             sum(entry.payload["kind"] == "WorkRunCancelled" for entry in entries) == 1
         )
+
+    asyncio.run(scenario())
+
+
+def test_work_runtime_uses_domain_cancel_and_settle_once_before_terminal() -> None:
+    from loushang.work import InMemoryEventLogBackend, WorkRuntime
+
+    async def scenario() -> None:
+        started = asyncio.Event()
+        release = asyncio.Event()
+        settled = asyncio.Event()
+        calls: list[str] = []
+
+        class Executor:
+            async def execute(self, operation, context):
+                del operation, context
+                started.set()
+                try:
+                    await release.wait()
+                finally:
+                    calls.append("executor_settled")
+                    settled.set()
+
+        class Cancellation:
+            async def cancel_and_wait(self, operation, context):
+                del operation, context
+                calls.append("abort")
+                release.set()
+                await settled.wait()
+                calls.append("waited")
+                return True
+
+        runtime = WorkRuntime(
+            executor=Executor(),
+            cancellation=Cancellation(),
+            event_log=InMemoryEventLogBackend(),
+            clock=_clock,
+        )
+        await runtime.accept(_operation(), spec=_spec())
+        await started.wait()
+
+        first, second = await asyncio.gather(
+            runtime.cancel("run-1"), runtime.cancel("run-1")
+        )
+
+        assert first.status == second.status == "cancelled"
+        assert calls == ["abort", "executor_settled", "waited"]
+        assert runtime.query(run_id="run-1")[-1].payload["kind"] == (
+            "WorkRunCancelled"
+        )
+
+    asyncio.run(scenario())
+
+
+def test_work_runtime_executes_plan_steps_in_order_under_one_run() -> None:
+    from loushang.work import (
+        InMemoryEventLogBackend,
+        WorkRunSpec,
+        WorkRuntime,
+        WorkStepSpec,
+    )
+
+    class Executor:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str | None, int | None, object]] = []
+
+        async def execute(self, operation, context):
+            del operation
+            self.calls.append(
+                (context.step_id, context.step_index, context.step_payload["title"])
+            )
+
+    async def scenario() -> None:
+        executor = Executor()
+        runtime = WorkRuntime(
+            executor=executor,
+            event_log=InMemoryEventLogBackend(),
+            clock=_clock,
+        )
+        spec = WorkRunSpec(
+            run_id="run-1",
+            method_id="method-1",
+            plan_id="plan-1",
+            steps=(
+                WorkStepSpec("step-1", {"title": "first"}),
+                WorkStepSpec("step-2", {"title": "second"}),
+            ),
+        )
+        accepted = await runtime.accept(_operation(), spec=spec)
+        completed = await runtime.wait(accepted.run_id)
+
+        assert completed.status == "completed"
+        assert executor.calls == [
+            ("step-1", 0, "first"),
+            ("step-2", 1, "second"),
+        ]
+        kinds = [entry.payload["kind"] for entry in runtime.query(run_id="run-1")]
+        assert kinds == [
+            "TestOperation",
+            "WorkRunStarted",
+            "WorkPlanStarted",
+            "WorkStepStarted",
+            "WorkStepCompleted",
+            "WorkStepStarted",
+            "WorkStepCompleted",
+            "WorkPlanCompleted",
+            "WorkRunCompleted",
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_work_runtime_stops_plan_after_step_failure_and_orders_terminals() -> None:
+    from loushang.work import (
+        InMemoryEventLogBackend,
+        WorkRunSpec,
+        WorkRuntime,
+        WorkStepSpec,
+    )
+
+    class Executor:
+        def __init__(self) -> None:
+            self.calls: list[str | None] = []
+
+        async def execute(self, operation, context):
+            del operation
+            self.calls.append(context.step_id)
+            if context.step_id == "step-2":
+                raise RuntimeError("verification failed")
+
+    async def scenario() -> None:
+        executor = Executor()
+        runtime = WorkRuntime(
+            executor=executor,
+            event_log=InMemoryEventLogBackend(),
+            clock=_clock,
+        )
+        await runtime.accept(
+            _operation(),
+            spec=WorkRunSpec(
+                run_id="run-1",
+                plan_id="plan-1",
+                steps=(
+                    WorkStepSpec("step-1"),
+                    WorkStepSpec("step-2"),
+                    WorkStepSpec("step-3"),
+                ),
+            ),
+        )
+
+        with pytest.raises(RuntimeError, match="verification failed"):
+            await runtime.wait("run-1")
+
+        assert executor.calls == ["step-1", "step-2"]
+        kinds = [entry.payload["kind"] for entry in runtime.query(run_id="run-1")]
+        assert kinds[-3:] == [
+            "WorkStepFailed",
+            "WorkPlanFailed",
+            "WorkRunFailed",
+        ]
+        assert kinds.count("WorkRunFailed") == 1
 
     asyncio.run(scenario())
 

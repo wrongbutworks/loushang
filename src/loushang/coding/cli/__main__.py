@@ -6,7 +6,7 @@ import inspect
 import json
 import os
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager, nullcontext, redirect_stderr
 from dataclasses import asdict, dataclass, replace
 from importlib.metadata import PackageNotFoundError
@@ -30,7 +30,12 @@ from loushang.coding.control.settings_store import (
 )
 from loushang.coding.diag_export import export_diagnostics_bundle
 from loushang.coding.diagnostics.serialization import serialize_diagnostic
-from loushang.coding.domain import CodingDomainApp, CodingDomainRequest, MethodPolicy
+from loushang.coding.domain import (
+    CodingDomainApp,
+    CodingDomainPreparedTurn,
+    CodingDomainRequest,
+    MethodPolicy,
+)
 from loushang.coding.mode import (
     ModeConfig,
     run_channel_mode,
@@ -38,6 +43,7 @@ from loushang.coding.mode import (
     run_print_mode,
     run_rpc_mode,
 )
+from loushang.coding.mode.print_mode import run_print_plan_mode
 from loushang.coding.model_selection import (
     apply_model_selection,
     model_selection_ref,
@@ -56,7 +62,10 @@ from loushang.coding.policy import (
     PackageSecurityPolicy,
     PolicyEngine,
 )
-from loushang.coding.prompt_command import run_prompt_command
+from loushang.coding.prompt_command import (
+    run_prompt_command,
+    run_prompt_plan_command,
+)
 from loushang.coding.source_info import (
     executable_source_identity,
     format_source_identity_text,
@@ -64,6 +73,7 @@ from loushang.coding.source_info import (
 from loushang.coding.tools import ToolRegistry, register_builtin_tools
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.mode import run_coding_tui
+from loushang.coding.work_executor import SubmitCodingTurn
 from loushang.coding.workflow import run_prompt_steps_workflow
 from loushang.harness.agent_transcript import SessionQuery
 from loushang.harness.extensions.types import ResolvedFlag
@@ -612,6 +622,24 @@ async def run_cli(
                 return 1
 
             if args.prompt is not None:
+                if (
+                    prompt_runner is run_prompt_command
+                    and work_event_log is not None
+                    and len(prepared_turns) > 1
+                ):
+                    return await run_prompt_plan_command(
+                        runtime=runtime,
+                        session=session,
+                        turns=_prepared_turns_to_work_turns(
+                            prepared_turns,
+                            images=print_input.images,
+                            follow_up_messages=print_input.follow_up_messages,
+                        ),
+                        stdout=stdout,
+                        stderr=stderr,
+                        verbose=args.verbose,
+                        work_event_log=work_event_log,
+                    )
                 for turn_index, prepared_turn in enumerate(prepared_turns):
                     is_first_turn = turn_index == 0
                     is_last_turn = turn_index == len(prepared_turns) - 1
@@ -707,6 +735,26 @@ async def run_cli(
                         return exit_code
                 return 0
 
+            if (
+                mode_runner is run_mode
+                and work_event_log is not None
+                and len(prepared_turns) > 1
+            ):
+                return await run_print_plan_mode(
+                    runtime=runtime,
+                    session=session,
+                    turns=_prepared_turns_to_work_turns(
+                        prepared_turns,
+                        images=print_input.images,
+                        follow_up_messages=print_input.follow_up_messages,
+                    ),
+                    stdout=stdout,
+                    stderr=stderr,
+                    output_mode=output_mode,
+                    render_tool_events=args.render_tool_events,
+                    work_event_log=work_event_log,
+                )
+
             for turn_index, prepared_turn in enumerate(prepared_turns):
                 is_first_turn = turn_index == 0
                 is_last_turn = turn_index == len(prepared_turns) - 1
@@ -772,6 +820,43 @@ def _prepared_turn_policy_metadata(
     if isinstance(value, Mapping) and value:
         return dict(value)
     return None
+
+
+def _prepared_turns_to_work_turns(
+    prepared_turns: tuple[CodingDomainPreparedTurn, ...],
+    *,
+    images: Sequence[object] | None,
+    follow_up_messages: tuple[str, ...],
+) -> tuple[SubmitCodingTurn, ...]:
+    turns: list[SubmitCodingTurn] = []
+    for index, prepared_turn in enumerate(prepared_turns):
+        turns.append(
+            SubmitCodingTurn(
+                text=prepared_turn.prepared_prompt,
+                images=images if index == 0 else None,
+                method_id=prepared_turn.method_id,
+                plan_id=prepared_turn.plan_id,
+                step_id=prepared_turn.step_id,
+                step_index=prepared_turn.step_index,
+                step_title=prepared_turn.step_title,
+                planned_constraint=_prepared_turn_policy_metadata(
+                    prepared_turn, "planned_constraint"
+                ),
+                audit_policy=_prepared_turn_policy_metadata(
+                    prepared_turn, "audit_policy"
+                ),
+                plan_facts=_prepared_turn_policy_metadata(
+                    prepared_turn, "plan_facts"
+                ),
+                step_facts=_prepared_turn_policy_metadata(
+                    prepared_turn, "step_facts"
+                ),
+                follow_up_messages=follow_up_messages
+                if index == len(prepared_turns) - 1
+                else (),
+            )
+        )
+    return tuple(turns)
 
 
 def _resolve_session_dir(args: CliArgs, project_root: Path, services: Any) -> Path:

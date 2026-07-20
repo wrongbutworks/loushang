@@ -63,6 +63,14 @@ class WorkEventFact:
 
 
 @dataclass(frozen=True)
+class WorkStepSpec:
+    """One Work-owned sequential step in an accepted run."""
+
+    step_id: str
+    payload: Mapping[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class WorkRunSpec:
     """Work-owned lifecycle metadata supplied when an operation is accepted."""
 
@@ -75,6 +83,7 @@ class WorkRunSpec:
     emit_plan_start: bool = True
     emit_plan_completion: bool = True
     emit_plan_failure: bool = True
+    steps: tuple[WorkStepSpec, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -160,6 +169,7 @@ __all__ = [
     "WorkRun",
     "WorkRunStatus",
     "WorkRunSpec",
+    "WorkStepSpec",
     "WorkStepDeviation",
     "WorkStepRun",
     "WorkStepStatus",

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from typing import Protocol
 
 from loushang.work.event_log import EventLogEntry, EventPosition
@@ -19,6 +19,15 @@ class WorkExecutionContext(Protocol):
     @property
     def run_id(self) -> str: ...
 
+    @property
+    def step_id(self) -> str | None: ...
+
+    @property
+    def step_index(self) -> int | None: ...
+
+    @property
+    def step_payload(self) -> Mapping[str, object]: ...
+
     def publish(self, fact: WorkEventFact) -> WorkEvent: ...
 
 
@@ -26,6 +35,16 @@ class WorkDomainExecutor(Protocol):
     """Execute one accepted operation without owning its Work lifecycle."""
 
     def execute(
+        self,
+        operation: WorkOperation,
+        context: WorkExecutionContext,
+    ) -> Awaitable[object]: ...
+
+
+class WorkDomainCancellation(Protocol):
+    """Ask a domain to abort its invocation and wait until it has settled."""
+
+    def cancel_and_wait(
         self,
         operation: WorkOperation,
         context: WorkExecutionContext,
@@ -77,6 +96,7 @@ __all__ = [
     "WorkAcceptPort",
     "WorkCancelPort",
     "WorkDomainExecutor",
+    "WorkDomainCancellation",
     "WorkEventPublisher",
     "WorkExecutionContext",
     "WorkQueryPort",

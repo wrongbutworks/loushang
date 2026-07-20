@@ -27,8 +27,11 @@ from loushang.coding.event import (
     project_runtime_event_to_json_views,
     should_emit_runtime_event_view,
 )
+from loushang.coding.work_executor import CodingDomainExecutor
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.session import SessionControlPort
+from loushang.work import InMemoryEventLogBackend, WorkEvent, WorkRuntime
+from loushang.work.event_log import EventLogBackend
 
 Unsubscribe = Callable[[], None]
 
@@ -45,6 +48,7 @@ class CodingChannelOperationPort:
         session: SessionControlPort,
         event_view: JsonEventView = "full",
         event_select: Sequence[str] | str | None = None,
+        work_event_log: EventLogBackend | None = None,
     ) -> None:
         if event_view not in SUPPORTED_JSON_EVENT_VIEWS:
             raise ValueError(f"unsupported json event view: {event_view}")
@@ -53,9 +57,16 @@ class CodingChannelOperationPort:
         self._event_select = normalize_event_select(event_select)
         self._listeners: list[ChannelDeliveryListener] = []
         self._runtime_unsubscribe: Unsubscribe | None = None
-        self._active_operation_id: str | None = None
-        self._active_request_id: str | None = None
-        self._tasks: dict[str, asyncio.Task[None]] = {}
+        executor = CodingDomainExecutor(session=session)
+        self._work_runtime = WorkRuntime(
+            executor=executor,
+            cancellation=executor,
+            event_log=work_event_log or InMemoryEventLogBackend(),
+        )
+        self._work_unsubscribe = self._work_runtime.subscribe_events(
+            self._on_work_event
+        )
+        self._close_task: asyncio.Task[None] | None = None
 
     async def accept_operation(
         self, request: ChannelOperationRequest
@@ -79,7 +90,7 @@ class CodingChannelOperationPort:
                 code="session_mismatch",
                 message="operation session_id does not match the active Coding session.",
             )
-        if self._active_operation_id is not None:
+        if self._work_runtime.active_runs(session_id=self._session.session_id):
             return _operation_error(
                 request,
                 code="operation_in_progress",
@@ -88,7 +99,7 @@ class CodingChannelOperationPort:
             )
 
         try:
-            text, streaming_behavior = _turn_payload(operation.payload)
+            _turn_payload(operation.payload)
         except ValueError as error:
             return _operation_error(
                 request,
@@ -96,34 +107,25 @@ class CodingChannelOperationPort:
                 message=str(error),
             )
 
-        operation_id = operation.operation_id
-        self._active_operation_id = operation_id
-        self._active_request_id = request.request_id
-        task = asyncio.create_task(
-            self._run_turn(
-                operation_id=operation_id,
-                request_id=request.request_id,
-                text=text,
-                streaming_behavior=streaming_behavior,
-            )
-        )
-        self._tasks[operation_id] = task
+        accepted = await self._work_runtime.accept(operation)
         return ChannelOperationAccepted(
             request_id=request.request_id,
-            operation_id=operation_id,
+            operation_id=operation.operation_id,
+            run_id=accepted.run_id,
         )
 
     async def cancel_operation(
         self, request: ChannelOperationCancelRequest
     ) -> ChannelOperationCancelled | ChannelError:
-        if request.operation_id not in self._tasks:
+        run = self._work_runtime.get_run_for_operation(request.operation_id)
+        if run is None or run.status in {"completed", "failed", "cancelled"}:
             return ChannelError(
                 code="unknown_operation",
                 message="the Coding session has no active operation with this id.",
                 request_id=request.request_id,
             )
         try:
-            await _maybe_await(self._session.abort())
+            await self._work_runtime.cancel(run.run_id)
         except Exception as error:
             return ChannelError(
                 code="cancellation_rejected",
@@ -153,46 +155,24 @@ class CodingChannelOperationPort:
     def close(self) -> None:
         """Release the runtime subscription after its Channel host stops."""
 
-        for task in tuple(self._tasks.values()):
-            task.cancel()
-        self._tasks.clear()
-        self._active_operation_id = None
-        self._active_request_id = None
         self._listeners.clear()
         self._release_runtime_subscription()
+        self._work_unsubscribe()
+        if self._work_runtime.active_runs() and self._close_task is None:
+            self._close_task = asyncio.get_running_loop().create_task(
+                self._work_runtime.dispose()
+            )
 
-    async def _run_turn(
-        self,
-        *,
-        operation_id: str,
-        request_id: str,
-        text: str,
-        streaming_behavior: str | None,
-    ) -> None:
-        try:
-            await self._session.prompt(
-                text,
-                streaming_behavior=streaming_behavior,
-                source="channel",
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as error:
-            self._publish(
-                ChannelError(
-                    code="operation_dispatch_failed",
-                    message=str(error) or type(error).__name__,
-                    request_id=request_id,
-                )
-            )
-        finally:
-            self._tasks.pop(operation_id, None)
-            if self._active_operation_id == operation_id:
-                self._active_operation_id = None
-                self._active_request_id = None
+    async def aclose(self) -> None:
+        self.close()
+        if self._close_task is not None:
+            await self._close_task
 
     def _on_runtime_event(self, event: RuntimeEvent[object]) -> None:
-        operation_id = self._active_operation_id
+        active_runs = self._work_runtime.active_runs(
+            session_id=self._session.session_id
+        )
+        operation_id = active_runs[0].operation_id if active_runs else None
         for index, view in enumerate(
             project_runtime_event_to_json_views(event, event_view=self._event_view),
             start=1,
@@ -210,6 +190,17 @@ class CodingChannelOperationPort:
                     )
                 )
             )
+
+    def _on_work_event(self, event: WorkEvent) -> None:
+        self._publish(
+            ChannelEventDelivery(
+                envelope=ChannelEnvelope(
+                    envelope_id=f"channel:work:{event.event_id}",
+                    kind="event",
+                    payload=event,
+                )
+            )
+        )
 
     def _publish(self, delivery: ChannelDelivery) -> None:
         for listener in tuple(self._listeners):
@@ -253,11 +244,6 @@ def _turn_payload(payload: object) -> tuple[str, str | None]:
     return text, streaming_behavior
 
 
-async def _maybe_await(value: object) -> None:
-    if inspect.isawaitable(value):
-        await value
-
-
 async def run_channel_mode(
     *,
     runtime: object,
@@ -279,7 +265,7 @@ async def run_channel_mode(
     try:
         return await host.run()
     finally:
-        port.close()
+        await port.aclose()
 
 
 def _current_session_control(runtime: object) -> SessionControlPort:

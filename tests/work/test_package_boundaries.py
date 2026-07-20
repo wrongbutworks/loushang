@@ -10,6 +10,16 @@ def test_work_package_does_not_own_coding_work_shell_implementation() -> None:
     assert "SubmitCodingTurn" not in text
 
 
+def test_work_standard_projection_does_not_depend_on_coding() -> None:
+    sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in Path("src/loushang/work").glob("*.py")
+        if path.name != "coding.py"
+    )
+
+    assert "loushang.coding" not in sources
+
+
 def test_work_runtime_is_product_neutral_and_harness_does_not_import_work() -> None:
     work_runtime = Path("src/loushang/work/runtime.py").read_text(encoding="utf-8")
     coding_shell = Path("src/loushang/coding/work_shell.py").read_text(
@@ -38,3 +48,15 @@ def test_work_runtime_is_product_neutral_and_harness_does_not_import_work() -> N
 
     assert "loushang.work" not in harness_source
     assert not Path("src/loushang/harness/work").exists()
+
+
+def test_channel_adapter_delegates_operation_lifecycle_to_work_runtime() -> None:
+    source = Path("src/loushang/coding/mode/channel_mode.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "WorkRuntime" in source
+    assert "self._session.prompt(" not in source
+    assert "self._session.abort(" not in source
+    assert "self._active_operation_id" not in source
+    assert "self._tasks" not in source
