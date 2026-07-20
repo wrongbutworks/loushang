@@ -188,6 +188,9 @@ planning, work event persistence, or AI provider behavior.
 - [Workspace Path And Mutation Boundary](workspace-path-mutation-boundary.md)
   defines configurable path resolution, canonical identity, optional input
   variants, mutation coordination, and coding path policy ownership.
+- [Workspace And Terminal Platform Capabilities Boundary](workspace-platform-capabilities-boundary.md)
+  defines canonical Harness Git and Native TUI clipboard ownership, direct
+  Product adoption, and retired Coding platform paths.
 - [Workspace Tool Pack Boundary](workspace-tool-pack-boundary.md) defines
   reusable concrete read/search/edit/exec ownership, Coding compatibility
   adapters, and the product-owned activation and policy boundary.

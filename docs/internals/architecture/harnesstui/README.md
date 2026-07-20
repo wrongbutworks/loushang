@@ -6,7 +6,6 @@ direction is:
 
 ```text
 `loushang.coding.ui` -> `loushang.harnesstui` -> `loushang.tui`
-`loushang.coding.commands.tui` -> `loushang.harnesstui`
 `loushang.coding.interaction.*` -> `loushang.harnesstui`
 `loushang.coding.model_selection_tui` -> `loushang.harnesstui`
 `loushang.coding.presentation.tui.*` -> `loushang.harnesstui`
@@ -64,6 +63,10 @@ supported. Command descriptors remain opaque and the selected descriptor is
 returned by identity; model interactions consume only product-prepared
 `ModelChoice` values and return the selected choice without applying it.
 
+`loushang.harnesstui.commands.source` materializes a product-supplied sync or
+async command source into that immutable snapshot. It does not discover a
+Session or define command precedence; those remain product ports and policy.
+
 These workflows do not acquire a Session catalog, parse Coding intents,
 normalize model/provider objects, mutate the active model, persist settings,
 or choose product wording. Coding continues to own `CodingCommandCatalog`,
@@ -77,7 +80,8 @@ containers, search lists, and terminal interaction mechanics remain in
 `loushang.tui`; the existing Harnesstui presentation modules only project
 caller-supplied descriptors and choices.
 
-The explicit module paths `loushang.harnesstui.commands.interaction` and
+The explicit module paths `loushang.harnesstui.commands.source`,
+`loushang.harnesstui.commands.interaction`, and
 `loushang.harnesstui.selection.interaction` are the stable entrypoints for
 these workflows. Package initializers do not add convenience re-exports.
 
@@ -336,10 +340,11 @@ package initializer intentionally does not re-export these entrypoints.
 Coding's `ui.mode` is the composition root for these ports. It explicitly
 constructs the screen app, surface manager, event projector, action host, and
 runner, and preserves their reverse cleanup order. Raw Session discovery for
-tool definitions, queues, and keybindings lives in
-`loushang.coding.presentation.tui.runtime`; resume-hint discovery lives in
-`loushang.coding.presentation.resume`. Approval presenter binding and Session
-transition cleanup remain Coding product policy in
+tool definitions, queues, keybindings, and full transcript branch records is
+now expressed as explicit composition-root ports in `loushang.coding.ui.mode`;
+the former `loushang.coding.presentation.tui.runtime` reflection facade is
+retired. Resume-hint discovery lives in `loushang.coding.presentation.resume`.
+Approval presenter binding and Session transition cleanup remain Coding product policy in
 `loushang.coding.policy.tui`. They do not belong to Harnesstui merely because a
 shared surface displays the prepared approval facts.
 
