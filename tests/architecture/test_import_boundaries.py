@@ -130,9 +130,9 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
 def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> None:
     harness_root = Path("src/loushang/harness")
     profile_allowlists = {
-            harness_root / "agent_transcript": (
-                "loushang.ai",
-                "loushang.ai.model",
+        harness_root / "agent_transcript": (
+            "loushang.ai",
+            "loushang.ai.model",
             "loushang.ai.types",
             "loushang.ai.json_codec",
             "loushang.agent.types",
@@ -522,9 +522,9 @@ def test_transcript_compaction_capability_is_neutral_and_adopted() -> None:
     summary_executor_source = Path(
         "src/loushang/harness/agent_transcript/summarization.py"
     ).read_text(encoding="utf-8")
-    coding_adapter_source = Path(
-        "src/loushang/coding/compaction/adapter.py"
-    ).read_text(encoding="utf-8")
+    coding_adapter_source = Path("src/loushang/coding/compaction/adapter.py").read_text(
+        encoding="utf-8"
+    )
     binding = Path(
         "docs/internals/architecture/harness/product-runtime-injection/"
         "02-context-compaction-binding.md"
@@ -3205,6 +3205,35 @@ def test_session_lifecycle_runtime_is_documented_neutral_and_adopted() -> None:
     assert "loushang.harness.session.AgentTranscriptSessionRuntime" in imports
     assert "loushang.harness.session.SessionLifecycleRuntime" in imports
     assert "loushang.harness.runtime.SessionOperationCoordinator" not in imports
+
+
+def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
+    runtime_source = Path(
+        "src/loushang/coding/runtime/agent_session_runtime.py"
+    ).read_text(encoding="utf-8")
+    extension_source = Path(
+        "src/loushang/coding/session/extension_replacement_controller.py"
+    ).read_text(encoding="utf-8")
+    session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
+        encoding="utf-8"
+    )
+    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+        encoding="utf-8"
+    )
+    cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
+
+    assert "fork_session_with_result" not in runtime_source
+    assert "entry_id: str, options: object | None = None" not in runtime_source
+    assert "async def clone(\n        self\n" not in runtime_source
+    assert "async def import_session_operation" in runtime_source
+    assert "fork_session_operation" in extension_source
+    assert "new_session_operation" in extension_source
+    assert "restore_session_operation" in extension_source
+    assert "import_session_operation" in extension_source
+    assert "_clone_from_builtin" not in session_source
+    assert "_import_from_builtin" not in session_source
+    assert "require_session_operation_session" in rpc_source
+    assert "require_session_operation_session" in cli_source
 
 
 def test_product_capability_composition_core_is_documented_and_adopted() -> None:

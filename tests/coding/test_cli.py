@@ -12,6 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from loushang.harness.runtime import SessionOperationResult
+
 
 def _command_descriptor(item: dict[str, object]) -> SimpleNamespace:
     source_info = item.get("source_info")
@@ -215,6 +217,55 @@ class FakeRuntime:
     async def fork_session(self, entry_id: str) -> FakeSession:
         self.fork_session_calls.append(entry_id)
         return self._current_session
+
+    async def new_session_operation(
+        self,
+        *,
+        cwd: str | None = None,
+        parent_session: str | None = None,
+    ) -> SessionOperationResult[FakeSession, None]:
+        del parent_session
+        if cwd is None:
+            raise ValueError("Fake runtime requires cwd")
+        previous = self._current_session
+        session = await self.new_session(cwd=cwd)
+        return SessionOperationResult(
+            previous=previous,
+            current=session,
+            payload=None,
+            cancelled=False,
+        )
+
+    async def restore_session_operation(
+        self,
+        session_id: str,
+    ) -> SessionOperationResult[FakeSession, None]:
+        previous = self._current_session
+        session = await self.restore_session(session_id)
+        return SessionOperationResult(
+            previous=previous,
+            current=session,
+            payload=None,
+            cancelled=False,
+        )
+
+    async def fork_session_operation(
+        self,
+        entry_id: str | None,
+        *,
+        position: str = "at",
+    ) -> SessionOperationResult[FakeSession, None]:
+        del position
+        if entry_id is None:
+            raise ValueError("Fake runtime requires an explicit fork entry")
+        previous = self._current_session
+        session = await self.fork_session(entry_id)
+        return SessionOperationResult(
+            previous=previous,
+            current=session,
+            payload=None,
+            cancelled=False,
+        )
 
     def list_sessions(self) -> list[object]:
         self.list_sessions_calls += 1

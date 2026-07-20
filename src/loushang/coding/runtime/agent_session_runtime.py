@@ -402,12 +402,6 @@ class AgentSessionRuntime(AgentTranscriptSessionRuntime[AgentSession, str]):
             options=options or None,
         )
 
-    async def fork_session_with_result(
-        self, entry_id: str, *, position: str = "at"
-    ) -> tuple[AgentSession, str | None]:
-        result = await self._run_fork_session_operation(entry_id, position=position)
-        return require_session_operation_session(result), result.payload
-
     async def _run_fork_session_operation(
         self,
         entry_id: str | None,
@@ -424,40 +418,23 @@ class AgentSessionRuntime(AgentTranscriptSessionRuntime[AgentSession, str]):
             ),
         )
 
-    async def fork(
-        self, entry_id: str, options: object | None = None
-    ) -> dict[str, object]:
-        opts = options if isinstance(options, dict) else {}
-        position = opts.get("position", "before")
-        if position not in {"before", "at"}:
-            raise ValueError(f"Unsupported fork position: {position}")
-        operation = await self._run_fork_session_operation(
-            entry_id,
-            position=position,
-            options=opts,
-        )
-        result: dict[str, object] = {"cancelled": operation.cancelled}
-        if operation.payload is not None:
-            result["selectedText"] = operation.payload
-            result["selected_text"] = operation.payload
-        return result
-
     async def clone_session(self) -> AgentSession:
         result = await self._run_fork_session_operation(None)
         return require_session_operation_session(result)
 
-    async def clone(self) -> dict[str, bool]:
-        result = await self._run_fork_session_operation(None)
-        return {"cancelled": result.cancelled}
-
     async def import_from_jsonl(
         self, input_path: str | Path, cwd_override: str | Path | None = None
     ) -> dict[str, bool]:
-        result = await self._run_import_session_operation(input_path, cwd_override)
+        result = await self.import_session_operation(
+            input_path, cwd_override=cwd_override
+        )
         return {"cancelled": result.cancelled}
 
-    async def _run_import_session_operation(
-        self, input_path: str | Path, cwd_override: str | Path | None = None
+    async def import_session_operation(
+        self,
+        input_path: str | Path,
+        *,
+        cwd_override: str | Path | None = None,
     ) -> _SessionOperationResult:
         source = Path(input_path).expanduser().resolve()
         try:

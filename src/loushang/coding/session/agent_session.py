@@ -367,9 +367,18 @@ class AgentSession(SessionFacade):
                 new_session=self._new_session_from_extension,
                 resume_session=self._switch_session_from_extension,
                 fork_session=self._fork_from_extension,
-                clone_session=self._clone_from_builtin,
+                clone_session=lambda: (
+                    self._extension_replacement_controller.clone_session()
+                ),
                 navigate_tree=self._navigate_tree_from_extension,
-                import_session=self._import_from_builtin,
+                import_session=(
+                    lambda input_path, cwd_override=None: (
+                        self._extension_replacement_controller.import_session(
+                            input_path,
+                            cwd_override,
+                        )
+                    )
+                ),
                 get_active_tool_names=self.get_active_tool_names,
                 get_all_tools=self.get_all_tool_infos,
                 set_active_tools=self.set_active_tools,
@@ -1568,53 +1577,6 @@ class AgentSession(SessionFacade):
     ) -> dict[str, object]:
         return await self._extension_replacement_controller.switch_session(
             session_path, options
-        )
-
-    async def _clone_from_builtin(self) -> dict[str, object]:
-        runtime_host = self._extension_runtime_host
-        if runtime_host is None:
-            return {"cancelled": True}
-        clone = getattr(runtime_host, "clone", None)
-        if callable(clone):
-            result = clone()
-            if asyncio.iscoroutine(result):
-                result = await result
-            return dict(result) if isinstance(result, dict) else {"cancelled": False}
-        clone_session = getattr(runtime_host, "clone_session", None)
-        if callable(clone_session):
-            previous = getattr(runtime_host, "get_current_session", lambda: None)()
-            result = clone_session()
-            if asyncio.iscoroutine(result):
-                result = await result
-            current = getattr(runtime_host, "get_current_session", lambda: result)()
-            return {"cancelled": current is previous}
-        return {"cancelled": True}
-
-    async def _import_from_builtin(
-        self, input_path: str, cwd_override: str | None = None
-    ) -> dict[str, object]:
-        runtime_host = self._extension_runtime_host
-        if runtime_host is None:
-            return {"cancelled": True}
-        importer = getattr(runtime_host, "import_from_jsonl", None)
-        if not callable(importer):
-            return {"cancelled": True}
-        result = importer(input_path, cwd_override)
-        if asyncio.iscoroutine(result):
-            result = await result
-        return dict(result) if isinstance(result, dict) else {"cancelled": False}
-
-    async def _run_extension_replaced_session_callbacks(
-        self,
-        session: object | None,
-        options: object | None,
-        *,
-        include_setup: bool = False,
-    ) -> None:
-        await self._extension_replacement_controller.run_replaced_session_callbacks(
-            session,
-            options,
-            include_setup=include_setup,
         )
 
     def _record_extension_runtime_diagnostic(

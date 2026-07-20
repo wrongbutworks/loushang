@@ -790,10 +790,14 @@ async def test_runtime_fork_session_before_user_message_returns_selected_text(
     )
     third_id = await session.session_manager.append_message(_user_message("tail"))
 
-    forked, selected_text = await runtime.fork_session_with_result(
-        third_id, position="before"
+    fork_result = await runtime.fork_session_operation(
+        third_id,
+        position="before",
     )
+    forked = fork_result.current
+    selected_text = fork_result.payload
 
+    assert forked is not None
     assert runtime.get_current_session() is forked
     assert selected_text == "tail"
     assert [entry.record_id for entry in forked.session_manager.get_branch()] == [
@@ -820,7 +824,7 @@ async def test_runtime_fork_before_requires_user_message(tmp_path) -> None:
     )
 
     with pytest.raises(ValueError, match="requires a user message entry"):
-        await runtime.fork_session_with_result(assistant_id, position="before")
+        await runtime.fork_session_operation(assistant_id, position="before")
 
 
 @_async_test
@@ -888,7 +892,8 @@ async def test_runtime_new_session_operation_runs_setup_and_with_session(
                 "withSession",
                 (
                     ctx.cwd,
-                    ctx.session_manager is runtime.get_current_session().session_manager,
+                    ctx.session_manager
+                    is runtime.get_current_session().session_manager,
                 ),
             )
         )
@@ -1050,9 +1055,7 @@ async def test_runtime_replacement_callback_failures_keep_replacement_and_record
         raise RuntimeError("withSession boom")
 
     with pytest.raises(RuntimeError, match="withSession boom"):
-        await runtime.restore_session_operation(
-            target_file, with_session=_with_session
-        )
+        await runtime.restore_session_operation(target_file, with_session=_with_session)
 
     current = runtime.get_current_session()
     records = diagnostics_service.get_diagnostics(
