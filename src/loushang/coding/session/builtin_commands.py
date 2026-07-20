@@ -17,7 +17,7 @@ from loushang.coding.platform.changelog import (
     parse_changelog,
 )
 from loushang.coding.session.types import CommandExecutionResult
-from loushang.coding.source_info import create_source_info
+from loushang.harness.resources.source import create_source_info
 
 BuiltinCallable = Callable[..., object | Awaitable[object]]
 

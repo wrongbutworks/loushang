@@ -1518,9 +1518,10 @@ def test_harness_diagnostics_core_boundary_is_documented() -> None:
         "Harness Diagnostics Core Boundary",
         "`loushang.harness.diagnostics.types`",
         "`loushang.harness.diagnostics.service`",
+        "`loushang.harness.diagnostics.observability_bridge`",
         "canonical owners",
         "`coding.diagnostics.serialization`",
-        "`coding.diagnostics.problem_bridge`",
+        "Coding's source-classification resolver",
         "must not import coding, method, work, TUI, AI, agent runtime, provider, observability, or product packages",
     }
     assert (
@@ -1537,6 +1538,83 @@ def test_harness_diagnostics_core_boundary_is_documented() -> None:
     ).read_text(encoding="utf-8")
     assert "`loushang.harness.diagnostics`" in inventory_text
     assert "diagnostics core implementation complete" in inventory_text
+
+
+def test_harness_diagnostics_core_does_not_import_observability() -> None:
+    paths_and_forbidden_prefixes = (
+        (
+            Path("src/loushang/harness/diagnostics/types.py"),
+            ("loushang.observability",),
+        ),
+        (
+            Path("src/loushang/harness/diagnostics/service.py"),
+            ("loushang.observability",),
+        ),
+        (
+            Path("src/loushang/harness/diagnostics/observability_bridge.py"),
+            ("loushang.coding",),
+        ),
+    )
+    offenders = [
+        f"{path.as_posix()} imports {imported}"
+        for path, forbidden_prefixes in paths_and_forbidden_prefixes
+        for imported in _absolute_imports(path)
+        if _matches_any(imported, forbidden_prefixes)
+    ]
+    assert offenders == []
+
+
+def test_coding_shared_layer_migration_plan_is_documented() -> None:
+    plan_path = Path(
+        "docs/internals/architecture/harness/coding-shared-layer-migration-plan.md"
+    )
+    assert plan_path.exists()
+    plan_text = " ".join(plan_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Coding To Shared-Layer Migration Plan",
+        "Wave R: Owner And Duplicate Rebaseline",
+        "ProductRuntimePlan",
+        "Harness is not globally prohibited from importing Agent or AI",
+        "Wave 1: Leaf Foundations",
+        "Wave 2: Event And Extension Product Adapter Collapse",
+        "Wave 3: Standard Session Capabilities And Command Subsets",
+        "Wave 4: Session Composition And Bootstrap Transaction",
+        "Wave 5: Channel, RPC, Print, And TUI Adapter Collapse",
+        "Wave 6: Config, Shared Defaults, CLI, And Work/Method Cleanup",
+        "Every capability batch uses three reviewable commits",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in plan_text) == []
+    )
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Coding To Shared-Layer Migration Plan" in readme_text
+    assert "Coding Shared-Layer Migration Ledger" in readme_text
+    assert "Diagnostics Export Boundary" in readme_text
+
+    ledger_text = Path(
+        "docs/internals/architecture/harness/coding-shared-layer-migration-ledger.md"
+    ).read_text(encoding="utf-8")
+    assert "## Wave 1: Leaf Foundations" in ledger_text
+    assert "`harness.diagnostics.export`" in ledger_text
+
+    export_boundary_text = Path(
+        "docs/internals/architecture/harness/diagnostics-export-boundary.md"
+    ).read_text(encoding="utf-8")
+    assert "redacts both text artifacts and JSON values" in export_boundary_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "Coding To Shared-Layer Migration Plan" in inventory_text
+
+    subsystem_text = Path("docs/internals/architecture/subsystem.md").read_text(
+        encoding="utf-8"
+    )
+    assert "### loushang-channel (target)" not in subsystem_text
+    assert "该源码包已落地" in subsystem_text
 
 
 def test_coding_context_budget_facades_are_extinct() -> None:
@@ -3680,12 +3758,7 @@ def test_resource_provenance_consumers_use_harness_owners() -> None:
         "src/loushang/coding/extensions/__init__.py",
         "src/loushang/coding/source_info.py",
     }
-    legacy_symbols = (
-        "loushang.coding.extensions.SourceInfo",
-        "loushang.coding.source_info.SourceInfo",
-        "loushang.coding.source_info.SourceOrigin",
-        "loushang.coding.source_info.SourceScope",
-    )
+    legacy_symbols = ("loushang.coding.extensions.SourceInfo",)
     offenders: list[str] = []
     for path in sorted(Path("src/loushang/coding").rglob("*.py")):
         if path.as_posix() in compatibility_paths:

@@ -74,6 +74,16 @@ from loushang.harness.session.lifecycle import (
     TransitionCandidateCallback,
     TransitionReleaseCallback,
 )
+from loushang.harness.session.model_selection import (
+    ModelCandidates,
+    ModelSelectionApplyResult,
+    PersistModelSelection,
+    apply_session_model_selection,
+    ensure_usable_session_model,
+    get_session_model_selection,
+    iter_available_model_selections,
+    iter_scoped_model_selections,
+)
 from loushang.harness.session.operations import (
     SessionOperationAvailability,
     SessionOperationCapability,
@@ -128,7 +138,10 @@ __all__ = [
     "ForkTargetResolver",
     "MissingCwdPolicy",
     "MissingSessionCwdError",
+    "ModelCandidates",
+    "ModelSelectionApplyResult",
     "PromptController",
+    "PersistModelSelection",
     "QueueController",
     "RefreshFailureRecorder",
     "ResourceBundleProvider",
@@ -180,6 +193,11 @@ __all__ = [
     "UserCommandHookResult",
     "UserCommandRequest",
     "SessionViewPort",
+    "apply_session_model_selection",
     "command_result_from_tool_result",
+    "ensure_usable_session_model",
+    "get_session_model_selection",
+    "iter_available_model_selections",
+    "iter_scoped_model_selections",
     "require_session_operation_session",
 ]

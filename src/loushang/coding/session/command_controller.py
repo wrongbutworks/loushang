@@ -13,10 +13,6 @@ from loushang.coding.session.builtin_commands import (
     list_builtin_command_descriptors,
 )
 from loushang.coding.session.types import CommandExecutionResult
-from loushang.coding.source_info import (
-    SourceDescriptor,
-    source_info_from_resource_descriptor,
-)
 from loushang.coding.store import SessionManager
 from loushang.harness.capabilities.packs import CapabilityPackComposer
 from loushang.harness.capabilities.prompt_preflight import (
@@ -33,7 +29,15 @@ from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.extensions.types import ResolvedCommand
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.frontmatter import strip_frontmatter
-from loushang.harness.resources.source import SourceInfo as ExtensionSourceInfo
+from loushang.harness.resources.source import (
+    ResourceSourceDescriptor as SourceDescriptor,
+)
+from loushang.harness.resources.source import (
+    SourceInfo as ExtensionSourceInfo,
+)
+from loushang.harness.resources.source import (
+    source_info_from_resource_descriptor,
+)
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,

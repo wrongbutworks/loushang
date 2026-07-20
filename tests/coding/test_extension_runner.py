@@ -1018,7 +1018,7 @@ def test_extension_api_runtime_read_methods_work_from_command_closure() -> None:
 
     from loushang.coding.commands import SessionCommandDescriptor
     from loushang.coding.extensions import ExtensionAPI, ExtensionRunner
-    from loushang.coding.source_info import SourceInfo
+    from loushang.harness.resources.source import SourceInfo
 
     seen: dict[str, object] = {}
     api = ExtensionAPI(name="demo", source_path=Path("/tmp/demo.py"))

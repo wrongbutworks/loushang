@@ -169,7 +169,11 @@ resource substrate becomes harness-owned, prefer a planned migration into
 
 ## Import Rules
 
-Harness may import stable `loushang.agent` primitives.
+Neutral Harness core packages may remain independent of Agent and AI. Declared
+Agent integration packages may import stable public `loushang.agent` and
+`loushang.ai` capabilities when their contract requires it. Such modules do
+not own provider registration, credential resolution, or Product model policy;
+Agent and AI packages must not reverse-depend on Harness.
 
 Harness must not import:
 
@@ -177,7 +181,6 @@ Harness must not import:
 - `loushang.method`;
 - `loushang.work`;
 - `loushang.tui`;
-- `loushang.ai`;
 - channel implementations.
 
 If a contract needs to reference work, method, channel, UI, or product facts, it

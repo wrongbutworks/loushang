@@ -4,12 +4,12 @@ import inspect
 from collections.abc import Mapping
 from typing import Any
 
+from loushang.ai.model import model_label_from_selection
 from loushang.coding.model_selection import (
     apply_model_selection,
-    iter_available_model_selections,
-    model_label_from_selection,
     persistence_warning_message,
 )
+from loushang.harness.session.model_selection import iter_available_model_selections
 from loushang.harnesstui.selection.catalog import (
     ModelChoice,
     ModelChoiceIdentity,

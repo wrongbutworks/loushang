@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from loushang.ai.model import model_label_from_selection
 from loushang.coding.commands.catalog import CodingCommandCatalog
 from loushang.coding.interaction.intent import (
     CommandSelectIntent,
@@ -15,11 +16,6 @@ from loushang.coding.interaction.intent import (
     parse_prompt_intent,
 )
 from loushang.coding.interaction.tui_profile import snapshot_coding_command_catalog
-from loushang.coding.model_selection import (
-    get_session_model_selection,
-    iter_scoped_model_selections,
-    model_label_from_selection,
-)
 from loushang.coding.model_selection_tui import (
     available_model_choices,
     current_model_choice_value,
@@ -31,6 +27,10 @@ from loushang.coding.ui.hotkeys import format_hotkeys
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.settings_page import build_coding_settings_page
 from loushang.harness.commands import CommandDef
+from loushang.harness.session.model_selection import (
+    get_session_model_selection,
+    iter_scoped_model_selections,
+)
 from loushang.harnesstui.commands.presentation import (
     command_palette,
     format_commands,

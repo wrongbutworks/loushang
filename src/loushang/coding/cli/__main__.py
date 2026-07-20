@@ -14,7 +14,7 @@ from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Any, TextIO
 
-from loushang.ai.model import ModelSelection
+from loushang.ai.model import ModelSelection, model_selection_ref
 from loushang.ai.model.registry import get_default_model_registry
 from loushang.ai.types import ImagePart
 from loushang.channel import ProductHostStreams, dispose_product_host, stdout_guard
@@ -48,7 +48,6 @@ from loushang.coding.mode import (
 from loushang.coding.mode.print_mode import run_print_plan_mode
 from loushang.coding.model_selection import (
     apply_model_selection,
-    model_selection_ref,
     persistence_warning_message,
 )
 from loushang.coding.observability import (

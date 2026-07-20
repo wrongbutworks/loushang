@@ -25,9 +25,20 @@ on these owners rather than replacing their lower-level contracts.
 | Keep product | Coding-specific assembly, policy, storage, UI, or workflow. |
 | Never harness | Explicitly outside harness by subsystem boundary. |
 
-Classification defaults to Harness. `Keep product` entries require a named
-product-kernel reason; historical location or lack of a second consumer is not
-sufficient.
+Classification defaults to the correct shared owner. `Keep product` entries
+require a named product-kernel reason; historical location or lack of a second
+consumer is not sufficient. Shared code may belong to Harness, Channel,
+HarnessTUI, TUI, AI, Observability, Method, or Work according to its semantic
+boundary.
+
+## Current Long-Term Plan
+
+Future Coding consolidation follows the accepted
+[Coding To Shared-Layer Migration Plan](coding-shared-layer-migration-plan.md).
+That plan introduces the mandatory owner/duplicate rebaseline ledger and the
+current six delivery waves. The historical execution sections below remain a
+record of completed foundation waves; they are not a promise that their old
+module-level estimates remain unimplemented work.
 
 ## Product Runtime Injection Planning
 
@@ -54,8 +65,8 @@ entries.
 | `coding.tool_pack` | Product adapter | Coding keeps only default seven-tool membership/order, Coding descriptions and prompt snippets, managed downloader default, and injection of Coding policy, approval, diagnostics, and execution services. |
 | `coding.policy` | Product adapter | Approval contracts, headless resolvers, pending-request broker lifecycle, immutable policy subjects, command normalization, rules, matchers, evaluator chains, and sync/async validation live in `loushang.harness.approval` and `loushang.harness.policy`. Coding keeps risk rules, package trust defaults, allowlists, default decisions and wording, interactive payload projection, and compatibility methods. |
 | removed `coding.exec` | Removed | `ExecRequest`, `ExecResult`, output records, backend/update protocols, and `ExecService` are publicly imported from `loushang.harness.workspace.exec`. Policy, session cwd resolution, tool projection, and extension behavior remain product-owned. |
-| removed `coding.diagnostics.types`, `coding.diagnostics.service` | Removed | Diagnostic vocabulary, records, queries, summaries, startup-check contracts, and the bounded in-memory engine are publicly imported from `loushang.harness.diagnostics`. Coding retains only serialization, problem bridging, concrete checks, and presentation. |
-| `coding.diagnostics.serialization`, `coding.diagnostics.problem_bridge`, concrete checks | Keep product | Keep camelCase payload projection, observability mapping, check selection, emission timing, remediation, and CLI/TUI behavior in Coding. `harness.session.SessionDiagnosticsRuntime` owns the common session scope/filtering and Agent/Tool failure correlation that the former Coding session bridge implemented. |
+| removed `coding.diagnostics.types`, `coding.diagnostics.service`, `coding.diagnostics.problem_bridge` | Removed | Diagnostic vocabulary, records, queries, summaries, startup-check contracts, the bounded in-memory engine, and the optional `ProblemRecord` bridge live under `loushang.harness.diagnostics`. Coding retains serialization, concrete checks, its `config` to `model` source policy, and presentation. |
+| `coding.diagnostics.serialization`, concrete checks | Keep product | Keep camelCase payload projection, product observability-source classification, check selection, emission timing, remediation, and CLI/TUI behavior in Coding. `harness.session.SessionDiagnosticsRuntime` owns the common session scope/filtering and Agent/Tool failure correlation that the former Coding session bridge implemented. |
 | `loushang.resource.frontmatter`; removed `coding.frontmatter` | Canonical owner | Parser records, errors, and behavior live in `loushang.harness.resources.frontmatter`. The legacy top-level resource path preserves object identity; Coding and method import the Harness owner directly. |
 | `coding.source_info.SourceInfo`, `coding.extensions.types.SourceInfo` | Compatibility shim | `SourceInfo`, `SourceScope`, and `SourceOrigin` live in `loushang.harness.resources.source`. Coding command and extension paths preserve string and `Path` representations through the same harness class. Descriptor projection and executable identity remain in coding. |
 | removed `coding.loader`, `coding.loader.types` | Removed | `ResourceDiagnostic` lives in `loushang.harness.resources.diagnostics`; neutral prompt, skill, theme, and extension descriptors, source kinds, snapshots, bundles, and merge decisions live in `loushang.harness.resources.types`. Consumers import those owners directly. |
