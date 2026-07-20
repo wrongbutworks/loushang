@@ -7,6 +7,16 @@ import sys
 from pathlib import Path
 
 RETIRED_CODING_UI_COMPATIBILITY_MODULES: dict[str, tuple[str, ...]] = {
+    "loushang.coding.commands.tui": (
+        "loushang.coding.commands.catalog",
+        "loushang.harnesstui.commands.interaction",
+        "loushang.harnesstui.commands.presentation",
+        "loushang.harnesstui.commands.source",
+    ),
+    "loushang.coding.presentation.tui.runtime": (
+        "loushang.coding.ui.mode",
+        "loushang.harnesstui.conversation.runtime_view",
+    ),
     "loushang.coding.presentation.settings": (
         "loushang.harnesstui.settings.schema",
         "loushang.coding.interaction.settings_profile",
@@ -98,7 +108,12 @@ MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
         "loushang.harnesstui.conversation.control",
         "loushang.coding.ui.plain_app",
     ),
-    "loushang.coding.ui.command_list": ("loushang.coding.commands.tui",),
+    "loushang.coding.ui.command_list": (
+        "loushang.coding.commands.catalog",
+        "loushang.harnesstui.commands.interaction",
+        "loushang.harnesstui.commands.presentation",
+        "loushang.harnesstui.commands.source",
+    ),
     "loushang.coding.ui.conversation_event_adapter": (
         "loushang.coding.presentation.tui.events",
     ),
@@ -185,7 +200,6 @@ NON_UI_CODING_OWNERS = (
 )
 
 CODING_TUI_FEATURE_OWNERS = (
-    "loushang.coding.commands.tui",
     "loushang.coding.interaction.screen_host",
     "loushang.coding.interaction.settings_profile",
     "loushang.coding.interaction.tui_profile",
@@ -195,7 +209,6 @@ CODING_TUI_FEATURE_OWNERS = (
     "loushang.coding.presentation.tui.events",
     "loushang.coding.presentation.tui.history",
     "loushang.coding.presentation.tui.plain",
-    "loushang.coding.presentation.tui.runtime",
     "loushang.coding.presentation.tui.screen",
     "loushang.coding.presentation.tui.tool_transcript",
 )
@@ -386,9 +399,6 @@ def test_mode_is_only_the_coding_tui_composition_root() -> None:
         "set_approval_presenter",
         "get_session_file",
         "inspect.signature",
-        "get_tool_definition",
-        "get_steering_messages",
-        "get_follow_up_messages",
         "base64",
         "traceback",
         "def _is_interactive",
@@ -409,6 +419,12 @@ def test_mode_is_only_the_coding_tui_composition_root() -> None:
         "run_prepared_plain_conversation",
         "TuiLaunchProfile",
         "run_tui_launch_shell",
+        "class _CodingTuiSessionPort",
+        "get_tool_definition",
+        "get_steering_messages",
+        "get_follow_up_messages",
+        "get_keybindings",
+        "stable_string_queue_reader",
     ):
         assert token in source
 
@@ -486,11 +502,11 @@ def test_shared_resume_runtime_and_startup_keep_product_policy_outside() -> None
         Path(path).read_text(encoding="utf-8")
         for path in (
             "src/loushang/coding/presentation/resume.py",
-            "src/loushang/coding/presentation/tui/runtime.py",
             "src/loushang/coding/ui/startup.py",
             "src/loushang/coding/ui/mode.py",
         )
     )
+    assert not Path("src/loushang/coding/presentation/tui/runtime.py").exists()
 
     for token in (
         "loushang.coding",
@@ -671,6 +687,14 @@ def test_shared_history_dispatch_keeps_raw_coding_projection_outside() -> None:
         assert token in coding
 
     assert "def _transcript_record" not in coding
+    assert "class SessionTranscriptSource" not in coding
+    assert "def _session_transcript_items" not in coding
+    assert "branch_items: Iterable[object]" in coding
+    assert "manager.get_branch()" in coding
+
+    mode = Path("src/loushang/coding/ui/mode.py").read_text(encoding="utf-8")
+    assert "MaterializedTranscriptSource" in mode
+    assert "session_port.session_manager.get_branch()" in mode
 
 
 def test_shared_playback_support_does_not_own_coding_copy_or_budgets() -> None:
@@ -940,8 +964,14 @@ def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
         "src/loushang/harnesstui/selection/interaction.py"
     ).read_text(encoding="utf-8")
     shared = command_interaction + model_interaction
-    command_adapter = Path("src/loushang/coding/commands/tui.py").read_text(
-        encoding="utf-8"
+    command_adapter = "\n".join(
+        Path(path).read_text(encoding="utf-8")
+        for path in (
+            "src/loushang/coding/commands/catalog.py",
+            "src/loushang/coding/ui/completion.py",
+            "src/loushang/coding/ui/plain_app.py",
+            "src/loushang/coding/ui/screen_surfaces.py",
+        )
     )
     model_adapter = Path("src/loushang/coding/model_selection_tui.py").read_text(
         encoding="utf-8"

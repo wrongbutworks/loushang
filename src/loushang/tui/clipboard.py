@@ -1,3 +1,5 @@
+"""Cross-platform text clipboard capability for terminal products."""
+
 from __future__ import annotations
 
 import os
@@ -27,17 +29,35 @@ def copy_to_clipboard(
 ) -> ClipboardCopyResult:
     environment = os.environ if env is None else env
     command_runner = _run_copy_command if runner is None else runner
-    last_result = ClipboardCopyResult(ok=False, message="No clipboard command was available.")
+    last_result = ClipboardCopyResult(
+        ok=False,
+        message="No clipboard command was available.",
+    )
 
-    for command, args in _clipboard_command_candidates(environment, platform or sys.platform):
-        result = command_runner(command, args, input_text=text, timeout_seconds=timeout_seconds)
+    for command, args in _clipboard_command_candidates(
+        environment,
+        platform or sys.platform,
+    ):
+        result = command_runner(
+            command,
+            args,
+            input_text=text,
+            timeout_seconds=timeout_seconds,
+        )
         if result.ok:
             return result
-        last_result = result if result.message else ClipboardCopyResult(ok=False, command=command)
+        last_result = (
+            result
+            if result.message
+            else ClipboardCopyResult(ok=False, command=command)
+        )
     return last_result
 
 
-def _clipboard_command_candidates(env: Mapping[str, str], platform: str) -> list[tuple[str, tuple[str, ...]]]:
+def _clipboard_command_candidates(
+    env: Mapping[str, str],
+    platform: str,
+) -> list[tuple[str, tuple[str, ...]]]:
     normalized_platform = platform.lower()
     if normalized_platform == "darwin":
         return [("pbcopy", tuple())]
@@ -76,7 +96,11 @@ def _run_copy_command(
             timeout=timeout_seconds,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        return ClipboardCopyResult(ok=False, command=command, message=str(exc))
+        return ClipboardCopyResult(
+            ok=False,
+            command=command,
+            message=str(exc),
+        )
     return ClipboardCopyResult(ok=result.returncode == 0, command=command)
 
 

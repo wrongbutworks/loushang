@@ -3,14 +3,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.commands.tui import coding_command_completion_provider
+from loushang.coding.interaction.tui_profile import snapshot_coding_command_catalog
 from loushang.coding.model_selection_tui import available_model_completion_provider
+from loushang.harnesstui.commands.presentation import command_completion_provider
 from loushang.harnesstui.completion.host import (
     CatalogCompletionProfile,
     CatalogSlashAlias,
     PreparedCatalogCompletionHost,
 )
-from loushang.tui import CombinedCompletionProvider, SlashCommandCompletionProvider
+from loushang.tui import (
+    CombinedCompletionProvider,
+    CompletionProvider,
+    SlashCommandCompletionProvider,
+)
 
 
 async def coding_inline_completion_provider(
@@ -27,10 +32,15 @@ def coding_completion_host(session: Any) -> PreparedCatalogCompletionHost:
     """Bind Coding catalog sources to the shared completion host."""
 
     return PreparedCatalogCompletionHost(
-        command_provider_source=lambda: coding_command_completion_provider(session),
+        command_provider_source=lambda: _coding_command_provider(session),
         model_provider_source=lambda: available_model_completion_provider(session),
         profile=_CODING_COMPLETION_PROFILE,
     )
+
+
+async def _coding_command_provider(session: Any) -> CompletionProvider:
+    catalog = await snapshot_coding_command_catalog(session)
+    return command_completion_provider(catalog.commands())
 
 
 _CODING_COMPLETION_PROFILE = CatalogCompletionProfile(
@@ -38,9 +48,3 @@ _CODING_COMPLETION_PROFILE = CatalogCompletionProfile(
     model_argument_group="Models",
     slash_aliases=(CatalogSlashAlias("/quit", "/exit", "Quit loushang"),),
 )
-
-
-__all__ = [
-    "coding_completion_host",
-    "coding_inline_completion_provider",
-]

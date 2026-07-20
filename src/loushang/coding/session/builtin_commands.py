@@ -5,6 +5,7 @@ import shlex
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
+from typing import Protocol
 
 from loushang.coding.commands.types import (
     BUILTIN_SLASH_COMMANDS,
@@ -15,11 +16,27 @@ from loushang.coding.platform.changelog import (
     format_changelog_entries,
     parse_changelog,
 )
-from loushang.coding.platform.clipboard import ClipboardCopyResult, copy_to_clipboard
 from loushang.coding.session.types import CommandExecutionResult
 from loushang.coding.source_info import create_source_info
 
 BuiltinCallable = Callable[..., object | Awaitable[object]]
+
+
+class ClipboardCopyResultPort(Protocol):
+    @property
+    def ok(self) -> bool: ...
+
+    @property
+    def command(self) -> str | None: ...
+
+    @property
+    def message(self) -> str | None: ...
+
+
+def _copy_to_clipboard(text: str) -> ClipboardCopyResultPort:
+    from loushang.tui.clipboard import copy_to_clipboard
+
+    return copy_to_clipboard(text)
 
 
 @dataclass
@@ -32,7 +49,7 @@ class BuiltinCommandBackend:
     reload: Callable[[], object | Awaitable[object]] | None = None
     get_recent_assistant_texts: Callable[[], tuple[str, ...]] | None = None
     get_last_assistant_text: Callable[[], str | None] | None = None
-    copy_text: Callable[[str], ClipboardCopyResult] = copy_to_clipboard
+    copy_text: Callable[[str], ClipboardCopyResultPort] = _copy_to_clipboard
     get_changelog: Callable[[str], object] | None = None
     new_session: Callable[[object | None], object | Awaitable[object]] | None = None
     resume_session: Callable[[str, object | None], object | Awaitable[object]] | None = None
@@ -205,7 +222,11 @@ async def _execute_tools(args: str, backend: BuiltinCommandBackend) -> CommandEx
         return _unsupported("tools")
     active_tools = list(backend.get_active_tool_names())
     available_tools = _available_tool_entries(backend.get_all_tools(), active_tools)
-    available_names = [entry["name"] for entry in available_tools]
+    available_names = [
+        name
+        for entry in available_tools
+        if isinstance(name := entry.get("name"), str)
+    ]
     tokens = _split_args(args.strip()) if args.strip() else []
     if not tokens:
         return _tools_ok(active_tools, available_tools)
@@ -453,7 +474,7 @@ def _tool_field(tool: object, field: str) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _tool_source_info(tool: object) -> object | None:
+def _tool_source_info(tool: object) -> Mapping[object, object] | None:
     if isinstance(tool, Mapping):
         value = tool.get("sourceInfo") or tool.get("source_info")
     else:

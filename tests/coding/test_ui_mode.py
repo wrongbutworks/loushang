@@ -17,7 +17,11 @@ class _Session:
     def __init__(self) -> None:
         self.session_id = "254d6156"
         self.session_name = "254d6156"
-        self.session_manager = SimpleNamespace(get_cwd=lambda: "/repo")
+        self.session_manager = SimpleNamespace(
+            get_cwd=lambda: "/repo",
+            get_branch=lambda: [],
+        )
+        self.settings_manager = None
         self.current_model: object = ModelSelection(
             provider="unknown", model_id="unknown"
         )
@@ -32,6 +36,15 @@ class _Session:
         self.prompts: list[str] = []
         self.listeners: list[object] = []
         self.unsubscribed = False
+
+    def get_tool_definition(self, _tool_name: str) -> None:
+        return None
+
+    def get_steering_messages(self) -> list[str]:
+        return []
+
+    def get_follow_up_messages(self) -> list[str]:
+        return []
 
     def get_model_selection(self) -> object:
         return self.current_model

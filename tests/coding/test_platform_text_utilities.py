@@ -7,7 +7,6 @@ from loushang.coding.control.config_value import (
     ConfigValueResolver,
 )
 from loushang.coding.platform.changelog import format_changelog_entries, parse_changelog
-from loushang.coding.platform.clipboard import ClipboardCopyResult, copy_to_clipboard
 
 
 def test_config_value_resolver_prefers_env_then_literal_and_caches_command_results() -> None:
@@ -24,25 +23,6 @@ def test_config_value_resolver_prefers_env_then_literal_and_caches_command_resul
     assert resolver.resolve("!printf token") == "token-from-command"
     assert resolver.resolve("!printf token") == "token-from-command"
     assert calls == ["printf token:10"]
-
-
-def test_copy_to_clipboard_uses_platform_command_with_text_stdin() -> None:
-    calls: list[tuple[str, tuple[str, ...], str]] = []
-
-    def runner(command: str, args: tuple[str, ...], *, input_text: str, timeout_seconds: float) -> ClipboardCopyResult:
-        del timeout_seconds
-        calls.append((command, args, input_text))
-        return ClipboardCopyResult(ok=True, command=command)
-
-    result = copy_to_clipboard(
-        "hello",
-        env={"WAYLAND_DISPLAY": "wayland-1"},
-        runner=runner,
-    )
-
-    assert result.ok is True
-    assert result.command == "wl-copy"
-    assert calls == [("wl-copy", tuple(), "hello")]
 
 
 def test_parse_changelog_extracts_markdown_entries(tmp_path: Path) -> None:

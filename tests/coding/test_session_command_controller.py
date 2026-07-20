@@ -16,10 +16,10 @@ from loushang.coding.loader import (
     ResourceBundle,
     SkillDescriptor,
 )
-from loushang.coding.platform.clipboard import ClipboardCopyResult
 from loushang.coding.session.builtin_commands import BuiltinCommandBackend
 from loushang.coding.session.command_controller import CommandController
 from loushang.coding.store import SessionManager
+from loushang.tui.clipboard import ClipboardCopyResult
 
 
 def test_command_controller_lists_extension_prompt_and_enabled_skill_commands(

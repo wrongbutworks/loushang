@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from loushang.coding.commands.catalog import CodingCommandCatalog
-from loushang.coding.commands.tui import format_coding_commands, select_coding_command
 from loushang.coding.diagnostics.debug_status import debug_status_text
 from loushang.coding.event.presentation_policy import is_cancelled_error_message
 from loushang.coding.interaction.controller import CodingUiController
@@ -15,6 +14,7 @@ from loushang.coding.interaction.tui_profile import (
     CodingTuiPorts,
     CodingTuiProfile,
     is_coding_work_intent,
+    snapshot_coding_command_catalog,
 )
 from loushang.coding.model_selection_tui import (
     format_available_models,
@@ -26,7 +26,18 @@ from loushang.coding.presentation.session import (
 )
 from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
 from loushang.coding.ui.hotkeys import format_hotkeys
-from loushang.harnesstui.commands.interaction import CommandPaletteChooser
+from loushang.harness.commands import CommandDef
+from loushang.harnesstui.commands.interaction import (
+    CommandInteractionPresentationCopy,
+    CommandInteractionSnapshot,
+    CommandPaletteChooser,
+    present_command_interaction,
+    run_command_interaction,
+)
+from loushang.harnesstui.commands.presentation import (
+    command_completion_item,
+    format_commands,
+)
 from loushang.harnesstui.conversation.debug_action import (
     DebugActionCopy,
     DebugActionHandler,
@@ -104,14 +115,30 @@ def build_plain_coding_tui_app(
             ),
         )
         session_commands = getattr(session, "list_commands", None)
+        command_catalog = CodingCommandCatalog(
+            session_commands=session_commands if callable(session_commands) else None
+        )
+
+        async def select_command(query: str) -> str:
+            snapshot = await snapshot_coding_command_catalog(session)
+            result = await run_command_interaction(
+                CommandInteractionSnapshot(snapshot.commands()),
+                query=query,
+                choose=command_palette_chooser,
+            )
+            return present_command_interaction(
+                result,
+                copy=_CODING_COMMAND_INTERACTION_COPY,
+            )
+
+        async def list_commands(query: str) -> str:
+            snapshot = await snapshot_coding_command_catalog(session)
+            return format_commands(snapshot.commands(), query=query)
+
         return PlainConversationProductBinding(
             host_profile=CodingTuiProfile(
                 lifecycle=assembly.lifecycle,
-                command_catalog=CodingCommandCatalog(
-                    session_commands=(
-                        session_commands if callable(session_commands) else None
-                    )
-                ),
+                command_catalog=command_catalog,
                 session_running=lambda: is_running(session),
                 trace=trace,
             ).host_profile(now=now),
@@ -127,10 +154,8 @@ def build_plain_coding_tui_app(
                     session, query=query, choose=model_palette_chooser
                 ),
                 models=lambda query: format_available_models(session, query=query),
-                command_select=lambda query: select_coding_command(
-                    session, query=query, choose=command_palette_chooser
-                ),
-                commands=lambda query: format_coding_commands(session, query=query),
+                command_select=select_command,
+                commands=list_commands,
                 hotkeys=format_hotkeys,
                 settings_text=assembly.settings_text,
                 info=assembly.info,
@@ -171,3 +196,20 @@ def build_plain_coding_tui_app(
             completion_provider=completion_provider,
         ),
     )
+
+
+def _command_value(item: CommandDef) -> str:
+    completion = command_completion_item(item)
+    return completion.value if completion is not None else ""
+
+
+_CODING_COMMAND_INTERACTION_COPY = CommandInteractionPresentationCopy[CommandDef](
+    list_items=format_commands,
+    item_text=_command_value,
+    cancelled="Command selection cancelled.",
+    empty="No commands available.",
+    no_match=lambda query: f"No commands match: {query}",
+    ambiguous_title="Multiple commands match:",
+    ambiguous_hint="Use /command <full command> to select one.",
+    selected_prefix="Command selected: ",
+)

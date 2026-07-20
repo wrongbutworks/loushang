@@ -674,6 +674,89 @@ def test_tui_and_harness_keep_harnesstui_dependency_one_way() -> None:
     assert offenders == []
 
 
+def test_workspace_git_and_clipboards_have_canonical_owners() -> None:
+    expected_imports = {
+        Path("src/loushang/coding/platform/footer_data_provider.py"): {
+            "loushang.harness.workspace.git.find_git_paths",
+            "loushang.harness.workspace.git.get_git_branch",
+        },
+        Path("src/loushang/coding/presentation/session.py"): {
+            "loushang.harness.workspace.git.get_git_branch",
+        },
+        Path("src/loushang/coding/session/builtin_commands.py"): {
+            "loushang.tui.clipboard.copy_to_clipboard",
+        },
+    }
+
+    missing = [
+        f"{path.as_posix()} missing {target}"
+        for path, targets in expected_imports.items()
+        for target in sorted(targets - set(_absolute_imports(path)))
+    ]
+
+    assert missing == []
+
+
+def test_retired_coding_platform_capability_paths_stay_absent() -> None:
+    retired = {
+        "loushang.coding.platform.clipboard": Path(
+            "src/loushang/coding/platform/clipboard.py"
+        ),
+        "loushang.coding.platform.clipboard_image": Path(
+            "src/loushang/coding/platform/clipboard_image.py"
+        ),
+        "loushang.coding.platform.git": Path("src/loushang/coding/platform/git.py"),
+    }
+
+    assert [path.as_posix() for path in retired.values() if path.exists()] == []
+
+    offenders = [
+        f"{path.as_posix()} imports {imported}"
+        for root in (Path("src"), Path("tests"), Path("examples"), Path("scripts"))
+        for path in sorted(root.rglob("*.py"))
+        for imported in _absolute_imports(path)
+        if imported in retired
+        or any(imported.startswith(f"{module}.") for module in retired)
+    ]
+    assert offenders == []
+
+    package_source = Path("src/loushang/coding/platform/__init__.py").read_text(
+        encoding="utf-8"
+    )
+    for retired_export in (
+        "ClipboardCopyResult",
+        "ClipboardImage",
+        "copy_to_clipboard",
+        "extension_for_image_mime_type",
+        "get_git_branch",
+        "read_clipboard_image",
+    ):
+        assert f'"{retired_export}"' not in package_source
+
+
+def test_workspace_platform_capability_cutover_is_documented() -> None:
+    boundary_path = Path(
+        "docs/internals/architecture/harness/"
+        "workspace-platform-capabilities-boundary.md"
+    )
+    boundary = boundary_path.read_text(encoding="utf-8")
+    normalized_boundary = " ".join(boundary.split())
+
+    for required in (
+        "`loushang.harness.workspace.git`",
+        "`loushang.tui.clipboard`",
+        "`loushang.tui.clipboard_image`",
+        "no compatibility facade is retained",
+        "Harness and TUI therefore remain peers",
+    ):
+        assert required in normalized_boundary
+
+    readme = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert boundary_path.name in readme
+
+
 def test_tui_does_not_import_runtime_product_or_model_layers() -> None:
     boundary = ImportBoundary(
         name="tui",
@@ -758,6 +841,7 @@ def test_harnesstui_architecture_lists_stable_capability_entrypoints() -> None:
     assert "`loushang.harnesstui.plain.renderer`" in text
     assert "`loushang.harnesstui.commands.interaction`" in text
     assert "`loushang.harnesstui.commands.presentation`" in text
+    assert "`loushang.harnesstui.commands.source`" in text
     assert "`loushang.harnesstui.selection.catalog`" in text
     assert "`loushang.harnesstui.selection.interaction`" in text
     assert "`loushang.harnesstui.selection.model`" in text
@@ -810,6 +894,7 @@ def test_harnesstui_capability_entrypoints_exist() -> None:
         Path("src/loushang/harnesstui/plain/renderer.py"),
         Path("src/loushang/harnesstui/commands/interaction.py"),
         Path("src/loushang/harnesstui/commands/presentation.py"),
+        Path("src/loushang/harnesstui/commands/source.py"),
         Path("src/loushang/harnesstui/selection/catalog.py"),
         Path("src/loushang/harnesstui/selection/interaction.py"),
         Path("src/loushang/harnesstui/selection/model.py"),
@@ -894,6 +979,7 @@ import sys
 
 for module_name in (
     "loushang.harnesstui.commands.interaction",
+    "loushang.harnesstui.commands.source",
     "loushang.harnesstui.selection.interaction",
 ):
     importlib.import_module(module_name)

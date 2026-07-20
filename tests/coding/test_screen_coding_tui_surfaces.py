@@ -1055,7 +1055,11 @@ def test_screen_surface_manager_applies_settings_page_statusline_change() -> Non
 
 
 def test_screen_surface_manager_command_surface_inserts_selected_command() -> None:
-    session = _Session()
+    class AsyncCommandSession(_Session):
+        async def list_commands(self) -> list[object]:
+            return self.commands
+
+    session = AsyncCommandSession()
     session.commands = [
         SimpleNamespace(name="report", description="Show report", source="core"),
         SimpleNamespace(name="model", description="Switch model", source="core"),

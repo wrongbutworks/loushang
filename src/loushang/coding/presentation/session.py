@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.platform.git import get_git_branch
+from loushang.harness.workspace.git import get_git_branch
 
 
 def session_cwd(*, session: Any, runtime: Any) -> str:
