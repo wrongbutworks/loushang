@@ -144,11 +144,13 @@ moving product risk defaults into Harness.
 
 ## Coding Migration Result
 
-Reusable behavior from `coding.loader`, `coding.package`, `coding.plugin`, and
-`coding.skill` has moved under focused `loushang.harness.resources` modules.
-Accepted Coding paths remain compatibility adapters.
+Reusable behavior formerly exposed through `coding.loader`, `coding.package`,
+`coding.plugin`, and `coding.skill` lives under focused
+`loushang.harness.resources` modules. Those Coding import paths are removed;
+all generic consumers import the Harness owner directly.
 
-`DefaultResourceLoader` is now a small Coding facade that:
+`coding.resource_runtime.CodingResourceLoader` is Coding's resource binding
+and:
 
 - registers `loushang.coding.resources`;
 - selects standard and compatibility convention presets;
@@ -159,9 +161,9 @@ It does not retain a second implementation of scanning, provenance, merging,
 package materialization, package catalog construction, source resolution, or
 `AGENTS.md` discovery. `harness.resources.packages` owns the structured
 catalog, scoped source resolver, materialization lifecycle, manifest summary,
-and conflict diagnostics. Coding supplies its settings object and package
-security policy, then projects the structured catalog into its CLI/RPC JSON
-schema.
+and conflict diagnostics. `CodingPackageMaterializer` supplies Coding's
+settings object and package security policy, while `coding.package_projection`
+projects the structured catalog into Coding's CLI/RPC JSON schema.
 
 ## Security Boundary
 

@@ -41,7 +41,7 @@ added to top-level `loushang.harness.__all__`.
 In-repository consumers import the owner directly:
 
 ```text
-loushang.coding.loader -> loushang.harness.resources.frontmatter
+loushang.coding.resource_runtime -> loushang.harness.resources.loader -> loushang.harness.resources.frontmatter
 loushang.method        -> loushang.harness.resources.frontmatter
 ```
 

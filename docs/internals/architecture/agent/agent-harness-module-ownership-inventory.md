@@ -249,7 +249,7 @@ These names are intentionally excluded from `loushang.harness`:
 2. Completed: add `loushang.work.ArtifactRef`.
 3. Completed: move coding runtime imports to the `loushang.coding.work_shell` adapter.
 4. Completed: keep `Agent` prompt and continuation execution on the low-level loop while preserving the stateful lifecycle.
-5. Completed: isolate method resource loading from `loushang.coding.loader`.
+5. Completed: isolate method resource loading from the Harness resource owner.
 6. Completed: move `CodingWorkShell` implementation ownership to `loushang.coding.work_shell`.
 7. Completed: add architecture import boundary tests for agent, harness, work, method, and channel.
 8. Completed: remove remaining package-level compatibility shims from `loushang.coding.cli` and `loushang.coding.types`.

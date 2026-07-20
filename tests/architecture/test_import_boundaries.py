@@ -2899,46 +2899,32 @@ def test_resource_package_runtime_has_harness_owners() -> None:
 
 
 def test_coding_internal_resource_consumers_use_harness_owners() -> None:
-    compatibility_paths = {
-        "src/loushang/coding/loader/__init__.py",
-        "src/loushang/coding/loader/types.py",
-        "src/loushang/coding/package/__init__.py",
-        "src/loushang/coding/package/manifest.py",
-        "src/loushang/coding/package/resource_roots.py",
-        "src/loushang/coding/package/source.py",
-        "src/loushang/coding/package/source_manager.py",
-        "src/loushang/coding/plugin/__init__.py",
-        "src/loushang/coding/plugin/lifecycle.py",
-        "src/loushang/coding/plugin/manager.py",
-        "src/loushang/coding/plugin/registry.py",
-        "src/loushang/coding/plugin/resolver.py",
-        "src/loushang/coding/plugin/types.py",
-        "src/loushang/coding/policy/__init__.py",
-        "src/loushang/coding/policy/types.py",
-    }
-    legacy_prefixes = (
-        "loushang.coding.loader.types",
-        "loushang.coding.package.manifest",
-        "loushang.coding.package.resource_roots",
-        "loushang.coding.package.source",
-        "loushang.coding.package.source_manager",
-        "loushang.coding.plugin.lifecycle",
-        "loushang.coding.plugin.manager",
-        "loushang.coding.plugin.registry",
-        "loushang.coding.plugin.resolver",
-        "loushang.coding.plugin.types",
-        "loushang.coding.policy.types",
+    from importlib.util import find_spec
+
+    retired_directories = (
+        Path("src/loushang/coding/loader"),
+        Path("src/loushang/coding/package"),
+        Path("src/loushang/coding/plugin"),
+        Path("src/loushang/coding/skill"),
     )
+    assert all(not path.exists() for path in retired_directories)
+
+    retired_prefixes = (
+        "loushang.coding.loader",
+        "loushang.coding.package",
+        "loushang.coding.plugin",
+        "loushang.coding.skill",
+    )
+    assert all(find_spec(prefix) is None for prefix in retired_prefixes)
     offenders: list[str] = []
-    for path in sorted(Path("src/loushang/coding").rglob("*.py")):
-        if path.as_posix() in compatibility_paths:
-            continue
-        for imported in _absolute_imports(path):
-            if any(
-                imported == prefix or imported.startswith(f"{prefix}.")
-                for prefix in legacy_prefixes
-            ):
-                offenders.append(f"{path.as_posix()} imports {imported}")
+    for root in (Path("src"), Path("tests"), Path("examples")):
+        for path in sorted(root.rglob("*.py")):
+            for imported in _absolute_imports(path):
+                if any(
+                    imported == prefix or imported.startswith(f"{prefix}.")
+                    for prefix in retired_prefixes
+                ):
+                    offenders.append(f"{path.as_posix()} imports {imported}")
 
     assert offenders == []
 
@@ -3549,7 +3535,7 @@ def test_harness_platform_resource_layout_boundary_is_documented() -> None:
         "`AGENTS.md` is a cross-product agent-instruction convention",
         "Products own their built-in resource content and register it with Harness",
         "Resource discovery is not resource authorization",
-        "`DefaultResourceLoader` is now a small Coding facade",
+        "`coding.resource_runtime.CodingResourceLoader` is Coding's resource binding",
         "must not import Coding, Design, Research, PPT, Cowork, TUI, Method, Work, or AI provider packages",
     }
     assert (
@@ -3646,15 +3632,11 @@ def test_harness_resource_frontmatter_boundary_is_documented() -> None:
 def test_resource_provenance_consumers_use_harness_owners() -> None:
     compatibility_paths = {
         "src/loushang/coding/extensions/__init__.py",
-        "src/loushang/coding/loader/__init__.py",
-        "src/loushang/coding/loader/types.py",
         "src/loushang/coding/source_info.py",
     }
     legacy_symbols = (
         "loushang.coding.extensions.SourceInfo",
         "loushang.coding.extensions.types.SourceInfo",
-        "loushang.coding.loader.ResourceDiagnostic",
-        "loushang.coding.loader.types.ResourceDiagnostic",
         "loushang.coding.source_info.SourceInfo",
         "loushang.coding.source_info.SourceOrigin",
         "loushang.coding.source_info.SourceScope",
