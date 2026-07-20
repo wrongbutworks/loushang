@@ -1,0 +1,228 @@
+"""Typed, Product-neutral operations over a bound session control surface.
+
+This module is intentionally below any RPC or channel schema.  Products choose
+which operation groups to expose, map their own requests to these values, and
+project their own responses and errors.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from enum import Enum
+
+from loushang.ai.types import ImagePart
+from loushang.harness.session.facade import SessionControlPort
+
+
+class SessionOperationCapability(str, Enum):
+    """A coherent group of optional Product session operations."""
+
+    INPUT = "input"
+    QUEUE = "queue"
+    LIFECYCLE = "lifecycle"
+    IDENTITY = "identity"
+    RETRY = "retry"
+    MAINTENANCE = "maintenance"
+
+
+class SessionOperationUnavailableError(RuntimeError):
+    """Raised when a Product did not bind an optional operation group."""
+
+
+@dataclass(frozen=True)
+class SessionOperationAvailability:
+    """Explicit capability declaration for one Product session binding."""
+
+    capabilities: frozenset[SessionOperationCapability]
+
+    @classmethod
+    def standard(cls) -> "SessionOperationAvailability":
+        """Expose every operation supported by ``SessionControlPort``."""
+
+        return cls(frozenset(SessionOperationCapability))
+
+    @classmethod
+    def from_capabilities(
+        cls,
+        capabilities: Iterable[SessionOperationCapability],
+    ) -> "SessionOperationAvailability":
+        return cls(frozenset(capabilities))
+
+    def supports(self, capability: SessionOperationCapability) -> bool:
+        return capability in self.capabilities
+
+    def require(self, capability: SessionOperationCapability) -> None:
+        if not self.supports(capability):
+            raise SessionOperationUnavailableError(
+                f"Session operation capability is unavailable: {capability.value}"
+            )
+
+
+@dataclass(frozen=True)
+class SessionPromptRequest:
+    """One Product-adapted prompt submission without transport vocabulary."""
+
+    text: str
+    images: tuple[ImagePart, ...] = ()
+    streaming_behavior: str | None = None
+    source: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.text, str) or not self.text:
+            raise ValueError("Session prompt text must be a non-empty string.")
+        if self.streaming_behavior is not None and not isinstance(
+            self.streaming_behavior, str
+        ):
+            raise TypeError("Session prompt streaming behavior must be a string.")
+        if self.source is not None and not isinstance(self.source, str):
+            raise TypeError("Session prompt source must be a string.")
+
+
+class SessionOperationRuntime:
+    """Execute admitted session control groups through one explicit port.
+
+    The runtime does not own background task scheduling, request validation,
+    error schema, model selection, or output projection.  A host may schedule
+    ``prompt`` itself while preserving the preflight callback contract.
+    """
+
+    def __init__(
+        self,
+        control: SessionControlPort,
+        *,
+        availability: SessionOperationAvailability | None = None,
+    ) -> None:
+        self._control = control
+        self._availability = (
+            SessionOperationAvailability.standard()
+            if availability is None
+            else availability
+        )
+
+    @property
+    def availability(self) -> SessionOperationAvailability:
+        return self._availability
+
+    async def prompt(
+        self,
+        request: SessionPromptRequest,
+        *,
+        on_preflight: Callable[[bool], None] | None = None,
+    ) -> None:
+        self._require(SessionOperationCapability.INPUT)
+        await self._control.prompt(
+            request.text,
+            images=list(request.images) or None,
+            streaming_behavior=request.streaming_behavior,
+            source=request.source,
+            preflight_result=on_preflight,
+        )
+        await self._control.wait_for_idle()
+
+    def steer(self, text: str, *, images: Iterable[ImagePart] = ()) -> None:
+        self._require(SessionOperationCapability.INPUT)
+        self._control.steer(text, images=list(images) or None)
+
+    def follow_up(self, text: str, *, images: Iterable[ImagePart] = ()) -> None:
+        self._require(SessionOperationCapability.INPUT)
+        self._control.follow_up(text, images=list(images) or None)
+
+    @property
+    def pending_message_count(self) -> int:
+        self._require(SessionOperationCapability.QUEUE)
+        return self._control.pending_message_count
+
+    def get_steering_messages(self) -> list[str]:
+        self._require(SessionOperationCapability.QUEUE)
+        return self._control.get_steering_messages()
+
+    def get_follow_up_messages(self) -> list[str]:
+        self._require(SessionOperationCapability.QUEUE)
+        return self._control.get_follow_up_messages()
+
+    def clear_queue(self) -> dict[str, list[str]]:
+        self._require(SessionOperationCapability.QUEUE)
+        return self._control.clear_queue()
+
+    async def continue_run(self) -> None:
+        self._require(SessionOperationCapability.LIFECYCLE)
+        await self._control.continue_run()
+
+    def abort(self) -> bool:
+        self._require(SessionOperationCapability.LIFECYCLE)
+        return self._control.abort()
+
+    async def wait_for_idle(self) -> None:
+        self._require(SessionOperationCapability.LIFECYCLE)
+        await self._control.wait_for_idle()
+
+    @property
+    def session_id(self) -> str:
+        self._require(SessionOperationCapability.IDENTITY)
+        return self._control.session_id
+
+    @property
+    def session_name(self) -> str | None:
+        self._require(SessionOperationCapability.IDENTITY)
+        return self._control.session_name
+
+    async def set_session_name(self, name: str | None) -> None:
+        self._require(SessionOperationCapability.IDENTITY)
+        await self._control.set_session_name(name)
+
+    @property
+    def is_retrying(self) -> bool:
+        self._require(SessionOperationCapability.RETRY)
+        return self._control.is_retrying
+
+    def abort_retry(self) -> None:
+        self._require(SessionOperationCapability.RETRY)
+        self._control.abort_retry()
+
+    async def wait_for_retry(self) -> None:
+        self._require(SessionOperationCapability.RETRY)
+        await self._control.wait_for_retry()
+
+    @property
+    def is_compacting(self) -> bool:
+        self._require(SessionOperationCapability.MAINTENANCE)
+        return self._control.is_compacting
+
+    @property
+    def auto_retry_enabled(self) -> bool:
+        self._require(SessionOperationCapability.MAINTENANCE)
+        return self._control.auto_retry_enabled
+
+    @property
+    def auto_compaction_enabled(self) -> bool:
+        self._require(SessionOperationCapability.MAINTENANCE)
+        return self._control.auto_compaction_enabled
+
+    def set_auto_retry_enabled(self, enabled: bool) -> None:
+        self._require(SessionOperationCapability.MAINTENANCE)
+        self._control.set_auto_retry_enabled(enabled)
+
+    def set_auto_compaction_enabled(self, enabled: bool) -> None:
+        self._require(SessionOperationCapability.MAINTENANCE)
+        self._control.set_auto_compaction_enabled(enabled)
+
+    async def compact(self, custom_instructions: str | None = None) -> object:
+        self._require(SessionOperationCapability.MAINTENANCE)
+        return await self._control.compact(custom_instructions)
+
+    def abort_compaction(self) -> None:
+        self._require(SessionOperationCapability.MAINTENANCE)
+        self._control.abort_compaction()
+
+    def _require(self, capability: SessionOperationCapability) -> None:
+        self._availability.require(capability)
+
+
+__all__ = [
+    "SessionOperationAvailability",
+    "SessionOperationCapability",
+    "SessionOperationRuntime",
+    "SessionOperationUnavailableError",
+    "SessionPromptRequest",
+]

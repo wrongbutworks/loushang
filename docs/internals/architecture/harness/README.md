@@ -118,6 +118,9 @@ planning, work event persistence, or AI provider behavior.
   Product-facing operation surface over already-bound session runtimes while
   Products retain model/auth, prompts, extension protocols, lifecycle policy,
   and channel projection.
+- [Session RPC Operations Boundary](session-rpc-operations-boundary.md) defines
+  typed capability-grouped session operations below transport schemas while
+  Products retain RPC mapping, lifecycle tracking, and output projection.
 - [Session Product Adapter Collapse](session-product-adapter-collapse.md)
   records the direct Facade/inspector/retry bindings that remove redundant
   Coding session controllers while preserving Coding product ports.
