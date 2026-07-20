@@ -43,6 +43,10 @@ from loushang.harness.agent_transcript.compaction import (
     plan_turn_aware_compaction,
     prepare_turn_aware_compaction,
 )
+from loushang.harness.agent_transcript.directory import (
+    AgentTranscriptDirectoryRuntime,
+    IndexRefreshFailureRecorder,
+)
 from loushang.harness.agent_transcript.file_store import (
     AgentTranscriptFileError,
     AgentTranscriptFileLayout,
@@ -130,6 +134,9 @@ from loushang.harness.agent_transcript.migration import (
     migrate_session_v3_file,
     read_session_v3_file,
 )
+from loushang.harness.agent_transcript.product_session import (
+    ProductTranscriptSession,
+)
 from loushang.harness.agent_transcript.profile import (
     AgentTranscriptProfile,
     RecordSemantics,
@@ -201,6 +208,7 @@ __all__ = [
     "TURN_AWARE_SUMMARY_IMPLEMENTATION",
     "TURN_AWARE_SUMMARY_VERSION",
     "AgentTranscriptContext",
+    "AgentTranscriptDirectoryRuntime",
     "AgentTranscriptCommit",
     "AgentTranscriptCompactionCapability",
     "AgentTranscriptCompactionRuntime",
@@ -250,10 +258,12 @@ __all__ = [
     "ExtensionData",
     "FilenameForKey",
     "IdFactory",
+    "IndexRefreshFailureRecorder",
     "HeaderMetadataFactory",
     "ModelSelectionSnapshot",
     "ModelSelectionCatalog",
     "MigrationDisposition",
+    "ProductTranscriptSession",
     "RecordAnnotationPatch",
     "RecordSemantics",
     "SessionV3MigrationError",

@@ -18,7 +18,12 @@ DIST_BINARY := dist/$(BINARY_NAME)
 AI_OFFLINE_ENV := env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_OAUTH_TOKEN -u ANTHROPIC_BASE_URL -u ARK_API_KEY -u BAIDU_QIANFAN_API_KEY -u COPILOT_GITHUB_TOKEN -u DASHSCOPE_API_KEY -u DEEPSEEK_API_KEY -u GH_TOKEN -u GITHUB_TOKEN -u HUNYUAN_API_KEY -u MINIMAX_API_KEY -u MOONSHOT_API_KEY -u OPENAI_API_KEY -u QIANFAN_API_KEY -u STEPFUN_API_KEY -u STEP_API_KEY -u ZAI_API_KEY
 
 HARNESSTUI_SHARED_SOURCES := \
+	src/loushang/harness/command_composition.py \
+	src/loushang/harness/host/types.py \
+	src/loushang/harness/workspace/git.py \
+	src/loushang/tui/clipboard.py \
 	src/loushang/tui/clipboard_image.py \
+	src/loushang/tui/launch.py \
 	src/loushang/tui/playback_suite.py \
 	src/loushang/tui/settings.py \
 	src/loushang/tui/terminal_diagnostics.py \
@@ -27,73 +32,72 @@ HARNESSTUI_SHARED_SOURCES := \
 	src/loushang/harnesstui
 HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/platform/__init__.py \
-	src/loushang/coding/platform/clipboard_image.py \
-	src/loushang/coding/testing/tui \
+	src/loushang/coding/platform/footer_data_provider.py \
+	src/loushang/coding/session/builtin_commands.py \
 	src/loushang/coding/ui
+HARNESSTUI_TEST_SUPPORT := \
+	tests/coding/tui_support
 CODING_TUI_PRODUCT_SOURCES := \
-	src/loushang/coding/commands/tui.py \
 	src/loushang/coding/model_selection_tui.py \
 	src/loushang/coding/model_selection.py \
+	src/loushang/coding/prompt_command.py \
 	src/loushang/coding/diagnostics/debug_status.py \
-	src/loushang/coding/diagnostics/tui.py \
 	src/loushang/coding/event/presentation_policy.py \
 	src/loushang/coding/policy/tui.py \
 	src/loushang/coding/interaction/controller.py \
 	src/loushang/coding/interaction/intent.py \
-	src/loushang/coding/interaction/plain_abort.py \
-	src/loushang/coding/interaction/plain_dispatch.py \
-	src/loushang/coding/interaction/plain_follow_up.py \
-	src/loushang/coding/interaction/plain_host.py \
-	src/loushang/coding/interaction/plain_result.py \
-	src/loushang/coding/interaction/routing.py \
 	src/loushang/coding/interaction/screen_host.py \
+	src/loushang/coding/interaction/settings_profile.py \
+	src/loushang/coding/interaction/tui_profile.py \
 	src/loushang/coding/presentation/resume.py \
 	src/loushang/coding/presentation/session.py \
-	src/loushang/coding/presentation/settings.py \
 	src/loushang/coding/presentation/tui
 HARNESSTUI_TEST_PATHS := \
+	tests/harness/test_command_composition.py \
+	tests/harness/workspace/test_git.py \
 	tests/harnesstui \
+	tests/tui/test_clipboard.py \
 	tests/tui/test_clipboard_image.py \
 	tests/tui/test_import_boundaries.py \
+	tests/tui/test_launch.py \
 	tests/tui/test_playback_suite.py \
 	tests/tui/test_settings.py \
 	tests/tui/test_terminal_diagnostics.py \
 	tests/tui/test_transcript_region.py \
+	tests/architecture/test_coding_wave_a_budget.py \
 	tests/architecture/test_import_boundaries.py \
+	tests/coding/test_footer_data_provider.py \
+	tests/coding/test_platform_text_utilities.py \
 	tests/coding/test_platform_utils.py \
+	tests/coding/test_prompt_command.py \
 	tests/coding/test_screen_conversation_action_host.py \
-	tests/coding/test_ui_handlers.py \
-	tests/coding/test_ui_abort.py \
+	tests/coding/test_coding_tui_profile.py \
 	tests/coding/test_ui_debug_command.py \
-	tests/coding/test_ui_event_stream.py \
-	tests/coding/test_ui_follow_up_queue.py \
 	tests/coding/test_ui_hotkeys.py \
 	tests/coding/test_ui_mode.py \
-	tests/coding/test_ui_prompt_dispatch.py \
-	tests/coding/test_ui_prompt_result.py \
-	tests/coding/test_ui_prompt_routing.py \
-	tests/coding/test_ui_run_context.py \
 	tests/coding/test_ui_startup.py \
 	tests/coding/test_ui_steer.py \
 	tests/coding/test_ui_import_boundaries.py \
-	tests/coding/test_tui_runtime_adapters.py \
 	tests/coding/test_screen_coding_tui_app.py \
 	tests/coding/test_screen_coding_tui_events.py \
 	tests/coding/test_screen_coding_tui_input.py \
 	tests/coding/test_screen_coding_tui_loop.py \
 	tests/coding/test_screen_coding_tui_mode.py \
+	tests/coding/test_screen_coding_tui_playback.py \
 	tests/coding/test_screen_coding_tui_perf_probe.py \
 	tests/coding/test_screen_coding_tui_surfaces.py \
+	tests/coding/test_screen_coding_tui_terminal_playback.py \
 	tests/coding/test_screen_settings_page.py \
+	tests/coding/test_screen_tui_playback_harness.py \
 	tests/coding/test_screen_tui_playback_runner.py \
+	tests/coding/test_session_command_controller.py \
 	tests/coding/test_tool_transcript_blocks.py \
-	tests/coding/test_ui_command_list.py \
 	tests/coding/test_ui_completion.py \
 	tests/coding/test_ui_conversation_event_adapter.py \
-	tests/coding/test_ui_dispatch_compatibility.py \
 	tests/coding/test_ui_model_list.py \
 	tests/coding/test_ui_plain_app.py \
 	tests/coding/test_ui_plain_renderer.py \
+	tests/coding/test_ui_resume.py \
 	tests/coding/test_ui_status_line.py \
 	tests/coding/test_ui_transcript_projection.py \
 	tests/coding/test_ui_transcript_source.py \
@@ -140,7 +144,7 @@ check-ai-coverage:
 check-harnesstui: lint-harnesstui typecheck-harnesstui test-harnesstui
 
 lint-harnesstui:
-	uv --cache-dir .uv-cache run --extra dev ruff check $(HARNESSTUI_SHARED_SOURCES) $(HARNESSTUI_CODING_ADAPTERS) $(CODING_TUI_PRODUCT_SOURCES) $(HARNESSTUI_TEST_PATHS) $(CODING_TUI_PRODUCT_TEST_PATHS)
+	uv --cache-dir .uv-cache run --extra dev ruff check $(HARNESSTUI_SHARED_SOURCES) $(HARNESSTUI_CODING_ADAPTERS) $(CODING_TUI_PRODUCT_SOURCES) $(HARNESSTUI_TEST_SUPPORT) $(HARNESSTUI_TEST_PATHS) $(CODING_TUI_PRODUCT_TEST_PATHS)
 
 typecheck-harnesstui:
 	uv --cache-dir .uv-cache run --extra dev mypy --follow-imports=silent $(HARNESSTUI_SHARED_SOURCES) $(HARNESSTUI_CODING_ADAPTERS) $(CODING_TUI_PRODUCT_SOURCES)
@@ -152,7 +156,7 @@ test-tui:
 	. .venv/bin/activate && python -m pytest tests/tui -q
 
 test-tui-render-contract:
-	uv --cache-dir .uv-cache run pytest tests/tui tests/harnesstui tests/coding -m tui_render_contract -q
+	uv --cache-dir .uv-cache run --extra dev pytest tests/tui tests/harnesstui tests/coding -m tui_render_contract -q
 
 lint-ai:
 	. .venv/bin/activate && uv run ruff check src/loushang/ai examples/ai tests/ai tests/protocols scripts/ai

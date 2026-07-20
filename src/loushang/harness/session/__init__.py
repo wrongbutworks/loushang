@@ -27,6 +27,9 @@ from loushang.harness.session.diagnostics import (
     SessionDiagnosticScopeProvider,
     SessionDiagnosticsRuntime,
 )
+from loushang.harness.session.extension_events import ExtensionAgentEventRuntime
+from loushang.harness.session.extension_hooks import ExtensionAgentHookRuntime
+from loushang.harness.session.extension_input import ExtensionInputRuntime
 from loushang.harness.session.facade import (
     OutputCallback,
     RuntimeEventListener,
@@ -39,6 +42,7 @@ from loushang.harness.session.facade import (
     SessionFacadePorts,
     SessionIdentityPort,
     SessionMaintenancePort,
+    SessionResourcePort,
     SessionRetryPort,
     SessionToolsPort,
     SessionTranscriptPort,
@@ -87,6 +91,10 @@ from loushang.harness.session.runtime import (
     TranscriptRuntimePort,
     TurnPolicyPort,
 )
+from loushang.harness.session.transcript_lifecycle import (
+    AgentTranscriptSessionRuntime,
+    require_session_operation_session,
+)
 
 __all__ = [
     "AgentEventRouter",
@@ -96,6 +104,7 @@ __all__ = [
     "AgentSessionInspector",
     "AgentSessionState",
     "AgentStateInspectionPort",
+    "AgentTranscriptSessionRuntime",
     "ApplicationInputDelivery",
     "ApplicationInputRuntime",
     "CommandRuntimeSource",
@@ -103,6 +112,9 @@ __all__ = [
     "DEFAULT_FORK_PROFILE",
     "ExtensionDiagnosticsPort",
     "ExtensionDiagnosticsProvider",
+    "ExtensionAgentEventRuntime",
+    "ExtensionAgentHookRuntime",
+    "ExtensionInputRuntime",
     "FileCopy",
     "ForkProfile",
     "ForkSelection",
@@ -130,6 +142,7 @@ __all__ = [
     "SessionFacadePorts",
     "SessionIdentityPort",
     "SessionMaintenancePort",
+    "SessionResourcePort",
     "SessionRetryPort",
     "SessionDiagnosticScope",
     "SessionDiagnosticScopeProvider",
@@ -156,4 +169,5 @@ __all__ = [
     "UserCommandRequest",
     "SessionViewPort",
     "command_result_from_tool_result",
+    "require_session_operation_session",
 ]

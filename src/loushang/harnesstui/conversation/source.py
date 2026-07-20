@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -50,6 +50,40 @@ class ActiveWindowTranscriptSource:
 
     def recent_assistant_texts(self) -> tuple[str, ...]:
         return recent_assistant_texts(active_window_records(self.state))
+
+
+@dataclass(frozen=True, slots=True)
+class MaterializedTranscriptSource:
+    """Expose materialized history, optionally decorated by a live UI window."""
+
+    materialize_records: Callable[[], tuple[DisplayRecord, ...]]
+    source_label: str = "Full transcript"
+    active_window_state: ScreenConversationState | None = None
+
+    def snapshot(self) -> TranscriptSnapshot:
+        history_records = self.materialize_records()
+        records = history_records
+        complete = True
+        source_label = self.source_label
+        if self.active_window_state is not None:
+            active_records = active_window_records(self.active_window_state)
+            merged_records = merge_history_and_active_records(
+                history_records,
+                active_records,
+            )
+            if merged_records != history_records:
+                records = merged_records
+                complete = False
+                source_label = f"{self.source_label} + live window"
+        return TranscriptSnapshot(
+            records=records,
+            evicted_prefix_record_count=0,
+            complete=complete,
+            source_label=source_label,
+        )
+
+    def recent_assistant_texts(self) -> tuple[str, ...]:
+        return recent_assistant_texts(self.snapshot().records)
 
 
 def active_window_records(
@@ -116,6 +150,7 @@ def _decorated_suffix_prefix_overlap(
 
 __all__ = [
     "ActiveWindowTranscriptSource",
+    "MaterializedTranscriptSource",
     "TranscriptSnapshot",
     "TranscriptSource",
     "active_window_records",

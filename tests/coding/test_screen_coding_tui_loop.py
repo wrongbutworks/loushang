@@ -16,6 +16,7 @@ from loushang.harnesstui.testing.action_host import (
     CallbackConversationActionHost,
 )
 from loushang.tui import strip_control_sequences
+from tests.coding.tui_support.scenario_binding import run_coding_test_screen
 
 
 def _action_host(
@@ -44,9 +45,24 @@ def _bind_host_action(
     return handle
 
 
+async def _wait_for_rendered_text(
+    stdout: StringIO,
+    text: str,
+    *,
+    timeout_s: float,
+) -> None:
+    """Synchronize streaming tests with an observed frame, not a fixed sleep."""
+
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_s
+    while text not in strip_control_sequences(stdout.getvalue()):
+        if loop.time() >= deadline:
+            raise AssertionError(f"screen did not render {text!r} within {timeout_s}s")
+        await asyncio.sleep(0.001)
+
+
 def test_screen_loop_prints_welcome_panel_to_scrollback_once() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     app = ScreenCodingTuiApp(
@@ -58,7 +74,7 @@ def test_screen_loop_prints_welcome_panel_to_scrollback_once() -> None:
     )
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=StringIO("/quit\r"),
             stdout=stdout,
@@ -79,7 +95,6 @@ def test_screen_loop_prints_welcome_panel_to_scrollback_once() -> None:
 
 def test_screen_loop_enters_terminal_mode_before_welcome_panel() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     app = ScreenCodingTuiApp(
@@ -91,7 +106,7 @@ def test_screen_loop_enters_terminal_mode_before_welcome_panel() -> None:
     )
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=StringIO("/quit\r"),
             stdout=stdout,
@@ -109,7 +124,6 @@ def test_screen_loop_enters_terminal_mode_before_welcome_panel() -> None:
 
 def test_screen_loop_runs_prompt_to_worked_divider_without_stale_working() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
@@ -121,7 +135,7 @@ def test_screen_loop_runs_prompt_to_worked_divider_without_stale_working() -> No
         return None
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=StringIO("你好\r"),
             stdout=stdout,
@@ -139,7 +153,9 @@ def test_screen_loop_runs_prompt_to_worked_divider_without_stale_working() -> No
 
 
 def test_screen_loop_binds_neutral_attachments_to_a_conversation_action() -> None:
-    from loushang.coding.ui.screen_loop import _bind_text_action
+    from loushang.harnesstui.conversation.host import (
+        bind_action_host_to_screen_runner,
+    )
 
     seen: dict[str, object] = {}
     attachment = PromptImageAttachment(
@@ -150,12 +166,24 @@ def test_screen_loop_binds_neutral_attachments_to_a_conversation_action() -> Non
         marker="@image.png",
     )
 
-    async def handle_prompt(action: ConversationTextAction) -> int:
-        seen["action"] = action
-        return 9
+    class RecordingHost:
+        async def submit(self, action: ConversationTextAction) -> int:
+            seen["action"] = action
+            return 9
 
-    adapted = _bind_text_action(handle_prompt, source="prompt")
-    result = asyncio.run(adapted("describe", attachments=(attachment,)))
+        async def steer(self, _action: ConversationTextAction) -> None:
+            return None
+
+        async def follow_up(self, _action: ConversationTextAction) -> None:
+            return None
+
+        async def abort(self) -> None:
+            return None
+
+    callbacks = bind_action_host_to_screen_runner(RecordingHost())
+    result = asyncio.run(
+        callbacks.handle_prompt("describe", attachments=(attachment,))
+    )
 
     assert result == 9
     action = seen["action"]
@@ -167,7 +195,6 @@ def test_screen_loop_binds_neutral_attachments_to_a_conversation_action() -> Non
 
 def test_screen_loop_scripted_prompt_then_quit_exits_without_status_residue() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     app = ScreenCodingTuiApp(
@@ -185,7 +212,7 @@ def test_screen_loop_scripted_prompt_then_quit_exits_without_status_residue() ->
         return None
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=StringIO("你好\r/quit\r"),
             stdout=stdout,
@@ -208,13 +235,12 @@ def test_screen_loop_scripted_prompt_then_quit_exits_without_status_residue() ->
 
 def test_screen_loop_exits_on_quit_command() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=StringIO("/quit\r"),
             stdout=stdout,
@@ -230,13 +256,12 @@ def test_screen_loop_exits_on_quit_command() -> None:
 
 def test_screen_loop_clears_completion_area_before_exit() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 1.0)
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=StringIO("/quit\r"),
             stdout=stdout,
@@ -256,7 +281,6 @@ def test_screen_loop_clears_completion_area_before_exit() -> None:
 
 def test_screen_loop_escape_cancels_standalone_completion_chunk() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
     from loushang.tui import CompletionItem, CompletionProvider
 
     stdout = StringIO()
@@ -271,7 +295,7 @@ def test_screen_loop_escape_cancels_standalone_completion_chunk() -> None:
     )
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=StringIO("/\x1b"),
             stdout=stdout,
@@ -291,7 +315,6 @@ def test_screen_loop_escape_cancels_standalone_completion_chunk() -> None:
 
 def test_screen_loop_enter_executes_selected_slash_completion() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
     from loushang.tui import CompletionItem, CompletionProvider
 
     stdout = StringIO()
@@ -311,7 +334,7 @@ def test_screen_loop_enter_executes_selected_slash_completion() -> None:
         return text in {"/quit", "/exit"}
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=StringIO("/q\r"),
             stdout=stdout,
@@ -328,8 +351,7 @@ def test_screen_loop_enter_executes_selected_slash_completion() -> None:
 
 def test_screen_loop_routes_runtime_overlay_surface_input() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
-    from loushang.coding.ui.screen_surfaces import ScreenSurfaceView
+    from loushang.harnesstui.surface.view import ScreenSurfaceView
     from loushang.tui import CommandSurface, InputIntent, SelectItem, Surface
 
     stdout = StringIO()
@@ -350,7 +372,7 @@ def test_screen_loop_routes_runtime_overlay_surface_input() -> None:
         surface_intents.append(intent)
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=StringIO("/surface\r\r"),
             stdout=stdout,
@@ -369,7 +391,6 @@ def test_screen_loop_routes_runtime_overlay_surface_input() -> None:
 
 def test_screen_loop_escape_closes_model_surface_and_restores_prompt() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
     from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
     from loushang.harnesstui.status.provider import StatusProvider
 
@@ -390,7 +411,7 @@ def test_screen_loop_escape_closes_model_surface_and_restores_prompt() -> None:
     )
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=_TimedTtyChunkInput((0.0, "/model\r"), (0.01, "\x1b")),
             stdout=stdout,
@@ -413,7 +434,6 @@ def test_screen_loop_escape_closes_model_surface_and_restores_prompt() -> None:
 
 def test_screen_loop_exposes_terminal_diagnostics_provider_while_running() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
     from loushang.tui import TerminalRuntimeCapabilities
 
     class _Mode:
@@ -451,7 +471,7 @@ def test_screen_loop_exposes_terminal_diagnostics_provider_while_running() -> No
         runtime_capabilities.append(app.terminal_capabilities)
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=StringIO("/probe\r"),
             stdout=stdout,
@@ -492,7 +512,6 @@ def test_screen_loop_normalizes_terminal_input_before_reader_parses_events() -> 
 
 def test_screen_loop_dispatches_steer_and_followup_handlers() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5]))
@@ -518,7 +537,7 @@ def test_screen_loop_dispatches_steer_and_followup_handlers() -> None:
         return None
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=StringIO("start\rsteer\rfollow\x1b\r\x03"),
             stdout=stdout,
@@ -539,7 +558,6 @@ def test_screen_loop_dispatches_steer_and_followup_handlers() -> None:
 
 def test_screen_loop_dispatches_pending_steer_from_escape_when_idle() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
@@ -552,7 +570,7 @@ def test_screen_loop_dispatches_pending_steer_from_escape_when_idle() -> None:
         return None
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=StringIO("\x1b"),
             stdout=stdout,
@@ -568,7 +586,6 @@ def test_screen_loop_dispatches_pending_steer_from_escape_when_idle() -> None:
 
 def test_screen_loop_executes_queued_steer_after_running_escape() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
@@ -583,7 +600,7 @@ def test_screen_loop_executes_queued_steer_after_running_escape() -> None:
         return None
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=StringIO("开始\r\x1b"),
             stdout=stdout,
@@ -598,7 +615,6 @@ def test_screen_loop_executes_queued_steer_after_running_escape() -> None:
 
 def test_screen_loop_executes_queued_steer_after_running_escape_with_delay() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     app = ScreenCodingTuiApp(
@@ -626,7 +642,7 @@ def test_screen_loop_executes_queued_steer_after_running_escape_with_delay() -> 
         return None
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=_TimedTtyChunkInput(
                 (0.0, "start\r"),
@@ -647,7 +663,6 @@ def test_screen_loop_executes_queued_steer_after_running_escape_with_delay() -> 
 
 def test_screen_loop_escape_runs_pending_steer_before_unsubmitted_composer_text() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     app = ScreenCodingTuiApp(
@@ -668,7 +683,7 @@ def test_screen_loop_escape_runs_pending_steer_before_unsubmitted_composer_text(
         return None
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=_TimedTtyChunkInput(
                 (0.0, "start\r"),
@@ -689,7 +704,6 @@ def test_screen_loop_escape_runs_pending_steer_before_unsubmitted_composer_text(
 
 def test_screen_loop_renders_pending_steer_stream_after_escape_interrupt() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     app = ScreenCodingTuiApp(
@@ -705,14 +719,18 @@ def test_screen_loop_renders_pending_steer_stream_after_escape_interrupt() -> No
         if text == "queued":
             app.begin_assistant()
             app.append_assistant_chunk("queued response")
-            await asyncio.sleep(0.03)
+            await _wait_for_rendered_text(
+                stdout,
+                "queued response",
+                timeout_s=0.15,
+            )
             app.append_assistant_chunk(" done")
             return None
         await asyncio.Event().wait()
         return None
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=_TimedTtyChunkInput((0.0, "start\r"), (0.01, "\x1b"), (0.2, "")),
             stdout=stdout,
@@ -730,7 +748,6 @@ def test_screen_loop_renders_pending_steer_stream_after_escape_interrupt() -> No
 
 def test_screen_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
@@ -749,7 +766,7 @@ def test_screen_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
         return None
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=_TimedTtyChunkInput((0.0, "start\r"), (0.01, "follow\r"), (0.02, "\x1b")),
             stdout=stdout,
@@ -766,7 +783,6 @@ def test_screen_loop_ignores_running_steer_duplicate_on_interrupt() -> None:
 
 def test_screen_loop_abort_uses_first_pending_steer_before_running_steer() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=_Clock([10.0, 10.5, 11.0]))
@@ -786,7 +802,7 @@ def test_screen_loop_abort_uses_first_pending_steer_before_running_steer() -> No
         return None
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=_TimedTtyChunkInput((0.0, "start\r"), (0.01, "follow\r"), (0.02, "\x1b")),
             stdout=stdout,
@@ -807,7 +823,7 @@ def test_screen_loop_waits_for_abort_settle_before_running_popped_pending_steer(
     from loushang.coding.interaction.screen_host import (
         ScreenCodingConversationActionHost,
     )
-    from loushang.coding.testing.tui.playback import ScreenTuiLoopPlayback
+    from tests.coding.tui_support.playback import ScreenTuiLoopPlayback
 
     playback = ScreenTuiLoopPlayback()
     session = _AbortSettlingSession()
@@ -845,7 +861,7 @@ def test_screen_loop_dispatches_session_command_without_prompting_agent() -> Non
     from loushang.coding.interaction.screen_host import (
         ScreenCodingConversationActionHost,
     )
-    from loushang.coding.testing.tui.playback import ScreenTuiLoopPlayback
+    from tests.coding.tui_support.playback import ScreenTuiLoopPlayback
 
     playback = ScreenTuiLoopPlayback()
     session = _NameCommandSession()
@@ -871,7 +887,6 @@ def test_screen_loop_dispatches_session_command_without_prompting_agent() -> Non
 
 def test_screen_loop_renders_streaming_updates_without_waiting_for_keyboard() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     stdin = _TimedTtyChunkInput((0.0, "go\r"), (0.2, ""))
@@ -885,7 +900,7 @@ def test_screen_loop_renders_streaming_updates_without_waiting_for_keyboard() ->
         return None
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=stdin,
             stdout=stdout,
@@ -903,7 +918,6 @@ def test_screen_loop_renders_streaming_updates_without_waiting_for_keyboard() ->
 
 def test_screen_loop_wakes_stream_render_before_active_interval() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-    from loushang.coding.ui.screen_loop import run_screen_coding_tui
 
     stdout = StringIO()
     stdin = _TimedTtyChunkInput((0.0, "go\r"), (0.1, ""))
@@ -912,12 +926,16 @@ def test_screen_loop_wakes_stream_render_before_active_interval() -> None:
     async def handle_prompt(_text: str) -> int | None:
         app.begin_assistant()
         app.append_assistant_chunk("first chunk")
-        await asyncio.sleep(0.03)
+        await _wait_for_rendered_text(
+            stdout,
+            "first chunk",
+            timeout_s=0.07,
+        )
         app.append_assistant_chunk(" second chunk")
         return None
 
     result = asyncio.run(
-        run_screen_coding_tui(
+        run_coding_test_screen(
             app=app,
             stdin=stdin,
             stdout=stdout,

@@ -5,6 +5,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, Protocol, TextIO, TypeVar
 
+from loushang.harnesstui.conversation.action_presentation import (
+    ConversationTracebackPolicy,
+)
 from loushang.harnesstui.conversation.run_context import StableEmit, TraceFn
 
 
@@ -118,7 +121,7 @@ class ConversationResultPresenter:
         renderer: ResultRenderer,
         emit: StableEmit,
         stderr: TextIO,
-        verbose: bool,
+        traceback_policy: ConversationTracebackPolicy,
         last_error_message: Callable[[], str | None],
         now: Callable[[], float],
         trace: TraceFn,
@@ -126,7 +129,7 @@ class ConversationResultPresenter:
         self._renderer = renderer
         self._emit = emit
         self._stderr = stderr
-        self._verbose = verbose
+        self._traceback_policy = traceback_policy
         self._last_error_message = last_error_message
         self._now = now
         self._trace = trace
@@ -145,9 +148,10 @@ class ConversationResultPresenter:
                     lambda: self._renderer.render_error(error_message),
                     label="prompt:error",
                 )
-            if self._verbose and result.traceback_text:
-                self._stderr.write(result.traceback_text)
-                self._stderr.flush()
+            self._traceback_policy.write(
+                result.traceback_text,
+                sink=self._stderr,
+            )
         elif result.status_message:
             await self._emit(
                 lambda: self._renderer.render_status(result.status_message or ""),
@@ -155,9 +159,7 @@ class ConversationResultPresenter:
             )
         elif outcome.work_intent and result.exit_code is None:
             await self._emit(
-                lambda: self._renderer.render_worked(
-                    self._now() - outcome.started_at
-                ),
+                lambda: self._renderer.render_worked(self._now() - outcome.started_at),
                 label="prompt:worked",
             )
 

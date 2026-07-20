@@ -824,7 +824,7 @@ async def test_runtime_fork_before_requires_user_message(tmp_path) -> None:
 
 
 @_async_test
-async def test_runtime_exposes_pi_style_lifecycle_method_aliases(tmp_path) -> None:
+async def test_runtime_exposes_standard_lifecycle_operations(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
 
     project_root = tmp_path / "project"
@@ -841,32 +841,29 @@ async def test_runtime_exposes_pi_style_lifecycle_method_aliases(tmp_path) -> No
     first_session_file = session.session_manager.session_file
     assert first_session_file is not None
 
-    fork_result = await runtime.fork(third_id)
+    fork_result = await runtime.fork_session_operation(third_id, position="before")
     forked = runtime.get_current_session()
-    assert fork_result == {
-        "cancelled": False,
-        "selectedText": "tail",
-        "selected_text": "tail",
-    }
+    assert fork_result.cancelled is False
+    assert fork_result.payload == "tail"
     assert forked is not None
     assert [entry.record_id for entry in forked.session_manager.get_branch()] == [
         first_id,
         second_id,
     ]
 
-    switch_result = await runtime.switchSession(first_session_file)
-    assert switch_result == {"cancelled": False}
+    switch_result = await runtime.switch_session(first_session_file)
+    assert switch_result is runtime.get_current_session()
     assert runtime.get_current_session() is not forked
 
-    new_result = await runtime.newSession({"parentSession": str(first_session_file)})
-    assert new_result == {"cancelled": False}
+    new_result = await runtime.new_session(parent_session=str(first_session_file))
+    assert new_result is runtime.get_current_session()
     assert runtime.get_current_session().session_manager.get_header().metadata.get(
         "parentSession"
     ) == str(first_session_file)
 
 
 @_async_test
-async def test_runtime_pi_style_new_session_runs_setup_and_with_session(
+async def test_runtime_new_session_operation_runs_setup_and_with_session(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
@@ -891,21 +888,19 @@ async def test_runtime_pi_style_new_session_runs_setup_and_with_session(
                 "withSession",
                 (
                     ctx.cwd,
-                    ctx.sessionManager is runtime.get_current_session().session_manager,
+                    ctx.session_manager is runtime.get_current_session().session_manager,
                 ),
             )
         )
 
-    result = await runtime.newSession(
-        {
-            "parentSession": str(first_session_file),
-            "setup": _setup,
-            "withSession": _with_session,
-        }
+    result = await runtime.new_session_operation(
+        parent_session=str(first_session_file),
+        setup=_setup,
+        with_session=_with_session,
     )
     created = runtime.get_current_session()
 
-    assert result == {"cancelled": False}
+    assert result.cancelled is False
     assert created is not None
     assert created is not session
     assert created.session_manager.get_header().metadata.get("parentSession") == str(
@@ -924,7 +919,7 @@ async def test_runtime_pi_style_new_session_runs_setup_and_with_session(
 
 
 @_async_test
-async def test_runtime_pi_style_switch_and_fork_run_with_session(tmp_path) -> None:
+async def test_runtime_restore_and_fork_operations_run_with_session(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
     from loushang.coding.store import SessionManager
 
@@ -952,29 +947,29 @@ async def test_runtime_pi_style_switch_and_fork_run_with_session(tmp_path) -> No
                 "switch",
                 [
                     message.content[0].text
-                    for message in ctx.sessionManager.build_session_context().messages
+                    for message in ctx.session_manager.build_session_context().messages
                 ],
             )
         )
 
     async def _fork_with_session(ctx):
         events.append(
-            ("fork", [entry.record_id for entry in ctx.sessionManager.get_branch()])
+            ("fork", [entry.record_id for entry in ctx.session_manager.get_branch()])
         )
 
-    switch_result = await runtime.switchSession(
-        target_file, {"withSession": _switch_with_session}
+    switch_result = await runtime.restore_session_operation(
+        target_file, with_session=_switch_with_session
     )
     switch_session = runtime.get_current_session()
     assert switch_session is not None
 
-    await runtime.switchSession(session.session_manager.session_file)
-    fork_result = await runtime.fork(
-        user_id, {"position": "at", "withSession": _fork_with_session}
+    await runtime.switch_session(session.session_manager.session_file)
+    fork_result = await runtime.fork_session_operation(
+        user_id, position="at", with_session=_fork_with_session
     )
 
-    assert switch_result == {"cancelled": False}
-    assert fork_result == {"cancelled": False}
+    assert switch_result.cancelled is False
+    assert fork_result.cancelled is False
     assert events == [
         ("switch", ["target"]),
         ("fork", [user_id]),
@@ -998,7 +993,7 @@ async def test_runtime_replacement_callbacks_require_async_callables(tmp_path) -
         del manager
 
     with pytest.raises(TypeError, match="setup callback must be an async callable"):
-        await runtime.newSession({"setup": _sync_setup})
+        await runtime.new_session_operation(setup=_sync_setup)
 
 
 @_async_test
@@ -1044,7 +1039,7 @@ async def test_runtime_replacement_callback_failures_keep_replacement_and_record
         raise RuntimeError("setup boom")
 
     with pytest.raises(RuntimeError, match="setup boom"):
-        await runtime.newSession({"cwd": str(project_root), "setup": _setup})
+        await runtime.new_session_operation(cwd=project_root, setup=_setup)
 
     setup_session = runtime.get_current_session()
     assert setup_session is not None
@@ -1055,7 +1050,9 @@ async def test_runtime_replacement_callback_failures_keep_replacement_and_record
         raise RuntimeError("withSession boom")
 
     with pytest.raises(RuntimeError, match="withSession boom"):
-        await runtime.switchSession(target_file, {"withSession": _with_session})
+        await runtime.restore_session_operation(
+            target_file, with_session=_with_session
+        )
 
     current = runtime.get_current_session()
     records = diagnostics_service.get_diagnostics(
@@ -1094,7 +1091,7 @@ async def test_runtime_import_from_jsonl_copies_and_switches_session(tmp_path) -
     imported_file = imported_manager.session_file
     assert imported_file is not None
 
-    result = await runtime.importFromJsonl(str(imported_file))
+    result = await runtime.import_from_jsonl(str(imported_file))
     current = runtime.get_current_session()
 
     assert result == {"cancelled": False}
@@ -1139,7 +1136,7 @@ async def test_runtime_import_from_jsonl_does_not_overwrite_existing_same_name_s
     import_source = import_dir / existing_file.name
     imported_file.rename(import_source)
 
-    result = await runtime.importFromJsonl(str(import_source))
+    result = await runtime.import_from_jsonl(str(import_source))
     current = runtime.get_current_session()
     reloaded_existing = await SessionManager.open(existing_file)
 
@@ -1203,7 +1200,7 @@ async def test_runtime_import_from_jsonl_retries_when_unique_destination_is_clai
 
     monkeypatch.setattr(runtime_module, "_copy_import_file", _copy_with_external_race)
 
-    result = await runtime.importFromJsonl(str(import_source))
+    result = await runtime.import_from_jsonl(str(import_source))
     current = runtime.get_current_session()
     stem = existing_file.stem
     suffix = existing_file.suffix
@@ -1302,7 +1299,7 @@ async def test_runtime_import_from_jsonl_race_retry_emits_before_switch_once_for
 
     monkeypatch.setattr(runtime_module, "_copy_import_file", _copy_with_external_race)
 
-    result = await runtime.importFromJsonl(str(import_source))
+    result = await runtime.import_from_jsonl(str(import_source))
     current = runtime.get_current_session()
     final_destination = copy_attempts[1]
 
@@ -1340,7 +1337,7 @@ async def test_runtime_import_from_jsonl_cleans_copied_file_when_stored_cwd_is_m
     assert imported_file is not None
 
     with pytest.raises(MissingSessionCwdError):
-        await runtime.importFromJsonl(str(imported_file))
+        await runtime.import_from_jsonl(str(imported_file))
 
     assert runtime.get_current_session() is current
     assert imported_file.exists()
@@ -1392,7 +1389,7 @@ async def test_runtime_import_from_jsonl_records_failure_diagnostic(tmp_path) ->
     assert imported_file is not None
 
     with pytest.raises(MissingSessionCwdError):
-        await runtime.importFromJsonl(str(imported_file))
+        await runtime.import_from_jsonl(str(imported_file))
 
     records = diagnostics_service.get_diagnostics(
         query=DiagnosticsQuery(code="session_import_failed")
@@ -1591,7 +1588,7 @@ async def test_runtime_import_from_jsonl_cwd_override_bypasses_missing_stored_cw
         session_dir=tmp_path / "sessions", session_factory=DummySession, persist=True
     )
 
-    result = await runtime.importFromJsonl(
+    result = await runtime.import_from_jsonl(
         str(imported_file), cwd_override=str(project_root)
     )
     current = runtime.get_current_session()
@@ -1659,7 +1656,7 @@ async def test_runtime_import_from_jsonl_respects_before_switch_cancellation(
     )
     current = await runtime.create_session(cwd=str(project_root))
 
-    result = await runtime.importFromJsonl(str(imported_file))
+    result = await runtime.import_from_jsonl(str(imported_file))
 
     assert result == {"cancelled": True}
     assert runtime.get_current_session() is current
@@ -1726,7 +1723,7 @@ async def test_runtime_import_from_jsonl_records_before_switch_failure_and_flush
 
     async def scenario() -> None:
         await runtime.create_session(cwd=str(project_root))
-        result = await runtime.importFromJsonl(str(imported_file))
+        result = await runtime.import_from_jsonl(str(imported_file))
         assert result == {"cancelled": False}
         await runtime.drain_session_index_flush()
 
@@ -1752,7 +1749,7 @@ async def test_runtime_import_from_jsonl_records_before_switch_failure_and_flush
 
 
 @_async_test
-async def test_runtime_pi_style_lifecycle_aliases_report_cancellation(tmp_path) -> None:
+async def test_runtime_lifecycle_operations_report_cancellation(tmp_path) -> None:
     from pathlib import Path
 
     from loushang.coding.extensions import (
@@ -1803,8 +1800,10 @@ async def test_runtime_pi_style_lifecycle_aliases_report_cancellation(tmp_path) 
     current = await runtime.create_session(cwd=str(project))
     entry_id = await current.session_manager.append_message(_user_message("root"))
 
-    assert await runtime.newSession() == {"cancelled": True}
-    assert await runtime.fork(entry_id, {"position": "at"}) == {"cancelled": True}
+    assert (await runtime.new_session_operation()).cancelled is True
+    assert (
+        await runtime.fork_session_operation(entry_id, position="at")
+    ).cancelled is True
     assert runtime.get_current_session() is current
     assert current.disposed is False
 
@@ -2042,7 +2041,7 @@ async def test_extension_command_context_fork_before_runs_with_session_on_new_fo
                     replaced_ctx.cwd,
                     [
                         entry.record_id
-                        for entry in replaced_ctx.sessionManager.get_branch()
+                        for entry in replaced_ctx.session_manager.get_branch()
                     ],
                 )
             )
@@ -2118,11 +2117,11 @@ async def test_extension_command_context_new_session_uses_runtime_host(
             callback_events.append(
                 (
                     "withSession",
-                    (replaced_ctx.cwd, replaced_ctx.sessionManager is not None),
+                    (replaced_ctx.cwd, replaced_ctx.session_manager is not None),
                 )
             )
 
-        await ctx.newSession(
+        await ctx.new_session(
             {"parentSession": "parent-1", "setup": _setup, "withSession": _with_session}
         )
 
@@ -2198,14 +2197,14 @@ async def test_extension_command_new_session_with_session_gets_fresh_context_and
 
         async def _with_session(replaced_ctx):
             events.append(
-                ("fresh", (replaced_ctx.cwd, replaced_ctx.sessionManager is not None))
+                ("fresh", (replaced_ctx.cwd, replaced_ctx.session_manager is not None))
             )
             try:
                 old_ctx.cwd
             except RuntimeError as exc:
                 events.append(("stale", str(exc)))
 
-        await ctx.newSession({"withSession": _with_session})
+        await ctx.new_session({"withSession": _with_session})
 
     def _factory(manager: SessionManager, *, session_start_event=None) -> AgentSession:
         return AgentSession(
@@ -2270,11 +2269,11 @@ async def test_replaced_session_context_send_message_becomes_stale_after_next_re
 
         async def _with_session(replaced_ctx):
             captured["ctx"] = replaced_ctx
-            await replaced_ctx.sendMessage(
+            await replaced_ctx.send_message(
                 {"customType": "demo", "content": "fresh", "display": True}
             )
 
-        await ctx.newSession({"withSession": _with_session})
+        await ctx.new_session({"withSession": _with_session})
 
     def _factory(manager: SessionManager, *, session_start_event=None) -> AgentSession:
         return AgentSession(
@@ -2314,14 +2313,14 @@ async def test_replaced_session_context_send_message_becomes_stale_after_next_re
         entry.payload.custom_type for entry in current.session_manager.get_entries()
     ] == ["demo"]
 
-    await runtime.newSession()
+    await runtime.new_session()
 
     with pytest.raises(RuntimeError, match="stale"):
-        await replaced_ctx.sendMessage(
+        await replaced_ctx.send_message(
             {"customType": "demo", "content": "stale", "display": True}
         )
     with pytest.raises(RuntimeError, match="stale"):
-        await replaced_ctx.sendUserMessage("stale user text")
+        await replaced_ctx.send_user_message("stale user text")
 
 
 @_async_test
@@ -2347,11 +2346,11 @@ async def test_agent_session_exposes_pi_style_replaced_session_context(
         ),
     )
 
-    context = session.createReplacedSessionContext()
+    context = session.create_replaced_session_context()
 
     assert context.cwd == str(project.resolve())
-    assert context.sessionManager is session.session_manager
-    assert context.getSessionName() is None
+    assert context.session_manager is session.session_manager
+    assert context.get_session_name() is None
 
 
 @_async_test
@@ -2377,11 +2376,11 @@ async def test_extension_command_context_switch_session_uses_runtime_host(
             callback_events.append(
                 (
                     "withSession",
-                    (replaced_ctx.cwd, replaced_ctx.sessionManager is not None),
+                    (replaced_ctx.cwd, replaced_ctx.session_manager is not None),
                 )
             )
 
-        await ctx.switchSession(args, {"withSession": _with_session})
+        await ctx.switch_session(args, {"withSession": _with_session})
 
     def _factory(manager: SessionManager, *, session_start_event=None) -> AgentSession:
         return AgentSession(
@@ -2460,7 +2459,7 @@ async def test_extension_command_replacement_callbacks_require_async_callables(
         def _with_session(replaced_ctx):
             del replaced_ctx
 
-        await ctx.newSession({"withSession": _with_session})
+        await ctx.new_session({"withSession": _with_session})
 
     diagnostics_service = DiagnosticsService()
 
@@ -3241,6 +3240,7 @@ async def test_runtime_dispose_records_session_index_flush_failure(
     from loushang.coding.diagnostics import DiagnosticsQuery, DiagnosticsService
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.store import SessionManager
+    from loushang.harness.agent_transcript import AgentTranscriptSessionCatalog
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -3266,12 +3266,14 @@ async def test_runtime_dispose_records_session_index_flush_failure(
     async def scenario() -> DummySession:
         session = await runtime.create_session(cwd=str(project))
 
-        def _fail_refresh_index(cls, session_dir):
-            del cls, session_dir
+        def _fail_refresh_index(self):
+            del self
             raise RuntimeError("index boom")
 
         monkeypatch.setattr(
-            SessionManager, "refresh_index", classmethod(_fail_refresh_index)
+            AgentTranscriptSessionCatalog,
+            "refresh_index",
+            _fail_refresh_index,
         )
         await runtime.dispose()
         return session
@@ -3339,14 +3341,14 @@ async def test_runtime_replacement_callbacks_run_before_with_session(tmp_path) -
         events.append(
             (
                 "withSession",
-                ctx.sessionManager is runtime.get_current_session().session_manager,
+                ctx.session_manager is runtime.get_current_session().session_manager,
             )
         )
 
     runtime.set_rebind_session(_rebind)
     runtime.set_before_session_invalidate(_before_invalidate)
 
-    await runtime.newSession({"withSession": _with_session})
+    await runtime.new_session_operation(with_session=_with_session)
 
     assert events == [
         ("before", False),

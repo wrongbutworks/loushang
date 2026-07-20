@@ -1,108 +1,51 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
-from typing import Protocol, cast
+from typing import cast
 
-from loushang.harnesstui.conversation.attachments import (
-    ClipboardImageNameFactory,
-    ClipboardImageReader,
-    PromptImageAttachmentOutcome,
-    new_prompt_image_name_token,
-    stage_clipboard_image,
-)
+from loushang.harnesstui.conversation.host import ConversationScreenRunProfile
 from loushang.harnesstui.conversation.input import (
-    ConversationInputRouter,
-    ConversationScreenInputPort,
-    RunningSubmitMode,
+    ClipboardImageInputProfile,
+    ClipboardImageStatusCopy,
+    bind_clipboard_image_input_router,
 )
-from loushang.tui.clipboard_image import read_clipboard_image
-from loushang.tui.keybindings import KeybindingConfig, KeybindingManager
+from loushang.harnesstui.conversation.screen_runner import (
+    ConversationInputRouterFactoryPort,
+)
 
+CODING_INTERRUPTION_MESSAGE = (
+    "Conversation interrupted - tell the model what to do differently."
+)
+CODING_CANCELLATION_MESSAGE = "Operation aborted"
 
-class CodingScreenInputPort(ConversationScreenInputPort, Protocol):
-    cwd: str
-
-    def set_status(self, message: str | None) -> None: ...
-
-
-def build_screen_input_router(
-    app: CodingScreenInputPort,
-    should_exit: Callable[[str], bool],
-    is_local_command: Callable[[str], bool] = lambda _text: False,
-    keybindings: KeybindingManager | KeybindingConfig | None = None,
-    running_submit_mode: RunningSubmitMode = "steer",
-    follow_up_keys: tuple[str, ...] = ("alt+enter",),
-    width: int = 80,
-    height: int = 12,
-    clipboard_image_reader: ClipboardImageReader = read_clipboard_image,
-    clipboard_image_dir: Path | str | None = None,
-    clipboard_image_name_factory: ClipboardImageNameFactory = (
-        new_prompt_image_name_token
+_CODING_CLIPBOARD_INPUT = ClipboardImageInputProfile(
+    directory=lambda app: Path(app.state.cwd) / ".loushang" / "clipboard",
+    display_root=lambda app: Path(app.state.cwd),
+    status_copy=ClipboardImageStatusCopy(
+        empty="No clipboard image found.",
+        read_error_prefix="Unable to read clipboard image: ",
+        unsupported_prefix="Unsupported clipboard image type: ",
+        write_error_prefix="Unable to attach clipboard image: ",
+        attached_prefix="Attached clipboard image: ",
+        unknown_type="unknown",
     ),
-) -> ConversationInputRouter:
-    """Bind Coding clipboard policy to the canonical conversation router."""
+)
 
-    router: ConversationInputRouter
-
-    def current_app() -> CodingScreenInputPort:
-        return cast(CodingScreenInputPort, router.app)
-
-    def stage_image() -> PromptImageAttachmentOutcome:
-        bound_app = current_app()
-        directory = (
-            Path(clipboard_image_dir)
-            if clipboard_image_dir is not None
-            else Path(bound_app.cwd) / ".loushang" / "clipboard"
-        )
-        return stage_clipboard_image(
-            clipboard_image_reader,
-            directory=directory,
-            display_root=Path(bound_app.cwd),
-            name_factory=clipboard_image_name_factory,
-        )
-
-    router = ConversationInputRouter(
-        app=app,
-        should_exit=should_exit,
-        is_local_command=is_local_command,
-        keybindings=keybindings,
-        running_submit_mode=running_submit_mode,
-        follow_up_keys=follow_up_keys,
-        width=width,
-        height=height,
-        prompt_image_stager=stage_image,
-        clipboard_outcome_presenter=lambda outcome: _present_clipboard_outcome(
-            current_app(), outcome
-        ),
-    )
-    return router
-
-
-def _present_clipboard_outcome(
-    app: CodingScreenInputPort,
-    outcome: PromptImageAttachmentOutcome,
-) -> None:
-    if outcome.kind == "empty":
-        app.set_status("No clipboard image found.")
-    elif outcome.kind == "read_error":
-        app.set_status(f"Unable to read clipboard image: {outcome.error_message}")
-    elif outcome.kind == "unsupported":
-        app.set_status(
-            "Unsupported clipboard image type: "
-            f"{outcome.mime_type or 'unknown'}"
-        )
-    elif outcome.kind == "write_error":
-        app.set_status(
-            f"Unable to attach clipboard image: {outcome.error_message}"
-        )
-    elif outcome.attachment is not None:
-        app.set_status(
-            f"Attached clipboard image: {outcome.attachment.display_path}"
-        )
-
+build_screen_input_router = bind_clipboard_image_input_router(
+    _CODING_CLIPBOARD_INPUT
+)
+CODING_SCREEN_RUN_PROFILE = ConversationScreenRunProfile(
+    input_router_factory=cast(
+        ConversationInputRouterFactoryPort,
+        build_screen_input_router,
+    ),
+    interruption_message=CODING_INTERRUPTION_MESSAGE,
+    cancellation_message=CODING_CANCELLATION_MESSAGE,
+)
 
 __all__ = [
-    "CodingScreenInputPort",
+    "CODING_CANCELLATION_MESSAGE",
+    "CODING_INTERRUPTION_MESSAGE",
+    "CODING_SCREEN_RUN_PROFILE",
     "build_screen_input_router",
 ]

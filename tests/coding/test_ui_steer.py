@@ -26,10 +26,10 @@ class _Controller:
 
 
 def test_steer_handler_sends_text_to_controller_and_traces() -> None:
-    from loushang.coding.interaction.controller import ControllerResult
+    from loushang.harness.host.types import HostActionResult
     from loushang.harnesstui.conversation.control import SteerActionHandler
 
-    controller = _Controller(ControllerResult(exit_code=3))
+    controller = _Controller(HostActionResult(exit_code=3))
     renderer = _Renderer()
     traces: list[tuple[str, dict[str, object]]] = []
 
@@ -53,10 +53,12 @@ def test_steer_handler_sends_text_to_controller_and_traces() -> None:
 
 
 def test_steer_handler_renders_controller_error() -> None:
-    from loushang.coding.interaction.controller import ControllerResult
+    from loushang.harness.host.types import HostActionResult
     from loushang.harnesstui.conversation.control import SteerActionHandler
 
-    controller = _Controller(ControllerResult(exit_code=2, error_message="steer failed"))
+    controller = _Controller(
+        HostActionResult(exit_code=2, error_message="steer failed")
+    )
     renderer = _Renderer()
     emitted: list[str] = []
 

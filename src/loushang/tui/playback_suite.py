@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import argparse
 import inspect
+import json
+import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, fields
 from pathlib import Path
+from typing import TextIO
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,8 +108,103 @@ def run_playback_scenarios(
     return tuple(results)
 
 
+def run_playback_cli(
+    suite: PlaybackSuite,
+    argv: Sequence[str] | None = None,
+    *,
+    stdout: TextIO | None = None,
+    stderr: TextIO | None = None,
+    prog: str = "python -m loushang.tui.playback_suite",
+    description: str = "Run terminal playback regression scenarios.",
+) -> int:
+    """Run an injected playback catalog through the shared command-line host."""
+
+    stdout = sys.stdout if stdout is None else stdout
+    stderr = sys.stderr if stderr is None else stderr
+    parser = _playback_parser(prog=prog, description=description)
+    args = parser.parse_args(sys.argv[1:] if argv is None else tuple(argv))
+    tags = tuple(args.tag or ())
+    if args.list:
+        for scenario in suite.selected((), tags=tags):
+            stdout.write(f"{scenario.name}\t{scenario.description}\n")
+        return 0
+
+    try:
+        results = run_playback_scenarios(
+            args.scenarios,
+            tags=tags,
+            suite=suite,
+            artifacts_dir=args.artifacts,
+            include_frames=args.include_frames,
+        )
+    except KeyError as error:
+        stderr.write(f"Unknown scenario: {error.args[0]}\n")
+        return 2
+
+    if args.json:
+        json.dump(_json_summary(results), stdout, ensure_ascii=False)
+        stdout.write("\n")
+    else:
+        for result in results:
+            status = "PASS" if result.ok else "FAIL"
+            stdout.write(f"{status} {result.name} ({result.elapsed_ms:.1f}ms)\n")
+            if result.error:
+                stderr.write(f"{result.name}: {result.error}\n")
+    return 0 if all(result.ok for result in results) else 1
+
+
 def normalized_tags(tags: Sequence[str]) -> frozenset[str]:
     return frozenset(tag.strip().lower() for tag in tags if tag.strip())
+
+
+def _playback_parser(
+    *,
+    prog: str,
+    description: str,
+) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog=prog, description=description)
+    parser.add_argument(
+        "scenarios",
+        nargs="*",
+        help="Scenario names to run. Defaults to all scenarios.",
+    )
+    parser.add_argument("--list", action="store_true", help="List available scenarios.")
+    parser.add_argument(
+        "--tag",
+        action="append",
+        default=None,
+        help="Run or list scenarios matching this tag. Repeatable.",
+    )
+    parser.add_argument("--artifacts", help="Directory for manual inspection artifacts.")
+    parser.add_argument(
+        "--include-frames",
+        action="store_true",
+        help="Include visible frames in JSONL artifacts.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Write a machine-readable JSON summary to stdout.",
+    )
+    return parser
+
+
+def _json_summary(
+    results: Sequence[PlaybackScenarioResult],
+) -> dict[str, object]:
+    return {
+        "ok": all(result.ok for result in results),
+        "results": [
+            {
+                "name": result.name,
+                "ok": result.ok,
+                "elapsed_ms": result.elapsed_ms,
+                "artifacts": [str(path) for path in result.artifacts],
+                "error": result.error,
+            }
+            for result in results
+        ],
+    }
 
 
 def _write_artifacts(
@@ -176,5 +275,6 @@ __all__ = [
     "PlaybackScenarioSpec",
     "PlaybackSuite",
     "normalized_tags",
+    "run_playback_cli",
     "run_playback_scenarios",
 ]

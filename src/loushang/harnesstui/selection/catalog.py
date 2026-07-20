@@ -27,6 +27,14 @@ class ModelChoice:
     description: str = ""
 
 
+@dataclass(frozen=True)
+class ModelChoiceIdentity:
+    """Neutral identity used to resolve one current presentation choice."""
+
+    label: str | None = None
+    value: str | None = None
+
+
 def format_model_choices(
     choices: Iterable[ModelChoice],
     *,
@@ -234,6 +242,24 @@ def current_model_choice_first(
     ]
 
 
+def resolve_current_model_choice_value(
+    choices: Iterable[ModelChoice],
+    identity: ModelChoiceIdentity,
+) -> str | None:
+    """Resolve a current choice by stable value, then by display label."""
+
+    model_choices = list(choices)
+    if identity.value is not None:
+        for choice in model_choices:
+            if choice.value == identity.value:
+                return choice.value
+    if identity.label is not None:
+        for choice in model_choices:
+            if choice.label == identity.label:
+                return choice.value
+    return None
+
+
 def dedupe_preferred_model_choices(
     choices: Iterable[ModelChoice],
     *,
@@ -262,6 +288,52 @@ def dedupe_preferred_model_choices(
         if choice.value in keep_values:
             result.append(choice)
     return result
+
+
+def merge_model_choice_sources(
+    detail_choices: Iterable[ModelChoice],
+    selection_choices: Iterable[ModelChoice],
+    *,
+    current_identity: ModelChoiceIdentity,
+) -> list[ModelChoice]:
+    """Merge normalized choice sources and keep the resolved current item first.
+
+    Detail choices carry richer endpoint metadata and therefore replace fallback
+    selections with the same label or value. Duplicate detail labels retain the
+    unique preferred endpoint plus an independently selected current endpoint.
+    """
+
+    details = list(detail_choices)
+    current_detail_value = resolve_current_model_choice_value(
+        details,
+        current_identity,
+    )
+    details = dedupe_preferred_model_choices(
+        details,
+        current_value=current_detail_value,
+    )
+    fallbacks = list(selection_choices)
+    if details:
+        detail_labels = {choice.label for choice in details}
+        detail_values = {choice.value for choice in details}
+        choices = [
+            *details,
+            *(
+                choice
+                for choice in fallbacks
+                if choice.label not in detail_labels
+                and choice.value not in detail_values
+            ),
+        ]
+    else:
+        choices = fallbacks
+    return current_model_choice_first(
+        choices,
+        current_value=resolve_current_model_choice_value(
+            choices,
+            current_identity,
+        ),
+    )
 
 
 def model_choice_value(
@@ -303,6 +375,7 @@ def _ordinal(index: int, *, width: int) -> str:
 
 __all__ = [
     "ModelChoice",
+    "ModelChoiceIdentity",
     "current_model_choice_first",
     "dedupe_preferred_model_choices",
     "filter_model_choices",
@@ -317,4 +390,6 @@ __all__ = [
     "model_label_select_items",
     "model_palette",
     "model_search_items",
+    "merge_model_choice_sources",
+    "resolve_current_model_choice_value",
 ]

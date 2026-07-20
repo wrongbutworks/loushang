@@ -3,78 +3,48 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.commands.tui import coding_command_completion_provider
+from loushang.coding.interaction.tui_profile import snapshot_coding_command_catalog
 from loushang.coding.model_selection_tui import available_model_completion_provider
+from loushang.harnesstui.commands.presentation import command_completion_provider
+from loushang.harnesstui.completion.host import (
+    CatalogCompletionProfile,
+    CatalogSlashAlias,
+    PreparedCatalogCompletionHost,
+)
 from loushang.tui import (
     CombinedCompletionProvider,
-    CompletionItem,
     CompletionProvider,
-    PathCompletionProvider,
-    SlashCommand,
     SlashCommandCompletionProvider,
 )
 
 
-async def complete_coding_input(session: Any, text: str) -> tuple[CompletionItem, ...]:
-    provider = await coding_input_completion_provider(session, text)
-    return tuple(provider.items)
+async def coding_inline_completion_provider(
+    session: Any,
+    *,
+    base_path: Path | None,
+) -> SlashCommandCompletionProvider | CombinedCompletionProvider:
+    return await coding_completion_host(session).inline_provider(
+        base_path=base_path,
+    )
 
 
-async def coding_input_completion_provider(session: Any, text: str) -> CompletionProvider:
-    stripped = text.strip()
-    if not stripped.startswith("/"):
-        return CompletionProvider(())
+def coding_completion_host(session: Any) -> PreparedCatalogCompletionHost:
+    """Bind Coding catalog sources to the shared completion host."""
 
-    provider = await _slash_command_completion_provider(session)
-    return CompletionProvider(provider.complete(text.lstrip()))
-
-
-async def coding_inline_completion_provider(session: Any) -> Any:
-    provider = await _slash_command_completion_provider(session)
-    base_path = _session_completion_base_path(session)
-    if base_path is None:
-        return provider
-    return CombinedCompletionProvider((provider, PathCompletionProvider(base_path=base_path, recursive=True)))
+    return PreparedCatalogCompletionHost(
+        command_provider_source=lambda: _coding_command_provider(session),
+        model_provider_source=lambda: available_model_completion_provider(session),
+        profile=_CODING_COMPLETION_PROFILE,
+    )
 
 
-async def _slash_command_completion_provider(session: Any) -> SlashCommandCompletionProvider:
-    command_provider = await coding_command_completion_provider(session)
-    provider = await available_model_completion_provider(session)
-    commands = [
-        SlashCommand(
-            name=item.value,
-            label=item.display_label(),
-            description=item.description,
-            argument_provider=provider if item.value == "/model" else None,
-            argument_group="Models" if item.value == "/model" else "",
-        )
-        for item in command_provider.items
-    ]
-    if any(command.name == "/quit" for command in commands) and not any(command.name == "/exit" for command in commands):
-        commands.append(SlashCommand(name="exit", label="/exit", description="Quit loushang"))
-    return SlashCommandCompletionProvider(tuple(commands))
+async def _coding_command_provider(session: Any) -> CompletionProvider:
+    catalog = await snapshot_coding_command_catalog(session)
+    return command_completion_provider(catalog.commands())
 
 
-def _session_completion_base_path(session: Any) -> Path | None:
-    for manager_name in ("session_manager", "sessionManager"):
-        manager = getattr(session, manager_name, None)
-        get_cwd = getattr(manager, "get_cwd", None)
-        if not callable(get_cwd):
-            continue
-        try:
-            cwd = get_cwd()
-        except Exception:
-            continue
-        if not cwd:
-            continue
-        path = Path(str(cwd)).expanduser()
-        if path.is_dir():
-            return path
-    return None
-
-
-__all__ = [
-    "coding_inline_completion_provider",
-    "coding_input_completion_provider",
-    "complete_coding_input",
-]
+_CODING_COMPLETION_PROFILE = CatalogCompletionProfile(
+    model_command_value="/model",
+    model_argument_group="Models",
+    slash_aliases=(CatalogSlashAlias("/quit", "/exit", "Quit loushang"),),
+)

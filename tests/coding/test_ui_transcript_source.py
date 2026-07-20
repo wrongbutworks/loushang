@@ -3,23 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.presentation.tui.history import (
-    ActiveWindowTranscriptSource,
-    SessionTranscriptSource,
-)
-from loushang.coding.presentation.tui.history import (
-    TranscriptSnapshot as CodingTranscriptSnapshot,
-)
-from loushang.coding.presentation.tui.history import (
-    TranscriptSource as CodingTranscriptSource,
-)
+from loushang.coding.presentation.tui.history import session_history_records
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.harnesstui.conversation.source import (
-    ActiveWindowTranscriptSource as SharedActiveWindowTranscriptSource,
-)
-from loushang.harnesstui.conversation.source import (
-    TranscriptSnapshot,
-    TranscriptSource,
+    ActiveWindowTranscriptSource,
+    MaterializedTranscriptSource,
 )
 from loushang.tui.transcript import (
     AssistantMessageRecord,
@@ -34,10 +22,17 @@ class _Session:
     messages: list[object]
 
 
-def test_coding_transcript_contracts_are_harnesstui_compatibility_aliases() -> None:
-    assert ActiveWindowTranscriptSource is SharedActiveWindowTranscriptSource
-    assert CodingTranscriptSnapshot is TranscriptSnapshot
-    assert CodingTranscriptSource is TranscriptSource
+def _session_transcript_source(
+    session: _Session,
+    *,
+    source_label: str = "Full transcript",
+    active_window_state: ScreenConversationState | None = None,
+) -> MaterializedTranscriptSource:
+    return MaterializedTranscriptSource(
+        materialize_records=lambda: session_history_records(session.messages),
+        source_label=source_label,
+        active_window_state=active_window_state,
+    )
 
 
 def test_active_window_transcript_source_returns_snapshot_metadata() -> None:
@@ -102,7 +97,7 @@ def test_session_transcript_source_returns_complete_session_snapshot() -> None:
         ]
     )
 
-    snapshot = SessionTranscriptSource(session).snapshot()
+    snapshot = _session_transcript_source(session).snapshot()
 
     assert snapshot.complete is True
     assert snapshot.evicted_prefix_record_count == 0
@@ -123,7 +118,7 @@ def test_session_transcript_source_recent_assistant_texts_are_filtered_newest_fi
         ]
     )
 
-    assert SessionTranscriptSource(session).recent_assistant_texts() == ("second", "first")
+    assert _session_transcript_source(session).recent_assistant_texts() == ("second", "first")
 
 
 def test_session_transcript_source_merges_live_active_window_records() -> None:
@@ -143,7 +138,7 @@ def test_session_transcript_source_merges_live_active_window_records() -> None:
     )
     state.begin_run(started_at=3.0)
 
-    snapshot = SessionTranscriptSource(session, active_window_state=state).snapshot()
+    snapshot = _session_transcript_source(session, active_window_state=state).snapshot()
 
     assert snapshot.complete is False
     assert snapshot.source_label == "Full transcript + live window"
@@ -169,7 +164,7 @@ def test_session_transcript_source_keeps_complete_metadata_for_identical_window(
         )
     )
 
-    snapshot = SessionTranscriptSource(
+    snapshot = _session_transcript_source(
         session,
         source_label="Session history",
         active_window_state=state,
@@ -204,7 +199,7 @@ def test_session_transcript_source_deduplicates_decorated_active_window_history(
         )
     )
 
-    snapshot = SessionTranscriptSource(session, active_window_state=state).snapshot()
+    snapshot = _session_transcript_source(session, active_window_state=state).snapshot()
 
     assert snapshot.records == (
         UserPromptRecord("first question"),
@@ -233,7 +228,7 @@ def test_session_transcript_source_merges_live_assistant_draft() -> None:
     state.begin_run(started_at=3.0)
     state.append_assistant_chunk("streaming draft")
 
-    snapshot = SessionTranscriptSource(session, active_window_state=state).snapshot()
+    snapshot = _session_transcript_source(session, active_window_state=state).snapshot()
 
     assert snapshot.complete is False
     assert snapshot.source_label == "Full transcript + live window"
@@ -277,17 +272,17 @@ def test_transcript_source_boundary_matrix() -> None:
 
     cases = (
         ("active", ActiveWindowTranscriptSource(active_state).snapshot(), False, "Transcript window", "active draft"),
-        ("session", SessionTranscriptSource(session).snapshot(), True, "Full transcript", "full answer"),
+        ("session", _session_transcript_source(session).snapshot(), True, "Full transcript", "full answer"),
         (
             "session+tool",
-            SessionTranscriptSource(session, active_window_state=running_tool_state).snapshot(),
+            _session_transcript_source(session, active_window_state=running_tool_state).snapshot(),
             False,
             "Full transcript + live window",
             "bash test",
         ),
         (
             "session+draft",
-            SessionTranscriptSource(session, active_window_state=draft_state).snapshot(),
+            _session_transcript_source(session, active_window_state=draft_state).snapshot(),
             False,
             "Full transcript + live window",
             "streaming draft",

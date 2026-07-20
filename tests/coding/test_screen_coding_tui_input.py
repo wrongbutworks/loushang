@@ -491,7 +491,7 @@ def test_screen_input_router_routes_active_surface_before_composer() -> None:
 def test_screen_input_router_routes_runtime_overlay_before_composer() -> None:
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import build_screen_input_router
-    from loushang.coding.ui.screen_surfaces import ScreenSurfaceView
+    from loushang.harnesstui.surface.view import ScreenSurfaceView
     from loushang.tui import CommandSurface, SelectItem, Surface, SurfaceHost
 
     app = ScreenCodingTuiApp(model_label="kimi", cwd="/repo", branch="main", session_label="abcd", now=lambda: 10.0)
@@ -566,10 +566,10 @@ def test_screen_input_router_ctrl_o_fallback_reader_includes_streaming_assistant
 
 
 def test_screen_input_router_ctrl_o_uses_transcript_source_factory() -> None:
-    from loushang.coding.presentation.tui.history import TranscriptSnapshot
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import build_screen_input_router
     from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
+    from loushang.harnesstui.conversation.source import TranscriptSnapshot
     from loushang.tui import SurfaceHost
     from loushang.tui.transcript import AssistantMessageRecord
 
@@ -603,10 +603,11 @@ def test_screen_input_router_ctrl_o_session_reader_includes_running_tool_record(
     from dataclasses import dataclass
 
     from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-    from loushang.coding.presentation.tui.history import SessionTranscriptSource
+    from loushang.coding.presentation.tui.history import session_history_records
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import build_screen_input_router
     from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
+    from loushang.harnesstui.conversation.source import MaterializedTranscriptSource
     from loushang.tui import RenderConstraints, SurfaceHost, strip_control_sequences
     from loushang.tui.transcript import (
         AssistantMessageRecord,
@@ -646,7 +647,10 @@ def test_screen_input_router_ctrl_o_session_reader_includes_running_tool_record(
         reason="test",
     )
     app.begin_run(started_at=3.0)
-    app.transcript_source_factory = lambda: SessionTranscriptSource(session, active_window_state=app.state)
+    app.transcript_source_factory = lambda: MaterializedTranscriptSource(
+        materialize_records=lambda: session_history_records(session.messages),
+        active_window_state=app.state,
+    )
 
     result = build_screen_input_router(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="ctrl+o"))
 
@@ -665,10 +669,11 @@ def test_screen_input_router_ctrl_o_session_reader_includes_streaming_assistant_
     from dataclasses import dataclass
 
     from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-    from loushang.coding.presentation.tui.history import SessionTranscriptSource
+    from loushang.coding.presentation.tui.history import session_history_records
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import build_screen_input_router
     from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
+    from loushang.harnesstui.conversation.source import MaterializedTranscriptSource
     from loushang.tui import RenderConstraints, SurfaceHost, strip_control_sequences
     from loushang.tui.transcript import AssistantMessageRecord, UserPromptRecord
 
@@ -704,7 +709,10 @@ def test_screen_input_router_ctrl_o_session_reader_includes_streaming_assistant_
     )
     app.begin_run(started_at=3.0)
     app.append_assistant_chunk("streaming draft")
-    app.transcript_source_factory = lambda: SessionTranscriptSource(session, active_window_state=app.state)
+    app.transcript_source_factory = lambda: MaterializedTranscriptSource(
+        materialize_records=lambda: session_history_records(session.messages),
+        active_window_state=app.state,
+    )
 
     result = build_screen_input_router(app, should_exit=lambda text: False).handle(InputEvent(kind="key", key="ctrl+o"))
 

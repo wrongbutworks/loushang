@@ -320,7 +320,7 @@ def test_coding_top_level_sdk_smoke_covers_session_runtime_tools_and_diagnostics
     imported_file = imported_manager.session_file
     assert imported_file is not None
 
-    import_result = asyncio.run(runtime.importFromJsonl(str(imported_file)))
+    import_result = asyncio.run(runtime.import_from_jsonl(str(imported_file)))
     imported = runtime.get_current_session()
 
     assert forked.session_manager.get_header().metadata.get("parentSession") == str(

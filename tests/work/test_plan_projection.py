@@ -235,6 +235,60 @@ def test_project_work_plan_runs_replays_failed_step_and_plan_error() -> None:
     assert plan.steps[0].metadata["failed_sequence"] == 4
 
 
+def test_project_work_plan_runs_replays_cancelled_step_and_plan() -> None:
+    from loushang.work import project_work_plan_runs
+
+    plans = project_work_plan_runs(
+        [
+            _entry(
+                "run-verify-plan-started",
+                kind="WorkPlanStarted",
+                run_id="run-verify",
+                sequence=1,
+                step_id="verify",
+                step_index=1,
+            ),
+            _entry(
+                "run-verify-step-started",
+                kind="WorkStepStarted",
+                run_id="run-verify",
+                sequence=2,
+                step_id="verify",
+                step_index=1,
+            ),
+            _entry(
+                "run-verify-step-cancelled",
+                kind="WorkStepCancelled",
+                run_id="run-verify",
+                sequence=3,
+                step_id="verify",
+                step_index=1,
+            ),
+            _entry(
+                "run-verify-plan-cancelled",
+                kind="WorkPlanCancelled",
+                run_id="run-verify",
+                sequence=4,
+                step_id="verify",
+                step_index=1,
+            ),
+            _entry(
+                "run-verify-run-cancelled",
+                kind="WorkRunCancelled",
+                run_id="run-verify",
+                sequence=5,
+                step_id="verify",
+                step_index=1,
+            ),
+        ]
+    )
+
+    assert len(plans) == 1
+    assert plans[0].status == "cancelled"
+    assert plans[0].steps[0].status == "cancelled"
+    assert plans[0].steps[0].metadata["cancelled_sequence"] == 3
+
+
 def test_project_work_plan_runs_replays_step_deviation_metadata() -> None:
     from loushang.work import project_work_plan_runs
 

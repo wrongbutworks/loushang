@@ -4,7 +4,9 @@ import asyncio
 from dataclasses import dataclass
 
 from loushang.harnesstui.commands.interaction import (
+    CommandInteractionPresentationCopy,
     CommandInteractionSnapshot,
+    present_command_interaction,
     resolve_command_interaction,
     run_command_interaction,
 )
@@ -200,3 +202,35 @@ def test_command_interaction_query_does_not_invoke_chooser() -> None:
 
     assert result.kind == "selected"
     assert result.item is commands[2]
+
+
+def test_command_interaction_presenter_uses_only_product_supplied_copy() -> None:
+    snapshot, _commands = _snapshot()
+    copy = CommandInteractionPresentationCopy[_Command](
+        list_items=lambda items: "list:" + ",".join(item.name for item in items),
+        item_text=lambda item: item.name,
+        cancelled="cancelled-copy",
+        empty="empty-copy",
+        no_match=lambda query: f"missing-copy:{query}",
+        ambiguous_title="ambiguous-copy",
+        ambiguous_hint="hint-copy",
+        selected_prefix="selected-copy:",
+    )
+
+    listed = resolve_command_interaction(snapshot)
+    selected = resolve_command_interaction(snapshot, query="settings")
+    ambiguous = resolve_command_interaction(snapshot, query="re")
+    missing = resolve_command_interaction(snapshot, query="missing")
+    empty = resolve_command_interaction(CommandInteractionSnapshot(()))
+    cancelled = asyncio.run(
+        run_command_interaction(snapshot, choose=lambda _palette: None)
+    )
+
+    assert present_command_interaction(listed, copy=copy).startswith("list:restart")
+    assert present_command_interaction(selected, copy=copy) == "selected-copy:settings"
+    assert present_command_interaction(ambiguous, copy=copy) == (
+        "ambiguous-copy\n  restart\n  review\nhint-copy"
+    )
+    assert present_command_interaction(missing, copy=copy) == "missing-copy:missing"
+    assert present_command_interaction(empty, copy=copy) == "empty-copy"
+    assert present_command_interaction(cancelled, copy=copy) == "cancelled-copy"

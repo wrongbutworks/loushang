@@ -19,8 +19,10 @@ src/loushang/channel/
   __init__.py
   host.py
   json_codec.py
+  jsonl_command_host.py
   json_projection.py
   product_host.py
+  remote_ui.py
   rpc_jsonl.py
   types.py
 ```
@@ -55,6 +57,13 @@ wire schema: `ProductHostAction` / `ProductHostAdapter`, line-input
 Product-specific compatibility hosts may share those mechanics while retaining
 their separate protocols.
 
+The Product-owned JSONL command-host surface provides:
+
+- `JsonlCommand` and `JsonlCommandHostError` as strict input observations;
+- `JsonlCommandHost` and its injected `JsonlCommandPort`; and
+- `RemoteUiContext` for request correlation, dialog timeout, and headless UI
+  state without a standardized widget wire schema.
+
 `ChannelEnvelope` accepts two envelope kinds and three payload families:
 
 - `kind="operation"` with a `WorkOperation`
@@ -83,6 +92,13 @@ stdio JSONL loop over an injected `ChannelHostPort`: a Product port accepts a
 [Product Host Runtime Boundary](product-host-runtime-boundary.md) records the
 separate lower-level host lifecycle shared by standard Channel and
 Product-specific host adapters.
+
+`jsonl_command_host.py` supplies a separate, injected strict-JSON input loop
+for Product-owned JSONL command schemas. It does not define a second standard
+Channel frame grammar or response envelope. `remote_ui.py` supplies request
+correlation, dialog timeout, and snapshot mechanics through a Product-injected
+emitter; it does not standardize widget or extension payloads. See
+[JSONL Command Host Boundary](jsonl-command-host-boundary.md).
 
 ## Ownership
 
@@ -116,7 +132,7 @@ The current channel package does not implement:
 - operation dispatch or a WorkRun state machine
 - capability negotiation
 - replay or audit storage
-- UI layout, widgets, or rendering
+- UI layout, widgets, rendering, or a universal UI wire protocol
 - direct agent loop or product session control
 - a universal Product RPC command schema
 

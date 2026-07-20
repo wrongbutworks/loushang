@@ -30,6 +30,9 @@ Harness owns these mechanisms:
 - `ExtensionRuntime`, which composes already-loaded extensions into the common
   registry, route plan, dispatcher, resource discovery, command/flag/shortcut,
   tool, renderer, diagnostic, and extension-visibility surface.
+- `ExtensionSessionRuntime`, which applies the existing lifecycle coordinator
+  to a bound Product session's runtime bindings, start/refresh events, reload
+  resource refresh, diagnostics, and context invalidation.
 
 The implementation is split across focused modules under
 `loushang.harness.extensions`: `manifest`, `types`, `api`, `loader`, `registry`,
@@ -83,6 +86,18 @@ binds Coding's typed runtime context, maps legacy event objects and session
 decisions, and supplies the Coding error callback. It must not reimplement
 registry snapshots, resource discovery, generic input/event dispatch, command
 completion, flag state, or extension visibility serialization.
+
+The optional Agent session profile owns `ExtensionInputRuntime`,
+`ExtensionAgentHookRuntime`, and `ExtensionAgentEventRuntime`. They deliver
+standard extension-originated input, compose Agent context/tool hooks, and
+mirror Agent lifecycle facts without importing a Product. A Product still
+supplies its extension API, runtime binding factory, session replacement/fork
+semantics, diagnostics wording, and transport/UI projection.
+
+These session-profile modules may depend on stable Agent/AI message and tool
+value contracts because they operate a live Agent session. They are separate
+from the neutral extension core: they must not import Coding, a Product,
+provider execution, authentication, model resolution, or UI implementation.
 
 ## Policy Injection
 

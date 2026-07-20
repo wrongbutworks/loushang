@@ -152,10 +152,7 @@ async def main() -> None:
 
         # Reload session resources to pick up the new skill
         print("--- Reloading session resources ---")
-        resource_loader = session.resourceLoader
-        if resource_loader is not None:
-            new_bundle = resource_loader.reload_resources(str(project_root))
-            session.resource_bundle = new_bundle
+        await session.refresh_resources()
         print("--- Session commands after reload ---")
         for cmd in session.list_commands():
             if cmd.source == "skill":
@@ -163,15 +160,9 @@ async def main() -> None:
         print()
 
         print("--- System prompt after reload ---")
-        print("Note: resource_bundle is updated, but system_prompt was computed at session init.")
-        print("Commands reflect the reload immediately; system_prompt requires session restart.")
+        print("The standard session refresh rebuilds the prompt and tool view.")
         print()
         print(session.agent.system_prompt)
-        print()
-
-        print("--- Recreating session to get updated system_prompt ---")
-        session2 = await runtime.create_session(cwd=str(project_root))
-        print(session2.agent.system_prompt)
 
 
 if __name__ == "__main__":

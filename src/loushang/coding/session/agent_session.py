@@ -16,11 +16,12 @@ from loushang.ai.api_registry import (
     get_default_api_provider_registry,
 )
 from loushang.ai.model import Model, ModelSelection, Provider
-from loushang.ai.types import AssistantMessage, ImagePart
+from loushang.ai.types import AssistantMessage
 from loushang.ai.utils import is_context_overflow
 from loushang.coding.capability_plan import resolve_coding_capability_profile
-from loushang.coding.commands import SessionCommandDescriptor
 from loushang.coding.compaction import (
+    BranchSummaryDetails,
+    BranchSummaryResult,
     compact,
     generate_branch_summary,
 )
@@ -34,12 +35,7 @@ from loushang.coding.event import (
     AgentSessionEvent,
     project_runtime_event_to_session_event,
 )
-from loushang.coding.extensions import (
-    ExtensionRunner,
-    ReplacedSessionContext,
-    SessionShutdownEvent,
-    SessionStartEvent,
-)
+from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.loader import DefaultResourceLoader
 from loushang.coding.package.materializer import (
     PackageMaterializer,
@@ -47,7 +43,6 @@ from loushang.coding.package.materializer import (
 )
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
 from loushang.coding.platform.session_projection import (
-    project_pi_fork_candidates,
     project_pi_session_stats,
 )
 from loushang.coding.policy import InteractiveApprovalResolver
@@ -57,14 +52,8 @@ from loushang.coding.session.builtin_commands import (
     read_changelog_for_cwd,
 )
 from loushang.coding.session.command_controller import CommandController
-from loushang.coding.session.compaction_controller import CompactionController
 from loushang.coding.session.export_html import export_session_to_html
 from loushang.coding.session.export_jsonl import export_session_to_jsonl
-from loushang.coding.session.extension_event_sink import ExtensionEventSink
-from loushang.coding.session.extension_hooks import ExtensionHooks
-from loushang.coding.session.extension_message_controller import (
-    ExtensionMessageController,
-)
 from loushang.coding.session.extension_provider_controller import (
     ExtensionProviderController,
 )
@@ -74,16 +63,11 @@ from loushang.coding.session.extension_replacement_controller import (
 from loushang.coding.session.extension_runtime_bindings import (
     ExtensionRuntimeBindingFactory,
 )
-from loushang.coding.session.extension_runtime_controller import (
-    ExtensionRuntimeController,
-)
 from loushang.coding.session.package_controller import PackageController
-from loushang.coding.session.selection_controller import SelectionController
 from loushang.coding.session.session_settings_controller import (
     SessionSettingsController,
 )
 from loushang.coding.session.tool_controller import ToolController
-from loushang.coding.session.tree_controller import TreeController
 from loushang.coding.session.types import (
     CommandExecutionResult,
 )
@@ -91,13 +75,24 @@ from loushang.coding.session.usage_payload import serialize_context_usage_payloa
 from loushang.coding.store import SessionManager
 from loushang.coding.tools import ToolRegistry
 from loushang.harness.agent_transcript import (
+    TURN_AWARE_SUMMARY_IMPLEMENTATION,
+    TURN_AWARE_SUMMARY_VERSION,
     AgentTranscriptCompactionCapability,
+    AgentTranscriptCompactionRuntime,
     AgentTranscriptContext,
+    AgentTranscriptNavigationRuntime,
     AgentTranscriptRetryRuntime,
+    AgentTranscriptSelectionRuntime,
+    BranchSummaryOutput,
+    CompactionHookDecision,
+    CompactionHookRequest,
+    CompactionPreparation,
     CompactionResult,
     CompactionStatus,
-    SessionRecord,
+    TranscriptCompactionPolicy,
+    TranscriptNavigationPlan,
     TranscriptNavigationResult,
+    create_agent_transcript_compaction_capability,
 )
 from loushang.harness.capabilities import (
     CapabilityCompositionRuntime,
@@ -111,11 +106,20 @@ from loushang.harness.diagnostics.types import (
     ErrorReport,
 )
 from loushang.harness.events import (
+    CompactionReason,
     ConversationMetadataChanged,
     PackageProgressChanged,
     RuntimeEvent,
     SessionRuntimeEventPayload,
 )
+from loushang.harness.extensions.context import (
+    ReplacedSessionContext,
+    SessionBeforeCompactEvent,
+    SessionBeforeTreeEvent,
+    SessionShutdownEvent,
+    SessionStartEvent,
+)
+from loushang.harness.extensions.session_runtime import ExtensionSessionRuntime
 from loushang.harness.host.retry import RetryPolicy
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.types import (
@@ -126,21 +130,19 @@ from loushang.harness.resources.watcher import ResourceChangeWatcher
 from loushang.harness.runtime import CancellationSignal
 from loushang.harness.session import (
     AfterTurnPolicyPort,
+    ExtensionAgentEventRuntime,
+    ExtensionAgentHookRuntime,
+    ExtensionInputRuntime,
     SessionControlPort,
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
     SessionFacade,
-    SessionFacadePorts,
     SessionResourceRefreshRuntime,
     SessionRuntime,
     TranscriptRuntimePort,
     TurnPolicyPort,
 )
-from loushang.harness.session.inspection import (
-    AgentSessionInspector,
-    AgentSessionState,
-)
-from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.session.inspection import AgentSessionInspector
 from loushang.harness.workspace.exec import (
     ExecOutputChunk,
     ExecRequest,
@@ -148,6 +150,7 @@ from loushang.harness.workspace.exec import (
     ExecService,
     ExecUpdateCallback,
 )
+from loushang.protocol import JSONValue, require_json_value
 
 SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]
 RuntimeEventListener = Callable[[RuntimeEvent[object]], Awaitable[None] | None]
@@ -169,7 +172,7 @@ def _retry_policy(settings: RetrySettings) -> RetryPolicy:
     )
 
 
-class AgentSession:
+class AgentSession(SessionFacade):
     def __init__(
         self,
         *,
@@ -291,18 +294,16 @@ class AgentSession:
             get_paths=self._resource_watch_paths,
             on_change=self._reload_resources_from_watch,
         )
-        self._tree_controller = TreeController(
-            agent=self.agent,
-            session_manager=self.session_manager,
-            extension_runner=self._extension_runner,
+        self._navigation_runtime = AgentTranscriptNavigationRuntime(
+            session=self.session_manager,
+            apply_context=self._refresh_agent_transcript_context,
             dispatch_event=self._dispatch_event,
-            apply_session_context=self._apply_agent_transcript_context,
-            record_runtime_exception=self._record_runtime_exception,
-            sync_extension_diagnostics=self._sync_extension_diagnostics,
+            on_failure=lambda error: self._record_runtime_exception(
+                code="branch_summary_failed",
+                exc=error,
+            ),
         )
-        compaction_kwargs: dict[str, object] = {
-            "execute_compaction_fn": _execute_coding_compaction,
-        }
+        self._compaction_capability = _default_compaction_capability()
         runtime_capability = getattr(
             self.session_manager,
             "get_runtime_capability",
@@ -311,16 +312,25 @@ class AgentSession:
         if callable(runtime_capability):
             runtime = runtime_capability("context.compaction")
             if isinstance(runtime, AgentTranscriptCompactionCapability):
-                compaction_kwargs["compaction_capability"] = runtime
-        self._compaction_controller = CompactionController(
-            agent=self.agent,
-            session_manager=self.session_manager,
-            get_settings=self._get_compaction_settings,
-            get_extension_runner=lambda: self._extension_runner,
+                self._compaction_capability = runtime
+        self._compaction_runtime = AgentTranscriptCompactionRuntime(
+            transcript=self.session_manager,
+            get_policy=lambda: _compaction_policy(
+                self._get_compaction_settings(),
+                self._compaction_capability.policy,
+            ),
+            get_model=lambda: self.agent.model,
+            get_context_messages=lambda: list(
+                self.session_manager.build_session_context().messages
+            ),
+            refresh_context=self._refresh_agent_messages,
+            prepare_compaction=self._compaction_capability.prepare,
+            execute_compaction=self._execute_selected_compaction,
             dispatch_event=self._dispatch_event,
+            has_queued_messages=self.agent.has_queued_messages,
+            before_compaction=self._before_coding_compaction,
+            after_compaction=self._after_coding_compaction,
             record_runtime_exception=self._record_runtime_exception,
-            sync_extension_diagnostics=self._sync_extension_diagnostics,
-            **compaction_kwargs,
         )
         self._bash_controller = BashController(
             agent=self.agent,
@@ -361,15 +371,15 @@ class AgentSession:
                 navigate_tree=self._navigate_tree_from_extension,
                 import_session=self._import_from_builtin,
                 get_active_tool_names=self.get_active_tool_names,
-                get_all_tools=self.getAllTools,
+                get_all_tools=self.get_all_tool_infos,
                 set_active_tools=self.set_active_tools,
                 get_default_active_tool_names=self._default_active_tool_names,
                 get_extensions=self.list_extensions,
             ),
             pack_composer=capability_runtime.command_pack_composer,
         )
-        self._extension_event_sink = ExtensionEventSink(
-            get_extension_runner=lambda: self._extension_runner,
+        self._extension_event_sink = ExtensionAgentEventRuntime(
+            get_extension_runtime=lambda: self._extension_runner,
             get_cwd=self.session_manager.get_cwd,
         )
         self._retry_runtime = AgentTranscriptRetryRuntime(
@@ -419,13 +429,13 @@ class AgentSession:
                 emit_extension_agent_event=self._emit_extension_agent_event,
                 record_tool_execution_error=self._record_tool_execution_error,
                 retry_controller=self._retry_runtime,
-                compaction_controller=self._compaction_controller,
+                compaction_controller=self._compaction_runtime,
                 sync_extension_diagnostics=self._sync_extension_diagnostics,
                 record_assistant_response_error=self._record_assistant_response_error,
                 check_auto_compaction=self._check_auto_compaction,
             ),
         )
-        self._extension_message_controller = ExtensionMessageController(
+        self._extension_message_controller = ExtensionInputRuntime(
             agent=self.agent,
             queue_controller=self._session_runtime.queue,
             application_inputs=self._session_runtime.application_inputs,
@@ -456,7 +466,7 @@ class AgentSession:
             get_session_name=lambda: self.session_name,
             set_label=self._set_extension_label,
             list_commands=self.list_commands,
-            request_resource_refresh=self._request_resource_refresh,
+            request_resource_refresh=self.request_resource_refresh,
             shutdown=self.abort,
             record_diagnostic=self._record_extension_runtime_diagnostic,
             abort=self.abort,
@@ -480,25 +490,25 @@ class AgentSession:
             get_ui_context=lambda: self._extension_ui_context,
             exec_command=self._exec_command_from_extension,
         )
-        self._extension_runtime_controller = ExtensionRuntimeController(
-            extension_runner=self._extension_runner,
+        self._extension_runtime_controller = ExtensionSessionRuntime(
+            extension_runtime=self._extension_runner,
             build_bindings=self._extension_runtime_binding_factory.build,
             session_start_event=self._session_start_event,
             refresh_resources=self._refresh_resources_for_extension_runtime_async,
             record_runtime_diagnostic=self._record_extension_runtime_diagnostic,
             sync_extension_diagnostics=self._sync_extension_diagnostics,
         )
-        self._selection_controller = SelectionController(
-            agent=self.agent,
-            session_manager=self.session_manager,
-            get_model_registry=lambda: self.model_registry,
-            get_extension_runner=lambda: self._extension_runner,
-            refresh_extension_runtime=lambda reason: self._refresh_extension_runtime(
-                reason=reason
+        self._selection_runtime = AgentTranscriptSelectionRuntime(
+            session=self.session_manager,
+            get_model=lambda: self.agent.model,
+            set_model=lambda model: setattr(self.agent, "model", model),
+            get_thinking_level=lambda: self.agent.thinking_level,
+            set_thinking_level_value=lambda level: setattr(
+                self.agent,
+                "thinking_level",
+                level,
             ),
-            is_extension_runtime_refreshing=lambda: (
-                self._extension_runtime_controller.is_refreshing
-            ),
+            get_model_catalog=lambda: self.model_registry,
         )
         self._session_inspector = AgentSessionInspector(
             agent=self.agent,
@@ -523,18 +533,17 @@ class AgentSession:
                 self._get_compaction_settings().keep_recent_tokens
             ),
         )
-        self._facade = SessionFacade.from_ports(
+        super().__init__(
             runtime=self._session_runtime,
-            ports=SessionFacadePorts(
-                transcript=self.session_manager,
-                tools=self._tool_controller,
-                commands=self._command_controller,
-                command_execution=self._bash_controller,
-                view=self._session_inspector,
-                retry=self._retry_runtime,
-                identity=self,
-                maintenance=self,
-            ),
+            transcript=self.session_manager,
+            tools=self._tool_controller,
+            commands=self._command_controller,
+            command_execution=self._bash_controller,
+            view=self._session_inspector,
+            retry=self._retry_runtime,
+            identity=self,
+            maintenance=self,
+            resources=self._resource_refresh_runtime,
         )
         session_context = self.session_manager.build_session_context()
         self._apply_agent_transcript_context(session_context)
@@ -573,14 +582,15 @@ class AgentSession:
                 resolved_model = self.model_registry.build_model(selection)
         self.agent.model = resolved_model
 
-    def get_state(self) -> AgentSessionState:
-        return self._facade.get_state()
+    def _refresh_agent_transcript_context(self) -> None:
+        self._apply_agent_transcript_context(
+            self.session_manager.build_session_context()
+        )
 
-    def get_session_context(self) -> AgentTranscriptContext:
-        return self._facade.get_session_context()
-
-    def get_session_record(self) -> SessionRecord:
-        return self._facade.get_session_record()
+    def _refresh_agent_messages(self) -> None:
+        self.agent.state.set_messages(
+            list(self.session_manager.build_session_context().messages)
+        )
 
     def set_approval_presenter(
         self,
@@ -618,36 +628,13 @@ class AgentSession:
         )
 
     def get_model_selection(self) -> ModelSelection | None:
-        return self._selection_controller.get_model_selection()
+        return self._selection_runtime.get_model_selection()
 
-    def get_active_tool_names(self) -> list[str]:
-        return self._facade.get_active_tool_names()
-
-    def getActiveToolNames(self) -> list[str]:
-        return self.get_active_tool_names()
-
-    def get_all_tools(self) -> list[ToolDefinition]:
-        return self._facade.get_all_tools()
-
-    def getAllTools(self) -> list[dict[str, object]]:
+    def get_all_tool_infos(self) -> list[dict[str, object]]:
         return self._tool_controller.get_all_tool_infos()
-
-    def getToolDefinition(self, name: str) -> ToolDefinition | None:
-        return self._facade.get_tool_definition(name)
-
-    def list_commands(self) -> list[SessionCommandDescriptor]:
-        return self._facade.list_commands()
 
     def list_extensions(self) -> list[dict[str, object]]:
         return self._extension_runner.list_extensions()
-
-    def listExtensions(self) -> list[dict[str, object]]:
-        return self.list_extensions()
-
-    async def execute_command_async(
-        self, invocation_name: str, args: str
-    ) -> CommandExecutionResult | None:
-        return await self._facade.execute_command_async(invocation_name, args)
 
     def _execute_resource_command(
         self, invocation_name: str, args: str
@@ -728,29 +715,20 @@ class AgentSession:
         return self._package_controller.uninstall_package(source, scope=scope)
 
     def get_context_usage(self):
-        return serialize_context_usage_payload(self._facade.get_context_usage())
+        return serialize_context_usage_payload(super().get_context_usage())
 
     def get_session_stats(self) -> dict[str, object]:
         return project_pi_session_stats(
             agent=self.agent,
             session_manager=self.session_manager,
-            context_usage=self._facade.get_context_usage(),
+            context_usage=super().get_context_usage(),
         )
-
-    def get_session_state(self) -> dict[str, object]:
-        return self._pi_style_session_state()
 
     def export_to_jsonl(self, output_path: str | None = None) -> str:
         return export_session_to_jsonl(self, output_path)
 
-    def exportToJsonl(self, output_path: str | None = None) -> str:
-        return self.export_to_jsonl(output_path)
-
     def export_to_html(self, output_path: str | None = None) -> str:
         return export_session_to_html(self, output_path)
-
-    def exportToHtml(self, output_path: str | None = None) -> str:
-        return self.export_to_html(output_path)
 
     def _get_builtin_session_info(self) -> dict[str, object]:
         record = self.session_manager.get_session_record()
@@ -771,40 +749,13 @@ class AgentSession:
             "is_compacting": stats.is_compacting,
         }
 
-    def _pi_style_session_state(self) -> dict[str, object]:
-        state = self.get_state()
-        session_file = self.session_file
-        steering = list(state.steering)
-        follow_up = list(state.follow_up)
-        return {
-            "sessionId": self.session_id,
-            "sessionFile": str(session_file) if session_file is not None else None,
-            "sessionName": self.session_name,
-            "runStatus": state.run.status,
-            "isStreaming": state.run.status == "running",
-            "queue": {
-                "steering": steering,
-                "followUp": follow_up,
-            },
-            "pendingMessageCount": len(steering) + len(follow_up),
-            "isCompacting": state.is_compacting,
-            "isRetrying": state.is_retrying,
-            "thinkingLevel": state.thinking_level,
-            "modelSelection": _model_selection_payload(state.model_selection),
-            "activeToolNames": list(state.active_tool_names),
-            "steeringMode": self.agent.steering_mode,
-            "followUpMode": self.agent.follow_up_mode,
-            "autoCompactionEnabled": self.auto_compaction_enabled,
-            "messageCount": len(self.get_session_context().messages),
-        }
-
-    # Public facade: session properties and compatibility aliases.
+    # Public facade: standard session properties.
 
     @property
     def is_compacting(self) -> bool:
         return (
-            self._compaction_controller.is_compacting
-            or self._tree_controller.is_branch_summarizing
+            self._compaction_runtime.is_compacting
+            or self._navigation_runtime.is_summarizing
         )
 
     @property
@@ -812,24 +763,20 @@ class AgentSession:
         return self.agent.model
 
     @property
-    def thinkingLevel(self) -> ThinkingLevel:
+    def thinking_level(self) -> ThinkingLevel:
         return self.agent.thinking_level
 
     @property
-    def isStreaming(self) -> bool:
+    def is_streaming(self) -> bool:
         return self.agent.is_streaming
 
     @property
-    def systemPrompt(self) -> str:
+    def system_prompt(self) -> str:
         return self.agent.system_prompt
 
     @property
-    def retryAttempt(self) -> int:
+    def retry_attempt(self) -> int:
         return self._retry_runtime.attempt
-
-    @property
-    def isCompacting(self) -> bool:
-        return self.is_compacting
 
     @property
     def messages(self) -> list:
@@ -837,12 +784,7 @@ class AgentSession:
 
     @property
     def session_file(self):
-        return self._facade.get_session_file()
-
-    @property
-    def sessionFile(self) -> str | None:
-        session_file = self.session_file
-        return str(session_file) if session_file is not None else None
+        return super().get_session_file()
 
     @property
     def extension_runner(self) -> ExtensionRunner | None:
@@ -856,30 +798,22 @@ class AgentSession:
     def session_control(self) -> SessionControlPort:
         """Expose common controls without exposing Coding protocol semantics."""
 
-        return self._facade
-
-    @property
-    def sessionId(self) -> str:
-        return self.session_id
+        return self
 
     @property
     def session_name(self) -> str | None:
         return self.session_manager.get_session_record().metadata.name
 
     @property
-    def sessionName(self) -> str | None:
-        return self.session_name
+    def scoped_models(self) -> list[dict[str, object]]:
+        return self._selection_runtime.get_scoped_models()
+
+    def set_scoped_models(self, scoped_models: list[dict[str, object]]) -> None:
+        self._selection_runtime.set_scoped_models(scoped_models)
 
     @property
-    def scopedModels(self) -> list[dict[str, object]]:
-        return self._selection_controller.get_scoped_models()
-
-    def setScopedModels(self, scoped_models: list[dict[str, object]]) -> None:
-        self._selection_controller.set_scoped_models(scoped_models)
-
-    @property
-    def promptTemplates(self) -> list[PromptFragmentDescriptor]:
-        return self._resource_refresh_runtime.get_prompt_templates()
+    def prompt_templates(self) -> list[PromptFragmentDescriptor]:
+        return super().get_prompt_templates()
 
     @property
     def settings_manager(self) -> SettingsManager | None:
@@ -889,137 +823,63 @@ class AgentSession:
     def resource_loader(self) -> DefaultResourceLoader | None:
         return self._resource_loader
 
-    @property
-    def resourceLoader(self) -> DefaultResourceLoader | None:
-        return self._resource_loader
-
     def subscribe(self, listener: SessionEventListener) -> Callable[[], None]:
         def project(event: RuntimeEvent[object]) -> AgentSessionEvent | None:
             return project_runtime_event_to_session_event(event)
 
-        return self._facade.subscribe(
+        return super().subscribe(
             listener,
             project=project,
         )
-
-    def subscribe_runtime_events(
-        self,
-        listener: RuntimeEventListener,
-    ) -> Callable[[], None]:
-        return self._facade.subscribe_runtime_events(listener)
-
-    # Run entrypoint.
-
-    async def prompt(
-        self,
-        user_input: str,
-        images: list[ImagePart] | None = None,
-        *,
-        streaming_behavior: str | None = None,
-        source: str | None = None,
-        preflight_result: Callable[[bool], None] | None = None,
-    ) -> None:
-        await self._facade.prompt(
-            user_input,
-            images=images,
-            streaming_behavior=streaming_behavior,
-            source=source,
-            preflight_result=preflight_result,
-        )
-
-    # Public facade: queued steering and follow-up messages.
-
-    def steer(self, user_input: str, images: list[ImagePart] | None = None) -> None:
-        self._facade.steer(user_input, images=images)
-
-    def follow_up(self, user_input: str, images: list[ImagePart] | None = None) -> None:
-        self._facade.follow_up(user_input, images=images)
-
-    @property
-    def pending_message_count(self) -> int:
-        return self._facade.pending_message_count
-
-    @property
-    def pendingMessageCount(self) -> int:
-        return self.pending_message_count
-
-    def get_steering_messages(self) -> list[str]:
-        return self._facade.get_steering_messages()
-
-    def getSteeringMessages(self) -> list[str]:
-        return self.get_steering_messages()
-
-    def get_follow_up_messages(self) -> list[str]:
-        return self._facade.get_follow_up_messages()
-
-    def getFollowUpMessages(self) -> list[str]:
-        return self.get_follow_up_messages()
-
-    def clear_queue(self) -> dict[str, list[str]]:
-        return self._facade.clear_queue()
-
-    def clearQueue(self) -> dict[str, list[str]]:
-        return self.clear_queue()
 
     # Public facade: model, thinking, tools, and session metadata.
 
     async def set_model(self, model: Model | ModelSelection) -> None:
         await self._set_model_internal(model, emit_refresh=True, source="set")
 
-    async def setModel(self, model: Model | ModelSelection) -> None:
-        await self.set_model(model)
-
     async def cycle_model(self, direction: str = "forward") -> ModelSelection | None:
-        return await self._selection_controller.cycle_model(direction)
-
-    async def cycleModel(self, direction: str = "forward") -> ModelSelection | None:
-        return await self.cycle_model(direction)
+        scoped_selection = await self._cycle_scoped_model(direction)
+        if scoped_selection is not None:
+            return scoped_selection
+        selection = self._selection_runtime.cycle_model_selection(direction)
+        if selection is None:
+            return None
+        await self._set_model_internal(selection, emit_refresh=True, source="cycle")
+        return selection
 
     async def _cycle_scoped_model(self, direction: str) -> ModelSelection | None:
-        return await self._selection_controller.cycle_scoped_model(direction)
+        selected = self._selection_runtime.cycle_scoped_selection(direction)
+        if selected is None:
+            return None
+        selection, thinking_level = selected
+        await self._set_model_internal(selection, emit_refresh=True, source="cycle")
+        if thinking_level is not None:
+            await self.set_thinking_level(thinking_level)
+        return selection
 
     def _model_selection_from_scoped_model(
         self, scoped: dict[str, object]
     ) -> ModelSelection | None:
-        return self._selection_controller.model_selection_from_scoped_model(scoped)
+        return self._selection_runtime.model_selection_from_scoped_model(scoped)
 
     async def set_thinking_level(self, level: ThinkingLevel) -> None:
-        await self._selection_controller.set_thinking_level(level)
-
-    async def setThinkingLevel(self, level: ThinkingLevel) -> None:
-        await self.set_thinking_level(level)
+        await self._selection_runtime.set_thinking_level(level)
 
     async def cycle_thinking_level(self) -> ThinkingLevel | None:
-        return await self._selection_controller.cycle_thinking_level()
-
-    async def cycleThinkingLevel(self) -> ThinkingLevel | None:
-        return await self.cycle_thinking_level()
+        return await self._selection_runtime.cycle_thinking_level()
 
     def supports_thinking(self) -> bool:
-        return self._selection_controller.supports_thinking()
-
-    def supportsThinking(self) -> bool:
-        return self.supports_thinking()
+        return self._selection_runtime.supports_thinking()
 
     def supports_xhigh_thinking(self) -> bool:
-        return self._selection_controller.supports_xhigh_thinking()
-
-    def supportsXhighThinking(self) -> bool:
-        return self.supports_xhigh_thinking()
+        return self.supports_thinking()
 
     def get_available_thinking_levels(self) -> list[ThinkingLevel]:
-        return self._selection_controller.get_available_thinking_levels()
-
-    def getAvailableThinkingLevels(self) -> list[ThinkingLevel]:
-        return self.get_available_thinking_levels()
+        return self._selection_runtime.get_available_thinking_levels()
 
     @property
     def steering_mode(self) -> str:
         return self.agent.steering_mode
-
-    @property
-    def steeringMode(self) -> str:
-        return self.steering_mode
 
     def set_steering_mode(self, mode: str) -> None:
         if mode not in {"all", "one-at-a-time"}:
@@ -1031,10 +891,6 @@ class AgentSession:
     def follow_up_mode(self) -> str:
         return self.agent.follow_up_mode
 
-    @property
-    def followUpMode(self) -> str:
-        return self.follow_up_mode
-
     def set_follow_up_mode(self, mode: str) -> None:
         if mode not in {"all", "one-at-a-time"}:
             raise ValueError(f"Unsupported follow-up mode: {mode}")
@@ -1044,11 +900,8 @@ class AgentSession:
     async def set_active_tools(self, tool_names: list[str]) -> None:
         await self._set_active_tools_internal(tool_names, emit_refresh=True)
 
-    async def setActiveToolsByName(self, tool_names: list[str]) -> None:
-        await self.set_active_tools(tool_names)
-
     def get_available_models(self) -> list[ModelSelection]:
-        return self._selection_controller.get_available_models()
+        return self._selection_runtime.get_available_models()
 
     def get_available_model_details(self) -> list[Model]:
         registry = self.model_registry
@@ -1062,30 +915,6 @@ class AgentSession:
             ConversationMetadataChanged(name=self.session_name),
             source_record_id=record_id,
         )
-
-    async def setSessionName(self, name: str | None) -> None:
-        await self.set_session_name(name)
-
-    def getSessionName(self) -> str | None:
-        return self.session_name
-
-    def get_user_messages_for_forking(self) -> list[dict[str, str]]:
-        return self._facade.get_user_messages_for_forking()
-
-    def getUserMessagesForForking(self) -> list[dict[str, str]]:
-        return project_pi_fork_candidates(self._session_inspector)
-
-    def get_entry_text(self, entry_id: str) -> str | None:
-        return self._facade.get_entry_text(entry_id)
-
-    def get_last_assistant_text(self) -> str | None:
-        return self._facade.get_last_assistant_text()
-
-    def getLastAssistantText(self) -> str | None:
-        return self.get_last_assistant_text()
-
-    def get_recent_assistant_texts(self) -> tuple[str, ...]:
-        return self._facade.get_recent_assistant_texts()
 
     # Public facade: bash execution.
 
@@ -1103,7 +932,7 @@ class AgentSession:
         on_output: Callable[[ExecOutputChunk], Awaitable[None] | None] | None = None,
         operations: object | None = None,
     ) -> dict[str, object]:
-        return await self._facade.execute_command_tool(
+        return await super().execute_command_tool(
             command,
             cwd=cwd,
             env=env,
@@ -1114,34 +943,26 @@ class AgentSession:
             operations=operations,
         )
 
-    async def executeBash(
-        self,
-        command: str,
-        on_chunk: Callable[[str], Awaitable[None] | None] | None = None,
-        options: dict[str, object] | None = None,
-    ) -> dict[str, object]:
-        return await self._bash_controller.execute_pi_style(
-            command, on_chunk=on_chunk, options=options
-        )
-
-    async def recordBashResult(
+    async def record_bash_result(
         self,
         command: str,
         result: dict[str, object],
-        options: dict[str, object] | None = None,
+        *,
+        exclude_from_context: bool = False,
     ) -> None:
-        await self._bash_controller.record_pi_style_result(command, result, options)
-
-    def abortBash(self) -> None:
-        self.abort_bash()
-
-    @property
-    def isBashRunning(self) -> bool:
-        return self._facade.is_command_running
+        await self._bash_controller.record_result(
+            command=command,
+            result=result,
+            exclude_from_context=exclude_from_context,
+        )
 
     @property
-    def hasPendingBashMessages(self) -> bool:
-        return self._facade.has_pending_command_messages
+    def is_bash_running(self) -> bool:
+        return super().is_command_running
+
+    @property
+    def has_pending_bash_messages(self) -> bool:
+        return super().has_pending_command_messages
 
     # Public facade: extension runtime configuration.
 
@@ -1168,17 +989,34 @@ class AgentSession:
     def create_replaced_session_context(self) -> ReplacedSessionContext:
         return self._create_replaced_session_context(self)
 
-    def createReplacedSessionContext(self) -> ReplacedSessionContext:
-        return self.create_replaced_session_context()
-
     # Internal ports shared by model and tool controllers.
 
     async def _set_model_internal(
         self, model: Model | ModelSelection, *, emit_refresh: bool, source: str = "set"
     ) -> None:
-        await self._selection_controller.set_model(
-            model, emit_refresh=emit_refresh, source=source
+        previous_model = self.agent.model
+        resolved_model = self._selection_runtime.resolve_model(model)
+        endpoint_id = model.endpoint_id if isinstance(model, ModelSelection) else None
+        await self._selection_runtime.apply_model(
+            resolved_model,
+            endpoint_id=endpoint_id,
         )
+        if emit_refresh:
+            await self._refresh_extension_runtime(reason="model_selection_changed")
+        extension_runner = self._extension_runner
+        if extension_runner is not None and not _models_are_equal(
+            previous_model,
+            resolved_model,
+        ):
+            await extension_runner.emit_event(
+                {
+                    "type": "model_select",
+                    "model": resolved_model,
+                    "previous_model": previous_model,
+                    "source": source,
+                },
+                cwd=self.session_manager.get_cwd(),
+            )
 
     def _apply_active_tools(self, tool_names: list[str]) -> None:
         self._tool_controller.apply_active_tools(tool_names)
@@ -1192,27 +1030,11 @@ class AgentSession:
 
     # Public facade: run controls, retry, compaction, and tree navigation.
 
-    async def continue_run(self) -> None:
-        await self._facade.continue_run()
-
-    def abort(self) -> None:
-        self._facade.abort()
+    def abort(self) -> bool:
+        return super().abort()
 
     def abort_bash(self) -> None:
-        self._facade.abort_command()
-
-    async def wait_for_idle(self) -> None:
-        await self._facade.wait_for_idle()
-
-    def abort_retry(self) -> None:
-        self._facade.abort_retry()
-
-    async def wait_for_retry(self) -> None:
-        await self._facade.wait_for_retry()
-
-    @property
-    def is_retrying(self) -> bool:
-        return self._facade.is_retrying
+        super().abort_command()
 
     @property
     def auto_retry_enabled(self) -> bool:
@@ -1222,29 +1044,11 @@ class AgentSession:
     def auto_compaction_enabled(self) -> bool:
         return self._settings_controller.auto_compaction_enabled
 
-    @property
-    def autoCompactionEnabled(self) -> bool:
-        return self.auto_compaction_enabled
-
     def set_auto_retry_enabled(self, enabled: bool) -> None:
         self._settings_controller.set_auto_retry_enabled(enabled)
 
-    @property
-    def isRetrying(self) -> bool:
-        return self.is_retrying
-
-    @property
-    def autoRetryEnabled(self) -> bool:
-        return self.auto_retry_enabled
-
-    def setAutoRetryEnabled(self, enabled: bool) -> None:
-        self.set_auto_retry_enabled(enabled)
-
     def set_auto_compaction_enabled(self, enabled: bool) -> None:
         self._settings_controller.set_auto_compaction_enabled(enabled)
-
-    def setAutoCompactionEnabled(self, enabled: bool) -> None:
-        self.set_auto_compaction_enabled(enabled)
 
     async def compact(self, custom_instructions: str | None = None) -> CompactionResult:
         self.abort()
@@ -1270,12 +1074,9 @@ class AgentSession:
 
     def get_compaction_status(self) -> CompactionStatus:
         return CompactionStatus(
-            is_compacting=self._compaction_controller.is_compacting,
-            is_branch_summarizing=self._tree_controller.is_branch_summarizing,
+            is_compacting=self._compaction_runtime.is_compacting,
+            is_branch_summarizing=self._navigation_runtime.is_summarizing,
         )
-
-    def abortCompaction(self) -> None:
-        self.abort_compaction()
 
     def abort_compaction(self) -> None:
         self.abort()
@@ -1289,17 +1090,139 @@ class AgentSession:
         replace_instructions: bool = False,
         label: str | None = None,
     ) -> TranscriptNavigationResult:
-        return await self._tree_controller.navigate_tree(
-            target_id,
+        plan = self._navigation_runtime.prepare(target_id)
+        if plan is None:
+            return TranscriptNavigationResult(cancelled=False)
+
+        summary_override: BranchSummaryOutput | None = None
+        if self._extension_runner is not None:
+            (
+                custom_instructions,
+                replace_instructions,
+                label,
+                summary_override,
+                cancelled,
+            ) = await self._apply_before_tree_hook(
+                plan,
+                summarize=summarize,
+                custom_instructions=custom_instructions,
+                replace_instructions=replace_instructions,
+                label=label,
+            )
+            if cancelled:
+                return TranscriptNavigationResult(cancelled=True)
+
+        result = await self._navigation_runtime.navigate(
+            plan,
             summarize=summarize,
-            custom_instructions=custom_instructions,
-            replace_instructions=replace_instructions,
             label=label,
-            generate_branch_summary_fn=generate_branch_summary,
+            summary_override=summary_override,
+            summary_runner=(
+                self._branch_summary_runner(
+                    custom_instructions=custom_instructions,
+                    replace_instructions=replace_instructions,
+                )
+                if summarize
+                else None
+            ),
         )
+        if not summarize and self._extension_runner is not None:
+            await self._extension_runner.emit_event(
+                {
+                    "type": "session_tree",
+                    "new_leaf_id": self.session_manager.get_leaf_id(),
+                    "old_leaf_id": plan.old_leaf_id,
+                    "summary_entry": None,
+                    "from_extension": False,
+                },
+                cwd=self.session_manager.get_cwd(),
+            )
+        return result
 
     def abort_branch_summary(self) -> None:
-        self._tree_controller.abort_branch_summary()
+        self._navigation_runtime.abort()
+
+    async def _apply_before_tree_hook(
+        self,
+        plan: TranscriptNavigationPlan,
+        *,
+        summarize: bool,
+        custom_instructions: str | None,
+        replace_instructions: bool,
+        label: str | None,
+    ) -> tuple[
+        str | None,
+        bool,
+        str | None,
+        BranchSummaryOutput | None,
+        bool,
+    ]:
+        assert self._extension_runner is not None
+        decision = await self._extension_runner.before_session_tree(
+            SessionBeforeTreeEvent(
+                target_id=plan.target_id,
+                old_leaf_id=plan.old_leaf_id,
+                new_leaf_id=plan.new_leaf_id,
+                cwd=str(self.session_manager.get_cwd()),
+                summarize=summarize,
+                custom_instructions=custom_instructions,
+                replace_instructions=replace_instructions,
+                label=label,
+            )
+        )
+        if decision is not None and decision.cancel:
+            self._sync_extension_diagnostics(phase="runtime")
+            return (
+                custom_instructions,
+                replace_instructions,
+                label,
+                None,
+                True,
+            )
+        if decision is None:
+            return custom_instructions, replace_instructions, label, None, False
+        return (
+            (
+                decision.custom_instructions
+                if decision.custom_instructions is not None
+                else custom_instructions
+            ),
+            (
+                decision.replace_instructions
+                if decision.replace_instructions is not None
+                else replace_instructions
+            ),
+            decision.label if decision.label is not None else label,
+            (
+                _branch_summary_output(decision.summary, from_hook=True)
+                if decision.summary is not None
+                else None
+            ),
+            False,
+        )
+
+    def _branch_summary_runner(
+        self,
+        *,
+        custom_instructions: str | None,
+        replace_instructions: bool,
+    ) -> Callable[
+        [Sequence[object], CancellationSignal], Awaitable[BranchSummaryOutput]
+    ]:
+        async def run(
+            entries: Sequence[object],
+            signal: CancellationSignal,
+        ) -> BranchSummaryOutput:
+            result = await generate_branch_summary(
+                entries,
+                model=self.agent.model,
+                signal=signal,
+                custom_instructions=custom_instructions,
+                replace_instructions=replace_instructions,
+            )
+            return _branch_summary_output(result, from_hook=False)
+
+        return run
 
     async def dispose(
         self, session_shutdown_event: SessionShutdownEvent | None = None
@@ -1396,7 +1319,7 @@ class AgentSession:
     def _sync_footer_available_provider_count(self) -> None:
         providers = {
             selection.provider
-            for selection in self._selection_controller.get_available_models()
+            for selection in self._selection_runtime.get_available_models()
             if isinstance(getattr(selection, "provider", None), str)
         }
         self.footer_data_provider.set_available_provider_count(len(providers))
@@ -1518,7 +1441,13 @@ class AgentSession:
         )
 
     async def _set_model_from_extension(self, selection: ModelSelection) -> None:
-        await self._selection_controller.set_model_from_extension(selection)
+        resolved_model = self._selection_runtime.resolve_model(selection)
+        await self._selection_runtime.apply_model(
+            resolved_model,
+            endpoint_id=selection.endpoint_id,
+        )
+        if not self._extension_runtime_controller.is_refreshing:
+            await self._refresh_extension_runtime(reason="model_selection_changed")
 
     async def _append_extension_entry(
         self, custom_type: str, data: object | None = None
@@ -1528,28 +1457,16 @@ class AgentSession:
     async def _set_extension_label(self, target_id: str, label: str | None) -> None:
         await self.session_manager.append_label(target_id, label)
 
-    def _request_resource_refresh(self) -> None:
-        self._resource_refresh_runtime.request_refresh()
-
-    # Extension API bridge.
-
-    async def sendCustomMessage(
-        self, message: object, options: object | None = None
-    ) -> None:
-        await self._send_message_from_extension(message, options)
-
-    async def sendMessage(self, message: object, options: object | None = None) -> None:
-        await self.sendCustomMessage(message, options)
-
-    async def sendUserMessage(
-        self, content: object, options: object | None = None
-    ) -> None:
-        await self._send_user_message_from_extension_async(content, options)
-
     async def _send_message_from_extension(
         self, message: object, options: object | None = None
     ) -> None:
         await self._extension_message_controller.send_message(message, options)
+
+    async def send_message(
+        self, message: object, options: object | None = None
+    ) -> None:
+        """Submit an application message through the standard session input path."""
+        await self._send_message_from_extension(message, options)
 
     async def _send_message_from_extension_async(self, app_message) -> None:
         await self._extension_message_controller._send_message_async(app_message)
@@ -1567,6 +1484,12 @@ class AgentSession:
         self, content: object, options: object | None = None
     ) -> None:
         await self._extension_message_controller.send_user_message(content, options)
+
+    async def send_user_message(
+        self, content: object, options: object | None = None
+    ) -> None:
+        """Submit user input through the standard session input path."""
+        await self._send_user_message_from_extension_async(content, options)
 
     async def _exec_command_from_extension(
         self,
@@ -1705,9 +1628,9 @@ class AgentSession:
     def _wire_extension_hooks(self) -> None:
         if self._extension_runner is None:
             return
-        ExtensionHooks(
+        ExtensionAgentHookRuntime(
             agent=self.agent,
-            extension_runner=self._extension_runner,
+            extension_runtime=self._extension_runner,
             get_cwd=self.session_manager.get_cwd,
         ).install()
 
@@ -1765,10 +1688,11 @@ class AgentSession:
     async def _check_auto_compaction(
         self, assistant_message: AssistantMessage
     ) -> CompactionResult | None:
-        return await self._compaction_controller.maybe_compact_after_turn(
+        return await self._compaction_runtime.maybe_compact_after_turn(
             assistant_message,
             compact_internal_fn=self._compact_internal,
             continue_run_fn=self.continue_run,
+            is_context_overflow_fn=is_context_overflow,
         )
 
     async def _compact_before_prompt(self) -> CompactionResult | None:
@@ -1786,16 +1710,82 @@ class AgentSession:
     async def _compact_internal(
         self,
         *,
-        reason: str,
+        reason: CompactionReason,
         will_retry: bool,
         raise_on_error: bool,
         custom_instructions: str | None = None,
     ) -> CompactionResult | None:
-        return await self._compaction_controller.compact(
+        return await self._compaction_runtime.compact(
             reason=reason,
             will_retry=will_retry,
             raise_on_error=raise_on_error,
             custom_instructions=custom_instructions,
+        )
+
+    async def _execute_selected_compaction(
+        self,
+        preparation: CompactionPreparation,
+        custom_instructions: str | None,
+    ) -> CompactionResult:
+        return await self._execute_compaction_with(
+            _execute_coding_compaction,
+            preparation,
+            custom_instructions,
+        )
+
+    async def _execute_compaction_with(
+        self,
+        compact_fn: Callable[..., Awaitable[CompactionResult]],
+        preparation: CompactionPreparation,
+        custom_instructions: str | None,
+    ) -> CompactionResult:
+        kwargs: dict[str, object] = {
+            "preparation": preparation,
+            "model": self.agent.model,
+            "headers": None,
+            "signal": self.agent.signal,
+        }
+        if custom_instructions is not None:
+            kwargs["custom_instructions"] = custom_instructions
+        return await compact_fn(**kwargs)
+
+    async def _before_coding_compaction(
+        self,
+        request: CompactionHookRequest,
+    ) -> CompactionHookDecision | None:
+        extension_runner = self._extension_runner
+        if extension_runner is None:
+            return None
+        decision = await extension_runner.before_session_compact(
+            SessionBeforeCompactEvent(
+                reason=request.reason,
+                cwd=str(self.session_manager.get_cwd()),
+                custom_instructions=request.custom_instructions,
+            )
+        )
+        if decision is not None and decision.cancel:
+            self._sync_extension_diagnostics(phase="runtime")
+            return CompactionHookDecision(cancel=True)
+        result = getattr(decision, "compaction", None)
+        return CompactionHookDecision(result=result) if result is not None else None
+
+    async def _after_coding_compaction(
+        self,
+        result: CompactionResult,
+        record_id: str,
+        from_hook: bool,
+    ) -> None:
+        extension_runner = self._extension_runner
+        if extension_runner is None:
+            return
+        await extension_runner.emit_event(
+            {
+                "type": "session_compact",
+                "compaction": result,
+                "compaction_entry": self.session_manager.get_entry(record_id),
+                "from_extension": from_hook,
+            },
+            cwd=self.session_manager.get_cwd(),
         )
 
     def _record_runtime_exception(self, *, code: str, exc: Exception | str) -> None:
@@ -1855,6 +1845,66 @@ async def _sleep_for_retry(delay_ms: int, signal: CancellationSignal) -> None:
         raise asyncio.CancelledError
 
 
+def _default_compaction_capability() -> AgentTranscriptCompactionCapability:
+    return create_agent_transcript_compaction_capability(
+        implementation=TURN_AWARE_SUMMARY_IMPLEMENTATION,
+        implementation_version=TURN_AWARE_SUMMARY_VERSION,
+        config={
+            "enabled": True,
+            "compactPercent": 80.0,
+            "reserveTokens": 8_192,
+            "keepRecentTokens": 32_768,
+        },
+    )
+
+
+def _compaction_policy(
+    settings: CompactionSettings,
+    capability_policy: TranscriptCompactionPolicy,
+) -> TranscriptCompactionPolicy:
+    if settings == CompactionSettings():
+        return capability_policy
+    return TranscriptCompactionPolicy(
+        enabled=settings.enabled,
+        reserve_tokens=settings.reserve_tokens,
+        compact_percent=settings.compact_percent,
+        keep_recent_tokens=settings.keep_recent_tokens,
+    )
+
+
+def _branch_summary_output(
+    result: BranchSummaryResult,
+    *,
+    from_hook: bool,
+) -> BranchSummaryOutput:
+    return BranchSummaryOutput(
+        summary=result.summary,
+        details=_project_branch_summary_details(result.details),
+        from_hook=from_hook,
+        aborted=result.aborted,
+        error=result.error,
+    )
+
+
+def _project_branch_summary_details(details: object | None) -> JSONValue:
+    if isinstance(details, BranchSummaryDetails):
+        return {
+            "readFiles": list(details.read_files),
+            "modifiedFiles": list(details.modified_files),
+        }
+    return require_json_value(details, name="branch_summary.details")
+
+
+def _models_are_equal(left: Model | None, right: Model | None) -> bool:
+    if left is None or right is None:
+        return left is right
+    return (
+        getattr(left, "provider_id", None) == getattr(right, "provider_id", None)
+        and getattr(left, "endpoint_id", None) == getattr(right, "endpoint_id", None)
+        and getattr(left, "id", None) == getattr(right, "id", None)
+    )
+
+
 def _normalize_extension_exec_command(
     command: str, args: Sequence[str]
 ) -> tuple[str, ...]:
@@ -1892,9 +1942,3 @@ def _resolve_extension_exec_cwd(session_cwd: str, cwd: str | Path | None) -> str
 
 def _optional_string(value: object) -> str | None:
     return value if isinstance(value, str) else None
-
-
-def _model_selection_payload(selection: ModelSelection | None) -> dict[str, str] | None:
-    if selection is None:
-        return None
-    return {"provider": selection.provider, "modelId": selection.model_id}

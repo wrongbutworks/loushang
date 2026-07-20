@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from types import TracebackType
 from typing import Any, Protocol
 
 
@@ -28,10 +29,16 @@ class ExitContext(Protocol):
 
     def __exit__(
         self,
-        exc_type: object,
-        exc: object,
-        traceback: object,
-    ) -> object: ...
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None: ...
+
+
+class InteractionContext(ExitContext, Protocol):
+    """Context entered for the lifetime of one terminal interaction."""
+
+    def __enter__(self) -> object: ...
 
 
 @dataclass
@@ -60,6 +67,37 @@ class InteractionRunContext:
                 self._unsubscribe()
         finally:
             self._exit_context.__exit__(None, None, None)
+
+
+def open_interaction_run_context(
+    *,
+    event_source: object,
+    listener: object,
+    interactive_listener_factory: Callable[[StableEmit], object],
+    exit_context: InteractionContext,
+    interactive: bool,
+    trace: TraceFn,
+    on_open: Callable[[], None] = lambda: None,
+) -> InteractionRunContext:
+    """Enter, trace, and subscribe one interaction as an atomic operation."""
+
+    exit_context.__enter__()
+    try:
+        on_open()
+        emit = stable_emit_factory(trace=trace, interactive=interactive)
+        subscribed_listener = (
+            interactive_listener_factory(emit) if interactive else listener
+        )
+        unsubscribe = subscribe_events(event_source, subscribed_listener)
+    except BaseException:
+        exit_context.__exit__(None, None, None)
+        raise
+    return InteractionRunContext(
+        emit=emit,
+        _unsubscribe=unsubscribe,
+        _exit_context=exit_context,
+        _trace=trace,
+    )
 
 
 def subscribe_events(source: object, listener: object) -> Callable[[], None]:
@@ -96,9 +134,11 @@ def stable_emit_factory(*, trace: TraceFn, interactive: bool) -> StableEmit:
 
 __all__ = [
     "ExitContext",
+    "InteractionContext",
     "InteractionRunContext",
     "StableEmit",
     "TraceFn",
+    "open_interaction_run_context",
     "stable_emit_factory",
     "subscribe_events",
 ]

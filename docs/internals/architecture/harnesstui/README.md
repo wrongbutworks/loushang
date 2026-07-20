@@ -6,20 +6,21 @@ direction is:
 
 ```text
 `loushang.coding.ui` -> `loushang.harnesstui` -> `loushang.tui`
-`loushang.coding.commands.tui` -> `loushang.harnesstui`
 `loushang.coding.interaction.*` -> `loushang.harnesstui`
 `loushang.coding.model_selection_tui` -> `loushang.harnesstui`
 `loushang.coding.presentation.tui.*` -> `loushang.harnesstui`
 `loushang.harnesstui` -> `loushang.harness`
 
-`loushang.coding.testing.tui` -> `loushang.harnesstui.testing`
-                              -> `loushang.harnesstui`
-                              -> `loushang.tui`
+`tests/coding/tui_support` -> `loushang.harnesstui.testing`
+                           -> `loushang.harnesstui`
+                           -> `loushang.tui`
 ```
 
 The reverse dependencies are forbidden. In particular, `loushang.harnesstui`
 must not import `loushang.coding`, `loushang.agent`, AI message/model/provider
-packages, or product-specific policy.
+packages, or product-specific policy. `loushang.harness` and `loushang.tui` are
+independent peers: Harnesstui may depend on both, but neither peer may depend on
+Harnesstui or on the other peer.
 
 ## Responsibilities
 
@@ -62,6 +63,10 @@ supported. Command descriptors remain opaque and the selected descriptor is
 returned by identity; model interactions consume only product-prepared
 `ModelChoice` values and return the selected choice without applying it.
 
+`loushang.harnesstui.commands.source` materializes a product-supplied sync or
+async command source into that immutable snapshot. It does not discover a
+Session or define command precedence; those remain product ports and policy.
+
 These workflows do not acquire a Session catalog, parse Coding intents,
 normalize model/provider objects, mutate the active model, persist settings,
 or choose product wording. Coding continues to own `CodingCommandCatalog`,
@@ -75,7 +80,8 @@ containers, search lists, and terminal interaction mechanics remain in
 `loushang.tui`; the existing Harnesstui presentation modules only project
 caller-supplied descriptors and choices.
 
-The explicit module paths `loushang.harnesstui.commands.interaction` and
+The explicit module paths `loushang.harnesstui.commands.source`,
+`loushang.harnesstui.commands.interaction`, and
 `loushang.harnesstui.selection.interaction` are the stable entrypoints for
 these workflows. Package initializers do not add convenience re-exports.
 
@@ -334,10 +340,11 @@ package initializer intentionally does not re-export these entrypoints.
 Coding's `ui.mode` is the composition root for these ports. It explicitly
 constructs the screen app, surface manager, event projector, action host, and
 runner, and preserves their reverse cleanup order. Raw Session discovery for
-tool definitions, queues, and keybindings lives in
-`loushang.coding.presentation.tui.runtime`; resume-hint discovery lives in
-`loushang.coding.presentation.resume`. Approval presenter binding and Session
-transition cleanup remain Coding product policy in
+tool definitions, queues, keybindings, and full transcript branch records is
+now expressed as explicit composition-root ports in `loushang.coding.ui.mode`;
+the former `loushang.coding.presentation.tui.runtime` reflection facade is
+retired. Resume-hint discovery lives in `loushang.coding.presentation.resume`.
+Approval presenter binding and Session transition cleanup remain Coding product policy in
 `loushang.coding.policy.tui`. They do not belong to Harnesstui merely because a
 shared surface displays the prepared approval facts.
 
@@ -345,7 +352,7 @@ shared surface displays the prepared approval facts.
 
 `loushang.harnesstui.testing` is opt-in test support for exercising the
 product-neutral interaction ports above. Its dependency direction is
-`loushang.coding.testing.tui` -> `loushang.harnesstui.testing` ->
+`tests/coding/tui_support` -> `loushang.harnesstui.testing` ->
 `loushang.harnesstui` / `loushang.tui`. The reverse direction is forbidden:
 production Harnesstui must never import its testing package, and the generic
 TUI remains independent of both Harnesstui layers.
@@ -359,6 +366,8 @@ ports:
 - `loushang.harnesstui.testing.input_playback` owns decoded-input playback,
   neutral routed results, state snapshots, artifacts, and the fluent input
   scenario;
+- `loushang.harnesstui.testing.render_scenario` owns deterministic direct
+  rendering against a fake terminal and controllable clock;
 - `loushang.harnesstui.testing.screen_loop_playback` owns scripted TTY chunks,
   real screen-loop playback, captured output and state artifacts, and the
   fluent loop scenario;
@@ -373,14 +382,45 @@ ports:
   builders. They do not construct a product catalog at import time.
 
 These explicit modules are the stable testing entrypoints. The testing package
-initializer intentionally does not re-export them. Coding binds the neutral
-recipes into its concrete catalog under `loushang.coding.testing.tui.scenarios`
-and retains the app/router adapters, product-only scenarios, fakes, CLI runner,
-product copy, fixture volumes, and render-performance budgets. The temporary
+initializer intentionally does not re-export them. `ConversationRenderScenario`,
+the input and screen-loop drivers, and the scenario factory own the reusable
+fixture mechanics; `loushang.tui.playback_suite.run_playback_cli` owns catalog
+selection and reporting. Repository-local support in `tests/coding/tui_support`
+only binds those facilities into a concrete Coding catalog and retains
+product-only scenarios, fakes, copy, fixture volumes, and render-performance
+budgets. The repository manual runner is `scripts/run_tui_playback.py`;
+none of this product test support is part of the installed Coding package. The
+temporary
 `loushang.coding.ui.playback*` and `loushang.coding.ui.perf_probe` compatibility
 paths were retired after their consumers moved to the canonical testing
 packages. Persisted Coding Session materialization remains in
-`loushang.coding.testing.tui.performance`.
+`loushang.coding.presentation.tui.history`.
+
+## Prepared Conversation Application Hosts
+
+The reusable application shell is split into narrow, explicit entrypoints:
+
+- `loushang.harnesstui.conversation.application_host` owns prepared plain and
+  screen run sequencing, subscription lifetime, history installation, and
+  clean-exit callbacks;
+- `loushang.harnesstui.conversation.plain_app` composes the neutral plain
+  lifecycle, routing, status/settings view, information presentation, and
+  result presentation from injected product ports;
+- `loushang.harnesstui.conversation.plain_prompt_host` owns the one-shot and
+  multi-turn plain prompt loop over prepared callbacks;
+- `loushang.harnesstui.conversation.history` dispatches durable neutral
+  `ConversationRecord` payloads into presentation-ready transcript records;
+- `loushang.harnesstui.conversation.transcript_display` owns generic display
+  transforms such as duplicate command suppression, render-width selection,
+  and absolute-path compaction;
+- `loushang.harnesstui.conversation.startup`, `.resume`, `.runtime_view`, and
+  `.debug_action` own small presentation-ready view models and deterministic
+  UI-side sequencing.
+
+These hosts never acquire a Coding Session or Runtime and do not interpret raw
+Agent/AI events. Coding supplies its command/model/debug policy, raw event and
+transcript adapters, tool titles and previews, startup facts, resume command,
+copy, and product effects through the declared profiles and ports.
 
 ## Canonical Import Cutover
 
@@ -392,8 +432,11 @@ directly:
 - terminal settings and playback-suite primitives from `loushang.tui`;
 - neutral conversation, status, and performance support from
   `loushang.harnesstui`;
-- Coding playback catalogs, fakes, runners, scenarios, and persisted-session
-  loading from `loushang.coding.testing.tui`.
+- Coding playback catalogs, fakes, and scenarios from repository-local
+  `tests/coding/tui_support`, invoked through
+  `scripts/run_tui_playback.py`;
+- persisted-session transcript loading from
+  `loushang.coding.presentation.tui.history`.
 
 `loushang.coding.ui.cli` remains the product console entrypoint, while real
 Coding UI adapters that own product policy, copy, or runtime binding remain in

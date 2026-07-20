@@ -4,7 +4,6 @@ from io import StringIO
 
 import pytest
 
-from loushang.coding.testing.tui.playback import ScreenTuiScenario
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_input import build_screen_input_router
 from loushang.harnesstui.testing.performance import (
@@ -24,6 +23,7 @@ from loushang.tui import (
 )
 from loushang.tui._runner_utils import finish_tui_exit
 from loushang.tui.theme import ThemeResolver
+from tests.coding.tui_support.playback import ScreenTuiScenario
 
 pytestmark = pytest.mark.tui_render_contract
 

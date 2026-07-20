@@ -30,6 +30,11 @@ Channel owns:
 - strict JSON transport projection for documented transport values.
 - an injected stdio host loop that routes only standard Channel frames.
 
+For Product-owned legacy JSONL command schemas, Channel also offers the
+separate `JsonlCommandHost` input runtime and `RemoteUiContext` interaction
+helper. Neither is a standard Channel frame or response contract; their
+Product adapter owns dispatch and output projection.
+
 Work owns operation, run, event, delivery-hint, and domain semantics. Products
 own the conversion from their input into a `WorkOperation`, operation dispatch,
 event projection, host policy, and rendering. Coding keeps its legacy RPC

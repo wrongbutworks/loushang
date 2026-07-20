@@ -7,7 +7,12 @@ from loushang.harnesstui.selection.catalog import ModelChoice
 from loushang.harnesstui.settings.dashboard import StaticLinesPage
 from loushang.harnesstui.settings.model import ModelPage
 from loushang.harnesstui.settings.page import ConfigSettingsPage
+from loushang.harnesstui.settings.schema import (
+    BooleanSettingBinding,
+    BooleanSettingCopy,
+)
 from loushang.harnesstui.settings.workflow import (
+    BooleanSettingsWorkflowAdapter,
     SettingsConfigUpdate,
     SettingsModelSnapshot,
     SettingsPageView,
@@ -17,6 +22,46 @@ from loushang.harnesstui.status.line import StatusLineSettings
 from loushang.harnesstui.status.settings import StatusLineSettingsPage
 from loushang.tui import InputEvent, RenderConstraints, TabGroup
 from loushang.tui.settings import ConfigRow
+
+
+class _BooleanManager:
+    def __init__(self) -> None:
+        self.enabled = False
+
+    def get_enabled(self) -> bool:
+        return self.enabled
+
+    def set_enabled(self, enabled: bool) -> None:
+        self.enabled = enabled
+
+
+def test_boolean_workflow_adapter_projects_rows_and_only_claims_bound_ids() -> None:
+    manager = _BooleanManager()
+    adapter = BooleanSettingsWorkflowAdapter(
+        manager,
+        (
+            BooleanSettingBinding(
+                "feature.enabled",
+                "Feature",
+                "get_enabled",
+                "set_enabled",
+                "Feature",
+            ),
+        ),
+        BooleanSettingCopy(
+            unknown=lambda item_id: f"unknown:{item_id}",
+            invalid=lambda binding: f"invalid:{binding.id}",
+            unavailable=lambda binding: f"unavailable:{binding.id}",
+            applied=lambda binding, enabled: f"applied:{binding.id}:{enabled}",
+        ),
+    )
+
+    assert adapter.config_rows() == (ConfigRow("feature.enabled", "Feature", "false"),)
+    assert adapter.apply_config("model.current", "true") is None
+    assert adapter.apply_config("feature.enabled", "true") == SettingsConfigUpdate(
+        "applied:feature.enabled:True"
+    )
+    assert manager.enabled is True
 
 
 @dataclass(frozen=True, slots=True)

@@ -4,7 +4,9 @@ import asyncio
 
 from loushang.harnesstui.selection.catalog import ModelChoice
 from loushang.harnesstui.selection.interaction import (
+    ModelInteractionPresentationCopy,
     ModelInteractionSnapshot,
+    present_model_interaction,
     resolve_model_interaction,
     run_model_interaction,
 )
@@ -149,3 +151,71 @@ def test_model_interaction_does_not_choose_for_explicit_query() -> None:
     assert result.kind == "empty"
     assert result.palette is not None
     assert not chooser_called
+
+
+def test_model_interaction_presenter_leaves_selected_choice_for_product_apply() -> None:
+    choices = _choices()
+    snapshot = ModelInteractionSnapshot(choices, current_value=choices[2].value)
+    copy = ModelInteractionPresentationCopy(
+        list_items=lambda items, current: (
+            f"list:{current}:" + ",".join(choice.value for choice in items)
+        ),
+        item_text=lambda choice: choice.value,
+        cancelled="cancelled-copy",
+        empty="empty-copy",
+        no_match=lambda query: f"missing-copy:{query}",
+        ambiguous_title="ambiguous-copy",
+        ambiguous_hint=lambda matches: f"hint-copy:{len(matches)}",
+    )
+
+    listed = resolve_model_interaction(snapshot)
+    selected = resolve_model_interaction(snapshot, query="large")
+    ambiguous = resolve_model_interaction(snapshot, query="provider/model")
+    missing = resolve_model_interaction(snapshot, query="missing")
+    empty = resolve_model_interaction(ModelInteractionSnapshot(()))
+    cancelled = asyncio.run(
+        run_model_interaction(snapshot, choose=lambda _palette: None)
+    )
+
+    assert present_model_interaction(
+        listed,
+        current_value=snapshot.current_value,
+        copy=copy,
+    ).startswith(f"list:{choices[2].value}:")
+    assert (
+        present_model_interaction(
+            selected,
+            current_value=snapshot.current_value,
+            copy=copy,
+        )
+        is None
+    )
+    assert present_model_interaction(
+        ambiguous,
+        current_value=snapshot.current_value,
+        copy=copy,
+    ) == (
+        "ambiguous-copy\n"
+        "  provider:primary:model\n"
+        "  provider:primary-canary:model\n"
+        "hint-copy:2"
+    )
+    assert (
+        present_model_interaction(
+            missing,
+            current_value=None,
+            copy=copy,
+        )
+        == "missing-copy:missing"
+    )
+    assert (
+        present_model_interaction(empty, current_value=None, copy=copy) == "empty-copy"
+    )
+    assert (
+        present_model_interaction(
+            cancelled,
+            current_value=snapshot.current_value,
+            copy=copy,
+        )
+        == "cancelled-copy"
+    )

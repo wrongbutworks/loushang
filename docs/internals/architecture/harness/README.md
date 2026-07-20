@@ -47,6 +47,9 @@ planning, work event persistence, or AI provider behavior.
   shared manifest, loading, registration, conflict resolution, observer/input
   dispatch, resource contribution, and tool-wrapper ownership while preserving
   product policy, session/model behavior, and UI integration.
+- [Extension Context Runtime Boundary](extension-context-runtime-boundary.md)
+  defines the standard extension context, lifecycle records, generation-bound
+  capability injection, and snake_case-only extension UI contract.
 - [Control Plane Runtime Boundary](control-plane-runtime-boundary.md) defines
   deterministic extension routing, neutral policy subjects and evaluator
   composition, pending approval lifecycle, and the Product adapters that retain
@@ -94,6 +97,7 @@ planning, work event persistence, or AI provider behavior.
   Native-file deletion mechanics while Products retain binding and resume
   policy.
 - [Agent Transcript Session Factory Boundary](agent-transcript-session-factory-boundary.md)
+- [Product Transcript Session Boundary](product-transcript-session-boundary.md)
   defines reusable header, Native-context, create/load/recent-resume, and fork
   assembly while Products retain profile selection and resume compatibility.
 - [Agent Transcript Interaction Runtime Boundary](agent-transcript-interaction-runtime-boundary.md)
@@ -184,6 +188,9 @@ planning, work event persistence, or AI provider behavior.
 - [Workspace Path And Mutation Boundary](workspace-path-mutation-boundary.md)
   defines configurable path resolution, canonical identity, optional input
   variants, mutation coordination, and coding path policy ownership.
+- [Workspace And Terminal Platform Capabilities Boundary](workspace-platform-capabilities-boundary.md)
+  defines canonical Harness Git and Native TUI clipboard ownership, direct
+  Product adoption, and retired Coding platform paths.
 - [Workspace Tool Pack Boundary](workspace-tool-pack-boundary.md) defines
   reusable concrete read/search/edit/exec ownership, Coding compatibility
   adapters, and the product-owned activation and policy boundary.

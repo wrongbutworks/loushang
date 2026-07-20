@@ -68,6 +68,11 @@ class _Session:
         self.session_manager = SimpleNamespace(
             get_cwd=lambda: "/repo",
             get_session_file=lambda: Path("/tmp/254d6156.jsonl"),
+            get_branch=lambda: list(self.context_messages),
+        )
+        self.keybindings = {"tui.input.submit": ("enter", "ctrl+j")}
+        self.settings_manager = SimpleNamespace(
+            get_keybindings=lambda: self.keybindings,
         )
         self.current_model: object = ModelSelection(
             provider="unknown", model_id="unknown"
@@ -99,6 +104,9 @@ class _Session:
 
     def get_available_model_details(self) -> list[Model]:
         return self.model_details
+
+    def get_tool_definition(self, _name: str) -> None:
+        return None
 
     async def set_model(self, selection: object) -> None:
         if isinstance(selection, Model):
@@ -189,7 +197,7 @@ def test_run_coding_tui_interactive_uses_screen_loop(monkeypatch) -> None:
         await kwargs["action_host"].submit(ConversationTextAction("hello"))
         return 0
 
-    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -208,6 +216,7 @@ def test_run_coding_tui_interactive_uses_screen_loop(monkeypatch) -> None:
     ]
     assert exit_code == 0
     assert session.prompts == ["hello"]
+    assert captured["keybindings"] == session.keybindings
     assert assistant_records[-1].text == "hello back"
 
 
@@ -222,7 +231,7 @@ def test_run_coding_tui_interactive_prints_resume_hint_on_clean_exit(
     async def fake_screen_loop(**kwargs):
         return 0
 
-    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -276,37 +285,40 @@ def test_run_coding_tui_interactive_replays_resumed_session_history(
             timestamp=3.0,
         ),
     ]
-    session.session_manager.get_branch = lambda: [
-        ConversationRecord(
-            record_id=f"record-{index}",
-            parent_id=f"record-{index - 1}" if index else None,
-            kind=AGENT_MESSAGE_KIND,
-            payload_version=1,
-            created_at=f"2026-07-16T00:00:0{index}Z",
-            payload=message,
-        )
-        for index, message in enumerate(session.context_messages)
-    ] + [
-        ConversationRecord(
-            record_id="record-3",
-            parent_id="record-2",
-            kind=CONTEXT_COMPACTION_CHECKPOINT_KIND,
-            payload_version=1,
-            created_at="2026-07-16T00:00:03Z",
-            payload=ContextCompactionCheckpoint(
-                summary="older context summary",
-                first_kept_record_id="record-0",
-                tokens_before=128,
-            ),
-        )
-    ]
+    session.session_manager.get_branch = lambda: (
+        [
+            ConversationRecord(
+                record_id=f"record-{index}",
+                parent_id=f"record-{index - 1}" if index else None,
+                kind=AGENT_MESSAGE_KIND,
+                payload_version=1,
+                created_at=f"2026-07-16T00:00:0{index}Z",
+                payload=message,
+            )
+            for index, message in enumerate(session.context_messages)
+        ]
+        + [
+            ConversationRecord(
+                record_id="record-3",
+                parent_id="record-2",
+                kind=CONTEXT_COMPACTION_CHECKPOINT_KIND,
+                payload_version=1,
+                created_at="2026-07-16T00:00:03Z",
+                payload=ContextCompactionCheckpoint(
+                    summary="older context summary",
+                    first_kept_record_id="record-0",
+                    tokens_before=128,
+                ),
+            )
+        ]
+    )
     captured: dict[str, object] = {}
 
     async def fake_screen_loop(**kwargs):
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -383,7 +395,7 @@ def test_run_coding_tui_interactive_bounds_resumed_long_transcript_render_window
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -469,7 +481,7 @@ def test_run_coding_tui_interactive_long_transcript_input_frame_does_not_clear_s
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -540,7 +552,7 @@ def test_run_coding_tui_interactive_long_transcript_working_timer_frame_stays_bo
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -617,7 +629,7 @@ def test_run_coding_tui_interactive_traces_resumed_transcript_window_trim(
         captured.update(kwargs)
         return 0
 
-    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fake_screen_loop)
     reset_observability()
     configure_debug_logging(debug_sink=sink, debug_scopes=("tui",))
     try:
@@ -660,12 +672,10 @@ def test_run_coding_tui_interactive_screen_loop_dispatches_steer_and_followup(
     async def fake_screen_loop(**kwargs):
         captured.update(kwargs)
         await kwargs["action_host"].steer(ConversationTextAction("steer this"))
-        await kwargs["action_host"].follow_up(
-            ConversationTextAction("follow this")
-        )
+        await kwargs["action_host"].follow_up(ConversationTextAction("follow this"))
         return 0
 
-    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -698,7 +708,7 @@ def test_run_coding_tui_injects_on_approval_callback(monkeypatch) -> None:
         return 0
 
     monkeypatch.setattr(mode, "ScreenSurfaceManager", RecordingSurfaceManager)
-    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -1022,7 +1032,9 @@ def test_screen_tui_failure_detaches_presenter_and_denies_pending(
         await shown.wait()
         raise RuntimeError("terminal failed")
 
-    monkeypatch.setattr(mode, "run_screen_coding_tui", failing_screen_loop)
+    monkeypatch.setattr(
+        mode, "run_action_host_conversation_screen", failing_screen_loop
+    )
 
     async def run() -> tuple[int, object]:
         exit_code = await mode.run_coding_tui(
@@ -1060,12 +1072,11 @@ def test_screen_tui_projector_failure_still_unbinds_presenter(
         def set_approval_presenter(self, presenter, *, dismisser=None) -> None:
             resolver.set_request_presenter(presenter, dismisser=dismisser)
 
-    class FailingProjector:
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            del args, kwargs
-            raise RuntimeError("projector failed")
+    def fail_projector(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise RuntimeError("projector failed")
 
-    monkeypatch.setattr(mode, "ScreenCodingEventProjector", FailingProjector)
+    monkeypatch.setattr(mode, "build_screen_coding_event_projection", fail_projector)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -1138,7 +1149,7 @@ def test_run_coding_tui_non_interactive_keeps_plain_prompt_loop(monkeypatch) -> 
         await kwargs["handle_prompt"]("hello")
         return 0
 
-    monkeypatch.setattr(mode, "run_screen_coding_tui", fail_screen_loop)
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fail_screen_loop)
     monkeypatch.setattr(mode, "run_non_interactive_prompt_loop", fake_prompt_loop)
 
     exit_code = asyncio.run(
@@ -1184,7 +1195,7 @@ def test_screen_event_projection_skips_duplicate_user_messages(monkeypatch) -> N
         await kwargs["action_host"].submit(ConversationTextAction("hello"))
         return 0
 
-    monkeypatch.setattr(mode, "run_screen_coding_tui", fake_screen_loop)
+    monkeypatch.setattr(mode, "run_action_host_conversation_screen", fake_screen_loop)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(

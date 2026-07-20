@@ -156,9 +156,9 @@ def test_extension_replacement_controller_creates_replaced_command_context() -> 
         context = controller.create_context(session)
         assert context.cwd == "/tmp/project"
 
-        await context.sendMessage({"customType": "demo"}, {"display": True})
+        await context.send_message({"customType": "demo"}, {"display": True})
         await context.send_message({"customType": "snake"}, None)
-        await context.sendUserMessage("run this", {"deliverAs": "followUp"})
+        await context.send_user_message("run this", {"deliverAs": "followUp"})
         await context.send_user_message("and this", None)
 
     asyncio.run(scenario())
@@ -181,6 +181,6 @@ def test_extension_replacement_controller_replaced_context_send_methods_obey_sta
     context.invalidated = True
 
     with pytest.raises(RuntimeError, match="stale context"):
-        asyncio.run(context.sendMessage({"customType": "demo"}, None))
+        asyncio.run(context.send_message({"customType": "demo"}, None))
     with pytest.raises(RuntimeError, match="stale context"):
-        asyncio.run(context.sendUserMessage("run this", None))
+        asyncio.run(context.send_user_message("run this", None))

@@ -7,17 +7,12 @@ from types import SimpleNamespace
 from loushang.ai import Model
 from loushang.coding.types import ModelSelection
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
-from loushang.coding.ui.screen_surfaces import (
-    ScreenSurfaceManager,
-    ScreenSurfaceView,
-)
+from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.harnesstui.selection.model import (
     ModelSelectorSurface as SharedModelSelectorSurface,
 )
 from loushang.harnesstui.status.provider import StatusProvider
-from loushang.harnesstui.surface.view import (
-    ScreenSurfaceView as SharedScreenSurfaceView,
-)
+from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.tui import (
     ApprovalSurface,
     CommandSurface,
@@ -62,10 +57,6 @@ class _TallContent:
             [RenderLine(f"line {index}") for index in range(constraints.max_height)],
             constraints=constraints,
         )
-
-
-def test_screen_surface_compatibility_exports_keep_object_identity() -> None:
-    assert ScreenSurfaceView is SharedScreenSurfaceView
 
 
 def test_screen_surface_view_delegates_editor_input_target() -> None:
@@ -1064,7 +1055,11 @@ def test_screen_surface_manager_applies_settings_page_statusline_change() -> Non
 
 
 def test_screen_surface_manager_command_surface_inserts_selected_command() -> None:
-    session = _Session()
+    class AsyncCommandSession(_Session):
+        async def list_commands(self) -> list[object]:
+            return self.commands
+
+    session = AsyncCommandSession()
     session.commands = [
         SimpleNamespace(name="report", description="Show report", source="core"),
         SimpleNamespace(name="model", description="Switch model", source="core"),

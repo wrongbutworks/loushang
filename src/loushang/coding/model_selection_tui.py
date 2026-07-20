@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Mapping
-from dataclasses import dataclass
 from typing import Any
 
 from loushang.coding.model_selection import (
@@ -13,28 +12,25 @@ from loushang.coding.model_selection import (
 )
 from loushang.harnesstui.selection.catalog import (
     ModelChoice,
-    current_model_choice_first,
-    dedupe_preferred_model_choices,
+    ModelChoiceIdentity,
     filter_model_choices,
     format_model_choices,
+    merge_model_choice_sources,
     model_choice_display_label,
     model_choice_value,
     model_completion_provider,
+    resolve_current_model_choice_value,
 )
 from loushang.harnesstui.selection.interaction import (
     ModelInteractionChooser as ModelPaletteChooser,
 )
 from loushang.harnesstui.selection.interaction import (
+    ModelInteractionPresentationCopy,
     ModelInteractionSnapshot,
+    present_model_interaction,
     run_model_interaction,
 )
-from loushang.tui import CommandPalette, CompletionProvider
-
-
-@dataclass(frozen=True)
-class _CurrentModelIdentity:
-    label: str | None
-    value: str | None
+from loushang.tui import CompletionProvider
 
 
 async def format_available_models(session: Any, *, query: str = "") -> str:
@@ -50,13 +46,6 @@ async def available_model_completion_provider(session: Any) -> CompletionProvide
     choices = await available_model_choices(session)
     current_value = await current_model_choice_value(session, choices=choices)
     return model_completion_provider(choices, current_value=current_value)
-
-
-async def available_model_palette(
-    session: Any, *, title: str = "Models"
-) -> CommandPalette:
-    provider = await available_model_completion_provider(session)
-    return CommandPalette.from_completion_provider(provider, title=title)
 
 
 async def select_available_model(
@@ -76,33 +65,13 @@ async def select_available_model(
         query=query,
         choose=choose,
     )
-    if resolution.kind == "list":
-        return format_model_choices(
-            resolution.matches,
-            current_value=snapshot.current_value,
-        )
-    if resolution.kind == "cancelled":
-        return "Model selection cancelled."
-    if resolution.kind == "empty":
-        if resolution.query:
-            return f"No models match: {resolution.query}"
-        return "No models available."
-    if resolution.kind == "ambiguous":
-        hint = (
-            "Use /model <provider:endpoint:model> or choose one from the model list."
-            if any(choice.endpoint_id for choice in resolution.matches)
-            else "Use /model <full model> to select one."
-        )
-        return "\n".join(
-            [
-                "Multiple models match:",
-                *(
-                    f"  {model_choice_display_label(choice)}"
-                    for choice in resolution.matches
-                ),
-                hint,
-            ]
-        )
+    presentation = present_model_interaction(
+        resolution,
+        current_value=snapshot.current_value,
+        copy=_MODEL_INTERACTION_COPY,
+    )
+    if presentation is not None:
+        return presentation
 
     assert resolution.choice is not None
     choice = resolution.choice
@@ -120,44 +89,40 @@ async def select_available_model(
     return message
 
 
+def _ambiguous_model_hint(matches: tuple[ModelChoice, ...]) -> str:
+    if any(choice.endpoint_id for choice in matches):
+        return "Use /model <provider:endpoint:model> or choose one from the model list."
+    return "Use /model <full model> to select one."
+
+
+_MODEL_INTERACTION_COPY = ModelInteractionPresentationCopy(
+    list_items=lambda choices, current: format_model_choices(
+        choices,
+        current_value=current,
+    ),
+    item_text=model_choice_display_label,
+    cancelled="Model selection cancelled.",
+    empty="No models available.",
+    no_match=lambda query: f"No models match: {query}",
+    ambiguous_title="Multiple models match:",
+    ambiguous_hint=_ambiguous_model_hint,
+)
+
+
 async def available_model_choices(session: Any) -> list[ModelChoice]:
     current_identity = await _current_model_identity(session)
     detail_choices = _model_choices_from_details(
         await _available_model_details(session)
-    )
-    current_detail_value = _selected_current_choice_value(
-        detail_choices, current_identity
-    )
-    detail_choices = dedupe_preferred_model_choices(
-        detail_choices,
-        current_value=current_detail_value,
     )
     selection_choices = [
         ModelChoice(label=label, value=label, selection=selection)
         for selection in await iter_available_model_selections(session)
         if (label := model_label_from_selection(selection)) is not None
     ]
-    if detail_choices:
-        detail_labels = {choice.label for choice in detail_choices}
-        detail_values = {choice.value for choice in detail_choices}
-        choices = [
-            *detail_choices,
-            *(
-                choice
-                for choice in selection_choices
-                if choice.label not in detail_labels
-                and choice.value not in detail_values
-            ),
-        ]
-        return current_model_choice_first(
-            choices,
-            current_value=_selected_current_choice_value(choices, current_identity),
-        )
-    return current_model_choice_first(
+    return merge_model_choice_sources(
+        detail_choices,
         selection_choices,
-        current_value=_selected_current_choice_value(
-            selection_choices, current_identity
-        ),
+        current_identity=current_identity,
     )
 
 
@@ -167,7 +132,7 @@ async def current_model_choice_value(
     model_choices = (
         choices if choices is not None else await available_model_choices(session)
     )
-    return _selected_current_choice_value(
+    return resolve_current_model_choice_value(
         model_choices, await _current_model_identity(session)
     )
 
@@ -188,7 +153,7 @@ async def model_detail_descriptions_by_label(session: Any) -> dict[str, str]:
     return descriptions
 
 
-async def _current_model_identity(session: Any) -> _CurrentModelIdentity:
+async def _current_model_identity(session: Any) -> ModelChoiceIdentity:
     agent_model_identity = _model_identity_from_value(
         getattr(getattr(session, "agent", None), "model", None)
     )
@@ -196,12 +161,12 @@ async def _current_model_identity(session: Any) -> _CurrentModelIdentity:
         return agent_model_identity
     getter = getattr(session, "get_model_selection", None)
     if not callable(getter):
-        return _CurrentModelIdentity(label=None, value=None)
+        return ModelChoiceIdentity()
     selection = await _maybe_await(getter())
     return _model_identity_from_value(selection)
 
 
-def _model_identity_from_value(selection: object | None) -> _CurrentModelIdentity:
+def _model_identity_from_value(selection: object | None) -> ModelChoiceIdentity:
     label = model_label_from_selection(selection)
     provider = _string_attr(selection, "provider_id", "provider", "providerId")
     endpoint_id = _string_attr(selection, "endpoint_id", "endpoint", "endpointId")
@@ -216,22 +181,7 @@ def _model_identity_from_value(selection: object | None) -> _CurrentModelIdentit
         if provider and endpoint_id and model_id
         else None
     )
-    return _CurrentModelIdentity(label=label, value=value)
-
-
-def _selected_current_choice_value(
-    choices: list[ModelChoice],
-    current_identity: _CurrentModelIdentity,
-) -> str | None:
-    if current_identity.value is not None:
-        for choice in choices:
-            if choice.value == current_identity.value:
-                return choice.value
-    if current_identity.label is not None:
-        for choice in choices:
-            if choice.label == current_identity.label:
-                return choice.value
-    return None
+    return ModelChoiceIdentity(label=label, value=value)
 
 
 async def _available_model_details(session: Any) -> list[object]:
@@ -320,7 +270,6 @@ async def _maybe_await(value: Any) -> Any:
 __all__ = [
     "available_model_choices",
     "available_model_completion_provider",
-    "available_model_palette",
     "current_model_choice_value",
     "format_available_models",
     "ModelChoice",

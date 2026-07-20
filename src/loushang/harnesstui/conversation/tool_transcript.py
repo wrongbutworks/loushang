@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Generic, Literal, TypeVar
 
 from loushang.harness.tools.workspace.output_preview import (
     collapse_tool_output_preview,
@@ -19,6 +19,8 @@ ToolTranscriptStatus = Literal[
 ToolVerbResolver = Callable[[str, object | None], str]
 ToolBodyVisibility = Callable[[str, ToolTranscriptStatus], bool]
 ToolCommandResolver = Callable[[str, object | None, str], str | None]
+ToolTranscriptEventT = TypeVar("ToolTranscriptEventT")
+ToolTranscriptMessageT = TypeVar("ToolTranscriptMessageT")
 
 _EXIT_CODE_RE = re.compile(r"\bexit code\s+(\d+)\b", re.IGNORECASE)
 
@@ -122,6 +124,87 @@ class ToolTranscriptProjector:
             command=self.command_resolver(tool_name, args, title),
         )
 
+
+class ToolTranscriptProjectionBinding(
+    Generic[ToolTranscriptEventT, ToolTranscriptMessageT]
+):
+    """Compose product raw-view adapters with the neutral tool projector."""
+
+    __slots__ = (
+        "_call_id",
+        "_call_view",
+        "_message_id",
+        "_result_view",
+        "_tool_result_message_view",
+        "neutral_projector",
+    )
+
+    def __init__(
+        self,
+        *,
+        neutral_projector: ToolTranscriptProjector,
+        call_id: Callable[[ToolTranscriptEventT], str],
+        message_id: Callable[[ToolTranscriptMessageT], str],
+        call_view: Callable[[ToolTranscriptEventT], ToolCallView],
+        result_view: Callable[
+            [ToolTranscriptEventT, ToolCallSnapshot | None, str | None],
+            ToolResultView,
+        ],
+        tool_result_message_view: Callable[
+            [ToolTranscriptMessageT], ToolResultView
+        ],
+    ) -> None:
+        self.neutral_projector = neutral_projector
+        self._call_id = call_id
+        self._message_id = message_id
+        self._call_view = call_view
+        self._result_view = result_view
+        self._tool_result_message_view = tool_result_message_view
+
+    def call_id(self, event: ToolTranscriptEventT) -> str:
+        return self._call_id(event)
+
+    def message_id(self, message: ToolTranscriptMessageT) -> str:
+        return self._message_id(message)
+
+    def call_view(self, event: ToolTranscriptEventT) -> ToolCallView:
+        return self._call_view(event)
+
+    def remember_call(self, event: ToolTranscriptEventT) -> ToolCallSnapshot:
+        return self.neutral_projector.remember_call(self.call_view(event))
+
+    def result_view(
+        self,
+        event: ToolTranscriptEventT,
+        snapshot: ToolCallSnapshot | None = None,
+        *,
+        tool_call_id: str | None = None,
+    ) -> ToolResultView:
+        return self._result_view(event, snapshot, tool_call_id)
+
+    def project_result(
+        self,
+        event: ToolTranscriptEventT,
+        snapshot: ToolCallSnapshot | None = None,
+    ) -> ToolTranscriptBlock:
+        return self.neutral_projector.project_result(
+            self.result_view(event, snapshot=snapshot),
+            snapshot,
+        )
+
+    def tool_result_message_view(
+        self,
+        message: ToolTranscriptMessageT,
+    ) -> ToolResultView:
+        return self._tool_result_message_view(message)
+
+    def project_tool_result_message(
+        self,
+        message: ToolTranscriptMessageT,
+    ) -> ToolTranscriptBlock:
+        return self.neutral_projector.project_result(
+            self.tool_result_message_view(message)
+        )
 
 def tool_block_to_record(
     block: ToolTranscriptBlock, *, elapsed_seconds: float = 0.0
@@ -277,6 +360,7 @@ __all__ = [
     "ToolCallView",
     "ToolResultView",
     "ToolTranscriptBlock",
+    "ToolTranscriptProjectionBinding",
     "ToolTranscriptProjector",
     "ToolTranscriptStatus",
     "ToolVerbResolver",

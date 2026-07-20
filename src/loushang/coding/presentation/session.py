@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.platform.git import get_git_branch
+from loushang.harness.workspace.git import get_git_branch
 
 
 def session_cwd(*, session: Any, runtime: Any) -> str:
@@ -26,10 +26,6 @@ def session_cwd(*, session: Any, runtime: Any) -> str:
         except Exception:
             pass
     return str(Path.cwd())
-
-
-def project_label(cwd: str) -> str:
-    return Path(cwd).name or cwd
 
 
 def git_branch(cwd: str) -> str | None:
@@ -102,7 +98,6 @@ def session_error_message(session: Any) -> str | None:
 __all__ = [
     "git_branch",
     "is_running",
-    "project_label",
     "session_cwd",
     "session_error_message",
     "session_label",

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 from loushang.coding.model_selection import (
@@ -10,35 +9,29 @@ from loushang.coding.model_selection import (
 )
 from loushang.coding.presentation.session import (
     git_branch,
-    project_label,
     session_cwd,
     session_label,
     session_observability_id,
 )
+from loushang.harnesstui.conversation.startup import (
+    ConversationStartupView,
+    build_conversation_startup_view,
+)
 
 
-@dataclass(frozen=True)
-class CodingTuiStartupSnapshot:
-    model_label: str | None
-    cwd: str
-    branch: str | None
-    project_label: str
-    session_label: str | None
-    session_observability_id: str | None
-
-
-async def load_coding_tui_startup_snapshot(*, runtime: Any, session: Any) -> CodingTuiStartupSnapshot:
+async def load_coding_tui_startup_view(
+    *, runtime: Any, session: Any
+) -> ConversationStartupView:
     await ensure_usable_session_model(session)
     model_label = model_label_from_selection(await get_session_model_selection(session))
     cwd = session_cwd(session=session, runtime=runtime)
-    return CodingTuiStartupSnapshot(
+    return build_conversation_startup_view(
         model_label=model_label,
         cwd=cwd,
         branch=git_branch(cwd),
-        project_label=project_label(cwd),
         session_label=session_label(session),
         session_observability_id=session_observability_id(session),
     )
 
 
-__all__ = ["CodingTuiStartupSnapshot", "load_coding_tui_startup_snapshot"]
+__all__ = ["load_coding_tui_startup_view"]

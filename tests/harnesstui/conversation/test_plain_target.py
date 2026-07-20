@@ -5,10 +5,13 @@ from io import StringIO
 
 from loushang.harnesstui.conversation.plain_target import (
     PlainConversationProjectionTarget,
+    build_plain_conversation_projection,
 )
+from loushang.harnesstui.conversation.projection import ConversationProjector
 from loushang.harnesstui.conversation.tool_transcript import (
     ToolCallSnapshot,
     ToolTranscriptBlock,
+    ToolTranscriptProjector,
 )
 from loushang.harnesstui.plain.renderer import PlainConversationRenderer
 from loushang.tui import TranscriptBuffer
@@ -160,3 +163,34 @@ def test_plain_target_preserves_retry_and_compaction_status_text() -> None:
         ("status", "[compact] error: compact failed"),
         ("status", "[compact] done"),
     ]
+
+
+def test_plain_projection_builder_owns_target_projector_and_event_binding() -> None:
+    renderer = _RecordingRenderer()
+    tool_calls = {"tc1": ToolCallSnapshot(tool_name="read")}
+    events: list[str] = []
+    seen_projectors: list[ConversationProjector] = []
+
+    def event_handler_factory(
+        projector: ConversationProjector,
+    ) -> object:
+        seen_projectors.append(projector)
+        return events.append
+
+    binding = build_plain_conversation_projection(
+        renderer,
+        tool_projector=ToolTranscriptProjector(),
+        event_handler_factory=event_handler_factory,  # type: ignore[arg-type]
+        tool_calls=tool_calls,
+        last_error_message="previous",
+    )
+    binding.handle("event")
+
+    assert seen_projectors == [binding.projector]
+    assert isinstance(binding.projector.target, PlainConversationProjectionTarget)
+    assert binding.projector.target.renderer is renderer
+    assert binding.projector.tool_calls is tool_calls
+    assert binding.projector.measure_tool_elapsed is False
+    assert binding.projector.tool_finish_cleanup == "before_projection"
+    assert binding.last_error_message == "previous"
+    assert events == ["event"]

@@ -2,26 +2,17 @@ from __future__ import annotations
 
 import errno
 import inspect
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, replace
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from time import monotonic
 from types import SimpleNamespace
 from typing import Literal
 
 from loushang.ai.types import TextPart, UserMessage
-from loushang.coding.extensions import (
-    SessionBeforeForkEvent,
-    SessionBeforeSwitchEvent,
-    SessionShutdownEvent,
-    SessionStartEvent,
-)
 from loushang.coding.session import AgentSession
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
-    SessionQuery,
-    SessionRecord,
     SessionSummary,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
@@ -32,8 +23,13 @@ from loushang.harness.diagnostics.types import (
     DiagnosticSummary,
     ErrorReport,
 )
+from loushang.harness.extensions.context import (
+    SessionBeforeForkEvent,
+    SessionBeforeSwitchEvent,
+    SessionShutdownEvent,
+    SessionStartEvent,
+)
 from loushang.harness.runtime import (
-    CoalescingScheduler,
     SessionOperationFailure,
     SessionOperationPhase,
     SessionOperationResult,
@@ -41,13 +37,17 @@ from loushang.harness.runtime import (
     run_replacement_callbacks,
 )
 from loushang.harness.session import (
+    AgentTranscriptSessionRuntime,
     ForkProfile,
     ForkSelection,
     SessionCwdIssue,
+    SessionDiagnosticScope,
+    SessionDiagnosticsRuntime,
     SessionLifecycleDecision,
     SessionLifecycleHooks,
     SessionLifecycleRuntime,
     SessionLifecycleTransition,
+    require_session_operation_session,
 )
 from loushang.harness.session import (
     MissingSessionCwdError as HarnessMissingSessionCwdError,
@@ -56,8 +56,6 @@ from loushang.harness.session import (
 _copy_import_file = copy_file_exclusive
 
 SessionFactory = Callable[..., AgentSession]
-SessionRebindCallback = Callable[[AgentSession], Awaitable[None]]
-BeforeSessionInvalidateCallback = Callable[[], None]
 _SessionOperationResult = SessionOperationResult[AgentSession, str | None]
 _CODING_FORK_PROFILE = ForkProfile(
     default_position="before",
@@ -133,7 +131,7 @@ class _CodingSessionLifecycleStore:
         *,
         cwd_override: str | None = None,
     ) -> AgentSession:
-        session_file = self._runtime._resolve_session_file(session_ref)
+        session_file = self._runtime.resolve_session_file(session_ref)
         manager = await SessionManager.open(
             session_file,
             session_dir=self._runtime.session_dir,
@@ -213,7 +211,7 @@ class _CodingSessionLifecycleStore:
         return session
 
 
-class AgentSessionRuntime:
+class AgentSessionRuntime(AgentTranscriptSessionRuntime[AgentSession, str]):
     def __init__(
         self,
         *,
@@ -226,13 +224,13 @@ class AgentSessionRuntime:
         session_index_refresh_interval: float = 0.5,
         session_index_flush_delay: float = 0.25,
     ) -> None:
-        self.session_dir = Path(session_dir)
+        self._diagnostics_service = diagnostics_service
         self.session_factory = session_factory
         self._session_factory_accepts_start_event = _accepts_session_start_event(
             session_factory
         )
         self.persist = persist
-        self._lifecycle = SessionLifecycleRuntime[AgentSession, str](
+        lifecycle = SessionLifecycleRuntime[AgentSession, str](
             store=_CodingSessionLifecycleStore(self),
             current_session=current_session,
             fork_profile=_CODING_FORK_PROFILE,
@@ -250,16 +248,18 @@ class AgentSessionRuntime:
                 on_failure=self._on_lifecycle_failure,
             ),
         )
-        self._session_host = self._lifecycle.transition_host
-        self._diagnostics_service = diagnostics_service
-        self.auto_refresh_session_index = auto_refresh_session_index
-        self.session_index_refresh_interval = session_index_refresh_interval
-        self.session_index_flush_delay = session_index_flush_delay
-        self._last_session_index_refresh = 0.0
-        self._session_index_flush = CoalescingScheduler[bool](
-            self._flush_scheduled_session_index,
-            merge=lambda left, right: left or right,
-            delay_seconds=session_index_flush_delay,
+        super().__init__(
+            session_dir=session_dir,
+            lifecycle=lifecycle,
+            auto_refresh_session_index=auto_refresh_session_index,
+            session_index_refresh_interval=session_index_refresh_interval,
+            session_index_flush_delay=session_index_flush_delay,
+            record_index_refresh_failure=lambda exc, all_sessions: (
+                self._record_session_index_flush_failure(
+                    exc,
+                    all_sessions=all_sessions,
+                )
+            ),
         )
         if current_session is not None:
             self._open_session_approvals(current_session)
@@ -267,39 +267,7 @@ class AgentSessionRuntime:
 
     @property
     def _current_session(self) -> AgentSession | None:
-        return self._session_host.current
-
-    @property
-    def session(self) -> AgentSession:
-        return self._require_current_session()
-
-    @property
-    def current_session(self) -> AgentSession | None:
-        return self._current_session
-
-    @property
-    def cwd(self) -> str:
-        return self._require_current_session().session_manager.get_cwd()
-
-    def set_rebind_session(self, callback: SessionRebindCallback | None) -> None:
-        self._session_host.set_rebind(callback)
-
-    def set_before_session_invalidate(
-        self, callback: BeforeSessionInvalidateCallback | None
-    ) -> None:
-        self._session_host.set_before_invalidate(callback)
-
-    def subscribe_before_session_invalidate(
-        self,
-        callback: BeforeSessionInvalidateCallback,
-    ) -> Callable[[], None]:
-        return self._session_host.subscribe_before_invalidate(callback)
-
-    def subscribe_after_session_invalidate(
-        self,
-        callback: BeforeSessionInvalidateCallback,
-    ) -> Callable[[], None]:
-        return self._session_host.subscribe_after_invalidate(callback)
+        return self.current_session
 
     async def create_session(
         self, *, cwd: str, parent_session: str | None = None
@@ -309,11 +277,30 @@ class AgentSessionRuntime:
     async def new_session(
         self, *, cwd: str | Path | None = None, parent_session: str | None = None
     ) -> AgentSession:
-        result = await self._run_new_session_operation(
+        result = await self.new_session_operation(
             cwd=cwd,
             parent_session=parent_session,
         )
-        return _require_operation_session(result)
+        return require_session_operation_session(result)
+
+    async def new_session_operation(
+        self,
+        *,
+        cwd: str | Path | None = None,
+        parent_session: str | None = None,
+        setup: object | None = None,
+        with_session: object | None = None,
+    ) -> _SessionOperationResult:
+        """Create a session and run optional standard replacement callbacks."""
+        options = _replacement_callback_options(
+            setup=setup,
+            with_session=with_session,
+        )
+        return await self._run_new_session_operation(
+            cwd=cwd,
+            parent_session=parent_session,
+            options=options or None,
+        )
 
     async def _run_new_session_operation(
         self,
@@ -322,7 +309,7 @@ class AgentSessionRuntime:
         parent_session: str | None = None,
         options: dict[str, object] | None = None,
     ) -> _SessionOperationResult:
-        return await self._lifecycle.new(
+        return await super().new_session_operation(
             cwd=self._resolve_import_cwd(cwd) if cwd is not None else None,
             parent_session_ref=parent_session,
             metadata=self._lifecycle_metadata(
@@ -332,30 +319,8 @@ class AgentSessionRuntime:
             ),
         )
 
-    async def newSession(self, options: object | None = None) -> dict[str, bool]:
-        opts = options if isinstance(options, dict) else {}
-        parent_candidate = opts.get("parentSession", opts.get("parent_session"))
-        parent_session = parent_candidate if isinstance(parent_candidate, str) else None
-        cwd = opts.get("cwd")
-        result = await self._run_new_session_operation(
-            cwd=cwd if isinstance(cwd, str | Path) else None,
-            parent_session=parent_session,
-            options=opts,
-        )
-        return {"cancelled": result.cancelled}
-
     async def switch_session(self, session_id: str | Path) -> AgentSession:
         return await self.restore_session(session_id)
-
-    async def switchSession(
-        self, session_path: str | Path, options: object | None = None
-    ) -> dict[str, bool]:
-        opts = options if isinstance(options, dict) else {}
-        result = await self._run_restore_session_operation(
-            session_path,
-            options=opts,
-        )
-        return {"cancelled": result.cancelled}
 
     async def restore_session(
         self,
@@ -364,12 +329,29 @@ class AgentSessionRuntime:
         fallback_cwd: str | Path | None = None,
         missing_cwd: Literal["error", "fallback"] = "error",
     ) -> AgentSession:
-        result = await self._run_restore_session_operation(
+        result = await self.restore_session_operation(
             session_id,
             fallback_cwd=fallback_cwd,
             missing_cwd=missing_cwd,
         )
-        return _require_operation_session(result)
+        return require_session_operation_session(result)
+
+    async def restore_session_operation(
+        self,
+        session_id: str | Path,
+        *,
+        fallback_cwd: str | Path | None = None,
+        missing_cwd: Literal["error", "fallback"] = "error",
+        with_session: object | None = None,
+    ) -> _SessionOperationResult:
+        """Restore a session and run an optional standard replacement callback."""
+        options = _replacement_callback_options(with_session=with_session)
+        return await self._run_restore_session_operation(
+            session_id,
+            fallback_cwd=fallback_cwd,
+            missing_cwd=missing_cwd,
+            options=options or None,
+        )
 
     async def _run_restore_session_operation(
         self,
@@ -379,9 +361,9 @@ class AgentSessionRuntime:
         missing_cwd: Literal["error", "fallback"] = "error",
         options: dict[str, object] | None = None,
     ) -> _SessionOperationResult:
-        session_file = self._resolve_session_file(session_id)
+        session_file = self.resolve_session_file(session_id)
         try:
-            return await self._lifecycle.restore(
+            return await super().restore_session_operation(
                 session_file,
                 fallback_cwd=(str(fallback_cwd) if fallback_cwd is not None else None),
                 missing_cwd=missing_cwd,
@@ -402,14 +384,29 @@ class AgentSessionRuntime:
     async def fork_session(
         self, entry_id: str, *, position: str = "at"
     ) -> AgentSession:
-        result = await self._run_fork_session_operation(entry_id, position=position)
-        return _require_operation_session(result)
+        result = await self.fork_session_operation(entry_id, position=position)
+        return require_session_operation_session(result)
+
+    async def fork_session_operation(
+        self,
+        entry_id: str | None,
+        *,
+        position: str = "at",
+        with_session: object | None = None,
+    ) -> _SessionOperationResult:
+        """Fork the active transcript and run an optional replacement callback."""
+        options = _replacement_callback_options(with_session=with_session)
+        return await self._run_fork_session_operation(
+            entry_id,
+            position=position,
+            options=options or None,
+        )
 
     async def fork_session_with_result(
         self, entry_id: str, *, position: str = "at"
     ) -> tuple[AgentSession, str | None]:
         result = await self._run_fork_session_operation(entry_id, position=position)
-        return _require_operation_session(result), result.payload
+        return require_session_operation_session(result), result.payload
 
     async def _run_fork_session_operation(
         self,
@@ -418,7 +415,7 @@ class AgentSessionRuntime:
         position: str = "at",
         options: dict[str, object] | None = None,
     ) -> _SessionOperationResult:
-        return await self._lifecycle.fork(
+        return await super().fork_session_operation(
             entry_id,
             position=position,
             metadata=self._lifecycle_metadata(
@@ -447,7 +444,7 @@ class AgentSessionRuntime:
 
     async def clone_session(self) -> AgentSession:
         result = await self._run_fork_session_operation(None)
-        return _require_operation_session(result)
+        return require_session_operation_session(result)
 
     async def clone(self) -> dict[str, bool]:
         result = await self._run_fork_session_operation(None)
@@ -464,9 +461,8 @@ class AgentSessionRuntime:
     ) -> _SessionOperationResult:
         source = Path(input_path).expanduser().resolve()
         try:
-            return await self._lifecycle.import_file(
+            return await super().import_session_operation(
                 source,
-                destination_dir=self.session_dir,
                 cwd_override=(str(cwd_override) if cwd_override is not None else None),
                 metadata=self._lifecycle_metadata(
                     operation="import_from_jsonl",
@@ -480,13 +476,8 @@ class AgentSessionRuntime:
         except HarnessMissingSessionCwdError as exc:
             raise _coding_missing_cwd_error(exc) from exc
 
-    async def importFromJsonl(
-        self, input_path: str | Path, cwd_override: str | Path | None = None
-    ) -> dict[str, bool]:
-        return await self.import_from_jsonl(input_path, cwd_override)
-
     async def replace_current_session(self, session: AgentSession) -> None:
-        await self._lifecycle.replace(
+        await super().replace_current_session(
             session,
             metadata=self._lifecycle_metadata(
                 operation="replace_current_session",
@@ -497,28 +488,17 @@ class AgentSessionRuntime:
         )
 
     def get_current_session(self) -> AgentSession | None:
-        return self._current_session
-
-    def list_sessions(self) -> list[SessionRecord]:
-        return SessionManager.list(self.session_dir)
-
-    def list_session_summaries(self) -> list[SessionSummary]:
-        return SessionManager.list_summaries(self.session_dir)
-
-    def find_session_summaries(
-        self, query: SessionQuery | None = None
-    ) -> list[SessionSummary]:
-        return SessionManager.find_sessions(self.session_dir, query)
+        return super().get_current_session()
 
     async def rename_session(
         self, session_id: str | Path, name: str | None
     ) -> SessionSummary:
         session_file: Path | None = None
         try:
-            session_file = self._resolve_session_file(session_id)
+            session_file = self.resolve_session_file(session_id)
             summary = await SessionManager.rename_session(session_file, name)
             if self.auto_refresh_session_index:
-                self._schedule_session_index_flush()
+                self.request_session_index_refresh()
             return summary
         except Exception as exc:
             self._record_session_operation_failure(
@@ -538,13 +518,13 @@ class AgentSessionRuntime:
     async def delete_session(self, session_id: str | Path) -> bool:
         session_file: Path | None = None
         try:
-            session_file = self._resolve_session_file(session_id)
+            session_file = self.resolve_session_file(session_id)
             deleted = await SessionManager.delete_session(
                 session_file,
                 current_session_file=_session_file_from_session(self._current_session),
             )
             if deleted and self.auto_refresh_session_index:
-                self._schedule_session_index_flush()
+                self.request_session_index_refresh()
             return deleted
         except Exception as exc:
             self._record_session_operation_failure(
@@ -560,142 +540,47 @@ class AgentSessionRuntime:
             )
             raise
 
-    def list_all_session_summaries(self) -> list[SessionSummary]:
-        return SessionManager.list_all_summaries(self.session_dir.parent)
-
-    def find_all_session_summaries(
-        self, query: SessionQuery | None = None
-    ) -> list[SessionSummary]:
-        return SessionManager.find_all_sessions(self.session_dir.parent, query)
-
-    def refresh_session_index(self) -> list[SessionSummary]:
-        return SessionManager.refresh_index(self.session_dir)
-
-    def refresh_all_session_indexes(self) -> list[SessionSummary]:
-        return SessionManager.refresh_all_indexes(self.session_dir.parent)
-
-    def list_indexed_session_summaries(
-        self, *, refresh: bool = False
-    ) -> list[SessionSummary]:
-        if self.auto_refresh_session_index and not refresh:
-            self._schedule_session_index_flush_if_due()
-        return SessionManager.list_indexed_summaries(self.session_dir, refresh=refresh)
-
-    def find_indexed_session_summaries(
-        self, query: SessionQuery | None = None
-    ) -> list[SessionSummary]:
-        return SessionManager.find_indexed_sessions(self.session_dir, query)
-
-    def list_all_indexed_session_summaries(
-        self, *, refresh: bool = False
-    ) -> list[SessionSummary]:
-        if self.auto_refresh_session_index and not refresh:
-            self._schedule_session_index_flush_if_due(all_sessions=True)
-        return SessionManager.list_all_indexed_summaries(
-            self.session_dir.parent, refresh=refresh
-        )
-
-    def find_all_indexed_session_summaries(
-        self, query: SessionQuery | None = None
-    ) -> list[SessionSummary]:
-        return SessionManager.find_all_indexed_sessions(self.session_dir.parent, query)
-
     def get_last_diagnostics(self, limit: int = 50) -> list[DiagnosticRecord]:
-        diagnostics_service = self._diagnostics_service
-        if diagnostics_service is None:
-            current_session = self._current_session
-            diagnostics_service = (
-                current_session.diagnostics_service
-                if current_session is not None
-                else None
-            )
-        if diagnostics_service is None:
-            return []
-        return diagnostics_service.get_last_diagnostics(limit=limit)
+        return self._session_diagnostics_runtime().get_last_diagnostics(limit=limit)
 
     def get_diagnostics(
         self, query: DiagnosticsQuery | None = None
     ) -> list[DiagnosticRecord]:
-        diagnostics_service = self._diagnostics_service
-        if diagnostics_service is None:
-            current_session = self._current_session
-            diagnostics_service = (
-                current_session.diagnostics_service
-                if current_session is not None
-                else None
-            )
-        if diagnostics_service is None:
-            return []
-        return diagnostics_service.get_diagnostics(query=query)
+        return self._session_diagnostics_runtime().get_diagnostics(query=query)
 
     def get_session_diagnostics(
         self, query: DiagnosticsQuery | None = None
     ) -> list[DiagnosticRecord]:
-        current_session = self._require_current_session()
-        getter = getattr(current_session, "get_session_diagnostics", None)
-        if callable(getter):
-            return getter(query)
-        diagnostics_service = (
-            self._diagnostics_service or current_session.diagnostics_service
-        )
-        if diagnostics_service is None:
-            return []
-        return diagnostics_service.get_diagnostics(
-            query=_diagnostics_query_for_session(query, current_session.session_id)
+        return self._session_diagnostics_runtime(self.session).get_session_diagnostics(
+            query=query
         )
 
     def get_diagnostics_summary(
         self, query: DiagnosticsQuery | None = None
     ) -> DiagnosticSummary:
-        diagnostics_service = self._diagnostics_service
-        if diagnostics_service is None:
-            current_session = self._current_session
-            diagnostics_service = (
-                current_session.diagnostics_service
-                if current_session is not None
-                else None
-            )
-        if diagnostics_service is None:
-            return DiagnosticsService().get_diagnostics_summary(query=query)
-        return diagnostics_service.get_diagnostics_summary(query=query)
+        return self._session_diagnostics_runtime().get_diagnostics_summary(query=query)
 
     def get_session_diagnostics_summary(
         self, query: DiagnosticsQuery | None = None
     ) -> DiagnosticSummary:
-        current_session = self._require_current_session()
-        diagnostics_service = (
-            self._diagnostics_service or current_session.diagnostics_service
-        )
-        if diagnostics_service is None:
-            return DiagnosticsService().get_diagnostics_summary(query=query)
-        return diagnostics_service.get_diagnostics_summary(
-            query=_diagnostics_query_for_session(query, current_session.session_id)
-        )
+        return self._session_diagnostics_runtime(
+            self.session
+        ).get_session_diagnostics_summary(query=query)
 
     def get_last_error_report(self) -> ErrorReport | None:
-        diagnostics_service = self._diagnostics_service
-        if diagnostics_service is None:
-            current_session = self._current_session
-            diagnostics_service = (
-                current_session.diagnostics_service
-                if current_session is not None
-                else None
-            )
-        if diagnostics_service is None:
-            return None
-        return diagnostics_service.get_last_error_report()
+        return self._session_diagnostics_runtime().get_last_error_report()
 
     def get_packages(
         self, *, catalog_path: str | None = None
     ) -> list[dict[str, object]]:
-        current_session = self._require_current_session()
+        current_session = self.session
         getter = getattr(current_session, "get_packages", None)
         if not callable(getter):
             return []
         return getter(catalog_path=catalog_path)
 
     async def materialize_package(self, source: str) -> dict[str, object]:
-        current_session = self._require_current_session()
+        current_session = self.session
         materialize = getattr(current_session, "materialize_package", None)
         if not callable(materialize):
             raise RuntimeError("Package materializer is not available.")
@@ -707,7 +592,7 @@ class AgentSessionRuntime:
     async def install_package(
         self, source: str, *, scope: str = "project"
     ) -> dict[str, object]:
-        current_session = self._require_current_session()
+        current_session = self.session
         install = getattr(current_session, "install_package", None)
         if not callable(install):
             raise RuntimeError("Package installation is not available.")
@@ -717,7 +602,7 @@ class AgentSessionRuntime:
         return result
 
     async def update_package(self, source: str) -> dict[str, object]:
-        current_session = self._require_current_session()
+        current_session = self.session
         update = getattr(current_session, "update_package", None)
         if not callable(update):
             raise RuntimeError("Package materializer is not available.")
@@ -727,7 +612,7 @@ class AgentSessionRuntime:
         return result
 
     async def update_packages(self) -> list[dict[str, object]]:
-        current_session = self._require_current_session()
+        current_session = self.session
         update = getattr(current_session, "update_packages", None)
         if not callable(update):
             raise RuntimeError("Package update is not available.")
@@ -737,7 +622,7 @@ class AgentSessionRuntime:
         return result
 
     async def check_package_updates(self) -> list[dict[str, object]]:
-        current_session = self._require_current_session()
+        current_session = self.session
         check = getattr(current_session, "check_package_updates", None)
         if not callable(check):
             raise RuntimeError("Package update check is not available.")
@@ -747,7 +632,7 @@ class AgentSessionRuntime:
         return result
 
     async def remove_package(self, source: str) -> dict[str, object]:
-        current_session = self._require_current_session()
+        current_session = self.session
         remove = getattr(current_session, "remove_package", None)
         if not callable(remove):
             raise RuntimeError("Package materializer is not available.")
@@ -759,7 +644,7 @@ class AgentSessionRuntime:
     async def uninstall_package(
         self, source: str, *, scope: str = "project"
     ) -> dict[str, object]:
-        current_session = self._require_current_session()
+        current_session = self.session
         uninstall = getattr(current_session, "uninstall_package", None)
         if not callable(uninstall):
             raise RuntimeError("Package uninstallation is not available.")
@@ -769,14 +654,9 @@ class AgentSessionRuntime:
         return result
 
     async def dispose(self) -> None:
-        await self.drain_session_index_flush()
-        await self._lifecycle.dispose(
-            reason="quit",
+        await self.dispose_session_runtime(
             metadata=self._lifecycle_metadata(operation="dispose"),
         )
-
-    async def drain_session_index_flush(self) -> None:
-        await self._session_index_flush.drain()
 
     def _lifecycle_metadata(
         self,
@@ -873,12 +753,12 @@ class AgentSessionRuntime:
         result: _SessionOperationResult,
         transition: SessionLifecycleTransition,
     ) -> None:
-        session = _require_operation_session(result)
+        session = require_session_operation_session(result)
         if (
             self.auto_refresh_session_index
             and transition.metadata.get("schedule_index", True) is not False
         ):
-            self._schedule_session_index_flush()
+            self.request_session_index_refresh()
         options = transition.metadata.get("options")
         if isinstance(options, dict):
             await self._run_replacement_callbacks(
@@ -950,51 +830,6 @@ class AgentSessionRuntime:
         finally:
             self._sync_session_extension_diagnostics(session)
 
-    def _refresh_session_index_now(self) -> list[SessionSummary]:
-        summaries = SessionManager.refresh_index(self.session_dir)
-        self._last_session_index_refresh = monotonic()
-        return summaries
-
-    def _refresh_all_session_indexes_now(self) -> list[SessionSummary]:
-        summaries = SessionManager.refresh_all_indexes(self.session_dir.parent)
-        self._last_session_index_refresh = monotonic()
-        return summaries
-
-    def _flush_session_index_now(
-        self, *, all_sessions: bool, raise_on_error: bool = True
-    ) -> list[SessionSummary]:
-        try:
-            if all_sessions:
-                return self._refresh_all_session_indexes_now()
-            return self._refresh_session_index_now()
-        except Exception as exc:
-            self._record_session_index_flush_failure(exc, all_sessions=all_sessions)
-            if raise_on_error:
-                raise
-            return []
-
-    def _schedule_session_index_flush_if_due(
-        self, *, all_sessions: bool = False
-    ) -> None:
-        if self._session_index_refresh_due():
-            self._schedule_session_index_flush(all_sessions=all_sessions)
-
-    def _schedule_session_index_flush(self, *, all_sessions: bool = False) -> None:
-        self._session_index_flush.delay_seconds = self.session_index_flush_delay
-        self._session_index_flush.schedule(all_sessions)
-
-    def _flush_scheduled_session_index(self, all_sessions: bool) -> None:
-        self._flush_session_index_now(
-            all_sessions=all_sessions,
-            raise_on_error=False,
-        )
-
-    def _session_index_refresh_due(self) -> bool:
-        return (
-            monotonic() - self._last_session_index_refresh
-            >= self.session_index_refresh_interval
-        )
-
     def _create_session(
         self, manager: SessionManager, start_event: SessionStartEvent
     ) -> AgentSession:
@@ -1042,6 +877,23 @@ class AgentSessionRuntime:
                 "all_sessions": all_sessions,
                 "session_dir": str(self.session_dir),
             },
+        )
+
+    def _session_diagnostics_runtime(
+        self,
+        session: AgentSession | None = None,
+    ) -> SessionDiagnosticsRuntime:
+        active_session = session or self._current_session
+        diagnostics_service = self._diagnostics_service or getattr(
+            active_session,
+            "diagnostics_service",
+            None,
+        )
+        session_id = _session_id_from_session(active_session) or ""
+        return SessionDiagnosticsRuntime(
+            diagnostics_service=diagnostics_service,
+            get_scope=lambda: SessionDiagnosticScope(session_id=session_id),
+            get_extension_diagnostics=lambda: None,
         )
 
     def _record_session_operation_failure(
@@ -1180,36 +1032,6 @@ class AgentSessionRuntime:
         except Exception:
             return
 
-    def _require_current_session(self) -> AgentSession:
-        if self._current_session is None:
-            raise RuntimeError("No active session")
-        return self._current_session
-
-    def _resolve_session_file(self, session_id: str | Path) -> Path:
-        candidate = Path(session_id).expanduser()
-        if candidate.exists():
-            return candidate.resolve()
-
-        session_name = candidate.name
-        matches = sorted(self.session_dir.glob(f"*_{session_name}.jsonl"))
-        if len(matches) == 1:
-            return matches[0]
-        if len(matches) > 1:
-            raise ValueError(f"Ambiguous session reference: {session_name}")
-        prefix_matches = [
-            summary
-            for summary in self.list_session_summaries()
-            if summary.session_file is not None
-            and summary.session_id.startswith(session_name)
-        ]
-        if len(prefix_matches) == 1 and prefix_matches[0].session_file is not None:
-            return prefix_matches[0].session_file
-        if len(prefix_matches) > 1:
-            raise ValueError(f"Ambiguous session reference: {session_name}")
-        raise FileNotFoundError(
-            errno.ENOENT, "No such file or directory", str(candidate)
-        )
-
     def _resolve_import_cwd(self, cwd: str | Path) -> str:
         candidate = Path(cwd).expanduser()
         if not candidate.exists():
@@ -1236,14 +1058,6 @@ def _accepts_session_start_event(factory: SessionFactory) -> bool:
         parameter.kind == inspect.Parameter.VAR_KEYWORD or name == "session_start_event"
         for name, parameter in signature.parameters.items()
     )
-
-
-def _require_operation_session(
-    result: _SessionOperationResult,
-) -> AgentSession:
-    if result.current is None:
-        raise RuntimeError("Session operation completed without an active session")
-    return result.current
 
 
 def _session_id_from_session(session: object) -> str | None:
@@ -1300,26 +1114,26 @@ async def _dispose_session_only(session: AgentSession) -> None:
     await dispose()
 
 
-def _diagnostics_query_for_session(
-    query: DiagnosticsQuery | None, session_id: str
-) -> DiagnosticsQuery:
-    if query is None:
-        return DiagnosticsQuery(session_id=session_id)
-    return replace(query, session_id=session_id)
-
-
 def _create_replaced_session_context(session: AgentSession) -> object:
     create_context = getattr(session, "create_replaced_session_context", None)
     if callable(create_context):
         return create_context()
-    create_context = getattr(session, "createReplacedSessionContext", None)
-    if callable(create_context):
-        return create_context()
     session_manager = getattr(session, "session_manager", None)
     cwd = session_manager.get_cwd() if session_manager is not None else None
-    return SimpleNamespace(
-        cwd=cwd, sessionManager=session_manager, session_manager=session_manager
-    )
+    return SimpleNamespace(cwd=cwd, session_manager=session_manager)
+
+
+def _replacement_callback_options(
+    *,
+    setup: object | None = None,
+    with_session: object | None = None,
+) -> dict[str, object]:
+    options: dict[str, object] = {}
+    if setup is not None:
+        options["setup"] = setup
+    if with_session is not None:
+        options["with_session"] = with_session
+    return options
 
 
 def _sync_agent_messages_from_session_manager(session: AgentSession) -> None:

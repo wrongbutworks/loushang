@@ -94,9 +94,10 @@ Coding and future Product adapters retain:
 Coding's `ExtensionRuntimeBindings` is now only a typed specialization of
 `ProductRuntimeBindings`. Its extension context classes are zero-logic naming
 adapters over Harness contexts. `AgentSessionRuntime` supplies product callbacks
-to `SessionTransitionHost`, `SessionOperationCoordinator`, navigation
-transactions, and `CoalescingScheduler` while keeping every Coding-specific
-session decision and projection.
+to `SessionTransitionHost` and navigation transactions while keeping every
+Coding-specific session decision and projection. `AgentTranscriptDirectoryRuntime`
+owns the reusable catalog queries, index refresh, and coalesced refresh
+scheduling that it consumes.
 
 ## Explicit Non-Goals
 

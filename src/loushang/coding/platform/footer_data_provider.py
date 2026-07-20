@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from loushang.coding.platform.git import find_git_paths, get_git_branch
+from loushang.harness.workspace.git import find_git_paths, get_git_branch
 
 BranchResolver = Callable[[str | Path], str | None]
 BranchChangeCallback = Callable[[str | None], None]

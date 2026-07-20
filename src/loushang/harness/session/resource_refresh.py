@@ -99,6 +99,16 @@ class SessionResourceRefreshRuntime:
             return
         self.sync_extension_diagnostics()
 
+    async def refresh_resources(self) -> None:
+        """Refresh the bound resource bundle through the standard session port."""
+
+        await self.refresh_async(reason="refresh")
+
+    def request_resource_refresh(self) -> None:
+        """Request a best-effort refresh for callers that cannot await it."""
+
+        self.request_refresh()
+
     def _load_resource_bundle(self) -> ResourceBundle | None:
         resource_loader = self.get_resource_loader()
         if resource_loader is None:

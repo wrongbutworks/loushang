@@ -27,6 +27,20 @@ _CommandDescriptorT = TypeVar("_CommandDescriptorT")
 
 
 @dataclass(frozen=True, slots=True)
+class CommandInteractionPresentationCopy(Generic[_CommandDescriptorT]):
+    """Product wording and item projection for a command resolution."""
+
+    list_items: Callable[[tuple[_CommandDescriptorT, ...]], str]
+    item_text: Callable[[_CommandDescriptorT], str]
+    cancelled: str
+    empty: str
+    no_match: Callable[[str], str]
+    ambiguous_title: str
+    ambiguous_hint: str
+    selected_prefix: str
+
+
+@dataclass(frozen=True, slots=True)
 class CommandInteractionSnapshot(Generic[_CommandDescriptorT]):
     """A product-prepared, immutable view of available command descriptors.
 
@@ -130,6 +144,32 @@ async def run_command_interaction(
     return resolve_command_interaction(snapshot, query=selected)
 
 
+def present_command_interaction(
+    result: CommandInteractionResult[_CommandDescriptorT],
+    *,
+    copy: CommandInteractionPresentationCopy[_CommandDescriptorT],
+) -> str:
+    """Present one structural command resolution using product-owned copy."""
+
+    if result.kind == "list":
+        return copy.list_items(result.matches)
+    if result.kind == "cancelled":
+        return copy.cancelled
+    if result.kind == "empty":
+        return copy.no_match(result.query) if result.query else copy.empty
+    if result.kind == "ambiguous":
+        return "\n".join(
+            (
+                copy.ambiguous_title,
+                *(f"  {copy.item_text(item)}" for item in result.matches),
+                copy.ambiguous_hint,
+            )
+        )
+    if result.item is not None:
+        return f"{copy.selected_prefix}{copy.item_text(result.item)}"
+    return copy.empty
+
+
 def _command_entries(
     snapshot: CommandInteractionSnapshot[_CommandDescriptorT],
 ) -> tuple[_CommandEntry[_CommandDescriptorT], ...]:
@@ -184,9 +224,11 @@ def _matching_entries(
 
 __all__ = [
     "CommandInteractionKind",
+    "CommandInteractionPresentationCopy",
     "CommandInteractionResult",
     "CommandInteractionSnapshot",
     "CommandPaletteChooser",
+    "present_command_interaction",
     "resolve_command_interaction",
     "run_command_interaction",
 ]

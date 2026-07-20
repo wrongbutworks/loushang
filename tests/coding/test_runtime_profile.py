@@ -198,10 +198,8 @@ def test_agent_session_uses_and_disposes_selected_compaction_runtime(tmp_path) -
         session = create_agent_session(session_manager=manager, model=_model())
         capability_runtime = session._capability_runtime
 
-        assert (
-            session._compaction_controller.compaction_capability
-            is compaction_capability
-        )
+        assert session._compaction_capability is compaction_capability
+        assert session._compaction_runtime._get_policy() == compaction_capability.policy
         assert capability_runtime is not None
         assert (
             session._tool_controller.prompt_section_composer

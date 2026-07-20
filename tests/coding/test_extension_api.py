@@ -520,7 +520,7 @@ def test_extension_api_v2_core_types_include_session_control_hooks() -> None:
     assert SessionActionDecision(cancel=True).cancel is True
 
 
-def test_extension_api_uses_public_model_selection_type_for_runtime_bindings() -> None:
+def test_extension_api_uses_product_neutral_runtime_context_contract() -> None:
     import inspect
     from collections.abc import Awaitable, Callable
     from typing import get_args, get_origin, get_type_hints
@@ -530,38 +530,43 @@ def test_extension_api_uses_public_model_selection_type_for_runtime_bindings() -
         ExtensionContext,
         ExtensionRuntimeBindings,
     )
-    from loushang.coding.types import ModelSelection
+    from loushang.harness.extensions.context import (
+        ExtensionContext as HarnessExtensionContext,
+    )
+    from loushang.harness.runtime import ProductRuntimeBindings
 
     get_model_selection_hints = get_type_hints(ExtensionContext.get_model_selection)
     set_model_hints = get_type_hints(ExtensionContext.set_model)
     set_active_tools_hints = get_type_hints(ExtensionContext.set_active_tools)
-    send_message_hints = get_type_hints(ExtensionContext.sendMessage)
-    send_user_message_hints = get_type_hints(ExtensionContext.sendUserMessage)
+    send_message_hints = get_type_hints(ExtensionContext.send_message)
+    send_user_message_hints = get_type_hints(ExtensionContext.send_user_message)
     runtime_binding_hints = get_type_hints(ExtensionRuntimeBindings)
 
-    assert get_model_selection_hints["return"] == ModelSelection | None
-    assert set_model_hints["selection"] == ModelSelection
+    assert ExtensionContext is HarnessExtensionContext
+    assert ExtensionRuntimeBindings is ProductRuntimeBindings
+    assert get_model_selection_hints["return"] == object | None
+    assert set_model_hints["selection"] is object
     assert set_model_hints["return"] is type(None)
     assert set_active_tools_hints["return"] is type(None)
     assert send_message_hints["return"] is type(None)
     assert send_user_message_hints["return"] is type(None)
     assert inspect.iscoroutinefunction(ExtensionContext.set_model)
     assert inspect.iscoroutinefunction(ExtensionContext.set_active_tools)
-    assert inspect.iscoroutinefunction(ExtensionContext.appendEntry)
-    assert inspect.iscoroutinefunction(ExtensionContext.setSessionName)
-    assert inspect.iscoroutinefunction(ExtensionContext.setLabel)
-    assert inspect.iscoroutinefunction(ExtensionContext.setThinkingLevel)
-    assert inspect.iscoroutinefunction(ExtensionContext.sendMessage)
-    assert inspect.iscoroutinefunction(ExtensionContext.sendUserMessage)
-    assert inspect.iscoroutinefunction(ExtensionCommandContext.sendMessage)
-    assert inspect.iscoroutinefunction(ExtensionCommandContext.sendUserMessage)
-    assert inspect.iscoroutinefunction(ExtensionCommandContext.appendEntry)
-    assert inspect.iscoroutinefunction(ExtensionCommandContext.setSessionName)
-    assert inspect.iscoroutinefunction(ExtensionCommandContext.setLabel)
+    assert inspect.iscoroutinefunction(ExtensionContext.append_entry)
+    assert inspect.iscoroutinefunction(ExtensionContext.set_session_name)
+    assert inspect.iscoroutinefunction(ExtensionContext.set_label)
+    assert inspect.iscoroutinefunction(ExtensionContext.set_thinking_level)
+    assert inspect.iscoroutinefunction(ExtensionContext.send_message)
+    assert inspect.iscoroutinefunction(ExtensionContext.send_user_message)
+    assert inspect.iscoroutinefunction(ExtensionCommandContext.send_message)
+    assert inspect.iscoroutinefunction(ExtensionCommandContext.send_user_message)
+    assert inspect.iscoroutinefunction(ExtensionCommandContext.append_entry)
+    assert inspect.iscoroutinefunction(ExtensionCommandContext.set_session_name)
+    assert inspect.iscoroutinefunction(ExtensionCommandContext.set_label)
 
     get_model_selection_binding = runtime_binding_hints["get_model_selection"]
     assert get_origin(get_model_selection_binding) is Callable
-    assert get_args(get_model_selection_binding) == ([], ModelSelection | None)
+    assert get_args(get_model_selection_binding) == ([], object | None)
 
     set_active_tools_binding = runtime_binding_hints["set_active_tools"]
     assert get_origin(set_active_tools_binding) is Callable
@@ -569,7 +574,7 @@ def test_extension_api_uses_public_model_selection_type_for_runtime_bindings() -
 
     set_model_binding = runtime_binding_hints["set_model"]
     assert get_origin(set_model_binding) is Callable
-    assert get_args(set_model_binding) == ([ModelSelection], Awaitable[None])
+    assert get_args(set_model_binding) == ([object], Awaitable[None])
 
     for binding_name in (
         "append_entry",

@@ -5,8 +5,8 @@ import asyncio
 from loushang.coding.types import ModelSelection
 
 
-def test_load_coding_tui_startup_snapshot_resolves_model_and_session_metadata() -> None:
-    from loushang.coding.ui.startup import load_coding_tui_startup_snapshot
+def test_load_coding_tui_startup_view_resolves_model_and_session_metadata() -> None:
+    from loushang.coding.ui.startup import load_coding_tui_startup_view
 
     class Runtime:
         def get_cwd(self) -> str:
@@ -28,7 +28,9 @@ def test_load_coding_tui_startup_snapshot_resolves_model_and_session_metadata() 
         async def set_model(self, selection: ModelSelection) -> None:
             self.selection = selection
 
-    snapshot = asyncio.run(load_coding_tui_startup_snapshot(runtime=Runtime(), session=Session()))
+    snapshot = asyncio.run(
+        load_coding_tui_startup_view(runtime=Runtime(), session=Session())
+    )
 
     assert snapshot.model_label == "moonshot/kimi-for-coding"
     assert snapshot.cwd == "/tmp/project"

@@ -1014,7 +1014,7 @@ def test_rpc_mode_can_include_rendered_tool_event_payloads() -> None:
     def get_tool_definition(name):
         return definition if name == "bash" else None
 
-    session.getToolDefinition = get_tool_definition
+    session.get_tool_definition = get_tool_definition
     runtime = FakeRuntime(session)
     stdout = StringIO()
 
@@ -3898,21 +3898,10 @@ def test_rpc_mode_get_state_returns_error_when_state_serialization_fails() -> No
     ]
 
 
-def test_rpc_mode_get_state_prefers_public_snake_case_payload() -> None:
+def test_rpc_mode_get_state_uses_standard_session_state() -> None:
     from loushang.coding.mode import RpcMode
 
-    class SnakeCaseStateSession(FakeSession):
-        def get_session_state(self) -> dict[str, object]:
-            return {
-                "sessionId": self.session_id,
-                "runStatus": "running",
-                "customFlag": True,
-            }
-
-        def get_state(self):  # type: ignore[override]
-            raise RuntimeError("legacy state should not be queried")
-
-    session = SnakeCaseStateSession(session_id="session-a", cwd="/tmp/project")
+    session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
     stdin = StringIO(json.dumps({"id": "state", "type": "get_state"}) + "\n")
     stdout = StringIO()
@@ -3932,8 +3921,16 @@ def test_rpc_mode_get_state_prefers_public_snake_case_payload() -> None:
             "success": True,
             "data": {
                 "sessionId": "session-a",
-                "runStatus": "running",
-                "customFlag": True,
+                "model": None,
+                "isStreaming": False,
+                "isCompacting": False,
+                "steeringMode": "one-at-a-time",
+                "followUpMode": "one-at-a-time",
+                "autoCompactionEnabled": True,
+                "messageCount": 0,
+                "pendingMessageCount": 0,
+                "thinkingLevel": "off",
+                "sessionFile": "/tmp/project/session-a.jsonl",
             },
         },
     ]
@@ -4228,17 +4225,14 @@ def test_rpc_mode_get_last_assistant_text_handles_extraction_errors() -> None:
     ]
 
 
-def test_rpc_mode_get_last_assistant_text_accepts_pi_style_session_method() -> None:
+def test_rpc_mode_get_last_assistant_text_uses_standard_session_method() -> None:
     from loushang.coding.mode import RpcMode
 
-    class PiStyleLastAssistantSession(FakeSession):
+    class StandardLastAssistantSession(FakeSession):
         def get_last_assistant_text(self):
-            raise AttributeError("snake method unavailable")
-
-        def getLastAssistantText(self):
             return "latest"
 
-    session = PiStyleLastAssistantSession(session_id="session-a", cwd="/tmp/project")
+    session = StandardLastAssistantSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
     stdin = StringIO(
         json.dumps({"id": "last", "type": "get_last_assistant_text"}) + "\n"
@@ -4604,17 +4598,14 @@ def test_rpc_mode_supports_clone_and_get_fork_messages() -> None:
     }
 
 
-def test_rpc_mode_get_fork_messages_accepts_pi_style_session_method() -> None:
+def test_rpc_mode_get_fork_messages_uses_standard_session_method() -> None:
     from loushang.coding.mode import RpcMode
 
-    class PiStyleForkSession(FakeSession):
+    class StandardForkSession(FakeSession):
         def get_user_messages_for_forking(self):
-            raise AttributeError("snake method unavailable")
+            return [{"entry_id": "u1", "text": "first"}]
 
-        def getUserMessagesForForking(self):
-            return [{"entryId": "u1", "text": "first"}]
-
-    session = PiStyleForkSession(session_id="session-a", cwd="/tmp/project")
+    session = StandardForkSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
     stdin = StringIO(
         json.dumps({"id": "fork-messages", "type": "get_fork_messages"}) + "\n"
@@ -4865,15 +4856,6 @@ def test_rpc_mode_exposes_extension_ui_state_snapshot() -> None:
     mode.extension_ui_context.set_title("Deploying")
     mode.extension_ui_context.set_editor_text("next prompt")
     mode.extension_ui_context.set_widget("summary", ["line 1"], placement="belowEditor")
-    mode.extension_ui_context.addAutocompleteProvider(lambda current: current)
-    mode.extension_ui_context.setWorkingMessage("Running")
-    mode.extension_ui_context.setWorkingVisible(False)
-    mode.extension_ui_context.setWorkingIndicator({"frames": ["-"]})
-    mode.extension_ui_context.setHiddenThinkingLabel("Thinking")
-    mode.extension_ui_context.setFooter(lambda: None)
-    mode.extension_ui_context.setHeader(lambda: None)
-    mode.extension_ui_context.setEditorComponent(lambda: None)
-    mode.extension_ui_context.setToolsExpanded(True)
     mode._handle_get_extension_ui_state_command("ui-state", {})
 
     response = _parse_jsonl(stdout)[-1]
@@ -4888,15 +4870,6 @@ def test_rpc_mode_exposes_extension_ui_state_snapshot() -> None:
             "widgets": {"summary": {"lines": ["line 1"], "placement": "belowEditor"}},
             "title": "Deploying",
             "editorText": "next prompt",
-            "workingMessage": "Running",
-            "workingVisible": False,
-            "workingIndicator": {"frames": ["-"]},
-            "hiddenThinkingLabel": "Thinking",
-            "hasFooter": True,
-            "hasHeader": True,
-            "hasEditorComponent": True,
-            "autocompleteProviderCount": 1,
-            "toolsExpanded": True,
         },
     }
 
@@ -5043,7 +5016,7 @@ def test_rpc_mode_binds_extension_context_ui_methods_to_rpc_requests(tmp_path) -
     ]
 
 
-def test_rpc_mode_extension_context_supports_pi_style_camel_case_ui_methods(
+def test_rpc_mode_extension_context_excludes_pi_style_camel_case_ui_methods(
     tmp_path,
 ) -> None:
     from loushang.agent import Agent
@@ -5080,21 +5053,12 @@ def test_rpc_mode_extension_context_supports_pi_style_camel_case_ui_methods(
 
     RpcMode(runtime=runtime, stdin=StringIO(""), stdout=stdout)
     context = extension_runner.create_command_context(fallback_cwd="/tmp/project")
-    context.setStatus("deploy", "running")
-    context.setTitle("Deploying")
-    context.setEditorText("next prompt")
-    context.setWidget("summary", ["line"], placement="belowEditor")
-
-    requests = _parse_jsonl(stdout)
-    assert [request["method"] for request in requests] == [
-        "setStatus",
-        "setTitle",
-        "set_editor_text",
-        "setWidget",
-    ]
+    for method_name in ("setStatus", "setTitle", "setEditorText", "setWidget"):
+        assert not hasattr(context, method_name)
+    assert _parse_jsonl(stdout) == []
 
 
-def test_rpc_mode_extension_context_supports_pi_style_ui_namespace(tmp_path) -> None:
+def test_rpc_mode_extension_context_ui_namespace_is_snake_case_only(tmp_path) -> None:
     from loushang.agent import Agent
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.mode import RpcMode
@@ -5129,10 +5093,12 @@ def test_rpc_mode_extension_context_supports_pi_style_ui_namespace(tmp_path) -> 
 
     RpcMode(runtime=runtime, stdin=StringIO(""), stdout=stdout)
     context = extension_runner.create_command_context(fallback_cwd="/tmp/project")
-    assert context.hasUI is True
-    context.ui.setStatus("deploy", "running")
-    context.ui.setTitle("Deploying")
-    context.ui.setEditorText("next prompt")
+    assert context.has_ui is True
+    for method_name in ("setStatus", "setTitle", "setEditorText"):
+        assert not hasattr(context.ui, method_name)
+    context.ui.set_status("deploy", "running")
+    context.ui.set_title("Deploying")
+    context.ui.set_editor_text("next prompt")
 
     requests = _parse_jsonl(stdout)
     assert [request["method"] for request in requests] == [
@@ -5142,7 +5108,7 @@ def test_rpc_mode_extension_context_supports_pi_style_ui_namespace(tmp_path) -> 
     ]
 
 
-def test_rpc_mode_extension_context_records_pi_style_headless_ui_methods(
+def test_rpc_mode_extension_context_excludes_pi_style_headless_ui_methods(
     tmp_path,
 ) -> None:
     from loushang.agent import Agent
@@ -5179,26 +5145,23 @@ def test_rpc_mode_extension_context_records_pi_style_headless_ui_methods(
 
     RpcMode(runtime=runtime, stdin=StringIO(""), stdout=stdout)
     ui = extension_runner.create_command_context(fallback_cwd="/tmp/project").ui
-    unsubscribe = ui.onTerminalInput(lambda data: None)
-    ui.setWorkingMessage("Running")
-    ui.setWorkingVisible(False)
-    ui.setWorkingIndicator({"frames": ["-"]})
-    ui.setHiddenThinkingLabel("Thinking")
-    ui.setFooter(lambda: None)
-    ui.setHeader(lambda: None)
-    ui.addAutocompleteProvider(lambda current: current)
-    ui.setEditorComponent(lambda: None)
-    ui.setToolsExpanded(True)
-
-    assert callable(unsubscribe)
-    unsubscribe()
-    assert ui.getAllThemes() == []
-    assert ui.getTheme("dark") is None
-    assert ui.setTheme("dark") == {
-        "success": False,
-        "error": "Theme switching not supported in RPC mode",
-    }
-    assert ui.getToolsExpanded() is True
+    for method_name in (
+        "onTerminalInput",
+        "setWorkingMessage",
+        "setWorkingVisible",
+        "setWorkingIndicator",
+        "setHiddenThinkingLabel",
+        "setFooter",
+        "setHeader",
+        "addAutocompleteProvider",
+        "setEditorComponent",
+        "getAllThemes",
+        "getTheme",
+        "setTheme",
+        "getToolsExpanded",
+        "setToolsExpanded",
+    ):
+        assert not hasattr(ui, method_name)
     assert _parse_jsonl(stdout) == []
 
 

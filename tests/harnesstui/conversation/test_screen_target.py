@@ -5,13 +5,16 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from loushang.harnesstui.conversation.projection import ConversationProjector
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.harnesstui.conversation.screen_target import (
     ScreenConversationProjectionTarget,
+    build_screen_conversation_projection,
 )
 from loushang.harnesstui.conversation.tool_transcript import (
     ToolCallSnapshot,
     ToolTranscriptBlock,
+    ToolTranscriptProjector,
 )
 from loushang.tui.transcript import (
     ContextCompactionRecord,
@@ -66,9 +69,7 @@ class _RecordingApp:
         summary: str = "",
         tokens_before: int | None = None,
     ) -> None:
-        self.events.append(
-            ("append_context_compaction_record", summary, tokens_before)
-        )
+        self.events.append(("append_context_compaction_record", summary, tokens_before))
         self.state.records.append(
             ContextCompactionRecord(
                 summary=summary,
@@ -90,9 +91,7 @@ class _RecordingCopy:
         delay_ms: int | float | None,
         error_message: str | None,
     ) -> str:
-        self.events.append(
-            ("retry", attempt, max_attempts, delay_ms, error_message)
-        )
+        self.events.append(("retry", attempt, max_attempts, delay_ms, error_message))
         return "custom retry"
 
     def compaction_started_status(self, *, reason: str | None) -> str:
@@ -332,10 +331,40 @@ def test_screen_target_delegates_status_copy_and_compaction_recording() -> None:
         ("set_status", "custom compaction done"),
     ]
     assert [
-        event
-        for event in app.events
-        if event[0] == "append_context_compaction_record"
+        event for event in app.events if event[0] == "append_context_compaction_record"
     ] == [("append_context_compaction_record", "condensed", 30)]
     assert app.state.records == [
         ContextCompactionRecord(summary="condensed", tokens_before=30)
     ]
+
+
+def test_screen_projection_builder_owns_target_projector_and_event_binding() -> None:
+    app = _RecordingApp()
+    copy = _RecordingCopy()
+    events: list[str] = []
+    seen_projectors: list[ConversationProjector] = []
+
+    def event_handler_factory(
+        projector: ConversationProjector,
+    ) -> object:
+        seen_projectors.append(projector)
+        return events.append
+
+    binding = build_screen_conversation_projection(
+        app,
+        tool_projector=ToolTranscriptProjector(),
+        tool_title_resolver=_tool_title,
+        tool_record_projector=_tool_record,
+        status_copy=copy,
+        event_handler_factory=event_handler_factory,  # type: ignore[arg-type]
+        now=lambda: 7.0,
+    )
+    binding.handle("event")
+
+    assert seen_projectors == [binding.projector]
+    assert isinstance(binding.projector.target, ScreenConversationProjectionTarget)
+    assert binding.projector.target.app is app
+    assert binding.projector.target.status_copy is copy
+    assert binding.projector.track_rendered_tool_results is False
+    assert binding.projector.now() == 7.0
+    assert events == ["event"]

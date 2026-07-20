@@ -6,7 +6,7 @@ from typing import Any
 
 from loushang.coding.event.presentation_policy import is_cancelled_error_message
 from loushang.coding.presentation.tui.tool_transcript import (
-    ToolTranscriptProjector,
+    CodingToolTranscriptProjection,
 )
 from loushang.harnesstui.conversation.projection import ConversationProjector
 
@@ -18,7 +18,7 @@ class CodingConversationEventAdapter:
     """Translate raw Coding events into product-neutral conversation facts."""
 
     projector: ConversationProjector
-    tool_projector: ToolTranscriptProjector
+    tool_projector: CodingToolTranscriptProjection
     read_pending_steers: QueueReader = tuple
     read_pending_followups: QueueReader = tuple
     recover_tool_updates: bool = True
