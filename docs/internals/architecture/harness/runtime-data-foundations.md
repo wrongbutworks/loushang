@@ -134,15 +134,19 @@ score unresolved decisions. Those meanings do not enter Harness.
 - tagged serialized-content and previous-summary blocks;
 - append or replace custom instructions;
 - Product-defined required sections and placeholder markers;
-- optional Product block tags ignored during structural validation.
+- optional Product block tags ignored during structural validation;
+- profile-declared `SummaryResourceOperationTag` mappings, including the standard
+  `read-files` / `modified-files` tags where appropriate.
 
-Coding keeps its existing compaction, update, turn-prefix, and branch prompt
-text in `coding.compaction.profiles`. Coding also keeps message-to-text
-serialization, file-operation blocks, model completion, retry, Product role
-mappings, tool-result interpretation, and summary artifact semantics. Harness
-owns the generic split-turn and non-cut-role planning mechanism. Coding's public
-`SummaryQualityReport` is preserved while delegating generic section validation
-to Harness.
+Harness also owns profile-driven summary fixture evaluation and the neutral
+`SummaryResourceOperations` evidence model. Each fixture case resolves a
+Product-supplied profile independently; the evaluator parses only tags declared
+by that profile and never imports a Product package. Coding keeps its
+compaction, update, turn-prefix, and branch prompt text in
+`coding.compaction.profiles`, its message-to-text serialization, production
+summary decoration, model completion, retry, Product role mappings,
+tool-result interpretation, and summary artifact semantics. Harness owns the
+generic split-turn/non-cut-role planning and summary evaluation mechanisms.
 
 ## Compatibility And Failure Semantics
 

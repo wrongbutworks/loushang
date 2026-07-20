@@ -42,7 +42,8 @@
 - `CompactionBudget` (owned by `loushang.harness.context.budget`)
 - `SummaryEvaluationCase`
 - `SummaryEvaluationResult`
-- `SummaryQualityReport`
+- `SummaryResourceOperations`
+- `SummaryValidationReport`
 - `ContextUsageSnapshot`
 - `CompactionDecision`
 - summarized conversation prompt wrapped as `<conversation>` / `<previous-summary>`
@@ -63,11 +64,11 @@
 - `session` 负责决定何时触发 compaction；`compaction` 负责准备、总结与结果回填协调
 - summarization prompt 对齐 `reference CLI`：不把旧对话直接当作继续对话喂给模型，而是序列化为单条 user prompt，使用固定 summary schema；已有 compaction summary 时走 update prompt
 - split-turn compaction 支持单独生成 turn-prefix summary，并合并到主 summary
-- compaction result 会追加 `<read-files>` / `<modified-files>` 片段，并把对应列表放入 `details`
+- compaction result 会追加当前 Coding profile 选择的 `<read-files>` / `<modified-files>` 资源证据片段，并把对应列表放入 `details`
 - branch summary 也使用相同的 serialized conversation summary path，追加 reference-style branch preamble 和 file operation details
-- `validate_summary_contract(...)` 和 `evaluate_summary_case(...)` 提供 mode-neutral summary quality harness，用于验证 compaction /
-  branch summary 是否保留固定结构、是否缺失关键 section、是否仍包含 prompt placeholder、是否覆盖固定 workload 期待的关键词与文件操作；
-  它们不改变生产摘要结果，只作为回归和真实模型评估的稳定判定面
+- `loushang.harness.context.validate_summary(...)` 和 profile-driven `evaluate_summary_case(...)` 提供通用 summary
+  evaluation runtime，用于验证固定结构、缺失 section、残留 prompt placeholder、关键词和由 profile 声明的资源操作；
+  Coding 只绑定自己的 compaction / branch profiles 和 fixture convenience entrypoint，它们不改变生产摘要结果
 - Harness 的 `plan_turn_aware_compaction(...)` 是 deterministic fact layer：它不调用模型，记录 previous
   compaction、`first_kept_entry_id`、`summarized_entry_ids`、`turn_prefix_entry_ids`、`kept_entry_ids`、
   `tokens_before` 与 `keep_recent_tokens`；`prepare_turn_aware_compaction(...)` 基于同一计划组装消息并写入
