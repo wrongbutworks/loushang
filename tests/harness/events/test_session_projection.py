@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from loushang.harness.events.recording_policy import event_writes_transcript
+from loushang.harness.events.runtime_views import shape_runtime_event_view
 from loushang.harness.events.session_projection import (
     project_session_event,
     shape_stream_event,
@@ -33,3 +35,22 @@ def test_shared_stream_shape_normalizes_external_keys_to_snake_case() -> None:
         "view": "full",
         "correlation_id": "call-1",
     }
+
+
+def test_runtime_views_and_recording_policy_are_harness_owned() -> None:
+    shaped = shape_runtime_event_view(
+        type(
+            "View",
+            (),
+            {
+                "payload": {"toolCallId": "call-1"},
+                "event_type": "tool_execution_end",
+                "view": "tools",
+                "correlation_id": "call-1",
+            },
+        )()
+    )
+
+    assert shaped["tool_call_id"] == "call-1"
+    assert shaped["stream"]["view"] == "tools"
+    assert event_writes_transcript({"type": "tool_execution_end"})

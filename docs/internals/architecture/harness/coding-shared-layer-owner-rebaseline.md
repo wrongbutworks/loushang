@@ -24,7 +24,7 @@ the identified Coding implementation and records the actual delta here.
 
 | Source region | LOC | Current shared owner or adopted mechanism | Classification | Next action |
 | --- | ---: | --- | --- | --- |
-| `coding.bootstrap` | 1,491 | Config activation, capability composition, resources, diagnostics, `SessionRuntime` | `product adapter` + `duplicate candidate` | Wave 4 bootstrap-transaction contract |
+| `coding.bootstrap` | 1,491 | Product activation callbacks and factories over Harness `BootstrapActivationRuntime`, capability composition, resources, diagnostics, `SessionRuntime` | `product adapter` | Activation ordering, failure report, and rollback are Harness-owned; retain only Coding step semantics and Product defaults |
 | `coding.runtime.agent_session_runtime` | 1,187 | `SessionLifecycleRuntime`, `AgentTranscriptSessionRuntime`, transcript catalog | `product adapter` | First transcript-store cutover complete; retain Product ports and continue facade audit |
 | `coding.session.agent_session` | 1,890 | `SessionRuntime`, `SessionFacade`, transcript maintenance, queue, retry, compaction | `product adapter` | Facade deletion only after the factory contract |
 | `coding.session.builtin_commands` | 716 | `harness.session.command_pack` | `shared adopted` | Close descriptor/projection deletion only |
@@ -43,7 +43,7 @@ extension API, prompts, resource package, final RPC schema, and output wording.
 | --- | ---: | --- | --- | --- |
 | `coding.extensions.runner` | 495 | `harness.extensions.agent.*`, `harness.extensions.session_runtime` | `product adapter` | Shrink-only adapter audit |
 | `coding.extensions.api/loader/policy` | 210 | Harness extension contracts and loader | `product adapter` | Retain Coding API and permission delta |
-| `coding.event.*` | 1,045 -> ~160 canonical | `harness.events.session_types` and `harness.events.session_projection` own shared session dictionaries, standard views, render enrichment, stream shaping, and snake_case serialization | `product adapter` | Delete the thin Coding import surfaces after downstream imports move; retain only RuntimeEvent-to-session/Product/Work mapping, cancellation/transcript policy, and final presentation |
+| `coding.event.*` | 1,045 -> ~35 canonical facade | `harness.events.session_types`, `harness.events.session_projection`, `harness.events.runtime_views`, and `harness.events.recording_policy` own shared contracts, standard views, render enrichment, stream shaping, snake_case serialization, runtime-view selection, delivery hints, transcript-write decisions, and cancellation classification | `product adapter` | Keep only the established event facade, Product/Work mapping, and final presentation; the moved runtime-view and recording-policy modules must not grow Coding logic |
 | `coding.control.settings_manager` | 1,400 | `ScopedConfigRuntime`, schema codec, JSON store | `product kernel` | Wave 6 only by proven shared field group |
 | `coding.control.types` | 177 | No complete shared owner | `product kernel` | Split only cross-product settings |
 | `coding.policy.*` | 515 | Harness rule, approval, and resource-policy mechanisms | `product adapter` + `product kernel` | Extract profiles, not rules mechanically |
@@ -95,9 +95,11 @@ The first admitted slice is narrower than a bootstrap engine:
 `ProductTranscriptSessionLifecycleStore` now owns transcript create, restore,
 fork, runtime-session association, and failed-build cleanup. Coding provides
 its transcript session type, CWD restore validation, fork policy, and runtime
-session constructor. `ConfigActivationRuntime` already owns ordered activation
-and optional rollback; no second bootstrap transaction is admitted until a
-later adapter audit finds a reusable remainder.
+session constructor. `ConfigActivationRuntime` remains the low-level config
+engine, while `harness.bootstrap.BootstrapActivationRuntime` owns the Product
+bootstrap transaction wrapper and rollback/report contract. Coding supplies
+the seven Product activation callbacks; no service locator or second
+lifecycle engine is admitted.
 
 ## Measurement Rule
 

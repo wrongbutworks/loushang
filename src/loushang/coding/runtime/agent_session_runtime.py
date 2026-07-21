@@ -171,10 +171,6 @@ class AgentSessionRuntime(
             self._open_session_approvals(current_session)
             self._bind_runtime_host(current_session)
 
-    @property
-    def _current_session(self) -> AgentSession | None:
-        return self.current_session
-
     async def create_session(
         self, *, cwd: str, parent_session: str | None = None
     ) -> AgentSession:
@@ -211,7 +207,7 @@ class AgentSessionRuntime(
             session_file = self.resolve_session_file(session_id)
             deleted = await SessionManager.delete_session(
                 session_file,
-                current_session_file=_session_file_from_session(self._current_session),
+                current_session_file=_session_file_from_session(self.current_session),
             )
             if deleted and self.auto_refresh_session_index:
                 self.request_session_index_refresh()
@@ -475,7 +471,7 @@ class AgentSessionRuntime(
     ) -> None:
         diagnostics_service = self._diagnostics_service
         if diagnostics_service is None:
-            current_session = self._current_session
+            current_session = self.current_session
             diagnostics_service = (
                 current_session.diagnostics_service
                 if current_session is not None
@@ -488,7 +484,7 @@ class AgentSessionRuntime(
             error=exc,
             phase="runtime",
             source="session",
-            session_id=getattr(self._current_session, "session_id", None),
+            session_id=getattr(self.current_session, "session_id", None),
             details={
                 "all_sessions": all_sessions,
                 "session_dir": str(self.session_dir),
@@ -499,7 +495,7 @@ class AgentSessionRuntime(
         self,
         session: AgentSession | None = None,
     ) -> SessionDiagnosticsRuntime:
-        active_session = session or self._current_session
+        active_session = session or self.current_session
         diagnostics_service = self._diagnostics_service or getattr(
             active_session,
             "diagnostics_service",
@@ -520,7 +516,7 @@ class AgentSessionRuntime(
         details: dict[str, object],
     ) -> None:
         diagnostics_service = self._diagnostics_service
-        current_session = self._current_session
+        current_session = self.current_session
         if diagnostics_service is None and current_session is not None:
             diagnostics_service = current_session.diagnostics_service
         if diagnostics_service is None:

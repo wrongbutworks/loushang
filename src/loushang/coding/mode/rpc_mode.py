@@ -16,17 +16,15 @@ from loushang.coding.diagnostics.serialization import (
     serialize_diagnostic_summary,
     serialize_error_report,
 )
-from loushang.coding.event import (
-    project_runtime_event_to_json_views,
-    shape_runtime_event_view,
-    should_emit_runtime_event_view,
-)
 from loushang.harness.events import (
     SUPPORTED_JSON_EVENT_VIEWS,
     normalize_event_select,
+    project_runtime_event_to_json_views,
     project_session_event,
+    shape_runtime_event_view,
     shape_stream_event,
     should_emit_projected_event,
+    should_emit_runtime_event_view,
 )
 from loushang.harness.host.rpc import (
     RpcDiagnosticsProjection,

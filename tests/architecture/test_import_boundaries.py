@@ -2179,9 +2179,9 @@ def test_product_configuration_runtime_boundary_is_documented_and_adopted() -> N
         Path("src/loushang/coding/control/config_value.py"): {
             "loushang.harness.config.values.ConfigValueResolver",
         },
-        Path("src/loushang/coding/bootstrap.py"): {
-            "loushang.harness.config.ConfigActivationRuntime",
-        },
+            Path("src/loushang/coding/bootstrap.py"): {
+                "loushang.harness.bootstrap.BootstrapActivationRuntime",
+            },
     }
     missing: list[str] = []
     for path, required in expected_imports.items():
@@ -3216,11 +3216,11 @@ def test_harness_product_runtime_core_is_documented_and_adopted() -> None:
     assert "product runtime core implementation complete" in inventory_text
     assert "coalesced index scheduling" in inventory_text
 
-    from loushang.coding.extensions.runner import (
+    from loushang.harness.extensions.context import ExtensionRuntimeBindings
+    from loushang.harness.extensions.runner import (
         _BoundExtensionContext,
         _RunnerContext,
     )
-    from loushang.harness.extensions.context import ExtensionRuntimeBindings
     from loushang.harness.runtime import (
         BoundProductRuntimeContext,
         ProductRuntimeBindings,
@@ -3232,7 +3232,7 @@ def test_harness_product_runtime_core_is_documented_and_adopted() -> None:
     assert issubclass(_RunnerContext, UnboundProductRuntimeContext)
 
     expected_imports = {
-        Path("src/loushang/coding/extensions/runner.py"): {
+        Path("src/loushang/harness/extensions/runner.py"): {
             "loushang.harness.extensions.context.BoundExtensionContext",
             "loushang.harness.extensions.context.UnboundExtensionContext",
             "loushang.harness.runtime.RuntimeBindingState",
@@ -3422,7 +3422,7 @@ def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
     assert "fork_session_with_result" not in runtime_source
     assert "entry_id: str, options: object | None = None" not in runtime_source
     assert "async def clone(\n        self\n" not in runtime_source
-    assert "async def import_session_operation" in runtime_source
+    assert "import_session_operation" not in runtime_source
     assert "fork_session_operation" in extension_source
     assert "new_session_operation" in extension_source
     assert "restore_session_operation" in extension_source

@@ -1,8 +1,3 @@
-from loushang.coding.event.runtime_view import (
-    project_runtime_event_to_json_views,
-    shape_runtime_event_view,
-    should_emit_runtime_event_view,
-)
 from loushang.harness.events import (
     SUPPORTED_JSON_EVENT_VIEWS,
     AgentSessionEvent,
@@ -13,6 +8,11 @@ from loushang.harness.events import (
     serialize_session_event,
     shape_stream_event,
     should_emit_projected_event,
+)
+from loushang.harness.events.runtime_views import (
+    project_runtime_event_to_json_views,
+    shape_runtime_event_view,
+    should_emit_runtime_event_view,
 )
 
 __all__ = [

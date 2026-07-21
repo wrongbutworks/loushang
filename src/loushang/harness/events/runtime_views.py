@@ -1,18 +1,17 @@
-"""Coding's adapter from common runtime facts to its JSON event views."""
+"""Shared JSON views from common runtime facts."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Any
 
-from loushang.harness.events import (
-    RuntimeEvent,
+from loushang.harness.events.projection import (
     RuntimeEventDeliveryHint,
     RuntimeEventView,
     matches_event_select,
     project_runtime_event,
-    project_session_runtime_event,
 )
+from loushang.harness.events.runtime_projection import project_session_runtime_event
 from loushang.harness.events.session_projection import (
     JsonEventView,
     _event_correlation_id,
@@ -20,6 +19,7 @@ from loushang.harness.events.session_projection import (
     project_session_event,
 )
 from loushang.harness.events.session_serialization import snake_case_json_keys
+from loushang.harness.events.types import RuntimeEvent
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 
 

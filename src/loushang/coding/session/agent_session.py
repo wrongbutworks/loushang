@@ -855,11 +855,6 @@ class AgentSession(SessionFacade):
             await self.set_thinking_level(thinking_level)
         return selection
 
-    def _model_selection_from_scoped_model(
-        self, scoped: dict[str, object]
-    ) -> ModelSelection | None:
-        return self._selection_runtime.model_selection_from_scoped_model(scoped)
-
     async def set_thinking_level(self, level: ThinkingLevel) -> None:
         await self._selection_runtime.set_thinking_level(level)
 
@@ -868,9 +863,6 @@ class AgentSession(SessionFacade):
 
     def supports_thinking(self) -> bool:
         return self._selection_runtime.supports_thinking()
-
-    def supports_xhigh_thinking(self) -> bool:
-        return self.supports_thinking()
 
     def get_available_thinking_levels(self) -> list[ThinkingLevel]:
         return self._selection_runtime.get_available_thinking_levels()

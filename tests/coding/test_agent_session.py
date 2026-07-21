@@ -2965,8 +2965,8 @@ def test_agent_session_exposes_pi_style_thinking_and_context_queries(tmp_path) -
 
     assert session.supports_thinking() is True
     assert session.supports_thinking() is True
-    assert session.supports_xhigh_thinking() is True
-    assert session.supports_xhigh_thinking() is True
+    assert session.supports_thinking() is True
+    assert session.supports_thinking() is True
     assert session.get_available_thinking_levels() == [
         "off",
         "minimal",
@@ -3002,8 +3002,8 @@ def test_agent_session_exposes_pi_style_thinking_and_context_queries(tmp_path) -
 
     assert session.supports_thinking() is False
     assert session.supports_thinking() is False
-    assert session.supports_xhigh_thinking() is False
-    assert session.supports_xhigh_thinking() is False
+    assert session.supports_thinking() is False
+    assert session.supports_thinking() is False
     assert session.get_available_thinking_levels() == ["off"]
     assert session.get_available_thinking_levels() == ["off"]
     assert asyncio.run(session.cycle_thinking_level()) is None

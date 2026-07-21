@@ -20,10 +20,6 @@ from loushang.channel import (
     ChannelOperationRequest,
 )
 from loushang.channel.types import ChannelEnvelope
-from loushang.coding.event import (
-    project_runtime_event_to_json_views,
-    should_emit_runtime_event_view,
-)
 from loushang.coding.work_runtime import (
     CodingOperationInProgressError,
     CodingWorkRuntime,
@@ -33,6 +29,8 @@ from loushang.harness.events import (
     JsonEventView,
     RuntimeEvent,
     normalize_event_select,
+    project_runtime_event_to_json_views,
+    should_emit_runtime_event_view,
 )
 from loushang.harness.session import SessionControlPort
 from loushang.work import InMemoryEventLogBackend, WorkEvent

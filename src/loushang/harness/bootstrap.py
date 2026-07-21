@@ -12,17 +12,23 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Generic, TypeVar
 
+from loushang.harness.config.activation import (
+    ConfigActivationReport,
+    ConfigActivationRuntime,
+    ConfigActivationStep,
+)
+
 LoaderT = TypeVar("LoaderT")
 BundleT = TypeVar("BundleT")
 ExtensionT = TypeVar("ExtensionT")
 DiagnosticT = TypeVar("DiagnosticT")
+ActivationConfigT = TypeVar("ActivationConfigT")
+ActivationContextT = TypeVar("ActivationContextT")
 FlagValues = Mapping[str, bool | str] | None
 
 
 @dataclass(frozen=True)
-class ResourceBootstrapPorts(
-    Generic[LoaderT, BundleT, ExtensionT, DiagnosticT]
-):
+class ResourceBootstrapPorts(Generic[LoaderT, BundleT, ExtensionT, DiagnosticT]):
     """Callbacks that bind Product resource and extension semantics."""
 
     discover_resources: Callable[[LoaderT, Path], BundleT]
@@ -31,9 +37,7 @@ class ResourceBootstrapPorts(
     rediscover_resources: Callable[[ExtensionT, BundleT], BundleT]
     bundle_diagnostics: Callable[[BundleT], Sequence[DiagnosticT]]
     extension_diagnostics: Callable[[ExtensionT], Sequence[DiagnosticT]]
-    normalize_diagnostic: Callable[
-        [DiagnosticT, str, str], DiagnosticT
-    ]
+    normalize_diagnostic: Callable[[DiagnosticT, str, str], DiagnosticT]
 
 
 @dataclass(frozen=True)
@@ -45,9 +49,7 @@ class ResourceBootstrapResult(Generic[BundleT, ExtensionT, DiagnosticT]):
     diagnostics: tuple[DiagnosticT, ...]
 
 
-class ResourceBootstrapRuntime(
-    Generic[LoaderT, BundleT, ExtensionT, DiagnosticT]
-):
+class ResourceBootstrapRuntime(Generic[LoaderT, BundleT, ExtensionT, DiagnosticT]):
     """Run the shared resource/extension bootstrap transaction."""
 
     def __init__(
@@ -89,8 +91,54 @@ class ResourceBootstrapRuntime(
             extension_runtime=extension_runtime,
             diagnostics=diagnostics,
         )
+
+
+@dataclass(frozen=True)
+class BootstrapActivationPlan(Generic[ActivationConfigT, ActivationContextT]):
+    """Product-provided steps for one ordered bootstrap transaction."""
+
+    steps: tuple[ConfigActivationStep[ActivationConfigT, ActivationContextT], ...]
+    rollback_on_start_failure: bool = True
+
+
+@dataclass(frozen=True)
+class BootstrapActivationResult(Generic[ActivationContextT]):
+    """Activation context together with its structured execution report."""
+
+    context: ActivationContextT
+    report: ConfigActivationReport
+
+
+class BootstrapActivationRuntime(Generic[ActivationConfigT, ActivationContextT]):
+    """Run a product bootstrap plan as one ordered activation transaction."""
+
+    def __init__(
+        self,
+        plan: BootstrapActivationPlan[ActivationConfigT, ActivationContextT],
+    ) -> None:
+        self._runtime = ConfigActivationRuntime(
+            plan.steps,
+            rollback_on_start_failure=plan.rollback_on_start_failure,
+        )
+
+    def activate(
+        self,
+        config: ActivationConfigT,
+        context: ActivationContextT,
+    ) -> BootstrapActivationResult[ActivationContextT]:
+        report = self._runtime.start(config, context)
+        return BootstrapActivationResult(context=context, report=report)
+
+    @property
+    def ordered_step_names(self) -> tuple[str, ...]:
+        return self._runtime.ordered_names
+
+
 __all__ = [
     "ResourceBootstrapPorts",
     "ResourceBootstrapResult",
     "ResourceBootstrapRuntime",
+    "BootstrapActivationPlan",
+    "BootstrapActivationResult",
+    "BootstrapActivationRuntime",
 ]

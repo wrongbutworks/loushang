@@ -15,6 +15,9 @@ _EXPORT_MODULES = {
     "ResourceBootstrapPorts": "loushang.harness.bootstrap",
     "ResourceBootstrapResult": "loushang.harness.bootstrap",
     "ResourceBootstrapRuntime": "loushang.harness.bootstrap",
+    "BootstrapActivationPlan": "loushang.harness.bootstrap",
+    "BootstrapActivationResult": "loushang.harness.bootstrap",
+    "BootstrapActivationRuntime": "loushang.harness.bootstrap",
 }
 
 
