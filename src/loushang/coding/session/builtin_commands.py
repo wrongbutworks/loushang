@@ -116,8 +116,6 @@ async def execute_builtin_command_async(
         return _project_standard_session_command_result(standard_result)
 
     match invocation_name:
-        case "copy":
-            return _execute_copy(args, backend)
         case "changelog":
             return _execute_changelog(args, backend)
         case _:
@@ -145,6 +143,9 @@ def _standard_session_command_ports(
         set_active_tools=backend.set_active_tools,
         get_default_active_tool_names=backend.get_default_active_tool_names,
         get_extensions=backend.get_extensions,
+        get_recent_assistant_texts=backend.get_recent_assistant_texts,
+        get_last_assistant_text=backend.get_last_assistant_text,
+        copy_text=backend.copy_text,
     )
 
 
@@ -221,10 +222,37 @@ def _project_standard_session_command_result(
                 message=f"Extension {_extension_id(selected)}: {_extension_name(selected)}",
                 display=_extension_detail_display(selected),
             )
+        case StandardSessionCommandId.COPY:
+            value = result.value
+            if not isinstance(value, Mapping):
+                raise TypeError("standard copy command returned an invalid result")
+            index = value.get("index", 1)
+            if not isinstance(index, int):
+                index = 1
+            if not value.get("available", False):
+                return _unsupported("copy")
+            if not value.get("copied", False):
+                return _ok(
+                    "copy",
+                    copied=False,
+                    characters=0,
+                    message=f"No assistant text is available for /copy {index}.",
+                    index=index,
+                )
+            return _ok(
+                "copy",
+                copied=True,
+                characters=value.get("characters", 0),
+                command_backend=value.get("command"),
+                message=value.get("message"),
+                index=index,
+            )
 
 
 def _standard_argument_error(result: StandardSessionCommandResult) -> str:
     match result.command_id, result.error_code:
+        case StandardSessionCommandId.COPY, "invalid_copy_index":
+            return "Usage: /copy [N], where N is a positive integer."
         case StandardSessionCommandId.TOOLS, "unknown_tool":
             value = result.value
             if isinstance(value, Mapping):
@@ -248,70 +276,6 @@ def _standard_argument_error(result: StandardSessionCommandResult) -> str:
             return "Usage: /tree <entry-id> [--summarize] [--label <label>]"
         case _:
             return f"Invalid arguments for /{result.command_id.value}"
-
-
-def _execute_copy(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    copy_index = _parse_copy_index(args)
-    if copy_index is None:
-        return _error("copy", "Usage: /copy [N], where N is a positive integer.")
-    texts = _recent_assistant_texts(backend)
-    if not texts:
-        if (
-            backend.get_recent_assistant_texts is None
-            and backend.get_last_assistant_text is None
-        ):
-            return _unsupported("copy")
-        return _ok(
-            "copy",
-            copied=False,
-            characters=0,
-            message=f"No assistant text is available for /copy {copy_index}.",
-            index=copy_index,
-        )
-    text_index = copy_index - 1
-    if text_index >= len(texts):
-        return _ok(
-            "copy",
-            copied=False,
-            characters=0,
-            message=f"No assistant text is available for /copy {copy_index}.",
-            index=copy_index,
-        )
-    text = texts[text_index]
-    result = backend.copy_text(text)
-    return _ok(
-        "copy",
-        copied=result.ok,
-        characters=len(text),
-        command_backend=result.command,
-        message=result.message,
-        index=copy_index,
-    )
-
-
-def _parse_copy_index(args: str) -> int | None:
-    stripped = args.strip()
-    if not stripped:
-        return 1
-    tokens = _split_args(stripped)
-    if len(tokens) != 1:
-        return None
-    try:
-        value = int(tokens[0])
-    except ValueError:
-        return None
-    return value if value > 0 else None
-
-
-def _recent_assistant_texts(backend: BuiltinCommandBackend) -> tuple[str, ...]:
-    if backend.get_recent_assistant_texts is not None:
-        return tuple(backend.get_recent_assistant_texts())
-    if backend.get_last_assistant_text is None:
-        return ()
-    text = backend.get_last_assistant_text()
-    if not text:
-        return ()
-    return (text,)
 
 
 def _execute_changelog(

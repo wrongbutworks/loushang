@@ -34,6 +34,7 @@ class StandardSessionCommandId(str, Enum):
     TREE = "tree"
     TOOLS = "tools"
     EXTENSIONS = "extensions"
+    COPY = "copy"
 
 
 StandardSessionCommandDisposition = Literal[
@@ -147,6 +148,9 @@ class StandardSessionCommandPorts:
     set_active_tools: Callable[[list[str]], object | Awaitable[object]] | None = None
     get_default_active_tool_names: Callable[[], list[str]] | None = None
     get_extensions: Callable[[], list[object]] | None = None
+    get_recent_assistant_texts: Callable[[], tuple[str, ...]] | None = None
+    get_last_assistant_text: Callable[[], str | None] | None = None
+    copy_text: Callable[[str], object] | None = None
 
 
 def is_standard_session_command(
@@ -302,6 +306,8 @@ async def execute_standard_session_command_async(
             return await _execute_tools_command(args, ports)
         case StandardSessionCommandId.EXTENSIONS:
             return await _execute_extensions_command(args, ports)
+        case StandardSessionCommandId.COPY:
+            return _execute_copy_command(args, ports)
 
 
 def _command_id(invocation_name: str) -> StandardSessionCommandId | None:
@@ -469,6 +475,64 @@ async def _execute_extensions_command(
         command_id,
         {"extensions": extensions, "query": query, "selected": selected},
     )
+
+
+def _execute_copy_command(
+    args: str, ports: StandardSessionCommandPorts
+) -> StandardSessionCommandResult:
+    command_id = StandardSessionCommandId.COPY
+    if (
+        ports.get_recent_assistant_texts is None
+        and ports.get_last_assistant_text is None
+    ) or ports.copy_text is None:
+        return StandardSessionCommandResult.unavailable(command_id)
+    index = _parse_copy_index(args)
+    if index is None:
+        return StandardSessionCommandResult.invalid_arguments(
+            command_id, "invalid_copy_index"
+        )
+    texts = (
+        tuple(ports.get_recent_assistant_texts())
+        if ports.get_recent_assistant_texts is not None
+        else (
+            (text,)
+            if ports.get_last_assistant_text is not None
+            and (text := ports.get_last_assistant_text())
+            else ()
+        )
+    )
+    if index > len(texts):
+        return StandardSessionCommandResult.completed(
+            command_id,
+            {"copied": False, "characters": 0, "index": index, "available": True},
+        )
+    text = texts[index - 1]
+    result = ports.copy_text(text)
+    return StandardSessionCommandResult.completed(
+        command_id,
+        {
+            "copied": bool(getattr(result, "ok", False)),
+            "characters": len(text),
+            "index": index,
+            "available": True,
+            "command": getattr(result, "command", None),
+            "message": getattr(result, "message", None),
+        },
+    )
+
+
+def _parse_copy_index(args: str) -> int | None:
+    stripped = args.strip()
+    if not stripped:
+        return 1
+    tokens = _split_args(stripped)
+    if len(tokens) != 1:
+        return None
+    try:
+        value = int(tokens[0])
+    except ValueError:
+        return None
+    return value if value > 0 else None
 
 
 def _extension_entry(extension: object) -> dict[str, object]:

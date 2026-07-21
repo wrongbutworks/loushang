@@ -275,6 +275,35 @@ def test_standard_session_command_pack_queries_extensions_without_coding() -> No
     }
 
 
+def test_standard_session_command_pack_copies_selected_assistant_text() -> None:
+    copied: list[str] = []
+
+    class _CopyResult:
+        ok = True
+        command = "clipboard"
+        message = "copied"
+
+    ports = StandardSessionCommandPorts(
+        get_recent_assistant_texts=lambda: ("first", "second"),
+        copy_text=lambda text: copied.append(text) or _CopyResult(),
+    )
+
+    result = asyncio.run(
+        execute_standard_session_command_async("copy", "2", ports)
+    )
+
+    assert result is not None and result.disposition == "completed"
+    assert result.value == {
+        "copied": True,
+        "characters": 6,
+        "index": 2,
+        "available": True,
+        "command": "clipboard",
+        "message": "copied",
+    }
+    assert copied == ["second"]
+
+
 def test_standard_session_command_pack_has_no_coding_import() -> None:
     module_path = (
         Path(__file__).parents[3] / "src/loushang/harness/session/command_pack.py"
