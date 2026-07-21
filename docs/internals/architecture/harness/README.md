@@ -210,6 +210,19 @@ planning, work event persistence, or AI provider behavior.
   OEM customisation, extension contributions, and harness upgrades interact,
   including override mechanisms, extension categories, surface-type gaps, and
   upgrade-compatibility guarantees.
+- [Multi-Agent Architecture](multiagent/system-context.md) (draft proposal)
+  defines the target boundary for `loushang.harness.multiagent`: sub-agent
+  spawning, context isolation and forking, agent input facade notification,
+  concurrency and residency limits, and approval bubbling, with ownership in
+  [ARD-001](multiagent/ARD-001-harness-ownership.md) and async / recovery
+  semantics in [ARD-002](multiagent/ARD-002-async-execution-and-recovery.md).
+  Component boundaries: [run handle](multiagent/run-handle-boundary.md),
+  [agent input facade](multiagent/agent-input-facade-boundary.md),
+  [context fork](multiagent/context-fork-boundary.md),
+  [control](multiagent/control-boundary.md),
+  [registry](multiagent/registry-boundary.md),
+  [limits and projection](multiagent/limits-and-projection-boundary.md),
+  [tool surface](multiagent/tool-surface-boundary.md).
 - [Workspace Execution Boundary](workspace-execution-boundary.md) defines
   harness-owned truncation, exec records, backend protocols, process execution,
   and coding compatibility ownership.
