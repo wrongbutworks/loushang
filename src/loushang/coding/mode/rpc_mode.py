@@ -4,7 +4,7 @@ import asyncio
 import inspect
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from math import isfinite
 from pathlib import Path
 from typing import Any, NotRequired, Required, TextIO, TypedDict, cast
@@ -14,6 +14,8 @@ from loushang.channel import (
     JsonlCommand,
     JsonlCommandHost,
     JsonlCommandHostError,
+    JsonlCommandRoute,
+    JsonlCommandRouter,
     ProductHostRuntime,
     ProductHostTaskTracker,
     RemoteUiContext,
@@ -159,8 +161,12 @@ class RpcMode(ModeAdapter):
         self._active_bash_task: asyncio.Task[None] | None = None
         self.extension_ui_context = RpcExtensionUIContext(self._write_json_line)
         self._bind_extension_ui_context(self.session)
+        self._command_router = JsonlCommandRouter(
+            routes=self._command_routes(),
+            on_unsupported=self._handle_unsupported_jsonl_command,
+        )
         self._command_host = JsonlCommandHost(
-            port=self,
+            port=self._command_router,
             on_error=self._handle_jsonl_command_error,
             stdin=stdin,
             command_name="rpc_command",
@@ -248,26 +254,152 @@ class RpcMode(ModeAdapter):
 
         await self._command_host.handle_line(line)
 
-    async def handle_jsonl_command(self, command: JsonlCommand) -> None:
-        """Adapt one validated Channel JSONL command to Coding RPC semantics."""
+    def _command_routes(self) -> tuple[JsonlCommandRoute, ...]:
+        """Bind the declared Coding RPC surface to the Channel router.
 
-        payload = dict(command.payload)
-        if command.command_type == "extension_ui_response":
-            self.extension_ui_context.resolve_response(payload)
-            return
+        This explicit table replaces the former ``getattr`` convention.  The
+        route registry is transport-neutral; the handlers below intentionally
+        keep Coding's legacy request aliases and response projection.
+        """
 
-        handler = getattr(self, f"_handle_{command.command_type}_command", None)
-        if handler is None:
-            self._write_response_error(
-                id=command.command_id,
-                command=command.command_type,
-                error=f"unsupported command: {command.command_type}",
-                code="unsupported_command",
-            )
-            return
-        result = handler(command.command_id, payload)
-        if inspect.isawaitable(result):
-            await result
+        return (
+            JsonlCommandRoute(
+                command_type="extension_ui_response",
+                handler=self._handle_extension_ui_response,
+            ),
+            self._legacy_command_route("prompt", self._handle_prompt_command),
+            self._legacy_command_route("steer", self._handle_steer_command),
+            self._legacy_command_route("follow_up", self._handle_follow_up_command),
+            self._legacy_command_route("abort", self._handle_abort_command),
+            self._legacy_command_route("get_state", self._handle_get_state_command),
+            self._legacy_command_route(
+                "get_extension_ui_state", self._handle_get_extension_ui_state_command
+            ),
+            self._legacy_command_route(
+                "get_messages", self._handle_get_messages_command
+            ),
+            self._legacy_command_route(
+                "list_sessions", self._handle_list_sessions_command
+            ),
+            self._legacy_command_route("new_session", self._handle_new_session_command),
+            self._legacy_command_route(
+                "switch_session", self._handle_switch_session_command
+            ),
+            self._legacy_command_route("fork", self._handle_fork_command),
+            self._legacy_command_route("clone", self._handle_clone_command),
+            self._legacy_command_route("set_model", self._handle_set_model_command),
+            self._legacy_command_route(
+                "get_available_models", self._handle_get_available_models_command
+            ),
+            self._legacy_command_route("cycle_model", self._handle_cycle_model_command),
+            self._legacy_command_route(
+                "set_active_tools", self._handle_set_active_tools_command
+            ),
+            self._legacy_command_route(
+                "set_thinking_level", self._handle_set_thinking_level_command
+            ),
+            self._legacy_command_route(
+                "cycle_thinking_level", self._handle_cycle_thinking_level_command
+            ),
+            self._legacy_command_route(
+                "set_steering_mode", self._handle_set_steering_mode_command
+            ),
+            self._legacy_command_route(
+                "set_follow_up_mode", self._handle_set_follow_up_mode_command
+            ),
+            self._legacy_command_route(
+                "get_session_stats", self._handle_get_session_stats_command
+            ),
+            self._legacy_command_route(
+                "set_session_name", self._handle_set_session_name_command
+            ),
+            self._legacy_command_route(
+                "get_last_assistant_text", self._handle_get_last_assistant_text_command
+            ),
+            self._legacy_command_route(
+                "get_fork_messages", self._handle_get_fork_messages_command
+            ),
+            self._legacy_command_route(
+                "get_commands", self._handle_get_commands_command
+            ),
+            self._legacy_command_route(
+                "get_command_completions", self._handle_get_command_completions_command
+            ),
+            self._legacy_command_route(
+                "get_diagnostics", self._handle_get_diagnostics_command
+            ),
+            self._legacy_command_route(
+                "get_session_diagnostics", self._handle_get_session_diagnostics_command
+            ),
+            self._legacy_command_route(
+                "get_diagnostics_summary", self._handle_get_diagnostics_summary_command
+            ),
+            self._legacy_command_route(
+                "get_session_diagnostics_summary",
+                self._handle_get_session_diagnostics_summary_command,
+            ),
+            self._legacy_command_route(
+                "get_last_error_report", self._handle_get_last_error_report_command
+            ),
+            self._legacy_command_route(
+                "get_packages", self._handle_get_packages_command
+            ),
+            self._legacy_command_route(
+                "materialize_package", self._handle_materialize_package_command
+            ),
+            self._legacy_command_route(
+                "install_package", self._handle_install_package_command
+            ),
+            self._legacy_command_route(
+                "update_package", self._handle_update_package_command
+            ),
+            self._legacy_command_route(
+                "update_packages", self._handle_update_packages_command
+            ),
+            self._legacy_command_route(
+                "check_package_updates", self._handle_check_package_updates_command
+            ),
+            self._legacy_command_route(
+                "remove_package", self._handle_remove_package_command
+            ),
+            self._legacy_command_route(
+                "uninstall_package", self._handle_uninstall_package_command
+            ),
+            self._legacy_command_route("bash", self._handle_bash_command),
+            self._legacy_command_route("abort_bash", self._handle_abort_bash_command),
+            self._legacy_command_route("compact", self._handle_compact_command),
+            self._legacy_command_route(
+                "set_auto_retry", self._handle_set_auto_retry_command
+            ),
+            self._legacy_command_route("abort_retry", self._handle_abort_retry_command),
+            self._legacy_command_route(
+                "set_auto_compaction", self._handle_set_auto_compaction_command
+            ),
+            self._legacy_command_route("export_html", self._handle_export_html_command),
+        )
+
+    def _legacy_command_route(
+        self,
+        command_type: str,
+        handler: Callable[[str | None, dict[str, Any]], object],
+    ) -> JsonlCommandRoute:
+        async def route(command: JsonlCommand) -> None:
+            result = handler(command.command_id, dict(command.payload))
+            if inspect.isawaitable(result):
+                await result
+
+        return JsonlCommandRoute(command_type=command_type, handler=route)
+
+    def _handle_extension_ui_response(self, command: JsonlCommand) -> None:
+        self.extension_ui_context.resolve_response(dict(command.payload))
+
+    def _handle_unsupported_jsonl_command(self, command: JsonlCommand) -> None:
+        self._write_response_error(
+            id=command.command_id,
+            command=command.command_type,
+            error=f"unsupported command: {command.command_type}",
+            code="unsupported_command",
+        )
 
     def _handle_jsonl_command_error(self, error: JsonlCommandHostError) -> None:
         if error.reason == "invalid_json":

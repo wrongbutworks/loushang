@@ -130,6 +130,9 @@ planning, work event persistence, or AI provider behavior.
   defines the shared parsing and callback delegation for selected session
   commands while Products retain descriptor order, wording, result projection,
   local commands, and UI/transport behavior.
+- [Session RPC Operation Cutover Boundary](session-rpc-operation-boundary.md)
+  defines how Channel command routing and Harness session operations replace
+  Coding RPC glue without changing Coding's public JSONL contract.
 - [Session Facade Boundary](session-facade-boundary.md) defines the common
   Product-facing operation surface over already-bound session runtimes while
   Products retain model/auth, prompts, extension protocols, lifecycle policy,

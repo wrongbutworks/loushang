@@ -667,6 +667,24 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
     assert "must not import Harness" in boundary
 
 
+def test_jsonl_command_router_is_neutral_and_rpc_uses_explicit_routes() -> None:
+    router_source = Path(
+        "src/loushang/channel/jsonl_command_router.py"
+    ).read_text(encoding="utf-8")
+    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+        encoding="utf-8"
+    )
+    boundary = Path(
+        "docs/internals/architecture/harness/session-rpc-operation-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.harness" not in router_source
+    assert "loushang.coding" not in router_source
+    assert "JsonlCommandRouter(" in rpc_source
+    assert 'getattr(self, f"_handle_{command.command_type}_command")' not in rpc_source
+    assert "Channel command-routing slice" in boundary
+
+
 def test_channel_product_host_runtime_is_neutral_and_adopted() -> None:
     runtime_source = Path("src/loushang/channel/product_host.py").read_text(
         encoding="utf-8"
