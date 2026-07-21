@@ -336,8 +336,10 @@ Coding adapter and independent contract probe validated its shape. Keep
 `ExtensionRuntimeBindings`, active-tool policy, prompt rebuilds, session
 mutation, and product model/diagnostic interpretation in Coding. The shared
 live capability application now belongs to
-`harness.session.capabilities`; Coding `ToolController`, `CommandController`,
-and `BashController` bind Product policy and protocol behavior to that runtime.
+`harness.session.capabilities`; Coding `ToolController` and
+`CommandController` bind Product policy and protocol behavior to that runtime.
+Harness `BashExecutionRuntime` owns the standard shell execution, abort,
+streaming, and transcript-recording path.
 
 ### Workspace Execution
 

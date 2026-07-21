@@ -579,7 +579,10 @@ def test_session_capabilities_runtime_is_neutral_and_adopted() -> None:
     command_source = Path(
         "src/loushang/coding/session/command_controller.py"
     ).read_text(encoding="utf-8")
-    bash_source = Path("src/loushang/coding/session/bash_controller.py").read_text(
+    bash_source = Path("src/loushang/harness/session/bash.py").read_text(
+        encoding="utf-8"
+    )
+    session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
     boundary = Path(
@@ -587,9 +590,12 @@ def test_session_capabilities_runtime_is_neutral_and_adopted() -> None:
     ).read_text(encoding="utf-8")
 
     assert "loushang.coding" not in capabilities_source
+    assert "loushang.coding" not in bash_source
     assert "SessionToolRuntime" in tool_source
-    assert "SessionCommandRuntime" in command_source
-    assert "SessionCommandExecutionRuntime" in bash_source
+    assert "SessionCommandController" in command_source
+    assert "BashExecutionRuntime" in bash_source
+    assert "BashExecutionRuntime" in session_source
+    assert not Path("src/loushang/coding/session/bash_controller.py").exists()
     assert "Product Binding" in boundary
     assert "Coding keeps" in boundary
 
