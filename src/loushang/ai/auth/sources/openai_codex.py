@@ -14,6 +14,7 @@ class OpenAICodexCredentialSource:
 
     id = "openai-codex"
     description = "Use existing Codex CLI login"
+    recovery_hint = "Run codex login"
     experimental = True
     recovery = "codex_login"
     supports_refresh = False

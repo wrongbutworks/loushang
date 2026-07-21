@@ -18,3 +18,14 @@ The external-source example imports an existing Codex CLI login through the
 extension registry and calls a model with the resulting `OAuthBearerAuth`.
 This path is experimental credential import, not Loushang OAuth login; Codex
 owns the source credential and its refresh lifecycle.
+
+After `codex login`, run the live upper-application path with:
+
+```bash
+uv run python examples/auth/openai_codex_live_example.py
+```
+
+The live example only uses `get_model()`, `auth.get_auth(model)`, and `stream()`.
+It does not parse `~/.codex/auth.json` or invoke a credential source directly.
+OpenAI Codex support currently imports existing Codex CLI credentials. It does
+not perform ChatGPT OAuth login.

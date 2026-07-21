@@ -40,6 +40,7 @@ class _ExternalSource:
     credential: OAuthCredential | None = None
     id: str = "external-oauth"
     description: str = "Use external application login"
+    recovery_hint: str = "Sign in with the external application"
     experimental: bool = True
     supports_refresh: bool = False
 
@@ -132,10 +133,12 @@ def test_status_and_get_auth_use_extension_registry_metadata() -> None:
     assert current.authenticated is True
     assert current.experimental is True
     assert current.source_description == source.description
+    assert current.source_recovery_hint == source.recovery_hint
     assert request_auth == OAuthBearerAuth("external-access")
     assert missing.authenticated is False
     assert missing.actions == ("external_credential",)
     assert missing.to_dict()["actions"] == ["external_credential"]
+    assert missing.to_dict()["source_recovery_hint"] == source.recovery_hint
 
 
 def test_source_only_model_cannot_be_treated_as_generic_login() -> None:
@@ -148,3 +151,81 @@ def test_source_only_model_cannot_be_treated_as_generic_login() -> None:
         "reason": "login_unavailable",
         "available_actions": ["external_credential"],
     }
+
+
+def test_get_auth_imports_codex_source_through_public_api(tmp_path: Path) -> None:
+    path = tmp_path / "auth.json"
+    path.write_text(
+        """{
+  "auth_mode": "chatgpt",
+  "tokens": {
+    "access_token": "codex-access",
+    "account_id": "account-id"
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    source = auth.OpenAICodexCredentialSource(path)
+    model = _model(Auth(kind="oauth", provider=source.id))
+
+    request_auth = asyncio.run(
+        auth.get_auth(model, extensions=auth.AuthExtensionRegistry([source]))
+    )
+
+    assert request_auth == OAuthBearerAuth(
+        "codex-access",
+        extra_headers={"ChatGPT-Account-ID": "account-id"},
+    )
+
+
+def test_logout_model_resolves_owner_and_preserves_registered_revoke(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class RevokingProvider:
+        id = "example-oauth"
+
+        def __init__(self) -> None:
+            self.revoked: list[OAuthCredential] = []
+
+        async def login(self, *, authorize=None) -> OAuthCredential:
+            del authorize
+            raise AssertionError("logout must not start login")
+
+        async def refresh(self, credential: OAuthCredential) -> OAuthCredential:
+            raise AssertionError(f"logout must not refresh {credential.provider}")
+
+        async def revoke(self, credential: OAuthCredential) -> None:
+            self.revoked.append(credential)
+
+    provider = RevokingProvider()
+    monkeypatch.setattr(
+        "loushang.ai.auth.core._oauth_providers",
+        {provider.id: provider},
+    )
+    model = _model(Auth(kind="oauth", provider=provider.id))
+    store = auth.FileCredentialStore(tmp_path)
+    credential = OAuthCredential(provider=provider.id, access_token="stored-access")
+    store.save(credential)
+
+    deleted = asyncio.run(auth.logout(model, store=store))
+
+    assert deleted is True
+    assert provider.revoked == [credential]
+    assert store.load(provider.id) is None
+
+
+def test_logout_model_deletes_owned_store_without_provider_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr("loushang.ai.auth.core._oauth_providers", {})
+    model = _model(Auth(kind="oauth", provider="openai-codex"))
+    store = auth.FileCredentialStore(tmp_path)
+    store.save(
+        OAuthCredential(provider="openai-codex", access_token="stored-access")
+    )
+
+    assert asyncio.run(auth.logout(model, store=store)) is True
+    assert store.load("openai-codex") is None

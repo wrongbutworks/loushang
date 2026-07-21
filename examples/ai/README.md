@@ -84,18 +84,11 @@ register_api_provider(custom_adapter)
 - `advanced/inspect_endpoint_contract.py`
 - `advanced/custom_catalog.py`
 
-## OpenAI Codex credential import
+## OpenAI Codex live validation
 
-`openai_codex_credential_import.py` 只做三件事：
-
-1. 选择 `openai:coding-responses:gpt-5.5`。
-2. 通过公共 `OpenAICodexCredentialSource` 和 `get_auth()` 导入可选 credential
-   文件路径。
-3. 把返回的 request auth 显式传给公共 `stream()`。
-
-`loushang.ai.auth` 的实验 `OpenAICodexCredentialSource` 负责导入
-`~/.codex/auth.json` 并转换成请求认证；它不是 OAuth login provider。示例本身不读取
-token 文件、不刷新 token、也不判断 provider。
+真实的上层应用验证位于 `examples/auth/openai_codex_live_example.py`。它选择
+`openai:coding-responses:gpt-5.5`，调用公共 `auth.get_auth(model)`，再把认证显式传给
+公共 `stream()`。示例不读取 token 文件，也不直接调用 credential source。
 
 ## Live tests
 

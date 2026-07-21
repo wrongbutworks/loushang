@@ -54,6 +54,7 @@ class _FakeProvider:
 class _FakeSource:
     id: str = "fake-source"
     description: str = "Fake external credential"
+    recovery_hint: str = "Sign in with the external application"
     experimental: bool = False
     supports_refresh: bool = False
 
@@ -395,6 +396,7 @@ def test_openai_codex_source_only_imports_external_credentials(
         {"auth": type("AuthFixture", (), {"kind": "oauth", "provider": source.id})()},
     )()
     assert source.description == "Use existing Codex CLI login"
+    assert source.recovery_hint == "Run codex login"
     assert source.experimental is True
     assert source.supports_refresh is False
     assert source.matches(matching_model) is True

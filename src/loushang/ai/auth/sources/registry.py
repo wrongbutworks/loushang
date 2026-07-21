@@ -66,6 +66,8 @@ def _validate_source(source: CredentialSource) -> None:
         or not source.id.strip()
         or not isinstance(getattr(source, "description", None), str)
         or not source.description.strip()
+        or not isinstance(getattr(source, "recovery_hint", None), str)
+        or not source.recovery_hint.strip()
         or not isinstance(getattr(source, "experimental", None), bool)
         or not isinstance(getattr(source, "supports_refresh", None), bool)
         or not callable(getattr(source, "matches", None))
@@ -73,8 +75,8 @@ def _validate_source(source: CredentialSource) -> None:
         or not callable(getattr(source, "load_file", None))
     ):
         raise TypeError(
-            "Credential source must define id, description, experimental, "
-            "supports_refresh, matches, load, and load_file"
+            "Credential source must define id, description, recovery_hint, "
+            "experimental, supports_refresh, matches, load, and load_file"
         )
 
 

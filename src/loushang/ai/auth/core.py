@@ -54,6 +54,7 @@ class AuthStatus:
     provider: str | None = None
     source: str | None = None
     source_description: str | None = None
+    source_recovery_hint: str | None = None
     experimental: bool = False
 
     @property
@@ -69,6 +70,7 @@ class AuthStatus:
             "provider": self.provider,
             "source": self.source,
             "source_description": self.source_description,
+            "source_recovery_hint": self.source_recovery_hint,
             "experimental": self.experimental,
         }
 
@@ -213,6 +215,9 @@ async def status(
             provider=provider_id,
             source=source.id if source is not None else None,
             source_description=(source.description if source is not None else None),
+            source_recovery_hint=(
+                source.recovery_hint if source is not None else None
+            ),
             experimental=(source.experimental if source is not None else False),
         )
     _validate_credential_owner(provider_id, credential)
@@ -231,24 +236,42 @@ async def status(
         provider=provider_id,
         source=source_name,
         source_description=(source.description if source is not None else None),
+        source_recovery_hint=(source.recovery_hint if source is not None else None),
         experimental=(source.experimental if source is not None else False),
     )
 
 
 async def logout(
-    provider: str | OAuthProvider,
+    provider: object,
     *,
     store: FileCredentialStore | None = None,
     revoke: bool = True,
 ) -> bool:
-    adapter = _resolve_provider(provider)
+    """Delete stored authentication for a model or legacy OAuth provider target."""
+
+    if isinstance(provider, str) or isinstance(provider, OAuthProvider):
+        resolved_adapter = _resolve_provider(provider)
+        provider_id = resolved_adapter.id
+        adapter: OAuthProvider | None = resolved_adapter
+    else:
+        declaration = getattr(provider, "auth", None)
+        if normalize_auth_kind(getattr(declaration, "kind", None)) != "oauth":
+            raise OAuthProviderNotConfiguredError(
+                "Model does not use OAuth authentication.",
+                provider=getattr(provider, "provider_id", None),
+                endpoint=getattr(provider, "endpoint_id", None),
+                model=getattr(provider, "id", None),
+                details={"recovery": "reconfigure"},
+            )
+        provider_id = _oauth_provider_id(provider)
+        adapter = get_oauth_provider(provider_id) or _generic_oauth_provider(provider)
     resolved_store = store or FileCredentialStore()
-    credential = resolved_store.load(adapter.id)
+    credential = resolved_store.load(provider_id)
     if credential is None:
         return False
-    if revoke:
+    if revoke and adapter is not None:
         await adapter.revoke(credential)
-    return resolved_store.delete(adapter.id)
+    return resolved_store.delete(provider_id)
 
 
 def credential_status(

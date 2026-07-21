@@ -18,6 +18,9 @@ authentication:
   credential, but it never starts login or opens a browser.
 - `await auth.status(model)` reports whether the model is authenticated and
   which actions an application can offer. It performs no login or refresh.
+- `await auth.logout(model)` revokes a stored credential when a matching OAuth
+  adapter supports it, then removes that model's credential from the Loushang
+  store. It does not delete credentials owned by an external source.
 
 The resolved request object is passed explicitly to the model call:
 
@@ -118,6 +121,10 @@ exists. Its structured details include:
 
 It never calls `login()` automatically.
 
+`logout(model)` resolves the credential owner from the model declaration. The
+legacy `logout(provider)` form remains supported for registered OAuth provider
+adapters.
+
 ## Credentials and refresh
 
 `OAuthCredential` is persisted lifecycle state. `OAuthBearerAuth` is
@@ -163,6 +170,7 @@ A credential source defines:
 
 - `id`
 - `description`
+- `recovery_hint`
 - `experimental`
 - `supports_refresh`
 - `matches(model)`
@@ -180,12 +188,15 @@ OAuth login provider. It can read a file-backed Codex ChatGPT login from
 ```text
 id = "openai-codex"
 description = "Use existing Codex CLI login"
+recovery_hint = "Run codex login"
 experimental = True
 supports_refresh = False
 ```
 
 Loushang does not own an OpenAI OAuth client, does not expose
 `auth.login(codex_model)`, and does not overwrite or refresh this source.
+OpenAI Codex support currently imports existing Codex CLI credentials. It does
+not perform ChatGPT OAuth login.
 Codex owns browser login and automatic token refresh; run `codex login` to
 establish or repair it. Codex may store credentials in an OS credential store,
 in which case experimental file import is unavailable. Treat `auth.json` like a

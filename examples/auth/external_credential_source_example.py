@@ -83,6 +83,7 @@ async def run() -> dict[str, object]:
         "authenticated": current.authenticated,
         "experimental": current.experimental,
         "sourceDescription": current.source_description,
+        "recoveryHint": current.source_recovery_hint,
         "requestAuthorized": provider.request.headers.get("Authorization")
         == "Bearer codex-access-secret",
         "accountHeaderResolved": provider.request.headers.get("ChatGPT-Account-ID")

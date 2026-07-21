@@ -320,31 +320,30 @@ def test_image_input_example_reports_image_counts(capsys) -> None:
     assert payload == summary
 
 
-def test_openai_codex_import_example_delegates_loading_to_credential_source() -> None:
+def test_openai_codex_live_example_leaves_credential_import_to_auth_api() -> None:
     module = _load_module(
-        Path("examples/ai/openai_codex_credential_import.py"),
-        "examples_ai_openai_codex_credential_import",
+        Path("examples/auth/openai_codex_live_example.py"),
+        "examples_auth_openai_codex_live",
     )
 
     assert not hasattr(module, "load_auth")
-    source = Path("examples/ai/openai_codex_credential_import.py").read_text(
+    source = Path("examples/auth/openai_codex_live_example.py").read_text(
         encoding="utf-8"
     )
     assert "read_text" not in source
     assert "access_token" not in source
+    assert "OpenAICodexCredentialSource" not in source
 
 
 def test_openai_codex_import_example_calls_public_responses_path(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
 ) -> None:
     from loushang.ai import AssistantMessage, TextPart
 
     module = _load_module(
-        Path("examples/ai/openai_codex_credential_import.py"),
-        "examples_ai_openai_codex_credential_import_call",
+        Path("examples/auth/openai_codex_live_example.py"),
+        "examples_auth_openai_codex_live_call",
     )
-    auth_path = tmp_path / "auth.json"
     captured: dict[str, object] = {}
     model = object()
     request_auth = object()
@@ -368,9 +367,8 @@ def test_openai_codex_import_example_calls_public_responses_path(
                 timestamp=0.0,
             )
 
-    async def fake_get_auth(selected_model, *, extensions=None):
+    async def fake_get_auth(selected_model):
         captured["auth_model"] = selected_model
-        captured["extensions"] = extensions
         return request_auth
 
     async def fake_stream(selected_model, context, options, *, auth=None):
@@ -380,11 +378,11 @@ def test_openai_codex_import_example_calls_public_responses_path(
         captured["auth"] = auth
         return FakeEventStream()
 
-    monkeypatch.setattr(module, "get_model", fake_get_model)
-    monkeypatch.setattr(module, "get_auth", fake_get_auth)
-    monkeypatch.setattr(module, "stream", fake_stream)
+    monkeypatch.setattr(module.ai, "get_model", fake_get_model)
+    monkeypatch.setattr(module.ai.auth, "get_auth", fake_get_auth)
+    monkeypatch.setattr(module.ai, "stream", fake_stream)
 
-    assert asyncio.run(module.run(auth_path)) == "ok"
+    assert asyncio.run(module.run()) == "ok"
     assert captured["model_id"] == (
         "openai",
         "coding-responses",
@@ -393,9 +391,6 @@ def test_openai_codex_import_example_calls_public_responses_path(
     assert captured["model"] is model
     assert captured["auth_model"] is model
     assert captured["auth"] is request_auth
-    extensions = captured["extensions"]
-    source = extensions.get_credential_source("openai-codex")
-    assert source.auth_path == auth_path
     options = captured["options"]
     assert options.auth is None
     assert options.credential is None

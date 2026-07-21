@@ -197,17 +197,16 @@ AI 包负责配置驱动的 OAuth 协议、callback、credential 存储与允许
 `session.wait()`。AI 包不拥有产品 UI，也不会打开浏览器。
 `auth.get_auth(model)` 只解析已有认证，绝不启动登录。
 
-OpenAI Codex 当前不是 Loushang OAuth provider。实验
-`OpenAICodexCredentialSource` 导入 Codex 已有的 `~/.codex/auth.json`；示例不解析
-token 文件，而是为可选路径注册公共 source，调用 `get_auth(model)`，并把结果传给
-请求，然后调用：
+OpenAI Codex 当前不是 Loushang OAuth provider。当前支持只导入已有 Codex CLI
+credential，不执行 ChatGPT OAuth login。live 示例不解析 token 文件，也不直接调用
+实验 credential source；它调用 `get_auth(model)`，把结果传给请求，然后调用：
 
 ```python
 get_model("openai", "coding-responses", "gpt-5.5")
 ```
 
 详见
-[openai_codex_credential_import.py](../../../examples/ai/openai_codex_credential_import.py)。
+[openai_codex_live_example.py](../../../examples/auth/openai_codex_live_example.py)。
 
 ## 自定义 Catalog
 

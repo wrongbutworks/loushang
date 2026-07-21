@@ -12,6 +12,7 @@ class CredentialSource(Protocol):
 
     id: str
     description: str = ""
+    recovery_hint: str = ""
     experimental: bool = False
     supports_refresh: bool = False
 

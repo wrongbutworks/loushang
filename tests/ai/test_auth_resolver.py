@@ -75,6 +75,7 @@ class _FakeSource:
     supports_refresh: bool
     id: str = "example-oauth"
     description: str = "Fake external credential"
+    recovery_hint: str = "Sign in with the external application"
     experimental: bool = False
     credential: OAuthCredential = field(
         default_factory=lambda: _credential("source", expires_at=1030)

@@ -209,18 +209,18 @@ the returned `authorization_url`, and await `session.wait()`; the AI package
 does not own product UI and never opens a browser. `auth.get_auth(model)` only
 resolves existing authentication and never starts login.
 
-OpenAI Codex is not currently a Loushang OAuth provider. The experimental
-`OpenAICodexCredentialSource` imports an existing Codex
-`~/.codex/auth.json`; the example does not parse tokens. It registers the
-public source for an optional path, calls `get_auth(model)`, and passes the
-result to the request before calling:
+OpenAI Codex is not currently a Loushang OAuth provider. OpenAI Codex support
+currently imports existing Codex CLI credentials. It does not perform ChatGPT
+OAuth login. The live example does not parse tokens or call the experimental
+credential source directly; it calls `get_auth(model)` and passes the result to
+the request before calling:
 
 ```python
 get_model("openai", "coding-responses", "gpt-5.5")
 ```
 
 See
-[openai_codex_credential_import.py](../../../examples/ai/openai_codex_credential_import.py).
+[openai_codex_live_example.py](../../../examples/auth/openai_codex_live_example.py).
 
 ## Custom Catalogs
 
