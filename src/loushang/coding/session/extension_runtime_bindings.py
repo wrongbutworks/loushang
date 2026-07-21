@@ -5,8 +5,8 @@ from dataclasses import dataclass
 
 from loushang.agent import ThinkingLevel
 from loushang.ai.model import ModelSelection
-from loushang.coding.commands import SessionCommandDescriptor
 from loushang.coding.session.usage_payload import serialize_context_usage_payload
+from loushang.harness.commands import SessionCommandDescriptor
 from loushang.harness.extensions.context import ExtensionRuntimeBindings
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.workspace.exec import ExecResult

@@ -359,6 +359,7 @@ class AgentSession(SessionFacade):
             get_extension_runner=lambda: self._extension_runner,
             get_resource_bundle=lambda: self.resource_bundle,
             get_diagnostics_service=lambda: self.diagnostics_service,
+            diagnostics_runtime=self._diagnostics_bridge,
             builtin_backend=BuiltinCommandBackend(
                 get_session_info=self._get_builtin_session_info,
                 set_session_name=self.set_session_name,
