@@ -173,3 +173,22 @@ that capability when available; the Coding adapter keeps a fallback to the
 existing fork-at-current-position operation for older runtime implementations.
 This makes clone part of the neutral operation grammar without changing the
 Coding wire contract.
+
+### Session Tool, Bash, And Provider Collapse (Complete)
+
+The standard command pack now owns `tools`, `extensions`, `copy`, and
+`changelog` parsing/execution. Coding supplies tool/extension data, clipboard
+implementation, changelog content, and the final Product result projection.
+
+`ToolActivationProfile` owns default tool selection and new-tool activation.
+`SessionToolRuntime` remains the live rebinding mechanism; Coding only supplies
+its preferred order, builtin set, and activation policy.
+
+`BashController` now exposes only the native Harness command-execution surface.
+The Pi-style `execute_pi_style` and `record_pi_style_result` entry points and
+their tests were removed. Native extension `user_bash` interception remains a
+Coding extension policy callback.
+
+`ExtensionProviderRuntime` owns provider register/unregister/query lifecycle in
+Harness. Coding retains only the AI-native provider configuration conversion;
+provider registration, API source cleanup, and runtime lookup are shared.
