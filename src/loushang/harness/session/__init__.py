@@ -22,6 +22,13 @@ from loushang.harness.session.capabilities import (
     command_result_from_tool_result,
     create_tool_prompt_rebuilder,
 )
+from loushang.harness.session.command_controller import (
+    BuiltinCommandExecutor,
+    BuiltinCommandMatcher,
+    BuiltinDescriptorProvider,
+    SessionCommandController,
+    SessionCommandStorePort,
+)
 from loushang.harness.session.command_pack import (
     STANDARD_SESSION_COMMAND_PROFILE,
     StandardSessionCommandDisposition,
@@ -45,13 +52,6 @@ from loushang.harness.session.command_sources import (
     ResourceCommandResultFactory,
     ResourceCommandSourceRuntime,
     ResourceDiagnosticsRecorder,
-)
-from loushang.harness.session.command_controller import (
-    BuiltinCommandExecutor,
-    BuiltinCommandMatcher,
-    BuiltinDescriptorProvider,
-    SessionCommandController,
-    SessionCommandStorePort,
 )
 from loushang.harness.session.diagnostics import (
     ExtensionDiagnosticsPort,
@@ -135,6 +135,7 @@ from loushang.harness.session.resource_refresh import (
     ResourceSettingsProvider,
     SessionResourceRefreshRuntime,
 )
+from loushang.harness.session.rpc_operations import SessionRpcOperationBinding
 from loushang.harness.session.runtime import (
     AfterTurnPolicyPort,
     SessionRuntime,
@@ -235,6 +236,7 @@ __all__ = [
     "SessionDiagnosticsRuntime",
     "SessionRuntime",
     "SessionPromptRequest",
+    "SessionRpcOperationBinding",
     "SessionStats",
     "SessionResourceRefreshRuntime",
     "SessionToolRuntime",
