@@ -10,10 +10,7 @@ import loushang.ai as ai
 
 MODEL_REF = ("openai", "coding-responses", "gpt-5.5")
 USER_PROMPT = (
-    "In two concise sentences, explain this authentication flow: the application "
-    "checks auth.status(model), resolves existing credentials with "
-    "auth.get_auth(model), and passes the returned request authentication to "
-    "ai.stream()."
+    "Explain the architecture of this repository briefly."
 )
 
 
