@@ -151,7 +151,6 @@ from loushang.harness.tools.workspace.protocol import (
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import (
-    ExecOutputChunk,
     ExecRequest,
     ExecResult,
     ExecService,
@@ -917,46 +916,6 @@ class AgentSession(SessionFacade):
             source_record_id=record_id,
         )
 
-    # Public facade: bash execution.
-
-    async def execute_bash(
-        self,
-        command: str,
-        *,
-        cwd: str | None = None,
-        env: list[list[str] | tuple[str, str]]
-        | tuple[tuple[str, str], ...]
-        | None = None,
-        timeout_seconds: float | None = None,
-        stdin: str | None = None,
-        exclude_from_context: bool = False,
-        on_output: Callable[[ExecOutputChunk], Awaitable[None] | None] | None = None,
-        operations: object | None = None,
-    ) -> dict[str, object]:
-        return await super().execute_command_tool(
-            command,
-            cwd=cwd,
-            env=env,
-            timeout_seconds=timeout_seconds,
-            stdin=stdin,
-            exclude_from_context=exclude_from_context,
-            on_output=on_output,
-            operations=operations,
-        )
-
-    async def record_bash_result(
-        self,
-        command: str,
-        result: dict[str, object],
-        *,
-        exclude_from_context: bool = False,
-    ) -> None:
-        await self._bash_runtime.record_result(
-            command=command,
-            result=result,
-            exclude_from_context=exclude_from_context,
-        )
-
     # Public facade: extension runtime configuration.
 
     async def reload_extension_runtime(self) -> None:
@@ -1022,9 +981,6 @@ class AgentSession(SessionFacade):
             await self._refresh_extension_runtime(reason="active_tools_changed")
 
     # Public facade: run controls, retry, compaction, and tree navigation.
-
-    def abort_bash(self) -> None:
-        super().abort_command()
 
     @property
     def auto_retry_enabled(self) -> bool:

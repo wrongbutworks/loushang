@@ -107,6 +107,9 @@ from loushang.harness.session.lifecycle import (
     TransitionCandidateCallback,
     TransitionReleaseCallback,
 )
+from loushang.harness.session.lifecycle_adapter import (
+    SessionLifecycleOperationAdapter,
+)
 from loushang.harness.session.model_selection import (
     ModelCandidates,
     ModelSelectionApplyResult,
@@ -232,6 +235,7 @@ __all__ = [
     "SessionOperationRuntime",
     "SessionOperationUnavailableError",
     "SessionLifecycleOperationPorts",
+    "SessionLifecycleOperationAdapter",
     "SessionResourcePort",
     "SessionRetryPort",
     "SessionDiagnosticScope",
