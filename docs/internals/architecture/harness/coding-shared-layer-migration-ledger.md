@@ -146,3 +146,24 @@ Wave 4 first-slice probes:
 - failed Product runtime construction disposes the opened transcript;
 - Coding lifecycle, bootstrap, and import-boundary regressions preserve CWD,
   fork, extension, and diagnostic behavior.
+
+### Session Adapter Cull And RPC Lifecycle Port (Complete)
+
+The requested public-facade and RPC audit confirms that most of the proposed
+cutover already landed in earlier waves. Prompt, queue, abort, compaction, and
+retry handlers already use `SessionOperationRuntime`; moving them again would
+create a duplicate engine. The remaining lifecycle handlers now use explicit
+Harness `SessionLifecycleOperationPorts`, while Channel continues to own JSONL
+framing and Coding retains validation, error wording, compatibility fields, and
+response projection.
+
+| Source region | Actual change | Ownership result |
+| --- | ---: | --- |
+| `coding.session.agent_session` | 1,890 to 1,874 LOC (-16) | Removed only `abort`, `compact_session`, and bash state aliases that forwarded Harness methods. Coding compaction, bash, diagnostics, package, model, extension, and event behavior remains Product-owned. |
+| `coding.mode.rpc_mode` | 2,739 to 2,758 LOC (+19) | Added explicit lifecycle port binding; no RPC capability was deleted. The increase is intentional wiring, not a migration reduction. |
+| `harness.session.operations` | shared port/runtime contract | Owns neutral lifecycle callback dispatch for Product hosts. |
+
+This wave's net Coding reduction is 0 after the explicit RPC binding is
+included. The earlier 800--1,200 LOC projection is superseded by this audit;
+future reduction must come from a separately proven handler or Product adapter
+removal, not from reclassifying existing Harness calls.

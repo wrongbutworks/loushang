@@ -106,6 +106,7 @@ from loushang.harness.session.model_selection import (
     iter_scoped_model_selections,
 )
 from loushang.harness.session.operations import (
+    SessionLifecycleOperationPorts,
     SessionOperationAvailability,
     SessionOperationCapability,
     SessionOperationRuntime,
@@ -206,6 +207,7 @@ __all__ = [
     "SessionOperationCapability",
     "SessionOperationRuntime",
     "SessionOperationUnavailableError",
+    "SessionLifecycleOperationPorts",
     "SessionResourcePort",
     "SessionRetryPort",
     "SessionDiagnosticScope",
