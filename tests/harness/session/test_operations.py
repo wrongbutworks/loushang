@@ -116,6 +116,10 @@ class _Lifecycle:
         self.calls.append(("fork", entry_id, position))
         return SessionOperationResult("old", "forked", "text", False)
 
+    async def clone_session(self):
+        self.calls.append(("clone",))
+        return SessionOperationResult("clone", "cloned", None, False)
+
 
 def test_session_operation_runtime_runs_input_and_maintenance_through_control() -> None:
     async def scenario() -> None:
@@ -180,6 +184,7 @@ def test_session_operation_runtime_routes_lifecycle_through_product_ports() -> N
                 new_session=lifecycle.new_session,
                 restore_session=lifecycle.restore_session,
                 fork_session=lifecycle.fork_session,
+                clone_session=lifecycle.clone_session,
             ),
         )
 
@@ -188,10 +193,12 @@ def test_session_operation_runtime_routes_lifecycle_through_product_ports() -> N
         ).current == "new"
         assert (await runtime.restore_session("saved.jsonl")).current == "restored"
         assert (await runtime.fork_session("leaf", position="before")).payload == "text"
+        assert (await runtime.clone_session()).current == "cloned"
         assert lifecycle.calls == [
             ("new", "/project", "parent"),
             ("restore", "saved.jsonl"),
             ("fork", "leaf", "before"),
+            ("clone",),
         ]
 
     asyncio.run(scenario())

@@ -325,8 +325,12 @@ class AgentSessionRuntime(AgentTranscriptSessionRuntime[AgentSession, str]):
         )
 
     async def clone_session(self) -> AgentSession:
-        result = await self._run_fork_session_operation(None)
+        result = await self.clone_session_operation()
         return require_session_operation_session(result)
+
+    async def clone_session_operation(self) -> _SessionOperationResult:
+        """Return the clone result through the shared lifecycle operation contract."""
+        return await self._run_fork_session_operation(None)
 
     async def import_from_jsonl(
         self, input_path: str | Path, cwd_override: str | Path | None = None

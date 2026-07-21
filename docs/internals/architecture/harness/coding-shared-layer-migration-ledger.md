@@ -167,3 +167,9 @@ This wave's net Coding reduction is 0 after the explicit RPC binding is
 included. The earlier 800--1,200 LOC projection is superseded by this audit;
 future reduction must come from a separately proven handler or Product adapter
 removal, not from reclassifying existing Harness calls.
+
+The lifecycle port now also exposes `clone_session` explicitly. RPC hosts use
+that capability when available; the Coding adapter keeps a fallback to the
+existing fork-at-current-position operation for older runtime implementations.
+This makes clone part of the neutral operation grammar without changing the
+Coding wire contract.

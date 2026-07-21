@@ -816,9 +816,7 @@ class RpcMode(ModeAdapter):
         del payload
         previous = self.session
         try:
-            operation = await self._require_session_operations().fork_session(
-                None, position="at"
-            )
+            operation = await self._require_session_operations().clone_session()
             session = require_session_operation_session(operation)
         except Exception as error:
             self._write_response_error(
@@ -2028,6 +2026,10 @@ class RpcMode(ModeAdapter):
         if control is None:
             return None
         runtime = self.runtime
+        clone_operation = getattr(runtime, "clone_session_operation", None)
+        if not callable(clone_operation):
+            async def clone_operation():
+                return await runtime.fork_session_operation(None, position="at")
         return SessionOperationRuntime(
             cast(Any, control),
             lifecycle=SessionLifecycleOperationPorts(
@@ -2040,6 +2042,7 @@ class RpcMode(ModeAdapter):
                 fork_session=lambda entry_id, position: runtime.fork_session_operation(
                     entry_id, position=position
                 ),
+                clone_session=clone_operation,
             ),
         )
 

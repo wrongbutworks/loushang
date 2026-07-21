@@ -93,6 +93,7 @@ class SessionLifecycleOperationPorts:
     fork_session: Callable[
         [str | None, str], Awaitable[SessionOperationResult[Any, Any]]
     ]
+    clone_session: Callable[[], Awaitable[SessionOperationResult[Any, Any]]] | None = None
 
 
 class SessionOperationRuntime:
@@ -164,6 +165,15 @@ class SessionOperationRuntime:
     ) -> SessionOperationResult[Any, Any]:
         self._require_lifecycle_port()
         return await self._lifecycle.fork_session(entry_id, position)
+
+    async def clone_session(self) -> SessionOperationResult[Any, Any]:
+        """Create an independent session at the current product position."""
+        self._require_lifecycle_port()
+        if self._lifecycle.clone_session is None:
+            raise SessionOperationUnavailableError(
+                "Session clone operation is unavailable"
+            )
+        return await self._lifecycle.clone_session()
 
     def steer(self, text: str, *, images: Iterable[ImagePart] = ()) -> None:
         self._require(SessionOperationCapability.INPUT)
