@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from pathlib import Path
 
-from loushang.ai import CallOptions, OAuthBearerAuth, OAuthCredential, complete
+from loushang.ai import OAuthBearerAuth, OAuthCredential, complete
 from loushang.ai.advanced.registry import (
     clear_api_providers,
     register_api_provider,
     reset_api_providers,
 )
+from loushang.ai.auth import FileCredentialStore, get_auth
 from loushang.ai.event_stream.raw_parts import RawPart
 from loushang.ai.model import Auth, Capabilities, Model
 from loushang.ai.provider import ProviderRequest
@@ -28,7 +30,7 @@ class _RecordingProvider:
         yield {"type": "response_done"}
 
 
-def test_credential_resolver_bearer_auth_provider_request_chain() -> None:
+def test_get_auth_bearer_provider_request_chain(tmp_path: Path) -> None:
     provider = _RecordingProvider()
     model = Model(
         id="model-a",
@@ -48,13 +50,16 @@ def test_credential_resolver_bearer_auth_provider_request_chain() -> None:
     )
 
     async def scenario():
+        store = FileCredentialStore(tmp_path)
+        store.save(credential)
+        request_auth = await get_auth(model, store=store)
         clear_api_providers()
         register_api_provider(provider)
         try:
             return await complete(
                 model,
                 {"messages": [{"role": "user", "content": "hello"}]},
-                CallOptions(credential=credential),
+                auth=request_auth,
             )
         finally:
             reset_api_providers()

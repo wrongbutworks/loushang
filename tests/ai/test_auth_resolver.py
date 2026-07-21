@@ -74,9 +74,15 @@ class _FakeProvider:
 class _FakeSource:
     supports_refresh: bool
     id: str = "example-oauth"
+    description: str = "Fake external credential"
+    experimental: bool = False
     credential: OAuthCredential = field(
         default_factory=lambda: _credential("source", expires_at=1030)
     )
+
+    def matches(self, model: object) -> bool:
+        declaration = getattr(model, "auth", None)
+        return getattr(declaration, "provider", None) == self.id
 
     def load(self) -> OAuthCredential | None:
         return self.credential

@@ -13,6 +13,7 @@ class OpenAICodexCredentialSource:
     """Experimental importer for an existing Codex CLI file credential."""
 
     id = "openai-codex"
+    description = "Use existing Codex CLI login"
     experimental = True
     recovery = "codex_login"
     supports_refresh = False
@@ -25,6 +26,16 @@ class OpenAICodexCredentialSource:
     @property
     def auth_path(self) -> Path:
         return self._auth_path or Path.home() / ".codex" / "auth.json"
+
+    def matches(self, model: object) -> bool:
+        declaration = getattr(model, "auth", None)
+        kind = getattr(declaration, "kind", None)
+        provider = getattr(declaration, "provider", None)
+        return (
+            isinstance(kind, str)
+            and kind.strip().lower() == "oauth"
+            and provider == self.id
+        )
 
     def load(self) -> OAuthCredential | None:
         if not self.auth_path.exists():

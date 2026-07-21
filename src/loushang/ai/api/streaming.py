@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from loushang.ai.api_registry import get_default_api_provider_registry
+from loushang.ai.auth.credentials import AuthCredential
 from loushang.ai.auth.resolver import resolve_auth
 from loushang.ai.bootstrap import register_builtin_ai_providers
 from loushang.ai.context import NormalizedContext, normalize_context_result
@@ -315,11 +316,13 @@ async def stream(
     model: Model,
     context,
     options: CallOptions | None = None,
+    *,
+    auth: AuthCredential | None = None,
 ):
     return await _start_stream(
         model,
         context,
-        options,
+        _with_explicit_auth(options, auth),
         mode="stream",
         require_stream=True,
     )
@@ -329,11 +332,13 @@ async def complete(
     model: Model,
     context,
     options: CallOptions | None = None,
+    *,
+    auth: AuthCredential | None = None,
 ):
     event_stream = await _start_stream(
         model,
         context,
-        options,
+        _with_explicit_auth(options, auth),
         mode="complete",
         require_stream=False,
     )
@@ -346,10 +351,24 @@ async def complete_structured(
     output: StructuredOutputOptions | None = None,
     *,
     options: CallOptions | None = None,
+    auth: AuthCredential | None = None,
 ) -> StructuredOutputResult:
     structured_output = output or get_structured_output_options(options)
     if structured_output is None:
         raise ValueError("complete_structured requires StructuredOutputOptions")
     call_options = with_structured_output_options(options, structured_output)
-    message = await complete(model, context, call_options)
+    message = await complete(model, context, call_options, auth=auth)
     return parse_structured_output(message, structured_output)
+
+
+def _with_explicit_auth(
+    options: CallOptions | None,
+    auth: AuthCredential | None,
+) -> CallOptions | None:
+    if auth is None:
+        return options
+    if options is None:
+        return CallOptions(auth=auth)
+    if options.auth is not None:
+        raise ValueError("Pass request auth through either auth= or CallOptions.auth, not both")
+    return replace(options, auth=auth)

@@ -1,11 +1,15 @@
 from loushang.ai.auth.core import (
+    AuthAction,
+    AuthStatus,
     CredentialState,
     CredentialStatus,
     credential_status,
+    get_auth,
     get_oauth_provider,
     login,
     logout,
     register_oauth_provider,
+    status,
 )
 from loushang.ai.auth.credentials import (
     ApiKeyAuth,
@@ -14,6 +18,7 @@ from loushang.ai.auth.credentials import (
     OAuthCredential,
 )
 from loushang.ai.auth.errors import (
+    AuthenticationRequiredError,
     AuthError,
     CredentialExpiredError,
     InvalidCredentialError,
@@ -25,12 +30,15 @@ from loushang.ai.auth.oauth import (
     AuthlibOAuthProvider,
     AuthorizationCallback,
     OAuthClientConfig,
+    OAuthLoginSession,
     OAuthProvider,
 )
 from loushang.ai.auth.resolver import resolve_auth
 from loushang.ai.auth.sources import (
+    AuthExtensionRegistry,
     CredentialSource,
     OpenAICodexCredentialSource,
+    get_auth_extension_registry,
     get_credential_source,
     load_codex_credential,
     register_credential_source,
@@ -55,11 +63,15 @@ from loushang.ai.auth.support import (
 __all__ = [
     "ApiKeyAuth",
     "AuthorizationCallback",
+    "AuthenticationRequiredError",
+    "AuthAction",
+    "AuthExtensionRegistry",
     "AuthError",
     "AuthConfig",
     "AuthCredential",
     "AuthlibOAuthProvider",
     "AuthResolutionError",
+    "AuthStatus",
     "AuthView",
     "CredentialExpiredError",
     "CredentialSource",
@@ -74,11 +86,14 @@ __all__ = [
     "OAuthBearerAuth",
     "OAuthClientConfig",
     "OAuthCredential",
+    "OAuthLoginSession",
     "OAuthProvider",
     "OAuthProviderNotConfiguredError",
     "OpenAICodexCredentialSource",
     "RefreshFailedError",
     "credential_status",
+    "get_auth",
+    "get_auth_extension_registry",
     "get_credential_source",
     "get_oauth_provider",
     "load_codex_credential",
@@ -92,4 +107,5 @@ __all__ = [
     "resolve_auth_for_model",
     "resolve_auth_for_request",
     "save_credential_file",
+    "status",
 ]

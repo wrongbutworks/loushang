@@ -7,7 +7,11 @@ class AuthError(AIAuthenticationError):
     """Base error for credential lifecycle failures."""
 
 
-class MissingCredentialError(AuthError):
+class AuthenticationRequiredError(AuthError):
+    """Authentication is missing and the caller must choose an available action."""
+
+
+class MissingCredentialError(AuthenticationRequiredError):
     """No usable credential was found; the user should log in or configure one."""
 
 
@@ -28,6 +32,7 @@ class OAuthProviderNotConfiguredError(AIConfigurationError):
 
 
 __all__ = [
+    "AuthenticationRequiredError",
     "AuthError",
     "CredentialExpiredError",
     "InvalidCredentialError",

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from loushang.ai.auth.credentials import OAuthCredential
 from loushang.ai.auth.errors import (
@@ -13,6 +16,9 @@ from loushang.ai.auth.errors import (
     RefreshFailedError,
 )
 from loushang.ai.auth.oauth.base import AuthorizationCallback
+from loushang.ai.auth.store import FileCredentialStore
+
+_DEFAULT_REDIRECT_URI = "http://127.0.0.1:0/callback"
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +33,38 @@ class OAuthClientConfig:
     token_endpoint_auth_method: str | None = None
 
 
+class OAuthLoginSession:
+    """Pending OAuth authorization owned by the calling application."""
+
+    def __init__(
+        self,
+        *,
+        provider: str,
+        authorization_url: str,
+        redirect_uri: str,
+        wait_for_credential: Callable[[], Awaitable[OAuthCredential]],
+        close_session: Callable[[], Awaitable[None]],
+    ) -> None:
+        self.provider = provider
+        self.authorization_url = authorization_url
+        self.redirect_uri = redirect_uri
+        self._wait_for_credential = wait_for_credential
+        self._close_session = close_session
+        self._wait_task: asyncio.Future[OAuthCredential] | None = None
+
+    async def wait(self) -> OAuthCredential:
+        if self._wait_task is None:
+            self._wait_task = asyncio.ensure_future(self._wait_for_credential())
+        return await self._wait_task
+
+    async def close(self) -> None:
+        if self._wait_task is not None and not self._wait_task.done():
+            self._wait_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._wait_task
+        await self._close_session()
+
+
 class AuthlibOAuthProvider:
     """OAuth authorization-code provider implemented by Authlib."""
 
@@ -37,6 +75,76 @@ class AuthlibOAuthProvider:
             raise ValueError("provider_id must be a non-empty string")
         self.id = provider_id.strip()
         self.config = config
+
+    async def start_login(
+        self,
+        *,
+        store: FileCredentialStore | None = None,
+    ) -> OAuthLoginSession:
+        self._require_login_config(allow_default_redirect=True)
+        callback = await _LoopbackOAuthCallback.start(
+            self.config.redirect_uri or _DEFAULT_REDIRECT_URI
+        )
+        client = self._new_client(redirect_uri=callback.redirect_uri)
+        from authlib.common.security import (  # type: ignore[import-untyped]
+            generate_token,
+        )
+
+        code_verifier = generate_token(48)
+        try:
+            authorization_url, state = client.create_authorization_url(
+                self.config.authorization_endpoint,
+                code_verifier=code_verifier,
+            )
+        except Exception:
+            await callback.close()
+            await client.aclose()
+            raise
+
+        closed = False
+
+        async def close_session() -> None:
+            nonlocal closed
+            if closed:
+                return
+            closed = True
+            await callback.close()
+            await client.aclose()
+
+        async def wait_for_credential() -> OAuthCredential:
+            try:
+                authorization_response = await callback.wait()
+                try:
+                    token = await client.fetch_token(
+                        self.config.token_endpoint,
+                        authorization_response=authorization_response,
+                        code_verifier=code_verifier,
+                        state=state,
+                    )
+                except AuthError:
+                    raise
+                except Exception as error:
+                    raise AuthError(
+                        "OAuth login failed.",
+                        provider=self.id,
+                        details={
+                            "cause": type(error).__name__,
+                            "recovery": "login",
+                        },
+                    ) from error
+                credential = self.credential_from_token(token)
+                (store or FileCredentialStore()).save(credential)
+                return credential
+            finally:
+                await close_session()
+
+        return OAuthLoginSession(
+            provider=self.id,
+            authorization_url=authorization_url,
+            redirect_uri=callback.redirect_uri,
+            wait_for_credential=wait_for_credential,
+            close_session=close_session,
+        )
 
     async def login(
         self,
@@ -58,7 +166,7 @@ class AuthlibOAuthProvider:
         code_verifier = generate_token(48)
         try:
             try:
-                authorization_url, _state = client.create_authorization_url(
+                authorization_url, state = client.create_authorization_url(
                     self.config.authorization_endpoint,
                     code_verifier=code_verifier,
                 )
@@ -76,6 +184,7 @@ class AuthlibOAuthProvider:
                     self.config.token_endpoint,
                     authorization_response=authorization_response,
                     code_verifier=code_verifier,
+                    state=state,
                 )
             except AuthError:
                 raise
@@ -196,7 +305,12 @@ class AuthlibOAuthProvider:
         del token, previous
         return {}
 
-    def _new_client(self, *, token: Mapping[str, object] | None = None):
+    def _new_client(
+        self,
+        *,
+        token: Mapping[str, object] | None = None,
+        redirect_uri: str | None = None,
+    ):
         from authlib.integrations.httpx_client import (  # type: ignore[import-untyped]
             AsyncOAuth2Client,
         )
@@ -204,7 +318,7 @@ class AuthlibOAuthProvider:
         return AsyncOAuth2Client(
             client_id=self.config.client_id,
             client_secret=self.config.client_secret,
-            redirect_uri=self.config.redirect_uri,
+            redirect_uri=redirect_uri or self.config.redirect_uri,
             scope=" ".join(self.config.scopes) or None,
             token=token,
             token_endpoint_auth_method=self.config.token_endpoint_auth_method,
@@ -219,17 +333,15 @@ class AuthlibOAuthProvider:
                 details={"recovery": "configure_client"},
             )
 
-    def _require_login_config(self) -> None:
+    def _require_login_config(self, *, allow_default_redirect: bool = False) -> None:
         self._require_client_id()
         missing = [
             name
-            for name in (
-                "authorization_endpoint",
-                "token_endpoint",
-                "redirect_uri",
-            )
+            for name in ("authorization_endpoint", "token_endpoint")
             if not getattr(self.config, name)
         ]
+        if not allow_default_redirect and not self.config.redirect_uri:
+            missing.append("redirect_uri")
         if missing:
             raise OAuthProviderNotConfiguredError(
                 "OAuth provider login configuration is incomplete.",
@@ -249,6 +361,116 @@ class AuthlibOAuthProvider:
                 details={"recovery": "configure_client"},
             )
 
+
+class _LoopbackOAuthCallback:
+    def __init__(
+        self,
+        *,
+        expected_path: str,
+        redirect_uri: str,
+        response: asyncio.Future[str],
+    ) -> None:
+        self.expected_path = expected_path
+        self.redirect_uri = redirect_uri
+        self._response = response
+        self._server: asyncio.Server | None = None
+
+    @classmethod
+    async def start(cls, configured_redirect_uri: str) -> "_LoopbackOAuthCallback":
+        parsed = urlsplit(configured_redirect_uri)
+        if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost"}:
+            raise OAuthProviderNotConfiguredError(
+                "OAuth login redirect_uri must be an HTTP loopback address.",
+                details={
+                    "redirect_uri": configured_redirect_uri,
+                    "recovery": "configure_client",
+                },
+            )
+        if parsed.query or parsed.fragment or parsed.username or parsed.password:
+            raise OAuthProviderNotConfiguredError(
+                "OAuth login redirect_uri must not include credentials, query, or fragment.",
+                details={"recovery": "configure_client"},
+            )
+        path = parsed.path or "/callback"
+        try:
+            port = parsed.port if parsed.port is not None else 80
+        except ValueError as error:
+            raise OAuthProviderNotConfiguredError(
+                "OAuth login redirect_uri has an invalid port.",
+                details={"recovery": "configure_client"},
+            ) from error
+        response: asyncio.Future[str] = asyncio.get_running_loop().create_future()
+        instance = cls(expected_path=path, redirect_uri="", response=response)
+        try:
+            server = await asyncio.start_server(
+                instance._handle_request,
+                host="127.0.0.1",
+                port=port,
+            )
+        except OSError as error:
+            raise OAuthProviderNotConfiguredError(
+                "OAuth login could not bind the configured loopback redirect.",
+                details={
+                    "cause": type(error).__name__,
+                    "recovery": "configure_client",
+                },
+            ) from error
+        socket = next(iter(server.sockets or ()), None)
+        if socket is None:
+            server.close()
+            await server.wait_closed()
+            raise OAuthProviderNotConfiguredError(
+                "OAuth login callback listener did not expose a socket.",
+                details={"recovery": "configure_client"},
+            )
+        actual_port = socket.getsockname()[1]
+        host = parsed.hostname
+        instance.redirect_uri = urlunsplit(
+            (parsed.scheme, f"{host}:{actual_port}", path, "", "")
+        )
+        instance._server = server
+        return instance
+
+    async def wait(self) -> str:
+        return await self._response
+
+    async def close(self) -> None:
+        if self._server is not None:
+            self._server.close()
+            await self._server.wait_closed()
+            self._server = None
+        if not self._response.done():
+            self._response.cancel()
+
+    async def _handle_request(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
+        status = "400 Bad Request"
+        body = b"OAuth callback was invalid."
+        try:
+            request = await reader.readuntil(b"\r\n\r\n")
+            request_line = request.split(b"\r\n", 1)[0].decode("ascii")
+            method, target, _version = request_line.split(" ", 2)
+            parsed_target = urlsplit(target)
+            if method == "GET" and parsed_target.path == self.expected_path:
+                status = "200 OK"
+                body = b"Authentication complete. You can close this window."
+                if not self._response.done():
+                    self._response.set_result(f"{self.redirect_uri}?{parsed_target.query}")
+        except (UnicodeError, ValueError, asyncio.IncompleteReadError, asyncio.LimitOverrunError):
+            pass
+        writer.write(
+            f"HTTP/1.1 {status}\r\n".encode("ascii")
+            + b"Content-Type: text/plain; charset=utf-8\r\n"
+            + f"Content-Length: {len(body)}\r\n".encode("ascii")
+            + b"Connection: close\r\n\r\n"
+            + body
+        )
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
 
 def _expires_at_from_token(token: Mapping[str, Any]) -> float | int | None:
     expires_at = token.get("expires_at")
@@ -280,4 +502,4 @@ def _oauth_token(credential: OAuthCredential) -> dict[str, object]:
     return token
 
 
-__all__ = ["AuthlibOAuthProvider", "OAuthClientConfig"]
+__all__ = ["AuthlibOAuthProvider", "OAuthClientConfig", "OAuthLoginSession"]

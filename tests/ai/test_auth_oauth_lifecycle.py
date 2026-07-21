@@ -16,9 +16,8 @@ from urllib.parse import parse_qs, urlencode, urlparse
 import httpx
 
 from loushang.ai import OAuthBearerAuth
-from loushang.ai.auth import FileCredentialStore, login, resolve_auth
-from loushang.ai.auth.oauth import AuthlibOAuthProvider, OAuthClientConfig
-from loushang.ai.model import Auth, Model
+from loushang.ai.auth import FileCredentialStore, get_auth, login
+from loushang.ai.model import Auth, Model, OAuthConfig
 
 
 @dataclass
@@ -124,53 +123,48 @@ def _fake_oauth_server() -> Iterator[tuple[str, _OAuthServerState]]:
 
 def test_real_authlib_login_store_resolve_refresh_lifecycle(tmp_path: Path) -> None:
     async def scenario(base_url: str, state: _OAuthServerState):
-        provider = AuthlibOAuthProvider(
-            "local-oauth",
-            OAuthClientConfig(
-                client_id="local-client",
-                authorization_endpoint=f"{base_url}/authorize",
-                token_endpoint=f"{base_url}/token",
-                redirect_uri="http://client.test/callback",
-                scopes=("model.read",),
-                token_endpoint_auth_method="none",
-            ),
-        )
-        store = FileCredentialStore(tmp_path)
-
-        async def authorize(url: str) -> str:
-            async with httpx.AsyncClient(
-                follow_redirects=False,
-                trust_env=False,
-            ) as client:
-                response = await client.get(url)
-            assert response.status_code == HTTPStatus.FOUND
-            return response.headers["location"]
-
-        initial = await login(provider, store=store, authorize=authorize)
         model = Model(
             id="local-model",
             provider="local",
             endpoint="oauth",
             api="openai-responses",
             base_url="https://model.test/v1",
-            auth=Auth(kind="oauth", provider=provider.id),
+            auth=Auth(
+                kind="oauth",
+                provider="local-oauth",
+                oauth=OAuthConfig(
+                client_id="local-client",
+                authorization_endpoint=f"{base_url}/authorize",
+                token_endpoint=f"{base_url}/token",
+                scopes=("model.read",),
+                token_endpoint_auth_method="none",
+            ),
+            ),
         )
-        request_auth = await resolve_auth(
+        store = FileCredentialStore(tmp_path)
+
+        session = await login(model, store=store)
+        async with httpx.AsyncClient(follow_redirects=True, trust_env=False) as client:
+            response = await client.get(session.authorization_url)
+        assert response.status_code == HTTPStatus.OK
+        initial = await session.wait()
+        request_auth = await get_auth(
             model,
             store=store,
-            providers={provider.id: provider},
             now=initial.expires_at,
         )
-        return initial, request_auth, store.load(provider.id), state
+        return initial, request_auth, store.load("local-oauth"), state, session
 
     with _fake_oauth_server() as (base_url, state):
-        initial, request_auth, stored, server_state = asyncio.run(
+        initial, request_auth, stored, server_state, session = asyncio.run(
             scenario(base_url, state)
         )
 
     assert initial.access_token == "initial-access"
     assert initial.refresh_token == "refresh-token"
     assert request_auth == OAuthBearerAuth("refreshed-access")
+    assert session.authorization_url.startswith(f"{base_url}/authorize?")
+    assert session.redirect_uri.startswith("http://127.0.0.1:")
     assert stored is not None
     assert stored.access_token == "refreshed-access"
     assert stored.refresh_token == "refresh-token"

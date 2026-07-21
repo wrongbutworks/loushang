@@ -9,6 +9,7 @@ import pytest
 
 from loushang.ai.auth import (
     AuthError,
+    AuthExtensionRegistry,
     FileCredentialStore,
     InvalidCredentialError,
     OAuthCredential,
@@ -17,16 +18,11 @@ from loushang.ai.auth import (
     credential_status,
     get_credential_source,
     get_oauth_provider,
-    login,
     logout,
     register_credential_source,
     register_oauth_provider,
 )
 from loushang.ai.auth.oauth.client import AuthlibOAuthProvider, OAuthClientConfig
-from loushang.ai.auth.oauth.providers import (
-    KimiCodeOAuthProvider,
-    KimiOAuthConfig,
-)
 from loushang.ai.auth.sources import (
     OpenAICodexCredentialSource,
     load_codex_credential,
@@ -57,7 +53,13 @@ class _FakeProvider:
 @dataclass
 class _FakeSource:
     id: str = "fake-source"
+    description: str = "Fake external credential"
+    experimental: bool = False
     supports_refresh: bool = False
+
+    def matches(self, model: object) -> bool:
+        declaration = getattr(model, "auth", None)
+        return getattr(declaration, "provider", None) == self.id
 
     def load(self) -> OAuthCredential | None:
         return OAuthCredential(provider=self.id, access_token="source-access")
@@ -67,13 +69,14 @@ class _FakeSource:
         return OAuthCredential(provider=self.id, access_token="source-file-access")
 
 
-def test_login_status_logout_use_provider_and_store(tmp_path: Path) -> None:
+def test_status_logout_use_provider_and_store(tmp_path: Path) -> None:
     provider = _FakeProvider()
     store = FileCredentialStore(tmp_path)
 
     async def scenario():
         missing = credential_status(provider, store=store, now=1000)
-        credential = await login(provider, store=store)
+        credential = await provider.login()
+        store.save(credential)
         current = credential_status(provider, store=store, now=1000)
         deleted = await logout(provider, store=store)
         final = credential_status(provider, store=store, now=1000)
@@ -91,15 +94,6 @@ def test_login_status_logout_use_provider_and_store(tmp_path: Path) -> None:
     assert final.state == "missing"
 
 
-def _kimi_config() -> KimiOAuthConfig:
-    return KimiOAuthConfig(
-        client_id="authorized-client",
-        authorization_endpoint="https://provider.test/authorize",
-        token_endpoint="https://provider.test/token",
-        redirect_uri="http://127.0.0.1/callback",
-    )
-
-
 def test_unconfigured_oauth_providers_are_not_registered(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -111,48 +105,15 @@ def test_unconfigured_oauth_providers_are_not_registered(
         get_credential_source("openai-codex"),
         OpenAICodexCredentialSource,
     )
-    with pytest.raises(KeyError, match="not registered"):
-        asyncio.run(login("kimi-code"))
-    with pytest.raises(TypeError, match="config"):
-        KimiCodeOAuthProvider()  # type: ignore[call-arg]
-
-
-@pytest.mark.parametrize(
-    "field",
-    ["client_id", "authorization_endpoint", "token_endpoint", "redirect_uri"],
-)
-def test_kimi_oauth_config_requires_complete_client_configuration(
-    field: str,
-) -> None:
-    values = {
-        "client_id": "client",
-        "authorization_endpoint": "https://provider.test/authorize",
-        "token_endpoint": "https://provider.test/token",
-        "redirect_uri": "http://127.0.0.1/callback",
-    }
-    values[field] = ""
-
-    with pytest.raises(ValueError, match=field):
-        KimiOAuthConfig(**values)
-
-
-def test_configured_kimi_oauth_provider_registers_explicitly(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr("loushang.ai.auth.core._oauth_providers", {})
-    provider = KimiCodeOAuthProvider(_kimi_config())
-
-    register_oauth_provider(provider)
-
-    assert get_oauth_provider("kimi-code") is provider
-    with pytest.raises(ValueError, match="already registered"):
-        register_oauth_provider(provider)
 
 
 def test_credential_source_registry_is_independent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("loushang.ai.auth.sources.registry._credential_sources", {})
+    monkeypatch.setattr(
+        "loushang.ai.auth.sources.registry._default_registry",
+        AuthExtensionRegistry(),
+    )
     source = _FakeSource()
 
     register_credential_source(source)
@@ -233,10 +194,12 @@ class _FakeAuthlibClient:
         *,
         authorization_response,
         code_verifier,
+        state=None,
     ):
         assert endpoint == "https://provider.test/token"
         self.authorization_response = authorization_response
         self.fetch_code_verifier = code_verifier
+        assert state == "authlib-state"
         if self.fail_fetch:
             raise RuntimeError("fetch failed")
         return {
@@ -277,8 +240,8 @@ class _TestAuthlibProvider(AuthlibOAuthProvider):
         )
         self.client = client
 
-    def _new_client(self, *, token=None):
-        del token
+    def _new_client(self, *, token=None, redirect_uri=None):
+        del token, redirect_uri
         return self.client
 
 
@@ -426,7 +389,15 @@ def test_openai_codex_source_only_imports_external_credentials(
 ) -> None:
     path = tmp_path / "auth.json"
     source = OpenAICodexCredentialSource(path)
+    matching_model = type(
+        "ModelFixture",
+        (),
+        {"auth": type("AuthFixture", (), {"kind": "oauth", "provider": source.id})()},
+    )()
+    assert source.description == "Use existing Codex CLI login"
+    assert source.experimental is True
     assert source.supports_refresh is False
+    assert source.matches(matching_model) is True
     assert source.load() is None
     path.write_text(
         json.dumps(
