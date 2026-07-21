@@ -647,6 +647,9 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
     operations_source = Path("src/loushang/harness/session/operations.py").read_text(
         encoding="utf-8"
     )
+    binding_source = Path(
+        "src/loushang/harness/session/rpc_operations.py"
+    ).read_text(encoding="utf-8")
     rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
         encoding="utf-8"
     )
@@ -660,6 +663,12 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
     assert "loushang.coding" not in operations_source
     assert "loushang.channel" not in operations_source
     assert "json" not in operations_source
+    assert "loushang.coding" not in binding_source
+    assert "loushang.channel" not in binding_source
+    assert "SessionRpcOperationBinding" in rpc_source
+    assert "_rpc_operations.prompt_request" in rpc_source
+    assert "_rpc_operations.new_session" in rpc_source
+    assert "_rpc_operations.compact" in rpc_source
     assert "SessionOperationAvailability" in operations_source
     assert "SessionOperationRuntime" in rpc_source
     assert "WorkRuntime" in channel_adapter_source
@@ -3368,7 +3377,7 @@ def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
     assert "import_session_operation" in extension_source
     assert "_clone_from_builtin" not in session_source
     assert "_import_from_builtin" not in session_source
-    assert "require_session_operation_session" in rpc_source
+    assert "SessionRpcOperationBinding" in rpc_source
     assert "require_session_operation_session" in cli_source
 
 

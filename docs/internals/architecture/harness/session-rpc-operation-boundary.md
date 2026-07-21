@@ -2,10 +2,10 @@
 
 ## Status
 
-Status: implementation in progress. The Channel command-routing slice is
-complete; standard-operation response projection remains in Coding until the
-following adapter slice removes duplicated glue without changing the public
-RPC contract.
+Status: implemented on `lane/harness`. The Channel command-routing slice and
+standard operation cutover are complete: Channel owns command routing, Harness
+owns the standard operation binding, and Coding remains the public protocol
+adapter.
 
 ## Problem
 
@@ -14,8 +14,8 @@ It still combines four different responsibilities:
 
 1. strict JSONL input dispatch and unsupported-command handling;
 2. scheduling and draining background prompt and bash tasks;
-3. invocation of standard session controls such as prompt, steer, abort,
-   session naming, retry, and compaction; and
+3. invocation and request grammar for standard session controls such as
+   prompt, steer, abort, lifecycle replacement, retry, and compaction; and
 4. Coding-specific RPC request aliases, camelCase responses, model/auth,
    package, bash, extension UI, event views, and session-state projection.
 
@@ -31,6 +31,7 @@ RPC-shaped session executor merely to move code out of Coding.
 | Explicit command route registration and unknown-command fallback | `channel` | Register Product handlers and preserve Product error text. |
 | Background task tracking and host lifecycle | `channel.ProductHostTaskTracker` / `ProductHostRuntime` | Choose which Product operations run in the background. |
 | Typed prompt, input, queue, lifecycle, identity, retry, and maintenance operations | `harness.session.SessionOperationRuntime` | Bind a session control port and choose capability availability. |
+| RPC payload grammar and lifecycle rebinding for standard operations | `harness.session.SessionRpcOperationBinding` | Select exposed commands and project operation results. |
 | Coding JSON field aliases and camelCase success/error frames | `coding.mode.rpc_mode` | Preserve the public Coding RPC contract. |
 | Model/auth, package, bash, extension UI, event rendering, and state projection | `coding` | Retain domain policy and presentation. |
 
@@ -44,7 +45,8 @@ but it must not import `channel` or a Product protocol schema.
 JsonlCommandHost
   -> Channel command router
      -> Coding RPC request parser and response projector
-        -> SessionOperationRuntime
+        -> SessionRpcOperationBinding
+           -> SessionOperationRuntime
            -> bound Product session_control
 
      -> Coding-only model/auth/package/bash/extension handlers
@@ -56,25 +58,21 @@ the lifecycle of an Agent session.
 
 ## Admitted Standard Operations
 
-The first cutover group is limited to operations already represented by
+The cutover group is limited to operations already represented by
 `SessionOperationRuntime`:
 
 ```text
-prompt
-steer
-follow_up
-abort
-set_session_name
-compact
-set_auto_retry
-abort_retry
-set_auto_compaction
+prompt, steer, follow_up, abort
+new_session, switch_session, fork, clone
+compact, set_auto_retry, abort_retry, set_auto_compaction
 ```
 
 `prompt` continues to acknowledge after Product preflight and run in the
 background. The Channel task tracker owns task lifetime; Coding supplies the
-legacy acknowledgement/error projection. The remaining operations continue to
-use the existing synchronous or asynchronous Harness session-control methods.
+legacy acknowledgement/error projection. Lifecycle replacement is rebound by
+the Harness binding before Coding projects the result. Session naming remains
+an existing direct Harness operation call because it has no distinct RPC
+payload grammar in this slice.
 
 The following remain Coding-owned in this wave:
 
@@ -96,17 +94,18 @@ The following remain Coding-owned in this wave:
    - Add a fake Product test with no Coding or Harness import.
 
 2. **Standard session-operation adapter**
-   - Bind the admitted operation group through the existing
-     `SessionOperationRuntime` and Channel task tracker.
-   - Keep request parsing and response projection injected so the adapter has
-     no Coding wire fields.
-   - Lock prompt acknowledgement timing, task draining, capability-unavailable
-     behavior, and command routing precedence.
+   - Bind the admitted operation group through
+     `SessionRpcOperationBinding` and the existing `SessionOperationRuntime`.
+   - Keep response projection injected so the binding has no Coding wire
+     fields, response envelopes, or Channel imports.
+   - Lock prompt acknowledgement timing, lifecycle rebinding, capability
+     availability, and command routing precedence.
 
 3. **Coding cutover and deletion**
-   - Replace `RpcMode` reflection dispatch and admitted handler glue with the
-     Channel router and session-operation adapter.
-   - Delete duplicated background-task and standard-operation orchestration.
+   - Replace `RpcMode` standard-operation parsing and calls with the Channel
+     router and Harness binding.
+   - Delete duplicated standard input/lifecycle/maintenance parsing while
+     retaining Coding response frames and product handlers.
    - Retain the Coding-only handlers listed above and add an import boundary
      proving Channel and Harness do not import Coding.
 
@@ -128,8 +127,11 @@ This wave does not:
 - A fake session-control port executes every admitted operation without Coding
   types or JSON fields.
 - Existing Coding RPC tests preserve prompt acknowledgement timing, steer and
-  follow-up images, abort, naming, retry, and compaction results.
+  follow-up images, abort, lifecycle rebinding, naming, retry, and compaction
+  results.
 - `channel` has no Harness/Coding import; `harness.session` has no Channel or
   Coding import.
+- `SessionRpcOperationBinding` has no JSONL, response, or Product imports, and
+  `RpcMode` delegates standard lifecycle/input/maintenance payloads to it.
 - `RpcMode` no longer uses reflection dispatch for registered routes, and its
   remaining handlers are explicitly Product-owned.
