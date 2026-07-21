@@ -1,7 +1,6 @@
 from loushang.coding.event.projection import (
     SUPPORTED_JSON_EVENT_VIEWS,
     JsonEventView,
-    normalize_event_select,
     project_session_event,
     select_events,
     shape_stream_event,
@@ -22,7 +21,6 @@ __all__ = [
     "AgentSessionEvent",
     "JsonEventView",
     "SUPPORTED_JSON_EVENT_VIEWS",
-    "normalize_event_select",
     "project_session_event",
     "project_runtime_event_to_session_event",
     "project_runtime_event_to_json_views",

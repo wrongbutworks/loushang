@@ -28,7 +28,6 @@ from loushang.coding.diagnostics.serialization import (
 from loushang.coding.event import (
     SUPPORTED_JSON_EVENT_VIEWS,
     JsonEventView,
-    normalize_event_select,
     project_runtime_event_to_json_views,
     project_session_event,
     shape_runtime_event_view,
@@ -44,7 +43,7 @@ from loushang.harness.agent_transcript import (
 )
 from loushang.harness.commands import complete_slash_commands
 from loushang.harness.diagnostics.types import DiagnosticsQuery
-from loushang.harness.events import RuntimeEvent
+from loushang.harness.events import RuntimeEvent, normalize_event_select
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.harness.session import (
     SessionLifecycleOperationPorts,
