@@ -120,8 +120,6 @@ async def execute_builtin_command_async(
             return _execute_copy(args, backend)
         case "changelog":
             return _execute_changelog(args, backend)
-        case "extensions":
-            return _execute_extensions(args, backend)
         case _:
             return _unsupported(invocation_name)
 
@@ -146,6 +144,7 @@ def _standard_session_command_ports(
         get_all_tools=backend.get_all_tools,
         set_active_tools=backend.set_active_tools,
         get_default_active_tool_names=backend.get_default_active_tool_names,
+        get_extensions=backend.get_extensions,
     )
 
 
@@ -197,6 +196,30 @@ def _project_standard_session_command_result(
                 [name for name in active_tools if isinstance(name, str)],
                 [entry for entry in available_tools if isinstance(entry, dict)],
                 action=value.get("action") if isinstance(value.get("action"), str) else None,
+            )
+        case StandardSessionCommandId.EXTENSIONS:
+            value = result.value
+            if not isinstance(value, Mapping):
+                raise TypeError("standard extensions command returned an invalid result")
+            extensions = value.get("extensions", [])
+            query = value.get("query")
+            selected = value.get("selected")
+            if not isinstance(extensions, list):
+                raise TypeError("standard extensions command returned invalid data")
+            extensions = [entry for entry in extensions if isinstance(entry, dict)]
+            if not isinstance(query, str) or not query:
+                return _extensions_ok(extensions)
+            if not isinstance(selected, Mapping):
+                available = ", ".join(_extension_id(extension) for extension in extensions) or "(none)"
+                return _error(
+                    "extensions",
+                    f"Unknown extension: {query}. Loaded extensions: {available}",
+                )
+            return _ok(
+                "extensions",
+                extension=dict(selected),
+                message=f"Extension {_extension_id(selected)}: {_extension_name(selected)}",
+                display=_extension_detail_display(selected),
             )
 
 
@@ -297,32 +320,6 @@ def _execute_changelog(
     if backend.get_changelog is None:
         return _unsupported("changelog")
     return _ok("changelog", changelog=_to_plain_data(backend.get_changelog(args)))
-
-
-def _execute_extensions(
-    args: str, backend: BuiltinCommandBackend
-) -> CommandExecutionResult:
-    if backend.get_extensions is None:
-        return _unsupported("extensions")
-    extensions = [_extension_entry(extension) for extension in backend.get_extensions()]
-    query = args.strip()
-    if not query:
-        return _extensions_ok(extensions)
-
-    extension = _find_extension(extensions, query)
-    if extension is None:
-        available = (
-            ", ".join(_extension_id(extension) for extension in extensions) or "(none)"
-        )
-        return _error(
-            "extensions", f"Unknown extension: {query}. Loaded extensions: {available}"
-        )
-    return _ok(
-        "extensions",
-        extension=extension,
-        message=f"Extension {_extension_id(extension)}: {_extension_name(extension)}",
-        display=_extension_detail_display(extension),
-    )
 
 
 def read_changelog_for_cwd(cwd: str | Path, args: str = "") -> dict[str, object]:
@@ -543,30 +540,6 @@ def _capabilities_text(extension: Mapping[str, object]) -> str:
     return ", ".join(capabilities) if capabilities else "(none)"
 
 
-def _find_extension(
-    extensions: list[dict[str, object]], query: str
-) -> dict[str, object] | None:
-    for extension in extensions:
-        if query in {
-            _extension_id(extension),
-            _extension_name(extension),
-            _runtime_name(extension),
-        }:
-            return extension
-    return None
-
-
-def _extension_entry(extension: object) -> dict[str, object]:
-    if isinstance(extension, Mapping):
-        return dict(extension)
-    return {
-        "id": _string_object_field(
-            extension, "id", default=_string_object_field(extension, "name")
-        ),
-        "name": _string_object_field(extension, "name"),
-    }
-
-
 def _extension_id(extension: Mapping[str, object]) -> str:
     return _string_mapping_field(extension, "id", default=_extension_name(extension))
 
@@ -583,11 +556,6 @@ def _string_mapping_field(
     value: Mapping[str, object], field: str, *, default: str = ""
 ) -> str:
     raw = value.get(field)
-    return raw if isinstance(raw, str) and raw else default
-
-
-def _string_object_field(value: object, field: str, *, default: str = "") -> str:
-    raw = getattr(value, field, None)
     return raw if isinstance(raw, str) and raw else default
 
 

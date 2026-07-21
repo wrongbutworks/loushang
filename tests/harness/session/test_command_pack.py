@@ -256,6 +256,25 @@ def test_standard_session_command_pack_manages_tools_without_coding() -> None:
     assert active == ["read", "bash"]
 
 
+def test_standard_session_command_pack_queries_extensions_without_coding() -> None:
+    ports = StandardSessionCommandPorts(
+        get_extensions=lambda: [
+            {"id": "acme.review", "name": "Acme Review"},
+        ]
+    )
+
+    result = asyncio.run(
+        execute_standard_session_command_async("extensions", "acme.review", ports)
+    )
+
+    assert result is not None and result.disposition == "completed"
+    assert result.value == {
+        "extensions": [{"id": "acme.review", "name": "Acme Review"}],
+        "query": "acme.review",
+        "selected": {"id": "acme.review", "name": "Acme Review"},
+    }
+
+
 def test_standard_session_command_pack_has_no_coding_import() -> None:
     module_path = (
         Path(__file__).parents[3] / "src/loushang/harness/session/command_pack.py"

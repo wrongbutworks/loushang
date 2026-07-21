@@ -33,6 +33,7 @@ class StandardSessionCommandId(str, Enum):
     CLONE = "clone"
     TREE = "tree"
     TOOLS = "tools"
+    EXTENSIONS = "extensions"
 
 
 StandardSessionCommandDisposition = Literal[
@@ -145,6 +146,7 @@ class StandardSessionCommandPorts:
     get_all_tools: Callable[[], list[object]] | None = None
     set_active_tools: Callable[[list[str]], object | Awaitable[object]] | None = None
     get_default_active_tool_names: Callable[[], list[str]] | None = None
+    get_extensions: Callable[[], list[object]] | None = None
 
 
 def is_standard_session_command(
@@ -298,6 +300,8 @@ async def execute_standard_session_command_async(
             )
         case StandardSessionCommandId.TOOLS:
             return await _execute_tools_command(args, ports)
+        case StandardSessionCommandId.EXTENSIONS:
+            return await _execute_extensions_command(args, ports)
 
 
 def _command_id(invocation_name: str) -> StandardSessionCommandId | None:
@@ -434,6 +438,58 @@ def _tools_result(
     if action is not None:
         result["action"] = action
     return result
+
+
+async def _execute_extensions_command(
+    args: str, ports: StandardSessionCommandPorts
+) -> StandardSessionCommandResult:
+    command_id = StandardSessionCommandId.EXTENSIONS
+    if ports.get_extensions is None:
+        return StandardSessionCommandResult.unavailable(command_id)
+    extensions = [_extension_entry(extension) for extension in ports.get_extensions()]
+    query = args.strip()
+    if not query:
+        return StandardSessionCommandResult.completed(
+            command_id, {"extensions": extensions, "query": None, "selected": None}
+        )
+    selected = next(
+        (
+            extension
+            for extension in extensions
+            if query
+            in {
+                _extension_field(extension, "id"),
+                _extension_field(extension, "name"),
+                _extension_field(extension, "runtimeName"),
+            }
+        ),
+        None,
+    )
+    return StandardSessionCommandResult.completed(
+        command_id,
+        {"extensions": extensions, "query": query, "selected": selected},
+    )
+
+
+def _extension_entry(extension: object) -> dict[str, object]:
+    if isinstance(extension, Mapping):
+        return dict(extension)
+    name = _object_field(extension, "name")
+    return {
+        "id": _object_field(extension, "id") or name,
+        "name": name,
+        "runtimeName": _object_field(extension, "runtimeName"),
+    }
+
+
+def _extension_field(extension: Mapping[str, object], field: str) -> str:
+    value = extension.get(field)
+    return value if isinstance(value, str) else ""
+
+
+def _object_field(value: object, field: str) -> str:
+    raw = getattr(value, field, None)
+    return raw if isinstance(raw, str) else ""
 
 
 def _available_tool_entries(
