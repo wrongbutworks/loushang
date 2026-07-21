@@ -46,6 +46,10 @@ def _runtime(driver: ReferenceDriver) -> HostRuntime[str]:
     )
 
 
+async def _async_value(value: str) -> str:
+    return value
+
+
 def test_host_runtime_runs_reference_driver_and_publishes_lifecycle() -> None:
     async def scenario() -> None:
         driver = ReferenceDriver()
@@ -146,6 +150,48 @@ def test_host_runtime_rejects_concurrent_and_external_driver_runs() -> None:
         driver.running = True
         with pytest.raises(HostStateError, match="already running"):
             await runtime.run(driver.run)
+
+    asyncio.run(scenario())
+
+
+def test_host_runtime_runs_deferred_operation_after_active_run() -> None:
+    async def scenario() -> None:
+        driver = ReferenceDriver()
+        runtime = _runtime(driver)
+        first = asyncio.create_task(runtime.run(driver.run))
+        await driver.started.wait()
+
+        second = asyncio.create_task(
+            runtime.run_after_idle(lambda: _async_value("deferred-result"))
+        )
+        await asyncio.sleep(0)
+        assert not second.done()
+
+        driver.release.set()
+        assert await first == "reference-result"
+        assert await second == "deferred-result"
+        assert runtime.status == "idle"
+
+    asyncio.run(scenario())
+
+
+def test_host_runtime_coalesces_deferred_operations_by_key() -> None:
+    async def scenario() -> None:
+        driver = ReferenceDriver()
+        runtime = _runtime(driver)
+        calls: list[str] = []
+
+        async def operation() -> str:
+            calls.append("continue")
+            return "continued"
+
+        first = runtime.defer_run(operation, key="agent-continue")
+        second = runtime.defer_run(operation, key="agent-continue")
+        assert first is second
+
+        assert await first == "continued"
+        assert calls == ["continue"]
+        assert runtime.status == "idle"
 
     asyncio.run(scenario())
 

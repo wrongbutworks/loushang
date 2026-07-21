@@ -411,7 +411,7 @@ class AgentSession(SessionFacade):
             set_messages=self.agent.state.set_messages,
             get_context_window=lambda: self.agent.model.context_window,
             dispatch_event=self._dispatch_event,
-            continue_run=lambda: self.continue_run(),
+            continue_run=self._schedule_continue_run,
             record_runtime_exception=self._record_runtime_exception,
             sleep_for_retry=lambda delay_ms, signal: _sleep_for_retry(delay_ms, signal),
             is_context_overflow_fn=is_context_overflow,
@@ -1474,9 +1474,12 @@ class AgentSession(SessionFacade):
         return await self._compaction_runtime.maybe_compact_after_turn(
             assistant_message,
             compact_internal_fn=self._compact_internal,
-            continue_run_fn=self.continue_run,
+            continue_run_fn=self._schedule_continue_run,
             is_context_overflow_fn=is_context_overflow,
         )
+
+    def _schedule_continue_run(self) -> Awaitable[None]:
+        return self._session_runtime.schedule_continue_run()
 
     async def _compact_before_prompt(self) -> CompactionResult | None:
         assistant_message = self._last_assistant_message()
