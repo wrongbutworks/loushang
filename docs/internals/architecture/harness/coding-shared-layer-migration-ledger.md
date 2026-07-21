@@ -90,6 +90,16 @@ Each later row must be expanded to the same level as Wave 1 before code changes
 begin. A product facade is not complete until the old implementation is deleted
 or reduced to declared product data and ports.
 
+### Wave 5 Scope Gate: Session RPC Operations
+
+The detailed boundary is [Session RPC Operation Cutover Boundary](session-rpc-operation-boundary.md).
+
+| Source region | Shared owner | Product injection or retained Coding owner | Deletion condition |
+| --- | --- | --- | --- |
+| JSONL command registry and unknown-command fallback | `channel` | Coding registers its RPC methods and projects its legacy error frame. | Complete: `JsonlCommandRouter` has no Harness/Coding import or wire-schema defaults. |
+| Prompt task lifetime and standard session-operation invocation | `channel` task tracking plus existing `harness.session.SessionOperationRuntime` | Coding parses aliases, acknowledges preflight, and projects errors/results. | Pending: admitted handlers delegate through bound ports with no duplicate operation executor. |
+| RPC model/auth, package, bash, extension UI, event, state, and transcript handlers | Coding | Product policy and public wire contract. | Retained by design. |
+
 ### Wave 3 Scope Gate
 
 | Source region | Shared owner | Product injection or retained Coding owner | Deletion condition |
