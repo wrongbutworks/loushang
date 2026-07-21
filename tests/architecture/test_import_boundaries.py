@@ -152,10 +152,15 @@ def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None
             "loushang.ai.model",
             "loushang.agent",
         ),
-        harness_root / "host": (
-            "loushang.ai.model",
-            "loushang.agent",
-        ),
+            harness_root / "host": (
+                "loushang.ai.model",
+                "loushang.agent",
+            ),
+            harness_root / "events": (
+                "loushang.ai.json_codec",
+                "loushang.agent.json_codec",
+                "loushang.agent.types",
+            ),
     }
     offenders: list[str] = []
 
@@ -367,11 +372,18 @@ def test_neutral_storage_and_event_cores_do_not_import_runtime_or_products() -> 
             root=Path("src/loushang/harness/storage"),
             forbidden_prefixes=forbidden,
         ),
-        ImportBoundary(
-            name="events",
-            root=Path("src/loushang/harness/events"),
-            forbidden_prefixes=forbidden,
-        ),
+            ImportBoundary(
+                name="events",
+                root=Path("src/loushang/harness/events"),
+                # The session serializer is an optional Agent/AI-aware event
+                # profile.  It is still forbidden from importing products or
+                # transports; neutral event facts remain product-independent.
+                forbidden_prefixes=tuple(
+                    prefix
+                    for prefix in forbidden
+                    if prefix not in {"loushang.agent", "loushang.ai"}
+                ),
+            ),
     )
 
     assert [
@@ -772,9 +784,9 @@ def test_channel_product_host_stdio_and_shutdown_helpers_are_neutral() -> None:
     assert "import loushang." not in product_host_source
     assert "from loushang." not in stdout_guard_source
     assert "import loushang." not in stdout_guard_source
-    assert "ProductHostStreams.resolve" in cli_source
-    assert "dispose_product_host(runtime, session)" in cli_source
-    assert "stdout_guard" in cli_source
+    assert "ProductHostLifecycle.resolve" in cli_source
+    assert "host_lifecycle.dispose(runtime, session)" in cli_source
+    assert "host_lifecycle.output_guard" in cli_source
     assert not Path("src/loushang/coding/platform/output_guard.py").exists()
 
 
@@ -1946,10 +1958,9 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
     runtime_source = Path(
         "src/loushang/coding/runtime/agent_session_runtime.py"
     ).read_text(encoding="utf-8")
-    assert (
-        "class AgentSessionRuntime(AgentTranscriptSessionRuntime[AgentSession, str]):"
-        in runtime_source
-    )
+    assert "class AgentSessionRuntime(" in runtime_source
+    assert "SessionLifecycleOperationAdapter[AgentSession, str]" in runtime_source
+    assert "AgentTranscriptSessionRuntime[AgentSession, str]" in runtime_source
     assert "SessionManager.list_summaries" not in runtime_source
     assert "SessionManager.refresh_index" not in runtime_source
 
@@ -2353,7 +2364,7 @@ def test_harness_extension_runtime_core_boundary_is_documented() -> None:
     runner_imports = set(
         _absolute_imports(Path("src/loushang/coding/extensions/runner.py"))
     )
-    assert "loushang.harness.extensions.runtime.ExtensionRuntime" in runner_imports
+    assert "loushang.harness.extensions.runner.ExtensionRunner" in runner_imports
 
     runtime_path = Path("src/loushang/harness/extensions/runtime.py")
     forbidden_prefixes = (
@@ -2453,11 +2464,8 @@ def test_harness_extension_context_runtime_is_documented_and_adopted() -> None:
     runner_imports = set(
         _absolute_imports(Path("src/loushang/coding/extensions/runner.py"))
     )
-    assert "loushang.harness.extensions.context.BoundExtensionContext" in runner_imports
-    assert "loushang.harness.extensions.context.ExtensionContext" in runner_imports
-    assert (
-        "loushang.harness.extensions.context.ExtensionRuntimeBindings" in runner_imports
-    )
+    assert "loushang.harness.extensions.runner.ExtensionRunner" in runner_imports
+    assert "loushang.coding.extensions.loader.ExtensionLoader" in runner_imports
 
 
 def test_harness_control_plane_runtime_boundary_is_documented() -> None:

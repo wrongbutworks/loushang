@@ -59,8 +59,8 @@ into Harness.
 | removed `coding.extensions.hooks.HookDispatcher` | `harness.extensions.agent.hooks.ExtensionToolHookDispatcher` | Product supplies context factory and runtime error projection. | Complete: Coding module deleted after focused Agent-hook equivalence tests and a no-Coding-import probe. |
 | Agent prompt/context/session-decision reducers formerly in `coding.extensions.runner.ExtensionRunner` | `harness.extensions.agent.hooks` and `harness.extensions.session_runtime` | Coding supplies bound context, CWD, API binding, `before_agent_start` factory/result coercer, and session-decision compatibility coercer. | Complete: shared dispatchers own the reducer mechanics; Coding retains aliases and provider behavior. |
 | removed `harness.session.extension_{hooks,events,input}` modules | `harness.extensions.agent.{hooks,lifecycle,input}` | Session only consumes the profile during Agent-session composition. Input receives normalized typed requests plus queue/delivery ports; lifecycle is an observation-only extension callback adapter with injected clock/correlation values; Coding retains wire parsing/defaults. | Complete: consumers import the profile directly, input has no Session import, and Session no longer re-exports the profile. |
-| `coding.extensions.runner.ExtensionRunner` loader/API/alias portions | Coding adapter | `ExtensionAPI`, policy resolver, loader legacy names, provider actions, and Coding error dictionary remain Product-owned. | It is complete only when it is a thin adapter over the existing shared runtime and dispatchers. |
-| `coding.event` runtime projection, views, serializer, and presentation policy | Existing `harness.events` fact/view APIs; no new event owner | Coding retains `AgentSessionEvent`, Pi aliases, camelCase schema, rendering, transcript decision, and wording. | Production consumers use the common runtime API where possible; there is no duplicate neutral event engine. |
+| `coding.extensions.runner.ExtensionRunner` loader/API/alias portions | Coding adapter over `harness.extensions.runner.ExtensionRunner` | `ExtensionAPI`, policy resolver, loader legacy names, provider actions, and Coding error dictionary remain Product-owned. | Complete: the Coding runner is a thin loader/policy binding; shared reducer and dispatch mechanics live in Harness. |
+| `coding.event` runtime projection, views, serializer, and presentation policy | Existing `harness.events` fact/view APIs; `harness.events.session_serialization` owns the generic serializer | Coding retains `AgentSessionEvent`, rendering, transcript decision, and Product wording. Wire/schema compatibility remains at the Coding projection boundary; no duplicate neutral event engine exists. | Complete: production consumers use the Harness serializer/facts where applicable and no new event owner was introduced. |
 
 Wave 2 contract probes:
 
@@ -193,3 +193,20 @@ only the typed native result shape.
 `ExtensionProviderRuntime` owns provider register/unregister/query lifecycle in
 Harness. Coding retains only the AI-native provider configuration conversion;
 provider registration, API source cleanup, and runtime lookup are shared.
+
+### Session Composition, Bootstrap, Settings, And CLI Lifecycle (Complete)
+
+The following implementation-only surfaces now have shared owners without
+moving Coding content or command syntax:
+
+| Source region | Shared owner | Coding retained |
+| --- | --- | --- |
+| `coding.runtime.agent_session_runtime` lifecycle forwarding | `harness.session.SessionLifecycleOperationAdapter` | CWD/session-file acceptance, fork policy, Coding hooks, diagnostics, and resource policy |
+| `coding.bootstrap` resource activation ordering and contained diagnostics | `harness.bootstrap.ResourceBootstrapRuntime` | Resource loader, extension factory, flags, prompt/tool rebuild, and Product diagnostics callbacks |
+| `coding.control.settings_manager` layered settings mechanics | `harness.config.SettingsRuntime` over `ScopedConfigRuntime` | `ControlConfig`, field codecs, defaults, removed-field handling, and typed Product setters |
+| `coding.cli.__main__` stream binding, output guard, and disposal fallback | `channel.ProductHostLifecycle` | Argument grammar, mode selection, Product startup policy, output format, and command handlers |
+
+These are adapter collapses rather than new protocol layers. Harness and Channel
+do not import Coding, and no RPC/CLI wire fields changed in this wave. The
+lifecycle contract is verified with independent Harness/Channel fakes plus the
+existing Coding settings and CLI regressions.

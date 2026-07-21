@@ -27,6 +27,7 @@ from loushang.harness.config.schema import (
     decode_dataclass_patch,
     encode_dataclass_diff,
 )
+from loushang.harness.config.settings_runtime import SettingsRuntime
 from loushang.harness.config.store import JsonConfigStore
 from loushang.harness.config.types import (
     ConfigApplyResult,
@@ -70,6 +71,7 @@ __all__ = [
     "LayeredConfig",
     "RecoverableErrors",
     "SchemaConfigCodec",
+    "SettingsRuntime",
     "ScopedConfigRuntime",
     "UnknownFieldPolicy",
     "decode_dataclass_patch",
