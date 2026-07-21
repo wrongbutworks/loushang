@@ -594,6 +594,23 @@ def test_session_capabilities_runtime_is_neutral_and_adopted() -> None:
     assert "Coding keeps" in boundary
 
 
+def test_standard_session_command_pack_is_neutral_and_adopted() -> None:
+    command_pack_source = Path(
+        "src/loushang/harness/session/command_pack.py"
+    ).read_text(encoding="utf-8")
+    builtin_source = Path("src/loushang/coding/session/builtin_commands.py").read_text(
+        encoding="utf-8"
+    )
+    boundary = Path(
+        "docs/internals/architecture/harness/session-command-pack-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in command_pack_source
+    assert "execute_standard_session_command_async" in builtin_source
+    assert "one command catalog and one ordered dispatcher" in boundary
+    assert "existing builtin source" in boundary
+
+
 def test_session_facade_is_neutral_and_adopted() -> None:
     facade_source = Path("src/loushang/harness/session/facade.py").read_text(
         encoding="utf-8"
@@ -2242,7 +2259,7 @@ def test_harness_extension_runtime_core_boundary_is_documented() -> None:
         "`ExtensionSessionRuntime`",
         "same Harness-owned objects",
         "Coding keeps",
-            "neutral modules directly under `loushang.harness.extensions` must not",
+        "neutral modules directly under `loushang.harness.extensions` must not",
     }
     assert (
         sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
@@ -2505,8 +2522,8 @@ def test_coding_control_plane_adapters_use_harness_mechanisms() -> None:
     assert not any(_matches_any(imported, ("shlex",)) for imported in policy_imports)
 
     extension_paths = (
-        Path("src/loushang/coding/extensions/hooks.py"),
         Path("src/loushang/coding/extensions/runner.py"),
+        Path("src/loushang/harness/extensions/agent/hooks.py"),
     )
     extension_imports = {
         imported for path in extension_paths for imported in _absolute_imports(path)

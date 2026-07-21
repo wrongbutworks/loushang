@@ -1016,8 +1016,8 @@ def test_extension_runner_records_diagnostic_for_invalid_command_argument_comple
 def test_extension_api_runtime_read_methods_work_from_command_closure() -> None:
     import asyncio
 
-    from loushang.coding.commands import SessionCommandDescriptor
     from loushang.coding.extensions import ExtensionAPI, ExtensionRunner
+    from loushang.harness.commands import SessionCommandDescriptor
     from loushang.harness.resources.source import SourceInfo
 
     seen: dict[str, object] = {}

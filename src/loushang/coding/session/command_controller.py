@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import cast
 
-from loushang.coding.commands import CommandSourceInfo, SessionCommandDescriptor
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.session.builtin_commands import (
     BuiltinCommandBackend,
@@ -15,35 +13,25 @@ from loushang.coding.session.builtin_commands import (
 from loushang.coding.session.types import CommandExecutionResult
 from loushang.coding.store import SessionManager
 from loushang.harness.capabilities.packs import CapabilityPackComposer
-from loushang.harness.capabilities.prompt_preflight import (
-    PromptPreflightResult,
-    preflight_user_input,
-    preflight_user_input_async,
-)
+from loushang.harness.capabilities.prompt_preflight import PromptPreflightResult
 from loushang.harness.commands import (
     CommandDispatchOutcome,
     ParsedSlashCommand,
+    SessionCommandDescriptor,
     split_slash_command,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.extensions.types import ResolvedCommand
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
-from loushang.harness.resources.frontmatter import strip_frontmatter
-from loushang.harness.resources.source import (
-    ResourceSourceDescriptor as SourceDescriptor,
+from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.session import (
+    CommandRuntimeSource,
+    ExtensionCommandSourceRuntime,
+    ResourceCommandSourceRuntime,
+    SessionCommandRuntime,
+    SessionDiagnosticScope,
+    SessionDiagnosticsRuntime,
 )
-from loushang.harness.resources.source import (
-    SourceInfo as ExtensionSourceInfo,
-)
-from loushang.harness.resources.source import (
-    source_info_from_resource_descriptor,
-)
-from loushang.harness.resources.types import (
-    PromptFragmentDescriptor,
-    ResourceBundle,
-    SkillDescriptor,
-)
-from loushang.harness.session import CommandRuntimeSource, SessionCommandRuntime
 
 
 @dataclass
@@ -53,14 +41,58 @@ class CommandController:
     get_resource_bundle: Callable[[], ResourceBundle | None]
     get_diagnostics_service: Callable[[], DiagnosticsService | None]
     builtin_backend: BuiltinCommandBackend | None = None
+    diagnostics_runtime: SessionDiagnosticsRuntime | None = None
     pack_composer: CapabilityPackComposer = field(
         default_factory=CapabilityPackComposer
     )
     _runtime: SessionCommandRuntime[
         SessionCommandDescriptor, CommandExecutionResult
     ] = field(init=False, repr=False)
+    _extension_source: ExtensionCommandSourceRuntime[CommandExecutionResult] = field(
+        init=False,
+        repr=False,
+    )
+    _resource_source: ResourceCommandSourceRuntime[CommandExecutionResult] = field(
+        init=False,
+        repr=False,
+    )
+    _diagnostics_runtime: SessionDiagnosticsRuntime = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        self._diagnostics_runtime = (
+            self.diagnostics_runtime
+            or SessionDiagnosticsRuntime(
+                diagnostics_service=self.get_diagnostics_service(),
+                get_scope=lambda: SessionDiagnosticScope(
+                    session_id=self.session_manager.get_header().conversation_id,
+                    entry_id=self.session_manager.get_leaf_id(),
+                ),
+                get_extension_diagnostics=lambda: None,
+            )
+        )
+        self._extension_source = ExtensionCommandSourceRuntime(
+            get_provider=self.get_extension_runner,
+            get_cwd=self.session_manager.get_cwd,
+            result_factory=lambda command: CommandExecutionResult(
+                invocation_name=command.invocation_name,
+                result=None,
+            ),
+            record_error=lambda command, exc: (
+                self._diagnostics_runtime.record_extension_command_error(
+                    command=command,
+                    exc=exc,
+                )
+            ),
+        )
+        self._resource_source = ResourceCommandSourceRuntime(
+            get_resource_bundle=self.get_resource_bundle,
+            record_diagnostics=self._diagnostics_runtime.record_preflight_diagnostics,
+            record_command_not_found=self._diagnostics_runtime.record_command_not_found,
+            result_factory=lambda invocation_name, source, text: CommandExecutionResult(
+                invocation_name=invocation_name,
+                result={"source": source, "text": text},
+            ),
+        )
         self._runtime = SessionCommandRuntime(
             sources=(
                 CommandRuntimeSource(
@@ -77,18 +109,18 @@ class CommandController:
                     source="extension",
                     descriptor_priority=200,
                     handler_priority=300,
-                    list_descriptors=self._list_extension_commands,
+                    list_descriptors=self._extension_source.list_descriptors,
                     handler_name="extension",
-                    handler=self._dispatch_extension_command,
+                    handler=self._extension_source.dispatch,
                 ),
                 CommandRuntimeSource(
                     pack_id="coding.resource-commands",
                     source="product",
                     descriptor_priority=100,
                     handler_priority=100,
-                    list_descriptors=self._list_resource_commands,
+                    list_descriptors=self._resource_source.list_descriptors,
                     handler_name="resource",
-                    handler=self._dispatch_resource_command,
+                    handler=self._resource_source.dispatch,
                 ),
             ),
             pack_composer=self.pack_composer,
@@ -108,85 +140,6 @@ class CommandController:
             builtin_commands.extend(list_builtin_command_descriptors())
         return builtin_commands
 
-    def _list_extension_commands(self) -> list[SessionCommandDescriptor]:
-        extension_commands: list[SessionCommandDescriptor] = []
-        extension_runner = self.get_extension_runner()
-        if extension_runner is not None:
-            for command in extension_runner.get_registered_commands():
-                extension_commands.append(
-                    SessionCommandDescriptor(
-                        name=command.invocation_name,
-                        description=command.description,
-                        source="extension",
-                        source_info=_command_source_info_from_extension(
-                            command.source_info
-                        ),
-                        invocation_name=command.invocation_name,
-                        conflict_group=command.name
-                        if command.invocation_name != command.name
-                        else None,
-                    )
-                )
-        return extension_commands
-
-    def _list_resource_commands(self) -> list[SessionCommandDescriptor]:
-        resource_commands: list[SessionCommandDescriptor] = []
-        resource_bundle = self.get_resource_bundle()
-        if resource_bundle is not None:
-            for prompt in resource_bundle.prompts:
-                resource_commands.append(
-                    SessionCommandDescriptor(
-                        name=prompt.name,
-                        description=_command_description_from_prompt(prompt),
-                        source="prompt",
-                        source_info=source_info_from_resource_descriptor(
-                            cast(SourceDescriptor, prompt)
-                        ),
-                        argument_hint=prompt.argument_hint,
-                    )
-                )
-            for skill in resource_bundle.skills:
-                if not skill.enabled:
-                    continue
-                resource_commands.append(
-                    SessionCommandDescriptor(
-                        name=f"skill:{skill.name}",
-                        description=_command_description_from_skill(skill),
-                        source="skill",
-                        source_info=source_info_from_resource_descriptor(
-                            cast(SourceDescriptor, skill)
-                        ),
-                    )
-                )
-        return resource_commands
-
-    async def _dispatch_extension_command(
-        self,
-        invocation: ParsedSlashCommand,
-    ) -> CommandDispatchOutcome[CommandExecutionResult]:
-        extension_runner = self.get_extension_runner()
-        if extension_runner is not None:
-            command = extension_runner.get_command(invocation.name)
-            if command is not None:
-                context = extension_runner.create_command_context(
-                    fallback_cwd=self.session_manager.get_cwd()
-                )
-                try:
-                    await command.handler(invocation.args, context)
-                except Exception as exc:
-                    self.record_extension_command_error(command=command, exc=exc)
-                    return CommandDispatchOutcome.handled_result(
-                        CommandExecutionResult(
-                            invocation_name=command.invocation_name, result=None
-                        )
-                    )
-                return CommandDispatchOutcome.handled_result(
-                    CommandExecutionResult(
-                        invocation_name=command.invocation_name, result=None
-                    )
-                )
-        return CommandDispatchOutcome.unhandled()
-
     async def _dispatch_builtin_command(
         self,
         invocation: ParsedSlashCommand,
@@ -194,15 +147,6 @@ class CommandController:
         result = await self.execute_builtin_command_async(
             invocation.name, invocation.args
         )
-        if result is None:
-            return CommandDispatchOutcome.unhandled()
-        return CommandDispatchOutcome.handled_result(result)
-
-    def _dispatch_resource_command(
-        self,
-        invocation: ParsedSlashCommand,
-    ) -> CommandDispatchOutcome[CommandExecutionResult]:
-        result = self.execute_resource_command(invocation.name, invocation.args)
         if result is None:
             return CommandDispatchOutcome.unhandled()
         return CommandDispatchOutcome.handled_result(result)
@@ -219,68 +163,23 @@ class CommandController:
     def execute_resource_command(
         self, invocation_name: str, args: str
     ) -> CommandExecutionResult | None:
-        resource_bundle = self.get_resource_bundle()
-        if resource_bundle is None:
-            self.record_command_not_found(invocation_name, args)
-            return None
-        command_text = f"/{invocation_name}{f' {args}' if args else ''}"
-        result = preflight_user_input(command_text, resource_bundle=resource_bundle)
-        self.record_preflight_diagnostics(result.diagnostics)
-        if result.diagnostics:
-            return None
-        if result.text == command_text:
-            self.record_command_not_found(invocation_name, args)
-            return None
-        source = "skill" if invocation_name.startswith("skill:") else "prompt"
-        return CommandExecutionResult(
-            invocation_name=invocation_name,
-            result={
-                "source": source,
-                "text": result.text,
-            },
-        )
+        return self._resource_source.execute(invocation_name, args)
 
     def record_command_not_found(self, invocation_name: str, args: str) -> None:
-        diagnostics_service = self.get_diagnostics_service()
-        if diagnostics_service is None:
-            return
-        diagnostics_service.capture_failure(
-            code="command_not_found",
-            error=f"Command not found: /{invocation_name}",
-            phase="runtime",
-            source="session",
-            level="warning",
-            session_id=self.session_manager.get_header().conversation_id,
-            entry_id=self.session_manager.get_leaf_id(),
-            details={
-                "invocation_name": invocation_name,
-                "args": args,
-            },
-        )
+        self._diagnostics_runtime.record_command_not_found(invocation_name, args)
 
     async def get_command_argument_completions(
         self, invocation_name: str, prefix: str
     ) -> list[object] | None:
-        extension_runner = self.get_extension_runner()
-        if extension_runner is None:
-            return None
-        return await extension_runner.get_command_argument_completions(
-            invocation_name, prefix
+        return await self._extension_source.get_argument_completions(
+            invocation_name,
+            prefix,
         )
 
     def extract_extension_command_invocation(
         self, user_input: str
     ) -> tuple[str, str] | None:
-        extension_runner = self.get_extension_runner()
-        if extension_runner is None:
-            return None
-        parsed = split_slash_command(user_input)
-        if parsed is None:
-            return None
-        invocation_name, args = parsed
-        if extension_runner.get_command(invocation_name) is None:
-            return None
-        return invocation_name, args
+        return self._extension_source.extract_invocation(user_input)
 
     def extract_builtin_command_invocation(
         self, user_input: str
@@ -308,12 +207,7 @@ class CommandController:
         self, user_input: str, *, allow_extension_commands: bool = True
     ):
         del allow_extension_commands
-        result = preflight_user_input(
-            user_input,
-            resource_bundle=self.get_resource_bundle(),
-        )
-        self.record_preflight_diagnostics(result.diagnostics)
-        return result
+        return self._resource_source.preflight_user_input(user_input)
 
     async def preflight_user_input_async(
         self, user_input: str, *, allow_extension_commands: bool = True
@@ -329,85 +223,17 @@ class CommandController:
                 invocation_name, args = command
                 await self.execute_command_async(invocation_name, args)
                 return PromptPreflightResult(text=user_input, consumed=True)
-        result = await preflight_user_input_async(
-            user_input,
-            resource_bundle=self.get_resource_bundle(),
-        )
-        self.record_preflight_diagnostics(result.diagnostics)
-        return result
+        return self._resource_source.preflight_user_input(user_input)
 
     def record_preflight_diagnostics(
         self, diagnostics: tuple[ResourceDiagnostic, ...]
     ) -> None:
-        diagnostics_service = self.get_diagnostics_service()
-        if diagnostics_service is None or not diagnostics:
-            return
-        diagnostics_service.record_many(
-            diagnostics_service.normalize_resource_diagnostic(
-                diagnostic,
-                phase="runtime",
-                source="session",
-                session_id=self.session_manager.get_header().conversation_id,
-                entry_id=self.session_manager.get_leaf_id(),
-            )
-            for diagnostic in diagnostics
-        )
+        self._diagnostics_runtime.record_preflight_diagnostics(diagnostics)
 
     def record_extension_command_error(
         self, *, command: ResolvedCommand, exc: BaseException
     ) -> None:
-        diagnostics_service = self.get_diagnostics_service()
-        if diagnostics_service is None:
-            return
-        source_info = command.source_info
-        diagnostics_service.capture_failure(
-            code="extension_command_failed",
-            error=exc if isinstance(exc, Exception) else str(exc),
-            phase="runtime",
-            source="extensions",
-            session_id=self.session_manager.get_header().conversation_id,
-            entry_id=self.session_manager.get_leaf_id(),
-            source_path=command.source_info.path,
-            details={
-                "invocation_name": command.invocation_name,
-                "command_name": command.name,
-                "extension_name": command.extension_name,
-                "source_info": {
-                    "path": source_info.path.as_posix(),
-                    "source": source_info.source,
-                    "scope": source_info.scope,
-                    "origin": source_info.origin,
-                    "base_dir": source_info.base_dir.as_posix()
-                    if source_info.base_dir is not None
-                    else None,
-                },
-            },
+        self._diagnostics_runtime.record_extension_command_error(
+            command=command,
+            exc=exc,
         )
-
-
-def _command_source_info_from_extension(
-    source_info: ExtensionSourceInfo,
-) -> CommandSourceInfo:
-    return CommandSourceInfo(
-        path=source_info.path.as_posix(),
-        source=source_info.source,
-        scope=source_info.scope,
-        origin=source_info.origin,
-        base_dir=source_info.base_dir.as_posix()
-        if source_info.base_dir is not None
-        else source_info.path.parent.as_posix(),
-    )
-
-
-def _command_description_from_prompt(prompt: PromptFragmentDescriptor) -> str | None:
-    if isinstance(prompt.description, str) and prompt.description.strip():
-        return prompt.description.strip()
-    description = strip_frontmatter(prompt.text).strip()
-    return description or None
-
-
-def _command_description_from_skill(skill: SkillDescriptor) -> str | None:
-    if isinstance(skill.description, str) and skill.description.strip():
-        return skill.description.strip()
-    description = strip_frontmatter(skill.content or "").strip()
-    return description or None

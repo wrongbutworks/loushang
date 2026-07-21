@@ -58,11 +58,11 @@ def test_builtin_slash_commands_match_pi_style_core_surface() -> None:
 
 
 def test_complete_slash_commands_filters_by_prefix_and_marks_conflicts() -> None:
-    from loushang.coding.commands import (
+    from loushang.harness.commands import (
         CommandSourceInfo,
         SessionCommandDescriptor,
+        complete_slash_commands,
     )
-    from loushang.harness.commands import complete_slash_commands
 
     completions = complete_slash_commands(
         "/de",
@@ -116,11 +116,11 @@ def test_complete_slash_commands_filters_by_prefix_and_marks_conflicts() -> None
 
 
 def test_session_command_descriptor_remains_a_runtime_class() -> None:
-    from loushang.coding.commands import (
+    from loushang.harness.commands import (
+        CommandDescriptor,
         CommandSourceInfo,
         SessionCommandDescriptor,
     )
-    from loushang.harness.commands import CommandDescriptor
 
     command = SessionCommandDescriptor(
         name="review",
@@ -134,7 +134,7 @@ def test_session_command_descriptor_remains_a_runtime_class() -> None:
 
 
 def test_session_command_descriptor_preserves_legacy_positional_fields() -> None:
-    from loushang.coding.commands import (
+    from loushang.harness.commands import (
         CommandSourceInfo,
         SessionCommandDescriptor,
     )

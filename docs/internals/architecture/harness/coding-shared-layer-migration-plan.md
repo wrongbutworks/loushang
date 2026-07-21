@@ -175,9 +175,15 @@ because the Coding event projection is already a Product contract.
 
 ### Wave 3: Standard Session Capabilities And Command Subsets
 
+The detailed scope and contracts are in
+[Standard Session Command Pack Boundary](session-command-pack-boundary.md).
 Extend the existing Harness session operation and capability runtimes rather
-than moving controllers wholesale. Expected net reduction is about 800--1,200
-LOC.
+than moving controllers wholesale. The implemented command-handler cutover,
+canonical descriptor contract, and resource/extension source adapters are
+ownership changes, not yet a net LOC reduction: Product builtin descriptor
+reduction must be completed before claiming its 220--350 LOC target. Any
+further tool/package/transcript capability reduction must be separately
+ledgered rather than counted in advance.
 
 - Define capability descriptors, availability, typed result values, and
   Product-bound handlers before classifying commands as standard.

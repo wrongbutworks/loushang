@@ -126,6 +126,10 @@ planning, work event persistence, or AI provider behavior.
   defines live tool activation, dynamic command composition and dispatch, and
   selected command-tool execution while Products retain policy, command
   implementations, extension semantics, prompts, and presentation.
+- [Standard Session Command Pack Boundary](session-command-pack-boundary.md)
+  defines the shared parsing and callback delegation for selected session
+  commands while Products retain descriptor order, wording, result projection,
+  local commands, and UI/transport behavior.
 - [Session Facade Boundary](session-facade-boundary.md) defines the common
   Product-facing operation surface over already-bound session runtimes while
   Products retain model/auth, prompts, extension protocols, lifecycle policy,

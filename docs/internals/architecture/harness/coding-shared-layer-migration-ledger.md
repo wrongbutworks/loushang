@@ -74,12 +74,14 @@ Wave 2 contract probes:
 
 ## Later Waves
 
-The following rows are intentionally broad until their waves are scheduled.
+Wave 3's initial command-handler cutover is implemented in
+[Standard Session Command Pack Boundary](session-command-pack-boundary.md).
+The remaining rows are intentionally broad until their waves are scheduled.
 They are not estimates or approval to duplicate an existing Harness owner.
 
 | Wave | Source regions to ledger before implementation | Intended shared owners |
 | --- | --- | --- |
-| 3 | Standard session commands, tool/package bindings, transcript export | `harness.session`, `harness.commands`, `harness.agent_transcript` |
+| 3 | `coding.session.builtin_commands` admitted subset (`session`, `name`, `export`, `import`, `compact`, `reload`, `new`, `resume`, `fork`, `clone`, `tree`); `coding.session.command_controller` standard-source forwarding; command descriptor and resource/extension projection helpers | `harness.session.command_pack`, existing `harness.session.SessionCommandRuntime`, `harness.commands`, and `harness.extensions.commands` |
 | 4 | `AgentSession`, runtime composition, bootstrap activation | existing `ProductRuntimePlan`, runtime resolver/binder, `harness.session` |
 | 5 | RPC, print, channel host, shared conversation interaction | `channel`, `harness.session`, `harnesstui`, `tui` |
 | 6 | Config composition, common defaults, CLI and Work/Method bridges | `harness.config`, `ai`, `work`, `method`, `tui` |
@@ -87,3 +89,26 @@ They are not estimates or approval to duplicate an existing Harness owner.
 Each later row must be expanded to the same level as Wave 1 before code changes
 begin. A product facade is not complete until the old implementation is deleted
 or reduced to declared product data and ports.
+
+### Wave 3 Scope Gate
+
+| Source region | Shared owner | Product injection or retained Coding owner | Deletion condition |
+| --- | --- | --- | --- |
+| Shared command descriptor contract and resource/extension projection | `harness.commands` and `harness.extensions.commands` | Coding retains builtin command data, descriptor ordering, and source priority. | Complete: generic descriptor types and resource/extension projections have no Coding import. |
+| Descriptor construction for the admitted standard command subset | Existing Coding builtin descriptor source over `harness.commands.SessionCommandDescriptor` | Coding selects names, descriptions, aliases, visibility, and source priority. | Deferred: move only after the public command-list ordering contract is explicitly preserved. |
+| Parsing and typed result adaptation for the admitted subset | `harness.session.command_pack` over existing session identity, export/import, operation, lifecycle, and navigation runtimes | Coding supplies ports and result projection; selected commands use the bound-port availability contract. | Complete: the corresponding `builtin_commands` handlers delegate to Harness and no longer contain parsing/execution logic. |
+| Ordered composition and dispatch | existing `harness.session.SessionCommandRuntime` plus `harness.session.command_sources` | Coding binds extension runner, diagnostics mapping, result projection, and builtin source. | Complete: no second dispatcher or catalog is introduced; extension/resource source adapters have no Coding import. |
+| Clipboard, tool/extension rendering, changelog, settings/model/terminal/hotkeys/quit/share | Coding or their already declared future owner | Product wording, rendering, model/auth/provider policy, and UI routes. | Not in Wave 3; no LOC is counted as migrated. |
+
+Wave 3 closure probes:
+
+- a fake Product executes every admitted command through public Harness ports
+  with no Coding import;
+- invalid invocations and unavailable existing capability groups return typed
+  results before a Product port is called;
+- standard, extension, and resource sources preserve current priority and
+  dispatch order through the existing `SessionCommandRuntime`;
+- Coding preserves its catalog and result fixtures after projecting the shared
+  result, then deletes the admitted duplicate handlers;
+- `harness.session.command_pack` has no Coding, provider/auth, transport, or
+  UI import.

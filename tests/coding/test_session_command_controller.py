@@ -842,6 +842,64 @@ def test_command_controller_executes_builtin_runtime_session_commands(tmp_path) 
     ]
 
 
+def test_command_controller_projects_standard_session_argument_errors(tmp_path) -> None:
+    async def _resume(
+        session_path: str, options: object | None = None
+    ) -> dict[str, object]:
+        del session_path, options
+        return {"cancelled": False}
+
+    async def _fork(entry_id: str, options: object | None = None) -> dict[str, object]:
+        del entry_id, options
+        return {"cancelled": False}
+
+    async def _navigate_tree(
+        target_id: str, options: object | None = None
+    ) -> dict[str, object]:
+        del target_id, options
+        return {"cancelled": False}
+
+    controller = CommandController(
+        session_manager=asyncio.run(
+            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
+        ),
+        get_extension_runner=lambda: None,
+        get_resource_bundle=lambda: None,
+        get_diagnostics_service=lambda: None,
+        builtin_backend=BuiltinCommandBackend(
+            resume_session=_resume,
+            fork_session=_fork,
+            navigate_tree=_navigate_tree,
+        ),
+    )
+
+    resume = asyncio.run(controller.execute_command_async("/resume", ""))
+    fork = asyncio.run(controller.execute_command_async("/fork", "entry elsewhere"))
+    tree = asyncio.run(controller.execute_command_async("/tree", ""))
+
+    assert resume is not None
+    assert resume.result == {
+        "source": "builtin",
+        "command": "resume",
+        "status": "error",
+        "message": "Usage: /resume <session-id-or-path>",
+    }
+    assert fork is not None
+    assert fork.result == {
+        "source": "builtin",
+        "command": "fork",
+        "status": "error",
+        "message": "Unsupported fork position: elsewhere",
+    }
+    assert tree is not None
+    assert tree.result == {
+        "source": "builtin",
+        "command": "tree",
+        "status": "error",
+        "message": "Usage: /tree <entry-id> [--summarize] [--label <label>]",
+    }
+
+
 def test_command_controller_records_missing_command_without_resource_bundle(
     tmp_path,
 ) -> None:
