@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from loushang.coding.extensions import ExtensionRunner
-from loushang.coding.session.types import CommandExecutionResult
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.capabilities.packs import CapabilityPackComposer
 from loushang.harness.diagnostics.service import DiagnosticsService
@@ -19,6 +18,7 @@ from loushang.harness.session import (
     list_standard_session_command_descriptors,
     project_standard_session_command_result,
 )
+from loushang.harness.session.command_controller import CommandExecutionResult
 
 
 class CommandController(SessionCommandController[CommandExecutionResult]):

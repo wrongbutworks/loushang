@@ -19,17 +19,12 @@ from loushang.ai.model.domain import (
     Pricing,
 )
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.session.types import (
-    AgentSessionState,
-    CommandSourceInfo,
-    RunState,
-    SessionCommandDescriptor,
-)
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
     CompactionResult,
     SessionQuery,
 )
+from loushang.harness.commands import CommandSourceInfo, SessionCommandDescriptor
 from loushang.harness.conversation import ConversationRecord
 from loushang.harness.diagnostics import (
     DiagnosticRecord,
@@ -38,12 +33,14 @@ from loushang.harness.diagnostics import (
     ErrorReport,
 )
 from loushang.harness.events import RuntimeEvent
+from loushang.harness.host.types import RunState
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
     SkillDescriptor,
 )
 from loushang.harness.runtime import SessionOperationResult
+from loushang.harness.session.inspection import AgentSessionState
 
 
 def _assistant_message(text: str) -> AssistantMessage:

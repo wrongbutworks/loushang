@@ -129,7 +129,7 @@ def test_agent_session_compact_appends_compaction_and_rebuilds_context(
     def _session_compact(event, ctx):
         del ctx
         extension_events.append(
-            (event.type, event.compactionEntry.kind, event.fromExtension)
+            (event.type, event.compaction_entry.kind, event.from_extension)
         )
 
     session._extension_runner = ExtensionRunner(

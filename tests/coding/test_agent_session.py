@@ -1575,8 +1575,8 @@ def test_agent_session_execute_command_async_dispatches_extension_command(
         RegisteredCommand,
     )
     from loushang.coding.session import AgentSession
-    from loushang.coding.session.types import CommandExecutionResult
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.session import CommandExecutionResult
 
     calls: list[tuple[str, str, str]] = []
 
@@ -4906,25 +4906,25 @@ def test_agent_session_exposes_context_usage_and_stats(tmp_path) -> None:
     usage = session.get_context_usage()
     assert usage is not None
     pi_stats = session.get_session_stats()
-    pi_usage = pi_stats["contextUsage"]
-    assert pi_stats | {"contextUsage": None} == {
-        "sessionFile": None,
-        "sessionId": session.session_id,
-        "userMessages": 1,
-        "assistantMessages": 1,
-        "toolCalls": 1,
-        "toolResults": 1,
-        "totalMessages": 3,
+    pi_usage = pi_stats["context_usage"]
+    assert pi_stats | {"context_usage": None} == {
+        "session_file": None,
+        "session_id": session.session_id,
+        "user_messages": 1,
+        "assistant_messages": 1,
+        "tool_calls": 1,
+        "tool_results": 1,
+        "total_messages": 3,
         "tokens": {
             "input": 2,
             "output": 3,
-            "cacheRead": 5,
-            "cacheWrite": 7,
+            "cache_read": 5,
+            "cache_write": 7,
             "total": 17,
         },
         "cost": 0.25,
-        "contextUsage": None,
-        "latestCompaction": None,
+        "context_usage": None,
+        "latest_compaction": None,
     }
     assert isinstance(pi_usage, dict)
     assert pi_usage == usage

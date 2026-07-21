@@ -4,14 +4,19 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-from loushang.agent.json_codec import serialize_tool_result
-from loushang.ai.json_codec import serialize_assistant_message_event
-from loushang.harness.agent_transcript import create_agent_transcript_message_codec
-from loushang.harness.context import serialize_context_usage_payload
 from loushang.protocol import require_json_value
 
-_MESSAGE_CODEC = create_agent_transcript_message_codec()
-serialize_agent_message = _MESSAGE_CODEC.serialize
+
+def serialize_agent_message(message: object) -> object:
+    from loushang.harness.agent_transcript import create_agent_transcript_message_codec
+
+    return create_agent_transcript_message_codec().serialize(message)
+
+
+def serialize_tool_result(message: object) -> object:
+    from loushang.agent.json_codec import serialize_tool_result as serialize
+
+    return serialize(message)
 
 _FIRST_CAP_RE = re.compile(r"(.)([A-Z][a-z]+)")
 _ALL_CAP_RE = re.compile(r"([a-z0-9])([A-Z])")
@@ -68,6 +73,8 @@ def _serialize_session_event(event: Mapping[str, object]) -> dict[str, Any]:
             "message": serialize_agent_message(event["message"]),
         }
     if event_type == "message_update":
+        from loushang.ai.json_codec import serialize_assistant_message_event
+
         return {
             "type": event_type,
             "message": serialize_agent_message(event["message"]),
@@ -115,11 +122,15 @@ def _serialize_session_event(event: Mapping[str, object]) -> dict[str, Any]:
     if event_type == "session_info_changed":
         return {"type": event_type, "name": event["name"]}
     if event_type == "compaction_start":
+        from loushang.harness.context import serialize_context_usage_payload
+
         payload: dict[str, Any] = {"type": event_type, "reason": event["reason"]}
         if "usage" in event:
             payload["usage"] = serialize_context_usage_payload(event["usage"])
         return payload
     if event_type == "compaction_end":
+        from loushang.harness.context import serialize_context_usage_payload
+
         payload: dict[str, Any] = {
             "type": event_type,
             "reason": event["reason"],

@@ -536,6 +536,20 @@ bindings, specialized session/model/tool reducers, and UI projection remain
 Coding-owned. Product-neutral Harness tests provide the independent contract
 probe for the moved invocation shape.
 
+### Slice 7: Session Public Adapter Cull
+
+Status: implemented in the Harness lane.
+
+The common session surface now includes model/state inspection, settings and
+queue-mode binding, normalized application input, replacement callback
+plumbing, transcript export, provider-value parsing, tool coordination, and
+snake_case session statistics. These implementations live under
+`harness.session`, `harness.agent_transcript`, and `harness.extensions`.
+Coding retains only model/provider policy callbacks, resource/package policy,
+compaction and branch semantics, command handlers, extension API wiring, and
+Product presentation. The former Coding session files are deleted rather than
+kept as forwarding facades.
+
 ## Guardrails
 
 - Do not add `loushang.harness` imports from `loushang.agent`.

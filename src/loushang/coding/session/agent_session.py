@@ -9,7 +9,6 @@ from loushang.agent import (
     AbortSignal,
     Agent,
     AgentEvent,
-    ThinkingLevel,
 )
 from loushang.ai.api_registry import (
     ApiProviderRegistry,
@@ -32,9 +31,6 @@ from loushang.coding.control import (
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.platform.changelog import read_changelog_for_cwd
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
-from loushang.coding.platform.session_projection import (
-    project_pi_session_stats,
-)
 from loushang.coding.policy import InteractiveApprovalResolver
 from loushang.coding.resource_runtime import (
     CodingPackageMaterializer as PackageMaterializer,
@@ -43,27 +39,7 @@ from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
 )
 from loushang.coding.session.command_controller import CommandController
-from loushang.coding.session.export import (
-    export_session_to_html,
-    export_session_to_jsonl,
-)
-from loushang.coding.session.extension_input_adapter import (
-    CodingExtensionInputAdapter,
-)
-from loushang.coding.session.extension_provider_controller import (
-    provider_from_extension_config,
-)
-from loushang.coding.session.extension_replacement_controller import (
-    ExtensionReplacementController,
-)
 from loushang.coding.session.package_controller import PackageController
-from loushang.coding.session.session_settings_controller import (
-    SessionSettingsController,
-)
-from loushang.coding.session.tool_controller import ToolController
-from loushang.coding.session.types import (
-    CommandExecutionResult,
-)
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.agent_transcript import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
@@ -86,6 +62,10 @@ from loushang.harness.agent_transcript import (
     create_agent_transcript_compaction_capability,
     normalize_branch_summary_output,
 )
+from loushang.harness.agent_transcript.session_export import (
+    export_session_to_html,
+    export_session_to_jsonl,
+)
 from loushang.harness.capabilities import (
     CapabilityCompositionRuntime,
     bind_capability_composition_runtime,
@@ -107,6 +87,8 @@ from loushang.harness.extensions.agent import (
     ExtensionAgentHookRuntime,
     ExtensionInputRuntime,
 )
+from loushang.harness.extensions.agent.input_adapter import ExtensionInputAdapter
+from loushang.harness.extensions.agent.replacement import ExtensionReplacementRuntime
 from loushang.harness.extensions.context import (
     ReplacedSessionContext,
     SessionBeforeCompactEvent,
@@ -114,6 +96,7 @@ from loushang.harness.extensions.context import (
     SessionShutdownEvent,
     SessionStartEvent,
 )
+from loushang.harness.extensions.provider_config import provider_from_extension_config
 from loushang.harness.extensions.runtime_bindings import ExtensionRuntimeBindingFactory
 from loushang.harness.extensions.session_runtime import ExtensionSessionRuntime
 from loushang.harness.host.retry import RetryPolicy
@@ -128,19 +111,25 @@ from loushang.harness.session import (
     AfterTurnPolicyPort,
     BashExecutionPorts,
     BashExecutionRuntime,
-    SessionControlPort,
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
+    SessionExtensionBinding,
     SessionFacade,
+    SessionIdentityBinding,
+    SessionMaintenanceBinding,
+    SessionModelBinding,
     SessionResourceRefreshRuntime,
     SessionRuntime,
     StandardSessionCommandPorts,
+    ToolController,
     TranscriptRuntimePort,
     TurnPolicyPort,
     UserCommandHookResult,
     UserCommandRequest,
 )
+from loushang.harness.session.command_controller import CommandExecutionResult
 from loushang.harness.session.inspection import AgentSessionInspector
+from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.protocol import (
     normalize_bash_result_from_protocol,
@@ -212,7 +201,16 @@ class AgentSession(SessionFacade):
         self.agent = agent
         self._session_default_model = agent.model
         self.session_manager = session_manager
-        self._settings_controller = SessionSettingsController(settings_manager)
+        self._settings_controller = SessionSettingsBinding(
+            settings_manager=settings_manager,
+            create_settings_manager=SettingsManager,
+            default_compaction=CompactionSettings,
+            default_retry=RetrySettings,
+            get_steering_mode_callback=lambda: self.agent.steering_mode,
+            set_steering_mode_callback=self._set_agent_steering_mode,
+            get_follow_up_mode_callback=lambda: self.agent.follow_up_mode,
+            set_follow_up_mode_callback=self._set_agent_follow_up_mode,
+        )
         self.model_registry = model_registry
         self.api_provider_registry = (
             api_provider_registry or get_default_api_provider_registry()
@@ -258,7 +256,7 @@ class AgentSession(SessionFacade):
         )
         self._tool_controller = ToolController(
             agent=self.agent,
-            session_manager=self.session_manager,
+            get_cwd=self.session_manager.get_cwd,
             tool_registry=self._tool_registry,
             allowed_tool_names=set(allowed_tool_names)
             if allowed_tool_names is not None
@@ -465,7 +463,7 @@ class AgentSession(SessionFacade):
             prepared_user_inputs=self._session_runtime.queue,
             run_prompt=self._session_runtime.run_agent_prompt,
         )
-        self._extension_message_controller = CodingExtensionInputAdapter(
+        self._extension_message_controller = ExtensionInputAdapter(
             agent=self.agent,
             runtime=self._extension_input_runtime,
         )
@@ -474,7 +472,7 @@ class AgentSession(SessionFacade):
             api_provider_registry=self.api_provider_registry,
             provider_factory=provider_from_extension_config,
         )
-        self._extension_replacement_controller = ExtensionReplacementController(
+        self._extension_replacement_controller = ExtensionReplacementRuntime(
             get_runtime_host=lambda: self._extension_runtime_host,
         )
         self._extension_runtime_binding_factory = ExtensionRuntimeBindingFactory(
@@ -539,6 +537,80 @@ class AgentSession(SessionFacade):
             ),
             get_model_catalog=lambda: self.model_registry,
         )
+        self._model_binding = SessionModelBinding(
+            get_model_selection_callback=self._selection_runtime.get_model_selection,
+            set_model_callback=lambda model: self._set_model_internal(
+                model, emit_refresh=True, source="set"
+            ),
+            cycle_model_selection_callback=(
+                self._selection_runtime.cycle_model_selection
+            ),
+            apply_cycled_model_callback=lambda selection: self._set_model_internal(
+                selection, emit_refresh=True, source="cycle"
+            ),
+            cycle_scoped_selection_callback=(
+                self._selection_runtime.cycle_scoped_selection
+            ),
+            set_thinking_level_callback=self._selection_runtime.set_thinking_level,
+            cycle_thinking_level_callback=(
+                self._selection_runtime.cycle_thinking_level
+            ),
+            supports_thinking_callback=self._selection_runtime.supports_thinking,
+            available_thinking_levels_callback=(
+                self._selection_runtime.get_available_thinking_levels
+            ),
+            available_models_callback=self._selection_runtime.get_available_models,
+            available_model_details_callback=lambda: (
+                self.model_registry.ai_registry.list_models()
+                if self.model_registry is not None
+                else []
+            ),
+            get_scoped_models_callback=self._selection_runtime.get_scoped_models,
+            set_scoped_models_callback=self._selection_runtime.set_scoped_models,
+        )
+        self._identity_binding = SessionIdentityBinding(
+            get_session_id=lambda: self.session_manager.get_session_record().session_id,
+            get_session_name=lambda: self.session_manager.get_session_record().metadata.name,
+            set_session_name_callback=self._set_session_name,
+        )
+        self._maintenance_binding = SessionMaintenanceBinding(
+            is_compacting_callback=lambda: (
+                self._compaction_runtime.is_compacting
+                or self._navigation_runtime.is_summarizing
+            ),
+            auto_retry_enabled_callback=lambda: self._settings_controller.auto_retry_enabled,
+            auto_compaction_enabled_callback=(
+                lambda: self._settings_controller.auto_compaction_enabled
+            ),
+            set_auto_retry_enabled_callback=(
+                self._settings_controller.set_auto_retry_enabled
+            ),
+            set_auto_compaction_enabled_callback=(
+                self._settings_controller.set_auto_compaction_enabled
+            ),
+            compact_callback=self._compact_manual,
+            abort_compaction_callback=self._session_runtime.abort,
+        )
+        self._extension_binding = SessionExtensionBinding(
+            start_runtime_callback=lambda reason: self._bind_extension_runtime(
+                reason=reason
+            ),
+            reload_runtime_callback=self._reload_from_extension,
+            poll_resource_changes_callback=self._resource_watch_controller.poll_once,
+            start_resource_watcher_callback=(
+                lambda interval: self._resource_watch_controller.start(
+                    interval_seconds=interval
+                )
+            ),
+            stop_resource_watcher_callback=self._resource_watch_controller.stop,
+            set_ui_context_callback=self._set_extension_ui_context,
+            set_runtime_host_callback=self._set_extension_runtime_host,
+            list_extensions_callback=lambda: (
+                self._extension_runner.list_extensions()
+                if self._extension_runner is not None
+                else []
+            ),
+        )
         self._session_inspector = AgentSessionInspector(
             agent=self.agent,
             session=self.session_manager,
@@ -570,11 +642,15 @@ class AgentSession(SessionFacade):
             command_execution=self._bash_runtime,
             view=self._session_inspector,
             retry=self._retry_runtime,
-            identity=self,
-            maintenance=self,
+            identity=self._identity_binding,
+            maintenance=self._maintenance_binding,
             resources=self._resource_refresh_runtime,
             diagnostics=self._diagnostics_bridge,
             packages=self._package_controller,
+            model_selection=self._model_binding,
+            extensions=self._extension_binding,
+            settings=self._settings_controller,
+            application_input=self._extension_message_controller,
         )
         session_context = self.session_manager.build_session_context()
         self._apply_agent_transcript_context(session_context)
@@ -696,15 +772,6 @@ class AgentSession(SessionFacade):
             reason=reason,
         )
 
-    def get_model_selection(self) -> ModelSelection | None:
-        return self._selection_runtime.get_model_selection()
-
-    def get_all_tool_infos(self) -> list[dict[str, object]]:
-        return self._tool_controller.get_all_tool_infos()
-
-    def list_extensions(self) -> list[dict[str, object]]:
-        return self._extension_runner.list_extensions()
-
     def _execute_resource_command(
         self, invocation_name: str, args: str
     ) -> CommandExecutionResult | None:
@@ -729,13 +796,6 @@ class AgentSession(SessionFacade):
 
     def get_context_usage(self):
         return serialize_context_usage_payload(super().get_context_usage())
-
-    def get_session_stats(self) -> dict[str, object]:
-        return project_pi_session_stats(
-            agent=self.agent,
-            session_manager=self.session_manager,
-            context_usage=super().get_context_usage(),
-        )
 
     def export_to_jsonl(self, output_path: str | None = None) -> str:
         return export_session_to_jsonl(self, output_path)
@@ -765,66 +825,6 @@ class AgentSession(SessionFacade):
     # Public facade: standard session properties.
 
     @property
-    def is_compacting(self) -> bool:
-        return (
-            self._compaction_runtime.is_compacting
-            or self._navigation_runtime.is_summarizing
-        )
-
-    @property
-    def model(self) -> Model:
-        return self.agent.model
-
-    @property
-    def thinking_level(self) -> ThinkingLevel:
-        return self.agent.thinking_level
-
-    @property
-    def is_streaming(self) -> bool:
-        return self.agent.is_streaming
-
-    @property
-    def system_prompt(self) -> str:
-        return self.agent.system_prompt
-
-    @property
-    def retry_attempt(self) -> int:
-        return self._retry_runtime.attempt
-
-    @property
-    def messages(self) -> list:
-        return self.agent.state.messages
-
-    @property
-    def extension_runner(self) -> ExtensionRunner | None:
-        return self._extension_runner
-
-    @property
-    def session_id(self) -> str:
-        return self.session_manager.get_session_record().session_id
-
-    @property
-    def session_control(self) -> SessionControlPort:
-        """Expose common controls without exposing Coding protocol semantics."""
-
-        return self
-
-    @property
-    def session_name(self) -> str | None:
-        return self.session_manager.get_session_record().metadata.name
-
-    @property
-    def scoped_models(self) -> list[dict[str, object]]:
-        return self._selection_runtime.get_scoped_models()
-
-    def set_scoped_models(self, scoped_models: list[dict[str, object]]) -> None:
-        self._selection_runtime.set_scoped_models(scoped_models)
-
-    @property
-    def settings_manager(self) -> SettingsManager | None:
-        return self._settings_controller.get_settings_manager()
-
-    @property
     def resource_loader(self) -> DefaultResourceLoader | None:
         return self._resource_loader
 
@@ -839,74 +839,20 @@ class AgentSession(SessionFacade):
 
     # Public facade: model, thinking, tools, and session metadata.
 
-    async def set_model(self, model: Model | ModelSelection) -> None:
-        await self._set_model_internal(model, emit_refresh=True, source="set")
-
-    async def cycle_model(self, direction: str = "forward") -> ModelSelection | None:
-        scoped_selection = await self._cycle_scoped_model(direction)
-        if scoped_selection is not None:
-            return scoped_selection
-        selection = self._selection_runtime.cycle_model_selection(direction)
-        if selection is None:
-            return None
-        await self._set_model_internal(selection, emit_refresh=True, source="cycle")
-        return selection
-
-    async def _cycle_scoped_model(self, direction: str) -> ModelSelection | None:
-        selected = self._selection_runtime.cycle_scoped_selection(direction)
-        if selected is None:
-            return None
-        selection, thinking_level = selected
-        await self._set_model_internal(selection, emit_refresh=True, source="cycle")
-        if thinking_level is not None:
-            await self.set_thinking_level(thinking_level)
-        return selection
-
-    async def set_thinking_level(self, level: ThinkingLevel) -> None:
-        await self._selection_runtime.set_thinking_level(level)
-
-    async def cycle_thinking_level(self) -> ThinkingLevel | None:
-        return await self._selection_runtime.cycle_thinking_level()
-
-    def supports_thinking(self) -> bool:
-        return self._selection_runtime.supports_thinking()
-
-    def get_available_thinking_levels(self) -> list[ThinkingLevel]:
-        return self._selection_runtime.get_available_thinking_levels()
-
-    @property
-    def steering_mode(self) -> str:
-        return self.agent.steering_mode
-
-    def set_steering_mode(self, mode: str) -> None:
+    def _set_agent_steering_mode(self, mode: str) -> None:
         if mode not in {"all", "one-at-a-time"}:
             raise ValueError(f"Unsupported steering mode: {mode}")
         self.agent.steering_mode = mode
-        self._persist_queue_mode("steering", mode)
 
-    @property
-    def follow_up_mode(self) -> str:
-        return self.agent.follow_up_mode
-
-    def set_follow_up_mode(self, mode: str) -> None:
+    def _set_agent_follow_up_mode(self, mode: str) -> None:
         if mode not in {"all", "one-at-a-time"}:
             raise ValueError(f"Unsupported follow-up mode: {mode}")
         self.agent.follow_up_mode = mode
-        self._persist_queue_mode("follow_up", mode)
 
     async def set_active_tools(self, tool_names: list[str]) -> None:
         await self._set_active_tools_internal(tool_names, emit_refresh=True)
 
-    def get_available_models(self) -> list[ModelSelection]:
-        return self._selection_runtime.get_available_models()
-
-    def get_available_model_details(self) -> list[Model]:
-        registry = self.model_registry
-        if registry is None:
-            return []
-        return registry.ai_registry.list_models()
-
-    async def set_session_name(self, name: str | None) -> None:
+    async def _set_session_name(self, name: str | None) -> None:
         record_id = await self.session_manager.append_session_info(name)
         await self._dispatch_event(
             ConversationMetadataChanged(name=self.session_name),
@@ -915,23 +861,14 @@ class AgentSession(SessionFacade):
 
     # Public facade: extension runtime configuration.
 
-    async def reload_extension_runtime(self) -> None:
+    async def _reload_from_extension(self) -> None:
         await self._bind_extension_runtime(reason="reload")
 
-    async def poll_resource_changes(self) -> bool:
-        return await self._resource_watch_controller.poll_once()
-
-    def start_resource_watcher(self, *, interval_seconds: float = 1.0) -> None:
-        self._resource_watch_controller.start(interval_seconds=interval_seconds)
-
-    async def stop_resource_watcher(self) -> None:
-        await self._resource_watch_controller.stop()
-
-    def set_extension_ui_context(self, ui_context: object | None) -> None:
+    def _set_extension_ui_context(self, ui_context: object | None) -> None:
         self._extension_ui_context = ui_context
         self._refresh_extension_runtime_bindings()
 
-    def set_extension_runtime_host(self, runtime_host: object | None) -> None:
+    def _set_extension_runtime_host(self, runtime_host: object | None) -> None:
         self._extension_runtime_host = runtime_host
         self._refresh_extension_runtime_bindings()
 
@@ -979,23 +916,9 @@ class AgentSession(SessionFacade):
 
     # Public facade: run controls, retry, compaction, and tree navigation.
 
-    @property
-    def auto_retry_enabled(self) -> bool:
-        return self._settings_controller.auto_retry_enabled
-
-    @property
-    def auto_compaction_enabled(self) -> bool:
-        return self._settings_controller.auto_compaction_enabled
-
-    def set_auto_retry_enabled(self, enabled: bool) -> None:
-        self._settings_controller.set_auto_retry_enabled(enabled)
-
-    def set_auto_compaction_enabled(self, enabled: bool) -> None:
-        self._settings_controller.set_auto_compaction_enabled(enabled)
-
-    async def compact(self, custom_instructions: str | None = None) -> CompactionResult:
-        self.abort()
-        await self.wait_for_idle()
+    async def _compact_manual(self, custom_instructions: str | None = None) -> CompactionResult:
+        self._session_runtime.abort()
+        await self._session_runtime.wait_for_idle()
         result = await self._compact_internal(
             reason="manual",
             will_retry=False,
@@ -1015,9 +938,6 @@ class AgentSession(SessionFacade):
             is_compacting=self._compaction_runtime.is_compacting,
             is_branch_summarizing=self._navigation_runtime.is_summarizing,
         )
-
-    def abort_compaction(self) -> None:
-        self.abort()
 
     async def navigate_tree(
         self,
@@ -1264,9 +1184,6 @@ class AgentSession(SessionFacade):
     def _get_registered_provider(self, name: str) -> Provider | None:
         return self._extension_provider_controller.get_registered_provider(name)
 
-    async def start_extension_runtime(self, *, reason: str = "startup") -> None:
-        await self._bind_extension_runtime(reason=reason)
-
     async def _bind_extension_runtime(self, *, reason: str) -> None:
         await self._extension_runtime_controller.bind(reason=reason)
 
@@ -1399,12 +1316,6 @@ class AgentSession(SessionFacade):
     ) -> None:
         await self._extension_message_controller.send_message(message, options)
 
-    async def send_message(
-        self, message: object, options: object | None = None
-    ) -> None:
-        """Submit an application message through the standard session input path."""
-        await self._send_message_from_extension(message, options)
-
     def _create_replaced_session_context(
         self, session: object | None
     ) -> ReplacedSessionContext:
@@ -1418,12 +1329,6 @@ class AgentSession(SessionFacade):
         self, content: object, options: object | None = None
     ) -> None:
         await self._extension_message_controller.send_user_message(content, options)
-
-    async def send_user_message(
-        self, content: object, options: object | None = None
-    ) -> None:
-        """Submit user input through the standard session input path."""
-        await self._send_user_message_from_extension_async(content, options)
 
     async def _exec_command_from_extension(
         self,
@@ -1464,9 +1369,6 @@ class AgentSession(SessionFacade):
         self, custom_instructions: str | None = None
     ) -> object | None:
         return await self.compact(custom_instructions)
-
-    async def _reload_from_extension(self) -> None:
-        await self.reload_extension_runtime()
 
     def _invalidate_extension_contexts(self, message: str) -> None:
         self._extension_runtime_controller.invalidate_contexts(message)
@@ -1565,12 +1467,6 @@ class AgentSession(SessionFacade):
 
     def _get_retry_settings(self) -> RetrySettings:
         return self._settings_controller.get_retry_settings()
-
-    def _ensure_settings_manager(self) -> SettingsManager:
-        return self._settings_controller.ensure_settings_manager()
-
-    def _persist_queue_mode(self, kind: str, mode: str) -> None:
-        self._settings_controller.persist_queue_mode(kind, mode)
 
     async def _check_auto_compaction(
         self, assistant_message: AssistantMessage

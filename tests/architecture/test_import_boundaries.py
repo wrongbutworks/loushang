@@ -536,7 +536,7 @@ def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
 
 def test_agent_transcript_export_runtime_is_neutral_and_adopted() -> None:
     export_root = Path("src/loushang/harness/agent_transcript/export")
-    coding_adapter = Path("src/loushang/coding/session/export.py")
+    coding_adapter = Path("src/loushang/harness/agent_transcript/session_export.py")
     boundary = Path(
         "docs/internals/architecture/harness/agent-transcript-export-boundary.md"
     )
@@ -595,7 +595,7 @@ def test_session_capabilities_runtime_is_neutral_and_adopted() -> None:
     capabilities_source = Path(
         "src/loushang/harness/session/capabilities.py"
     ).read_text(encoding="utf-8")
-    tool_source = Path("src/loushang/coding/session/tool_controller.py").read_text(
+    tool_source = Path("src/loushang/harness/session/tool_controller.py").read_text(
         encoding="utf-8"
     )
     command_source = Path(
@@ -667,13 +667,29 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     assert "_facade" not in session_source
     assert "SessionControlPort" in facade_source
     assert "SessionResourcePort" in facade_source
-    assert "def session_control" in session_source
+    assert "def session_control" not in session_source
+    assert "def session_control" in facade_source
     assert "WorkRuntime" in channel_source
     assert "SessionOperationRuntime" in rpc_source
     assert "_require_session_control" not in rpc_source
     assert "Product Binding" in boundary
     assert "Coding Binding" in boundary
     assert "Pi-style" in boundary
+
+
+def test_session_inspection_projection_is_harness_owned() -> None:
+    projection = Path(
+        "src/loushang/harness/session/inspection_projection.py"
+    ).read_text(encoding="utf-8")
+    session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "loushang.coding" not in projection
+    assert "project_session_stats" in projection
+    assert "project_fork_candidates" in projection
+    assert "get_session_stats" not in session_source
+    assert not Path("src/loushang/coding/platform/session_projection.py").exists()
 
 
 def test_session_rpc_operations_are_neutral_and_adopted() -> None:
@@ -802,16 +818,13 @@ def test_session_inspection_is_neutral_and_adopted() -> None:
     session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
-    types_source = Path("src/loushang/coding/session/types.py").read_text(
-        encoding="utf-8"
-    )
     boundary = Path(
         "docs/internals/architecture/harness/session-inspection-boundary.md"
     ).read_text(encoding="utf-8")
 
     assert "loushang.coding" not in inspection_source
     assert "AgentSessionInspector" in session_source
-    assert "loushang.harness.session.inspection" in types_source
+    assert not Path("src/loushang/coding/session/types.py").exists()
     assert "Product Binding" in boundary
     assert "Coding Binding" in boundary
 
@@ -884,7 +897,7 @@ def test_extension_input_runtime_is_harness_owned() -> None:
         encoding="utf-8"
     )
     coding_input_adapter = Path(
-        "src/loushang/coding/session/extension_input_adapter.py"
+        "src/loushang/harness/extensions/agent/input_adapter.py"
     ).read_text(encoding="utf-8")
     coding_adapter_source = Path(
         "src/loushang/coding/session/agent_session.py"
@@ -896,7 +909,7 @@ def test_extension_input_runtime_is_harness_owned() -> None:
     assert "append_message(" not in source
     assert "customType" not in source
     assert "deliverAs" not in source
-    assert "customType" in coding_input_adapter
+    assert "ExtensionInputAdapter" in coding_input_adapter
     assert "ExtensionInputRuntime" in coding_adapter_source
 
 
@@ -2352,6 +2365,7 @@ def test_harness_extension_runtime_core_boundary_is_documented() -> None:
     assert set(extensions.__all__) == {
         "ExtensionProviderRuntime",
         "ProviderFactory",
+        "provider_from_extension_config",
     }
     assert "ExtensionContributionAPI" not in harness.__all__
 
@@ -3414,7 +3428,7 @@ def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
         "src/loushang/coding/runtime/agent_session_runtime.py"
     ).read_text(encoding="utf-8")
     extension_source = Path(
-        "src/loushang/coding/session/extension_replacement_controller.py"
+        "src/loushang/harness/extensions/agent/replacement.py"
     ).read_text(encoding="utf-8")
     session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
@@ -3522,7 +3536,7 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
         Path("src/loushang/coding/session/command_controller.py"): {
             "loushang.harness.session.SessionCommandController",
         },
-        Path("src/loushang/coding/session/tool_controller.py"): {
+        Path("src/loushang/harness/session/tool_controller.py"): {
             "loushang.harness.session.SessionToolRuntime",
         },
     }

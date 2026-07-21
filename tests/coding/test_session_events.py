@@ -162,7 +162,7 @@ def test_serialize_session_event_uses_snake_case_for_branch_summary_events() -> 
 
 def test_serialize_session_event_uses_snake_case_for_compaction_usage() -> None:
     from loushang.coding.event import serialize_session_event
-    from loushang.coding.session.types import ContextUsageSnapshot
+    from loushang.harness.agent_transcript import ContextUsageSnapshot
 
     usage = ContextUsageSnapshot(
         tokens=85,

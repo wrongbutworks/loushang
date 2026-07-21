@@ -35,6 +35,14 @@ from loushang.harness.session.diagnostics import (
 ResultT = TypeVar("ResultT")
 
 
+@dataclass(frozen=True)
+class CommandExecutionResult:
+    """Neutral result envelope for one named session command."""
+
+    invocation_name: str
+    result: object | None = None
+
+
 class SessionCommandStorePort(Protocol):
     def get_header(self) -> object: ...
 

@@ -24,10 +24,12 @@ from loushang.harness.extensions.agent.input import (
     ExtensionUserInput,
     PreparedUserInputQueuePort,
 )
+from loushang.harness.extensions.agent.input_adapter import ExtensionInputAdapter
 from loushang.harness.extensions.agent.lifecycle import (
     ExtensionAgentEventRuntime,
     ExtensionEventPort,
 )
+from loushang.harness.extensions.agent.replacement import ExtensionReplacementRuntime
 
 __all__ = [
     "ApplicationInputDeliveryPort",
@@ -40,8 +42,10 @@ __all__ = [
     "ExtensionApplicationInput",
     "ExtensionEventPort",
     "ExtensionInputRuntime",
+    "ExtensionInputAdapter",
     "ExtensionPromptHookDispatcher",
     "ExtensionSessionHookDispatcher",
+    "ExtensionReplacementRuntime",
     "ExtensionUserInput",
     "PreparedUserInputQueuePort",
     "compose_after_tool_call_hooks",

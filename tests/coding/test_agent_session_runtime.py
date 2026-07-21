@@ -1944,7 +1944,7 @@ async def test_extension_command_context_fork_supports_before_position(
 
     assert result.result is None
     assert results == [
-        {"cancelled": False, "selected_text": "tail", "selectedText": "tail"}
+        {"cancelled": False, "selected_text": "tail"}
     ]
     assert forked is not session
     assert seen_branches == [[first_id, second_id]]
@@ -2010,7 +2010,7 @@ async def test_extension_command_context_fork_defaults_to_before_position(
 
     assert result.result is None
     assert results == [
-        {"cancelled": False, "selected_text": "tail", "selectedText": "tail"}
+        {"cancelled": False, "selected_text": "tail"}
     ]
     assert forked is not None
     assert [entry.record_id for entry in forked.session_manager.get_branch()] == [

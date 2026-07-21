@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from loushang.agent import Agent
-from loushang.ai.model import Capabilities, Model
+from loushang.ai.model import Capabilities, Model, ModelSelection
 from loushang.ai.types import (
     AssistantMessage,
     TextPart,
@@ -12,14 +12,14 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from loushang.coding.platform.session_projection import (
-    project_pi_fork_candidates,
-    project_pi_session_stats,
-)
-from loushang.coding.session.types import ModelSelection, RunState
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.conversation import CommandExecutionRecord
+from loushang.harness.host.types import RunState
 from loushang.harness.session import AgentSessionInspector
+from loushang.harness.session.inspection_projection import (
+    project_fork_candidates,
+    project_session_stats,
+)
 
 
 def _model() -> Model:
@@ -174,30 +174,30 @@ def test_session_view_controller_builds_usage_and_pi_stats(tmp_path) -> None:
     assert stats.last_model_selection == ModelSelection(
         provider="faux", model_id="faux-model"
     )
-    pi_stats = project_pi_session_stats(
+    pi_stats = project_session_stats(
         agent=agent,
         session_manager=manager,
         context_usage=usage,
     )
-    pi_usage = pi_stats["contextUsage"]
-    assert pi_stats | {"contextUsage": None} == {
-        "sessionFile": None,
-        "sessionId": manager.get_session_record().session_id,
-        "userMessages": 1,
-        "assistantMessages": 1,
-        "toolCalls": 1,
-        "toolResults": 1,
-        "totalMessages": 3,
+    pi_usage = pi_stats["context_usage"]
+    assert pi_stats | {"context_usage": None} == {
+        "session_file": None,
+        "session_id": manager.get_session_record().session_id,
+        "user_messages": 1,
+        "assistant_messages": 1,
+        "tool_calls": 1,
+        "tool_results": 1,
+        "total_messages": 3,
         "tokens": {
             "input": 2,
             "output": 3,
-            "cacheRead": 5,
-            "cacheWrite": 7,
+            "cache_read": 5,
+            "cache_write": 7,
             "total": 17,
         },
         "cost": 0.25,
-        "contextUsage": None,
-        "latestCompaction": None,
+        "context_usage": None,
+        "latest_compaction": None,
     }
     assert isinstance(pi_usage, dict)
     assert pi_usage["messageCount"] == usage.message_count
@@ -263,16 +263,16 @@ def test_session_view_controller_reports_unknown_current_context_after_compactio
     assert usage.context_window == 128000
     assert usage.percent is None
 
-    pi_stats = project_pi_session_stats(
+    pi_stats = project_session_stats(
         agent=agent,
         session_manager=manager,
         context_usage=usage,
     )
-    assert pi_stats["latestCompaction"] == {
-        "entryId": compaction_id,
-        "firstKeptEntryId": kept_user_id,
-        "tokensBefore": 195,
-        "fromHook": None,
+    assert pi_stats["latest_compaction"] == {
+        "entry_id": compaction_id,
+        "first_kept_entry_id": kept_user_id,
+        "tokens_before": 195,
+        "from_hook": None,
         "plan": {
             "firstKeptEntryId": kept_user_id,
             "summarizedEntryIds": [
@@ -362,9 +362,9 @@ def test_session_view_controller_reads_forking_entries_and_last_assistant_text(
         {"entry_id": first_id, "text": "first"},
         {"entry_id": second_id, "text": "second"},
     ]
-    assert project_pi_fork_candidates(controller) == [
-        {"entryId": first_id, "text": "first"},
-        {"entryId": second_id, "text": "second"},
+    assert project_fork_candidates(controller) == [
+        {"entry_id": first_id, "text": "first"},
+        {"entry_id": second_id, "text": "second"},
     ]
     assert controller.get_entry_text(second_id) == "second"
     assert controller.get_last_assistant_text() == "assistant"

@@ -10,6 +10,12 @@ from loushang.harness.session.application_input import (
     ApplicationInputRuntime,
 )
 from loushang.harness.session.bash import BashExecutionPorts, BashExecutionRuntime
+from loushang.harness.session.bindings import (
+    SessionExtensionBinding,
+    SessionIdentityBinding,
+    SessionMaintenanceBinding,
+    SessionModelBinding,
+)
 from loushang.harness.session.capabilities import (
     AgentToolPort,
     CommandRuntimeSource,
@@ -27,6 +33,7 @@ from loushang.harness.session.command_controller import (
     BuiltinCommandExecutor,
     BuiltinCommandMatcher,
     BuiltinDescriptorProvider,
+    CommandExecutionResult,
     SessionCommandController,
     SessionCommandStorePort,
 )
@@ -68,19 +75,23 @@ from loushang.harness.session.diagnostics import (
 from loushang.harness.session.facade import (
     OutputCallback,
     RuntimeEventListener,
+    SessionApplicationInputPort,
     SessionCommandExecutionPort,
     SessionCommandsPort,
     SessionControlPort,
     SessionDiagnosticsPort,
     SessionEventListener,
     SessionEventProjector,
+    SessionExtensionPort,
     SessionFacade,
     SessionFacadePorts,
     SessionIdentityPort,
     SessionMaintenancePort,
+    SessionModelPort,
     SessionPackagePort,
     SessionResourcePort,
     SessionRetryPort,
+    SessionSettingsPort,
     SessionToolsPort,
     SessionTranscriptPort,
     SessionViewPort,
@@ -93,6 +104,10 @@ from loushang.harness.session.inspection import (
     ContextUsage,
     SessionStats,
     TokenUsageTotals,
+)
+from loushang.harness.session.inspection_projection import (
+    project_fork_candidates,
+    project_session_stats,
 )
 from loushang.harness.session.lifecycle import (
     DEFAULT_FORK_PROFILE,
@@ -150,6 +165,11 @@ from loushang.harness.session.runtime import (
     TranscriptRuntimePort,
     TurnPolicyPort,
 )
+from loushang.harness.session.settings import SessionSettingsBinding
+from loushang.harness.session.tool_controller import (
+    SessionToolController,
+    ToolController,
+)
 from loushang.harness.session.transcript_lifecycle import (
     AgentTranscriptSessionRuntime,
     ProductTranscriptSessionLifecyclePorts,
@@ -173,6 +193,7 @@ __all__ = [
     "ApplicationInputRuntime",
     "CommandRuntimeSource",
     "SessionCommandController",
+    "CommandExecutionResult",
     "SessionCommandStorePort",
     "BuiltinCommandExecutor",
     "BuiltinCommandMatcher",
@@ -217,6 +238,7 @@ __all__ = [
     "RuntimeEventListener",
     "SessionControlPort",
     "SessionCommandExecutionPort",
+    "SessionApplicationInputPort",
     "SessionCommandExecutionRuntime",
     "StandardSessionCommandDisposition",
     "StandardSessionCommandDefinition",
@@ -235,8 +257,14 @@ __all__ = [
     "SessionEventProjector",
     "SessionFacade",
     "SessionFacadePorts",
+    "SessionExtensionBinding",
+    "SessionExtensionPort",
     "SessionIdentityPort",
+    "SessionIdentityBinding",
     "SessionMaintenancePort",
+    "SessionMaintenanceBinding",
+    "SessionModelBinding",
+    "SessionModelPort",
     "SessionPackagePort",
     "SessionOperationAvailability",
     "SessionOperationCapability",
@@ -250,11 +278,17 @@ __all__ = [
     "SessionDiagnosticScopeProvider",
     "SessionDiagnosticsRuntime",
     "SessionRuntime",
+    "SessionSettingsBinding",
+    "SessionSettingsPort",
     "SessionPromptRequest",
     "SessionRpcOperationBinding",
     "SessionStats",
+    "project_fork_candidates",
+    "project_session_stats",
     "SessionResourceRefreshRuntime",
     "SessionToolRuntime",
+    "SessionToolController",
+    "ToolController",
     "ToolActivationProfile",
     "create_tool_prompt_rebuilder",
     "SessionToolsPort",

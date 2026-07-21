@@ -5,8 +5,7 @@ from pathlib import Path
 
 from loushang.agent import Agent
 from loushang.agent.types import AgentToolResult
-from loushang.coding.session.tool_controller import ToolController
-from loushang.coding.session_manager import SessionManager
+from loushang.harness.session.tool_controller import ToolController
 from loushang.harness.diagnostics import DiagnosticsService
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.tools.core import tool
@@ -60,9 +59,7 @@ def test_tool_controller_materializes_active_registry_tools_and_rebuilds_prompt(
 
     controller = ToolController(
         agent=agent,
-        session_manager=asyncio.run(
-            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-        ),
+        get_cwd=lambda: "/tmp/project",
         tool_registry=registry,
         allowed_tool_names=None,
         initial_active_tool_names=["show_session_cwd"],
@@ -121,9 +118,7 @@ def test_tool_controller_filters_allowed_visible_and_active_tools(tmp_path) -> N
     )
     controller = ToolController(
         agent=Agent(initial_state={"tools": []}),
-        session_manager=asyncio.run(
-            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-        ),
+        get_cwd=lambda: "/tmp/project",
         tool_registry=registry,
         allowed_tool_names={"read"},
         initial_active_tool_names=["bash", "read", "missing"],
@@ -167,9 +162,7 @@ def test_tool_controller_reads_runtime_tools_when_registry_is_absent(tmp_path) -
     agent = Agent(initial_state={"tools": [RuntimeTool()]})
     controller = ToolController(
         agent=agent,
-        session_manager=asyncio.run(
-            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-        ),
+        get_cwd=lambda: "/tmp/project",
         tool_registry=None,
         allowed_tool_names=None,
         initial_active_tool_names=["runtime_tool"],
@@ -189,7 +182,7 @@ def test_tool_controller_routes_runtime_registration_through_contribution_resolv
     tmp_path,
     monkeypatch,
 ) -> None:
-    import loushang.coding.session.tool_controller as tool_controller
+    import loushang.harness.session.tool_controller as tool_controller
     from loushang.harness.tools.contribution import resolve_tool_contributions
 
     base_tool = _tool_definition("read", label="Read", description="Read files")
@@ -228,9 +221,7 @@ def test_tool_controller_routes_runtime_registration_through_contribution_resolv
     )
     controller = ToolController(
         agent=Agent(initial_state={"tools": []}),
-        session_manager=asyncio.run(
-            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-        ),
+        get_cwd=lambda: "/tmp/project",
         tool_registry=registry,
         allowed_tool_names=None,
         initial_active_tool_names=[],
@@ -266,7 +257,7 @@ def test_tool_controller_registers_selected_runtime_resolver_contribution(
     tmp_path,
     monkeypatch,
 ) -> None:
-    import loushang.coding.session.tool_controller as tool_controller
+    import loushang.harness.session.tool_controller as tool_controller
     from loushang.harness.tools.contribution import (
         ToolContribution,
         ToolResolutionResult,
@@ -299,9 +290,7 @@ def test_tool_controller_registers_selected_runtime_resolver_contribution(
     registry = ToolRegistry()
     controller = ToolController(
         agent=Agent(initial_state={"tools": []}),
-        session_manager=asyncio.run(
-            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-        ),
+        get_cwd=lambda: "/tmp/project",
         tool_registry=registry,
         allowed_tool_names=None,
         initial_active_tool_names=[],
@@ -332,9 +321,7 @@ def test_tool_controller_runtime_registration_preserves_duplicate_overwrite_beha
     )
     controller = ToolController(
         agent=Agent(initial_state={"tools": []}),
-        session_manager=asyncio.run(
-            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-        ),
+        get_cwd=lambda: "/tmp/project",
         tool_registry=registry,
         allowed_tool_names=None,
         initial_active_tool_names=[],
@@ -371,9 +358,7 @@ def test_tool_controller_rebinds_active_same_name_runtime_replacement(tmp_path) 
     agent = Agent(initial_state={"system_prompt": "stale", "tools": []})
     controller = ToolController(
         agent=agent,
-        session_manager=asyncio.run(
-            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-        ),
+        get_cwd=lambda: "/tmp/project",
         tool_registry=registry,
         allowed_tool_names=None,
         initial_active_tool_names=["runtime_tool"],
@@ -405,9 +390,7 @@ def test_tool_controller_runtime_registration_preserves_default_activation(
     agent = Agent(initial_state={"system_prompt": "stale", "tools": []})
     controller = ToolController(
         agent=agent,
-        session_manager=asyncio.run(
-            SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-        ),
+        get_cwd=lambda: "/tmp/project",
         tool_registry=registry,
         allowed_tool_names=None,
         initial_active_tool_names=[],

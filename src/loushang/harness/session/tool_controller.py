@@ -1,3 +1,5 @@
+"""Product-neutral workspace tool coordination for composed sessions."""
+
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
@@ -5,7 +7,6 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from loushang.agent.types import AgentTool
-from loushang.coding.session_manager import SessionManager
 from loushang.harness.capabilities.prompt import PromptSectionComposer
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.activation import ResourceActivationRuntime
@@ -49,11 +50,11 @@ class AgentPort(Protocol):
 
 
 @dataclass
-class ToolController:
-    """Coding prompt and policy adapter for ``SessionToolRuntime``."""
+class SessionToolController:
+    """Coordinate workspace tools using Product-injected policy ports."""
 
     agent: AgentPort
-    session_manager: SessionManager
+    get_cwd: Callable[[], str]
     tool_registry: WorkspaceToolRegistry | None
     allowed_tool_names: set[str] | None
     initial_active_tool_names: list[str]
@@ -133,7 +134,7 @@ class ToolController:
     def build_tool_context(self, *, tool_call_id: str) -> ToolContext:
         return ToolContext(
             tool_call_id=tool_call_id,
-            cwd=self.session_manager.get_cwd(),
+            cwd=self.get_cwd(),
             diagnostics=self.get_diagnostics_service(),
             model=getattr(self.agent, "model", None),
             event_sink=(
@@ -186,3 +187,8 @@ class ToolController:
     ) -> None:
         if self.emit_tool_audit_event is not None:
             await self.emit_tool_audit_event(dict(event))
+
+
+ToolController = SessionToolController
+
+__all__ = ["SessionToolController", "ToolController"]
