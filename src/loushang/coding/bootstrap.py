@@ -33,6 +33,10 @@ from loushang.coding.session import AgentSession
 from loushang.coding.source_info import executable_source_identity
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import context_item_to_model_message
+from loushang.harness.bootstrap import (
+    ResourceBootstrapPorts,
+    ResourceBootstrapRuntime,
+)
 from loushang.harness.capabilities import bind_capability_composition_runtime
 from loushang.harness.capabilities.packs import (
     CapabilityPack,
@@ -233,32 +237,38 @@ def create_agent_session_services(
     _apply_resource_loader_options(
         resolved_services.resource_loader, resource_loader_options
     )
-    resource_bundle = resolved_services.resource_loader.discover_resources(resolved_cwd)
-    loader_diagnostics = tuple(resource_bundle.diagnostics)
-    extension_runner = ExtensionRunner(resource_bundle.extensions)
-    flag_diagnostics = _apply_extension_flag_values(
-        extension_runner, extension_flag_values
+    bootstrap_runtime = ResourceBootstrapRuntime(
+        ResourceBootstrapPorts(
+            discover_resources=lambda loader, resource_cwd: loader.discover_resources(
+                resource_cwd
+            ),
+            create_extension_runtime=lambda bundle: ExtensionRunner(bundle.extensions),
+            apply_extension_flags=_apply_extension_flag_values,
+            rediscover_resources=lambda runner, bundle: runner.discover_resources(
+                bundle
+            ),
+            bundle_diagnostics=lambda bundle: tuple(bundle.diagnostics),
+            extension_diagnostics=lambda runner: runner.get_diagnostics(),
+            normalize_diagnostic=lambda diagnostic, phase, source: (
+                resolved_services.diagnostics_service.normalize_resource_diagnostic(
+                    diagnostic,
+                    phase=phase,
+                    source=source,
+                )
+            ),
+        )
     )
-    resource_bundle = extension_runner.discover_resources(resource_bundle)
-    diagnostics = tuple(
-        resolved_services.diagnostics_service.normalize_resource_diagnostic(
-            diagnostic,
-            phase="resource_loading",
-            source=source,
-        )
-        for source, source_diagnostics in (
-            ("loader", loader_diagnostics),
-            ("extensions", extension_runner.get_diagnostics()),
-            ("bootstrap", flag_diagnostics),
-        )
-        for diagnostic in source_diagnostics
+    prepared = bootstrap_runtime.prepare(
+        loader=resolved_services.resource_loader,
+        cwd=resolved_cwd,
+        extension_flags=extension_flag_values,
     )
     return AgentSessionServices(
         cwd=str(resolved_cwd),
         services=resolved_services,
-        resource_bundle=resource_bundle,
-        extension_runner=extension_runner,
-        diagnostics=diagnostics,
+        resource_bundle=prepared.resource_bundle,
+        extension_runner=prepared.extension_runtime,
+        diagnostics=prepared.diagnostics,
     )
 
 
