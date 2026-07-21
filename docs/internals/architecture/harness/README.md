@@ -134,6 +134,7 @@ planning, work event persistence, or AI provider behavior.
   commands while Products retain descriptor order, wording, result projection,
   local commands, and UI/transport behavior.
 - [Session RPC Operation Cutover Boundary](session-rpc-operation-boundary.md)
+- [Session Interaction And Command Collapse Boundary](session-interaction-command-collapse-boundary.md)
   defines how Channel command routing and Harness session operations replace
   Coding RPC glue without changing Coding's public JSONL contract.
 - [Session Facade Boundary](session-facade-boundary.md) defines the common

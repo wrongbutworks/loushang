@@ -5,8 +5,8 @@ from typing import Any
 from loushang.agent.json_codec import serialize_tool_result
 from loushang.ai.json_codec import serialize_assistant_message_event
 from loushang.coding.event.types import AgentSessionEvent
-from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.harness.agent_transcript import create_agent_transcript_message_codec
+from loushang.harness.context import serialize_context_usage_payload
 from loushang.protocol import require_json_value
 
 _MESSAGE_CODEC = create_agent_transcript_message_codec()

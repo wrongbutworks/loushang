@@ -71,6 +71,10 @@ from loushang.harness.context.types import (
     PackingResult,
     ReductionRequest,
 )
+from loushang.harness.context.usage import (
+    ContextUsageEstimate,
+    serialize_context_usage_payload,
+)
 
 __all__ = [
     "CompactionArtifact",
@@ -98,6 +102,7 @@ __all__ = [
     "ContextCompactionCoordinator",
     "ContextDiagnostic",
     "ContextItem",
+    "ContextUsageEstimate",
     "ContextPacker",
     "ContextReducer",
     "ContextSalienceRanker",
@@ -130,4 +135,5 @@ __all__ = [
     "extract_summary_resource_operations",
     "load_summary_evaluation_cases",
     "validate_summary",
+    "serialize_context_usage_payload",
 ]

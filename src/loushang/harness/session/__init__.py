@@ -46,6 +46,13 @@ from loushang.harness.session.command_sources import (
     ResourceCommandSourceRuntime,
     ResourceDiagnosticsRecorder,
 )
+from loushang.harness.session.command_controller import (
+    BuiltinCommandExecutor,
+    BuiltinCommandMatcher,
+    BuiltinDescriptorProvider,
+    SessionCommandController,
+    SessionCommandStorePort,
+)
 from loushang.harness.session.diagnostics import (
     ExtensionDiagnosticsPort,
     ExtensionDiagnosticsProvider,
@@ -154,6 +161,11 @@ __all__ = [
     "ApplicationInputDelivery",
     "ApplicationInputRuntime",
     "CommandRuntimeSource",
+    "SessionCommandController",
+    "SessionCommandStorePort",
+    "BuiltinCommandExecutor",
+    "BuiltinCommandMatcher",
+    "BuiltinDescriptorProvider",
     "STANDARD_SESSION_COMMAND_PROFILE",
     "ContextUsage",
     "DEFAULT_FORK_PROFILE",

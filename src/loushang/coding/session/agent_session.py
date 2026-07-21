@@ -31,7 +31,6 @@ from loushang.coding.control import (
 )
 from loushang.coding.event import (
     AgentSessionEvent,
-    project_runtime_event_to_session_event,
 )
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
@@ -64,9 +63,6 @@ from loushang.coding.session.extension_provider_controller import (
 from loushang.coding.session.extension_replacement_controller import (
     ExtensionReplacementController,
 )
-from loushang.coding.session.extension_runtime_bindings import (
-    ExtensionRuntimeBindingFactory,
-)
 from loushang.coding.session.package_controller import PackageController
 from loushang.coding.session.session_settings_controller import (
     SessionSettingsController,
@@ -75,7 +71,6 @@ from loushang.coding.session.tool_controller import ToolController
 from loushang.coding.session.types import (
     CommandExecutionResult,
 )
-from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
@@ -102,6 +97,7 @@ from loushang.harness.capabilities import (
     CapabilityCompositionRuntime,
     bind_capability_composition_runtime,
 )
+from loushang.harness.context import serialize_context_usage_payload
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.events import (
     CompactionReason,
@@ -109,6 +105,7 @@ from loushang.harness.events import (
     PackageProgressChanged,
     RuntimeEvent,
     SessionRuntimeEventPayload,
+    project_session_runtime_event,
 )
 from loushang.harness.extensions import ExtensionProviderRuntime
 from loushang.harness.extensions.agent import (
@@ -123,6 +120,7 @@ from loushang.harness.extensions.context import (
     SessionShutdownEvent,
     SessionStartEvent,
 )
+from loushang.harness.extensions.runtime_bindings import ExtensionRuntimeBindingFactory
 from loushang.harness.extensions.session_runtime import ExtensionSessionRuntime
 from loushang.harness.host.retry import RetryPolicy
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
@@ -154,6 +152,8 @@ from loushang.harness.workspace.exec import (
 )
 
 SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]
+# The former Coding-named projection is now implemented by Harness.
+# project_runtime_event_to_session_event remains an external migration label.
 RuntimeEventListener = Callable[[RuntimeEvent[object]], Awaitable[None] | None]
 
 
@@ -778,7 +778,7 @@ class AgentSession(SessionFacade):
 
     def subscribe(self, listener: SessionEventListener) -> Callable[[], None]:
         def project(event: RuntimeEvent[object]) -> AgentSessionEvent | None:
-            return project_runtime_event_to_session_event(event)
+            return project_session_runtime_event(event)
 
         return super().subscribe(
             listener,
