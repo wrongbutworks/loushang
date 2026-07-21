@@ -155,9 +155,13 @@ generic observability-context helpers. Expected first net reduction is about
 ### Wave 2: Event And Extension Product Adapter Collapse
 
 Use existing `harness.events`, `harness.extensions`,
-`harness.session.extension_*`, and HarnessTUI conversation owners. Do not
-create parallel `agent_projection`, `agent_runtime`, or `agent_api` modules.
-Expected net reduction is about 700--1,200 LOC, subject to the ledger.
+`harness.extensions.agent`, and HarnessTUI conversation owners. Do not create
+parallel `agent_projection`, `agent_runtime`, or `agent_api` modules.
+The concrete contract is
+[Event And Extension Product Adapter Collapse](event-extension-adapter-collapse-boundary.md).
+The Wave has a definite 231-line Coding hook dispatcher and a reviewable
+subset of `ExtensionRunner`; it must not claim a standalone event relocation
+because the Coding event projection is already a Product contract.
 
 - Extract only fragments whose input and output are already shared contracts.
 - `harness.events` keeps generic facts, `RuntimeEventView`, selectors, and

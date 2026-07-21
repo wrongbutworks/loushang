@@ -14,8 +14,8 @@ from loushang.agent import (
 from loushang.agent.types import AfterToolCallContext, AfterToolCallResult, AgentContext
 from loushang.ai.types import TextPart, UserMessage
 from loushang.coding.extensions import ContextResult, ExtensionRunner, LoadedExtension
-from loushang.harness.session import ExtensionAgentHookRuntime
-from loushang.harness.session.extension_hooks import compose_after_tool_call_hooks
+from loushang.harness.extensions.agent import ExtensionAgentHookRuntime
+from loushang.harness.extensions.agent.hooks import compose_after_tool_call_hooks
 
 
 def _user_message(text: str) -> UserMessage:

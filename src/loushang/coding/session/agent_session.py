@@ -55,6 +55,9 @@ from loushang.coding.session.export import (
     export_session_to_html,
     export_session_to_jsonl,
 )
+from loushang.coding.session.extension_input_adapter import (
+    CodingExtensionInputAdapter,
+)
 from loushang.coding.session.extension_provider_controller import (
     ExtensionProviderController,
 )
@@ -113,6 +116,11 @@ from loushang.harness.events import (
     RuntimeEvent,
     SessionRuntimeEventPayload,
 )
+from loushang.harness.extensions.agent import (
+    ExtensionAgentEventRuntime,
+    ExtensionAgentHookRuntime,
+    ExtensionInputRuntime,
+)
 from loushang.harness.extensions.context import (
     ReplacedSessionContext,
     SessionBeforeCompactEvent,
@@ -132,9 +140,6 @@ from loushang.harness.resources.watcher import ResourceChangeWatcher
 from loushang.harness.runtime import CancellationSignal
 from loushang.harness.session import (
     AfterTurnPolicyPort,
-    ExtensionAgentEventRuntime,
-    ExtensionAgentHookRuntime,
-    ExtensionInputRuntime,
     SessionControlPort,
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
@@ -446,11 +451,14 @@ class AgentSession(SessionFacade):
                 check_auto_compaction=self._check_auto_compaction,
             ),
         )
-        self._extension_message_controller = ExtensionInputRuntime(
-            agent=self.agent,
-            queue_controller=self._session_runtime.queue,
+        self._extension_input_runtime = ExtensionInputRuntime(
             application_inputs=self._session_runtime.application_inputs,
+            prepared_user_inputs=self._session_runtime.queue,
             run_prompt=self._session_runtime.run_agent_prompt,
+        )
+        self._extension_message_controller = CodingExtensionInputAdapter(
+            agent=self.agent,
+            runtime=self._extension_input_runtime,
         )
         self._extension_provider_controller = ExtensionProviderController(
             model_registry=self.model_registry,
@@ -1477,9 +1485,6 @@ class AgentSession(SessionFacade):
     ) -> None:
         """Submit an application message through the standard session input path."""
         await self._send_message_from_extension(message, options)
-
-    async def _send_message_from_extension_async(self, app_message) -> None:
-        await self._extension_message_controller._send_message_async(app_message)
 
     def _create_replaced_session_context(
         self, session: object | None

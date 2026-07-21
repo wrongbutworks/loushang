@@ -143,6 +143,10 @@ def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> 
             "loushang.ai.types",
             "loushang.agent",
         ),
+        harness_root / "extensions" / "agent": (
+            "loushang.ai.types",
+            "loushang.agent",
+        ),
     }
     offenders: list[str] = []
 
@@ -167,6 +171,30 @@ def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> 
             offenders.append(f"{path.as_posix()} imports {imported}")
 
     assert offenders == []
+
+
+def test_extension_agent_profile_has_no_session_or_product_dependency() -> None:
+    profile_root = Path("src/loushang/harness/extensions/agent")
+    forbidden_prefixes = (
+        "loushang.harness.session",
+        "loushang.coding",
+        "loushang.channel",
+        "loushang.work",
+        "loushang.method",
+        "loushang.tui",
+    )
+    offenders = [
+        f"{path.as_posix()} imports {imported}"
+        for path in sorted(profile_root.rglob("*.py"))
+        for imported in _absolute_imports(path)
+        if _matches_any(imported, forbidden_prefixes)
+    ]
+
+    assert offenders == []
+    assert not Path("src/loushang/coding/extensions/hooks.py").exists()
+    assert not Path("src/loushang/harness/session/extension_hooks.py").exists()
+    assert not Path("src/loushang/harness/session/extension_events.py").exists()
+    assert not Path("src/loushang/harness/session/extension_input.py").exists()
 
 
 def test_capability_composition_runtime_has_no_product_dependency() -> None:
@@ -750,17 +778,23 @@ def test_package_session_operations_are_neutral_and_adopted() -> None:
 
 
 def test_extension_input_runtime_is_harness_owned() -> None:
-    source = Path("src/loushang/harness/session/extension_input.py").read_text(
+    source = Path("src/loushang/harness/extensions/agent/input.py").read_text(
         encoding="utf-8"
     )
+    coding_input_adapter = Path(
+        "src/loushang/coding/session/extension_input_adapter.py"
+    ).read_text(encoding="utf-8")
     coding_adapter_source = Path(
         "src/loushang/coding/session/agent_session.py"
     ).read_text(encoding="utf-8")
 
-    assert "ApplicationInputRuntime" in source
+    assert "ApplicationInputDeliveryPort" in source
     assert "loushang.coding" not in source
     assert "SessionManager" not in source
     assert "append_message(" not in source
+    assert "customType" not in source
+    assert "deliverAs" not in source
+    assert "customType" in coding_input_adapter
     assert "ExtensionInputRuntime" in coding_adapter_source
 
 
@@ -2208,7 +2242,7 @@ def test_harness_extension_runtime_core_boundary_is_documented() -> None:
         "`ExtensionSessionRuntime`",
         "same Harness-owned objects",
         "Coding keeps",
-        "must not import coding, method, work, TUI, AI",
+            "neutral modules directly under `loushang.harness.extensions` must not",
     }
     assert (
         sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
@@ -2252,9 +2286,9 @@ def test_harness_extension_runtime_core_boundary_is_documented() -> None:
 
     session_extension_paths = (
         Path("src/loushang/harness/extensions/session_runtime.py"),
-        Path("src/loushang/harness/session/extension_events.py"),
-        Path("src/loushang/harness/session/extension_hooks.py"),
-        Path("src/loushang/harness/session/extension_input.py"),
+        Path("src/loushang/harness/extensions/agent/lifecycle.py"),
+        Path("src/loushang/harness/extensions/agent/hooks.py"),
+        Path("src/loushang/harness/extensions/agent/input.py"),
     )
     for path in session_extension_paths:
         imports = _absolute_imports(path)
@@ -3188,7 +3222,7 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
             "loushang.harness.agent_transcript.AgentTranscriptNavigationRuntime",
             "loushang.harness.agent_transcript.AgentTranscriptSelectionRuntime",
             "loushang.harness.extensions.session_runtime.ExtensionSessionRuntime",
-            "loushang.harness.session.ExtensionInputRuntime",
+            "loushang.harness.extensions.agent.ExtensionInputRuntime",
         },
     }
     missing: list[str] = []

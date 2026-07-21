@@ -27,9 +27,6 @@ from loushang.harness.session.diagnostics import (
     SessionDiagnosticScopeProvider,
     SessionDiagnosticsRuntime,
 )
-from loushang.harness.session.extension_events import ExtensionAgentEventRuntime
-from loushang.harness.session.extension_hooks import ExtensionAgentHookRuntime
-from loushang.harness.session.extension_input import ExtensionInputRuntime
 from loushang.harness.session.facade import (
     OutputCallback,
     RuntimeEventListener,
@@ -129,9 +126,6 @@ __all__ = [
     "DEFAULT_FORK_PROFILE",
     "ExtensionDiagnosticsPort",
     "ExtensionDiagnosticsProvider",
-    "ExtensionAgentEventRuntime",
-    "ExtensionAgentHookRuntime",
-    "ExtensionInputRuntime",
     "FileCopy",
     "ForkProfile",
     "ForkSelection",
