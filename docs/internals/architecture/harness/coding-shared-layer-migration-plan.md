@@ -103,7 +103,9 @@ transfer remains a stretch interval until the following rebaseline is complete.
 
 ### Wave R: Owner And Duplicate Rebaseline
 
-Wave R is mandatory and does not claim migration LOC. It must produce a
+Wave R is complete at `lane/harness` commit `336adbf2`; its reviewable result is
+[Coding Shared-Layer Owner Rebaseline](coding-shared-layer-owner-rebaseline.md).
+It does not claim migration LOC. The rebaseline must produce a
 machine-readable or reviewable ledger for every planned source region with:
 
 - pre-change Coding canonical LOC;
