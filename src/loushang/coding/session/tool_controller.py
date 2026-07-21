@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Protocol
 
 from loushang.agent.types import AgentTool
@@ -14,7 +13,7 @@ from loushang.harness.resources.activation import ResourceActivationRuntime
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.session import SessionToolRuntime
 from loushang.harness.tools.contribution import resolve_tool_contributions
-from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.core import ToolDefinition, project_tool_definition
 from loushang.harness.tools.workspace.context import ToolContext
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
@@ -90,9 +89,10 @@ class ToolController:
 
     def get_all_tool_infos(self) -> list[dict[str, object]]:
         return [
-            _tool_info_from_definition(
+            project_tool_definition(
                 definition,
                 self.tool_source_info(definition.name),
+                builtin_names=_BUILTIN_TOOL_NAMES,
             )
             for definition in self.get_all_tools()
         ]
@@ -204,51 +204,3 @@ class ToolController:
     ) -> None:
         if self.emit_tool_audit_event is not None:
             await self.emit_tool_audit_event(dict(event))
-
-
-def _tool_info_from_definition(
-    definition: ToolDefinition, source_info: object | None = None
-) -> dict[str, object]:
-    return {
-        "name": definition.name,
-        "description": definition.description,
-        "parameters": definition.parameters,
-        "sourceInfo": _serialize_tool_source_info(source_info)
-        if source_info is not None
-        else _synthetic_tool_source_info(definition.name),
-    }
-
-
-def _synthetic_tool_source_info(name: str) -> dict[str, object]:
-    if name in _BUILTIN_TOOL_NAMES:
-        return {
-            "path": f"<builtin:{name}>",
-            "source": "builtin",
-            "scope": "temporary",
-            "origin": "top-level",
-            "baseDir": None,
-        }
-    return {
-        "path": f"<sdk:{name}>",
-        "source": "sdk",
-        "scope": "temporary",
-        "origin": "top-level",
-        "baseDir": None,
-    }
-
-
-def _serialize_tool_source_info(source_info: object) -> dict[str, object]:
-    base_dir = getattr(source_info, "base_dir", None)
-    return {
-        "path": _safe_source_path_text(getattr(source_info, "path", "")),
-        "source": getattr(source_info, "source", "filesystem"),
-        "scope": getattr(source_info, "scope", "project"),
-        "origin": getattr(source_info, "origin", "top-level"),
-        "baseDir": _safe_source_path_text(base_dir) if base_dir is not None else None,
-    }
-
-
-def _safe_source_path_text(value: object) -> str:
-    if isinstance(value, Path):
-        return value.as_posix()
-    return str(value)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import MISSING, dataclass, field, fields, is_dataclass
 from inspect import Parameter, signature
+from pathlib import Path
 from types import NoneType
 from typing import (
     Annotated,
@@ -104,6 +105,49 @@ class ToolDefinition:
     @property
     def renderResult(self) -> ToolRenderResult | None:
         return self.render_result
+
+
+def project_tool_definition(
+    definition: ToolDefinition,
+    source_info: object | None = None,
+    *,
+    builtin_names: frozenset[str] = frozenset(),
+) -> dict[str, object]:
+    """Project a tool definition into the neutral session/tool wire shape."""
+    return {
+        "name": definition.name,
+        "description": definition.description,
+        "parameters": definition.parameters,
+        "sourceInfo": _project_tool_source_info(source_info, definition.name, builtin_names),
+    }
+
+
+def _project_tool_source_info(
+    source_info: object | None,
+    name: str,
+    builtin_names: frozenset[str],
+) -> dict[str, object]:
+    if source_info is None:
+        source = "builtin" if name in builtin_names else "sdk"
+        return {
+            "path": f"<{source}:{name}>",
+            "source": source,
+            "scope": "temporary",
+            "origin": "top-level",
+            "baseDir": None,
+        }
+    base_dir = getattr(source_info, "base_dir", None)
+    return {
+        "path": _path_text(getattr(source_info, "path", "")),
+        "source": getattr(source_info, "source", "filesystem"),
+        "scope": getattr(source_info, "scope", "project"),
+        "origin": getattr(source_info, "origin", "top-level"),
+        "baseDir": _path_text(base_dir) if base_dir is not None else None,
+    }
+
+
+def _path_text(value: object) -> str:
+    return value.as_posix() if isinstance(value, Path) else str(value)
 
 
 @dataclass(frozen=True)
