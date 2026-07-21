@@ -87,17 +87,29 @@ decisions, and supplies the Coding error callback. It must not reimplement
 registry snapshots, resource discovery, generic input/event dispatch, command
 completion, flag state, or extension visibility serialization.
 
-The optional Agent session profile owns `ExtensionInputRuntime`,
-`ExtensionAgentHookRuntime`, and `ExtensionAgentEventRuntime`. They deliver
-standard extension-originated input, compose Agent context/tool hooks, and
-mirror Agent lifecycle facts without importing a Product. A Product still
-supplies its extension API, runtime binding factory, session replacement/fork
-semantics, diagnostics wording, and transport/UI projection.
+The optional Agent extension profile owns `ExtensionInputRuntime`,
+`ExtensionAgentHookRuntime`, and `ExtensionAgentEventRuntime`. Its target
+package is `harness.extensions.agent`, split into `input.py`, `hooks.py`, and
+`lifecycle.py`; the former session-owned module locations are deleted. It delivers standard
+extension-originated input, composes typed Agent context/tool hooks, and
+observes Agent lifecycle facts without importing a Product.
 
-These session-profile modules may depend on stable Agent/AI message and tool
-value contracts because they operate a live Agent session. They are separate
-from the neutral extension core: they must not import Coding, a Product,
-provider execution, authentication, model resolution, or UI implementation.
+The profile is an in-process integration boundary, not an event bus or a
+plugin container. Hook results are the only documented control path. Lifecycle
+callbacks are observation-only and do not create a second `RuntimeEvent`,
+transport, or external-process JSON protocol. The profile receives an injected
+clock and available session/run/turn/tool-call correlation values so lifecycle
+callbacks are deterministic and attributable. A Product still supplies its
+extension API, runtime binding factory, session replacement/fork semantics,
+diagnostics wording, and transport/UI projection.
+
+These Agent-extension profile modules may depend on stable Agent/AI message and
+tool value contracts because they operate a live Agent session. They are
+separate from the neutral extension core: they must not import Coding, a
+Product, provider execution, authentication, model resolution, or UI
+implementation. They also do not import `harness.session`; session assembly
+passes delivery, prepared-input, and lifecycle capabilities into the profile
+through typed ports.
 
 ## Policy Injection
 
@@ -223,17 +235,32 @@ The target direction is:
 
 ```text
 Coding extension/session adapter
-  -> loushang.harness.extensions.runtime
-  -> loushang.harness.extensions
+  -> loushang.harness.session                 # composition only
+  -> loushang.harness.extensions.agent        # optional typed Agent profile
+  -> loushang.harness.extensions               # neutral routing/runtime
   -> loushang.harness.resources / tools / contributions
-  -> stable agent tool value primitives
+
+loushang.harness.extensions.agent
+  -> stable public Agent/AI values + injected Harness ports
 ```
 
-`loushang.harness.extensions` must not import coding, method, work, TUI, AI,
-provider, UI, session, or another product package. Coding must not reintroduce
-parallel implementations of Harness-owned manifest, loader, registry,
-dispatcher, resource contribution, runtime composition, or tool-wrapper
-behavior.
+The neutral modules directly under `loushang.harness.extensions` must not
+import Coding, Method, Work, TUI, AI, provider, UI, Session, or another Product
+package. The optional `loushang.harness.extensions.agent` profile is the sole
+exception: it may import narrow public Agent/AI value contracts and Harness
+Agent-transcript/host values, but never `harness.session`, Coding, Channel,
+Work, Method, TUI, provider execution, authentication, model registry, or a
+Product package. The `harness.extensions` package root must not eagerly import
+or re-export the optional Agent profile.
+
+Trust, approval, and activation remain before this graph: a Product or OEM
+selects eligible extensions before `ExtensionRuntime` composes them, and the
+Agent profile never bypasses that decision. A future process-hook adapter, if
+needed for OEM integration, is separate from this typed in-process profile.
+
+Coding must not reintroduce parallel implementations of Harness-owned
+manifest, loader, registry, dispatcher, resource contribution, runtime
+composition, or tool-wrapper behavior.
 
 ## Validation
 

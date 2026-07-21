@@ -42,6 +42,36 @@ Wave 1 contract probes:
 - Observability lifecycle configuration restores a pre-existing sink after the
   product context exits.
 
+## Wave 2: Event And Extension Product Adapter Collapse (Complete)
+
+The detailed contract is
+[Event And Extension Product Adapter Collapse](event-extension-adapter-collapse-boundary.md).
+This is an adapter-collapse Wave, not a mandate to move Coding wire contracts
+into Harness.
+
+| Source region | Shared owner | Product injection or retained Coding owner | Deletion condition |
+| --- | --- | --- | --- |
+| removed `coding.extensions.hooks.HookDispatcher` | `harness.extensions.agent.hooks.ExtensionToolHookDispatcher` | Product supplies context factory and runtime error projection. | Complete: Coding module deleted after focused Agent-hook equivalence tests and a no-Coding-import probe. |
+| Agent prompt/context/session-decision reducers formerly in `coding.extensions.runner.ExtensionRunner` | `harness.extensions.agent.hooks` and `harness.extensions.session_runtime` | Coding supplies bound context, CWD, API binding, `before_agent_start` factory/result coercer, and session-decision compatibility coercer. | Complete: shared dispatchers own the reducer mechanics; Coding retains aliases and provider behavior. |
+| removed `harness.session.extension_{hooks,events,input}` modules | `harness.extensions.agent.{hooks,lifecycle,input}` | Session only consumes the profile during Agent-session composition. Input receives normalized typed requests plus queue/delivery ports; lifecycle is an observation-only extension callback adapter with injected clock/correlation values; Coding retains wire parsing/defaults. | Complete: consumers import the profile directly, input has no Session import, and Session no longer re-exports the profile. |
+| `coding.extensions.runner.ExtensionRunner` loader/API/alias portions | Coding adapter | `ExtensionAPI`, policy resolver, loader legacy names, provider actions, and Coding error dictionary remain Product-owned. | It is complete only when it is a thin adapter over the existing shared runtime and dispatchers. |
+| `coding.event` runtime projection, views, serializer, and presentation policy | Existing `harness.events` fact/view APIs; no new event owner | Coding retains `AgentSessionEvent`, Pi aliases, camelCase schema, rendering, transcript decision, and wording. | Production consumers use the common runtime API where possible; there is no duplicate neutral event engine. |
+
+Wave 2 contract probes:
+
+- a fake Product executes context, before/after tool, before-agent-start, and
+  session-decision hooks with no Coding import;
+- invalid hook results, route ordering, block behavior, and runtime failure
+  reporting preserve existing diagnostics;
+- Coding extension provider actions and JSON/print/RPC event projections stay
+  behaviorally unchanged;
+- architecture tests forbid Coding imports from the new shared dispatchers and
+  forbid a new Harness event schema for Coding aliases;
+- `harness.extensions.agent` has no `harness.session` import, while neutral
+  `harness.extensions` modules do not eagerly import or re-export the Agent
+  profile; lifecycle callback order and timestamps are deterministic under an
+  injected clock.
+
 ## Later Waves
 
 The following rows are intentionally broad until their waves are scheduled.
@@ -49,7 +79,6 @@ They are not estimates or approval to duplicate an existing Harness owner.
 
 | Wave | Source regions to ledger before implementation | Intended shared owners |
 | --- | --- | --- |
-| 2 | Coding event projections and extension agent bridge | `harness.session`, `harness.extensions`, `harnesstui` |
 | 3 | Standard session commands, tool/package bindings, transcript export | `harness.session`, `harness.commands`, `harness.agent_transcript` |
 | 4 | `AgentSession`, runtime composition, bootstrap activation | existing `ProductRuntimePlan`, runtime resolver/binder, `harness.session` |
 | 5 | RPC, print, channel host, shared conversation interaction | `channel`, `harness.session`, `harnesstui`, `tui` |

@@ -7,10 +7,11 @@ import pytest
 
 from loushang.agent import Agent
 from loushang.ai.types import TextPart
+from loushang.coding.session.extension_input_adapter import CodingExtensionInputAdapter
 from loushang.coding.store import SessionManager
+from loushang.harness.extensions.agent import ExtensionInputRuntime
 from loushang.harness.session import (
     ApplicationInputRuntime,
-    ExtensionInputRuntime,
     QueueController,
 )
 
@@ -58,6 +59,21 @@ def _application_inputs(
     )
 
 
+def _controller(
+    agent: Agent,
+    queue_controller: QueueController,
+    application_inputs: ApplicationInputRuntime,
+) -> CodingExtensionInputAdapter:
+    return CodingExtensionInputAdapter(
+        agent=agent,
+        runtime=ExtensionInputRuntime(
+            application_inputs=application_inputs,
+            prepared_user_inputs=queue_controller,
+            run_prompt=agent.prompt,
+        ),
+    )
+
+
 def test_extension_message_controller_persists_custom_message_and_emits_events(
     tmp_path,
 ) -> None:
@@ -72,10 +88,10 @@ def test_extension_message_controller_persists_custom_message_and_emits_events(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     queue_controller = _queue_controller(agent, queue_updates)
-    controller = ExtensionInputRuntime(
-        agent=agent,
-        queue_controller=queue_controller,
-        application_inputs=_application_inputs(
+    controller = _controller(
+        agent,
+        queue_controller,
+        _application_inputs(
             agent, session_manager, queue_controller, _dispatch
         ),
     )
@@ -107,10 +123,10 @@ def test_extension_message_controller_queues_streaming_messages_by_deliver_as(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     queue_controller = _queue_controller(agent, queue_updates)
-    controller = ExtensionInputRuntime(
-        agent=agent,
-        queue_controller=queue_controller,
-        application_inputs=_application_inputs(
+    controller = _controller(
+        agent,
+        queue_controller,
+        _application_inputs(
             agent,
             session_manager,
             queue_controller,
@@ -127,8 +143,8 @@ def test_extension_message_controller_queues_streaming_messages_by_deliver_as(
     asyncio.run(controller.send_user_message("queued steer", {"deliverAs": "steer"}))
 
     assert controller.has_pending_messages() is True
-    assert controller.queue_controller.get_steering_messages() == ["queued steer"]
-    assert controller.queue_controller.get_follow_up_messages() == ["custom follow"]
+    assert queue_controller.get_steering_messages() == ["queued steer"]
+    assert queue_controller.get_follow_up_messages() == ["custom follow"]
     assert queue_updates == [
         ([], ["custom follow"]),
         (["queued steer"], ["custom follow"]),
@@ -145,10 +161,10 @@ def test_extension_message_controller_validates_streaming_user_message_deliver_a
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
     )
     queue_controller = _queue_controller(agent, queue_updates)
-    controller = ExtensionInputRuntime(
-        agent=agent,
-        queue_controller=queue_controller,
-        application_inputs=_application_inputs(
+    controller = _controller(
+        agent,
+        queue_controller,
+        _application_inputs(
             agent,
             session_manager,
             queue_controller,

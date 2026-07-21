@@ -1,8 +1,8 @@
-"""Agent-event bridge for Product extension runtimes."""
+"""Observation-only Agent lifecycle callbacks for extension runtimes."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from time import time
 from typing import Any, Protocol
@@ -16,17 +16,23 @@ class ExtensionEventPort(Protocol):
 
 ExtensionEventProvider = Callable[[], ExtensionEventPort | None]
 CwdProvider = Callable[[], str]
+Clock = Callable[[], float]
 
 
 @dataclass
 class ExtensionAgentEventRuntime:
-    """Project generic Agent lifecycle facts into extension event callbacks."""
+    """Project Agent lifecycle facts into extension callbacks.
+
+    This adapter deliberately does not publish a runtime-event envelope.  It
+    invokes the active extension runtime in Agent event order only.
+    """
 
     get_extension_runtime: ExtensionEventProvider
     get_cwd: CwdProvider
+    clock: Clock = time
     _turn_index: int = 0
 
-    async def emit_agent_event(self, event: dict[str, Any]) -> None:
+    async def emit_agent_event(self, event: Mapping[str, Any]) -> None:
         extension_runtime = self.get_extension_runtime()
         if extension_runtime is None:
             return
@@ -43,7 +49,7 @@ class ExtensionAgentEventRuntime:
                 {
                     "type": "turn_start",
                     "turn_index": self._turn_index,
-                    "timestamp": int(time() * 1000),
+                    "timestamp": int(self.clock() * 1000),
                 },
                 cwd=self.get_cwd(),
             )
@@ -63,4 +69,4 @@ class ExtensionAgentEventRuntime:
         await extension_runtime.emit_event(event, cwd=self.get_cwd())
 
 
-__all__ = ["ExtensionAgentEventRuntime", "ExtensionEventPort"]
+__all__ = ["Clock", "ExtensionAgentEventRuntime", "ExtensionEventPort"]

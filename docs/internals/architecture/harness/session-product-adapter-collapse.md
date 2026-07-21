@@ -32,8 +32,10 @@ an inspection controller merely to adapt Coding policy.
   been removed from `AgentSession`; callers use the composed Harness runtime
   or Product adapter directly.
 - `ExtensionInputRuntime`, `ExtensionAgentHookRuntime`, and
-  `ExtensionAgentEventRuntime` now own standard extension input delivery,
-  Agent hook composition, and lifecycle-event mirroring. `ExtensionSessionRuntime`
+  `ExtensionAgentEventRuntime` own standard extension input delivery, Agent
+  hook composition, and lifecycle-event mirroring in the optional
+  `harness.extensions.agent` profile, where lifecycle is observation-only and
+  typed ports prevent a reverse Session dependency. `ExtensionSessionRuntime`
   owns bind/refresh/invalidation coordination. The removed Coding controllers
   were implementation-only wrappers around these product-neutral mechanics.
 

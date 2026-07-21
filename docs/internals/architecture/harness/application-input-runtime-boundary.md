@@ -59,6 +59,15 @@ Coding keeps:
 Coding's extension message controller no longer imports `SessionManager` or
 appends an ApplicationMessage itself.
 
+The optional `harness.extensions.agent.input` profile is a consumer of this
+runtime, not a second delivery engine. It accepts already-normalized typed
+extension application/user input and invokes injected delivery and prepared
+queue ports. It does not import `harness.session`. Coding's extension adapter
+performs Pi-compatible argument parsing and chooses the typed delivery mode
+before calling the profile. In particular, the profile does not receive raw
+extension dictionaries and does not parse `customType`, `deliverAs`, or
+`triggerTurn`; those are Product wire-contract concerns.
+
 ## Dependency And Verification
 
 The runtime imports only Harness transcript values and injected ports. It does
