@@ -10,6 +10,7 @@ from typing import Any
 from loushang.ai.auth.credentials import OAuthCredential
 from loushang.ai.auth.oauth.base import OAuthProvider
 from loushang.ai.auth.resolver import resolve_auth
+from loushang.ai.auth.sources import CredentialSource
 from loushang.ai.auth.store import FileCredentialStore
 from loushang.ai.auth.support import resolve_auth_for_model
 from loushang.ai.context import NormalizedContext
@@ -145,6 +146,7 @@ async def prepare_request_for_model(
     credential_file: str | Path | None = None,
     store: FileCredentialStore | None = None,
     providers: Mapping[str, OAuthProvider] | None = None,
+    sources: Mapping[str, CredentialSource] | None = None,
     env: Mapping[str, str] | None = None,
     refresh_window_seconds: float = 60.0,
     now: float | None = None,
@@ -159,6 +161,7 @@ async def prepare_request_for_model(
         credential_file=credential_file,
         store=store,
         providers=providers,
+        sources=sources,
         env=resolved_env,
         refresh_window_seconds=refresh_window_seconds,
         now=now,

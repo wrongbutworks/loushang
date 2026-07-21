@@ -6,57 +6,32 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from loushang.ai.auth.credentials import OAuthCredential
-from loushang.ai.auth.errors import (
-    InvalidCredentialError,
-    OAuthProviderNotConfiguredError,
-    RefreshFailedError,
-)
-from loushang.ai.auth.oauth.base import AuthorizationCallback
+from loushang.ai.auth.errors import InvalidCredentialError
 
 
-class OpenAICodexOAuthProvider:
-    """Experimental read-only adapter for an existing Codex CLI file login."""
+class OpenAICodexCredentialSource:
+    """Experimental importer for an existing Codex CLI file credential."""
 
     id = "openai-codex"
     experimental = True
+    recovery = "codex_login"
 
     def __init__(self, auth_path: str | Path | None = None) -> None:
-        self.auth_path = (
-            Path(auth_path).expanduser()
-            if auth_path is not None
-            else Path.home() / ".codex" / "auth.json"
+        self._auth_path = (
+            Path(auth_path).expanduser() if auth_path is not None else None
         )
 
-    def load_external_credential(self) -> OAuthCredential | None:
+    @property
+    def auth_path(self) -> Path:
+        return self._auth_path or Path.home() / ".codex" / "auth.json"
+
+    def load(self) -> OAuthCredential | None:
         if not self.auth_path.exists():
             return None
         return load_codex_credential(self.auth_path)
 
-    def load_credential_file(self, path: str | Path) -> OAuthCredential:
+    def load_file(self, path: str | Path) -> OAuthCredential:
         return load_codex_credential(path)
-
-    async def login(
-        self,
-        *,
-        authorize: AuthorizationCallback | None = None,
-    ) -> OAuthCredential:
-        del authorize
-        raise OAuthProviderNotConfiguredError(
-            "Loushang does not own an OpenAI OAuth client; use `codex login` and reuse its existing file credential experimentally.",
-            provider=self.id,
-            details={"experimental": True, "recovery": "codex_login"},
-        )
-
-    async def refresh(self, credential: OAuthCredential) -> OAuthCredential:
-        del credential
-        raise RefreshFailedError(
-            "Loushang cannot refresh the experimental Codex credential; run `codex login` again.",
-            provider=self.id,
-            details={"experimental": True, "recovery": "codex_login"},
-        )
-
-    async def revoke(self, credential: OAuthCredential) -> None:
-        del credential
 
 
 def load_codex_credential(path: str | Path) -> OAuthCredential:
@@ -137,4 +112,4 @@ def _jwt_exp(token: str) -> int | float | None:
     return expires_at if expires_at > 0 else None
 
 
-__all__ = ["OpenAICodexOAuthProvider", "load_codex_credential"]
+__all__ = ["OpenAICodexCredentialSource", "load_codex_credential"]

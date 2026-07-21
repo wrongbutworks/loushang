@@ -84,16 +84,17 @@ register_api_provider(custom_adapter)
 - `advanced/inspect_endpoint_contract.py`
 - `advanced/custom_catalog.py`
 
-## ChatGPT Coding Plan
+## OpenAI Codex credential import
 
-`chatgpt_coding_plan.py` 只做三件事：
+`openai_codex_credential_import.py` 只做三件事：
 
 1. 选择 `openai:coding-responses:gpt-5.5`。
 2. 可选地把 credential 文件路径交给 `CallOptions`。
 3. 调用公共 `stream()`。
 
-`loushang.ai.auth` 的实验 OpenAI Codex adapter 负责读取 `~/.codex/auth.json`
-并转换成请求认证；示例本身不读取 token 文件、不刷新 token、也不判断 provider。
+`loushang.ai.auth` 的实验 `OpenAICodexCredentialSource` 负责导入
+`~/.codex/auth.json` 并转换成请求认证；它不是 OAuth login provider。示例本身不读取
+token 文件、不刷新 token、也不判断 provider。
 
 ## Live tests
 

@@ -55,9 +55,9 @@ def check_import_boundaries() -> list[str]:
         )
 
     public_examples = set(TOP_LEVEL_EXAMPLES.glob("[0-9][0-9]_*.py"))
-    chatgpt_example = TOP_LEVEL_EXAMPLES / "chatgpt_coding_plan.py"
-    if chatgpt_example.is_file():
-        public_examples.add(chatgpt_example)
+    codex_import_example = TOP_LEVEL_EXAMPLES / "openai_codex_credential_import.py"
+    if codex_import_example.is_file():
+        public_examples.add(codex_import_example)
 
     for path in sorted(public_examples):
         relative_path = path.relative_to(REPO_ROOT).as_posix()

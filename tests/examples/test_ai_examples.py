@@ -320,27 +320,29 @@ def test_image_input_example_reports_image_counts(capsys) -> None:
     assert payload == summary
 
 
-def test_chatgpt_coding_plan_example_delegates_credential_loading_to_ai_auth() -> None:
+def test_openai_codex_import_example_delegates_loading_to_credential_source() -> None:
     module = _load_module(
-        Path("examples/ai/chatgpt_coding_plan.py"),
-        "examples_ai_chatgpt_coding_plan_credentials",
+        Path("examples/ai/openai_codex_credential_import.py"),
+        "examples_ai_openai_codex_credential_import",
     )
 
     assert not hasattr(module, "load_auth")
-    source = Path("examples/ai/chatgpt_coding_plan.py").read_text(encoding="utf-8")
+    source = Path("examples/ai/openai_codex_credential_import.py").read_text(
+        encoding="utf-8"
+    )
     assert "read_text" not in source
     assert "access_token" not in source
 
 
-def test_chatgpt_coding_plan_example_calls_public_responses_path(
+def test_openai_codex_import_example_calls_public_responses_path(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     from loushang.ai import AssistantMessage, TextPart
 
     module = _load_module(
-        Path("examples/ai/chatgpt_coding_plan.py"),
-        "examples_ai_chatgpt_coding_plan_call",
+        Path("examples/ai/openai_codex_credential_import.py"),
+        "examples_ai_openai_codex_credential_import_call",
     )
     auth_path = tmp_path / "auth.json"
     captured: dict[str, object] = {}

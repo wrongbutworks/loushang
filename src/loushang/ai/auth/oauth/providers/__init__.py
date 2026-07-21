@@ -1,11 +1,9 @@
-from loushang.ai.auth.oauth.providers.kimi_code import KimiCodeOAuthProvider
-from loushang.ai.auth.oauth.providers.openai_codex import (
-    OpenAICodexOAuthProvider,
-    load_codex_credential,
+from loushang.ai.auth.oauth.providers.kimi_code import (
+    KimiCodeOAuthProvider,
+    KimiOAuthConfig,
 )
 
 __all__ = [
     "KimiCodeOAuthProvider",
-    "OpenAICodexOAuthProvider",
-    "load_codex_credential",
+    "KimiOAuthConfig",
 ]

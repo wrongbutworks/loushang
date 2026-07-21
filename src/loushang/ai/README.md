@@ -180,17 +180,18 @@ provider、endpoint、model 的 auth 采用完整替换：model 优先，其次 
 provider，不跨层拼接。
 
 endpoint 静态 headers 是协议事实，不属于 auth。模型调用前，resolver 按显式 auth、
-显式 credential、credential file、默认 store、API key env 的顺序解析，并在需要时
-通过 OAuth provider adapter 自动 refresh。
+显式 credential、credential file、默认 store、独立 credential source、API key env
+的顺序解析，并在需要时通过显式注册的 OAuth provider adapter 自动 refresh。
 
-ChatGPT Coding Plan 示例直接调用：
+OpenAI Codex credential import 示例直接调用：
 
 ```python
 get_model("openai", "coding-responses", "gpt-5.5")
 ```
 
-实验 `openai-codex` adapter 负责转换现有 `~/.codex/auth.json`；示例和上层不读取
-token 文件。完整 API、文件格式和 provider 扩展方式见 `docs/auth/oauth.md`。
+实验 `OpenAICodexCredentialSource` 负责导入现有 `~/.codex/auth.json`；它不是
+OAuth provider，也不实现 login 或 refresh。示例和上层不读取 token 文件。完整 API、
+文件格式、credential source 与 provider 扩展方式见 `docs/auth/oauth.md`。
 
 ## 正确性契约
 

@@ -18,6 +18,7 @@ from loushang.ai.auth.errors import (
     RefreshFailedError,
 )
 from loushang.ai.auth.oauth.base import OAuthProvider
+from loushang.ai.auth.sources import CredentialSource, get_credential_source
 from loushang.ai.auth.store import (
     FileCredentialStore,
     load_credential_file,
@@ -41,6 +42,7 @@ async def resolve_auth(
     credential_file: str | Path | None = None,
     store: FileCredentialStore | None = None,
     providers: Mapping[str, OAuthProvider] | None = None,
+    sources: Mapping[str, CredentialSource] | None = None,
     env: Mapping[str, str] | None = None,
     refresh_window_seconds: float = 60.0,
     now: float | None = None,
@@ -93,18 +95,22 @@ async def resolve_auth(
         credential=explicit_credential,
         credential_file=explicit_file,
         store=store,
-        providers=providers,
+        sources=sources,
     )
     if resolved is None:
+        recovery, source_id = _credential_recovery(provider_id, sources)
+        details = {
+            "oauth_provider": provider_id,
+            "recovery": recovery,
+        }
+        if source_id is not None:
+            details["credential_source"] = source_id
         raise MissingCredentialError(
-            "Model requires OAuth login but no credential was found.",
+            "Model requires an OAuth credential but none was found.",
             provider=getattr(model, "provider_id", None),
             endpoint=getattr(model, "endpoint_id", None),
             model=getattr(model, "id", None),
-            details={
-                "oauth_provider": provider_id,
-                "recovery": "login",
-            },
+            details=details,
         )
     _validate_credential_provider(resolved.credential, provider_id, model=model)
     timestamp = time.time() if now is None else now
@@ -113,6 +119,7 @@ async def resolve_auth(
         provider_id=provider_id,
         store=store,
         providers=providers,
+        sources=sources,
         refresh_window_seconds=refresh_window_seconds,
         now=timestamp,
         model=model,
@@ -126,7 +133,7 @@ def _load_oauth_credential(
     credential: OAuthCredential | None,
     credential_file: str | Path | None,
     store: FileCredentialStore | None,
-    providers: Mapping[str, OAuthProvider] | None,
+    sources: Mapping[str, CredentialSource] | None,
 ) -> _ResolvedCredential | None:
     if credential is not None:
         if not isinstance(credential, OAuthCredential):
@@ -137,12 +144,11 @@ def _load_oauth_credential(
         return _ResolvedCredential(credential=credential, source="explicit")
     if credential_file is not None:
         path = Path(credential_file).expanduser()
-        adapter = _provider_for(provider_id, providers)
-        provider_loader = getattr(adapter, "load_credential_file", None)
-        if callable(provider_loader):
+        source_adapter = _source_for(provider_id, sources)
+        if source_adapter is not None:
             return _ResolvedCredential(
-                credential=provider_loader(path),
-                source="provider_credential_file",
+                credential=source_adapter.load_file(path),
+                source="credential_source_file",
                 path=path,
             )
         return _ResolvedCredential(
@@ -154,14 +160,13 @@ def _load_oauth_credential(
     stored = resolved_store.load(provider_id)
     if stored is not None:
         return _ResolvedCredential(credential=stored, source="default_store")
-    adapter = _provider_for(provider_id, providers)
-    loader = getattr(adapter, "load_external_credential", None)
-    if callable(loader):
-        external = loader()
+    source_adapter = _source_for(provider_id, sources)
+    if source_adapter is not None:
+        external = source_adapter.load()
         if external is not None:
             return _ResolvedCredential(
                 credential=external,
-                source="provider_external",
+                source="credential_source",
             )
     return None
 
@@ -172,11 +177,19 @@ async def _refresh_if_needed(
     provider_id: str,
     store: FileCredentialStore | None,
     providers: Mapping[str, OAuthProvider] | None,
+    sources: Mapping[str, CredentialSource] | None,
     refresh_window_seconds: float,
     now: float,
     model,
 ) -> OAuthCredential:
     credential = resolved.credential
+    recovery, source_id = _credential_recovery(provider_id, sources)
+    recovery_details = {
+        "oauth_provider": provider_id,
+        "recovery": recovery,
+    }
+    if source_id is not None:
+        recovery_details["credential_source"] = source_id
     if not credential.expires_within(refresh_window_seconds, now=now):
         return credential
     if credential.refresh_token is None:
@@ -185,7 +198,7 @@ async def _refresh_if_needed(
             provider=getattr(model, "provider_id", None),
             endpoint=getattr(model, "endpoint_id", None),
             model=getattr(model, "id", None),
-            details={"oauth_provider": provider_id, "recovery": "login"},
+            details=recovery_details,
         )
     adapter = _provider_for(provider_id, providers)
     if adapter is None:
@@ -194,7 +207,7 @@ async def _refresh_if_needed(
             provider=getattr(model, "provider_id", None),
             endpoint=getattr(model, "endpoint_id", None),
             model=getattr(model, "id", None),
-            details={"oauth_provider": provider_id, "recovery": "login"},
+            details=recovery_details,
         )
     try:
         refreshed = await adapter.refresh(credential)
@@ -248,6 +261,28 @@ def _provider_for(
     if providers is not None and provider_id in providers:
         return providers[provider_id]
     return get_oauth_provider(provider_id)
+
+
+def _source_for(
+    provider_id: str,
+    sources: Mapping[str, CredentialSource] | None,
+) -> CredentialSource | None:
+    if sources is not None and provider_id in sources:
+        return sources[provider_id]
+    return get_credential_source(provider_id)
+
+
+def _credential_recovery(
+    provider_id: str,
+    sources: Mapping[str, CredentialSource] | None,
+) -> tuple[str, str | None]:
+    source = _source_for(provider_id, sources)
+    if source is None:
+        return "login", None
+    recovery = getattr(source, "recovery", "external_login")
+    if not isinstance(recovery, str) or not recovery:
+        recovery = "external_login"
+    return recovery, source.id
 
 
 def _validate_credential_provider(

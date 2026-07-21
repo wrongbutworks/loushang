@@ -1,4 +1,4 @@
-"""Call an OpenAI model with an existing ChatGPT Coding Plan login."""
+"""Call an OpenAI model through the experimental Codex credential source."""
 
 from __future__ import annotations
 

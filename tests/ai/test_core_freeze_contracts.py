@@ -180,10 +180,18 @@ def test_auth_is_owned_by_ai_package_without_top_level_auth_package() -> None:
     import loushang.ai.auth as auth_module
 
     assert not (REPO_ROOT / "src/loushang/auth").exists()
+    assert (
+        AI_SRC / "auth" / "sources" / "openai_codex.py"
+    ).is_file()
+    assert not (
+        AI_SRC / "auth" / "oauth" / "providers" / "openai_codex.py"
+    ).exists()
 
     for name in (
         "OAuthCredential",
+        "CredentialSource",
         "FileCredentialStore",
+        "OpenAICodexCredentialSource",
         "resolve_auth",
         "login",
         "logout",

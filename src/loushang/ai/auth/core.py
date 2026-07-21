@@ -7,6 +7,7 @@ from typing import Literal
 from loushang.ai.auth.credentials import OAuthCredential
 from loushang.ai.auth.errors import InvalidCredentialError
 from loushang.ai.auth.oauth.base import AuthorizationCallback, OAuthProvider
+from loushang.ai.auth.sources import get_credential_source
 from loushang.ai.auth.store import FileCredentialStore
 
 CredentialState = Literal["missing", "valid", "expiring", "expired"]
@@ -25,7 +26,6 @@ class CredentialStatus:
 
 
 _oauth_providers: dict[str, OAuthProvider] = {}
-_builtins_registered = False
 
 
 def register_oauth_provider(provider: OAuthProvider, *, replace: bool = False) -> None:
@@ -36,7 +36,6 @@ def register_oauth_provider(provider: OAuthProvider, *, replace: bool = False) -
 
 
 def get_oauth_provider(provider_id: str) -> OAuthProvider | None:
-    _register_builtin_oauth_providers()
     return _oauth_providers.get(provider_id)
 
 
@@ -76,18 +75,28 @@ def credential_status(
     refresh_window_seconds: float = 60.0,
     now: float | None = None,
 ) -> CredentialStatus:
-    adapter = _resolve_provider(provider)
+    if isinstance(provider, str):
+        provider_id = provider
+        adapter = get_oauth_provider(provider_id)
+        source_adapter = get_credential_source(provider_id)
+        if adapter is None and source_adapter is None:
+            raise KeyError(
+                "OAuth provider or credential source is not registered: "
+                f"{provider_id}"
+            )
+    else:
+        _validate_provider(provider)
+        provider_id = provider.id
+        source_adapter = get_credential_source(provider_id)
     resolved_store = store or FileCredentialStore()
-    credential = resolved_store.load(adapter.id)
+    credential = resolved_store.load(provider_id)
     source = "default_store"
+    if credential is None and source_adapter is not None:
+        credential = source_adapter.load()
+        source = "credential_source"
     if credential is None:
-        loader = getattr(adapter, "load_external_credential", None)
-        if callable(loader):
-            credential = loader()
-            source = "provider_external"
-    if credential is None:
-        return CredentialStatus(provider=adapter.id, state="missing")
-    _validate_provider_credential(adapter, credential)
+        return CredentialStatus(provider=provider_id, state="missing")
+    _validate_credential_owner(provider_id, credential)
     timestamp = time.time() if now is None else now
     if credential.is_expired(now=timestamp):
         state: CredentialState = "expired"
@@ -96,7 +105,7 @@ def credential_status(
     else:
         state = "valid"
     return CredentialStatus(
-        provider=adapter.id,
+        provider=provider_id,
         state=state,
         expires_at=credential.expires_at,
         source=source,
@@ -128,35 +137,28 @@ def _validate_provider_credential(
     provider: OAuthProvider,
     credential: OAuthCredential,
 ) -> None:
+    _validate_credential_owner(provider.id, credential)
+
+
+def _validate_credential_owner(
+    provider_id: str,
+    credential: OAuthCredential,
+) -> None:
     if not isinstance(credential, OAuthCredential):
         raise InvalidCredentialError(
-            "OAuth provider returned an unsupported credential type.",
-            provider=provider.id,
+            "Authentication component returned an unsupported credential type.",
+            provider=provider_id,
             details={"recovery": "reconfigure"},
         )
-    if credential.provider != provider.id:
+    if credential.provider != provider_id:
         raise InvalidCredentialError(
-            "OAuth provider returned a credential for a different provider.",
-            provider=provider.id,
+            "Authentication component returned a credential for a different provider.",
+            provider=provider_id,
             details={
                 "credential_provider": credential.provider,
                 "recovery": "reconfigure",
             },
         )
-
-
-def _register_builtin_oauth_providers() -> None:
-    global _builtins_registered
-    if _builtins_registered:
-        return
-    from loushang.ai.auth.oauth.providers import (
-        KimiCodeOAuthProvider,
-        OpenAICodexOAuthProvider,
-    )
-
-    for provider in (OpenAICodexOAuthProvider(), KimiCodeOAuthProvider()):
-        _oauth_providers.setdefault(provider.id, provider)
-    _builtins_registered = True
 
 
 __all__ = [

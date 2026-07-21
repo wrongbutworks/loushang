@@ -203,18 +203,22 @@ Provider, endpoint, and model auth use full replacement. A model auth declaratio
 wins over endpoint auth; endpoint auth wins over provider auth. Declarations are
 not partially merged.
 
-The AI package does not log in, renew credentials, open a browser, or persist
-account state. Those operations happen outside this SDK before invocation.
+The AI package owns OAuth credential lifecycle, login protocol, refresh, and
+storage. Upper layers only present login interaction and return the final
+redirect URL to the provider; the AI package does not own product UI or a
+browser.
 
-The ChatGPT Coding Plan example reads the current token and account ID from an
-existing `~/.codex/auth.json`, creates `OAuthBearerAuth`, and calls:
+OpenAI Codex is not currently a Loushang OAuth provider. The experimental
+`OpenAICodexCredentialSource` imports an existing Codex
+`~/.codex/auth.json`; the example does not parse tokens and only passes an
+optional file path through `CallOptions` before calling:
 
 ```python
 get_model("openai", "coding-responses", "gpt-5.5")
 ```
 
 See
-[chatgpt_coding_plan.py](../../../examples/ai/chatgpt_coding_plan.py).
+[openai_codex_credential_import.py](../../../examples/ai/openai_codex_credential_import.py).
 
 ## Custom Catalogs
 

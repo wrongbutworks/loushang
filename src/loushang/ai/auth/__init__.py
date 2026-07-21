@@ -28,6 +28,13 @@ from loushang.ai.auth.oauth import (
     OAuthProvider,
 )
 from loushang.ai.auth.resolver import resolve_auth
+from loushang.ai.auth.sources import (
+    CredentialSource,
+    OpenAICodexCredentialSource,
+    get_credential_source,
+    load_codex_credential,
+    register_credential_source,
+)
 from loushang.ai.auth.store import (
     FileCredentialStore,
     load_credential_file,
@@ -55,6 +62,7 @@ __all__ = [
     "AuthResolutionError",
     "AuthView",
     "CredentialExpiredError",
+    "CredentialSource",
     "CredentialState",
     "CredentialStatus",
     "FileCredentialStore",
@@ -68,13 +76,17 @@ __all__ = [
     "OAuthCredential",
     "OAuthProvider",
     "OAuthProviderNotConfiguredError",
+    "OpenAICodexCredentialSource",
     "RefreshFailedError",
     "credential_status",
+    "get_credential_source",
     "get_oauth_provider",
+    "load_codex_credential",
     "load_credential_file",
     "login",
     "logout",
     "normalize_auth_kind",
+    "register_credential_source",
     "register_oauth_provider",
     "resolve_auth",
     "resolve_auth_for_model",

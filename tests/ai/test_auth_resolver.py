@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -196,4 +197,87 @@ def test_refresh_failure_is_structured(tmp_path: Path) -> None:
         "oauth_provider": "example-oauth",
         "cause": "RuntimeError",
         "recovery": "login",
+    }
+
+
+def test_openai_codex_source_file_resolves_without_oauth_provider(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "auth.json"
+    path.write_text(
+        json.dumps(
+            {
+                "auth_mode": "chatgpt",
+                "tokens": {
+                    "access_token": "codex-access",
+                    "account_id": "account-id",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    model = Model(
+        id="codex-model",
+        provider="openai",
+        endpoint="coding-responses",
+        api="openai-responses",
+        base_url="https://chatgpt.com/backend-api/codex",
+        auth=Auth(kind="oauth", provider="openai-codex"),
+    )
+
+    auth = asyncio.run(
+        resolve_auth(
+            model,
+            options=CallOptions(credential_file=path),
+            providers={},
+            now=1000,
+        )
+    )
+
+    assert auth == OAuthBearerAuth(
+        "codex-access",
+        extra_headers={"ChatGPT-Account-ID": "account-id"},
+    )
+
+
+def test_openai_codex_source_never_impersonates_refresh_provider(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "auth.json"
+    path.write_text(
+        json.dumps(
+            {
+                "auth_mode": "chatgpt",
+                "tokens": {
+                    "access_token": "codex-access",
+                    "refresh_token": "codex-refresh",
+                    "expires_at": 1030,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    model = Model(
+        id="codex-model",
+        provider="openai",
+        endpoint="coding-responses",
+        api="openai-responses",
+        base_url="https://chatgpt.com/backend-api/codex",
+        auth=Auth(kind="oauth", provider="openai-codex"),
+    )
+
+    with pytest.raises(RefreshFailedError) as exc_info:
+        asyncio.run(
+            resolve_auth(
+                model,
+                options=CallOptions(credential_file=path),
+                providers={},
+                now=1000,
+            )
+        )
+
+    assert exc_info.value.info.details == {
+        "oauth_provider": "openai-codex",
+        "recovery": "codex_login",
+        "credential_source": "openai-codex",
     }
