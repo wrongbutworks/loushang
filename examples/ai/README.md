@@ -89,8 +89,9 @@ register_api_provider(custom_adapter)
 `openai_codex_credential_import.py` 只做三件事：
 
 1. 选择 `openai:coding-responses:gpt-5.5`。
-2. 可选地把 credential 文件路径交给 `CallOptions`。
-3. 调用公共 `stream()`。
+2. 通过公共 `OpenAICodexCredentialSource` 和 `get_auth()` 导入可选 credential
+   文件路径。
+3. 把返回的 request auth 显式传给公共 `stream()`。
 
 `loushang.ai.auth` 的实验 `OpenAICodexCredentialSource` 负责导入
 `~/.codex/auth.json` 并转换成请求认证；它不是 OAuth login provider。示例本身不读取

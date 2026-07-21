@@ -1,4 +1,4 @@
-"""Run API-key environment and explicit-auth calls through ProviderRequest."""
+"""Resolve API-key auth, then pass it to a model request as an application."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import json
 import os
 from collections.abc import AsyncIterator
 
-from loushang.ai import ApiKeyAuth, CallOptions, complete
+import loushang.ai as ai
 from loushang.ai.advanced.registry import (
     clear_api_providers,
     register_api_provider,
@@ -50,14 +50,11 @@ async def run() -> dict[str, object]:
     clear_api_providers()
     register_api_provider(provider)
     try:
-        await complete(
+        request_auth = await ai.auth.get_auth(model)
+        await ai.complete(
             model,
             {"messages": [{"role": "user", "content": "environment"}]},
-        )
-        await complete(
-            model,
-            {"messages": [{"role": "user", "content": "explicit"}]},
-            CallOptions(auth=ApiKeyAuth("explicit-secret")),
+            auth=request_auth,
         )
     finally:
         reset_api_providers()
@@ -66,15 +63,12 @@ async def run() -> dict[str, object]:
         else:
             os.environ[ENV_NAME] = previous
 
-    expected = ["Bearer environment-secret", "Bearer explicit-secret"]
-    actual = [request.headers.get("Authorization") for request in provider.requests]
+    request = provider.requests[0]
     return {
         "calls": len(provider.requests),
-        "environmentResolved": actual[0] == expected[0],
-        "explicitResolved": actual[1] == expected[1],
-        "requestAuthTypes": [
-            type(request.options.auth).__name__ for request in provider.requests
-        ],
+        "authenticated": request.headers.get("Authorization")
+        == "Bearer environment-secret",
+        "authType": type(request.options.auth).__name__,
     }
 
 

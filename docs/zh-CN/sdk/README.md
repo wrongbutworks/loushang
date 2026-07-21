@@ -192,12 +192,15 @@ model catalog 声明 primary auth header 名称和 prefix。最终请求 headers
 provider、endpoint、model 的 auth 使用完整替换。model 声明优先于 endpoint，
 endpoint 优先于 provider，不做跨层局部合并。
 
-AI 包负责 OAuth credential lifecycle、登录协议、refresh 和存储；上层只负责展示
-登录交互并把最终 redirect URL 交回 provider。AI 包不拥有产品 UI 或浏览器。
+AI 包负责配置驱动的 OAuth 协议、callback、credential 存储与允许的 refresh；
+上层调用 `auth.login(model)`、展示返回的 `authorization_url`，然后等待
+`session.wait()`。AI 包不拥有产品 UI，也不会打开浏览器。
+`auth.get_auth(model)` 只解析已有认证，绝不启动登录。
 
 OpenAI Codex 当前不是 Loushang OAuth provider。实验
 `OpenAICodexCredentialSource` 导入 Codex 已有的 `~/.codex/auth.json`；示例不解析
-token 文件，只把可选路径交给 `CallOptions`，然后调用：
+token 文件，而是为可选路径注册公共 source，调用 `get_auth(model)`，并把结果传给
+请求，然后调用：
 
 ```python
 get_model("openai", "coding-responses", "gpt-5.5")

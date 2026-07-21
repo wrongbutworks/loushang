@@ -4,16 +4,17 @@ These examples run offline while exercising the real `loushang.ai` request path:
 
 ```bash
 uv run python examples/auth/api_key_example.py
-uv run python examples/auth/oauth_credential_file_example.py
 uv run python examples/auth/oauth_status_login_example.py
+uv run python examples/auth/external_credential_source_example.py
 ```
 
-The first example proves both model-configured environment lookup and explicit
-`ApiKeyAuth`. The second proves the complete persisted OAuth credential path
-through `ProviderRequest`. The third uses a local demonstration provider so
-`login`, status, persistence, and logout can run without an external OAuth
-client registration; it does not demonstrate Kimi or OpenAI login. Real
-authorization-code providers use a fully configured `AuthlibOAuthProvider` and
-must be registered explicitly. OpenAI Codex is instead an experimental external
-credential source, demonstrated by
-`examples/ai/openai_codex_credential_import.py`.
+The API-key example follows `get_auth(model) -> request`. The OAuth example is
+a complete offline authorization-code flow: model configuration creates a
+login session, the example (standing in for a CLI) handles the authorization
+URL, `session.wait()` stores the credential, and `get_auth()` prepares the
+request. The auth package never opens a browser.
+
+The external-source example imports an existing Codex CLI login through the
+extension registry and calls a model with the resulting `OAuthBearerAuth`.
+This path is experimental credential import, not Loushang OAuth login; Codex
+owns the source credential and its refresh lifecycle.

@@ -16,31 +16,29 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
         (
             "api_key_example.py",
             {
-                "calls": 2,
-                "environmentResolved": True,
-                "explicitResolved": True,
-                "requestAuthTypes": ["ApiKeyAuth", "ApiKeyAuth"],
-            },
-        ),
-        (
-            "oauth_credential_file_example.py",
-            {
-                "credentialFile": "example-oauth-auth.json",
-                "authorizationResolved": True,
-                "extraHeaderResolved": True,
-                "requestAuthType": "OAuthBearerAuth",
-                "lifecycleCredentialCleared": True,
+                "calls": 1,
+                "authenticated": True,
+                "authType": "ApiKeyAuth",
             },
         ),
         (
             "oauth_status_login_example.py",
             {
-                "before": "missing",
-                "loginReturnedProvider": "example-oauth",
-                "afterLogin": "valid",
+                "beforeActions": ["login"],
+                "browserOpenedByApplication": True,
+                "loginProvider": "example-oauth",
                 "authenticated": True,
-                "logoutDeletedCredential": True,
-                "afterLogout": "missing",
+                "requestAuthorized": True,
+            },
+        ),
+        (
+            "external_credential_source_example.py",
+            {
+                "authenticated": True,
+                "experimental": True,
+                "sourceDescription": "Use existing Codex CLI login",
+                "requestAuthorized": True,
+                "accountHeaderResolved": True,
             },
         ),
     ],

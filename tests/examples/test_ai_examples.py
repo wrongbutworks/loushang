@@ -347,6 +347,7 @@ def test_openai_codex_import_example_calls_public_responses_path(
     auth_path = tmp_path / "auth.json"
     captured: dict[str, object] = {}
     model = object()
+    request_auth = object()
 
     def fake_get_model(provider_id: str, endpoint_id: str, model_id: str):
         captured["model_id"] = (provider_id, endpoint_id, model_id)
@@ -367,13 +368,20 @@ def test_openai_codex_import_example_calls_public_responses_path(
                 timestamp=0.0,
             )
 
-    async def fake_stream(selected_model, context, options):
+    async def fake_get_auth(selected_model, *, extensions=None):
+        captured["auth_model"] = selected_model
+        captured["extensions"] = extensions
+        return request_auth
+
+    async def fake_stream(selected_model, context, options, *, auth=None):
         captured["model"] = selected_model
         captured["context"] = context
         captured["options"] = options
+        captured["auth"] = auth
         return FakeEventStream()
 
     monkeypatch.setattr(module, "get_model", fake_get_model)
+    monkeypatch.setattr(module, "get_auth", fake_get_auth)
     monkeypatch.setattr(module, "stream", fake_stream)
 
     assert asyncio.run(module.run(auth_path)) == "ok"
@@ -383,10 +391,15 @@ def test_openai_codex_import_example_calls_public_responses_path(
         "gpt-5.5",
     )
     assert captured["model"] is model
+    assert captured["auth_model"] is model
+    assert captured["auth"] is request_auth
+    extensions = captured["extensions"]
+    source = extensions.get_credential_source("openai-codex")
+    assert source.auth_path == auth_path
     options = captured["options"]
     assert options.auth is None
     assert options.credential is None
-    assert options.credential_file == auth_path
+    assert options.credential_file is None
     assert not hasattr(options, "oauth_credentials")
     assert options.max_output_tokens is None
     assert options.reasoning.effort == "low"

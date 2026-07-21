@@ -1,18 +1,14 @@
-"""Load a temporary OAuth credential file and call a model offline."""
+"""Use the experimental Codex credential source through the public auth API."""
 
 from __future__ import annotations
 
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from loushang.ai import (
-    CallOptions,
-    FileCredentialStore,
-    OAuthCredential,
-    complete,
-)
+import loushang.ai as ai
 from loushang.ai.advanced.registry import (
     clear_api_providers,
     register_api_provider,
@@ -24,48 +20,59 @@ from loushang.ai.provider import ProviderRequest
 
 
 class _RecordingProvider:
-    api = "auth-example-oauth"
+    api = "auth-example-external-source"
 
     def __init__(self) -> None:
         self.request: ProviderRequest | None = None
 
     async def invoke_raw(self, request: ProviderRequest) -> AsyncIterator[RawPart]:
         self.request = request
-        yield {"type": "response_start", "response_id": "oauth-example"}
+        yield {"type": "response_start", "response_id": "external-source-example"}
         yield {"type": "text_delta", "text": "ok"}
         yield {"type": "stop_reason", "stop_reason": "stop"}
         yield {"type": "response_done"}
 
 
+def _write_offline_codex_fixture(path: Path) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "auth_mode": "chatgpt",
+                "tokens": {
+                    "access_token": "codex-access-secret",
+                    "account_id": "example-account",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 async def run() -> dict[str, object]:
     provider = _RecordingProvider()
     model = Model(
-        id="oauth-file-example",
-        provider="example",
-        endpoint="oauth",
+        id="external-source-example",
+        provider="openai",
+        endpoint="coding-responses",
         api=provider.api,
         base_url="https://offline.example/v1",
-        auth=Auth(kind="oauth", provider="example-oauth"),
+        auth=Auth(kind="oauth", provider="openai-codex"),
         capabilities=Capabilities(stream=True),
     )
     with TemporaryDirectory() as directory:
-        store = FileCredentialStore(directory)
-        credential_path = store.save(
-            OAuthCredential(
-                provider="example-oauth",
-                access_token="file-access-secret",
-                refresh_token="file-refresh-secret",
-                expires_at=4102444800,
-                extra_headers={"x-account": "example-account"},
-            )
-        )
+        auth_path = Path(directory) / "auth.json"
+        _write_offline_codex_fixture(auth_path)
+        source = ai.auth.OpenAICodexCredentialSource(auth_path)
+        extensions = ai.auth.AuthExtensionRegistry([source])
+        current = await ai.auth.status(model, extensions=extensions)
+        request_auth = await ai.auth.get_auth(model, extensions=extensions)
         clear_api_providers()
         register_api_provider(provider)
         try:
-            await complete(
+            await ai.complete(
                 model,
                 {"messages": [{"role": "user", "content": "hello"}]},
-                CallOptions(credential_file=credential_path),
+                auth=request_auth,
             )
         finally:
             reset_api_providers()
@@ -73,13 +80,13 @@ async def run() -> dict[str, object]:
     if provider.request is None:
         raise RuntimeError("ProviderRequest was not captured")
     return {
-        "credentialFile": credential_path.name,
-        "authorizationResolved": provider.request.headers.get("Authorization")
-        == "Bearer file-access-secret",
-        "extraHeaderResolved": provider.request.headers.get("x-account")
+        "authenticated": current.authenticated,
+        "experimental": current.experimental,
+        "sourceDescription": current.source_description,
+        "requestAuthorized": provider.request.headers.get("Authorization")
+        == "Bearer codex-access-secret",
+        "accountHeaderResolved": provider.request.headers.get("ChatGPT-Account-ID")
         == "example-account",
-        "requestAuthType": type(provider.request.options.auth).__name__,
-        "lifecycleCredentialCleared": provider.request.options.credential is None,
     }
 
 
