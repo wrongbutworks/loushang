@@ -120,8 +120,6 @@ async def execute_builtin_command_async(
             return _execute_copy(args, backend)
         case "changelog":
             return _execute_changelog(args, backend)
-        case "tools":
-            return await _execute_tools(args, backend)
         case "extensions":
             return _execute_extensions(args, backend)
         case _:
@@ -144,6 +142,10 @@ def _standard_session_command_ports(
         fork_session=backend.fork_session,
         clone_session=backend.clone_session,
         navigate_tree=backend.navigate_tree,
+        get_active_tool_names=backend.get_active_tool_names,
+        get_all_tools=backend.get_all_tools,
+        set_active_tools=backend.set_active_tools,
+        get_default_active_tool_names=backend.get_default_active_tool_names,
     )
 
 
@@ -183,10 +185,34 @@ def _project_standard_session_command_result(
             | StandardSessionCommandId.TREE
         ):
             return _ok(command, result=_to_plain_data(result.value))
+        case StandardSessionCommandId.TOOLS:
+            value = result.value
+            if not isinstance(value, Mapping):
+                raise TypeError("standard tools command returned an invalid result")
+            active_tools = value.get("active_tools", [])
+            available_tools = value.get("available_tools", [])
+            if not isinstance(active_tools, list) or not isinstance(available_tools, list):
+                raise TypeError("standard tools command returned invalid tool data")
+            return _tools_ok(
+                [name for name in active_tools if isinstance(name, str)],
+                [entry for entry in available_tools if isinstance(entry, dict)],
+                action=value.get("action") if isinstance(value.get("action"), str) else None,
+            )
 
 
 def _standard_argument_error(result: StandardSessionCommandResult) -> str:
     match result.command_id, result.error_code:
+        case StandardSessionCommandId.TOOLS, "unknown_tool":
+            value = result.value
+            if isinstance(value, Mapping):
+                unknown = value.get("unknown", [])
+                available = value.get("available", [])
+                if isinstance(unknown, list) and isinstance(available, list):
+                    return (
+                        f"Unknown tool: {', '.join(str(item) for item in unknown)}. "
+                        f"Available tools: {', '.join(str(item) for item in available)}"
+                    )
+            return "Unknown tool"
         case StandardSessionCommandId.RESUME, "missing_reference":
             return "Usage: /resume <session-id-or-path>"
         case StandardSessionCommandId.FORK, "missing_record_id":
@@ -271,72 +297,6 @@ def _execute_changelog(
     if backend.get_changelog is None:
         return _unsupported("changelog")
     return _ok("changelog", changelog=_to_plain_data(backend.get_changelog(args)))
-
-
-async def _execute_tools(
-    args: str, backend: BuiltinCommandBackend
-) -> CommandExecutionResult:
-    if backend.get_active_tool_names is None or backend.get_all_tools is None:
-        return _unsupported("tools")
-    active_tools = list(backend.get_active_tool_names())
-    available_tools = _available_tool_entries(backend.get_all_tools(), active_tools)
-    available_names = [
-        name for entry in available_tools if isinstance(name := entry.get("name"), str)
-    ]
-    tokens = _split_args(args.strip()) if args.strip() else []
-    if not tokens:
-        return _tools_ok(active_tools, available_tools)
-
-    action = tokens[0]
-    if action == "reset":
-        if len(tokens) != 1:
-            return _error("tools", "Usage: /tools reset")
-        if (
-            backend.get_default_active_tool_names is None
-            or backend.set_active_tools is None
-        ):
-            return _unsupported("tools")
-        next_tools = _filter_available_tools(
-            backend.get_default_active_tool_names(), available_names
-        )
-        await _maybe_await(backend.set_active_tools(next_tools))
-        return _tools_ok(
-            next_tools,
-            _available_tool_entries(backend.get_all_tools(), next_tools),
-            action="reset",
-        )
-
-    if action not in {"on", "off", "only"}:
-        return _error("tools", "Usage: /tools [on|off|only <tool[,tool]...>|reset]")
-    if backend.set_active_tools is None:
-        return _unsupported("tools")
-    requested = _parse_tool_names(tokens[1:])
-    if not requested:
-        return _error("tools", f"Usage: /tools {action} <tool[,tool]...>")
-    unknown = [name for name in requested if name not in available_names]
-    if unknown:
-        return _error(
-            "tools",
-            f"Unknown tool: {', '.join(unknown)}. Available tools: {', '.join(available_names)}",
-        )
-
-    if action == "on":
-        next_tools = [
-            *active_tools,
-            *(name for name in requested if name not in active_tools),
-        ]
-    elif action == "off":
-        remove = set(requested)
-        next_tools = [name for name in active_tools if name not in remove]
-    else:
-        next_tools = requested
-    next_tools = _filter_available_tools(next_tools, available_names)
-    await _maybe_await(backend.set_active_tools(next_tools))
-    return _tools_ok(
-        next_tools,
-        _available_tool_entries(backend.get_all_tools(), next_tools),
-        action=action,
-    )
 
 
 def _execute_extensions(
@@ -442,53 +402,6 @@ def _split_args(args: str) -> list[str]:
         return shlex.split(args)
     except ValueError:
         return args.split()
-
-
-def _parse_tool_names(tokens: list[str]) -> list[str]:
-    names: list[str] = []
-    for token in tokens:
-        for name in token.split(","):
-            cleaned = name.strip()
-            if cleaned and cleaned not in names:
-                names.append(cleaned)
-    return names
-
-
-def _available_tool_entries(
-    tools: list[object], active_tools: list[str]
-) -> list[dict[str, object]]:
-    active_set = set(active_tools)
-    entries: list[dict[str, object]] = []
-    for tool in tools:
-        name = _tool_field(tool, "name")
-        if not name:
-            continue
-        entry: dict[str, object] = {
-            "name": name,
-            "active": name in active_set,
-            "description": _tool_field(tool, "description"),
-        }
-        source_info = _tool_source_info(tool)
-        if source_info is not None:
-            entry["sourceInfo"] = dict(source_info)
-        entries.append(entry)
-    return entries
-
-
-def _tool_field(tool: object, field: str) -> str:
-    if isinstance(tool, Mapping):
-        value = tool.get(field)
-    else:
-        value = getattr(tool, field, None)
-    return value if isinstance(value, str) else ""
-
-
-def _tool_source_info(tool: object) -> Mapping[object, object] | None:
-    if isinstance(tool, Mapping):
-        value = tool.get("sourceInfo") or tool.get("source_info")
-    else:
-        value = getattr(tool, "sourceInfo", None) or getattr(tool, "source_info", None)
-    return value if isinstance(value, Mapping) else None
 
 
 def _extensions_ok(extensions: list[dict[str, object]]) -> CommandExecutionResult:
@@ -685,13 +598,6 @@ def _list_field(value: Mapping[str, object], field: str) -> list[object]:
 
 def _pluralize(word: str, count: int) -> str:
     return word if count == 1 else f"{word}s"
-
-
-def _filter_available_tools(
-    tool_names: list[str], available_names: list[str]
-) -> list[str]:
-    available = set(available_names)
-    return [name for name in tool_names if name in available]
 
 
 def _to_plain_data(value: object) -> object:

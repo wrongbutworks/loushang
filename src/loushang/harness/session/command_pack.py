@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import inspect
 import shlex
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
@@ -32,6 +32,7 @@ class StandardSessionCommandId(str, Enum):
     FORK = "fork"
     CLONE = "clone"
     TREE = "tree"
+    TOOLS = "tools"
 
 
 StandardSessionCommandDisposition = Literal[
@@ -140,6 +141,10 @@ class StandardSessionCommandPorts:
     fork_session: CommandPort | None = None
     clone_session: CommandPort | None = None
     navigate_tree: CommandPort | None = None
+    get_active_tool_names: Callable[[], list[str]] | None = None
+    get_all_tools: Callable[[], list[object]] | None = None
+    set_active_tools: Callable[[list[str]], object | Awaitable[object]] | None = None
+    get_default_active_tool_names: Callable[[], list[str]] | None = None
 
 
 def is_standard_session_command(
@@ -291,6 +296,8 @@ async def execute_standard_session_command_async(
                 command_id,
                 await _resolve(ports.navigate_tree(tokens[0], options or None)),
             )
+        case StandardSessionCommandId.TOOLS:
+            return await _execute_tools_command(args, ports)
 
 
 def _command_id(invocation_name: str) -> StandardSessionCommandId | None:
@@ -350,6 +357,133 @@ def _parse_tree_options(tokens: list[str]) -> dict[str, object]:
             options["custom_instructions"] = tokens[index]
         index += 1
     return options
+
+
+async def _execute_tools_command(
+    args: str, ports: StandardSessionCommandPorts
+) -> StandardSessionCommandResult:
+    command_id = StandardSessionCommandId.TOOLS
+    if ports.get_active_tool_names is None or ports.get_all_tools is None:
+        return StandardSessionCommandResult.unavailable(command_id)
+    active_tools = list(ports.get_active_tool_names())
+    available_tools = _available_tool_entries(ports.get_all_tools(), active_tools)
+    available_names = [
+        name for entry in available_tools if isinstance(name := entry.get("name"), str)
+    ]
+    tokens = _split_args(args.strip()) if args.strip() else []
+    if not tokens:
+        return StandardSessionCommandResult.completed(
+            command_id, _tools_result(active_tools, available_tools)
+        )
+    action = tokens[0]
+    if action == "reset":
+        if len(tokens) != 1 or ports.set_active_tools is None:
+            return StandardSessionCommandResult.invalid_arguments(
+                command_id, "invalid_tools_arguments"
+            )
+        if ports.get_default_active_tool_names is None:
+            return StandardSessionCommandResult.unavailable(command_id)
+        next_tools = _filter_available_tools(
+            ports.get_default_active_tool_names(), available_names
+        )
+    else:
+        if action not in {"on", "off", "only"} or ports.set_active_tools is None:
+            return StandardSessionCommandResult.invalid_arguments(
+                command_id, "invalid_tools_arguments"
+            )
+        requested = _parse_tool_names(tokens[1:])
+        if not requested:
+            return StandardSessionCommandResult.invalid_arguments(
+                command_id, "missing_tool_names"
+            )
+        unknown = [name for name in requested if name not in available_names]
+        if unknown:
+            return StandardSessionCommandResult.invalid_arguments(
+                command_id,
+                "unknown_tool",
+                {"unknown": unknown, "available": available_names},
+            )
+        if action == "on":
+            next_tools = [*active_tools, *(name for name in requested if name not in active_tools)]
+        elif action == "off":
+            next_tools = [name for name in active_tools if name not in set(requested)]
+        else:
+            next_tools = requested
+        next_tools = _filter_available_tools(next_tools, available_names)
+    await _resolve(ports.set_active_tools(next_tools))
+    return StandardSessionCommandResult.completed(
+        command_id,
+        _tools_result(
+            next_tools,
+            _available_tool_entries(ports.get_all_tools(), next_tools),
+            action=None if action == "reset" else action,
+        ),
+    )
+
+
+def _tools_result(
+    active_tools: list[str],
+    available_tools: list[dict[str, object]],
+    *,
+    action: str | None = None,
+) -> dict[str, object]:
+    result: dict[str, object] = {
+        "active_tools": active_tools,
+        "available_tools": available_tools,
+    }
+    if action is not None:
+        result["action"] = action
+    return result
+
+
+def _available_tool_entries(
+    tools: list[object], active_tools: list[str]
+) -> list[dict[str, object]]:
+    active_set = set(active_tools)
+    entries: list[dict[str, object]] = []
+    for tool in tools:
+        name = _tool_field(tool, "name")
+        if not name:
+            continue
+        entry: dict[str, object] = {
+            "name": name,
+            "active": name in active_set,
+            "description": _tool_field(tool, "description"),
+        }
+        source_info = _tool_source_info(tool)
+        if source_info is not None:
+            entry["sourceInfo"] = dict(source_info)
+        entries.append(entry)
+    return entries
+
+
+def _tool_field(tool: object, field: str) -> str:
+    value = tool.get(field) if isinstance(tool, Mapping) else getattr(tool, field, None)
+    return value if isinstance(value, str) else ""
+
+
+def _tool_source_info(tool: object) -> Mapping[object, object] | None:
+    value = (
+        tool.get("sourceInfo") or tool.get("source_info")
+        if isinstance(tool, Mapping)
+        else getattr(tool, "sourceInfo", None) or getattr(tool, "source_info", None)
+    )
+    return value if isinstance(value, Mapping) else None
+
+
+def _parse_tool_names(tokens: list[str]) -> list[str]:
+    names: list[str] = []
+    for token in tokens:
+        for name in token.split(","):
+            cleaned = name.strip()
+            if cleaned and cleaned not in names:
+                names.append(cleaned)
+    return names
+
+
+def _filter_available_tools(tool_names: list[str], available_names: list[str]) -> list[str]:
+    available = set(available_names)
+    return [name for name in tool_names if name in available]
 
 
 __all__ = [

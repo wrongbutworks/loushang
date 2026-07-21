@@ -227,6 +227,35 @@ def test_standard_session_command_pack_parses_lifecycle_and_tree_arguments() -> 
     ]
 
 
+def test_standard_session_command_pack_manages_tools_without_coding() -> None:
+    active = ["read"]
+    tools = [
+        {"name": "read", "description": "Read files"},
+        {"name": "bash", "description": "Run commands"},
+    ]
+    ports = StandardSessionCommandPorts(
+        get_active_tool_names=lambda: active,
+        get_all_tools=lambda: tools,
+        set_active_tools=lambda names: active.__setitem__(slice(None), names),
+        get_default_active_tool_names=lambda: ["read"],
+    )
+
+    result = asyncio.run(
+        execute_standard_session_command_async("tools", "on bash", ports)
+    )
+
+    assert result is not None and result.disposition == "completed"
+    assert result.value == {
+        "active_tools": ["read", "bash"],
+        "available_tools": [
+            {"name": "read", "active": True, "description": "Read files"},
+            {"name": "bash", "active": True, "description": "Run commands"},
+        ],
+        "action": "on",
+    }
+    assert active == ["read", "bash"]
+
+
 def test_standard_session_command_pack_has_no_coding_import() -> None:
     module_path = (
         Path(__file__).parents[3] / "src/loushang/harness/session/command_pack.py"
