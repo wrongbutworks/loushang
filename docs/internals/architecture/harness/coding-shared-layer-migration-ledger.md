@@ -6,6 +6,11 @@ It is deliberately a ledger, not a second design document: a wave cannot start
 until its source regions, final owners, injection points, and deletion condition
 are listed here.
 
+[Coding Shared-Layer Owner Rebaseline](coding-shared-layer-owner-rebaseline.md)
+is the Wave R evidence for this ledger. It distinguishes shared mechanisms that
+are already adopted from actual Coding duplicates; only the latter may support a
+future migration LOC claim.
+
 ## Ownership Rules
 
 Move an implementation out of `loushang.coding` when it implements a mechanism,
@@ -122,3 +127,22 @@ Wave 3 closure probes:
   result, then deletes the admitted duplicate handlers;
 - `harness.session.command_pack` has no Coding, provider/auth, transport, or
   UI import.
+
+### Wave 4 First Slice: Product Transcript Lifecycle Store (Complete)
+
+| Source region | Shared owner | Product injection or retained Coding owner | Deletion condition |
+| --- | --- | --- | --- |
+| removed `coding.runtime.agent_session_runtime._CodingSessionLifecycleStore` | `harness.session.ProductTranscriptSessionLifecycleStore` | Coding supplies transcript create/restore/fork/dispose ports, CWD restore validation, session construction, fork selection, lifecycle hooks, and extension/diagnostic behavior. | Complete: Harness owns the common transcript-to-runtime lifecycle adapter and releases a transcript when Product runtime construction fails. |
+| proposed bootstrap transaction | existing `ConfigActivationRuntime` and capability/session runtimes | Coding retains activation callbacks, Product services, prompt/model/resource/tool policy, CWD/session-file acceptance, and final session construction. | Deferred: no second bootstrap engine is admitted while the existing activation runtime owns ordering and rollback. |
+
+Wave 4 first-slice accounting: `coding.runtime.agent_session_runtime` is 1,187
+to 1,158 LOC (-29); `harness.session.transcript_lifecycle` is 216 to 371 LOC
+(+155). Tests and documentation do not count as migrated implementation.
+
+Wave 4 first-slice probes:
+
+- a fake Product creates and forks a runtime session through the shared store
+  without importing Coding;
+- failed Product runtime construction disposes the opened transcript;
+- Coding lifecycle, bootstrap, and import-boundary regressions preserve CWD,
+  fork, extension, and diagnostic behavior.

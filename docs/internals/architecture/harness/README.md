@@ -29,6 +29,9 @@ planning, work event persistence, or AI provider behavior.
   for turning Coding into a declarative Product adapter.
 - [Coding Shared-Layer Migration Ledger](coding-shared-layer-migration-ledger.md)
   records the concrete source-to-owner cutover scope for each delivery wave.
+- [Coding Shared-Layer Owner Rebaseline](coding-shared-layer-owner-rebaseline.md)
+  records shared owners, actual Coding adapters and kernels, and the source
+  boundary required before a further migration wave can claim LOC.
 - [Diagnostics Export Boundary](diagnostics-export-boundary.md) defines the
   reusable archive, structural redaction, and product projection contract.
 - [Slice 1 Closure Status](slice-1-status.md) records the approval, tools-core,

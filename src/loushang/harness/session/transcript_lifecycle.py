@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import errno
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from inspect import isawaitable
 from pathlib import Path
 from typing import Generic, TypeVar
 
@@ -17,13 +19,152 @@ from loushang.harness.agent_transcript.directory import (
     AgentTranscriptDirectoryRuntime,
 )
 from loushang.harness.runtime import SessionOperationResult
-from loushang.harness.session.lifecycle import MissingCwdPolicy, SessionLifecycleRuntime
+from loushang.harness.session.lifecycle import (
+    MissingCwdPolicy,
+    SessionLifecycleRuntime,
+    SessionLifecycleTransition,
+)
 
 SessionT = TypeVar("SessionT")
 PayloadT = TypeVar("PayloadT")
+TranscriptSessionT = TypeVar("TranscriptSessionT")
+ValueT = TypeVar("ValueT")
 
 SessionCallback = Callable[[SessionT], Awaitable[None] | None]
 LifecycleCallback = Callable[[], Awaitable[None] | None]
+TranscriptSessionBuilder = Callable[
+    [TranscriptSessionT, SessionT | None, SessionLifecycleTransition],
+    SessionT | Awaitable[SessionT],
+]
+TranscriptSessionValidator = Callable[[TranscriptSessionT], None | Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class ProductTranscriptSessionLifecyclePorts(Generic[TranscriptSessionT, SessionT]):
+    """Product transcript storage operations used by the lifecycle store.
+
+    The ports deliberately deal in a Product's transcript-session type rather
+    than Agent or provider types. The generic store joins those transcript
+    operations to ``SessionLifecycleRuntime`` and releases a transcript if the
+    Product runtime session cannot be built.
+    """
+
+    create_transcript: Callable[
+        [str, str | None], Awaitable[TranscriptSessionT] | TranscriptSessionT
+    ]
+    restore_transcript: Callable[
+        [str | Path, str | None], Awaitable[TranscriptSessionT] | TranscriptSessionT
+    ]
+    fork_transcript: Callable[
+        [TranscriptSessionT, str | None],
+        Awaitable[TranscriptSessionT] | TranscriptSessionT,
+    ]
+    dispose_transcript: Callable[[TranscriptSessionT], Awaitable[None] | None]
+    transcript_for_session: Callable[[SessionT], TranscriptSessionT]
+    transcript_cwd: Callable[[TranscriptSessionT], str]
+    transcript_session_ref: Callable[[TranscriptSessionT], str | None]
+    transcript_leaf_entry_id: Callable[[TranscriptSessionT], str | None]
+
+
+class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, SessionT]):
+    """Adapt Product transcript sessions to the common lifecycle store port.
+
+    A Product supplies transcript persistence and runtime-session construction.
+    This class owns the common create, restore, fork, association, and failed
+    construction cleanup path without selecting a transcript format, store, or
+    Product runtime.
+    """
+
+    def __init__(
+        self,
+        *,
+        ports: ProductTranscriptSessionLifecyclePorts[TranscriptSessionT, SessionT],
+        build_session: TranscriptSessionBuilder[TranscriptSessionT, SessionT],
+        validate_restored_transcript: TranscriptSessionValidator[TranscriptSessionT]
+        | None = None,
+    ) -> None:
+        self._ports = ports
+        self._build_session = build_session
+        self._validate_restored_transcript = validate_restored_transcript
+        self._transcripts_by_session_id: dict[int, TranscriptSessionT] = {}
+
+    async def create(
+        self,
+        current_session: SessionT | None,
+        transition: SessionLifecycleTransition,
+        *,
+        cwd: str,
+        parent_session_ref: str | None,
+    ) -> SessionT:
+        transcript = await _maybe_await(
+            self._ports.create_transcript(cwd, parent_session_ref)
+        )
+        return await self._build_or_dispose(transcript, current_session, transition)
+
+    async def restore(
+        self,
+        current_session: SessionT | None,
+        transition: SessionLifecycleTransition,
+        session_ref: str | Path,
+        *,
+        cwd_override: str | None = None,
+    ) -> SessionT:
+        transcript = await _maybe_await(
+            self._ports.restore_transcript(session_ref, cwd_override)
+        )
+        try:
+            if self._validate_restored_transcript is not None:
+                await _maybe_await(self._validate_restored_transcript(transcript))
+        except BaseException:
+            await _maybe_await(self._ports.dispose_transcript(transcript))
+            raise
+        return await self._build_or_dispose(transcript, current_session, transition)
+
+    async def fork(
+        self,
+        session: SessionT,
+        transition: SessionLifecycleTransition,
+        target_entry_id: str | None,
+    ) -> SessionT:
+        transcript = await _maybe_await(
+            self._ports.fork_transcript(
+                self._transcript_for_session(session), target_entry_id
+            )
+        )
+        return await self._build_or_dispose(transcript, session, transition)
+
+    def get_cwd(self, session: SessionT) -> str:
+        return self._ports.transcript_cwd(self._transcript_for_session(session))
+
+    def get_session_ref(self, session: SessionT) -> str | None:
+        return self._ports.transcript_session_ref(self._transcript_for_session(session))
+
+    def get_leaf_entry_id(self, session: SessionT) -> str | None:
+        return self._ports.transcript_leaf_entry_id(
+            self._transcript_for_session(session)
+        )
+
+    async def _build_or_dispose(
+        self,
+        transcript: TranscriptSessionT,
+        current_session: SessionT | None,
+        transition: SessionLifecycleTransition,
+    ) -> SessionT:
+        try:
+            session = await _maybe_await(
+                self._build_session(transcript, current_session, transition)
+            )
+        except BaseException:
+            await _maybe_await(self._ports.dispose_transcript(transcript))
+            raise
+        self._transcripts_by_session_id[id(session)] = transcript
+        return session
+
+    def _transcript_for_session(self, session: SessionT) -> TranscriptSessionT:
+        try:
+            return self._transcripts_by_session_id[id(session)]
+        except KeyError:
+            return self._ports.transcript_for_session(session)
 
 
 class AgentTranscriptSessionRuntime(
@@ -210,7 +351,15 @@ def require_session_operation_session(
     return result.current
 
 
+async def _maybe_await(value: ValueT | Awaitable[ValueT]) -> ValueT:
+    if isawaitable(value):
+        return await value
+    return value
+
+
 __all__ = [
     "AgentTranscriptSessionRuntime",
+    "ProductTranscriptSessionLifecyclePorts",
+    "ProductTranscriptSessionLifecycleStore",
     "require_session_operation_session",
 ]
