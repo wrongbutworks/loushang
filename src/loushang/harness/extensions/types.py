@@ -50,15 +50,6 @@ class BeforeAgentStartResult:
     block: bool = False
     reason: str | None = None
 
-    @property
-    def systemPrompt(self) -> str | None:
-        return self.system_prompt
-
-    @property
-    def extraMessages(self) -> list[object]:
-        return self.extra_messages
-
-
 @dataclass(frozen=True)
 class ContextResult:
     messages: list[object] | None = None

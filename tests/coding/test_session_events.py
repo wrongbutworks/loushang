@@ -93,7 +93,7 @@ def test_agent_session_event_extends_base_agent_event_union() -> None:
     assert len(get_args(AgentSessionEvent)) > len(get_args(AgentEvent))
 
 
-def test_serialize_session_event_uses_pi_json_keys_for_coding_events() -> None:
+def test_serialize_session_event_uses_snake_case_json_keys() -> None:
     from loushang.coding.event import serialize_session_event
 
     payload = serialize_session_event(
@@ -107,7 +107,7 @@ def test_serialize_session_event_uses_pi_json_keys_for_coding_events() -> None:
     assert payload == {
         "type": "queue_update",
         "steering": ["a"],
-        "followUp": ["b"],
+        "follow_up": ["b"],
     }
 
     assert serialize_session_event(
@@ -118,7 +118,7 @@ def test_serialize_session_event_uses_pi_json_keys_for_coding_events() -> None:
     }
 
 
-def test_serialize_session_event_uses_pi_json_keys_for_branch_summary_events() -> None:
+def test_serialize_session_event_uses_snake_case_for_branch_summary_events() -> None:
     from loushang.coding.event import serialize_session_event
 
     start_payload = serialize_session_event(
@@ -144,23 +144,23 @@ def test_serialize_session_event_uses_pi_json_keys_for_branch_summary_events() -
 
     assert start_payload == {
         "type": "branch_summary_start",
-        "targetId": "t1",
-        "oldLeafId": "l1",
+        "target_id": "t1",
+        "old_leaf_id": "l1",
         "summarize": True,
     }
     assert end_payload == {
         "type": "branch_summary_end",
-        "targetId": "t1",
-        "oldLeafId": "l1",
-        "newLeafId": "n1",
-        "summaryEntryId": "s1",
+        "target_id": "t1",
+        "old_leaf_id": "l1",
+        "new_leaf_id": "n1",
+        "summary_entry_id": "s1",
         "cancelled": False,
         "aborted": False,
-        "errorMessage": "boom",
+        "error_message": "boom",
     }
 
 
-def test_serialize_session_event_uses_pi_json_keys_for_compaction_usage() -> None:
+def test_serialize_session_event_uses_snake_case_for_compaction_usage() -> None:
     from loushang.coding.event import serialize_session_event
     from loushang.coding.session.types import ContextUsageSnapshot
 
@@ -206,20 +206,17 @@ def test_serialize_session_event_uses_pi_json_keys_for_compaction_usage() -> Non
         }
     )
 
-    assert start_payload["usage"]["contextWindow"] == 100
-    assert start_payload["usage"]["compactPercent"] == 80
-    assert start_payload["usage"]["keepRecentTokens"] == 32
-    assert start_payload["usage"]["thresholdReason"] == "compact_percent"
-    assert "context_window" not in start_payload["usage"]
+    assert start_payload["usage"]["context_window"] == 100
+    assert start_payload["usage"]["compact_percent"] == 80
+    assert start_payload["usage"]["keep_recent_tokens"] == 32
+    assert start_payload["usage"]["threshold_reason"] == "compact_percent"
 
-    assert end_payload["usageBefore"]["thresholdTokens"] == 80
-    assert end_payload["usageAfter"]["tokens"] is None
-    assert end_payload["usageAfter"]["staleAfterCompaction"] is True
-    assert "usage_before" not in end_payload
-    assert "usage_after" not in end_payload
+    assert end_payload["usage_before"]["threshold_tokens"] == 80
+    assert end_payload["usage_after"]["tokens"] is None
+    assert end_payload["usage_after"]["stale_after_compaction"] is True
 
 
-def test_serialize_session_event_uses_pi_json_keys_for_auto_retry_events() -> None:
+def test_serialize_session_event_uses_snake_case_for_auto_retry_events() -> None:
     from loushang.coding.event import serialize_session_event
 
     start_payload = serialize_session_event(
@@ -243,19 +240,19 @@ def test_serialize_session_event_uses_pi_json_keys_for_auto_retry_events() -> No
     assert start_payload == {
         "type": "auto_retry_start",
         "attempt": 1,
-        "maxAttempts": 3,
-        "delayMs": 250,
-        "errorMessage": "network error",
+        "max_attempts": 3,
+        "delay_ms": 250,
+        "error_message": "network error",
     }
     assert end_payload == {
         "type": "auto_retry_end",
         "success": False,
         "attempt": 2,
-        "finalError": "503 service unavailable",
+        "final_error": "503 service unavailable",
     }
 
 
-def test_serialize_session_event_uses_pi_json_keys_for_package_progress_events() -> (
+def test_serialize_session_event_uses_snake_case_for_package_progress_events() -> (
     None
 ):
     from loushang.coding.event import serialize_session_event
@@ -273,15 +270,15 @@ def test_serialize_session_event_uses_pi_json_keys_for_package_progress_events()
 
     assert payload == {
         "type": "package_progress",
-        "progressType": "start",
+        "progress_type": "start",
         "action": "install",
         "source": "pypi:acme-review-pack==1.2.3",
         "message": "Installing pypi:acme-review-pack==1.2.3...",
-        "targetPath": "/tmp/packages/python/acme-review-pack",
+        "target_path": "/tmp/packages/python/acme-review-pack",
     }
 
 
-def test_serialize_session_event_uses_pi_json_keys_for_base_agent_events() -> None:
+def test_serialize_session_event_uses_snake_case_for_base_agent_events() -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage
     from loushang.coding.event import serialize_session_event
 
@@ -346,10 +343,9 @@ def test_serialize_session_event_uses_pi_json_keys_for_base_agent_events() -> No
         }
     )
 
-    assert payload["assistantMessageEvent"]["contentIndex"] == 0
-    assert payload["message"]["responseId"] == "resp-1"
-    assert payload["message"]["stopReason"] == "stop"
-    assert "assistant_message_event" not in payload
+    assert payload["assistant_message_event"]["content_index"] == 0
+    assert payload["message"]["response_id"] == "resp-1"
+    assert payload["message"]["stop_reason"] == "stop"
 
 
 def test_project_session_event_can_attach_rendered_tool_payloads() -> None:
@@ -371,8 +367,8 @@ def test_project_session_event_can_attach_rendered_tool_payloads() -> None:
     def render_result(result, options, theme, context):
         del theme
         return {
-            "text": f"{context.state['path']} {result.content[0].text} partial={options.isPartial} expanded={options.expanded}",
-            "className": "tool-row",
+            "text": f"{context.state['path']} {result.content[0].text} partial={options.is_partial} expanded={options.expanded}",
+            "class_name": "tool-row",
         }
 
     definition = ToolDefinition(
@@ -410,7 +406,7 @@ def test_project_session_event_can_attach_rendered_tool_payloads() -> None:
         "tool_name": "read",
         "result": AgentToolResult(
             content=[TextPart(type="text", text="final")],
-            details={"fullOutputPath": "/tmp/read-full.txt"},
+            details={"full_output_path": "/tmp/read-full.txt"},
         ),
         "is_error": False,
     }
@@ -436,37 +432,37 @@ def test_project_session_event_can_attach_rendered_tool_payloads() -> None:
         tool_render_expanded=True,
     )[0]
 
-    assert "renderedToolCall" not in default_payload
-    assert start_payload["renderedToolCall"] == {
+    assert "rendered_tool_call" not in default_payload
+    assert start_payload["rendered_tool_call"] == {
         "type": "text",
         "text": "call README.md",
-        "plainText": "call README.md",
-        "contractVersion": 1,
+        "plain_text": "call README.md",
+        "contract_version": 1,
         "status": "running",
     }
-    assert update_payload["renderedToolResult"] == {
+    assert update_payload["rendered_tool_result"] == {
         "type": "text",
         "text": "README.md partial partial=True expanded=False",
-        "plainText": "README.md partial partial=True expanded=False",
-        "className": "tool-row",
-        "isPartial": True,
+        "plain_text": "README.md partial partial=True expanded=False",
+        "class_name": "tool-row",
+        "is_partial": True,
         "expanded": False,
-        "contractVersion": 1,
+        "contract_version": 1,
         "status": "partial",
-        "collapsedText": "README.md partial partial=True expanded=False",
+        "collapsed_text": "README.md partial partial=True expanded=False",
         "artifacts": [],
     }
-    assert end_payload["renderedToolResult"] == {
+    assert end_payload["rendered_tool_result"] == {
         "type": "text",
         "text": "README.md final partial=False expanded=True",
-        "plainText": "README.md final partial=False expanded=True",
-        "className": "tool-row",
-        "isPartial": False,
+        "plain_text": "README.md final partial=False expanded=True",
+        "class_name": "tool-row",
+        "is_partial": False,
         "expanded": True,
-        "contractVersion": 1,
+        "contract_version": 1,
         "status": "ok",
-        "collapsedText": "README.md final partial=False expanded=False",
-        "expandedText": "README.md final partial=False expanded=True",
+        "collapsed_text": "README.md final partial=False expanded=False",
+        "expanded_text": "README.md final partial=False expanded=True",
         "artifacts": [
             {"type": "file", "path": "/tmp/read-full.txt", "name": "read-full.txt"}
         ],
@@ -512,7 +508,7 @@ def test_project_session_event_marks_rendered_tool_error_status() -> None:
         tool_definition_resolver=lambda name: definition if name == "bash" else None,
     )[0]
 
-    assert payload["renderedToolResult"]["status"] == "error"
+    assert payload["rendered_tool_result"]["status"] == "error"
 
 
 def test_project_session_event_structures_tool_ui_state_and_bash_artifacts() -> None:
@@ -556,7 +552,7 @@ def test_project_session_event_structures_tool_ui_state_and_bash_artifacts() -> 
             tool_definition_resolver=lambda name: (
                 definition if name == "bash" else None
             ),
-        )[0]["renderedToolResult"]
+        )[0]["rendered_tool_result"]
 
     timed_out = project(
         {
@@ -565,10 +561,10 @@ def test_project_session_event_structures_tool_ui_state_and_bash_artifacts() -> 
             "stderr_artifact_path": "/tmp/stderr.log",
         }
     )
-    cancelled = project({"cancelled": True, "durationMs": 456})
+    cancelled = project({"cancelled": True, "duration_ms": 456})
 
     assert timed_out["status"] == "timed_out"
-    assert timed_out["durationMs"] == 123
+    assert timed_out["duration_ms"] == 123
     assert timed_out["artifacts"] == [
         {
             "type": "file",
@@ -584,7 +580,7 @@ def test_project_session_event_structures_tool_ui_state_and_bash_artifacts() -> 
         },
     ]
     assert cancelled["status"] == "cancelled"
-    assert cancelled["durationMs"] == 456
+    assert cancelled["duration_ms"] == 456
 
 
 def test_project_session_event_uses_distinct_event_and_presentation_views() -> None:
@@ -619,7 +615,7 @@ def test_project_session_event_uses_distinct_event_and_presentation_views() -> N
             event=lambda details: {
                 "surface": "event",
                 "timed_out": True,
-                "durationMs": 456,
+                "duration_ms": 456,
                 "stdout_artifact_path": "/tmp/stdout.log",
             },
         ),
@@ -628,7 +624,7 @@ def test_project_session_event_uses_distinct_event_and_presentation_views() -> N
     assert event_result.details == {
         "surface": "event",
         "timed_out": True,
-        "durationMs": 456,
+        "duration_ms": 456,
         "stdout_artifact_path": "/tmp/stdout.log",
     }
     assert event_result.details is not result.details
@@ -648,10 +644,10 @@ def test_project_session_event_uses_distinct_event_and_presentation_views() -> N
     )[0]
 
     assert payload["result"]["details"]["surface"] == "event"
-    assert payload["renderedToolResult"]["text"] == "surface=transcript"
-    assert payload["renderedToolResult"]["status"] == "timed_out"
-    assert payload["renderedToolResult"]["durationMs"] == 456
-    assert payload["renderedToolResult"]["artifacts"] == [
+    assert payload["rendered_tool_result"]["text"] == "surface=transcript"
+    assert payload["rendered_tool_result"]["status"] == "timed_out"
+    assert payload["rendered_tool_result"]["duration_ms"] == 456
+    assert payload["rendered_tool_result"]["artifacts"] == [
         {
             "type": "file",
             "path": "/tmp/stdout.log",
@@ -703,4 +699,4 @@ def test_project_session_event_omits_rendered_tool_payload_when_renderer_fails()
     )[0]
 
     assert payload["type"] == "tool_execution_start"
-    assert "renderedToolCall" not in payload
+    assert "rendered_tool_call" not in payload

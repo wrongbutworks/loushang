@@ -35,6 +35,7 @@ _EXPORT_MODULES = {
     "project_session_runtime_event": "loushang.harness.events.runtime_projection",
     "select_runtime_event_views": "loushang.harness.events.projection",
     "serialize_session_event": "loushang.harness.events.session_serialization",
+    "snake_case_json_keys": "loushang.harness.events.session_serialization",
     "session_runtime_event_kind": "loushang.harness.events.session",
 }
 

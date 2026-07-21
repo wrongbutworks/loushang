@@ -43,7 +43,7 @@ extension API, prompts, resource package, final RPC schema, and output wording.
 | --- | ---: | --- | --- | --- |
 | `coding.extensions.runner` | 495 | `harness.extensions.agent.*`, `harness.extensions.session_runtime` | `product adapter` | Shrink-only adapter audit |
 | `coding.extensions.api/loader/policy` | 210 | Harness extension contracts and loader | `product adapter` | Retain Coding API and permission delta |
-| `coding.event.*` | 1,045 | Harness facts/views and Channel delivery | `product kernel` | Retain aliases, render enrichment, transcript decision, camelCase schema |
+| `coding.event.*` | 1,045 | Harness facts/views and Channel delivery | `product kernel` | Retain render enrichment, transcript decision, and product view policy; shared event JSON is snake_case-only |
 | `coding.control.settings_manager` | 1,400 | `ScopedConfigRuntime`, schema codec, JSON store | `product kernel` | Wave 6 only by proven shared field group |
 | `coding.control.types` | 177 | No complete shared owner | `product kernel` | Split only cross-product settings |
 | `coding.policy.*` | 515 | Harness rule, approval, and resource-policy mechanisms | `product adapter` + `product kernel` | Extract profiles, not rules mechanically |

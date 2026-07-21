@@ -946,15 +946,15 @@ def test_rpc_mode_projects_stream_event_shape_and_tool_correlation() -> None:
 
     event = _parse_jsonl(stdout)[0]
     assert event["type"] == "tool_execution_update"
-    assert event["eventType"] == "tool_execution_update"
-    assert event["correlationId"] == "tc1"
+    assert event["event_type"] == "tool_execution_update"
+    assert event["correlation_id"] == "tc1"
     assert event["stream"] == {
         "kind": "session_event",
         "view": "tools",
-        "correlationId": "tc1",
+        "correlation_id": "tc1",
     }
-    assert event["toolCallId"] == "tc1"
-    assert event["toolName"] == "bash"
+    assert event["tool_call_id"] == "tc1"
+    assert event["tool_name"] == "bash"
 
 
 def test_rpc_mode_prefers_common_runtime_event_stream() -> None:
@@ -991,7 +991,7 @@ def test_rpc_mode_prefers_common_runtime_event_stream() -> None:
     assert _parse_jsonl(stdout) == [
         {
             "type": "agent_start",
-            "eventType": "agent_start",
+            "event_type": "agent_start",
             "stream": {"kind": "session_event", "view": "full"},
         }
     ]
@@ -1015,7 +1015,7 @@ def test_rpc_mode_can_include_rendered_tool_event_payloads() -> None:
     def render_result(result, options, theme, context):
         del theme
         return {
-            "text": f"{context.state['command']} {result.content[0].text} partial={options.isPartial}"
+            "text": f"{context.state['command']} {result.content[0].text} partial={options.is_partial}"
         }
 
     definition = ToolDefinition(
@@ -1065,22 +1065,22 @@ def test_rpc_mode_can_include_rendered_tool_event_payloads() -> None:
         )
 
     lines = _parse_jsonl(stdout)
-    assert lines[0]["renderedToolCall"] == {
+    assert lines[0]["rendered_tool_call"] == {
         "type": "text",
         "text": "call echo hi",
-        "plainText": "call echo hi",
-        "contractVersion": 1,
+        "plain_text": "call echo hi",
+        "contract_version": 1,
         "status": "running",
     }
-    assert lines[1]["renderedToolResult"] == {
+    assert lines[1]["rendered_tool_result"] == {
         "type": "text",
         "text": "echo hi running partial=True",
-        "plainText": "echo hi running partial=True",
-        "isPartial": True,
+        "plain_text": "echo hi running partial=True",
+        "is_partial": True,
         "expanded": False,
-        "contractVersion": 1,
+        "contract_version": 1,
         "status": "partial",
-        "collapsedText": "echo hi running partial=True",
+        "collapsed_text": "echo hi running partial=True",
         "artifacts": [],
     }
 

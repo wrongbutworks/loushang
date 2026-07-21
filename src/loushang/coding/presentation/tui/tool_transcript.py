@@ -168,14 +168,14 @@ def _event_result(event: Mapping[str, Any]) -> object:
 
 
 def _tool_call_id(event: Mapping[str, Any]) -> str:
-    value = event.get("tool_call_id", event.get("toolCallId"))
+    value = event.get("tool_call_id")
     if isinstance(value, str) and value:
         return value
     return _tool_name(event) or "tool"
 
 
 def _tool_name(event: Mapping[str, Any]) -> str:
-    value = event.get("tool_name", event.get("toolName"))
+    value = event.get("tool_name")
     return value if isinstance(value, str) and value else "tool"
 
 
@@ -183,7 +183,7 @@ def _rendered_text(rendered: object) -> str | None:
     if isinstance(rendered, str):
         return rendered
     if isinstance(rendered, Mapping):
-        plain = rendered.get("plainText")
+        plain = rendered.get("plain_text")
         if isinstance(plain, str):
             return plain
         text = rendered.get("text")
@@ -199,9 +199,9 @@ def _result_status(
 ) -> ToolTranscriptStatus:
     details = _transcript_result_details(result)
     if details:
-        if details.get("timed_out") is True or details.get("timedOut") is True:
+        if details.get("timed_out") is True:
             return "timed_out"
-        if details.get("cancelled") is True or details.get("canceled") is True:
+        if details.get("cancelled") is True:
             return "cancelled"
     if bool(event.get("is_error", False)):
         return "error"

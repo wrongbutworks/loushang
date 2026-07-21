@@ -19,6 +19,7 @@ from loushang.harness.events import (
     project_runtime_event,
     project_session_runtime_event,
 )
+from loushang.harness.events.session_serialization import snake_case_json_keys
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 
 
@@ -32,8 +33,9 @@ def project_runtime_event_to_json_views(
 ) -> tuple[RuntimeEventView, ...]:
     """Project one common runtime fact into Coding's selected JSON view.
 
-    Coding remains responsible for Pi event names, aliases, and tool-render
-    enrichment.  Harness owns the resulting transport-safe envelope.
+    Coding supplies product view selection and tool-render policy. The
+    transport payload uses the shared snake_case event contract owned by
+    Harness; no Pi or camelCase aliases are expanded here.
     """
 
     session_event = project_session_runtime_event(event)
@@ -67,24 +69,26 @@ def should_emit_runtime_event_view(
     view: RuntimeEventView,
     event_select: Sequence[str],
 ) -> bool:
-    """Apply Coding aliases before Harness matches generic selector patterns."""
+    """Apply the shared exact/prefix selector contract to a runtime view."""
 
     return matches_event_select(view.event_type, _expand_patterns(event_select))
 
 
 def shape_runtime_event_view(view: RuntimeEventView) -> dict[str, Any]:
-    """Retain Coding's existing RPC stream shape for one projected view."""
+    """Shape one projected view using the shared snake_case stream contract."""
 
-    payload = dict(view.payload)
+    payload = snake_case_json_keys(view.payload)
+    if not isinstance(payload, dict):
+        raise TypeError("runtime event view payload must be a JSON object")
     payload.setdefault("type", view.event_type)
-    payload.setdefault("eventType", view.event_type)
+    payload.setdefault("event_type", view.event_type)
     stream: dict[str, Any] = {
         "kind": "session_event",
         "view": view.view,
     }
     if view.correlation_id is not None:
-        payload["correlationId"] = view.correlation_id
-        stream["correlationId"] = view.correlation_id
+        payload["correlation_id"] = view.correlation_id
+        stream["correlation_id"] = view.correlation_id
     payload["stream"] = stream
     return payload
 

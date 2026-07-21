@@ -488,7 +488,7 @@ def _build_parser() -> ArgumentParser:
     parser.add_argument(
         "--render-tool-events",
         action="store_true",
-        help="Attach renderedToolCall/renderedToolResult payloads to JSON/RPC tool events.",
+        help="Attach rendered_tool_call/rendered_tool_result payloads to JSON tool events.",
     )
     parser.add_argument(
         "--work-log",

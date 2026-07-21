@@ -137,15 +137,6 @@ class ExtensionRunner(ExtensionRuntime):
             cwd=cwd,
         )
 
-    def getMessageRenderer(self, custom_type: str):
-        return self.get_message_renderer(custom_type)
-
-    def listMessageRenderers(self) -> list[dict[str, object]]:
-        return self.list_message_renderers()
-
-    def listExtensions(self) -> list[dict[str, object]]:
-        return self.list_extensions()
-
     def bind_runtime(self, bindings: ExtensionRuntimeBindings) -> None:
         self._runtime_state.bind(bindings)
         self._bind_extension_apis()
@@ -201,9 +192,7 @@ class ExtensionRunner(ExtensionRuntime):
                 prompt=prompt,
                 images=images,
                 system_prompt=state.system_prompt,
-                systemPrompt=state.system_prompt,
                 system_prompt_options=system_prompt_options,
-                systemPromptOptions=system_prompt_options,
             )
 
         result = await ExtensionPromptHookDispatcher(
@@ -437,33 +426,7 @@ def _event_type(event: object) -> str | None:
 def _event_object(event: object) -> object:
     if not isinstance(event, dict):
         return event
-    values = dict(event)
-    values.update(_event_aliases(values))
-    return _ExtensionEvent(**values)
-
-
-def _event_aliases(values: dict[str, object]) -> dict[str, object]:
-    aliases: dict[str, object] = {}
-    alias_names = {
-        "assistant_message_event": "assistantMessageEvent",
-        "tool_call_id": "toolCallId",
-        "tool_name": "toolName",
-        "tool_results": "toolResults",
-        "turn_index": "turnIndex",
-        "is_error": "isError",
-        "partial_result": "partialResult",
-        "new_leaf_id": "newLeafId",
-        "old_leaf_id": "oldLeafId",
-        "summary_entry": "summaryEntry",
-        "compaction_entry": "compactionEntry",
-        "from_extension": "fromExtension",
-        "exclude_from_context": "excludeFromContext",
-        "previous_model": "previousModel",
-    }
-    for source_name, alias_name in alias_names.items():
-        if source_name in values:
-            aliases[alias_name] = values[source_name]
-    return aliases
+    return _ExtensionEvent(**event)
 
 
 @dataclass
@@ -479,13 +442,9 @@ def _coerce_before_agent_start_result(result: object) -> BeforeAgentStartResult 
     if isinstance(result, BeforeAgentStartResult):
         return result
     if isinstance(result, dict):
-        system_prompt = result.get("systemPrompt", result.get("system_prompt"))
-        system_prompt_append = result.get(
-            "systemPromptAppend", result.get("system_prompt_append", "")
-        )
-        extra_messages = result.get(
-            "messages", result.get("extraMessages", result.get("extra_messages", []))
-        )
+        system_prompt = result.get("system_prompt")
+        system_prompt_append = result.get("system_prompt_append", "")
+        extra_messages = result.get("extra_messages", result.get("messages", []))
         diagnostics = result.get("diagnostics", [])
         return BeforeAgentStartResult(
             system_prompt=system_prompt if isinstance(system_prompt, str) else None,

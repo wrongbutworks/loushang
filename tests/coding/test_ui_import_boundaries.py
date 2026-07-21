@@ -1166,8 +1166,8 @@ def test_tool_transcript_projection_keeps_raw_coding_policy_at_product_edge() ->
     for token in (
         "AgentToolResult",
         "ToolDefinitionResolver",
-        'tool_call_id", event.get("toolCallId',
-        'tool_name", event.get("toolName',
+        'event.get("tool_call_id")',
+        'event.get("tool_name")',
         "render_tool_result_presentation",
     ):
         assert token not in shared

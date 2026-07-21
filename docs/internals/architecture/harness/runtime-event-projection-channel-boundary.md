@@ -6,8 +6,9 @@
 transport-ready `RuntimeEventView` value contract. `loushang.channel` owns the
 external envelope, JSON codec, and JSONL frame that can deliver an already
 created view. Product code owns the conversion from a typed runtime payload to
-an event type, view name, strict JSON payload, aliases, rendering, and any
-product wire shape.
+an event type, view name, strict JSON payload, rendering, and any genuinely
+product-specific wire shape. The shared runtime event payload uses one
+snake_case vocabulary; Pi/camelCase aliases are not accepted or emitted.
 
 ```text
 RuntimeEvent (Harness)
@@ -41,7 +42,8 @@ durable transcript fact.
 
 The view constructor rejects invalid source metadata, unsafe JSON, and unknown
 delivery hints. The generic selector accepts only exact matches and a trailing
-`*`; Product aliases such as Coding's `assistant.*` remain Product policy.
+`*`; aliases such as `assistant.*` are not expanded by any shared runtime
+event path.
 
 ## Channel Contract
 
@@ -85,13 +87,12 @@ runtime views without making its transport part of the Host runtime.
 
 ## Coding Adoption
 
-Coding retains `AgentSessionEvent` and its Pi-compatible serialisation. Its
+Coding retains `AgentSessionEvent` and its product view/tool-render policy. Its
 runtime adapter maps an incoming `RuntimeEvent` to existing Coding session
-events, applies Coding's selected JSON view and tool renderer, and constructs a
-`RuntimeEventView`. JSON PrintMode and RpcMode subscribe to
-`subscribe_runtime_events()` when the session offers it, then retain their
-existing printed JSON and RPC stream shape. The old `subscribe()` path remains
-only for text display and compatibility session doubles.
+events and constructs a `RuntimeEventView` using the shared snake_case payload
+contract. JSON PrintMode and RpcMode subscribe to
+`subscribe_runtime_events()` when the session offers it. The old `subscribe()`
+path remains only for text display and compatibility session doubles.
 
 ## Exclusions
 

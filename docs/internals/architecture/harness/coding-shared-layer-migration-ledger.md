@@ -57,10 +57,10 @@ into Harness.
 | Source region | Shared owner | Product injection or retained Coding owner | Deletion condition |
 | --- | --- | --- | --- |
 | removed `coding.extensions.hooks.HookDispatcher` | `harness.extensions.agent.hooks.ExtensionToolHookDispatcher` | Product supplies context factory and runtime error projection. | Complete: Coding module deleted after focused Agent-hook equivalence tests and a no-Coding-import probe. |
-| Agent prompt/context/session-decision reducers formerly in `coding.extensions.runner.ExtensionRunner` | `harness.extensions.agent.hooks` and `harness.extensions.session_runtime` | Coding supplies bound context, CWD, API binding, `before_agent_start` factory/result coercer, and session-decision compatibility coercer. | Complete: shared dispatchers own the reducer mechanics; Coding retains aliases and provider behavior. |
+| Agent prompt/context/session-decision reducers formerly in `coding.extensions.runner.ExtensionRunner` | `harness.extensions.agent.hooks` and `harness.extensions.session_runtime` | Coding supplies bound context, CWD, API binding, `before_agent_start` factory/result coercer, and session-decision coercer. | Complete: shared dispatchers own the reducer mechanics; Coding retains provider behavior and Product coercers. |
 | removed `harness.session.extension_{hooks,events,input}` modules | `harness.extensions.agent.{hooks,lifecycle,input}` | Session only consumes the profile during Agent-session composition. Input receives normalized typed requests plus queue/delivery ports; lifecycle is an observation-only extension callback adapter with injected clock/correlation values; Coding retains wire parsing/defaults. | Complete: consumers import the profile directly, input has no Session import, and Session no longer re-exports the profile. |
-| `coding.extensions.runner.ExtensionRunner` loader/API/alias portions | Coding adapter over `harness.extensions.runner.ExtensionRunner` | `ExtensionAPI`, policy resolver, loader legacy names, provider actions, and Coding error dictionary remain Product-owned. | Complete: the Coding runner is a thin loader/policy binding; shared reducer and dispatch mechanics live in Harness. |
-| `coding.event` runtime projection, views, serializer, and presentation policy | Existing `harness.events` fact/view APIs; `harness.events.session_serialization` owns the generic serializer | Coding retains `AgentSessionEvent`, rendering, transcript decision, and Product wording. Wire/schema compatibility remains at the Coding projection boundary; no duplicate neutral event engine exists. | Complete: production consumers use the Harness serializer/facts where applicable and no new event owner was introduced. |
+| `coding.extensions.runner.ExtensionRunner` loader/API portions | Coding adapter over `harness.extensions.runner.ExtensionRunner` | `ExtensionAPI`, policy resolver, loader configuration, provider actions, and Coding error dictionary remain Product-owned. | Complete: the Coding runner is a thin loader/policy binding; shared reducer and dispatch mechanics live in Harness with snake_case-only extension events. |
+| `coding.event` runtime projection, views, serializer, and presentation policy | Existing `harness.events` fact/view APIs; `harness.events.session_serialization` owns the generic serializer | Coding retains `AgentSessionEvent`, rendering, transcript decision, and Product wording. The shared wire schema is snake_case-only; no duplicate neutral event engine exists. | Complete: production consumers use the Harness serializer/facts and no Pi/camelCase event aliases remain. |
 
 Wave 2 contract probes:
 
@@ -68,10 +68,10 @@ Wave 2 contract probes:
   session-decision hooks with no Coding import;
 - invalid hook results, route ordering, block behavior, and runtime failure
   reporting preserve existing diagnostics;
-- Coding extension provider actions and JSON/print/RPC event projections stay
-  behaviorally unchanged;
+- Coding extension provider actions remain unchanged; JSON/print/RPC event
+  projections use the canonical snake_case fields;
 - architecture tests forbid Coding imports from the new shared dispatchers and
-  forbid a new Harness event schema for Coding aliases;
+  forbid a second event schema or alias layer;
 - `harness.extensions.agent` has no `harness.session` import, while neutral
   `harness.extensions` modules do not eagerly import or re-export the Agent
   profile; lifecycle callback order and timestamps are deterministic under an

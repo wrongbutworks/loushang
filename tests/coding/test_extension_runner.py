@@ -1093,7 +1093,7 @@ def test_extension_runner_get_message_renderer_uses_first_registration() -> None
     )
 
     assert runner.get_message_renderer("demo.card") is _first_renderer
-    assert runner.getMessageRenderer("demo.card") is _first_renderer
+    assert runner.get_message_renderer("demo.card") is _first_renderer
     assert runner.get_message_renderer("missing") is None
 
 
@@ -1689,7 +1689,7 @@ def test_extension_runner_emits_agent_lifecycle_events() -> None:
             (
                 event.type,
                 event.turn_index,
-                event.turnIndex,
+                event.turn_index,
                 isinstance(event.timestamp, int),
             )
         )
@@ -1700,9 +1700,9 @@ def test_extension_runner_emits_agent_lifecycle_events() -> None:
             (
                 event.type,
                 event.tool_call_id,
-                event.toolCallId,
+                event.tool_call_id,
                 event.tool_name,
-                event.toolName,
+                event.tool_name,
                 event.args,
             )
         )
@@ -1807,7 +1807,7 @@ def test_extension_runner_before_agent_start_returns_messages_and_system_prompt(
                 event.type,
                 event.prompt,
                 event.system_prompt,
-                event.systemPrompt,
+                event.system_prompt,
                 ctx.get_system_prompt(),
             )
         )
@@ -1826,7 +1826,7 @@ def test_extension_runner_before_agent_start_returns_messages_and_system_prompt(
     def _second(event, ctx):
         seen.append((event.type, event.system_prompt, ctx.get_system_prompt()))
         retained_contexts.append(ctx)
-        return {"systemPrompt": "Second override"}
+        return {"system_prompt": "Second override"}
 
     runner = ExtensionRunner(
         [
@@ -1878,11 +1878,11 @@ def test_extension_runner_user_bash_returns_first_handler_result() -> None:
     seen: list[tuple[object, object, str]] = []
 
     def _first(event, ctx):
-        seen.append((event.command, event.excludeFromContext, ctx.cwd))
+        seen.append((event.command, event.exclude_from_context, ctx.cwd))
         return None
 
     async def _second(event, ctx):
-        seen.append((event.command, event.excludeFromContext, ctx.cwd))
+        seen.append((event.command, event.exclude_from_context, ctx.cwd))
         return {"result": {"output": "handled\n", "exitCode": 0}}
 
     runner = ExtensionRunner(

@@ -897,11 +897,11 @@ def test_agent_session_forwards_message_and_tool_execution_events_to_extensions(
             (
                 event.type,
                 event.tool_call_id,
-                event.toolCallId,
+                event.tool_call_id,
                 event.tool_name,
-                event.toolName,
+                event.tool_name,
                 event.is_error,
-                event.isError,
+                event.is_error,
             )
         )
 
@@ -1205,7 +1205,7 @@ def test_agent_session_execute_bash_uses_extension_user_bash_result(tmp_path) ->
     seen: list[tuple[object, object, object]] = []
 
     def _user_bash(event, ctx):
-        seen.append((event.command, event.excludeFromContext, ctx.cwd))
+        seen.append((event.command, event.exclude_from_context, ctx.cwd))
         return {"result": {"output": "handled by extension\n", "exitCode": 0}}
 
     async def scenario() -> dict[str, object]:
@@ -1955,7 +1955,7 @@ def test_agent_session_extension_command_context_navigate_tree(tmp_path) -> None
 
     def _session_tree(event, ctx):
         del ctx
-        events.append((event.oldLeafId, event.newLeafId, event.summaryEntry))
+        events.append((event.old_leaf_id, event.new_leaf_id, event.summary_entry))
 
     async def scenario() -> None:
         manager = await SessionManager.new(
@@ -2585,7 +2585,7 @@ def test_agent_session_emits_model_select_event_for_async_model_control(
 
     def _model_select(event, ctx):
         del ctx
-        seen.append((event.type, event.model.id, event.previousModel.id, event.source))
+        seen.append((event.type, event.model.id, event.previous_model.id, event.source))
 
     session = AgentSession(
         agent=Agent(
