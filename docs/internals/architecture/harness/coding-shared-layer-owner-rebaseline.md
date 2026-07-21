@@ -29,8 +29,8 @@ the identified Coding implementation and records the actual delta here.
 | `coding.session.agent_session` | 1,890 | `SessionRuntime`, `SessionFacade`, transcript maintenance, queue, retry, compaction | `product adapter` | Facade deletion only after the factory contract |
 | `coding.session.builtin_commands` | 716 | `harness.session.command_pack` | `shared adopted` | Close descriptor/projection deletion only |
 | `coding.session.command_controller` | 239 | `SessionCommandRuntime`, command sources | `shared adopted` | Retain Product source/result binding |
-| `coding.mode.rpc_mode` | 2,739 | Channel JSONL host/router/task tracker; `SessionOperationRuntime` | `product adapter` | Wave 5 golden-contract cutover |
-| `coding.mode.print_mode`, `channel_mode`, `base` | 1,201 | Channel host lifecycle, HarnessTUI plain-conversation primitives | `product adapter` + `shared adopted` | Wave 5 neutral host probe |
+| `coding.mode.rpc_mode` | 2,687 -> thin adapter | `harness.host.rpc` owns JSONL host/router/task tracker, standard operation handlers, state/model/diagnostic dispatch; Channel owns framing | `product adapter` | Complete: Coding injects event and diagnostics projections |
+| `coding.mode.print_mode`, `channel_mode`, `base` | 1,201 -> thin adapters | `harnesstui.conversation.plain_mode` owns plain/JSON host lifecycle and state observation; `harness.host.mode` owns lifecycle contracts; Channel owns operation framing | `product adapter` + `shared adopted` | Print/base cutover complete; Channel operation binding retains Work/domain policy |
 | `coding.prompt_command` | 323 | Prompt assembly and command parsing | `product kernel` | Retain Coding Work semantics |
 
 Coding remains responsible in this group for service factories, the Coding
