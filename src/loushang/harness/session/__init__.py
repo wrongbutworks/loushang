@@ -19,6 +19,7 @@ from loushang.harness.session.capabilities import (
     UserCommandHookResult,
     UserCommandRequest,
     command_result_from_tool_result,
+    create_tool_prompt_rebuilder,
 )
 from loushang.harness.session.command_pack import (
     STANDARD_SESSION_COMMAND_PROFILE,
@@ -218,6 +219,7 @@ __all__ = [
     "SessionStats",
     "SessionResourceRefreshRuntime",
     "SessionToolRuntime",
+    "create_tool_prompt_rebuilder",
     "SessionToolsPort",
     "SessionCwdIssue",
     "SessionLifecycleDecision",

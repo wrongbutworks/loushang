@@ -7,11 +7,10 @@ from typing import Any, Protocol
 from loushang.agent.types import AgentTool
 from loushang.coding.store import SessionManager
 from loushang.harness.capabilities.prompt import PromptSectionComposer
-from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.activation import ResourceActivationRuntime
 from loushang.harness.resources.types import ResourceBundle
-from loushang.harness.session import SessionToolRuntime
+from loushang.harness.session import SessionToolRuntime, create_tool_prompt_rebuilder
 from loushang.harness.tools.contribution import resolve_tool_contributions
 from loushang.harness.tools.core import ToolDefinition, project_tool_definition
 from loushang.harness.tools.workspace.context import ToolContext
@@ -77,7 +76,14 @@ class ToolController:
             default_active_tool_names=self._default_active_tool_names,
             should_activate_new_tool=self._should_activate_new_tool,
             build_tool_context=self.build_tool_context,
-            rebuild_prompt=self._rebuild_prompt,
+            rebuild_prompt=create_tool_prompt_rebuilder(
+                agent=self.agent,
+                base_prompt=self.base_prompt,
+                get_resource_bundle=self.get_resource_bundle,
+                show_empty_tool_prompt=self.show_empty_tool_prompt,
+                resource_activation_runtime=self.resource_activation_runtime,
+                prompt_section_composer=self.prompt_section_composer,
+            ),
             resolve_contributions=resolve_tool_contributions,
         )
 
@@ -176,27 +182,6 @@ class ToolController:
     def _should_activate_new_tool(self, name: str, definition: ToolDefinition) -> bool:
         del definition
         return self.default_activate_new_tools and name not in _BUILTIN_TOOL_NAMES
-
-    def _rebuild_prompt(self, active_definitions: list[ToolDefinition] | None) -> None:
-        if self.show_empty_tool_prompt and active_definitions is None:
-            active_definitions = []
-        tool_prompt = (
-            "Available tools:\n(none)"
-            if self.show_empty_tool_prompt and active_definitions == []
-            else None
-        )
-        resource_bundle = self.get_resource_bundle()
-        prompt_assembly = assemble_prompt(
-            base_prompt=self.base_prompt,
-            resource_bundle=resource_bundle,
-            tool_definitions=active_definitions,
-            tool_prompt=tool_prompt,
-            resource_activation=self.resource_activation_runtime.activate(
-                resource_bundle
-            ),
-            prompt_section_composer=self.prompt_section_composer,
-        )
-        self.agent.system_prompt = prompt_assembly.system_prompt
 
     async def _emit_tool_audit_event(
         self,
