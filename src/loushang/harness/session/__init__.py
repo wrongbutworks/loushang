@@ -131,6 +131,8 @@ from loushang.harness.session.runtime import (
 )
 from loushang.harness.session.transcript_lifecycle import (
     AgentTranscriptSessionRuntime,
+    ProductTranscriptSessionLifecyclePorts,
+    ProductTranscriptSessionLifecycleStore,
     require_session_operation_session,
 )
 
@@ -165,6 +167,8 @@ __all__ = [
     "ModelCandidates",
     "ModelSelectionApplyResult",
     "PromptController",
+    "ProductTranscriptSessionLifecyclePorts",
+    "ProductTranscriptSessionLifecycleStore",
     "PersistModelSelection",
     "QueueController",
     "RefreshFailureRecorder",
