@@ -127,7 +127,7 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
     assert offenders == []
 
 
-def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> None:
+def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None:
     harness_root = Path("src/loushang/harness")
     profile_allowlists = {
         harness_root / "agent_transcript": (
@@ -141,6 +141,19 @@ def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> 
         harness_root / "session": (
             "loushang.ai.model",
             "loushang.ai.types",
+            "loushang.agent",
+        ),
+        harness_root / "extensions" / "agent": (
+            "loushang.ai.types",
+            "loushang.agent",
+        ),
+        harness_root / "extensions": (
+            "loushang.ai.api_registry",
+            "loushang.ai.model",
+            "loushang.agent",
+        ),
+        harness_root / "host": (
+            "loushang.ai.model",
             "loushang.agent",
         ),
     }
@@ -167,6 +180,30 @@ def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> 
             offenders.append(f"{path.as_posix()} imports {imported}")
 
     assert offenders == []
+
+
+def test_extension_agent_profile_has_no_session_or_product_dependency() -> None:
+    profile_root = Path("src/loushang/harness/extensions/agent")
+    forbidden_prefixes = (
+        "loushang.harness.session",
+        "loushang.coding",
+        "loushang.channel",
+        "loushang.work",
+        "loushang.method",
+        "loushang.tui",
+    )
+    offenders = [
+        f"{path.as_posix()} imports {imported}"
+        for path in sorted(profile_root.rglob("*.py"))
+        for imported in _absolute_imports(path)
+        if _matches_any(imported, forbidden_prefixes)
+    ]
+
+    assert offenders == []
+    assert not Path("src/loushang/coding/extensions/hooks.py").exists()
+    assert not Path("src/loushang/harness/session/extension_hooks.py").exists()
+    assert not Path("src/loushang/harness/session/extension_events.py").exists()
+    assert not Path("src/loushang/harness/session/extension_input.py").exists()
 
 
 def test_capability_composition_runtime_has_no_product_dependency() -> None:
@@ -236,6 +273,7 @@ def test_production_harnesstui_imports_only_approved_loushang_layers() -> None:
         "loushang.harnesstui",
         "loushang.tui",
         "loushang.harness",
+        "loushang.protocol",
     )
     offenders = [
         f"{path.as_posix()} imports {imported}"
@@ -551,7 +589,10 @@ def test_session_capabilities_runtime_is_neutral_and_adopted() -> None:
     command_source = Path(
         "src/loushang/coding/session/command_controller.py"
     ).read_text(encoding="utf-8")
-    bash_source = Path("src/loushang/coding/session/bash_controller.py").read_text(
+    bash_source = Path("src/loushang/harness/session/bash.py").read_text(
+        encoding="utf-8"
+    )
+    session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
     boundary = Path(
@@ -559,11 +600,31 @@ def test_session_capabilities_runtime_is_neutral_and_adopted() -> None:
     ).read_text(encoding="utf-8")
 
     assert "loushang.coding" not in capabilities_source
+    assert "loushang.coding" not in bash_source
     assert "SessionToolRuntime" in tool_source
-    assert "SessionCommandRuntime" in command_source
-    assert "SessionCommandExecutionRuntime" in bash_source
+    assert "SessionCommandController" in command_source
+    assert "BashExecutionRuntime" in bash_source
+    assert "BashExecutionRuntime" in session_source
+    assert not Path("src/loushang/coding/session/bash_controller.py").exists()
     assert "Product Binding" in boundary
     assert "Coding keeps" in boundary
+
+
+def test_standard_session_command_pack_is_neutral_and_adopted() -> None:
+    command_pack_source = Path(
+        "src/loushang/harness/session/command_pack.py"
+    ).read_text(encoding="utf-8")
+    builtin_source = Path("src/loushang/coding/session/builtin_commands.py").read_text(
+        encoding="utf-8"
+    )
+    boundary = Path(
+        "docs/internals/architecture/harness/session-command-pack-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in command_pack_source
+    assert "execute_standard_session_command_async" in builtin_source
+    assert "one command catalog and one ordered dispatcher" in boundary
+    assert "existing builtin source" in boundary
 
 
 def test_session_facade_is_neutral_and_adopted() -> None:
@@ -576,7 +637,7 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     channel_source = Path("src/loushang/coding/mode/channel_mode.py").read_text(
         encoding="utf-8"
     )
-    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(
         encoding="utf-8"
     )
     boundary = Path(
@@ -602,7 +663,10 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
     operations_source = Path("src/loushang/harness/session/operations.py").read_text(
         encoding="utf-8"
     )
-    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+    binding_source = Path(
+        "src/loushang/harness/session/rpc_operations.py"
+    ).read_text(encoding="utf-8")
+    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(
         encoding="utf-8"
     )
     channel_adapter_source = Path("src/loushang/coding/mode/channel_mode.py").read_text(
@@ -615,11 +679,35 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
     assert "loushang.coding" not in operations_source
     assert "loushang.channel" not in operations_source
     assert "json" not in operations_source
+    assert "loushang.coding" not in binding_source
+    assert "loushang.channel" not in binding_source
+    assert "SessionRpcOperationBinding" in rpc_source
+    assert "_rpc_operations.prompt_request" in rpc_source
+    assert "_rpc_operations.new_session" in rpc_source
+    assert "_rpc_operations.compact" in rpc_source
     assert "SessionOperationAvailability" in operations_source
     assert "SessionOperationRuntime" in rpc_source
     assert "WorkRuntime" in channel_adapter_source
     assert "capability-grouped" in boundary
     assert "must not import Harness" in boundary
+
+
+def test_jsonl_command_router_is_neutral_and_rpc_uses_explicit_routes() -> None:
+    router_source = Path(
+        "src/loushang/channel/jsonl_command_router.py"
+    ).read_text(encoding="utf-8")
+    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(
+        encoding="utf-8"
+    )
+    boundary = Path(
+        "docs/internals/architecture/harness/session-rpc-operation-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.harness" not in router_source
+    assert "loushang.coding" not in router_source
+    assert "JsonlCommandRouter(" in rpc_source
+    assert 'getattr(self, f"_handle_{command.command_type}_command")' not in rpc_source
+    assert "Channel command-routing slice" in boundary
 
 
 def test_channel_product_host_runtime_is_neutral_and_adopted() -> None:
@@ -629,7 +717,7 @@ def test_channel_product_host_runtime_is_neutral_and_adopted() -> None:
     channel_host_source = Path("src/loushang/channel/host.py").read_text(
         encoding="utf-8"
     )
-    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(
         encoding="utf-8"
     )
     boundary = Path(
@@ -644,6 +732,31 @@ def test_channel_product_host_runtime_is_neutral_and_adopted() -> None:
     assert "Product Binding" in boundary
     assert "Coding Adoption" in boundary
     assert "Dependency Rule" in boundary
+
+
+def test_mode_host_implementation_is_shared_and_coding_is_thin() -> None:
+    rpc_host = Path("src/loushang/harness/host/rpc.py").read_text(encoding="utf-8")
+    plain_host = Path(
+        "src/loushang/harnesstui/conversation/plain_mode.py"
+    ).read_text(encoding="utf-8")
+    coding_rpc = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+        encoding="utf-8"
+    )
+    coding_print = Path("src/loushang/coding/mode/print_mode.py").read_text(
+        encoding="utf-8"
+    )
+    boundary = Path(
+        "docs/internals/architecture/harness/mode-host-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in rpc_host
+    assert "loushang.coding" not in plain_host
+    assert "class RpcHost" in rpc_host
+    assert "class PlainHost" in plain_host
+    assert "JsonlCommandRouter" not in coding_rpc
+    assert "class RpcMode" in coding_rpc
+    assert "CodingWorkShell" in coding_print
+    assert "Mode Host Boundary" in boundary
 
 
 def test_channel_product_host_stdio_and_shutdown_helpers_are_neutral() -> None:
@@ -750,17 +863,23 @@ def test_package_session_operations_are_neutral_and_adopted() -> None:
 
 
 def test_extension_input_runtime_is_harness_owned() -> None:
-    source = Path("src/loushang/harness/session/extension_input.py").read_text(
+    source = Path("src/loushang/harness/extensions/agent/input.py").read_text(
         encoding="utf-8"
     )
+    coding_input_adapter = Path(
+        "src/loushang/coding/session/extension_input_adapter.py"
+    ).read_text(encoding="utf-8")
     coding_adapter_source = Path(
         "src/loushang/coding/session/agent_session.py"
     ).read_text(encoding="utf-8")
 
-    assert "ApplicationInputRuntime" in source
+    assert "ApplicationInputDeliveryPort" in source
     assert "loushang.coding" not in source
     assert "SessionManager" not in source
     assert "append_message(" not in source
+    assert "customType" not in source
+    assert "deliverAs" not in source
+    assert "customType" in coding_input_adapter
     assert "ExtensionInputRuntime" in coding_adapter_source
 
 
@@ -1518,9 +1637,10 @@ def test_harness_diagnostics_core_boundary_is_documented() -> None:
         "Harness Diagnostics Core Boundary",
         "`loushang.harness.diagnostics.types`",
         "`loushang.harness.diagnostics.service`",
+        "`loushang.harness.diagnostics.observability_bridge`",
         "canonical owners",
         "`coding.diagnostics.serialization`",
-        "`coding.diagnostics.problem_bridge`",
+        "Coding's source-classification resolver",
         "must not import coding, method, work, TUI, AI, agent runtime, provider, observability, or product packages",
     }
     assert (
@@ -1537,6 +1657,83 @@ def test_harness_diagnostics_core_boundary_is_documented() -> None:
     ).read_text(encoding="utf-8")
     assert "`loushang.harness.diagnostics`" in inventory_text
     assert "diagnostics core implementation complete" in inventory_text
+
+
+def test_harness_diagnostics_core_does_not_import_observability() -> None:
+    paths_and_forbidden_prefixes = (
+        (
+            Path("src/loushang/harness/diagnostics/types.py"),
+            ("loushang.observability",),
+        ),
+        (
+            Path("src/loushang/harness/diagnostics/service.py"),
+            ("loushang.observability",),
+        ),
+        (
+            Path("src/loushang/harness/diagnostics/observability_bridge.py"),
+            ("loushang.coding",),
+        ),
+    )
+    offenders = [
+        f"{path.as_posix()} imports {imported}"
+        for path, forbidden_prefixes in paths_and_forbidden_prefixes
+        for imported in _absolute_imports(path)
+        if _matches_any(imported, forbidden_prefixes)
+    ]
+    assert offenders == []
+
+
+def test_coding_shared_layer_migration_plan_is_documented() -> None:
+    plan_path = Path(
+        "docs/internals/architecture/harness/coding-shared-layer-migration-plan.md"
+    )
+    assert plan_path.exists()
+    plan_text = " ".join(plan_path.read_text(encoding="utf-8").split())
+    required_phrases = {
+        "Coding To Shared-Layer Migration Plan",
+        "Wave R: Owner And Duplicate Rebaseline",
+        "ProductRuntimePlan",
+        "Harness is not globally prohibited from importing Agent or AI",
+        "Wave 1: Leaf Foundations",
+        "Wave 2: Event And Extension Product Adapter Collapse",
+        "Wave 3: Standard Session Capabilities And Command Subsets",
+        "Wave 4: Session Composition And Bootstrap Transaction",
+        "Wave 5: Channel, RPC, Print, And TUI Adapter Collapse",
+        "Wave 6: Config, Shared Defaults, CLI, And Work/Method Cleanup",
+        "Every capability batch uses three reviewable commits",
+    }
+    assert (
+        sorted(phrase for phrase in required_phrases if phrase not in plan_text) == []
+    )
+
+    readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Coding To Shared-Layer Migration Plan" in readme_text
+    assert "Coding Shared-Layer Migration Ledger" in readme_text
+    assert "Diagnostics Export Boundary" in readme_text
+
+    ledger_text = Path(
+        "docs/internals/architecture/harness/coding-shared-layer-migration-ledger.md"
+    ).read_text(encoding="utf-8")
+    assert "## Wave 1: Leaf Foundations" in ledger_text
+    assert "`harness.diagnostics.export`" in ledger_text
+
+    export_boundary_text = Path(
+        "docs/internals/architecture/harness/diagnostics-export-boundary.md"
+    ).read_text(encoding="utf-8")
+    assert "redacts both text artifacts and JSON values" in export_boundary_text
+
+    inventory_text = Path(
+        "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
+    ).read_text(encoding="utf-8")
+    assert "Coding To Shared-Layer Migration Plan" in inventory_text
+
+    subsystem_text = Path("docs/internals/architecture/subsystem.md").read_text(
+        encoding="utf-8"
+    )
+    assert "### loushang-channel (target)" not in subsystem_text
+    assert "该源码包已落地" in subsystem_text
 
 
 def test_coding_context_budget_facades_are_extinct() -> None:
@@ -2130,13 +2327,16 @@ def test_harness_extension_runtime_core_boundary_is_documented() -> None:
         "`ExtensionSessionRuntime`",
         "same Harness-owned objects",
         "Coding keeps",
-        "must not import coding, method, work, TUI, AI",
+        "neutral modules directly under `loushang.harness.extensions` must not",
     }
     assert (
         sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
     )
 
-    assert extensions.__all__ == []
+    assert set(extensions.__all__) == {
+        "ExtensionProviderRuntime",
+        "ProviderFactory",
+    }
     assert "ExtensionContributionAPI" not in harness.__all__
 
     readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
@@ -2174,9 +2374,9 @@ def test_harness_extension_runtime_core_boundary_is_documented() -> None:
 
     session_extension_paths = (
         Path("src/loushang/harness/extensions/session_runtime.py"),
-        Path("src/loushang/harness/session/extension_events.py"),
-        Path("src/loushang/harness/session/extension_hooks.py"),
-        Path("src/loushang/harness/session/extension_input.py"),
+        Path("src/loushang/harness/extensions/agent/lifecycle.py"),
+        Path("src/loushang/harness/extensions/agent/hooks.py"),
+        Path("src/loushang/harness/extensions/agent/input.py"),
     )
     for path in session_extension_paths:
         imports = _absolute_imports(path)
@@ -2393,8 +2593,8 @@ def test_coding_control_plane_adapters_use_harness_mechanisms() -> None:
     assert not any(_matches_any(imported, ("shlex",)) for imported in policy_imports)
 
     extension_paths = (
-        Path("src/loushang/coding/extensions/hooks.py"),
         Path("src/loushang/coding/extensions/runner.py"),
+        Path("src/loushang/harness/extensions/agent/hooks.py"),
     )
     extension_imports = {
         imported for path in extension_paths for imported in _absolute_imports(path)
@@ -3110,7 +3310,7 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
             "loushang.harness.agent_transcript.AgentTranscriptNavigationRuntime",
             "loushang.harness.agent_transcript.AgentTranscriptSelectionRuntime",
             "loushang.harness.extensions.session_runtime.ExtensionSessionRuntime",
-            "loushang.harness.session.ExtensionInputRuntime",
+            "loushang.harness.extensions.agent.ExtensionInputRuntime",
         },
     }
     missing: list[str] = []
@@ -3206,7 +3406,7 @@ def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
     session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
-    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(
         encoding="utf-8"
     )
     cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
@@ -3221,7 +3421,7 @@ def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
     assert "import_session_operation" in extension_source
     assert "_clone_from_builtin" not in session_source
     assert "_import_from_builtin" not in session_source
-    assert "require_session_operation_session" in rpc_source
+    assert "SessionRpcOperationBinding" in rpc_source
     assert "require_session_operation_session" in cli_source
 
 
@@ -3307,11 +3507,9 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
             "loushang.harness.capabilities.prompt_assembly.assemble_prompt",
         },
         Path("src/loushang/coding/session/command_controller.py"): {
-            "loushang.harness.capabilities.prompt_preflight.PromptPreflightResult",
-            "loushang.harness.session.SessionCommandRuntime",
+            "loushang.harness.session.SessionCommandController",
         },
         Path("src/loushang/coding/session/tool_controller.py"): {
-            "loushang.harness.capabilities.prompt_assembly.assemble_prompt",
             "loushang.harness.session.SessionToolRuntime",
         },
     }
@@ -3680,12 +3878,7 @@ def test_resource_provenance_consumers_use_harness_owners() -> None:
         "src/loushang/coding/extensions/__init__.py",
         "src/loushang/coding/source_info.py",
     }
-    legacy_symbols = (
-        "loushang.coding.extensions.SourceInfo",
-        "loushang.coding.source_info.SourceInfo",
-        "loushang.coding.source_info.SourceOrigin",
-        "loushang.coding.source_info.SourceScope",
-    )
+    legacy_symbols = ("loushang.coding.extensions.SourceInfo",)
     offenders: list[str] = []
     for path in sorted(Path("src/loushang/coding").rglob("*.py")):
         if path.as_posix() in compatibility_paths:

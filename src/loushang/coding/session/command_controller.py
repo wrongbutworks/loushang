@@ -1,10 +1,9 @@
+"""Coding command bindings over the shared session command controller."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from typing import cast
 
-from loushang.coding.commands import CommandSourceInfo, SessionCommandDescriptor
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.session.builtin_commands import (
     BuiltinCommandBackend,
@@ -13,397 +12,59 @@ from loushang.coding.session.builtin_commands import (
     list_builtin_command_descriptors,
 )
 from loushang.coding.session.types import CommandExecutionResult
-from loushang.coding.source_info import (
-    SourceDescriptor,
-    source_info_from_resource_descriptor,
-)
 from loushang.coding.store import SessionManager
 from loushang.harness.capabilities.packs import CapabilityPackComposer
-from loushang.harness.capabilities.prompt_preflight import (
-    PromptPreflightResult,
-    preflight_user_input,
-    preflight_user_input_async,
-)
-from loushang.harness.commands import (
-    CommandDispatchOutcome,
-    ParsedSlashCommand,
-    split_slash_command,
-)
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.extensions.types import ResolvedCommand
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
-from loushang.harness.resources.frontmatter import strip_frontmatter
-from loushang.harness.resources.source import SourceInfo as ExtensionSourceInfo
-from loushang.harness.resources.types import (
-    PromptFragmentDescriptor,
-    ResourceBundle,
-    SkillDescriptor,
+from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.session import (
+    SessionCommandController,
+    SessionDiagnosticsRuntime,
 )
-from loushang.harness.session import CommandRuntimeSource, SessionCommandRuntime
 
 
-@dataclass
-class CommandController:
-    session_manager: SessionManager
-    get_extension_runner: Callable[[], ExtensionRunner | None]
-    get_resource_bundle: Callable[[], ResourceBundle | None]
-    get_diagnostics_service: Callable[[], DiagnosticsService | None]
-    builtin_backend: BuiltinCommandBackend | None = None
-    pack_composer: CapabilityPackComposer = field(
-        default_factory=CapabilityPackComposer
-    )
-    _runtime: SessionCommandRuntime[
-        SessionCommandDescriptor, CommandExecutionResult
-    ] = field(init=False, repr=False)
+class CommandController(SessionCommandController[CommandExecutionResult]):
+    """Bind Coding builtin command semantics to the shared source runtime."""
 
-    def __post_init__(self) -> None:
-        self._runtime = SessionCommandRuntime(
-            sources=(
-                CommandRuntimeSource(
-                    pack_id="coding.builtin-commands",
-                    source="product",
-                    descriptor_priority=300,
-                    handler_priority=200,
-                    list_descriptors=self._list_builtin_commands,
-                    handler_name="builtin",
-                    handler=self._dispatch_builtin_command,
-                ),
-                CommandRuntimeSource(
-                    pack_id="coding.extension-commands",
-                    source="extension",
-                    descriptor_priority=200,
-                    handler_priority=300,
-                    list_descriptors=self._list_extension_commands,
-                    handler_name="extension",
-                    handler=self._dispatch_extension_command,
-                ),
-                CommandRuntimeSource(
-                    pack_id="coding.resource-commands",
-                    source="product",
-                    descriptor_priority=100,
-                    handler_priority=100,
-                    list_descriptors=self._list_resource_commands,
-                    handler_name="resource",
-                    handler=self._dispatch_resource_command,
-                ),
+    def __init__(
+        self,
+        *,
+        session_manager: SessionManager,
+        get_extension_runner: Callable[[], ExtensionRunner | None],
+        get_resource_bundle: Callable[[], ResourceBundle | None],
+        get_diagnostics_service: Callable[[], DiagnosticsService | None],
+        builtin_backend: BuiltinCommandBackend | None = None,
+        diagnostics_runtime: SessionDiagnosticsRuntime | None = None,
+        pack_composer: CapabilityPackComposer | None = None,
+    ) -> None:
+        super().__init__(
+            session_manager=session_manager,
+            get_extension_runner=get_extension_runner,
+            get_resource_bundle=get_resource_bundle,
+            get_diagnostics_service=get_diagnostics_service,
+            result_factory=lambda invocation_name, result: CommandExecutionResult(
+                invocation_name=invocation_name,
+                result=result,
             ),
-            pack_composer=self.pack_composer,
+            extension_result_factory=lambda command: CommandExecutionResult(
+                invocation_name=command.invocation_name,
+                result=None,
+            ),
+            builtin_descriptors=(
+                list_builtin_command_descriptors
+                if builtin_backend is not None
+                else (lambda: [])
+            ),
+            builtin_executor=(
+                (lambda invocation_name, args: execute_builtin_command_async(
+                    invocation_name,
+                    args,
+                    builtin_backend,
+                ))
+                if builtin_backend is not None
+                else None
+            ),
+            builtin_matcher=is_builtin_command,
+            diagnostics_runtime=diagnostics_runtime,
+            pack_composer=pack_composer or CapabilityPackComposer(),
         )
-
-    def list_commands(self) -> list[SessionCommandDescriptor]:
-        return self._runtime.list_commands()
-
-    async def execute_command_async(
-        self, invocation_name: str, args: str
-    ) -> CommandExecutionResult | None:
-        return await self._runtime.execute(invocation_name, args)
-
-    def _list_builtin_commands(self) -> list[SessionCommandDescriptor]:
-        builtin_commands: list[SessionCommandDescriptor] = []
-        if self.builtin_backend is not None:
-            builtin_commands.extend(list_builtin_command_descriptors())
-        return builtin_commands
-
-    def _list_extension_commands(self) -> list[SessionCommandDescriptor]:
-        extension_commands: list[SessionCommandDescriptor] = []
-        extension_runner = self.get_extension_runner()
-        if extension_runner is not None:
-            for command in extension_runner.get_registered_commands():
-                extension_commands.append(
-                    SessionCommandDescriptor(
-                        name=command.invocation_name,
-                        description=command.description,
-                        source="extension",
-                        source_info=_command_source_info_from_extension(
-                            command.source_info
-                        ),
-                        invocation_name=command.invocation_name,
-                        conflict_group=command.name
-                        if command.invocation_name != command.name
-                        else None,
-                    )
-                )
-        return extension_commands
-
-    def _list_resource_commands(self) -> list[SessionCommandDescriptor]:
-        resource_commands: list[SessionCommandDescriptor] = []
-        resource_bundle = self.get_resource_bundle()
-        if resource_bundle is not None:
-            for prompt in resource_bundle.prompts:
-                resource_commands.append(
-                    SessionCommandDescriptor(
-                        name=prompt.name,
-                        description=_command_description_from_prompt(prompt),
-                        source="prompt",
-                        source_info=source_info_from_resource_descriptor(
-                            cast(SourceDescriptor, prompt)
-                        ),
-                        argument_hint=prompt.argument_hint,
-                    )
-                )
-            for skill in resource_bundle.skills:
-                if not skill.enabled:
-                    continue
-                resource_commands.append(
-                    SessionCommandDescriptor(
-                        name=f"skill:{skill.name}",
-                        description=_command_description_from_skill(skill),
-                        source="skill",
-                        source_info=source_info_from_resource_descriptor(
-                            cast(SourceDescriptor, skill)
-                        ),
-                    )
-                )
-        return resource_commands
-
-    async def _dispatch_extension_command(
-        self,
-        invocation: ParsedSlashCommand,
-    ) -> CommandDispatchOutcome[CommandExecutionResult]:
-        extension_runner = self.get_extension_runner()
-        if extension_runner is not None:
-            command = extension_runner.get_command(invocation.name)
-            if command is not None:
-                context = extension_runner.create_command_context(
-                    fallback_cwd=self.session_manager.get_cwd()
-                )
-                try:
-                    await command.handler(invocation.args, context)
-                except Exception as exc:
-                    self.record_extension_command_error(command=command, exc=exc)
-                    return CommandDispatchOutcome.handled_result(
-                        CommandExecutionResult(
-                            invocation_name=command.invocation_name, result=None
-                        )
-                    )
-                return CommandDispatchOutcome.handled_result(
-                    CommandExecutionResult(
-                        invocation_name=command.invocation_name, result=None
-                    )
-                )
-        return CommandDispatchOutcome.unhandled()
-
-    async def _dispatch_builtin_command(
-        self,
-        invocation: ParsedSlashCommand,
-    ) -> CommandDispatchOutcome[CommandExecutionResult]:
-        result = await self.execute_builtin_command_async(
-            invocation.name, invocation.args
-        )
-        if result is None:
-            return CommandDispatchOutcome.unhandled()
-        return CommandDispatchOutcome.handled_result(result)
-
-    def _dispatch_resource_command(
-        self,
-        invocation: ParsedSlashCommand,
-    ) -> CommandDispatchOutcome[CommandExecutionResult]:
-        result = self.execute_resource_command(invocation.name, invocation.args)
-        if result is None:
-            return CommandDispatchOutcome.unhandled()
-        return CommandDispatchOutcome.handled_result(result)
-
-    async def execute_builtin_command_async(
-        self, invocation_name: str, args: str
-    ) -> CommandExecutionResult | None:
-        if self.builtin_backend is None:
-            return None
-        return await execute_builtin_command_async(
-            invocation_name, args, self.builtin_backend
-        )
-
-    def execute_resource_command(
-        self, invocation_name: str, args: str
-    ) -> CommandExecutionResult | None:
-        resource_bundle = self.get_resource_bundle()
-        if resource_bundle is None:
-            self.record_command_not_found(invocation_name, args)
-            return None
-        command_text = f"/{invocation_name}{f' {args}' if args else ''}"
-        result = preflight_user_input(command_text, resource_bundle=resource_bundle)
-        self.record_preflight_diagnostics(result.diagnostics)
-        if result.diagnostics:
-            return None
-        if result.text == command_text:
-            self.record_command_not_found(invocation_name, args)
-            return None
-        source = "skill" if invocation_name.startswith("skill:") else "prompt"
-        return CommandExecutionResult(
-            invocation_name=invocation_name,
-            result={
-                "source": source,
-                "text": result.text,
-            },
-        )
-
-    def record_command_not_found(self, invocation_name: str, args: str) -> None:
-        diagnostics_service = self.get_diagnostics_service()
-        if diagnostics_service is None:
-            return
-        diagnostics_service.capture_failure(
-            code="command_not_found",
-            error=f"Command not found: /{invocation_name}",
-            phase="runtime",
-            source="session",
-            level="warning",
-            session_id=self.session_manager.get_header().conversation_id,
-            entry_id=self.session_manager.get_leaf_id(),
-            details={
-                "invocation_name": invocation_name,
-                "args": args,
-            },
-        )
-
-    async def get_command_argument_completions(
-        self, invocation_name: str, prefix: str
-    ) -> list[object] | None:
-        extension_runner = self.get_extension_runner()
-        if extension_runner is None:
-            return None
-        return await extension_runner.get_command_argument_completions(
-            invocation_name, prefix
-        )
-
-    def extract_extension_command_invocation(
-        self, user_input: str
-    ) -> tuple[str, str] | None:
-        extension_runner = self.get_extension_runner()
-        if extension_runner is None:
-            return None
-        parsed = split_slash_command(user_input)
-        if parsed is None:
-            return None
-        invocation_name, args = parsed
-        if extension_runner.get_command(invocation_name) is None:
-            return None
-        return invocation_name, args
-
-    def extract_builtin_command_invocation(
-        self, user_input: str
-    ) -> tuple[str, str] | None:
-        if self.builtin_backend is None:
-            return None
-        parsed = split_slash_command(user_input)
-        if parsed is None:
-            return None
-        invocation_name, args = parsed
-        if not is_builtin_command(invocation_name):
-            return None
-        return invocation_name, args
-
-    def raise_if_queued_extension_command(self, user_input: str) -> None:
-        command = self.extract_extension_command_invocation(user_input)
-        if command is not None:
-            invocation_name, _args = command
-            raise RuntimeError(
-                f'Extension command "/{invocation_name}" cannot be queued. '
-                "Use prompt() or execute the command when not streaming."
-            )
-
-    def preflight_user_input(
-        self, user_input: str, *, allow_extension_commands: bool = True
-    ):
-        del allow_extension_commands
-        result = preflight_user_input(
-            user_input,
-            resource_bundle=self.get_resource_bundle(),
-        )
-        self.record_preflight_diagnostics(result.diagnostics)
-        return result
-
-    async def preflight_user_input_async(
-        self, user_input: str, *, allow_extension_commands: bool = True
-    ):
-        if allow_extension_commands:
-            command = self.extract_extension_command_invocation(user_input)
-            if command is not None:
-                invocation_name, args = command
-                await self.execute_command_async(invocation_name, args)
-                return PromptPreflightResult(text=user_input, consumed=True)
-            command = self.extract_builtin_command_invocation(user_input)
-            if command is not None:
-                invocation_name, args = command
-                await self.execute_command_async(invocation_name, args)
-                return PromptPreflightResult(text=user_input, consumed=True)
-        result = await preflight_user_input_async(
-            user_input,
-            resource_bundle=self.get_resource_bundle(),
-        )
-        self.record_preflight_diagnostics(result.diagnostics)
-        return result
-
-    def record_preflight_diagnostics(
-        self, diagnostics: tuple[ResourceDiagnostic, ...]
-    ) -> None:
-        diagnostics_service = self.get_diagnostics_service()
-        if diagnostics_service is None or not diagnostics:
-            return
-        diagnostics_service.record_many(
-            diagnostics_service.normalize_resource_diagnostic(
-                diagnostic,
-                phase="runtime",
-                source="session",
-                session_id=self.session_manager.get_header().conversation_id,
-                entry_id=self.session_manager.get_leaf_id(),
-            )
-            for diagnostic in diagnostics
-        )
-
-    def record_extension_command_error(
-        self, *, command: ResolvedCommand, exc: BaseException
-    ) -> None:
-        diagnostics_service = self.get_diagnostics_service()
-        if diagnostics_service is None:
-            return
-        source_info = command.source_info
-        diagnostics_service.capture_failure(
-            code="extension_command_failed",
-            error=exc if isinstance(exc, Exception) else str(exc),
-            phase="runtime",
-            source="extensions",
-            session_id=self.session_manager.get_header().conversation_id,
-            entry_id=self.session_manager.get_leaf_id(),
-            source_path=command.source_info.path,
-            details={
-                "invocation_name": command.invocation_name,
-                "command_name": command.name,
-                "extension_name": command.extension_name,
-                "source_info": {
-                    "path": source_info.path.as_posix(),
-                    "source": source_info.source,
-                    "scope": source_info.scope,
-                    "origin": source_info.origin,
-                    "base_dir": source_info.base_dir.as_posix()
-                    if source_info.base_dir is not None
-                    else None,
-                },
-            },
-        )
-
-
-def _command_source_info_from_extension(
-    source_info: ExtensionSourceInfo,
-) -> CommandSourceInfo:
-    return CommandSourceInfo(
-        path=source_info.path.as_posix(),
-        source=source_info.source,
-        scope=source_info.scope,
-        origin=source_info.origin,
-        base_dir=source_info.base_dir.as_posix()
-        if source_info.base_dir is not None
-        else source_info.path.parent.as_posix(),
-    )
-
-
-def _command_description_from_prompt(prompt: PromptFragmentDescriptor) -> str | None:
-    if isinstance(prompt.description, str) and prompt.description.strip():
-        return prompt.description.strip()
-    description = strip_frontmatter(prompt.text).strip()
-    return description or None
-
-
-def _command_description_from_skill(skill: SkillDescriptor) -> str | None:
-    if isinstance(skill.description, str) and skill.description.strip():
-        return skill.description.strip()
-    description = strip_frontmatter(skill.content or "").strip()
-    return description or None
+__all__ = ["CommandController"]

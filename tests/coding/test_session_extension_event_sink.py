@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from loushang.ai.types import TextPart, ToolResultMessage
-from loushang.harness.session import ExtensionAgentEventRuntime
+from loushang.harness.extensions.agent import ExtensionAgentEventRuntime
 
 
 def test_extension_event_sink_mirrors_lifecycle_events_with_turn_index() -> None:
@@ -25,6 +25,7 @@ def test_extension_event_sink_mirrors_lifecycle_events_with_turn_index() -> None
     sink = ExtensionAgentEventRuntime(
         get_extension_runtime=lambda: Runner(),
         get_cwd=lambda: "/tmp/project",
+        clock=lambda: 123.456,
     )
 
     async def scenario() -> None:
@@ -43,7 +44,7 @@ def test_extension_event_sink_mirrors_lifecycle_events_with_turn_index() -> None
             {
                 "type": "turn_start",
                 "turn_index": 0,
-                "timestamp": emitted[1][0]["timestamp"],
+                "timestamp": 123456,
             },
             "/tmp/project",
         ),
@@ -60,7 +61,7 @@ def test_extension_event_sink_mirrors_lifecycle_events_with_turn_index() -> None
             {
                 "type": "turn_start",
                 "turn_index": 1,
-                "timestamp": emitted[3][0]["timestamp"],
+                "timestamp": 123456,
             },
             "/tmp/project",
         ),

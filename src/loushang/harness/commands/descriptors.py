@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Awaitable, Callable, Iterable
-from dataclasses import dataclass, replace
-from typing import Generic, TypeVar, cast
+from dataclasses import dataclass, field, replace
+from typing import Generic, Literal, TypeVar, cast
+
+from loushang.harness.resources.source import SourceInfo
 
 SourceInfoT = TypeVar("SourceInfoT")
 ResultT = TypeVar("ResultT")
@@ -26,6 +28,31 @@ class CommandDescriptor(Generic[SourceInfoT]):
     @property
     def effective_invocation_name(self) -> str:
         return normalize_command_name(self.invocation_name or self.name)
+
+
+SlashCommandSource = Literal["builtin", "extension", "prompt", "skill"]
+"""Common origins for commands surfaced by an Agent product session."""
+
+
+CommandSourceInfo = SourceInfo
+
+
+@dataclass(frozen=True)
+class SessionCommandDescriptor(CommandDescriptor[SourceInfo[str]]):
+    """A command descriptor backed by a standard resource source reference."""
+
+    source: SlashCommandSource
+    source_info: SourceInfo[str] = field()
+
+
+@dataclass(frozen=True)
+class SlashCommandInfo:
+    """Compact display metadata for a session command."""
+
+    name: str
+    description: str | None
+    source: SlashCommandSource
+    source_info: SourceInfo[str]
 
 
 @dataclass(frozen=True)
@@ -273,7 +300,11 @@ __all__ = [
     "CommandDispatchOutcome",
     "CommandHandler",
     "CommandHandlerBinding",
+    "CommandSourceInfo",
     "ParsedSlashCommand",
+    "SessionCommandDescriptor",
+    "SlashCommandInfo",
+    "SlashCommandSource",
     "complete_slash_commands",
     "dispatch_command",
     "dispatch_command_async",

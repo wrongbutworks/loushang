@@ -56,6 +56,38 @@ def test_tool_definition_validates_prompt_guidelines_sequence() -> None:
         )
 
 
+def test_project_tool_definition_uses_neutral_source_info() -> None:
+    from pathlib import Path
+
+    from loushang.harness.tools.core import ToolDefinition, project_tool_definition
+
+    async def execute(tool_call_id, params, signal=None, on_update=None):
+        del tool_call_id, params, signal, on_update
+        return None
+
+    definition = ToolDefinition(
+        name="read",
+        label="Read",
+        description="Read files",
+        parameters={"type": "object"},
+        execute=execute,
+    )
+
+    assert project_tool_definition(
+        definition, builtin_names=frozenset({"read"})
+    )["sourceInfo"] == {
+        "path": "<builtin:read>",
+        "source": "builtin",
+        "scope": "temporary",
+        "origin": "top-level",
+        "baseDir": None,
+    }
+    assert project_tool_definition(
+        definition,
+        type("Source", (), {"path": Path("tools.py"), "source": "filesystem"})(),
+    )["sourceInfo"]["path"] == "tools.py"
+
+
 def test_tool_decorator_attaches_metadata_without_normalizing_returns() -> None:
     from loushang.harness.tools.core import DecoratedToolSpec, tool
 

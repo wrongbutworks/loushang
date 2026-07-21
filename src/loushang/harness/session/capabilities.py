@@ -21,6 +21,8 @@ from loushang.harness.capabilities.packs import (
     CapabilityPackComposer,
     CapabilityPackSource,
 )
+from loushang.harness.capabilities.prompt import PromptSectionComposer
+from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.capabilities.tools import (
     ToolActivationChange,
     ToolActivationCoordinator,
@@ -33,6 +35,8 @@ from loushang.harness.commands import (
     normalize_command_name,
 )
 from loushang.harness.conversation import CommandExecutionRecord
+from loushang.harness.resources.activation import ResourceActivationRuntime
+from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.tools.contribution import (
     ToolContribution,
     ToolResolutionResult,
@@ -88,6 +92,71 @@ ToolPromptRebuilder = Callable[[list[ToolDefinition] | None], None]
 ToolActivationPolicy = Callable[[str, ToolDefinition], bool]
 ToolDefaultSelection = Callable[[], Iterable[str]]
 ToolContributionResolver = Callable[..., ToolResolutionResult]
+
+
+@dataclass(frozen=True)
+class ToolActivationProfile:
+    """Product-selected defaults for the shared tool activation coordinator."""
+
+    preferred_names: tuple[str, ...] = ()
+    builtin_names: frozenset[str] = frozenset()
+    activate_new_tools: bool = False
+
+    def default_names(
+        self,
+        definitions: Iterable[ToolDefinition],
+        allowed_names: set[str] | None = None,
+    ) -> list[str]:
+        available = [definition.name for definition in definitions]
+        if allowed_names is not None:
+            return [name for name in available if name in allowed_names]
+        available_set = set(available)
+        selected = [name for name in self.preferred_names if name in available_set]
+        selected.extend(
+            name
+            for name in available
+            if name not in self.builtin_names and name not in selected
+        )
+        return selected
+
+    def should_activate_new(self, name: str, definition: ToolDefinition) -> bool:
+        del definition
+        return self.activate_new_tools and name not in self.builtin_names
+
+
+def create_tool_prompt_rebuilder(
+    *,
+    agent: AgentToolPort,
+    base_prompt: str,
+    get_resource_bundle: Callable[[], ResourceBundle | None],
+    show_empty_tool_prompt: bool = False,
+    resource_activation_runtime: ResourceActivationRuntime | None = None,
+    prompt_section_composer: PromptSectionComposer | None = None,
+) -> ToolPromptRebuilder:
+    """Build the neutral prompt update callback used by session tool runtime."""
+    activation = resource_activation_runtime or ResourceActivationRuntime()
+    composer = prompt_section_composer or PromptSectionComposer()
+
+    def rebuild(active_definitions: list[ToolDefinition] | None) -> None:
+        if show_empty_tool_prompt and active_definitions is None:
+            active_definitions = []
+        tool_prompt = (
+            "Available tools:\n(none)"
+            if show_empty_tool_prompt and active_definitions == []
+            else None
+        )
+        bundle = get_resource_bundle()
+        assembly = assemble_prompt(
+            base_prompt=base_prompt,
+            resource_bundle=bundle,
+            tool_definitions=active_definitions,
+            tool_prompt=tool_prompt,
+            resource_activation=activation.activate(bundle),
+            prompt_section_composer=composer,
+        )
+        agent.system_prompt = assembly.system_prompt
+
+    return rebuild
 
 
 @dataclass

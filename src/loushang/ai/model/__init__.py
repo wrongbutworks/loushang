@@ -34,7 +34,14 @@ from loushang.ai.model.registry import (
     resolve_model_endpoint,
     resolve_model_ref,
 )
-from loushang.ai.model.selection import ModelSelection
+from loushang.ai.model.selection import (
+    ModelSelection,
+    current_model_first,
+    is_usable_model_selection,
+    model_label_from_selection,
+    model_selection_ref,
+    normalize_model_selection,
+)
 
 __all__ = [
     "AdapterConfig",
@@ -48,6 +55,7 @@ __all__ = [
     "Endpoint",
     "Model",
     "ModelSelection",
+    "current_model_first",
     "ModelRegistry",
     "OpenAICompletionsConfig",
     "OpenAIResponsesConfig",
@@ -63,6 +71,10 @@ __all__ = [
     "load_model_registry_from_directory",
     "load_model_registry_from_file",
     "merge_adapter_config",
+    "is_usable_model_selection",
+    "model_label_from_selection",
+    "model_selection_ref",
+    "normalize_model_selection",
     "reload_default_model_registry",
     "resolve_model_api",
     "resolve_model_endpoint",

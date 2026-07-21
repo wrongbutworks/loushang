@@ -18,10 +18,6 @@ from loushang.harness.agent_transcript import (
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import (
     DiagnosticPhase,
-    DiagnosticRecord,
-    DiagnosticsQuery,
-    DiagnosticSummary,
-    ErrorReport,
 )
 from loushang.harness.extensions.context import (
     SessionBeforeForkEvent,
@@ -40,6 +36,8 @@ from loushang.harness.session import (
     AgentTranscriptSessionRuntime,
     ForkProfile,
     ForkSelection,
+    ProductTranscriptSessionLifecyclePorts,
+    ProductTranscriptSessionLifecycleStore,
     SessionCwdIssue,
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
@@ -96,121 +94,6 @@ def get_missing_session_cwd_issue(
     )
 
 
-class _CodingSessionLifecycleStore:
-    """Bind the generic lifecycle transaction to Coding's transcript session."""
-
-    def __init__(self, runtime: AgentSessionRuntime) -> None:
-        self._runtime = runtime
-        self._known_cwds: dict[int, str] = {}
-
-    async def create(
-        self,
-        current_session: AgentSession | None,
-        transition: SessionLifecycleTransition,
-        *,
-        cwd: str,
-        parent_session_ref: str | None,
-    ) -> AgentSession:
-        manager = await SessionManager.new(
-            session_dir=self._runtime.session_dir,
-            cwd=cwd,
-            persist=self._runtime.persist,
-            parent_session=parent_session_ref,
-        )
-        return self._build_session(
-            manager,
-            current=current_session,
-            transition=transition,
-        )
-
-    async def restore(
-        self,
-        current_session: AgentSession | None,
-        transition: SessionLifecycleTransition,
-        session_ref: str | Path,
-        *,
-        cwd_override: str | None = None,
-    ) -> AgentSession:
-        session_file = self._runtime.resolve_session_file(session_ref)
-        manager = await SessionManager.open(
-            session_file,
-            session_dir=self._runtime.session_dir,
-            cwd_override=(
-                self._runtime._resolve_import_cwd(cwd_override)
-                if cwd_override is not None
-                else None
-            ),
-            persist=self._runtime.persist,
-        )
-        missing_issue = get_missing_session_cwd_issue(manager)
-        if missing_issue is not None:
-            await manager.dispose_runtime_profile()
-            raise HarnessMissingSessionCwdError(
-                SessionCwdIssue(
-                    session_cwd=missing_issue.session_cwd,
-                    session_ref=(
-                        str(missing_issue.session_file)
-                        if missing_issue.session_file is not None
-                        else None
-                    ),
-                )
-            )
-        return self._build_session(
-            manager,
-            current=current_session,
-            transition=transition,
-        )
-
-    async def fork(
-        self,
-        session: AgentSession,
-        transition: SessionLifecycleTransition,
-        target_entry_id: str | None,
-    ) -> AgentSession:
-        if target_entry_id is None:
-            manager = await SessionManager.new(
-                session_dir=self._runtime.session_dir,
-                cwd=session.session_manager.get_cwd(),
-                persist=self._runtime.persist,
-                parent_session=_session_file_from_session(session),
-            )
-        else:
-            manager = await session.session_manager.fork(target_entry_id)
-        return self._build_session(
-            manager,
-            current=session,
-            transition=transition,
-        )
-
-    def get_cwd(self, session: AgentSession) -> str:
-        manager = getattr(session, "session_manager", None)
-        getter = getattr(manager, "get_cwd", None)
-        if callable(getter):
-            return getter()
-        return self._known_cwds[id(session)]
-
-    def get_session_ref(self, session: AgentSession) -> str | None:
-        return _session_file_from_session(session)
-
-    def get_leaf_entry_id(self, session: AgentSession) -> str | None:
-        return session.session_manager.get_leaf_id()
-
-    def _build_session(
-        self,
-        manager: SessionManager,
-        *,
-        current: AgentSession | None,
-        transition: SessionLifecycleTransition,
-    ) -> AgentSession:
-        session = self._runtime._create_session_for_transition(
-            manager,
-            current=current,
-            transition=transition,
-        )
-        self._known_cwds[id(session)] = manager.get_cwd()
-        return session
-
-
 class AgentSessionRuntime(AgentTranscriptSessionRuntime[AgentSession, str]):
     def __init__(
         self,
@@ -231,7 +114,26 @@ class AgentSessionRuntime(AgentTranscriptSessionRuntime[AgentSession, str]):
         )
         self.persist = persist
         lifecycle = SessionLifecycleRuntime[AgentSession, str](
-            store=_CodingSessionLifecycleStore(self),
+            store=ProductTranscriptSessionLifecycleStore(
+                ports=ProductTranscriptSessionLifecyclePorts(
+                    create_transcript=self._create_transcript_session,
+                    restore_transcript=self._restore_transcript_session,
+                    fork_transcript=self._fork_transcript_session,
+                    dispose_transcript=_dispose_transcript_session,
+                    transcript_for_session=lambda session: session.session_manager,
+                    transcript_cwd=lambda manager: manager.get_cwd(),
+                    transcript_session_ref=_session_manager_ref,
+                    transcript_leaf_entry_id=lambda manager: manager.get_leaf_id(),
+                ),
+                build_session=lambda manager, current, transition: (
+                    self._create_session_for_transition(
+                        manager,
+                        current=current,
+                        transition=transition,
+                    )
+                ),
+                validate_restored_transcript=self._validate_restored_transcript,
+            ),
             current_session=current_session,
             fork_profile=_CODING_FORK_PROFILE,
             fork_target_resolver=_resolve_coding_fork_target,
@@ -254,6 +156,7 @@ class AgentSessionRuntime(AgentTranscriptSessionRuntime[AgentSession, str]):
             auto_refresh_session_index=auto_refresh_session_index,
             session_index_refresh_interval=session_index_refresh_interval,
             session_index_flush_delay=session_index_flush_delay,
+            diagnostics_runtime=self._session_diagnostics_runtime,
             record_index_refresh_failure=lambda exc, all_sessions: (
                 self._record_session_index_flush_failure(
                     exc,
@@ -419,8 +322,12 @@ class AgentSessionRuntime(AgentTranscriptSessionRuntime[AgentSession, str]):
         )
 
     async def clone_session(self) -> AgentSession:
-        result = await self._run_fork_session_operation(None)
+        result = await self.clone_session_operation()
         return require_session_operation_session(result)
+
+    async def clone_session_operation(self) -> _SessionOperationResult:
+        """Return the clone result through the shared lifecycle operation contract."""
+        return await self._run_fork_session_operation(None)
 
     async def import_from_jsonl(
         self, input_path: str | Path, cwd_override: str | Path | None = None
@@ -463,9 +370,6 @@ class AgentSessionRuntime(AgentTranscriptSessionRuntime[AgentSession, str]):
                 schedule_index=False,
             ),
         )
-
-    def get_current_session(self) -> AgentSession | None:
-        return super().get_current_session()
 
     async def rename_session(
         self, session_id: str | Path, name: str | None
@@ -516,36 +420,6 @@ class AgentSessionRuntime(AgentTranscriptSessionRuntime[AgentSession, str]):
                 },
             )
             raise
-
-    def get_last_diagnostics(self, limit: int = 50) -> list[DiagnosticRecord]:
-        return self._session_diagnostics_runtime().get_last_diagnostics(limit=limit)
-
-    def get_diagnostics(
-        self, query: DiagnosticsQuery | None = None
-    ) -> list[DiagnosticRecord]:
-        return self._session_diagnostics_runtime().get_diagnostics(query=query)
-
-    def get_session_diagnostics(
-        self, query: DiagnosticsQuery | None = None
-    ) -> list[DiagnosticRecord]:
-        return self._session_diagnostics_runtime(self.session).get_session_diagnostics(
-            query=query
-        )
-
-    def get_diagnostics_summary(
-        self, query: DiagnosticsQuery | None = None
-    ) -> DiagnosticSummary:
-        return self._session_diagnostics_runtime().get_diagnostics_summary(query=query)
-
-    def get_session_diagnostics_summary(
-        self, query: DiagnosticsQuery | None = None
-    ) -> DiagnosticSummary:
-        return self._session_diagnostics_runtime(
-            self.session
-        ).get_session_diagnostics_summary(query=query)
-
-    def get_last_error_report(self) -> ErrorReport | None:
-        return self._session_diagnostics_runtime().get_last_error_report()
 
     def get_packages(
         self, *, catalog_path: str | None = None
@@ -795,6 +669,62 @@ class AgentSessionRuntime(AgentTranscriptSessionRuntime[AgentSession, str]):
                 reason=start_reason,
                 previous_session_file=_session_file_from_session(current),
             ),
+        )
+
+    async def _create_transcript_session(
+        self,
+        cwd: str,
+        parent_session_ref: str | None,
+    ) -> SessionManager:
+        return await SessionManager.new(
+            session_dir=self.session_dir,
+            cwd=cwd,
+            persist=self.persist,
+            parent_session=parent_session_ref,
+        )
+
+    async def _restore_transcript_session(
+        self,
+        session_ref: str | Path,
+        cwd_override: str | None,
+    ) -> SessionManager:
+        return await SessionManager.open(
+            self.resolve_session_file(session_ref),
+            session_dir=self.session_dir,
+            cwd_override=(
+                self._resolve_import_cwd(cwd_override)
+                if cwd_override is not None
+                else None
+            ),
+            persist=self.persist,
+        )
+
+    async def _fork_transcript_session(
+        self,
+        manager: SessionManager,
+        target_entry_id: str | None,
+    ) -> SessionManager:
+        if target_entry_id is not None:
+            return await manager.fork(target_entry_id)
+        return await self._create_transcript_session(
+            manager.get_cwd(),
+            _session_manager_ref(manager),
+        )
+
+    @staticmethod
+    def _validate_restored_transcript(manager: SessionManager) -> None:
+        missing_issue = get_missing_session_cwd_issue(manager)
+        if missing_issue is None:
+            return
+        raise HarnessMissingSessionCwdError(
+            SessionCwdIssue(
+                session_cwd=missing_issue.session_cwd,
+                session_ref=(
+                    str(missing_issue.session_file)
+                    if missing_issue.session_file is not None
+                    else None
+                ),
+            )
         )
 
     async def _prepare_session_shutdown(
@@ -1184,4 +1114,13 @@ def _session_file_from_session(session: AgentSession | None) -> str | None:
 
 def _session_file_from_manager(manager: SessionManager) -> str | None:
     session_file = getattr(manager, "session_file", None)
+    return str(session_file) if session_file is not None else None
+
+
+async def _dispose_transcript_session(manager: SessionManager) -> None:
+    await manager.dispose_runtime_profile()
+
+
+def _session_manager_ref(manager: SessionManager) -> str | None:
+    session_file = manager.get_session_file()
     return str(session_file) if session_file is not None else None

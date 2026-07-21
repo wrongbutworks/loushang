@@ -14,6 +14,12 @@ from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar
 
 from loushang.ai.types import ImagePart
+from loushang.harness.diagnostics.types import (
+    DiagnosticRecord,
+    DiagnosticsQuery,
+    DiagnosticSummary,
+    ErrorReport,
+)
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.session.runtime import SessionRuntime
 from loushang.harness.workspace.exec import ExecOutputChunk
@@ -162,6 +168,56 @@ class SessionResourcePort(Protocol):
     def request_resource_refresh(self) -> None: ...
 
 
+class SessionDiagnosticsPort(Protocol):
+    """Optional session-scoped diagnostics queries supplied by a Product."""
+
+    def get_last_diagnostics(self, limit: int = 50) -> list[DiagnosticRecord]: ...
+
+    def get_diagnostics(
+        self, query: DiagnosticsQuery | None = None
+    ) -> list[DiagnosticRecord]: ...
+
+    def get_session_diagnostics(
+        self, query: DiagnosticsQuery | None = None
+    ) -> list[DiagnosticRecord]: ...
+
+    def get_diagnostics_summary(
+        self, query: DiagnosticsQuery | None = None
+    ) -> DiagnosticSummary: ...
+
+    def get_session_diagnostics_summary(
+        self, query: DiagnosticsQuery | None = None
+    ) -> DiagnosticSummary: ...
+
+    def get_last_error_report(self) -> ErrorReport | None: ...
+
+
+class SessionPackagePort(Protocol):
+    """Optional package operations bound by a Product resource policy."""
+
+    def get_packages(
+        self, *, catalog_path: str | None = None
+    ) -> list[dict[str, object]]: ...
+
+    async def materialize_package(self, source: str) -> dict[str, object]: ...
+
+    async def install_package(
+        self, source: str, *, scope: str = "project"
+    ) -> dict[str, object]: ...
+
+    async def update_package(self, source: str) -> dict[str, object]: ...
+
+    async def update_packages(self) -> list[dict[str, object]]: ...
+
+    async def check_package_updates(self) -> list[dict[str, object]]: ...
+
+    def remove_package(self, source: str) -> dict[str, object]: ...
+
+    def uninstall_package(
+        self, source: str, *, scope: str = "project"
+    ) -> dict[str, object]: ...
+
+
 class SessionControlPort(Protocol):
     """Stable common control surface exposed by a composed Product session.
 
@@ -273,6 +329,8 @@ class SessionFacadePorts(
     identity: SessionIdentityPort
     maintenance: SessionMaintenancePort
     resources: SessionResourcePort
+    diagnostics: SessionDiagnosticsPort | None = None
+    packages: SessionPackagePort | None = None
 
 
 @dataclass
@@ -305,6 +363,8 @@ class SessionFacade(
     identity: SessionIdentityPort
     maintenance: SessionMaintenancePort
     resources: SessionResourcePort
+    diagnostics: SessionDiagnosticsPort | None = None
+    packages: SessionPackagePort | None = None
 
     @classmethod
     def from_ports(
@@ -334,6 +394,8 @@ class SessionFacade(
             identity=ports.identity,
             maintenance=ports.maintenance,
             resources=ports.resources,
+            diagnostics=ports.diagnostics,
+            packages=ports.packages,
         )
 
     @property
@@ -383,6 +445,79 @@ class SessionFacade(
 
     def get_context_usage(self) -> UsageT | None:
         return self.view.get_context_usage()
+
+    def get_last_diagnostics(self, limit: int = 50) -> list[DiagnosticRecord]:
+        return self.diagnostics.get_last_diagnostics(limit) if self.diagnostics else []
+
+    def get_diagnostics(
+        self, query: DiagnosticsQuery | None = None
+    ) -> list[DiagnosticRecord]:
+        return self.diagnostics.get_diagnostics(query) if self.diagnostics else []
+
+    def get_session_diagnostics(
+        self, query: DiagnosticsQuery | None = None
+    ) -> list[DiagnosticRecord]:
+        return (
+            self.diagnostics.get_session_diagnostics(query)
+            if self.diagnostics
+            else []
+        )
+
+    def get_diagnostics_summary(
+        self, query: DiagnosticsQuery | None = None
+    ) -> DiagnosticSummary:
+        return (
+            self.diagnostics.get_diagnostics_summary(query)
+            if self.diagnostics
+            else DiagnosticSummary(0, 0, 0, 0)
+        )
+
+    def get_session_diagnostics_summary(
+        self, query: DiagnosticsQuery | None = None
+    ) -> DiagnosticSummary:
+        return (
+            self.diagnostics.get_session_diagnostics_summary(query)
+            if self.diagnostics
+            else DiagnosticSummary(0, 0, 0, 0)
+        )
+
+    def get_last_error_report(self) -> ErrorReport | None:
+        return self.diagnostics.get_last_error_report() if self.diagnostics else None
+
+    def get_packages(
+        self, *, catalog_path: str | None = None
+    ) -> list[dict[str, object]]:
+        return self.packages.get_packages(catalog_path=catalog_path) if self.packages else []
+
+    async def materialize_package(self, source: str) -> dict[str, object]:
+        return await self._require_packages().materialize_package(source)
+
+    async def install_package(
+        self, source: str, *, scope: str = "project"
+    ) -> dict[str, object]:
+        return await self._require_packages().install_package(source, scope=scope)
+
+    async def update_package(self, source: str) -> dict[str, object]:
+        return await self._require_packages().update_package(source)
+
+    async def update_packages(self) -> list[dict[str, object]]:
+        return await self._require_packages().update_packages()
+
+    async def check_package_updates(self) -> list[dict[str, object]]:
+        return await self._require_packages().check_package_updates()
+
+    def remove_package(self, source: str) -> dict[str, object]:
+        return self._require_packages().remove_package(source)
+
+    def uninstall_package(
+        self, source: str, *, scope: str = "project"
+    ) -> dict[str, object]:
+        return self._require_packages().uninstall_package(source, scope=scope)
+
+    def _require_packages(self) -> SessionPackagePort:
+        if self.packages is None:
+            raise RuntimeError("Package operations are not available.")
+        return self.packages
 
     def get_user_messages_for_forking(self) -> list[dict[str, str]]:
         return self.view.get_user_messages_for_forking()
@@ -557,6 +692,8 @@ __all__ = [
     "SessionFacadePorts",
     "SessionIdentityPort",
     "SessionMaintenancePort",
+    "SessionDiagnosticsPort",
+    "SessionPackagePort",
     "SessionResourcePort",
     "SessionRetryPort",
     "SessionToolsPort",

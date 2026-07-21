@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from loushang.harness.commands import (
     CommandCatalog,
     CommandDescriptor,
     CommandDispatchOutcome,
     CommandHandlerBinding,
+    CommandSourceInfo,
+    SessionCommandDescriptor,
     complete_slash_commands,
     dispatch_command,
     dispatch_command_async,
@@ -135,6 +138,23 @@ def test_completion_projects_descriptor_metadata() -> None:
             "kind": "command",
         }
     ]
+
+
+def test_session_command_descriptor_is_a_neutral_resource_backed_contract() -> None:
+    descriptor = SessionCommandDescriptor(
+        name="review",
+        description="Review the current draft",
+        source="prompt",
+        source_info=CommandSourceInfo(path="/tmp/prompts/review.md"),
+    )
+
+    assert isinstance(descriptor, CommandDescriptor)
+    assert descriptor.source_info.path == "/tmp/prompts/review.md"
+
+    module_path = (
+        Path(__file__).parents[3] / "src/loushang/harness/commands/descriptors.py"
+    )
+    assert "loushang.coding" not in module_path.read_text(encoding="utf-8")
 
 
 def test_sync_dispatch_stops_at_first_handled_outcome() -> None:

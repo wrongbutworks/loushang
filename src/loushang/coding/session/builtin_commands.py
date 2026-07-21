@@ -7,17 +7,22 @@ from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 from typing import Protocol
 
-from loushang.coding.commands.types import (
-    BUILTIN_SLASH_COMMANDS,
-    SessionCommandDescriptor,
-)
+from loushang.coding.commands.types import BUILTIN_SLASH_COMMANDS
 from loushang.coding.platform.changelog import (
     find_changelog_path,
     format_changelog_entries,
     parse_changelog,
 )
 from loushang.coding.session.types import CommandExecutionResult
-from loushang.coding.source_info import create_source_info
+from loushang.harness.commands import SessionCommandDescriptor
+from loushang.harness.resources.source import create_source_info
+from loushang.harness.session.command_pack import (
+    StandardSessionCommandId,
+    StandardSessionCommandPorts,
+    StandardSessionCommandResult,
+    StandardSessionExport,
+    execute_standard_session_command_async,
+)
 
 BuiltinCallable = Callable[..., object | Awaitable[object]]
 
@@ -52,11 +57,19 @@ class BuiltinCommandBackend:
     copy_text: Callable[[str], ClipboardCopyResultPort] = _copy_to_clipboard
     get_changelog: Callable[[str], object] | None = None
     new_session: Callable[[object | None], object | Awaitable[object]] | None = None
-    resume_session: Callable[[str, object | None], object | Awaitable[object]] | None = None
-    fork_session: Callable[[str, object | None], object | Awaitable[object]] | None = None
+    resume_session: (
+        Callable[[str, object | None], object | Awaitable[object]] | None
+    ) = None
+    fork_session: Callable[[str, object | None], object | Awaitable[object]] | None = (
+        None
+    )
     clone_session: Callable[[], object | Awaitable[object]] | None = None
-    navigate_tree: Callable[[str, object | None], object | Awaitable[object]] | None = None
-    import_session: Callable[[str, str | None], object | Awaitable[object]] | None = None
+    navigate_tree: Callable[[str, object | None], object | Awaitable[object]] | None = (
+        None
+    )
+    import_session: Callable[[str, str | None], object | Awaitable[object]] | None = (
+        None
+    )
     get_active_tool_names: Callable[[], list[str]] | None = None
     get_all_tools: Callable[[], list[object]] | None = None
     set_active_tools: Callable[[list[str]], object | Awaitable[object]] | None = None
@@ -65,7 +78,9 @@ class BuiltinCommandBackend:
 
 
 def list_builtin_command_descriptors() -> list[SessionCommandDescriptor]:
-    source_info = create_source_info("<builtin>", source="builtin", scope="project", origin="package")
+    source_info = create_source_info(
+        "<builtin>", source="builtin", scope="project", origin="package"
+    )
     return [
         SessionCommandDescriptor(
             name=command.name,
@@ -86,281 +101,182 @@ async def execute_builtin_command_async(
     args: str,
     backend: BuiltinCommandBackend,
 ) -> CommandExecutionResult | None:
-    invocation_name = invocation_name[1:] if invocation_name.startswith("/") else invocation_name
+    invocation_name = (
+        invocation_name[1:] if invocation_name.startswith("/") else invocation_name
+    )
     if invocation_name not in _BUILTIN_COMMAND_NAMES:
         return None
 
+    standard_result = await execute_standard_session_command_async(
+        invocation_name,
+        args,
+        _standard_session_command_ports(backend),
+    )
+    if standard_result is not None:
+        return _project_standard_session_command_result(standard_result)
+
     match invocation_name:
-        case "name":
-            return await _execute_name(args, backend)
-        case "session":
-            return _execute_session(backend)
-        case "export":
-            return _execute_export(args, backend)
-        case "copy":
-            return _execute_copy(args, backend)
-        case "changelog":
-            return _execute_changelog(args, backend)
-        case "tools":
-            return await _execute_tools(args, backend)
-        case "extensions":
-            return _execute_extensions(args, backend)
-        case "compact":
-            return await _execute_compact(args, backend)
-        case "reload":
-            return await _execute_reload(backend)
-        case "new":
-            return await _execute_new(args, backend)
-        case "resume":
-            return await _execute_resume(args, backend)
-        case "fork":
-            return await _execute_fork(args, backend)
-        case "clone":
-            return await _execute_clone(backend)
-        case "tree":
-            return await _execute_tree(args, backend)
-        case "import":
-            return await _execute_import(args, backend)
         case _:
             return _unsupported(invocation_name)
 
 
-async def _execute_name(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    if backend.set_session_name is None:
-        return _unsupported("name")
-    name = args.strip() or None
-    await _maybe_await(backend.set_session_name(name))
-    return _ok("name", name=name)
-
-
-def _execute_session(backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    if backend.get_session_info is None:
-        return _unsupported("session")
-    return _ok("session", session=dict(backend.get_session_info()))
-
-
-def _execute_export(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    raw_path = args.strip() or None
-    wants_jsonl = raw_path is not None and raw_path.lower().endswith(".jsonl")
-    export_fn = backend.export_to_jsonl if wants_jsonl else backend.export_to_html
-    export_format = "jsonl" if wants_jsonl else "html"
-    if export_fn is None:
-        return _unsupported("export")
-    path = export_fn(raw_path)
-    return _ok("export", format=export_format, path=path)
-
-
-def _execute_copy(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    copy_index = _parse_copy_index(args)
-    if copy_index is None:
-        return _error("copy", "Usage: /copy [N], where N is a positive integer.")
-    texts = _recent_assistant_texts(backend)
-    if not texts:
-        if backend.get_recent_assistant_texts is None and backend.get_last_assistant_text is None:
-            return _unsupported("copy")
-        return _ok(
-            "copy",
-            copied=False,
-            characters=0,
-            message=f"No assistant text is available for /copy {copy_index}.",
-            index=copy_index,
-        )
-    text_index = copy_index - 1
-    if text_index >= len(texts):
-        return _ok(
-            "copy",
-            copied=False,
-            characters=0,
-            message=f"No assistant text is available for /copy {copy_index}.",
-            index=copy_index,
-        )
-    text = texts[text_index]
-    result = backend.copy_text(text)
-    return _ok(
-        "copy",
-        copied=result.ok,
-        characters=len(text),
-        command_backend=result.command,
-        message=result.message,
-        index=copy_index,
+def _standard_session_command_ports(
+    backend: BuiltinCommandBackend,
+) -> StandardSessionCommandPorts:
+    return StandardSessionCommandPorts(
+        get_session_info=backend.get_session_info,
+        set_session_name=backend.set_session_name,
+        export_html=backend.export_to_html,
+        export_jsonl=backend.export_to_jsonl,
+        import_session=backend.import_session,
+        compact=backend.compact,
+        reload=backend.reload,
+        new_session=backend.new_session,
+        resume_session=backend.resume_session,
+        fork_session=backend.fork_session,
+        clone_session=backend.clone_session,
+        navigate_tree=backend.navigate_tree,
+        get_active_tool_names=backend.get_active_tool_names,
+        get_all_tools=backend.get_all_tools,
+        set_active_tools=backend.set_active_tools,
+        get_default_active_tool_names=backend.get_default_active_tool_names,
+        get_extensions=backend.get_extensions,
+        get_recent_assistant_texts=backend.get_recent_assistant_texts,
+        get_last_assistant_text=backend.get_last_assistant_text,
+        copy_text=backend.copy_text,
+        get_changelog=backend.get_changelog,
     )
 
 
-def _parse_copy_index(args: str) -> int | None:
-    stripped = args.strip()
-    if not stripped:
-        return 1
-    tokens = _split_args(stripped)
-    if len(tokens) != 1:
-        return None
-    try:
-        value = int(tokens[0])
-    except ValueError:
-        return None
-    return value if value > 0 else None
+def _project_standard_session_command_result(
+    result: StandardSessionCommandResult,
+) -> CommandExecutionResult:
+    command = result.command_id.value
+    if result.disposition == "unavailable":
+        return _unsupported(command)
+    if result.disposition == "invalid_arguments":
+        return _error(command, _standard_argument_error(result))
+
+    match result.command_id:
+        case StandardSessionCommandId.SESSION:
+            session = result.value
+            if isinstance(session, Mapping):
+                session = dict(session)
+            return _ok(command, session=session)
+        case StandardSessionCommandId.NAME:
+            return _ok(command, name=result.value)
+        case StandardSessionCommandId.EXPORT:
+            export = result.value
+            if not isinstance(export, StandardSessionExport):
+                raise TypeError("standard export command returned an invalid result")
+            return _ok(command, format=export.format, path=export.path)
+        case StandardSessionCommandId.IMPORT:
+            return _ok(command, result=_to_plain_data(result.value))
+        case StandardSessionCommandId.COMPACT:
+            return _ok(command, result=_to_plain_data(result.value))
+        case StandardSessionCommandId.RELOAD:
+            return _ok(command, reloaded=True)
+        case (
+            StandardSessionCommandId.NEW
+            | StandardSessionCommandId.RESUME
+            | StandardSessionCommandId.FORK
+            | StandardSessionCommandId.CLONE
+            | StandardSessionCommandId.TREE
+        ):
+            return _ok(command, result=_to_plain_data(result.value))
+        case StandardSessionCommandId.TOOLS:
+            value = result.value
+            if not isinstance(value, Mapping):
+                raise TypeError("standard tools command returned an invalid result")
+            active_tools = value.get("active_tools", [])
+            available_tools = value.get("available_tools", [])
+            if not isinstance(active_tools, list) or not isinstance(available_tools, list):
+                raise TypeError("standard tools command returned invalid tool data")
+            return _tools_ok(
+                [name for name in active_tools if isinstance(name, str)],
+                [entry for entry in available_tools if isinstance(entry, dict)],
+                action=value.get("action") if isinstance(value.get("action"), str) else None,
+            )
+        case StandardSessionCommandId.EXTENSIONS:
+            value = result.value
+            if not isinstance(value, Mapping):
+                raise TypeError("standard extensions command returned an invalid result")
+            extensions = value.get("extensions", [])
+            query = value.get("query")
+            selected = value.get("selected")
+            if not isinstance(extensions, list):
+                raise TypeError("standard extensions command returned invalid data")
+            extensions = [entry for entry in extensions if isinstance(entry, dict)]
+            if not isinstance(query, str) or not query:
+                return _extensions_ok(extensions)
+            if not isinstance(selected, Mapping):
+                available = ", ".join(_extension_id(extension) for extension in extensions) or "(none)"
+                return _error(
+                    "extensions",
+                    f"Unknown extension: {query}. Loaded extensions: {available}",
+                )
+            return _ok(
+                "extensions",
+                extension=dict(selected),
+                message=f"Extension {_extension_id(selected)}: {_extension_name(selected)}",
+                display=_extension_detail_display(selected),
+            )
+        case StandardSessionCommandId.COPY:
+            value = result.value
+            if not isinstance(value, Mapping):
+                raise TypeError("standard copy command returned an invalid result")
+            index = value.get("index", 1)
+            if not isinstance(index, int):
+                index = 1
+            if not value.get("available", False):
+                return _unsupported("copy")
+            if not value.get("copied", False):
+                return _ok(
+                    "copy",
+                    copied=False,
+                    characters=0,
+                    message=f"No assistant text is available for /copy {index}.",
+                    index=index,
+                )
+            return _ok(
+                "copy",
+                copied=True,
+                characters=value.get("characters", 0),
+                command_backend=value.get("command"),
+                message=value.get("message"),
+                index=index,
+            )
+        case StandardSessionCommandId.CHANGELOG:
+            return _ok(command, changelog=_to_plain_data(result.value))
 
 
-def _recent_assistant_texts(backend: BuiltinCommandBackend) -> tuple[str, ...]:
-    if backend.get_recent_assistant_texts is not None:
-        return tuple(backend.get_recent_assistant_texts())
-    if backend.get_last_assistant_text is None:
-        return ()
-    text = backend.get_last_assistant_text()
-    if not text:
-        return ()
-    return (text,)
-
-
-def _execute_changelog(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    if backend.get_changelog is None:
-        return _unsupported("changelog")
-    return _ok("changelog", changelog=_to_plain_data(backend.get_changelog(args)))
-
-
-async def _execute_tools(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    if backend.get_active_tool_names is None or backend.get_all_tools is None:
-        return _unsupported("tools")
-    active_tools = list(backend.get_active_tool_names())
-    available_tools = _available_tool_entries(backend.get_all_tools(), active_tools)
-    available_names = [
-        name
-        for entry in available_tools
-        if isinstance(name := entry.get("name"), str)
-    ]
-    tokens = _split_args(args.strip()) if args.strip() else []
-    if not tokens:
-        return _tools_ok(active_tools, available_tools)
-
-    action = tokens[0]
-    if action == "reset":
-        if len(tokens) != 1:
-            return _error("tools", "Usage: /tools reset")
-        if backend.get_default_active_tool_names is None or backend.set_active_tools is None:
-            return _unsupported("tools")
-        next_tools = _filter_available_tools(backend.get_default_active_tool_names(), available_names)
-        await _maybe_await(backend.set_active_tools(next_tools))
-        return _tools_ok(next_tools, _available_tool_entries(backend.get_all_tools(), next_tools), action="reset")
-
-    if action not in {"on", "off", "only"}:
-        return _error("tools", "Usage: /tools [on|off|only <tool[,tool]...>|reset]")
-    if backend.set_active_tools is None:
-        return _unsupported("tools")
-    requested = _parse_tool_names(tokens[1:])
-    if not requested:
-        return _error("tools", f"Usage: /tools {action} <tool[,tool]...>")
-    unknown = [name for name in requested if name not in available_names]
-    if unknown:
-        return _error("tools", f"Unknown tool: {', '.join(unknown)}. Available tools: {', '.join(available_names)}")
-
-    if action == "on":
-        next_tools = [*active_tools, *(name for name in requested if name not in active_tools)]
-    elif action == "off":
-        remove = set(requested)
-        next_tools = [name for name in active_tools if name not in remove]
-    else:
-        next_tools = requested
-    next_tools = _filter_available_tools(next_tools, available_names)
-    await _maybe_await(backend.set_active_tools(next_tools))
-    return _tools_ok(next_tools, _available_tool_entries(backend.get_all_tools(), next_tools), action=action)
-
-
-def _execute_extensions(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    if backend.get_extensions is None:
-        return _unsupported("extensions")
-    extensions = [_extension_entry(extension) for extension in backend.get_extensions()]
-    query = args.strip()
-    if not query:
-        return _extensions_ok(extensions)
-
-    extension = _find_extension(extensions, query)
-    if extension is None:
-        available = ", ".join(_extension_id(extension) for extension in extensions) or "(none)"
-        return _error("extensions", f"Unknown extension: {query}. Loaded extensions: {available}")
-    return _ok(
-        "extensions",
-        extension=extension,
-        message=f"Extension {_extension_id(extension)}: {_extension_name(extension)}",
-        display=_extension_detail_display(extension),
-    )
-
-
-async def _execute_compact(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    if backend.compact is None:
-        return _unsupported("compact")
-    result = await _maybe_await(backend.compact(args.strip() or None))
-    return _ok("compact", result=_to_plain_data(result))
-
-
-async def _execute_reload(backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    if backend.reload is None:
-        return _unsupported("reload")
-    await _maybe_await(backend.reload())
-    return _ok("reload", reloaded=True)
-
-
-async def _execute_new(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    if backend.new_session is None:
-        return _unsupported("new")
-    tokens = _split_args(args)
-    options: dict[str, object] = {}
-    if tokens:
-        options["cwd"] = tokens[0]
-    result = await _maybe_await(backend.new_session(options or None))
-    return _ok("new", result=_to_plain_data(result))
-
-
-async def _execute_resume(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    if backend.resume_session is None:
-        return _unsupported("resume")
-    tokens = _split_args(args)
-    if not tokens:
-        return _error("resume", "Usage: /resume <session-id-or-path>")
-    result = await _maybe_await(backend.resume_session(tokens[0], None))
-    return _ok("resume", result=_to_plain_data(result))
-
-
-async def _execute_fork(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    if backend.fork_session is None:
-        return _unsupported("fork")
-    tokens = _split_args(args)
-    if not tokens:
-        return _error("fork", "Usage: /fork <entry-id> [before|at]")
-    options: dict[str, object] = {}
-    if len(tokens) > 1:
-        if tokens[1] not in {"before", "at"}:
-            return _error("fork", f"Unsupported fork position: {tokens[1]}")
-        options["position"] = tokens[1]
-    result = await _maybe_await(backend.fork_session(tokens[0], options or None))
-    return _ok("fork", result=_to_plain_data(result))
-
-
-async def _execute_clone(backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    if backend.clone_session is None:
-        return _unsupported("clone")
-    result = await _maybe_await(backend.clone_session())
-    return _ok("clone", result=_to_plain_data(result))
-
-
-async def _execute_tree(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    if backend.navigate_tree is None:
-        return _unsupported("tree")
-    tokens = _split_args(args)
-    if not tokens:
-        return _error("tree", "Usage: /tree <entry-id> [--summarize] [--label <label>]")
-    target_id = tokens[0]
-    options = _parse_tree_options(tokens[1:])
-    result = await _maybe_await(backend.navigate_tree(target_id, options or None))
-    return _ok("tree", result=_to_plain_data(result))
-
-
-async def _execute_import(args: str, backend: BuiltinCommandBackend) -> CommandExecutionResult:
-    if backend.import_session is None:
-        return _unsupported("import")
-    tokens = _split_args(args)
-    if not tokens:
-        return _error("import", "Usage: /import <jsonl-path> [cwd]")
-    result = await _maybe_await(backend.import_session(tokens[0], tokens[1] if len(tokens) > 1 else None))
-    return _ok("import", result=_to_plain_data(result))
+def _standard_argument_error(result: StandardSessionCommandResult) -> str:
+    match result.command_id, result.error_code:
+        case StandardSessionCommandId.COPY, "invalid_copy_index":
+            return "Usage: /copy [N], where N is a positive integer."
+        case StandardSessionCommandId.TOOLS, "unknown_tool":
+            value = result.value
+            if isinstance(value, Mapping):
+                unknown = value.get("unknown", [])
+                available = value.get("available", [])
+                if isinstance(unknown, list) and isinstance(available, list):
+                    return (
+                        f"Unknown tool: {', '.join(str(item) for item in unknown)}. "
+                        f"Available tools: {', '.join(str(item) for item in available)}"
+                    )
+            return "Unknown tool"
+        case StandardSessionCommandId.RESUME, "missing_reference":
+            return "Usage: /resume <session-id-or-path>"
+        case StandardSessionCommandId.FORK, "missing_record_id":
+            return "Usage: /fork <entry-id> [before|at]"
+        case StandardSessionCommandId.FORK, "invalid_fork_position":
+            return f"Unsupported fork position: {result.value}"
+        case StandardSessionCommandId.IMPORT, "missing_import_path":
+            return "Usage: /import <jsonl-path> [cwd]"
+        case StandardSessionCommandId.TREE, "missing_record_id":
+            return "Usage: /tree <entry-id> [--summarize] [--label <label>]"
+        case _:
+            return f"Invalid arguments for /{result.command_id.value}"
 
 
 def read_changelog_for_cwd(cwd: str | Path, args: str = "") -> dict[str, object]:
@@ -413,7 +329,12 @@ def _unsupported(command: str) -> CommandExecutionResult:
     )
 
 
-def _tools_ok(active_tools: list[str], available_tools: list[dict[str, object]], *, action: str | None = None) -> CommandExecutionResult:
+def _tools_ok(
+    active_tools: list[str],
+    available_tools: list[dict[str, object]],
+    *,
+    action: str | None = None,
+) -> CommandExecutionResult:
     fields: dict[str, object] = {
         "active_tools": active_tools,
         "available_tools": available_tools,
@@ -435,51 +356,6 @@ def _split_args(args: str) -> list[str]:
         return shlex.split(args)
     except ValueError:
         return args.split()
-
-
-def _parse_tool_names(tokens: list[str]) -> list[str]:
-    names: list[str] = []
-    for token in tokens:
-        for name in token.split(","):
-            cleaned = name.strip()
-            if cleaned and cleaned not in names:
-                names.append(cleaned)
-    return names
-
-
-def _available_tool_entries(tools: list[object], active_tools: list[str]) -> list[dict[str, object]]:
-    active_set = set(active_tools)
-    entries: list[dict[str, object]] = []
-    for tool in tools:
-        name = _tool_field(tool, "name")
-        if not name:
-            continue
-        entry: dict[str, object] = {
-            "name": name,
-            "active": name in active_set,
-            "description": _tool_field(tool, "description"),
-        }
-        source_info = _tool_source_info(tool)
-        if source_info is not None:
-            entry["sourceInfo"] = dict(source_info)
-        entries.append(entry)
-    return entries
-
-
-def _tool_field(tool: object, field: str) -> str:
-    if isinstance(tool, Mapping):
-        value = tool.get(field)
-    else:
-        value = getattr(tool, field, None)
-    return value if isinstance(value, str) else ""
-
-
-def _tool_source_info(tool: object) -> Mapping[object, object] | None:
-    if isinstance(tool, Mapping):
-        value = tool.get("sourceInfo") or tool.get("source_info")
-    else:
-        value = getattr(tool, "sourceInfo", None) or getattr(tool, "source_info", None)
-    return value if isinstance(value, Mapping) else None
 
 
 def _extensions_ok(extensions: list[dict[str, object]]) -> CommandExecutionResult:
@@ -504,7 +380,9 @@ def _extension_summary(extension: Mapping[str, object]) -> str:
     details = [_string_mapping_field(extension, "permissionLevel", default="safe")]
     details.append(f"{surface_count} {_pluralize('surface', surface_count)}")
     if diagnostic_count:
-        details.append(f"{diagnostic_count} {_pluralize('diagnostic', diagnostic_count)}")
+        details.append(
+            f"{diagnostic_count} {_pluralize('diagnostic', diagnostic_count)}"
+        )
     return f"{_extension_id(extension)} ({', '.join(details)})"
 
 
@@ -545,7 +423,9 @@ def _extension_detail_display(extension: Mapping[str, object]) -> str:
         value = _string_mapping_field(extension, field)
         if value:
             lines.append(f"{label}: {value}")
-    lines.append(f"Permission: {_string_mapping_field(extension, 'permissionLevel', default='safe')}")
+    lines.append(
+        f"Permission: {_string_mapping_field(extension, 'permissionLevel', default='safe')}"
+    )
     lines.append(f"Capabilities: {_capabilities_text(extension)}")
     source_path = _string_mapping_field(extension, "sourcePath")
     if source_path:
@@ -617,22 +497,6 @@ def _capabilities_text(extension: Mapping[str, object]) -> str:
     return ", ".join(capabilities) if capabilities else "(none)"
 
 
-def _find_extension(extensions: list[dict[str, object]], query: str) -> dict[str, object] | None:
-    for extension in extensions:
-        if query in {_extension_id(extension), _extension_name(extension), _runtime_name(extension)}:
-            return extension
-    return None
-
-
-def _extension_entry(extension: object) -> dict[str, object]:
-    if isinstance(extension, Mapping):
-        return dict(extension)
-    return {
-        "id": _string_object_field(extension, "id", default=_string_object_field(extension, "name")),
-        "name": _string_object_field(extension, "name"),
-    }
-
-
 def _extension_id(extension: Mapping[str, object]) -> str:
     return _string_mapping_field(extension, "id", default=_extension_name(extension))
 
@@ -645,13 +509,10 @@ def _runtime_name(extension: Mapping[str, object]) -> str:
     return _string_mapping_field(extension, "runtimeName")
 
 
-def _string_mapping_field(value: Mapping[str, object], field: str, *, default: str = "") -> str:
+def _string_mapping_field(
+    value: Mapping[str, object], field: str, *, default: str = ""
+) -> str:
     raw = value.get(field)
-    return raw if isinstance(raw, str) and raw else default
-
-
-def _string_object_field(value: object, field: str, *, default: str = "") -> str:
-    raw = getattr(value, field, None)
     return raw if isinstance(raw, str) and raw else default
 
 
@@ -662,30 +523,6 @@ def _list_field(value: Mapping[str, object], field: str) -> list[object]:
 
 def _pluralize(word: str, count: int) -> str:
     return word if count == 1 else f"{word}s"
-
-
-def _filter_available_tools(tool_names: list[str], available_names: list[str]) -> list[str]:
-    available = set(available_names)
-    return [name for name in tool_names if name in available]
-
-
-def _parse_tree_options(tokens: list[str]) -> dict[str, object]:
-    options: dict[str, object] = {}
-    index = 0
-    while index < len(tokens):
-        token = tokens[index]
-        if token == "--summarize":
-            options["summarize"] = True
-        elif token in {"--label", "-l"} and index + 1 < len(tokens):
-            index += 1
-            options["label"] = tokens[index]
-        elif token == "--replace-instructions":
-            options["replace_instructions"] = True
-        elif token in {"--instructions", "--custom-instructions"} and index + 1 < len(tokens):
-            index += 1
-            options["custom_instructions"] = tokens[index]
-        index += 1
-    return options
 
 
 def _to_plain_data(value: object) -> object:

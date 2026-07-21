@@ -244,3 +244,19 @@ def test_command_execution_runtime_streams_and_commits_one_record() -> None:
         )
     ]
     assert refreshes == 1
+
+
+def test_tool_activation_profile_selects_product_defaults() -> None:
+    from loushang.harness.session import ToolActivationProfile
+
+    profile = ToolActivationProfile(
+        preferred_names=("read", "bash"),
+        builtin_names=frozenset({"read", "bash"}),
+        activate_new_tools=True,
+    )
+    definitions = [_tool_definition("write"), _tool_definition("read")]
+
+    assert profile.default_names(definitions) == ["read", "write"]
+    assert profile.default_names(definitions, {"read"}) == ["read"]
+    assert profile.should_activate_new("custom", definitions[0]) is True
+    assert profile.should_activate_new("read", definitions[1]) is False

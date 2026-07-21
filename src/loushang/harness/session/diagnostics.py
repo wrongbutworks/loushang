@@ -22,6 +22,7 @@ from loushang.harness.diagnostics.types import (
     DiagnosticSummary,
     ErrorReport,
 )
+from loushang.harness.extensions.types import ResolvedCommand
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.protocol import require_json_value
 
@@ -131,6 +132,75 @@ class SessionDiagnosticsRuntime:
                 entry_id=scope.entry_id,
                 level=_extension_diagnostic_level(diagnostic.code),
             )
+        )
+
+    def record_command_not_found(self, invocation_name: str, args: str) -> None:
+        """Record a standard unresolved slash-command diagnostic."""
+
+        if self.diagnostics_service is None:
+            return
+        scope = self.get_scope()
+        self.diagnostics_service.capture_failure(
+            code="command_not_found",
+            error=f"Command not found: /{invocation_name}",
+            phase="runtime",
+            source="session",
+            level="warning",
+            session_id=scope.session_id,
+            entry_id=scope.entry_id,
+            details={"invocation_name": invocation_name, "args": args},
+        )
+
+    def record_preflight_diagnostics(
+        self, diagnostics: Sequence[ResourceDiagnostic]
+    ) -> None:
+        """Persist resource preflight diagnostics with the current session scope."""
+
+        if self.diagnostics_service is None or not diagnostics:
+            return
+        scope = self.get_scope()
+        self.diagnostics_service.record_many(
+            self.diagnostics_service.normalize_resource_diagnostic(
+                diagnostic,
+                phase="runtime",
+                source="session",
+                session_id=scope.session_id,
+                entry_id=scope.entry_id,
+            )
+            for diagnostic in diagnostics
+        )
+
+    def record_extension_command_error(
+        self, *, command: ResolvedCommand, exc: BaseException
+    ) -> None:
+        """Record a failed extension command without Product-specific shaping."""
+
+        if self.diagnostics_service is None:
+            return
+        scope = self.get_scope()
+        source_info = command.source_info
+        self.diagnostics_service.capture_failure(
+            code="extension_command_failed",
+            error=exc if isinstance(exc, Exception) else str(exc),
+            phase="runtime",
+            source="extensions",
+            session_id=scope.session_id,
+            entry_id=scope.entry_id,
+            source_path=source_info.path,
+            details={
+                "invocation_name": command.invocation_name,
+                "command_name": command.name,
+                "extension_name": command.extension_name,
+                "source_info": {
+                    "path": source_info.path.as_posix(),
+                    "source": source_info.source,
+                    "scope": source_info.scope,
+                    "origin": source_info.origin,
+                    "base_dir": source_info.base_dir.as_posix()
+                    if source_info.base_dir is not None
+                    else None,
+                },
+            },
         )
 
     def sync_extension_diagnostics(self, *, phase: DiagnosticPhase) -> None:

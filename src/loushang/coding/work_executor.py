@@ -5,9 +5,8 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from loushang.coding.event import project_runtime_event_to_session_event
 from loushang.harness.agent_transcript import create_agent_transcript_message_codec
-from loushang.harness.events import RuntimeEvent
+from loushang.harness.events import RuntimeEvent, project_session_runtime_event
 from loushang.work.agent_projection import (
     AgentWorkFactProjectionContext,
     project_agent_event_to_work_facts,
@@ -153,7 +152,7 @@ class CodingDomainExecutor:
         turn = self._resolve_turn(operation, context)
 
         async def listener(event: RuntimeEvent[object]) -> None:
-            projected = project_runtime_event_to_session_event(event)
+            projected = project_session_runtime_event(event)
             if projected is None:
                 return
             facts = project_agent_event_to_work_facts(

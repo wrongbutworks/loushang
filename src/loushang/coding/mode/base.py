@@ -1,87 +1,18 @@
-"""Shared mode abstractions used by print / rpc mode adapters."""
+"""Coding mode factory over the shared Harness host contracts."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
-from typing import (
-    Any,
-    Literal,
-    Protocol,
-    TextIO,
-    TypedDict,
-    cast,
-)
+from typing import Any, TextIO
 
-from loushang.channel.product_host import (
-    ProductHostAction,
-    ProductHostActionType,
-    ProductHostAdapter,
-    dispatch_product_host_action,
-    normalize_product_host_action,
-)
-from loushang.coding.event import JsonEventView
 from loushang.coding.work_runtime import CodingWorkRuntime
+from loushang.harness.host.mode import (
+    ModeAdapter,
+    ModeConfig,
+)
 from loushang.work import EventLogBackend
 
-ModeName = Literal["text", "print", "json", "rpc"]
-ModeActionType = ProductHostActionType
-
-
-class ModeState(TypedDict, total=False):
-    """Shape-aligned runtime mode state projection used by CLI/RPC print surfaces."""
-
-    model: dict[str, object] | None
-    thinkingLevel: str
-    isStreaming: bool
-    isCompacting: bool
-    steeringMode: str
-    followUpMode: str
-    autoCompactionEnabled: bool
-    messageCount: int
-    pendingMessageCount: int
-    sessionId: str
-    sessionName: str
-    sessionFile: str
-
-
-@dataclass(frozen=True)
-class ModeConfig:
-    """Mode-level configuration shared by CLI and embedders."""
-
-    mode: ModeName = "text"
-    event_view: JsonEventView = "full"
-    event_select: Sequence[str] | str | None = None
-    render_tool_events: bool = False
-
-
-ModeAction = ProductHostAction
-
-
-def normalize_mode_action(action: ModeAction | Mapping[str, object]) -> ModeAction:
-    """Compatibility wrapper for the Channel-owned host action normalizer."""
-
-    return normalize_product_host_action(action, action_name="Mode action")
-
-
-class ModeAdapter(ProductHostAdapter, Protocol):
-    """Coding compatibility view of the generic Product host contract."""
-
-    def get_mode_state(self) -> ModeState: ...
-
-
-async def dispatch_mode_action(
-    adapter: ModeAdapter,
-    action: ModeAction | Mapping[str, object],
-) -> int | ModeState:
-    """Dispatch a mode action through the stable adapter contract."""
-
-    result = await dispatch_product_host_action(
-        adapter,
-        action,
-        get_state=lambda current: cast(ModeAdapter, current).get_mode_state(),
-    )
-    return cast(int | ModeState, result)
+JsonEventView = str
 
 
 def create_mode_adapter(

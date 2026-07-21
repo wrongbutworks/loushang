@@ -24,6 +24,12 @@ from loushang.channel.jsonl_command_host import (
     JsonlCommandHostErrorReason,
     JsonlCommandPort,
 )
+from loushang.channel.jsonl_command_router import (
+    JsonlCommandHandler,
+    JsonlCommandRoute,
+    JsonlCommandRouter,
+    JsonlUnsupportedCommandHandler,
+)
 from loushang.channel.product_host import (
     ProductHostAction,
     ProductHostActionType,
@@ -102,6 +108,10 @@ __all__ = [
     "JsonlCommandHostErrorKind",
     "JsonlCommandHostErrorReason",
     "JsonlCommandPort",
+    "JsonlCommandHandler",
+    "JsonlCommandRoute",
+    "JsonlCommandRouter",
+    "JsonlUnsupportedCommandHandler",
     "RemoteUiContext",
     "channel_envelope_from_json",
     "channel_envelope_to_json",

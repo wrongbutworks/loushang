@@ -17,8 +17,12 @@ an inspection controller merely to adapt Coding policy.
 ## Implemented Collapse
 
 - `SessionFacadePorts` groups the transcript, tools, commands, selected
-  command-tool, inspection, and retry adapters supplied by a Product. It keeps
-  those Product decisions separate from `SessionRuntime` ownership.
+  command-tool, inspection, retry, diagnostics, and package adapters supplied
+  by a Product. It keeps those Product decisions separate from
+  `SessionRuntime` ownership. Diagnostics and package operations are optional
+  ports: a Product that does not expose either capability gets an empty query
+  result or an explicit unavailable-operation error rather than a second
+  implementation in Coding.
 - `AgentSession` now supplies `AgentSessionInspector` directly as its Facade
   inspection port. The removed `coding.session.SessionViewController` was only
   a binding wrapper around the Harness inspector.
@@ -31,9 +35,21 @@ an inspection controller merely to adapt Coding policy.
 - Historical private forwarding methods that had no production consumer have
   been removed from `AgentSession`; callers use the composed Harness runtime
   or Product adapter directly.
+- `AgentSession` no longer owns public forwarding methods for session-file and
+  prompt-template reads, diagnostics queries, or package operations. It binds
+  its existing diagnostics bridge and Coding package policy to the Harness
+  facade. The package catalog, materialization policy, serialization, and
+  trust decisions remain Coding ports; Harness owns only the common delegation
+  surface.
+- `AgentTranscriptSessionRuntime` owns the optional diagnostics query surface
+  through a Product-supplied provider. `AgentSessionRuntime` keeps its Coding
+  lifecycle, cwd, file-store, and package-policy adapters while no longer
+  repeating diagnostics forwarding methods or a current-session accessor.
 - `ExtensionInputRuntime`, `ExtensionAgentHookRuntime`, and
-  `ExtensionAgentEventRuntime` now own standard extension input delivery,
-  Agent hook composition, and lifecycle-event mirroring. `ExtensionSessionRuntime`
+  `ExtensionAgentEventRuntime` own standard extension input delivery, Agent
+  hook composition, and lifecycle-event mirroring in the optional
+  `harness.extensions.agent` profile, where lifecycle is observation-only and
+  typed ports prevent a reverse Session dependency. `ExtensionSessionRuntime`
   owns bind/refresh/invalidation coordination. The removed Coding controllers
   were implementation-only wrappers around these product-neutral mechanics.
 

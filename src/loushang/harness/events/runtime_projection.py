@@ -1,10 +1,10 @@
+"""Project shared session runtime facts into the standard event payload shape."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import cast
 
-from loushang.coding.event.types import AgentSessionEvent
-from loushang.harness.events import (
+from loushang.harness.events.session import (
     BranchSummaryCompleted,
     BranchSummaryStarted,
     ContextCompactionCompleted,
@@ -14,21 +14,27 @@ from loushang.harness.events import (
     QueueChanged,
     RetryCompleted,
     RetryStarted,
-    RuntimeEvent,
     ToolPolicyAuditEvent,
 )
+from loushang.harness.events.types import RuntimeEvent
+
+SessionRuntimeEventViewPayload = dict[str, object]
 
 
-def project_runtime_event_to_session_event(
+def project_session_runtime_event(
     event: RuntimeEvent[object],
-) -> AgentSessionEvent | None:
-    """Project a common runtime fact into Coding's presentation contract."""
+) -> SessionRuntimeEventViewPayload | None:
+    """Project one common runtime fact into the standard session event payload.
+
+    The projection contains only the shared session event vocabulary. Product
+    hosts can add their transport envelope and presentation fields afterwards.
+    """
 
     payload = event.payload
     if isinstance(payload, Mapping):
         event_type = payload.get("type")
         if isinstance(event_type, str):
-            return cast(AgentSessionEvent, payload)
+            return payload if isinstance(payload, dict) else dict(payload)
         return None
     if isinstance(payload, QueueChanged):
         return {
@@ -37,13 +43,13 @@ def project_runtime_event_to_session_event(
             "follow_up": [item.text for item in payload.snapshot.follow_up],
         }
     if isinstance(payload, ContextCompactionStarted):
-        result: dict[str, object] = {
+        result: SessionRuntimeEventViewPayload = {
             "type": "compaction_start",
             "reason": payload.reason,
         }
         if payload.usage is not None:
             result["usage"] = payload.usage
-        return cast(AgentSessionEvent, result)
+        return result
     if isinstance(payload, ContextCompactionCompleted):
         result = {
             "type": "compaction_end",
@@ -58,7 +64,7 @@ def project_runtime_event_to_session_event(
             result["usage_before"] = payload.usage_before
         if payload.usage_after is not None:
             result["usage_after"] = payload.usage_after
-        return cast(AgentSessionEvent, result)
+        return result
     if isinstance(payload, RetryStarted):
         attempt = payload.attempt
         return {
@@ -77,7 +83,7 @@ def project_runtime_event_to_session_event(
         }
         if not outcome.success and outcome.error is not None:
             result["final_error"] = outcome.error
-        return cast(AgentSessionEvent, result)
+        return result
     if isinstance(payload, BranchSummaryStarted):
         return {
             "type": "branch_summary_start",
@@ -97,7 +103,7 @@ def project_runtime_event_to_session_event(
         }
         if payload.error_message is not None:
             result["error_message"] = payload.error_message
-        return cast(AgentSessionEvent, result)
+        return result
     if isinstance(payload, ConversationMetadataChanged):
         return {"type": "session_info_changed", "name": payload.name}
     if isinstance(payload, PackageProgressChanged):
@@ -110,11 +116,8 @@ def project_runtime_event_to_session_event(
             "target_path": payload.target_path,
         }
     if isinstance(payload, ToolPolicyAuditEvent):
-        return cast(
-            AgentSessionEvent,
-            {"type": payload.event_type, **dict(payload.details)},
-        )
+        return {"type": payload.event_type, **dict(payload.details)}
     return None
 
 
-__all__ = ["project_runtime_event_to_session_event"]
+__all__ = ["SessionRuntimeEventViewPayload", "project_session_runtime_event"]

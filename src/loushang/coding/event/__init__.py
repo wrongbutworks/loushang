@@ -1,14 +1,10 @@
 from loushang.coding.event.projection import (
     SUPPORTED_JSON_EVENT_VIEWS,
     JsonEventView,
-    normalize_event_select,
     project_session_event,
     select_events,
     shape_stream_event,
     should_emit_projected_event,
-)
-from loushang.coding.event.runtime_projection import (
-    project_runtime_event_to_session_event,
 )
 from loushang.coding.event.runtime_view import (
     project_runtime_event_to_json_views,
@@ -17,12 +13,12 @@ from loushang.coding.event.runtime_view import (
 )
 from loushang.coding.event.serialization import serialize_session_event
 from loushang.coding.event.types import AgentSessionEvent
+from loushang.harness.events import project_session_runtime_event
 
 __all__ = [
     "AgentSessionEvent",
     "JsonEventView",
     "SUPPORTED_JSON_EVENT_VIEWS",
-    "normalize_event_select",
     "project_session_event",
     "project_runtime_event_to_session_event",
     "project_runtime_event_to_json_views",
@@ -33,3 +29,7 @@ __all__ = [
     "should_emit_projected_event",
     "should_emit_runtime_event_view",
 ]
+
+# Temporary source-level alias while Coding consumers move to the standard
+# Harness projection name. The implementation is owned by Harness.
+project_runtime_event_to_session_event = project_session_runtime_event

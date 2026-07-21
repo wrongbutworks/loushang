@@ -2,19 +2,21 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Protocol
 
 from loushang.agent.types import AgentTool
 from loushang.coding.store import SessionManager
 from loushang.harness.capabilities.prompt import PromptSectionComposer
-from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.activation import ResourceActivationRuntime
 from loushang.harness.resources.types import ResourceBundle
-from loushang.harness.session import SessionToolRuntime
+from loushang.harness.session import (
+    SessionToolRuntime,
+    ToolActivationProfile,
+    create_tool_prompt_rebuilder,
+)
 from loushang.harness.tools.contribution import resolve_tool_contributions
-from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.core import ToolDefinition, project_tool_definition
 from loushang.harness.tools.workspace.context import ToolContext
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
@@ -60,6 +62,7 @@ class ToolController:
     get_diagnostics_service: Callable[[], DiagnosticsService | None]
     emit_tool_audit_event: Callable[[dict[str, object]], Awaitable[None]] | None = None
     default_activate_new_tools: bool = False
+    activation_profile: ToolActivationProfile | None = None
     show_empty_tool_prompt: bool = False
     resource_activation_runtime: ResourceActivationRuntime = field(
         default_factory=ResourceActivationRuntime
@@ -70,15 +73,38 @@ class ToolController:
     _runtime: SessionToolRuntime = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        profile = self.activation_profile or ToolActivationProfile(
+            preferred_names=_DEFAULT_ACTIVE_TOOL_NAMES,
+            builtin_names=_BUILTIN_TOOL_NAMES,
+            activate_new_tools=self.default_activate_new_tools,
+        )
+        if profile.activate_new_tools != self.default_activate_new_tools:
+            profile = ToolActivationProfile(
+                preferred_names=profile.preferred_names,
+                builtin_names=profile.builtin_names,
+                activate_new_tools=self.default_activate_new_tools,
+            )
         self._runtime = SessionToolRuntime(
             agent=self.agent,
             tool_registry=self.tool_registry,
             allowed_tool_names=self.allowed_tool_names,
             initial_active_tool_names=self.initial_active_tool_names,
-            default_active_tool_names=self._default_active_tool_names,
-            should_activate_new_tool=self._should_activate_new_tool,
+            default_active_tool_names=lambda: profile.default_names(
+                self.tool_registry.list_enabled_definitions()
+                if self.tool_registry is not None
+                else [],
+                self.allowed_tool_names,
+            ),
+            should_activate_new_tool=profile.should_activate_new,
             build_tool_context=self.build_tool_context,
-            rebuild_prompt=self._rebuild_prompt,
+            rebuild_prompt=create_tool_prompt_rebuilder(
+                agent=self.agent,
+                base_prompt=self.base_prompt,
+                get_resource_bundle=self.get_resource_bundle,
+                show_empty_tool_prompt=self.show_empty_tool_prompt,
+                resource_activation_runtime=self.resource_activation_runtime,
+                prompt_section_composer=self.prompt_section_composer,
+            ),
             resolve_contributions=resolve_tool_contributions,
         )
 
@@ -90,9 +116,10 @@ class ToolController:
 
     def get_all_tool_infos(self) -> list[dict[str, object]]:
         return [
-            _tool_info_from_definition(
+            project_tool_definition(
                 definition,
                 self.tool_source_info(definition.name),
+                builtin_names=_BUILTIN_TOOL_NAMES,
             )
             for definition in self.get_all_tools()
         ]
@@ -153,102 +180,9 @@ class ToolController:
     def rebuild_prompt_and_tools_view(self) -> None:
         self._runtime.rebuild_prompt_and_tools_view()
 
-    def _default_active_tool_names(self) -> list[str]:
-        if self.tool_registry is None:
-            return []
-        enabled_names = [
-            definition.name
-            for definition in self.tool_registry.list_enabled_definitions()
-        ]
-        if self.allowed_tool_names is not None:
-            return self.filter_allowed_tool_names(enabled_names)
-        enabled_name_set = set(enabled_names)
-        active_names = [
-            name for name in _DEFAULT_ACTIVE_TOOL_NAMES if name in enabled_name_set
-        ]
-        active_names.extend(
-            name
-            for name in enabled_names
-            if name not in _BUILTIN_TOOL_NAMES and name not in active_names
-        )
-        return active_names
-
-    def _should_activate_new_tool(self, name: str, definition: ToolDefinition) -> bool:
-        del definition
-        return self.default_activate_new_tools and name not in _BUILTIN_TOOL_NAMES
-
-    def _rebuild_prompt(self, active_definitions: list[ToolDefinition] | None) -> None:
-        if self.show_empty_tool_prompt and active_definitions is None:
-            active_definitions = []
-        tool_prompt = (
-            "Available tools:\n(none)"
-            if self.show_empty_tool_prompt and active_definitions == []
-            else None
-        )
-        resource_bundle = self.get_resource_bundle()
-        prompt_assembly = assemble_prompt(
-            base_prompt=self.base_prompt,
-            resource_bundle=resource_bundle,
-            tool_definitions=active_definitions,
-            tool_prompt=tool_prompt,
-            resource_activation=self.resource_activation_runtime.activate(
-                resource_bundle
-            ),
-            prompt_section_composer=self.prompt_section_composer,
-        )
-        self.agent.system_prompt = prompt_assembly.system_prompt
-
     async def _emit_tool_audit_event(
         self,
         event: Mapping[str, object],
     ) -> None:
         if self.emit_tool_audit_event is not None:
             await self.emit_tool_audit_event(dict(event))
-
-
-def _tool_info_from_definition(
-    definition: ToolDefinition, source_info: object | None = None
-) -> dict[str, object]:
-    return {
-        "name": definition.name,
-        "description": definition.description,
-        "parameters": definition.parameters,
-        "sourceInfo": _serialize_tool_source_info(source_info)
-        if source_info is not None
-        else _synthetic_tool_source_info(definition.name),
-    }
-
-
-def _synthetic_tool_source_info(name: str) -> dict[str, object]:
-    if name in _BUILTIN_TOOL_NAMES:
-        return {
-            "path": f"<builtin:{name}>",
-            "source": "builtin",
-            "scope": "temporary",
-            "origin": "top-level",
-            "baseDir": None,
-        }
-    return {
-        "path": f"<sdk:{name}>",
-        "source": "sdk",
-        "scope": "temporary",
-        "origin": "top-level",
-        "baseDir": None,
-    }
-
-
-def _serialize_tool_source_info(source_info: object) -> dict[str, object]:
-    base_dir = getattr(source_info, "base_dir", None)
-    return {
-        "path": _safe_source_path_text(getattr(source_info, "path", "")),
-        "source": getattr(source_info, "source", "filesystem"),
-        "scope": getattr(source_info, "scope", "project"),
-        "origin": getattr(source_info, "origin", "top-level"),
-        "baseDir": _safe_source_path_text(base_dir) if base_dir is not None else None,
-    }
-
-
-def _safe_source_path_text(value: object) -> str:
-    if isinstance(value, Path):
-        return value.as_posix()
-    return str(value)

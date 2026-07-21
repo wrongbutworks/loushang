@@ -5,13 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from loushang.agent import Agent
-from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     AgentTranscriptRecord,
     ContextCompactionCheckpoint,
 )
+from loushang.harness.context import serialize_context_usage_payload
 from loushang.harness.session import AgentSessionInspector, ContextUsage
 
 
@@ -42,9 +42,7 @@ def project_pi_session_stats(
             content = getattr(message, "content", [])
             if isinstance(content, list):
                 tool_calls += sum(
-                    1
-                    for block in content
-                    if getattr(block, "type", None) == "toolCall"
+                    1 for block in content if getattr(block, "type", None) == "toolCall"
                 )
             usage = getattr(message, "usage", None)
             if usage is not None:
@@ -80,16 +78,11 @@ def project_pi_session_stats(
             "output": total_output,
             "cacheRead": total_cache_read,
             "cacheWrite": total_cache_write,
-            "total": total_input
-            + total_output
-            + total_cache_read
-            + total_cache_write,
+            "total": total_input + total_output + total_cache_read + total_cache_write,
         },
         "cost": total_cost,
         "contextUsage": serialize_context_usage_payload(context_usage),
-        "latestCompaction": _latest_compaction_payload(
-            session_manager.get_branch()
-        ),
+        "latestCompaction": _latest_compaction_payload(session_manager.get_branch()),
     }
 
 

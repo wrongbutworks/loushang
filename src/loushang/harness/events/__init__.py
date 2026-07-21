@@ -32,6 +32,7 @@ _EXPORT_MODULES = {
     "matches_event_select": "loushang.harness.events.projection",
     "normalize_event_select": "loushang.harness.events.projection",
     "project_runtime_event": "loushang.harness.events.projection",
+    "project_session_runtime_event": "loushang.harness.events.runtime_projection",
     "select_runtime_event_views": "loushang.harness.events.projection",
     "session_runtime_event_kind": "loushang.harness.events.session",
 }

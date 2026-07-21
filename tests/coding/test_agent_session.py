@@ -2270,7 +2270,7 @@ def test_agent_session_exposes_standard_state_properties(tmp_path) -> None:
     assert session.is_compacting is False
     assert session.steering_mode == "all"
     assert session.follow_up_mode == "one-at-a-time"
-    assert session.session_file == manager.session_file
+    assert session.get_session_file() == manager.session_file
     assert session.session_id == manager.get_header().conversation_id
     assert session.session_name == "Demo"
     assert session.auto_compaction_enabled is True
@@ -2941,7 +2941,7 @@ def test_agent_session_exposes_standard_scoped_models_and_resources(tmp_path) ->
     )
     assert session.thinking_level == "high"
     assert session.resource_loader is loader
-    assert isinstance(session.prompt_templates, list)
+    assert isinstance(session.get_prompt_templates(), list)
 
 
 def test_agent_session_exposes_pi_style_thinking_and_context_queries(tmp_path) -> None:
@@ -3045,8 +3045,8 @@ def test_agent_session_exposes_standard_runtime_facades(tmp_path) -> None:
     session.abort_compaction()
     session.abort_compaction()
     session.abort_branch_summary()
-    assert session.is_bash_running is False
-    assert session.has_pending_bash_messages is False
+    assert session.is_command_running is False
+    assert session.has_pending_command_messages is False
     asyncio.run(
         session.record_bash_result(
             "echo hi",
@@ -4826,7 +4826,7 @@ def test_agent_session_exposes_session_metadata_and_messages(tmp_path) -> None:
     )
 
     assert session.messages == session.agent.state.messages
-    assert session.session_file == manager.get_session_file()
+    assert session.get_session_file() == manager.get_session_file()
     assert session.session_id == manager.get_session_record().session_id
     assert session.session_name == "Demo Session"
 

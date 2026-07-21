@@ -5,11 +5,10 @@ from pathlib import Path
 
 def test_coding_source_info_paths_preserve_harness_owner_identity() -> None:
     from loushang.coding.extensions import SourceInfo as ExtensionSourceInfo
-    from loushang.coding.source_info import SourceInfo as CodingSourceInfo
-    from loushang.coding.source_info import create_source_info
     from loushang.harness.resources.source import SourceInfo as HarnessSourceInfo
+    from loushang.harness.resources.source import create_source_info
 
-    assert CodingSourceInfo is ExtensionSourceInfo is HarnessSourceInfo
+    assert ExtensionSourceInfo is HarnessSourceInfo
     assert HarnessSourceInfo.__module__ == "loushang.harness.resources.source"
 
     command_info = create_source_info(Path("/tmp/project/prompts/review.md"))

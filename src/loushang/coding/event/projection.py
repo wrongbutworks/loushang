@@ -41,12 +41,6 @@ def select_events(*patterns: str) -> tuple[str, ...]:
     return patterns
 
 
-def normalize_event_select(event_select: str | Sequence[str] | None) -> tuple[str, ...]:
-    from loushang.harness.events import normalize_event_select as normalize
-
-    return normalize(event_select)
-
-
 def project_session_event(
     event: AgentSessionEvent,
     *,

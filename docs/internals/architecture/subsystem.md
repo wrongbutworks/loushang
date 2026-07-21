@@ -124,9 +124,10 @@ prepared-run contract，不引入第二套 `HarnessRunSpec`。原
 后续 harness 迁移准则、shared capability 边界和 coding 迁移 inventory 见
 [Loushang Harness Architecture](./harness/README.md)。
 
-### loushang-channel (target)
+### loushang-channel
 
-边界协议与 transport 层。当前是目标架构概念，不是已落地 Python 包。
+边界协议与 transport 层。该源码包已落地，并保持为由 Product host ports
+注入业务操作的 transport-first 层。
 
 负责：
 
@@ -328,7 +329,7 @@ external host/client -> loushang.channel -> loushang.work -> domain app
   adapter / command substrate
 - `harnesstui` 提供跨产品的 Harness/TUI conversation interaction 与
   presentation composition；可依赖 `harness` 和 `tui`，不可依赖 `coding`
-- `channel` 提供目标边界通信，当前未作为源码包落地
+- `channel` 提供目标边界通信和已注入 Product host 的 transport runtime
 - `tui` 提供通用终端交互原语
 - `method` 提供可选的方法组织与 plan/projection
 - `work` 提供业务 work acceptance、运行终态、事件、日志与 projection
@@ -408,7 +409,7 @@ or own product execution internals.
 | Agent loop | `loushang.agent` | message/tool-call turn execution, low-level events, abort/error semantics | product preparation, work/method projection, UI |
 | Product-run loop | `loushang.harness` plus product adapter | prepared run handoff, product-neutral host/adapter/lifecycle contracts, shared engines | second agent loop, product defaults, provider behavior |
 | Work/method loop | `loushang.work` and optional `loushang.method` | durable operations/events/projections, method plan/step guidance | model streaming, product UI, harness execution mechanics |
-| Channel loop | target `loushang.channel` | external operation/event transport, subscription, replay, correlation | local UI widgets, product internals, agent state machine |
+| Channel loop | `loushang.channel` | external operation/event transport, subscription, replay, correlation | local UI widgets, product internals, agent state machine |
 | TUI render loop | `loushang.tui` plus product UI adapter | terminal input/render primitives and product-specific terminal wiring | agent loop, provider behavior, harness policy |
 
 This split lets `harness`, `tui`, `agent`, and `ai` develop in parallel. A
