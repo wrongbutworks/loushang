@@ -1,15 +1,4 @@
-from loushang.coding.mode.base import (
-    ModeAction,
-    ModeActionType,
-    ModeAdapter,
-    ModeConfig,
-    ModeName,
-    ModeState,
-    create_mode_adapter,
-    dispatch_mode_action,
-    normalize_mode_action,
-    run_mode,
-)
+from loushang.coding.mode.base import create_mode_adapter, run_mode
 from loushang.coding.mode.channel_mode import (
     CodingChannelOperationPort,
     CodingChannelSession,
@@ -17,6 +6,16 @@ from loushang.coding.mode.channel_mode import (
 )
 from loushang.coding.mode.print_mode import PrintMode, run_print_mode
 from loushang.coding.mode.rpc_mode import RpcMode, run_rpc_mode
+from loushang.harness.host.mode import (
+    ModeAction,
+    ModeActionType,
+    ModeAdapter,
+    ModeConfig,
+    ModeName,
+    ModeState,
+    dispatch_mode_action,
+    normalize_mode_action,
+)
 
 __all__ = [
     "ModeAction",

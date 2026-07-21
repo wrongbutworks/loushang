@@ -152,6 +152,10 @@ def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None
             "loushang.ai.model",
             "loushang.agent",
         ),
+        harness_root / "host": (
+            "loushang.ai.model",
+            "loushang.agent",
+        ),
     }
     offenders: list[str] = []
 
@@ -269,6 +273,7 @@ def test_production_harnesstui_imports_only_approved_loushang_layers() -> None:
         "loushang.harnesstui",
         "loushang.tui",
         "loushang.harness",
+        "loushang.protocol",
     )
     offenders = [
         f"{path.as_posix()} imports {imported}"
@@ -632,7 +637,7 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     channel_source = Path("src/loushang/coding/mode/channel_mode.py").read_text(
         encoding="utf-8"
     )
-    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(
         encoding="utf-8"
     )
     boundary = Path(
@@ -661,7 +666,7 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
     binding_source = Path(
         "src/loushang/harness/session/rpc_operations.py"
     ).read_text(encoding="utf-8")
-    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(
         encoding="utf-8"
     )
     channel_adapter_source = Path("src/loushang/coding/mode/channel_mode.py").read_text(
@@ -691,7 +696,7 @@ def test_jsonl_command_router_is_neutral_and_rpc_uses_explicit_routes() -> None:
     router_source = Path(
         "src/loushang/channel/jsonl_command_router.py"
     ).read_text(encoding="utf-8")
-    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(
         encoding="utf-8"
     )
     boundary = Path(
@@ -712,7 +717,7 @@ def test_channel_product_host_runtime_is_neutral_and_adopted() -> None:
     channel_host_source = Path("src/loushang/channel/host.py").read_text(
         encoding="utf-8"
     )
-    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(
         encoding="utf-8"
     )
     boundary = Path(
@@ -727,6 +732,31 @@ def test_channel_product_host_runtime_is_neutral_and_adopted() -> None:
     assert "Product Binding" in boundary
     assert "Coding Adoption" in boundary
     assert "Dependency Rule" in boundary
+
+
+def test_mode_host_implementation_is_shared_and_coding_is_thin() -> None:
+    rpc_host = Path("src/loushang/harness/host/rpc.py").read_text(encoding="utf-8")
+    plain_host = Path(
+        "src/loushang/harnesstui/conversation/plain_mode.py"
+    ).read_text(encoding="utf-8")
+    coding_rpc = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+        encoding="utf-8"
+    )
+    coding_print = Path("src/loushang/coding/mode/print_mode.py").read_text(
+        encoding="utf-8"
+    )
+    boundary = Path(
+        "docs/internals/architecture/harness/mode-host-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in rpc_host
+    assert "loushang.coding" not in plain_host
+    assert "class RpcHost" in rpc_host
+    assert "class PlainHost" in plain_host
+    assert "JsonlCommandRouter" not in coding_rpc
+    assert "class RpcMode" in coding_rpc
+    assert "CodingWorkShell" in coding_print
+    assert "Mode Host Boundary" in boundary
 
 
 def test_channel_product_host_stdio_and_shutdown_helpers_are_neutral() -> None:
@@ -3376,7 +3406,7 @@ def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
     session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
-    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(
         encoding="utf-8"
     )
     cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")

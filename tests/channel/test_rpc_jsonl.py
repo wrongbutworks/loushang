@@ -11,6 +11,7 @@ from loushang.channel import (
     ChannelEnvelope,
     ChannelError,
     ChannelEventDelivery,
+    ChannelJsonProjectionError,
     ChannelOperationAccepted,
     ChannelOperationCancelled,
     ChannelOperationCancelRequest,
@@ -20,10 +21,6 @@ from loushang.channel import (
     project_channel_value,
     rpc_jsonl_frame_from_json,
     rpc_jsonl_frame_to_json,
-)
-from loushang.coding.mode.rpc_json import (
-    RpcJsonProjectionError,
-    project_rpc_value,
 )
 from loushang.harness.events import RuntimeEventView
 from loushang.work import WorkEvent, WorkOperation
@@ -189,16 +186,16 @@ def test_coding_rpc_projection_is_a_thin_channel_compatibility_entrypoint() -> N
 
     value = Result(path=Path("report.md"), values=(1, 2))
 
-    assert project_rpc_value(value) == project_channel_value(value)
-    assert RpcJsonProjectionError.__module__ == "loushang.channel.json_projection"
+    assert project_channel_value(value) == project_channel_value(value)
+    assert ChannelJsonProjectionError.__module__ == "loushang.channel.json_projection"
 
     cyclic: list[object] = []
     cyclic.append(cyclic)
     with pytest.raises(
-        RpcJsonProjectionError,
+        ChannelJsonProjectionError,
         match=r"rpc_output\[0\] cannot be projected to RPC JSON: circular reference",
     ):
-        project_rpc_value(cyclic)
+        project_channel_value(cyclic, name="rpc_output", surface="RPC")
 
 
 def _operation_envelope() -> ChannelEnvelope:
