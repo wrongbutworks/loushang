@@ -3045,8 +3045,8 @@ def test_agent_session_exposes_standard_runtime_facades(tmp_path) -> None:
     session.abort_compaction()
     session.abort_compaction()
     session.abort_branch_summary()
-    assert session.is_bash_running is False
-    assert session.has_pending_bash_messages is False
+    assert session.is_command_running is False
+    assert session.has_pending_command_messages is False
     asyncio.run(
         session.record_bash_result(
             "echo hi",

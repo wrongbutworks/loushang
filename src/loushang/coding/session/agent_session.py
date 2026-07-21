@@ -976,14 +976,6 @@ class AgentSession(SessionFacade):
             exclude_from_context=exclude_from_context,
         )
 
-    @property
-    def is_bash_running(self) -> bool:
-        return super().is_command_running
-
-    @property
-    def has_pending_bash_messages(self) -> bool:
-        return super().has_pending_command_messages
-
     # Public facade: extension runtime configuration.
 
     async def reload_extension_runtime(self) -> None:
@@ -1050,9 +1042,6 @@ class AgentSession(SessionFacade):
 
     # Public facade: run controls, retry, compaction, and tree navigation.
 
-    def abort(self) -> bool:
-        return super().abort()
-
     def abort_bash(self) -> None:
         super().abort_command()
 
@@ -1081,11 +1070,6 @@ class AgentSession(SessionFacade):
         )
         assert result is not None
         return result
-
-    async def compact_session(
-        self, custom_instructions: str | None = None
-    ) -> CompactionResult:
-        return await self.compact(custom_instructions=custom_instructions)
 
     async def maybe_compact_after_turn(
         self, assistant_message: AssistantMessage

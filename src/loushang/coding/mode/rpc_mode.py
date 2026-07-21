@@ -47,6 +47,7 @@ from loushang.harness.diagnostics.types import DiagnosticsQuery
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.harness.session import (
+    SessionLifecycleOperationPorts,
     SessionOperationRuntime,
     SessionPromptRequest,
     require_session_operation_session,
@@ -722,7 +723,7 @@ class RpcMode(ModeAdapter):
     ) -> None:
         previous = self.session
         try:
-            operation = await self.runtime.new_session_operation(
+            operation = await self._require_session_operations().new_session(
                 cwd=self._optional_path(payload.get("cwd")),
                 parent_session=self._optional_string(
                     payload, "parentSession", "parent_session"
@@ -755,7 +756,9 @@ class RpcMode(ModeAdapter):
         if not isinstance(session_id, str) or not session_id:
             raise ValueError("switch_session requires sessionId")
         try:
-            operation = await self.runtime.restore_session_operation(session_id)
+            operation = await self._require_session_operations().restore_session(
+                session_id
+            )
             session = require_session_operation_session(operation)
         except Exception as error:
             self._write_response_error(
@@ -784,7 +787,7 @@ class RpcMode(ModeAdapter):
             position = payload.get("position", "before")
             if position not in {"before", "at"}:
                 raise ValueError("fork position must be 'before' or 'at'")
-            operation = await self.runtime.fork_session_operation(
+            operation = await self._require_session_operations().fork_session(
                 entry_id,
                 position=position,
             )
@@ -813,7 +816,9 @@ class RpcMode(ModeAdapter):
         del payload
         previous = self.session
         try:
-            operation = await self.runtime.fork_session_operation(None, position="at")
+            operation = await self._require_session_operations().fork_session(
+                None, position="at"
+            )
             session = require_session_operation_session(operation)
         except Exception as error:
             self._write_response_error(
@@ -2022,7 +2027,21 @@ class RpcMode(ModeAdapter):
         control = getattr(session, "session_control", None)
         if control is None:
             return None
-        return SessionOperationRuntime(cast(Any, control))
+        runtime = self.runtime
+        return SessionOperationRuntime(
+            cast(Any, control),
+            lifecycle=SessionLifecycleOperationPorts(
+                new_session=lambda cwd, parent: runtime.new_session_operation(
+                    cwd=cwd, parent_session=parent
+                ),
+                restore_session=lambda session_ref: runtime.restore_session_operation(
+                    session_ref
+                ),
+                fork_session=lambda entry_id, position: runtime.fork_session_operation(
+                    entry_id, position=position
+                ),
+            ),
+        )
 
     def _require_session_operations(self) -> SessionOperationRuntime:
         if self._session_operations is None:
