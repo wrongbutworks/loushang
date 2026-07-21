@@ -304,6 +304,19 @@ def test_standard_session_command_pack_copies_selected_assistant_text() -> None:
     assert copied == ["second"]
 
 
+def test_standard_session_command_pack_forwards_changelog_request() -> None:
+    ports = StandardSessionCommandPorts(
+        get_changelog=lambda args: {"query": args, "entries": []}
+    )
+
+    result = asyncio.run(
+        execute_standard_session_command_async("changelog", "recent", ports)
+    )
+
+    assert result is not None and result.disposition == "completed"
+    assert result.value == {"query": "recent", "entries": []}
+
+
 def test_standard_session_command_pack_has_no_coding_import() -> None:
     module_path = (
         Path(__file__).parents[3] / "src/loushang/harness/session/command_pack.py"

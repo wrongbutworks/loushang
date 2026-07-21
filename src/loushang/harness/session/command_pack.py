@@ -35,6 +35,7 @@ class StandardSessionCommandId(str, Enum):
     TOOLS = "tools"
     EXTENSIONS = "extensions"
     COPY = "copy"
+    CHANGELOG = "changelog"
 
 
 StandardSessionCommandDisposition = Literal[
@@ -151,6 +152,7 @@ class StandardSessionCommandPorts:
     get_recent_assistant_texts: Callable[[], tuple[str, ...]] | None = None
     get_last_assistant_text: Callable[[], str | None] | None = None
     copy_text: Callable[[str], object] | None = None
+    get_changelog: CommandPort | None = None
 
 
 def is_standard_session_command(
@@ -308,6 +310,12 @@ async def execute_standard_session_command_async(
             return await _execute_extensions_command(args, ports)
         case StandardSessionCommandId.COPY:
             return _execute_copy_command(args, ports)
+        case StandardSessionCommandId.CHANGELOG:
+            if ports.get_changelog is None:
+                return StandardSessionCommandResult.unavailable(command_id)
+            return StandardSessionCommandResult.completed(
+                command_id, await _resolve(ports.get_changelog(args))
+            )
 
 
 def _command_id(invocation_name: str) -> StandardSessionCommandId | None:

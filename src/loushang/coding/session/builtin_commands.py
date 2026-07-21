@@ -116,8 +116,6 @@ async def execute_builtin_command_async(
         return _project_standard_session_command_result(standard_result)
 
     match invocation_name:
-        case "changelog":
-            return _execute_changelog(args, backend)
         case _:
             return _unsupported(invocation_name)
 
@@ -146,6 +144,7 @@ def _standard_session_command_ports(
         get_recent_assistant_texts=backend.get_recent_assistant_texts,
         get_last_assistant_text=backend.get_last_assistant_text,
         copy_text=backend.copy_text,
+        get_changelog=backend.get_changelog,
     )
 
 
@@ -247,6 +246,8 @@ def _project_standard_session_command_result(
                 message=value.get("message"),
                 index=index,
             )
+        case StandardSessionCommandId.CHANGELOG:
+            return _ok(command, changelog=_to_plain_data(result.value))
 
 
 def _standard_argument_error(result: StandardSessionCommandResult) -> str:
@@ -276,14 +277,6 @@ def _standard_argument_error(result: StandardSessionCommandResult) -> str:
             return "Usage: /tree <entry-id> [--summarize] [--label <label>]"
         case _:
             return f"Invalid arguments for /{result.command_id.value}"
-
-
-def _execute_changelog(
-    args: str, backend: BuiltinCommandBackend
-) -> CommandExecutionResult:
-    if backend.get_changelog is None:
-        return _unsupported("changelog")
-    return _ok("changelog", changelog=_to_plain_data(backend.get_changelog(args)))
 
 
 def read_changelog_for_cwd(cwd: str | Path, args: str = "") -> dict[str, object]:
