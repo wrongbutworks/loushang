@@ -49,7 +49,7 @@ from loushang.harness.session import (
     SessionLifecycleOperationPorts,
     SessionOperationRuntime,
     SessionPromptRequest,
-    require_session_operation_session,
+    SessionRpcOperationBinding,
 )
 
 _THINKING_LEVEL_ORDER: tuple[str, ...] = (
@@ -152,6 +152,10 @@ class RpcMode(ModeAdapter):
         self._host_runtime = ProductHostRuntime(stdin=stdin)
         self.session = self._require_current_session()
         self._session_operations = self._find_session_operations(self.session)
+        self._rpc_operations = SessionRpcOperationBinding(
+            get_operations=self._require_session_operations,
+            bind_session=self._bind_session,
+        )
         self._tool_render_runtime: ToolRenderRuntime | None = None
         self._tool_definition_resolver: ToolDefinitionResolver | None = None
         self._configure_tool_rendering(self.session)
@@ -443,20 +447,12 @@ class RpcMode(ModeAdapter):
     async def _handle_prompt_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        message = self._require_string(payload, "message")
-        streaming_behavior = payload.get(
-            "streamingBehavior", payload.get("streaming_behavior")
-        )
-        images = self._coerce_images(payload.get("images"))
+        request = self._rpc_operations.prompt_request(payload)
         task = asyncio.create_task(
             self._run_prompt(
                 operations=self._require_session_operations(),
                 command_id=command_id,
-                message=message,
-                images=images,
-                streaming_behavior=streaming_behavior
-                if isinstance(streaming_behavior, str)
-                else None,
+                request=request,
             )
         )
         self._active_prompt_task = task
@@ -467,9 +463,7 @@ class RpcMode(ModeAdapter):
         *,
         operations: SessionOperationRuntime,
         command_id: str | None,
-        message: str,
-        images: list[object] | None,
-        streaming_behavior: str | None,
+        request: SessionPromptRequest,
     ) -> None:
         preflight_succeeded = False
 
@@ -481,12 +475,7 @@ class RpcMode(ModeAdapter):
 
         try:
             await operations.prompt(
-                SessionPromptRequest(
-                    text=message,
-                    images=cast(tuple, tuple(images or ())),
-                    streaming_behavior=streaming_behavior,
-                    source="rpc",
-                ),
+                request,
                 on_preflight=on_preflight,
             )
         except Exception as exc:
@@ -504,26 +493,20 @@ class RpcMode(ModeAdapter):
     def _handle_steer_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        self._require_session_operations().steer(
-            self._require_string(payload, "message"),
-            images=cast(tuple, tuple(self._coerce_images(payload.get("images")) or ())),
-        )
+        self._rpc_operations.steer(payload)
         self._write_response_success(id=command_id, command="steer")
 
     def _handle_follow_up_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        self._require_session_operations().follow_up(
-            self._require_string(payload, "message"),
-            images=cast(tuple, tuple(self._coerce_images(payload.get("images")) or ())),
-        )
+        self._rpc_operations.follow_up(payload)
         self._write_response_success(id=command_id, command="follow_up")
 
     def _handle_abort_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         del payload
-        self._require_session_operations().abort()
+        self._rpc_operations.abort()
         self._write_response_success(id=command_id, command="abort")
 
     def _handle_get_state_command(
@@ -722,13 +705,7 @@ class RpcMode(ModeAdapter):
     ) -> None:
         previous = self.session
         try:
-            operation = await self._require_session_operations().new_session(
-                cwd=self._optional_path(payload.get("cwd")),
-                parent_session=self._optional_string(
-                    payload, "parentSession", "parent_session"
-                ),
-            )
-            session = require_session_operation_session(operation)
+            operation = await self._rpc_operations.new_session(payload)
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -736,12 +713,11 @@ class RpcMode(ModeAdapter):
                 error=f"Failed to create new session: {error}",
             )
             return
-        self._bind_session(session)
         self._write_response_success(
             id=command_id,
             command="new_session",
             data={
-                "cancelled": session is previous,
+                "cancelled": operation.current is previous,
             },
         )
 
@@ -749,16 +725,8 @@ class RpcMode(ModeAdapter):
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         previous = self.session
-        session_id = payload.get(
-            "sessionId", payload.get("session_id", payload.get("sessionPath"))
-        )
-        if not isinstance(session_id, str) or not session_id:
-            raise ValueError("switch_session requires sessionId")
         try:
-            operation = await self._require_session_operations().restore_session(
-                session_id
-            )
-            session = require_session_operation_session(operation)
+            operation = await self._rpc_operations.switch_session(payload)
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -766,12 +734,11 @@ class RpcMode(ModeAdapter):
                 error=f"Failed to switch session: {error}",
             )
             return
-        self._bind_session(session)
         self._write_response_success(
             id=command_id,
             command="switch_session",
             data={
-                "cancelled": session is previous,
+                "cancelled": operation.current is previous,
             },
         )
 
@@ -779,19 +746,8 @@ class RpcMode(ModeAdapter):
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         previous = self.session
-        entry_id = payload.get("entryId", payload.get("entry_id"))
-        if not isinstance(entry_id, str) or not entry_id:
-            raise ValueError("fork requires entryId")
         try:
-            position = payload.get("position", "before")
-            if position not in {"before", "at"}:
-                raise ValueError("fork position must be 'before' or 'at'")
-            operation = await self._require_session_operations().fork_session(
-                entry_id,
-                position=position,
-            )
-            session = require_session_operation_session(operation)
-            text = operation.payload
+            operation = await self._rpc_operations.fork(payload)
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -799,13 +755,12 @@ class RpcMode(ModeAdapter):
                 error=f"Failed to fork session: {error}",
             )
             return
-        self._bind_session(session)
         self._write_response_success(
             id=command_id,
             command="fork",
             data={
-                "cancelled": session is previous,
-                "text": text,
+                "cancelled": operation.current is previous,
+                "text": operation.payload,
             },
         )
 
@@ -815,8 +770,7 @@ class RpcMode(ModeAdapter):
         del payload
         previous = self.session
         try:
-            operation = await self._require_session_operations().clone_session()
-            session = require_session_operation_session(operation)
+            operation = await self._rpc_operations.clone()
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -824,11 +778,10 @@ class RpcMode(ModeAdapter):
                 error=f"Failed to clone session: {error}",
             )
             return
-        self._bind_session(session)
         self._write_response_success(
             id=command_id,
             command="clone",
-            data={"cancelled": session is previous},
+            data={"cancelled": operation.current is previous},
         )
 
     async def _handle_set_model_command(
@@ -1847,11 +1800,7 @@ class RpcMode(ModeAdapter):
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         try:
-            result = await self._require_session_operations().compact(
-                self._optional_string(
-                    payload, "customInstructions", "custom_instructions"
-                )
-            )
+            result = await self._rpc_operations.compact(payload)
         except Exception as exc:
             self._write_response_error(
                 id=command_id,
@@ -1877,11 +1826,8 @@ class RpcMode(ModeAdapter):
     def _handle_set_auto_retry_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        enabled = payload.get("enabled")
-        if not isinstance(enabled, bool):
-            raise ValueError("set_auto_retry requires boolean enabled")
         try:
-            self._require_session_operations().set_auto_retry_enabled(enabled)
+            self._rpc_operations.set_auto_retry(payload)
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -1895,17 +1841,14 @@ class RpcMode(ModeAdapter):
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
         del payload
-        self._require_session_operations().abort_retry()
+        self._rpc_operations.abort_retry()
         self._write_response_success(id=command_id, command="abort_retry")
 
     def _handle_set_auto_compaction_command(
         self, command_id: str | None, payload: dict[str, Any]
     ) -> None:
-        enabled = payload.get("enabled")
-        if not isinstance(enabled, bool):
-            raise ValueError("set_auto_compaction requires boolean enabled")
         try:
-            self._require_session_operations().set_auto_compaction_enabled(enabled)
+            self._rpc_operations.set_auto_compaction(payload)
         except Exception as error:
             self._write_response_error(
                 id=command_id,
@@ -2507,13 +2450,6 @@ class RpcMode(ModeAdapter):
             return str(value)
         return ""
 
-    def _coerce_images(self, images: object) -> list[object] | None:
-        if images is None:
-            return None
-        if not isinstance(images, list):
-            raise ValueError("images must be a list")
-        return images
-
     def _coerce_env(self, env: object) -> list[list[str]] | None:
         if env is None:
             return None
@@ -2592,15 +2528,6 @@ class RpcMode(ModeAdapter):
                 return value
             raise ValueError(f"{key} must be a boolean")
         return None
-
-    def _optional_path(self, value: object) -> str | Path | None:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            return value
-        if isinstance(value, Path):
-            return value
-        raise ValueError("cwd must be a string")
 
     def _write_response_success(
         self, *, command: str, id: str | None = None, data: object = _MISSING
