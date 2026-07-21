@@ -337,6 +337,7 @@ def test_openai_codex_live_example_leaves_credential_import_to_auth_api() -> Non
 
 def test_openai_codex_import_example_calls_public_responses_path(
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     from loushang.ai import AssistantMessage, TextPart
 
@@ -347,6 +348,16 @@ def test_openai_codex_import_example_calls_public_responses_path(
     captured: dict[str, object] = {}
     model = object()
     request_auth = object()
+
+    class AuthenticatedStatus:
+        authenticated = True
+        auth_kind = "oauth"
+        provider = "openai-codex"
+        source = "credential_source"
+        source_description = "Use existing Codex CLI login"
+        source_recovery_hint = "Run codex login"
+        experimental = True
+        actions: tuple[str, ...] = ()
 
     def fake_get_model(provider_id: str, endpoint_id: str, model_id: str):
         captured["model_id"] = (provider_id, endpoint_id, model_id)
@@ -371,6 +382,10 @@ def test_openai_codex_import_example_calls_public_responses_path(
         captured["auth_model"] = selected_model
         return request_auth
 
+    async def fake_status(selected_model):
+        captured["status_model"] = selected_model
+        return AuthenticatedStatus()
+
     async def fake_stream(selected_model, context, options, *, auth=None):
         captured["model"] = selected_model
         captured["context"] = context
@@ -379,6 +394,7 @@ def test_openai_codex_import_example_calls_public_responses_path(
         return FakeEventStream()
 
     monkeypatch.setattr(module.ai, "get_model", fake_get_model)
+    monkeypatch.setattr(module.ai.auth, "status", fake_status)
     monkeypatch.setattr(module.ai.auth, "get_auth", fake_get_auth)
     monkeypatch.setattr(module.ai, "stream", fake_stream)
 
@@ -389,6 +405,7 @@ def test_openai_codex_import_example_calls_public_responses_path(
         "gpt-5.5",
     )
     assert captured["model"] is model
+    assert captured["status_model"] is model
     assert captured["auth_model"] is model
     assert captured["auth"] is request_auth
     options = captured["options"]
@@ -398,6 +415,12 @@ def test_openai_codex_import_example_calls_public_responses_path(
     assert not hasattr(options, "oauth_credentials")
     assert options.max_output_tokens is None
     assert options.reasoning.effort == "low"
+    output = capsys.readouterr().out
+    assert '"authenticated": true' in output
+    assert '"source": "credential_source"' in output
+    assert "Resolved authentication: object" in output
+    assert "Model response:\nok" in output
+    assert "Reply exactly: ok" not in captured["context"]["messages"][0]["content"]
 
 
 def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:

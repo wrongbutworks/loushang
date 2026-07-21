@@ -25,7 +25,14 @@ After `codex login`, run the live upper-application path with:
 uv run python examples/auth/openai_codex_live_example.py
 ```
 
-The live example only uses `get_model()`, `auth.get_auth(model)`, and `stream()`.
-It does not parse `~/.codex/auth.json` or invoke a credential source directly.
-OpenAI Codex support currently imports existing Codex CLI credentials. It does
-not perform ChatGPT OAuth login.
+The live example models an upper-layer application. It:
+
+1. calls `auth.status(model)` and displays structured, non-secret state;
+2. calls `auth.get_auth(model)` and displays only the resolved auth type;
+3. passes that auth to `stream()` and displays the model response.
+
+It also turns `AuthenticationRequiredError` into actionable output instead of a
+traceback. The example does not parse `~/.codex/auth.json` or invoke a
+credential source directly. OpenAI Codex support currently imports an existing
+Codex CLI credential; it is not a Loushang OAuth login. Run `codex login` before
+the example to establish or repair that credential.
