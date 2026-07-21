@@ -72,9 +72,9 @@ tools and prompt content, Coding command handlers, extension API event and
 diagnostic wording, compaction strategy, lifecycle cleanup, and TUI/RPC/HTML
 projection.
 
-In particular, Pi-style `executeBash` options and result aliases remain in
-`BashController`. Harness exposes only neutral selected command-tool execution;
-it must not acquire Pi protocol vocabulary.
+Harness exposes the neutral `BashExecutionRuntime` with native snake_case
+arguments and result records. There is no Coding Bash controller or Pi-style
+`executeBash`/result alias layer.
 
 `AgentSession.session_control` exposes `AgentSession` itself as the Harness
 `SessionControlPort`; there is no private facade object. Coding RPC routes

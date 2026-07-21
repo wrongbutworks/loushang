@@ -44,7 +44,6 @@ from loushang.coding.resource_runtime import (
 from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
 )
-from loushang.coding.session.bash_controller import BashController
 from loushang.coding.session.builtin_commands import (
     BuiltinCommandBackend,
     read_changelog_for_cwd,
@@ -132,6 +131,8 @@ from loushang.harness.resources.watcher import ResourceChangeWatcher
 from loushang.harness.runtime import CancellationSignal
 from loushang.harness.session import (
     AfterTurnPolicyPort,
+    BashExecutionPorts,
+    BashExecutionRuntime,
     SessionControlPort,
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
@@ -140,8 +141,14 @@ from loushang.harness.session import (
     SessionRuntime,
     TranscriptRuntimePort,
     TurnPolicyPort,
+    UserCommandHookResult,
+    UserCommandRequest,
 )
 from loushang.harness.session.inspection import AgentSessionInspector
+from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.workspace.protocol import (
+    normalize_bash_result_from_protocol,
+)
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import (
     ExecOutputChunk,
@@ -333,12 +340,15 @@ class AgentSession(SessionFacade):
             after_compaction=self._after_coding_compaction,
             record_runtime_exception=self._record_runtime_exception,
         )
-        self._bash_controller = BashController(
-            agent=self.agent,
-            session_manager=self.session_manager,
-            get_extension_runner=lambda: self._extension_runner,
-            get_tool_registry=lambda: self._tool_registry,
-            sync_extension_diagnostics=self._sync_extension_diagnostics,
+        self._bash_runtime = BashExecutionRuntime(
+            BashExecutionPorts(
+                get_cwd=self.session_manager.get_cwd,
+                get_definition=self._get_bash_definition,
+                create_call_id=self._create_bash_call_id,
+                append_record=self.session_manager.append_message,
+                refresh_context=self._refresh_agent_messages,
+                before_execute=self._before_bash,
+            )
         )
         self._package_controller = PackageController(
             session_manager=self.session_manager,
@@ -553,7 +563,7 @@ class AgentSession(SessionFacade):
             transcript=self.session_manager,
             tools=self._tool_controller,
             commands=self._command_controller,
-            command_execution=self._bash_controller,
+            command_execution=self._bash_runtime,
             view=self._session_inspector,
             retry=self._retry_runtime,
             identity=self,
@@ -607,6 +617,44 @@ class AgentSession(SessionFacade):
     def _refresh_agent_messages(self) -> None:
         self.agent.state.set_messages(
             list(self.session_manager.build_session_context().messages)
+        )
+
+    def _get_bash_definition(self) -> ToolDefinition | None:
+        if self._tool_registry is None:
+            raise RuntimeError("Bash execution requires a tool registry")
+        try:
+            return self._tool_registry.get_definition("bash")
+        except KeyError as exc:
+            raise RuntimeError("Bash tool is not registered") from exc
+
+    def _create_bash_call_id(self) -> str:
+        return (
+            f"bash-{self.session_manager.get_session_record().session_id}-"
+            f"{len(self.session_manager.get_entries())}"
+        )
+
+    async def _before_bash(
+        self,
+        request: UserCommandRequest,
+    ) -> UserCommandHookResult | None:
+        extension_runner = self._extension_runner
+        if extension_runner is None or not extension_runner.has_handlers("user_bash"):
+            return None
+        event_result = await extension_runner.emit_user_bash(
+            {
+                "type": "user_bash",
+                "command": request.command,
+                "exclude_from_context": request.exclude_from_context,
+                "cwd": request.cwd,
+            },
+            cwd=request.cwd,
+        )
+        self._sync_extension_diagnostics(phase="runtime")
+        result = _bash_result_from_extension_user_bash_result(event_result)
+        if result is not None:
+            return UserCommandHookResult(result=result)
+        return UserCommandHookResult(
+            operations=_bash_operations_from_extension_user_bash_result(event_result)
         )
 
     def set_approval_presenter(
@@ -903,7 +951,7 @@ class AgentSession(SessionFacade):
         *,
         exclude_from_context: bool = False,
     ) -> None:
-        await self._bash_controller.record_result(
+        await self._bash_runtime.record_result(
             command=command,
             result=result,
             exclude_from_context=exclude_from_context,
@@ -1805,3 +1853,28 @@ def _resolve_extension_exec_cwd(session_cwd: str, cwd: str | Path | None) -> str
 
 def _optional_string(value: object) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _bash_result_from_extension_user_bash_result(
+    event_result: object | None,
+) -> dict[str, object] | None:
+    if event_result is None:
+        return None
+    result = (
+        event_result.get("result")
+        if isinstance(event_result, dict)
+        else getattr(event_result, "result", None)
+    )
+    if not isinstance(result, dict):
+        return None
+    return normalize_bash_result_from_protocol(result)
+
+
+def _bash_operations_from_extension_user_bash_result(
+    event_result: object | None,
+) -> object | None:
+    if event_result is None:
+        return None
+    if isinstance(event_result, dict):
+        return event_result.get("operations")
+    return getattr(event_result, "operations", None)
