@@ -194,12 +194,12 @@ NON_UI_CODING_OWNERS = (
     "loushang.coding.model_selection",
     "loushang.coding.diagnostics.debug_status",
     "loushang.coding.event.presentation_policy",
-    "loushang.coding.interaction.controller",
     "loushang.coding.interaction.intent",
     "loushang.coding.presentation.session",
 )
 
 CODING_TUI_FEATURE_OWNERS = (
+    "loushang.coding.interaction.controller",
     "loushang.coding.interaction.screen_host",
     "loushang.coding.interaction.settings_profile",
     "loushang.coding.interaction.tui_profile",
@@ -872,7 +872,8 @@ def test_shared_action_presentation_keeps_product_controller_and_copy_outside() 
         assert token not in shared
 
     assert "class HostActionResult" in result_owner
-    assert "HostActionResult" in controller
+    assert "ConversationUiController" in controller
+    assert "HostActionResult" not in controller
     assert "class ControllerResult" not in controller
     assert "ImagePart" in screen_host
     assert "PromptIntent" in screen_host
