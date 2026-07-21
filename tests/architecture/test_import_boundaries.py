@@ -127,7 +127,7 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
     assert offenders == []
 
 
-def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> None:
+def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None:
     harness_root = Path("src/loushang/harness")
     profile_allowlists = {
         harness_root / "agent_transcript": (
@@ -145,6 +145,15 @@ def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> 
         ),
         harness_root / "extensions" / "agent": (
             "loushang.ai.types",
+            "loushang.agent",
+        ),
+        harness_root / "extensions": (
+            "loushang.ai.api_registry",
+            "loushang.ai.model",
+            "loushang.agent",
+        ),
+        harness_root / "host": (
+            "loushang.ai.model",
             "loushang.agent",
         ),
     }
@@ -264,6 +273,7 @@ def test_production_harnesstui_imports_only_approved_loushang_layers() -> None:
         "loushang.harnesstui",
         "loushang.tui",
         "loushang.harness",
+        "loushang.protocol",
     )
     offenders = [
         f"{path.as_posix()} imports {imported}"
@@ -579,7 +589,10 @@ def test_session_capabilities_runtime_is_neutral_and_adopted() -> None:
     command_source = Path(
         "src/loushang/coding/session/command_controller.py"
     ).read_text(encoding="utf-8")
-    bash_source = Path("src/loushang/coding/session/bash_controller.py").read_text(
+    bash_source = Path("src/loushang/harness/session/bash.py").read_text(
+        encoding="utf-8"
+    )
+    session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
     boundary = Path(
@@ -587,9 +600,12 @@ def test_session_capabilities_runtime_is_neutral_and_adopted() -> None:
     ).read_text(encoding="utf-8")
 
     assert "loushang.coding" not in capabilities_source
+    assert "loushang.coding" not in bash_source
     assert "SessionToolRuntime" in tool_source
-    assert "SessionCommandRuntime" in command_source
-    assert "SessionCommandExecutionRuntime" in bash_source
+    assert "SessionCommandController" in command_source
+    assert "BashExecutionRuntime" in bash_source
+    assert "BashExecutionRuntime" in session_source
+    assert not Path("src/loushang/coding/session/bash_controller.py").exists()
     assert "Product Binding" in boundary
     assert "Coding keeps" in boundary
 
@@ -621,7 +637,7 @@ def test_session_facade_is_neutral_and_adopted() -> None:
     channel_source = Path("src/loushang/coding/mode/channel_mode.py").read_text(
         encoding="utf-8"
     )
-    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(
         encoding="utf-8"
     )
     boundary = Path(
@@ -647,7 +663,10 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
     operations_source = Path("src/loushang/harness/session/operations.py").read_text(
         encoding="utf-8"
     )
-    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+    binding_source = Path(
+        "src/loushang/harness/session/rpc_operations.py"
+    ).read_text(encoding="utf-8")
+    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(
         encoding="utf-8"
     )
     channel_adapter_source = Path("src/loushang/coding/mode/channel_mode.py").read_text(
@@ -660,6 +679,12 @@ def test_session_rpc_operations_are_neutral_and_adopted() -> None:
     assert "loushang.coding" not in operations_source
     assert "loushang.channel" not in operations_source
     assert "json" not in operations_source
+    assert "loushang.coding" not in binding_source
+    assert "loushang.channel" not in binding_source
+    assert "SessionRpcOperationBinding" in rpc_source
+    assert "_rpc_operations.prompt_request" in rpc_source
+    assert "_rpc_operations.new_session" in rpc_source
+    assert "_rpc_operations.compact" in rpc_source
     assert "SessionOperationAvailability" in operations_source
     assert "SessionOperationRuntime" in rpc_source
     assert "WorkRuntime" in channel_adapter_source
@@ -671,7 +696,7 @@ def test_jsonl_command_router_is_neutral_and_rpc_uses_explicit_routes() -> None:
     router_source = Path(
         "src/loushang/channel/jsonl_command_router.py"
     ).read_text(encoding="utf-8")
-    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(
         encoding="utf-8"
     )
     boundary = Path(
@@ -692,7 +717,7 @@ def test_channel_product_host_runtime_is_neutral_and_adopted() -> None:
     channel_host_source = Path("src/loushang/channel/host.py").read_text(
         encoding="utf-8"
     )
-    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(
         encoding="utf-8"
     )
     boundary = Path(
@@ -707,6 +732,31 @@ def test_channel_product_host_runtime_is_neutral_and_adopted() -> None:
     assert "Product Binding" in boundary
     assert "Coding Adoption" in boundary
     assert "Dependency Rule" in boundary
+
+
+def test_mode_host_implementation_is_shared_and_coding_is_thin() -> None:
+    rpc_host = Path("src/loushang/harness/host/rpc.py").read_text(encoding="utf-8")
+    plain_host = Path(
+        "src/loushang/harnesstui/conversation/plain_mode.py"
+    ).read_text(encoding="utf-8")
+    coding_rpc = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+        encoding="utf-8"
+    )
+    coding_print = Path("src/loushang/coding/mode/print_mode.py").read_text(
+        encoding="utf-8"
+    )
+    boundary = Path(
+        "docs/internals/architecture/harness/mode-host-boundary.md"
+    ).read_text(encoding="utf-8")
+
+    assert "loushang.coding" not in rpc_host
+    assert "loushang.coding" not in plain_host
+    assert "class RpcHost" in rpc_host
+    assert "class PlainHost" in plain_host
+    assert "JsonlCommandRouter" not in coding_rpc
+    assert "class RpcMode" in coding_rpc
+    assert "CodingWorkShell" in coding_print
+    assert "Mode Host Boundary" in boundary
 
 
 def test_channel_product_host_stdio_and_shutdown_helpers_are_neutral() -> None:
@@ -2283,7 +2333,10 @@ def test_harness_extension_runtime_core_boundary_is_documented() -> None:
         sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
     )
 
-    assert extensions.__all__ == []
+    assert set(extensions.__all__) == {
+        "ExtensionProviderRuntime",
+        "ProviderFactory",
+    }
     assert "ExtensionContributionAPI" not in harness.__all__
 
     readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
@@ -3353,7 +3406,7 @@ def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
     session_source = Path("src/loushang/coding/session/agent_session.py").read_text(
         encoding="utf-8"
     )
-    rpc_source = Path("src/loushang/coding/mode/rpc_mode.py").read_text(
+    rpc_source = Path("src/loushang/harness/host/rpc.py").read_text(
         encoding="utf-8"
     )
     cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
@@ -3368,7 +3421,7 @@ def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
     assert "import_session_operation" in extension_source
     assert "_clone_from_builtin" not in session_source
     assert "_import_from_builtin" not in session_source
-    assert "require_session_operation_session" in rpc_source
+    assert "SessionRpcOperationBinding" in rpc_source
     assert "require_session_operation_session" in cli_source
 
 
@@ -3454,11 +3507,9 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
             "loushang.harness.capabilities.prompt_assembly.assemble_prompt",
         },
         Path("src/loushang/coding/session/command_controller.py"): {
-            "loushang.harness.capabilities.prompt_preflight.PromptPreflightResult",
-            "loushang.harness.session.SessionCommandRuntime",
+            "loushang.harness.session.SessionCommandController",
         },
         Path("src/loushang/coding/session/tool_controller.py"): {
-            "loushang.harness.capabilities.prompt_assembly.assemble_prompt",
             "loushang.harness.session.SessionToolRuntime",
         },
     }

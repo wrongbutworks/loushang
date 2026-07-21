@@ -184,12 +184,11 @@ implementation, changelog content, and the final Product result projection.
 `SessionToolRuntime` remains the live rebinding mechanism; Coding only supplies
 its preferred order, builtin set, and activation policy.
 
-`BashController` now exposes only the native Harness command-execution surface.
-The Pi-style `execute_pi_style` and `record_pi_style_result` entry points and
-their tests were removed. The unused `project_bash_result_for_protocol`
-projection was removed as well; native extension `user_bash` interception
-remains a Coding extension policy callback and receives only the typed native
-result shape.
+`BashExecutionRuntime` now owns the native Harness command-execution surface.
+The Coding `BashController` and its Pi-style `execute_pi_style` and
+`record_pi_style_result` entry points were removed. Native extension `user_bash`
+interception remains an injected Coding extension policy callback and receives
+only the typed native result shape.
 
 `ExtensionProviderRuntime` owns provider register/unregister/query lifecycle in
 Harness. Coding retains only the AI-native provider configuration conversion;

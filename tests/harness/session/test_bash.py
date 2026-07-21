@@ -2,24 +2,33 @@ from __future__ import annotations
 
 import asyncio
 
-from loushang.agent import Agent
 from loushang.agent.types import AgentToolResult
-from loushang.ai.types import TextPart
-from loushang.coding.session.bash_controller import BashController
-from loushang.coding.store import SessionManager
+from loushang.ai.types import Context, TextPart
 from loushang.harness.conversation import CommandExecutionRecord
+from loushang.harness.session import BashExecutionPorts, BashExecutionRuntime
 from loushang.harness.workspace.exec import ExecOutputChunk
 
 
-def test_bash_controller_executes_tool_forwards_output_and_records_context(
-    tmp_path,
-) -> None:
-    manager = asyncio.run(
-        SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
-    )
-    agent = Agent()
+def test_bash_runtime_executes_streams_and_records_context(tmp_path) -> None:
+    del tmp_path
+
+    class Transcript:
+        def __init__(self) -> None:
+            self.entries: list[object] = []
+
+        def get_cwd(self) -> str:
+            return "/tmp/project"
+
+        async def append_message(self, record: object) -> None:
+            self.entries.append(record)
+
+        def build_session_context(self) -> Context:
+            return Context(messages=[])
+
+    transcript = Transcript()
     chunks: list[ExecOutputChunk] = []
     executed: list[tuple[str, dict[str, object]]] = []
+    refreshes: list[bool] = []
 
     class BashTool:
         async def execute(self, tool_call_id, params, signal=None, on_update=None):
@@ -42,17 +51,22 @@ def test_bash_controller_executes_tool_forwards_output_and_records_context(
             assert name == "bash"
             return BashTool()
 
-    async def _on_output(chunk: ExecOutputChunk) -> None:
+    def refresh_context() -> None:
+        refreshes.append(True)
+
+    async def on_output(chunk: ExecOutputChunk) -> None:
         chunks.append(chunk)
 
-    controller = BashController(
-        agent=agent,
-        session_manager=manager,
-        get_extension_runner=lambda: None,
-        get_tool_registry=lambda: ToolRegistry(),
+    runtime = BashExecutionRuntime(
+        BashExecutionPorts(
+            get_cwd=transcript.get_cwd,
+            get_definition=lambda: ToolRegistry().get_definition("bash"),
+            create_call_id=lambda: "bash-test-1",
+            append_record=transcript.append_message,
+            refresh_context=refresh_context,
+        )
     )
-
-    result = asyncio.run(controller.execute_bash("printf hi", on_output=_on_output))
+    result = asyncio.run(runtime.execute("printf hi", on_output=on_output))
 
     assert result == {
         "output": "final\n",
@@ -63,8 +77,8 @@ def test_bash_controller_executes_tool_forwards_output_and_records_context(
     }
     assert executed[0][1]["command"] == ["/bin/bash", "-lc", "printf hi"]
     assert chunks == [ExecOutputChunk(stream="stdout", text="streamed\n")]
-    assert controller.is_running is False
-    assert agent.state.messages[-1].role == "user"
-    command = manager.get_entries()[-1].payload
+    assert runtime.is_running is False
+    assert refreshes == [True]
+    command = transcript.entries[-1]
     assert isinstance(command, CommandExecutionRecord)
     assert command.command == "printf hi"

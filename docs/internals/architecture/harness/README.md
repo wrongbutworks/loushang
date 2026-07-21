@@ -144,6 +144,8 @@ planning, work event persistence, or AI provider behavior.
 - [Session RPC Operations Boundary](session-rpc-operations-boundary.md) defines
   typed capability-grouped session operations below transport schemas while
   Products retain RPC mapping, lifecycle tracking, and output projection.
+- [Mode Host Boundary](mode-host-boundary.md) defines the shared RPC/plain host
+  implementation and the remaining Coding Work/event/diagnostic bindings.
 - [Session Product Adapter Collapse](session-product-adapter-collapse.md)
   records the direct Facade/inspector/retry bindings that remove redundant
   Coding session controllers while preserving Coding product ports.

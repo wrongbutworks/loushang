@@ -36,16 +36,17 @@ passed to Harness.
 
 ## Coding Binding
 
-Coding binds `ToolController`, `CommandController`, and `BashController` as
-thin adapters. Coding keeps its prompt text, default built-in tools, concrete
-tool context, tool admission diagnostics, built-in command implementations,
-resource and extension command mapping, `user_bash` extension protocol,
-Pi-style result projection, and TUI/RPC/HTML presentation.
+Coding binds `ToolController` and `CommandController` as thin adapters. The
+standard `BashExecutionRuntime` is Harness-owned and supplies the default
+`['/bin/bash', '-lc', command]` execution, abort, streaming, and transcript
+recording path. Coding supplies only the selected tool definition, transcript
+callbacks, and its optional `user_bash` extension hook until that hook is
+provided directly by the shared extension runtime.
 
-`BashController` currently chooses the `bash` workspace tool and constructs
-`['/bin/bash', '-lc', command]`. That shell choice is a Coding binding decision;
-the Harness runtime only owns selected command-tool lifecycle and portable
-result commit mechanics.
+Coding keeps its prompt text, default built-in tools, concrete tool context,
+tool admission diagnostics, built-in command implementations, resource and
+extension command mapping, and TUI/RPC/HTML presentation. No Coding Bash
+controller or Bash-specific protocol alias remains.
 
 ## Dependency Rule
 
@@ -60,6 +61,6 @@ types. Those concerns are supplied through explicit ports.
 - Harness tests verify neutral tool rebind, separate command catalog/dispatch
   precedence, and a command execution's single transcript commit.
 - Coding tests preserve active-tool policy, command precedence, extension
-  interception, Bash protocol output, and transcript context projection.
+  interception, Bash output, and transcript context projection.
 - Architecture tests require the Harness runtime to stay free of Coding imports
-  and the three Coding controllers to adopt the Harness runtime classes.
+  and Coding's command adapters to use the Harness runtime classes.
