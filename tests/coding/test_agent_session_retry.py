@@ -106,7 +106,9 @@ def test_agent_session_retryable_error_starts_retry_and_removes_error_message(
     monkeypatch.setattr(
         "loushang.coding.session.agent_session._sleep_for_retry", _instant_sleep
     )
-    monkeypatch.setattr(session, "continue_run", _fake_continue_run)
+    monkeypatch.setattr(
+        session._session_runtime, "schedule_continue_run", _fake_continue_run
+    )
     session.subscribe(events.append)
 
     async def scenario() -> None:
@@ -174,7 +176,9 @@ def test_agent_session_retry_success_emits_end_event_and_resolves_waiter(
     monkeypatch.setattr(
         "loushang.coding.session.agent_session._sleep_for_retry", _instant_sleep
     )
-    monkeypatch.setattr(session, "continue_run", _fake_continue_run)
+    monkeypatch.setattr(
+        session._session_runtime, "schedule_continue_run", _fake_continue_run
+    )
     session.subscribe(events.append)
 
     async def scenario() -> None:
@@ -247,7 +251,9 @@ def test_agent_session_retry_preserves_queued_messages_until_retry_continues(
     monkeypatch.setattr(
         "loushang.coding.session.agent_session._sleep_for_retry", _instant_sleep
     )
-    monkeypatch.setattr(session, "continue_run", _fake_continue_run)
+    monkeypatch.setattr(
+        session._session_runtime, "schedule_continue_run", _fake_continue_run
+    )
     session.subscribe(events.append)
 
     async def scenario() -> None:
@@ -318,7 +324,9 @@ def test_agent_session_abort_retry_ends_retry_with_failure(
     monkeypatch.setattr(
         "loushang.coding.session.agent_session._sleep_for_retry", _blocking_sleep
     )
-    monkeypatch.setattr(session, "continue_run", _fake_continue_run)
+    monkeypatch.setattr(
+        session._session_runtime, "schedule_continue_run", _fake_continue_run
+    )
     session.subscribe(events.append)
 
     async def scenario() -> None:
@@ -389,7 +397,9 @@ def test_agent_session_retry_max_retries_emits_final_failure(
     monkeypatch.setattr(
         "loushang.coding.session.agent_session._sleep_for_retry", _instant_sleep
     )
-    monkeypatch.setattr(session, "continue_run", _fake_continue_run)
+    monkeypatch.setattr(
+        session._session_runtime, "schedule_continue_run", _fake_continue_run
+    )
 
     async def scenario() -> None:
         session.agent.state.messages.append(error_message)
@@ -523,7 +533,9 @@ def test_agent_session_overflow_routes_to_compaction_instead_of_retry(
         raise AssertionError("overflow should not trigger retry continue_run")
 
     monkeypatch.setattr(session, "_compact_internal", _fake_compact_internal)
-    monkeypatch.setattr(session, "continue_run", _fake_continue_run)
+    monkeypatch.setattr(
+        session._session_runtime, "schedule_continue_run", _fake_continue_run
+    )
     session.subscribe(events.append)
 
     async def scenario() -> None:

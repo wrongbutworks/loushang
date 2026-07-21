@@ -247,7 +247,13 @@ class SessionRuntime:
         self._queue_controller.follow_up(user_input, images=images)
 
     async def continue_run(self) -> None:
-        await self._host_runtime.run(self.agent.continue_run)
+        await self._host_runtime.run_after_idle(self.agent.continue_run)
+
+    def schedule_continue_run(self) -> asyncio.Task[None]:
+        return self._host_runtime.defer_run(
+            self.agent.continue_run,
+            key="agent-continue",
+        )
 
     def abort(self) -> bool:
         return self._host_runtime.abort()

@@ -64,6 +64,7 @@ class RetryCoordinator(Generic[C]):
         self._future: asyncio.Future[None] | object | None = None
         self._cancel_handle: C | None = None
         self._delay_active = False
+        self._continuation_task: asyncio.Task[None] | None = None
 
     @property
     def attempt(self) -> int:
@@ -133,6 +134,8 @@ class RetryCoordinator(Generic[C]):
         if self._delay_active:
             raise RuntimeError("Retry delay already in progress")
 
+        self._cancel_pending_continuation()
+
         self.ensure_waiter()
         self._attempt += 1
         if self._attempt > max(0, policy.max_attempts):
@@ -176,10 +179,57 @@ class RetryCoordinator(Generic[C]):
         finally:
             self._delay_active = False
 
-        asyncio.ensure_future(self._continue_run())
+        attempt_number = self._attempt
+        self._continuation_task = asyncio.create_task(
+            self._run_continuation(attempt_number)
+        )
         return True
 
+    async def _run_continuation(self, attempt: int) -> None:
+        try:
+            await self._continue_run()
+        except asyncio.CancelledError:
+            # A later user action or retry attempt may invalidate this
+            # deferred continuation. Its cancellation is intentional and
+            # must not become an unhandled background-task exception.
+            return
+        except Exception as error:
+            if not self._is_current_attempt(attempt):
+                return
+            try:
+                await self.finish(
+                    RetryOutcome(
+                        success=False,
+                        attempt=attempt,
+                        error=str(error),
+                    )
+                )
+            except BaseException:
+                # This task has no caller to receive an exception. Preserve
+                # the retry state invariant even if the failure event sink
+                # itself fails.
+                self._resolve_and_reset()
+
+    def _is_current_attempt(self, attempt: int) -> bool:
+        return self._future is not None and self._attempt == attempt
+
+    def _cancel_pending_continuation(self) -> None:
+        task = self._continuation_task
+        if task is None or task.done() or task is asyncio.current_task():
+            return
+        self._continuation_task = None
+        task.cancel()
+
     def _resolve_and_reset(self) -> None:
+        continuation_task = self._continuation_task
+        self._continuation_task = None
+        if (
+            continuation_task is not None
+            and continuation_task is not asyncio.current_task()
+            and not continuation_task.done()
+        ):
+            continuation_task.cancel()
+
         future = self._future
         if isinstance(future, asyncio.Future) and not future.done():
             future.set_result(None)
