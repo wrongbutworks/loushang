@@ -1,0 +1,210 @@
+# Multi-Agent Run Handle Boundary
+
+> Status: **draft proposal**（目标设计，未经接受）。本文定义
+> `loushang.harness.multiagent` 的子 agent 运行载体边界，不描述当前
+> 实现状态。
+
+## Scope
+
+`SubagentRunHandle` 是每个子 agent 一份的运行载体：它把一次性的
+`run_agent()` 调用组织成跨多轮、可投递、可中断、可关闭、可恢复的长生命
+周期执行实体。
+
+本文定义：
+
+- 运行载体的职责与接口
+- 多轮 run 的驱动模型（输入如何变为新一轮 run）
+- 取消 / 中断 / 关闭语义（ARD-002 异步双模式）
+- 事件转接与终态产出
+- 恢复入口（二期回收语义的挂点）
+
+本文不定义：
+
+- AgentRunSpec 的构造规则（属 SubagentContextFactory）
+- 消息如何到达 handle（属 AgentInputFacade / Control）
+- 状态机推导与事实发射（属 LifecycleProjection）
+- 并发名额与回收决策（属 Limits）
+
+## Why A Dedicated Handle
+
+`run_agent(spec)` 是一次性 async 调用：给一个 `AgentRunSpec`，返回
+`AgentRunResult`。子 agent 需要的能力超出单次调用：
+
+- 生命周期内经历**多轮** run（初始 turn、消息唤醒的后续 turn）
+- 运行中可被**投递消息**（下一轮输入或当前 turn steering）
+- 可被**中断**（停当前 turn，实体存活）与**关闭**（实体释放）
+- 事件流需要持续转接给状态机与装配层消费者
+
+这些职责不属于 `run_agent()`（一次性），也不属于 MultiAgentControl
+（协调多 agent 的控制面），因此独立为 RunHandle。
+
+参照：Codex `CodexThread`（ThreadManager 托管的线程句柄）、cc
+`LocalAgentTask`（任务表条目 + 后台生命周期闭包）、harness
+`HostRuntime` 的 run / abort / wait_for_idle / dispose 编排。
+
+## Interface
+
+```text
+SubagentRunHandle
+  # 身份
+  agent_path: AgentPath            # 逻辑寻址（registry 持有映射）
+  agent_type: AgentTypeRecord      # 类型裁剪视图
+
+  # 投递与驱动
+  async deliver(message: AgentInputMessage) -> DeliveryOutcome
+      # open 且 idle/终态 → 驱动新一轮 run（消息驱动唤醒，ARD-002）
+      # open 且 running → 按消息语义走 steering / follow_up
+      # closed → 结构化错误（不可寻址）
+
+  # 控制
+  async interrupt() -> SubagentStatus    # 停当前 turn，实体存活
+  async close() -> SubagentStatus        # 递归 close 后代后释放
+
+  # 等待
+  async await_terminal(timeout: Seconds | None) -> SubagentStatus
+      # 等待终态；不改变投递语义（wait_agent 的门面在 AgentInputFacade）
+
+  # 状态
+  status: SubagentStatus                  # 当前状态（由事件推导）
+  events: EventSubscription               # 事件订阅入口（转接给
+                                          # LifecycleProjection / 装配层）
+```
+
+关键形状说明：
+
+- `deliver` 是唯一输入口：所有消息（spawn 初始简报、send_message、
+  完成通知的进一步接力）都经它进入运行实体。
+- `await_terminal` 只等待、不消费消息：等待原语的"唤醒"语义由
+  AgentInputFacade 以 HostInputQueue activity 实现，handle 不重复实现。
+- `events` 是转接而非源头：源头是 `run_agent()` 的 `AgentEventSink`
+  回调，handle 把它组织成可订阅流。
+
+## Product Injection Seams（参数化与扩展）
+
+RunHandle 的机制是产品中立、写死的；但以下行为是**产品可注入的缝**，
+由装配层（产品或 OEM 经扩展贡献）提供，handle 不内置默认值：
+
+| 缝 | 注入内容 | 默认（harness 提供） | 扩展面 |
+|---|---|---|---|
+| `RunDriver` | 如何执行一轮 run | `harness.run_agent(AgentRunSpec)` | 产品可替换（如加 product hooks）；扩展点类型 `tool`/`hook` |
+| `SnapshotCodec` | 二期回收的状态外置编码 | 无（一期不回收） | 产品/OEM 提供快照编解码，决定哪些状态外置 |
+| `EventDecorator` | 事件转接时的产品级装饰/过滤 | 原样转接 | 产品可注入装饰器链（如附加 product 元数据） |
+
+不在本组件的缝（避免双重定义）：`TerminalFactMapper` 归
+LifecycleProjection（事实由它 shape，handle 只转接原始 result）；
+`DeliveryPolicy` 归 AgentInputFacade（QueueKind 映射发生在入队时）。
+
+注入方式：
+
+- **产品装配层**：构造 Control 时经 `MultiAgentPolicy` 参数传入各缝的
+  实现；harness 提供上表中的默认实现，产品按需覆写。
+- **OEM / extension**：经 harness 既有扩展贡献机制
+  （`ExtensionSurfaceDescriptor`，`tool` / `hook` / `policy` 面）贡献
+  缝实现；优先级与冲突解析复用 extensions 的 priority / before / after
+  排序，不新发明机制。
+- 缝的实现必须遵守本文件的语义不变式（多轮驱动规则、取消双模式、
+  先状态后收尾）；缝注入的是**策略与装饰**，不是语义改写——这是
+  "产品装配不破坏内核一致性"（architecture principles 第 8 条）的
+  具体落实。
+
+示例（OEM 场景）：OEM 想在事件流中附加其审计系统所需的 trace id——
+实现 `EventDecorator` 包装默认转接、追加 metadata，经扩展贡献注册；
+handle、状态机、通知合成全部不受影响。
+
+## Multi-Round Driving Model
+
+子 agent 的执行被组织为"轮（round）"序列：
+
+```text
+round 1: spec(初始简报) ──run_agent()──► 终态/中断
+round 2: deliver(消息)  ──run_agent(continue)──► ...
+...
+```
+
+驱动规则：
+
+1. **初始轮**由 Control 在 spawn 流水线末尾触发（`deliver(初始简报)`）。
+2. **后续轮**只在实体 idle（无活跃 run）时由 `deliver` 触发；实体
+   running 时 deliver 不新起 run，而是：
+   - `steering` 语义：经 `AgentLoopConfig.get_steering_messages` 挂点
+     注入当前 turn 的下一工具边界（harness host queue 的既有语义）
+   - `follow_up` 语义：排队，当前 run 结束后作为下一轮输入
+3. 每轮复用 `run_agent_loop_continue` 路径（`AgentRunSpec.mode =
+   "continue"`），历史在 `AgentContext.messages` 内累积——handle 持有
+   并跨轮传递 context。
+4. 一轮终态后，handle 先把终态事实交给 LifecycleProjection，再做收尾
+   （"先状态、后收尾"纪律）。
+
+这一模型直接复用 agent 内核已有的挂点（`get_steering_messages` /
+`get_follow_up_messages` / `mode="continue"`），不新增 loop 语义。
+
+## Cancellation Semantics（ARD-002 双模式）
+
+一期全异步，只有一种模式，但接口按双模式定型：
+
+- **不链接父 run 取消**：子 agent 的 cancel token 独立于父；父被取消
+  （用户 ESC）不杀子 agent。`AgentRunSpec.signal` 使用 handle 自有的
+  AbortController，不从父 context 派生。
+- **显式控制**：
+  - `interrupt()` = abort 当前轮（signal.aborted），实体转为
+    interrupted，可继续 deliver。
+  - `close()` = interrupt 当前轮（若有）→ 递归 close 全部后代 → 释放
+    实体与 registry 名额。
+- 后续若引入同步 spawn：同步子 agent 的 signal 链接父 AbortController
+  （父取消传播），异步维持独立——接口无需变更，仅 signal 来源不同。
+
+## Event Tap And Terminal Production
+
+- `run_agent()` 的 `event_sink` 由 handle 提供：每个事件先转接给订阅者
+  （LifecycleProjection 必须最先订阅，保证状态推导先于装配层消费者
+  看到事实），再按订阅顺序分发。
+- 终态产出：`AgentRunResult` → 终态事实（status、终态消息、usage、
+  时长、tool 计数）。usage / 计数从事件与 result 聚合，handle 不解释
+  业务含义。
+- 终态后实体**保持 open**（除非 close）——这是消息驱动唤醒的前提
+  （ARD-002）。
+
+## Recovery Hook（二期挂点，一期不实现）
+
+- 一期：无回收，handle 常驻内存直至 close。
+- 二期引入 Limits 的 LRU 回收时：
+  - 回收前由 Control 触发 `handle.snapshot()`（状态外置，经注入的
+    `SnapshotCodec` 编码：context messages、path、type、父子边），随后
+    释放 handle。
+  - `deliver` 到已回收 path 时，Control 经 registry 找到快照，重建
+    handle 并恢复（透明重载，Codex v2 语义）。
+  - 回收候选判定也是可注入的（Limits 的策略缝：产品可定义 idle
+    超时阈值与保护规则）。
+- 因此 handle 的构造必须允许"从快照重建"路径，接口一期就定型
+  （`from_snapshot` 可作为二期工厂方法预留，一期不实现）。
+
+## Ownership And Boundaries
+
+拥有：
+
+- 子 agent 的多轮执行组织与 task 持有
+- cancel token 所有权与中断 / 关闭语义
+- 事件转接与终态转发（原始 AgentRunResult 转给 LifecycleProjection；
+  事实 shape 与产品附加字段归 projection）
+- open / closed 实体状态（与 LifecycleProjection 的推导状态区分：
+  handle 是物理实体态，projection 是事实视图）
+
+不拥有：
+
+- 消息来源与寻址（AgentInputFacade / Control）
+- AgentRunSpec 的内容构造（ContextFactory）
+- 并发名额与回收决策（Limits 决策，handle 执行）
+- 状态机的业务解释（LifecycleProjection）
+- agent loop 语义（loushang.agent）
+- **各注入缝的具体实现**：RunDriver / SnapshotCodec / EventDecorator
+  的实现归产品装配层
+  或 OEM 扩展；handle 只定义缝的契约与默认
+
+## Failure Semantics
+
+- run 抛错 → `AgentRunResult(status="failed")` → 实体转为 failed
+  （终态），保持 open 可 deliver 恢复（新一轮 run）。
+- `deliver` 到 closed 实体 → 结构化错误返回给投递方（经 AgentInputFacade 作为
+  工具错误结果，不抛异常）。
+- `close` 幂等：重复 close 返回当前状态。
+- `interrupt` 对 idle 实体是 no-op，返回当前状态。

@@ -518,6 +518,38 @@
                 "reasoningEffort": false,
                 "strictSchema": true
               }
+            },
+            "kimi-k3": {
+              "displayName": "Kimi K3",
+              "family": "kimi-k3",
+              "alias": "default-chat",
+              "defaults": {
+                "maxOutputTokens": 131072,
+                "reasoningEffort": "max"
+              },
+              "capabilities": {
+                "contextWindow": 1048576,
+                "maxTokens": 131072,
+                "input": [
+                  "text",
+                  "image"
+                ],
+                "output": [
+                  "text"
+                ],
+                "reasoning": true,
+                "stream": true,
+                "toolUse": true,
+                "structuredOutput": true,
+                "attachment": false,
+                "temperature": false
+              },
+              "adapter": {
+                "reasoningEffort": true,
+                "maxOutputTokensField": "max_completion_tokens",
+                "assistantReasoningContent": true,
+                "reasoningFormat": "openai"
+              }
             }
           },
           "adapter": {
