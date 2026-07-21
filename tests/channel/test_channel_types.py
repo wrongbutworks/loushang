@@ -31,6 +31,7 @@ def test_channel_public_api_exposes_boundary_and_jsonl_surfaces() -> None:
         "ProductHostAction",
         "ProductHostActionType",
         "ProductHostAdapter",
+        "ProductHostLifecycle",
         "ProductHostRuntime",
         "ProductHostStreams",
         "ProductHostState",
