@@ -3,11 +3,17 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from math import isfinite
+from pathlib import Path
 from types import MappingProxyType
 from typing import Literal
 from unicodedata import category
 
-from loushang.ai.auth.credentials import AuthCredential
+from loushang.ai.auth.credentials import (
+    ApiKeyAuth,
+    AuthCredential,
+    OAuthBearerAuth,
+    OAuthCredential,
+)
 from loushang.ai.structured import StructuredOutputOptions
 
 PairingMode = Literal["strict", "repair"]
@@ -73,6 +79,8 @@ class RetryOptions:
 class CallOptions:
     cancellation: object | None = None
     auth: AuthCredential | None = None
+    credential: OAuthCredential | None = field(default=None, repr=False)
+    credential_file: str | Path | None = None
     headers: Mapping[str, str] = field(default_factory=dict, repr=False)
     cache_retention: CacheRetention | None = None
     cache_key: str | None = None
@@ -88,6 +96,20 @@ class CallOptions:
     output: StructuredOutputOptions | None = None
 
     def __post_init__(self) -> None:
+        if self.auth is not None and not isinstance(
+            self.auth, (ApiKeyAuth, OAuthBearerAuth)
+        ):
+            raise TypeError("auth must be ApiKeyAuth, OAuthBearerAuth, or None")
+        if self.credential is not None and not isinstance(
+            self.credential, OAuthCredential
+        ):
+            raise TypeError("credential must be OAuthCredential or None")
+        if self.credential_file is not None and not isinstance(
+            self.credential_file, (str, Path)
+        ):
+            raise TypeError("credential_file must be a path string, Path, or None")
+        if isinstance(self.credential_file, str) and not self.credential_file.strip():
+            raise ValueError("credential_file must be non-empty")
         object.__setattr__(
             self,
             "headers",

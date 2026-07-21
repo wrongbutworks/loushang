@@ -169,28 +169,35 @@ def test_auth_is_owned_by_ai_package_without_top_level_auth_package() -> None:
 
     assert auth_files == {
         "__init__.py",
+        "core.py",
         "credentials.py",
+        "errors.py",
+        "resolver.py",
+        "store.py",
         "support.py",
     }
 
     import loushang.ai.auth as auth_module
 
     assert not (REPO_ROOT / "src/loushang/auth").exists()
+    assert (
+        AI_SRC / "auth" / "sources" / "openai_codex.py"
+    ).is_file()
+    assert not (
+        AI_SRC / "auth" / "oauth" / "providers" / "openai_codex.py"
+    ).exists()
 
     for name in (
-        "Credential" + "Store",
-        "OAuth" + "Credentials",
-        "OAuthError",
-        "OAuth" + "Provider" + "Registry",
-        "OAuthReauthenticationRequiredError",
-        "get_oauth_api_key",
-        "load_credentials",
-        "oauth_" + "login",
-        "oauth_" + "refresh",
-        "register_builtin_oauth_providers",
-        "resolve_oauth_api_key",
+        "OAuthCredential",
+        "CredentialSource",
+        "FileCredentialStore",
+        "OpenAICodexCredentialSource",
+        "resolve_auth",
+        "login",
+        "logout",
+        "credential_status",
     ):
-        assert not hasattr(auth_module, name)
+        assert hasattr(auth_module, name)
 
     with pytest.raises(ModuleNotFoundError):
         importlib.import_module("loushang.auth")

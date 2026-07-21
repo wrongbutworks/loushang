@@ -507,8 +507,88 @@ def merge_adapter_config(
 
 
 @dataclass(frozen=True)
+class OAuthConfig:
+    client_id: str
+    authorization_endpoint: str
+    token_endpoint: str
+    scopes: tuple[str, ...] = ()
+    redirect_uri: str | None = None
+    revocation_endpoint: str | None = None
+    token_endpoint_auth_method: str = "none"
+
+    def __post_init__(self) -> None:
+        for name in ("client_id", "authorization_endpoint", "token_endpoint"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"oauth {name} must be a non-empty string")
+            object.__setattr__(self, name, value.strip())
+        for name in ("redirect_uri", "revocation_endpoint"):
+            value = getattr(self, name)
+            if value is None:
+                continue
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"oauth {name} must be a non-empty string or None")
+            object.__setattr__(self, name, value.strip())
+        if (
+            not isinstance(self.token_endpoint_auth_method, str)
+            or not self.token_endpoint_auth_method.strip()
+        ):
+            raise ValueError(
+                "oauth token_endpoint_auth_method must be a non-empty string"
+            )
+        object.__setattr__(
+            self,
+            "token_endpoint_auth_method",
+            self.token_endpoint_auth_method.strip(),
+        )
+        if not isinstance(self.scopes, tuple) or any(
+            not isinstance(scope, str) or not scope.strip() for scope in self.scopes
+        ):
+            raise ValueError("oauth scopes must contain non-empty strings")
+        normalized_scopes = tuple(scope.strip() for scope in self.scopes)
+        if len(set(normalized_scopes)) != len(normalized_scopes):
+            raise ValueError("oauth scopes must not contain duplicates")
+        object.__setattr__(self, "scopes", normalized_scopes)
+
+    @classmethod
+    def from_raw(cls, raw: Mapping[str, object]) -> "OAuthConfig":
+        if not isinstance(raw, Mapping):
+            raise ValueError("oauth config must be an object")
+        return cls(
+            client_id=raw.get("client_id"),  # type: ignore[arg-type]
+            authorization_endpoint=raw.get("authorization_endpoint"),  # type: ignore[arg-type]
+            token_endpoint=raw.get("token_endpoint"),  # type: ignore[arg-type]
+            scopes=_as_str_tuple(raw.get("scopes")),
+            redirect_uri=_as_optional_str(raw.get("redirect_uri")),
+            revocation_endpoint=_as_optional_str(raw.get("revocation_endpoint")),
+            token_endpoint_auth_method=raw.get(  # type: ignore[arg-type]
+                "token_endpoint_auth_method",
+                "none",
+            ),
+        )
+
+    def to_raw(self) -> dict[str, object]:
+        raw: dict[str, object] = {
+            "client_id": self.client_id,
+            "authorization_endpoint": self.authorization_endpoint,
+            "token_endpoint": self.token_endpoint,
+        }
+        if self.scopes:
+            raw["scopes"] = list(self.scopes)
+        if self.redirect_uri is not None:
+            raw["redirect_uri"] = self.redirect_uri
+        if self.revocation_endpoint is not None:
+            raw["revocation_endpoint"] = self.revocation_endpoint
+        if self.token_endpoint_auth_method != "none":
+            raw["token_endpoint_auth_method"] = self.token_endpoint_auth_method
+        return raw
+
+
+@dataclass(frozen=True)
 class Auth:
     kind: str = "apiKey"
+    provider: str | None = None
+    oauth: OAuthConfig | None = None
     api_key_env: str | None = None
     api_key_envs: tuple[str, ...] = ()
     header: str = "Authorization"
@@ -517,6 +597,14 @@ class Auth:
     def __post_init__(self) -> None:
         if self.kind not in {"apiKey", "oauth", "none"}:
             raise ValueError(f"unsupported auth kind: {self.kind!r}")
+        if self.provider is not None and (
+            not isinstance(self.provider, str) or not self.provider
+        ):
+            raise ValueError("auth provider must be a non-empty string or None")
+        if self.oauth is not None and not isinstance(self.oauth, OAuthConfig):
+            raise TypeError("auth oauth must be OAuthConfig or None")
+        if self.oauth is not None and self.kind != "oauth":
+            raise ValueError("auth oauth config requires kind='oauth'")
         if self.api_key_env is not None and (
             not isinstance(self.api_key_env, str) or not self.api_key_env
         ):
@@ -538,6 +626,12 @@ class Auth:
             return None
         return cls(
             kind=raw.get("kind", "apiKey"),  # type: ignore[arg-type]
+            provider=_as_optional_str(raw.get("provider")),
+            oauth=(
+                OAuthConfig.from_raw(cast(Mapping[str, object], raw["oauth"]))
+                if isinstance(raw.get("oauth"), Mapping)
+                else None
+            ),
             api_key_env=_as_optional_str(raw.get("apiKeyEnv")),
             api_key_envs=_as_str_tuple(raw.get("apiKeyEnvs")),
             header=raw.get("header", "Authorization"),  # type: ignore[arg-type]
@@ -546,6 +640,10 @@ class Auth:
 
     def to_raw(self) -> dict[str, object]:
         raw: dict[str, object] = {"kind": self.kind}
+        if self.provider is not None:
+            raw["provider"] = self.provider
+        if self.oauth is not None:
+            raw["oauth"] = self.oauth.to_raw()
         if self.api_key_env is not None:
             raw["apiKeyEnv"] = self.api_key_env
         if self.api_key_envs:

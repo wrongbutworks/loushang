@@ -147,7 +147,8 @@ def test_missing_default_api_key_reports_expected_env() -> None:
         )
 
     assert exc_info.value.info.details == {
-        "expected_env": ["PRIMARY_KEY", "SECONDARY_KEY"]
+        "expected_env": ["PRIMARY_KEY", "SECONDARY_KEY"],
+        "recovery": "configure",
     }
 
 

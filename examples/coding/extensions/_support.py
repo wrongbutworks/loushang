@@ -12,7 +12,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from loushang.agent import AgentTool
-from loushang.ai import get_model
+from loushang.ai import ApiKeyAuth, CallOptions, get_model
 from loushang.ai.event_stream.stream import AssistantMessageEventStream
 from loushang.ai.model import (
     Capabilities,
@@ -279,7 +279,7 @@ async def create_kimi_runtime_session(
         persist=persist,
     )
     session = await runtime.create_session(cwd=str(working_dir))
-    session.agent.get_api_key = lambda provider: resolve_api_key()
+    session.agent.call_options = CallOptions(auth=ApiKeyAuth(resolve_api_key()))
     return runtime, session
 
 

@@ -8,6 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 AI_SRC = REPO_ROOT / "src/loushang/ai"
 TOP_LEVEL_AUTH_SRC = REPO_ROOT / "src/loushang/auth"
 TOP_LEVEL_EXAMPLES = REPO_ROOT / "examples/ai"
+AUTH_EXAMPLES = REPO_ROOT / "examples/auth"
 DISALLOWED_AI_RUNTIME_IMPORTS = ("loushang.agent", "loushang.coding")
 ALLOWED_TOP_LEVEL_EXAMPLE_IMPORTS = {
     "loushang.ai",
@@ -55,9 +56,9 @@ def check_import_boundaries() -> list[str]:
         )
 
     public_examples = set(TOP_LEVEL_EXAMPLES.glob("[0-9][0-9]_*.py"))
-    chatgpt_example = TOP_LEVEL_EXAMPLES / "chatgpt_coding_plan.py"
-    if chatgpt_example.is_file():
-        public_examples.add(chatgpt_example)
+    codex_live_example = AUTH_EXAMPLES / "openai_codex_live_example.py"
+    if codex_live_example.is_file():
+        public_examples.add(codex_live_example)
 
     for path in sorted(public_examples):
         relative_path = path.relative_to(REPO_ROOT).as_posix()

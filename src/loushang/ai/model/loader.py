@@ -83,7 +83,20 @@ ALLOWED_CAPABILITY_KEYS = frozenset(
 ALLOWED_PRICING_KEYS = frozenset(
     {"currency", "input", "output", "cacheRead", "cacheWrite"}
 )
-ALLOWED_AUTH_KEYS = frozenset({"kind", "apiKeyEnv", "apiKeyEnvs", "header", "prefix"})
+ALLOWED_AUTH_KEYS = frozenset(
+    {"kind", "provider", "oauth", "apiKeyEnv", "apiKeyEnvs", "header", "prefix"}
+)
+ALLOWED_OAUTH_KEYS = frozenset(
+    {
+        "client_id",
+        "authorization_endpoint",
+        "token_endpoint",
+        "scopes",
+        "redirect_uri",
+        "revocation_endpoint",
+        "token_endpoint_auth_method",
+    }
+)
 REMOVED_CATALOG_FIELDS = frozenset({"compat", "protocol", "dialect"})
 
 
@@ -308,7 +321,7 @@ def _validate_auth_mapping(value: object, path: str) -> None:
     unknown = sorted(set(mapping) - ALLOWED_AUTH_KEYS)
     if unknown:
         raise ValueError(f"models registry field has unknown keys at {path}: {unknown}")
-    for key in ("kind", "apiKeyEnv", "header"):
+    for key in ("kind", "provider", "apiKeyEnv", "header"):
         if key in mapping:
             _require_str(mapping[key], f"{path}.{key}")
     if "prefix" in mapping and not isinstance(mapping["prefix"], str):
@@ -321,6 +334,38 @@ def _validate_auth_mapping(value: object, path: str) -> None:
         raise ValueError(
             f"models registry field must be a string list: {path}.apiKeyEnvs"
         )
+    oauth = mapping.get("oauth")
+    if oauth is not None:
+        oauth_mapping = _require_mapping(oauth, f"{path}.oauth")
+        unknown_oauth = sorted(set(oauth_mapping) - ALLOWED_OAUTH_KEYS)
+        if unknown_oauth:
+            raise ValueError(
+                f"models registry field has unknown keys at {path}.oauth: "
+                f"{unknown_oauth}"
+            )
+        for key in ("client_id", "authorization_endpoint", "token_endpoint"):
+            if key not in oauth_mapping:
+                raise ValueError(
+                    f"models registry field is required: {path}.oauth.{key}"
+                )
+            _require_str(oauth_mapping[key], f"{path}.oauth.{key}")
+        for key in (
+            "redirect_uri",
+            "revocation_endpoint",
+            "token_endpoint_auth_method",
+        ):
+            if key in oauth_mapping:
+                _require_str(oauth_mapping[key], f"{path}.oauth.{key}")
+        scopes = oauth_mapping.get("scopes")
+        if scopes is not None and (
+            not isinstance(scopes, list)
+            or not all(isinstance(scope, str) and scope.strip() for scope in scopes)
+            or len(set(scopes)) != len(scopes)
+        ):
+            raise ValueError(
+                f"models registry field must be a unique string list: "
+                f"{path}.oauth.scopes"
+            )
 
 
 def _validate_pricing_mapping(value: object, path: str) -> None:

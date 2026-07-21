@@ -67,6 +67,8 @@ def test_call_options_fields_are_canonical_and_consumed() -> None:
     assert field_names == {
         "cancellation",
         "auth",
+        "credential",
+        "credential_file",
         "headers",
         "cache_retention",
         "cache_key",

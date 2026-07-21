@@ -84,16 +84,11 @@ register_api_provider(custom_adapter)
 - `advanced/inspect_endpoint_contract.py`
 - `advanced/custom_catalog.py`
 
-## ChatGPT Coding Plan
+## OpenAI Codex live validation
 
-`chatgpt_coding_plan.py` 只做四件事：
-
-1. 读取 `~/.codex/auth.json`。
-2. 取得当前 access token 和 account ID。
-3. 构造 `OAuthBearerAuth`。
-4. 调用 `openai:coding-responses:gpt-5.5`。
-
-示例不执行登录、续期、写回或凭证存储。外部认证状态必须在调用前已经有效。
+真实的上层应用验证位于 `examples/auth/openai_codex_live_example.py`。它选择
+`openai:coding-responses:gpt-5.5`，调用公共 `auth.get_auth(model)`，再把认证显式传给
+公共 `stream()`。示例不读取 token 文件，也不直接调用 credential source。
 
 ## Live tests
 
