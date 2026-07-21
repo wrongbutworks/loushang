@@ -21,11 +21,20 @@ class SourceInfo(Generic[SourcePathT]):
 class ResourceSourceDescriptor(Protocol):
     """Common provenance fields exposed by resource descriptors."""
 
-    source_path: Path
-    source: str
-    source_kind: str
-    source_scope: str
-    source_root: Path | None
+    @property
+    def source_path(self) -> Path: ...
+
+    @property
+    def source(self) -> str: ...
+
+    @property
+    def source_kind(self) -> str: ...
+
+    @property
+    def source_scope(self) -> str: ...
+
+    @property
+    def source_root(self) -> Path | None: ...
 
 
 def create_source_info(
