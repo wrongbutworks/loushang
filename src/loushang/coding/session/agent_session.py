@@ -103,12 +103,6 @@ from loushang.harness.capabilities import (
     bind_capability_composition_runtime,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.diagnostics.types import (
-    DiagnosticRecord,
-    DiagnosticsQuery,
-    DiagnosticSummary,
-    ErrorReport,
-)
 from loushang.harness.events import (
     CompactionReason,
     ConversationMetadataChanged,
@@ -134,7 +128,6 @@ from loushang.harness.host.retry import RetryPolicy
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.packages.materializer import PackageProgressEvent
 from loushang.harness.resources.types import (
-    PromptFragmentDescriptor,
     ResourceBundle,
 )
 from loushang.harness.resources.watcher import ResourceChangeWatcher
@@ -566,6 +559,8 @@ class AgentSession(SessionFacade):
             identity=self,
             maintenance=self,
             resources=self._resource_refresh_runtime,
+            diagnostics=self._diagnostics_bridge,
+            packages=self._package_controller,
         )
         session_context = self.session_manager.build_session_context()
         self._apply_agent_transcript_context(session_context)
@@ -680,62 +675,6 @@ class AgentSession(SessionFacade):
             command=command, exc=exc
         )
 
-    def get_last_diagnostics(self, limit: int = 50) -> list[DiagnosticRecord]:
-        return self._diagnostics_bridge.get_last_diagnostics(limit=limit)
-
-    def get_diagnostics(
-        self, query: DiagnosticsQuery | None = None
-    ) -> list[DiagnosticRecord]:
-        return self._diagnostics_bridge.get_diagnostics(query=query)
-
-    def get_session_diagnostics(
-        self, query: DiagnosticsQuery | None = None
-    ) -> list[DiagnosticRecord]:
-        return self._diagnostics_bridge.get_session_diagnostics(query=query)
-
-    def get_diagnostics_summary(
-        self, query: DiagnosticsQuery | None = None
-    ) -> DiagnosticSummary:
-        return self._diagnostics_bridge.get_diagnostics_summary(query=query)
-
-    def get_session_diagnostics_summary(
-        self, query: DiagnosticsQuery | None = None
-    ) -> DiagnosticSummary:
-        return self._diagnostics_bridge.get_session_diagnostics_summary(query=query)
-
-    def get_last_error_report(self) -> ErrorReport | None:
-        return self._diagnostics_bridge.get_last_error_report()
-
-    def get_packages(
-        self, *, catalog_path: str | None = None
-    ) -> list[dict[str, object]]:
-        return self._package_controller.get_packages(catalog_path=catalog_path)
-
-    async def materialize_package(self, source: str) -> dict[str, object]:
-        return await self._package_controller.materialize_package(source)
-
-    async def install_package(
-        self, source: str, *, scope: str = "project"
-    ) -> dict[str, object]:
-        return await self._package_controller.install_package(source, scope=scope)
-
-    async def update_package(self, source: str) -> dict[str, object]:
-        return await self._package_controller.update_package(source)
-
-    async def update_packages(self) -> list[dict[str, object]]:
-        return await self._package_controller.update_packages()
-
-    async def check_package_updates(self) -> list[dict[str, object]]:
-        return await self._package_controller.check_package_updates()
-
-    def remove_package(self, source: str) -> dict[str, object]:
-        return self._package_controller.remove_package(source)
-
-    def uninstall_package(
-        self, source: str, *, scope: str = "project"
-    ) -> dict[str, object]:
-        return self._package_controller.uninstall_package(source, scope=scope)
-
     def get_context_usage(self):
         return serialize_context_usage_payload(super().get_context_usage())
 
@@ -805,10 +744,6 @@ class AgentSession(SessionFacade):
         return self.agent.state.messages
 
     @property
-    def session_file(self):
-        return super().get_session_file()
-
-    @property
     def extension_runner(self) -> ExtensionRunner | None:
         return self._extension_runner
 
@@ -832,10 +767,6 @@ class AgentSession(SessionFacade):
 
     def set_scoped_models(self, scoped_models: list[dict[str, object]]) -> None:
         self._selection_runtime.set_scoped_models(scoped_models)
-
-    @property
-    def prompt_templates(self) -> list[PromptFragmentDescriptor]:
-        return super().get_prompt_templates()
 
     @property
     def settings_manager(self) -> SettingsManager | None:

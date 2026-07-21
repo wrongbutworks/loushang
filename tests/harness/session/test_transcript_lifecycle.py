@@ -6,10 +6,13 @@ from pathlib import Path
 
 import pytest
 
+from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.session import (
     AgentTranscriptSessionRuntime,
     ProductTranscriptSessionLifecyclePorts,
     ProductTranscriptSessionLifecycleStore,
+    SessionDiagnosticScope,
+    SessionDiagnosticsRuntime,
     SessionLifecycleHooks,
     SessionLifecycleRuntime,
     SessionLifecycleTransition,
@@ -193,6 +196,38 @@ def test_transcript_session_runtime_resolves_current_native_session_id(
     runtime = AgentTranscriptSessionRuntime(session_dir=tmp_path, lifecycle=lifecycle)
 
     assert runtime.resolve_session_file("demo-session") == session_file
+
+
+def test_transcript_session_runtime_exposes_optional_diagnostics_binding(
+    tmp_path,
+) -> None:
+    service = DiagnosticsService()
+    diagnostics = SessionDiagnosticsRuntime(
+        diagnostics_service=service,
+        get_scope=lambda: SessionDiagnosticScope(session_id="session-1"),
+        get_extension_diagnostics=lambda: None,
+    )
+    service.capture_failure(
+        code="session_test_failure",
+        error="test",
+        phase="runtime",
+        source="session",
+        session_id="session-1",
+    )
+    lifecycle = SessionLifecycleRuntime[_Session, object](
+        store=_Store(),
+        hooks=SessionLifecycleHooks(dispose_session=lambda _session: None),
+    )
+    runtime = AgentTranscriptSessionRuntime(
+        session_dir=tmp_path,
+        lifecycle=lifecycle,
+        diagnostics_runtime=lambda _session: diagnostics,
+    )
+
+    assert [record.code for record in runtime.get_last_diagnostics()] == [
+        "session_test_failure"
+    ]
+    assert runtime.get_diagnostics_summary().total_count == 1
 
 
 def test_product_transcript_store_creates_and_forks_runtime_sessions() -> None:

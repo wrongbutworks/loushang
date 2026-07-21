@@ -313,7 +313,7 @@ async def test_runtime_finds_session_summaries(tmp_path) -> None:
     await first.session_manager.append_message(_user_message("alpha repository task"))
 
     second = await runtime.create_session(
-        cwd=str(project_b), parent_session=str(first.session_file)
+        cwd=str(project_b), parent_session=str(first.get_session_file())
     )
     await second.set_session_name("Beta")
     await second.session_manager.append_message(_user_message("beta follow up"))
@@ -2638,7 +2638,7 @@ async def test_agent_session_runtime_create_restore_and_fork_reconstruct_extensi
     project = tmp_path / "project"
     project.mkdir()
     session = await runtime.create_session(cwd=str(project))
-    restored = await runtime.restore_session(session.session_file)
+    restored = await runtime.restore_session(session.get_session_file())
     await restored.session_manager.append_message(_user_message("branch me"))
     fork_entry_id = restored.session_manager.get_entries()[0].record_id
     await runtime.fork_session(fork_entry_id)

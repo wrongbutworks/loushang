@@ -18,7 +18,14 @@ from typing import Generic, TypeVar
 from loushang.harness.agent_transcript.directory import (
     AgentTranscriptDirectoryRuntime,
 )
+from loushang.harness.diagnostics.types import (
+    DiagnosticRecord,
+    DiagnosticsQuery,
+    DiagnosticSummary,
+    ErrorReport,
+)
 from loushang.harness.runtime import SessionOperationResult
+from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
 from loushang.harness.session.lifecycle import (
     MissingCwdPolicy,
     SessionLifecycleRuntime,
@@ -32,6 +39,7 @@ ValueT = TypeVar("ValueT")
 
 SessionCallback = Callable[[SessionT], Awaitable[None] | None]
 LifecycleCallback = Callable[[], Awaitable[None] | None]
+SessionDiagnosticsProvider = Callable[[object | None], SessionDiagnosticsRuntime]
 TranscriptSessionBuilder = Callable[
     [TranscriptSessionT, SessionT | None, SessionLifecycleTransition],
     SessionT | Awaitable[SessionT],
@@ -188,6 +196,7 @@ class AgentTranscriptSessionRuntime(
         session_index_refresh_interval: float = 0.5,
         session_index_flush_delay: float = 0.25,
         record_index_refresh_failure: Callable[[Exception, bool], None] | None = None,
+        diagnostics_runtime: SessionDiagnosticsProvider | None = None,
     ) -> None:
         super().__init__(
             session_dir=session_dir,
@@ -197,6 +206,7 @@ class AgentTranscriptSessionRuntime(
             record_index_refresh_failure=record_index_refresh_failure,
         )
         self._lifecycle = lifecycle
+        self._diagnostics_runtime = diagnostics_runtime
 
     @property
     def lifecycle(self) -> SessionLifecycleRuntime[SessionT, PayloadT]:
@@ -311,6 +321,51 @@ class AgentTranscriptSessionRuntime(
     def get_current_session(self) -> SessionT | None:
         return self.current_session
 
+    def _session_diagnostics(self) -> SessionDiagnosticsRuntime | None:
+        if self._diagnostics_runtime is None:
+            return None
+        return self._diagnostics_runtime(self.current_session)
+
+    def get_last_diagnostics(self, limit: int = 50) -> list[DiagnosticRecord]:
+        runtime = self._session_diagnostics()
+        return runtime.get_last_diagnostics(limit=limit) if runtime else []
+
+    def get_diagnostics(
+        self, query: DiagnosticsQuery | None = None
+    ) -> list[DiagnosticRecord]:
+        runtime = self._session_diagnostics()
+        return runtime.get_diagnostics(query=query) if runtime else []
+
+    def get_session_diagnostics(
+        self, query: DiagnosticsQuery | None = None
+    ) -> list[DiagnosticRecord]:
+        runtime = self._session_diagnostics()
+        return runtime.get_session_diagnostics(query=query) if runtime else []
+
+    def get_diagnostics_summary(
+        self, query: DiagnosticsQuery | None = None
+    ) -> DiagnosticSummary:
+        runtime = self._session_diagnostics()
+        return (
+            runtime.get_diagnostics_summary(query=query)
+            if runtime
+            else DiagnosticSummary(0, 0, 0, 0)
+        )
+
+    def get_session_diagnostics_summary(
+        self, query: DiagnosticsQuery | None = None
+    ) -> DiagnosticSummary:
+        runtime = self._session_diagnostics()
+        return (
+            runtime.get_session_diagnostics_summary(query=query)
+            if runtime
+            else DiagnosticSummary(0, 0, 0, 0)
+        )
+
+    def get_last_error_report(self) -> ErrorReport | None:
+        runtime = self._session_diagnostics()
+        return runtime.get_last_error_report() if runtime else None
+
     def resolve_session_file(self, session_ref: str | Path) -> Path:
         """Resolve an exact path, filename, or unambiguous current-session id."""
 
@@ -362,4 +417,5 @@ __all__ = [
     "ProductTranscriptSessionLifecyclePorts",
     "ProductTranscriptSessionLifecycleStore",
     "require_session_operation_session",
+    "SessionDiagnosticsProvider",
 ]

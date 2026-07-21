@@ -20,6 +20,9 @@ The Facade provides:
 - common transcript inspection for fork candidates and assistant text.
 - product-bound prompt-template reads plus explicit asynchronous and
   best-effort resource refresh requests.
+- optional diagnostics queries and package operations through Product-supplied
+  ports. The Harness facade does not choose a diagnostics store, package
+  source, materializer, serializer, or trust policy.
 
 `SessionControlPort` is the narrow, non-generic portion of this Facade used by
 standard hosts and Product adapters. It contains identity, prompt/queue/abort
@@ -45,7 +48,8 @@ A Product supplies its already-admitted:
 - `SessionRuntime` with turn policy, application-input policy, event routing,
   and transcript-commit binding;
 - a `SessionFacadePorts` bundle containing transcript, tools, commands,
-  command-execution, view, retry, identity, maintenance, and resource ports;
+  command-execution, view, retry, identity, maintenance, resource, and
+  optional diagnostics/package ports;
 - prompt content, model/thinking selection, context policy, lifecycle cleanup,
   and channel event projection.
 
@@ -58,7 +62,10 @@ or a universal Product command result schema.
 Coding `AgentSession` inherits and initializes the Facade directly rather than
 owning a private forwarding Facade. It binds its existing transcript, tool,
 command, command-execution, inspection, retry, identity, maintenance, and
-resource-refresh runtimes to that shared surface.
+resource-refresh runtimes to that shared surface, together with its diagnostics
+bridge and Coding package controller. The shared facade owns only the
+delegation contract; Coding retains package catalog/materialization policy and
+diagnostics wording.
 It retains model catalog and auth resolution, provider registration, default
 tools and prompt content, Coding command handlers, extension API event and
 `user_bash` mapping, Pi-style protocol aliases, package/root/trust policy,

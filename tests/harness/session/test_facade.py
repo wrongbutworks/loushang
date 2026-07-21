@@ -228,6 +228,56 @@ class _Resources:
         self.requests += 1
 
 
+class _Diagnostics:
+    def get_last_diagnostics(self, limit: int = 50) -> list[str]:
+        return [f"last:{limit}"]
+
+    def get_diagnostics(self, query=None) -> list[str]:
+        return [f"all:{query}"]
+
+    def get_session_diagnostics(self, query=None) -> list[str]:
+        return [f"session:{query}"]
+
+    def get_diagnostics_summary(self, query=None) -> str:
+        return f"summary:{query}"
+
+    def get_session_diagnostics_summary(self, query=None) -> str:
+        return f"session-summary:{query}"
+
+    def get_last_error_report(self) -> str:
+        return "error-report"
+
+
+class _Packages:
+    def get_packages(self, *, catalog_path: str | None = None) -> list[dict[str, object]]:
+        return [{"catalog_path": catalog_path}]
+
+    async def materialize_package(self, source: str) -> dict[str, object]:
+        return {"operation": "materialize", "source": source}
+
+    async def install_package(
+        self, source: str, *, scope: str = "project"
+    ) -> dict[str, object]:
+        return {"operation": "install", "source": source, "scope": scope}
+
+    async def update_package(self, source: str) -> dict[str, object]:
+        return {"operation": "update", "source": source}
+
+    async def update_packages(self) -> list[dict[str, object]]:
+        return [{"operation": "update_all"}]
+
+    async def check_package_updates(self) -> list[dict[str, object]]:
+        return [{"operation": "check_updates"}]
+
+    def remove_package(self, source: str) -> dict[str, object]:
+        return {"operation": "remove", "source": source}
+
+    def uninstall_package(
+        self, source: str, *, scope: str = "project"
+    ) -> dict[str, object]:
+        return {"operation": "uninstall", "source": source, "scope": scope}
+
+
 def _facade():
     runtime = _Runtime()
     command_execution = _CommandExecution()
@@ -356,3 +406,63 @@ def test_session_facade_forwards_execution_events_and_controls() -> None:
     assert command_execution.aborted is True
     assert retry.aborted is True
     assert facade.is_retrying is True
+
+
+def test_session_facade_forwards_optional_diagnostics_and_package_ports() -> None:
+    runtime = _Runtime()
+    diagnostics = _Diagnostics()
+    packages = _Packages()
+    facade = SessionFacade.from_ports(
+        runtime=runtime,
+        ports=SessionFacadePorts(
+            transcript=_Transcript(),
+            tools=_Tools(),
+            commands=_Commands(),
+            command_execution=_CommandExecution(),
+            view=_View(),
+            retry=_Retry(),
+            identity=_Identity(),
+            maintenance=_Maintenance(),
+            resources=_Resources(),
+            diagnostics=diagnostics,
+            packages=packages,
+        ),
+    )
+
+    assert facade.get_last_diagnostics(3) == ["last:3"]
+    assert facade.get_diagnostics("query") == ["all:query"]
+    assert facade.get_session_diagnostics("query") == ["session:query"]
+    assert facade.get_diagnostics_summary("query") == "summary:query"
+    assert facade.get_session_diagnostics_summary("query") == "session-summary:query"
+    assert facade.get_last_error_report() == "error-report"
+    assert facade.get_packages(catalog_path="catalog.json") == [
+        {"catalog_path": "catalog.json"}
+    ]
+
+    async def package_operations() -> None:
+        assert await facade.materialize_package("git:one") == {
+            "operation": "materialize",
+            "source": "git:one",
+        }
+        assert await facade.install_package("git:one", scope="global") == {
+            "operation": "install",
+            "source": "git:one",
+            "scope": "global",
+        }
+        assert await facade.update_package("git:one") == {
+            "operation": "update",
+            "source": "git:one",
+        }
+        assert await facade.update_packages() == [{"operation": "update_all"}]
+        assert await facade.check_package_updates() == [{"operation": "check_updates"}]
+
+    asyncio.run(package_operations())
+    assert facade.remove_package("git:one") == {
+        "operation": "remove",
+        "source": "git:one",
+    }
+    assert facade.uninstall_package("git:one", scope="global") == {
+        "operation": "uninstall",
+        "source": "git:one",
+        "scope": "global",
+    }

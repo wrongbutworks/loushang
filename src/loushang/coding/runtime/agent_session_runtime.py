@@ -18,10 +18,6 @@ from loushang.harness.agent_transcript import (
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import (
     DiagnosticPhase,
-    DiagnosticRecord,
-    DiagnosticsQuery,
-    DiagnosticSummary,
-    ErrorReport,
 )
 from loushang.harness.extensions.context import (
     SessionBeforeForkEvent,
@@ -160,6 +156,7 @@ class AgentSessionRuntime(AgentTranscriptSessionRuntime[AgentSession, str]):
             auto_refresh_session_index=auto_refresh_session_index,
             session_index_refresh_interval=session_index_refresh_interval,
             session_index_flush_delay=session_index_flush_delay,
+            diagnostics_runtime=self._session_diagnostics_runtime,
             record_index_refresh_failure=lambda exc, all_sessions: (
                 self._record_session_index_flush_failure(
                     exc,
@@ -374,9 +371,6 @@ class AgentSessionRuntime(AgentTranscriptSessionRuntime[AgentSession, str]):
             ),
         )
 
-    def get_current_session(self) -> AgentSession | None:
-        return super().get_current_session()
-
     async def rename_session(
         self, session_id: str | Path, name: str | None
     ) -> SessionSummary:
@@ -426,36 +420,6 @@ class AgentSessionRuntime(AgentTranscriptSessionRuntime[AgentSession, str]):
                 },
             )
             raise
-
-    def get_last_diagnostics(self, limit: int = 50) -> list[DiagnosticRecord]:
-        return self._session_diagnostics_runtime().get_last_diagnostics(limit=limit)
-
-    def get_diagnostics(
-        self, query: DiagnosticsQuery | None = None
-    ) -> list[DiagnosticRecord]:
-        return self._session_diagnostics_runtime().get_diagnostics(query=query)
-
-    def get_session_diagnostics(
-        self, query: DiagnosticsQuery | None = None
-    ) -> list[DiagnosticRecord]:
-        return self._session_diagnostics_runtime(self.session).get_session_diagnostics(
-            query=query
-        )
-
-    def get_diagnostics_summary(
-        self, query: DiagnosticsQuery | None = None
-    ) -> DiagnosticSummary:
-        return self._session_diagnostics_runtime().get_diagnostics_summary(query=query)
-
-    def get_session_diagnostics_summary(
-        self, query: DiagnosticsQuery | None = None
-    ) -> DiagnosticSummary:
-        return self._session_diagnostics_runtime(
-            self.session
-        ).get_session_diagnostics_summary(query=query)
-
-    def get_last_error_report(self) -> ErrorReport | None:
-        return self._session_diagnostics_runtime().get_last_error_report()
 
     def get_packages(
         self, *, catalog_path: str | None = None
