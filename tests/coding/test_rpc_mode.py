@@ -4987,7 +4987,7 @@ def test_rpc_mode_binds_extension_context_ui_methods_to_rpc_requests(tmp_path) -
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     extension_runner = ExtensionRunner(
         [
@@ -5041,7 +5041,7 @@ def test_rpc_mode_extension_context_excludes_pi_style_camel_case_ui_methods(
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     extension_runner = ExtensionRunner(
         [LoadedExtension(name="rpc-ui", source_path=Path("/tmp/rpc_ui.py"))]
@@ -5081,7 +5081,7 @@ def test_rpc_mode_extension_context_ui_namespace_is_snake_case_only(tmp_path) ->
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     extension_runner = ExtensionRunner(
         [LoadedExtension(name="rpc-ui", source_path=Path("/tmp/rpc_ui.py"))]
@@ -5133,7 +5133,7 @@ def test_rpc_mode_extension_context_excludes_pi_style_headless_ui_methods(
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     extension_runner = ExtensionRunner(
         [LoadedExtension(name="rpc-ui", source_path=Path("/tmp/rpc_ui.py"))]
@@ -5397,7 +5397,7 @@ def test_rpc_mode_rebinds_extension_ui_context_after_session_switch(tmp_path) ->
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     def _session(session_id: str, extension_runner: ExtensionRunner) -> AgentSession:
         return AgentSession(
@@ -5461,7 +5461,7 @@ def test_rpc_mode_emits_extension_error_for_hook_failures(tmp_path) -> None:
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     def _broken_hook(session, ctx):
         del session, ctx

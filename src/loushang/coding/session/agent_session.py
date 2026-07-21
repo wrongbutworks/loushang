@@ -30,6 +30,7 @@ from loushang.coding.control import (
     SettingsManager,
 )
 from loushang.coding.extensions import ExtensionRunner
+from loushang.coding.platform.changelog import read_changelog_for_cwd
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
 from loushang.coding.platform.session_projection import (
     project_pi_session_stats,
@@ -40,10 +41,6 @@ from loushang.coding.resource_runtime import (
 )
 from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
-)
-from loushang.coding.session.builtin_commands import (
-    BuiltinCommandBackend,
-    read_changelog_for_cwd,
 )
 from loushang.coding.session.command_controller import CommandController
 from loushang.coding.session.export import (
@@ -67,7 +64,7 @@ from loushang.coding.session.tool_controller import ToolController
 from loushang.coding.session.types import (
     CommandExecutionResult,
 )
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.agent_transcript import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
     TURN_AWARE_SUMMARY_VERSION,
@@ -137,6 +134,7 @@ from loushang.harness.session import (
     SessionFacade,
     SessionResourceRefreshRuntime,
     SessionRuntime,
+    StandardSessionCommandPorts,
     TranscriptRuntimePort,
     TurnPolicyPort,
     UserCommandHookResult,
@@ -159,6 +157,14 @@ SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]
 # The former Coding-named projection is now implemented by Harness.
 # project_runtime_event_to_session_event remains an external migration label.
 RuntimeEventListener = Callable[[RuntimeEvent[object]], Awaitable[None] | None]
+
+
+def _copy_to_clipboard(text: str) -> object:
+    """Bind the shared /copy command to the active terminal clipboard."""
+
+    from loushang.tui.clipboard import copy_to_clipboard
+
+    return copy_to_clipboard(text)
 
 
 async def _execute_coding_compaction(**kwargs: object) -> object:
@@ -361,15 +367,16 @@ class AgentSession(SessionFacade):
             get_resource_bundle=lambda: self.resource_bundle,
             get_diagnostics_service=lambda: self.diagnostics_service,
             diagnostics_runtime=self._diagnostics_bridge,
-            builtin_backend=BuiltinCommandBackend(
+            standard_ports=StandardSessionCommandPorts(
                 get_session_info=self._get_builtin_session_info,
                 set_session_name=self.set_session_name,
-                export_to_html=self.export_to_html,
-                export_to_jsonl=self.export_to_jsonl,
+                export_html=self.export_to_html,
+                export_jsonl=self.export_to_jsonl,
                 compact=self.compact,
                 reload=self.reload_extension_runtime,
                 get_recent_assistant_texts=self.get_recent_assistant_texts,
                 get_last_assistant_text=self.get_last_assistant_text,
+                copy_text=_copy_to_clipboard,
                 get_changelog=lambda args: read_changelog_for_cwd(
                     self.session_manager.get_cwd(), args
                 ),

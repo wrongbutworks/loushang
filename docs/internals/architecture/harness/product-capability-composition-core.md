@@ -110,8 +110,9 @@ Coding retains product adapters while importing shared mechanics directly:
 
 - slash parsing, completion, descriptors, and catalog composition come from
   `harness.commands`;
-- `coding.commands.types.SessionCommandDescriptor` remains a real Coding
-  adapter class so runtime type checks continue to work;
+- standard session command descriptors and result projection come from
+  `harness.session.command_pack`; Coding binds only its session ports and
+  wraps the neutral result mapping;
 - prompt template expansion comes from `harness.capabilities.prompt`;
 - standard assembly and resource preflight come from
   `harness.capabilities.prompt_assembly` and

@@ -237,7 +237,7 @@ def test_coding_capability_binding_uses_harness_runtime_without_a_private_facade
             "loushang.harness.capabilities.CapabilityCompositionRuntime",
             "loushang.harness.capabilities.bind_capability_composition_runtime",
         },
-        Path("src/loushang/coding/store/session_manager.py"): {
+        Path("src/loushang/coding/session_manager.py"): {
             "loushang.coding.capability_plan.coding_capability_snapshot_metadata",
             "loushang.coding.capability_plan.resolve_coding_capability_profile",
             "loushang.coding.capability_plan.validate_coding_capability_snapshot",
@@ -626,15 +626,20 @@ def test_standard_session_command_pack_is_neutral_and_adopted() -> None:
     command_pack_source = Path(
         "src/loushang/harness/session/command_pack.py"
     ).read_text(encoding="utf-8")
-    builtin_source = Path("src/loushang/coding/session/builtin_commands.py").read_text(
-        encoding="utf-8"
-    )
+    builtin_source = Path(
+        "src/loushang/harness/session/command_pack.py"
+    ).read_text(encoding="utf-8")
     boundary = Path(
         "docs/internals/architecture/harness/session-command-pack-boundary.md"
     ).read_text(encoding="utf-8")
 
     assert "loushang.coding" not in command_pack_source
     assert "execute_standard_session_command_async" in builtin_source
+    assert "project_standard_session_command_result" in builtin_source
+    assert "STANDARD_SESSION_COMMANDS" in builtin_source
+    assert not Path("src/loushang/coding/session/builtin_commands.py").exists()
+    assert not Path("src/loushang/coding/commands/types.py").exists()
+    assert not Path("src/loushang/coding/commands/profile.py").exists()
     assert "one command catalog and one ordered dispatcher" in boundary
     assert "existing builtin source" in boundary
 
@@ -900,7 +905,7 @@ def test_product_transcript_session_is_neutral_and_adopted() -> None:
         "src/loushang/harness/agent_transcript/product_session.py"
     ).read_text(encoding="utf-8")
     coding_adapter_source = Path(
-        "src/loushang/coding/store/session_manager.py"
+        "src/loushang/coding/session_manager.py"
     ).read_text(encoding="utf-8")
     boundary = Path(
         "docs/internals/architecture/harness/product-transcript-session-boundary.md"
@@ -943,7 +948,7 @@ def test_workspace_git_and_clipboards_have_canonical_owners() -> None:
         Path("src/loushang/coding/presentation/session.py"): {
             "loushang.harness.workspace.git.get_git_branch",
         },
-        Path("src/loushang/coding/session/builtin_commands.py"): {
+        Path("src/loushang/coding/session/agent_session.py"): {
             "loushang.tui.clipboard.copy_to_clipboard",
         },
     }
@@ -1854,7 +1859,7 @@ def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
             "loushang.harness.journal.JsonlJournal",
             "loushang.harness.journal.journal_file_lock",
         },
-        Path("src/loushang/coding/store/session_manager.py"): {
+        Path("src/loushang/coding/session_manager.py"): {
             "loushang.harness.agent_transcript.AgentTranscriptLifecycle",
             "loushang.harness.agent_transcript.AgentTranscriptSessionFactory",
             "loushang.harness.agent_transcript.ProductTranscriptSession",
@@ -1948,7 +1953,7 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
     )
 
     session_manager_imports = set(
-        _absolute_imports(Path("src/loushang/coding/store/session_manager.py"))
+        _absolute_imports(Path("src/loushang/coding/session_manager.py"))
     )
     assert (
         "loushang.harness.agent_transcript.ProductTranscriptSession"
@@ -1997,7 +2002,7 @@ def test_harness_agent_transcript_lifecycle_is_documented_and_adopted() -> None:
     )
 
     session_manager_imports = set(
-        _absolute_imports(Path("src/loushang/coding/store/session_manager.py"))
+        _absolute_imports(Path("src/loushang/coding/session_manager.py"))
     )
     assert (
         "loushang.harness.agent_transcript.AgentTranscriptLifecycle"
@@ -2037,7 +2042,7 @@ def test_harness_agent_transcript_session_factory_is_documented_and_adopted() ->
     )
 
     session_manager_imports = set(
-        _absolute_imports(Path("src/loushang/coding/store/session_manager.py"))
+        _absolute_imports(Path("src/loushang/coding/session_manager.py"))
     )
     assert (
         "loushang.harness.agent_transcript.AgentTranscriptSessionFactory"
@@ -2082,7 +2087,7 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
     assert "SummaryResourceOperations" in inventory_text
 
     expected_imports = {
-        Path("src/loushang/coding/store/session_manager.py"): {
+        Path("src/loushang/coding/session_manager.py"): {
             "loushang.harness.agent_transcript.ProductTranscriptSession",
         },
         Path("src/loushang/coding/control/settings_manager.py"): {
@@ -2246,7 +2251,7 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
 
     coding_store_imports = {
         imported
-        for path in (Path("src/loushang/coding/store/session_manager.py"),)
+        for path in (Path("src/loushang/coding/session_manager.py"),)
         for imported in _absolute_imports(path)
     }
     assert "loushang.harness.agent_transcript.ProductTranscriptSession" in (
@@ -3693,6 +3698,11 @@ def test_coding_store_alias_facades_are_extinct() -> None:
                 offenders.append(f"{path.as_posix()} imports {imported}")
 
     assert offenders == []
+    assert not Path("src/loushang/coding/store").exists()
+    assert Path("src/loushang/coding/session_manager.py").exists()
+    canonical = importlib.import_module("loushang.coding.session_manager")
+    public = importlib.import_module("loushang.coding")
+    assert public.SessionManager is canonical.SessionManager
     for path in (
         "src/loushang/coding/store/backend.py",
         "src/loushang/coding/store/file_codec.py",

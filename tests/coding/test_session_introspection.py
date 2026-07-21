@@ -14,7 +14,7 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.coding.tool_pack import (
     register_coding_builtin_tools as register_builtin_tools,
 )

@@ -30,8 +30,8 @@ from loushang.coding.resource_runtime import (
 )
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession
+from loushang.coding.session_manager import SessionManager
 from loushang.coding.source_info import executable_source_identity
-from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import context_item_to_model_message
 from loushang.harness.bootstrap import (
     BootstrapActivationPlan,

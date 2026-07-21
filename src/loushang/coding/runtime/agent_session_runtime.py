@@ -8,7 +8,7 @@ from pathlib import Path
 
 from loushang.ai.types import TextPart, UserMessage
 from loushang.coding.session import AgentSession
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
     SessionSummary,

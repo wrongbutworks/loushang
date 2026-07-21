@@ -1030,22 +1030,17 @@ def test_shared_command_catalog_keeps_coding_definitions_and_raw_adaptation_outs
     coding = Path("src/loushang/coding/commands/catalog.py").read_text(
         encoding="utf-8"
     )
-    profile = Path("src/loushang/coding/commands/profile.py").read_text(
+    profile = Path("src/loushang/harness/commands/catalog.py").read_text(
         encoding="utf-8"
     )
 
     assert "loushang.coding" not in shared
     assert "loushang.coding" not in descriptors
 
-    for token in (
-        "coding.ui.model",
-        "coding.session.",
-        "CommandEffectKind",
-        "raw_command",
-    ):
+    for token in ("coding.ui.model", "coding.session.", "raw_command"):
         assert token not in shared
 
-    for token in ("coding.ui.model", "coding.ui.config", "model_select", "terminal"):
+    for token in ("harness.ui.model", "harness.ui.config", "model_select", "terminal"):
         assert token in profile
 
     for token in ("coding.session.", "CommandEffectKind", "raw_command"):
@@ -1056,7 +1051,7 @@ def test_shared_command_catalog_keeps_coding_definitions_and_raw_adaptation_outs
         assert token in coding
 
     assert "LocalCommandCatalogProfile" in shared
-    assert "LocalCommandCatalogProfile" in profile
+    assert "LocalCommandCatalogProfile" in shared
 
     for token in ("CommandCatalog", "CommandDescriptor", "split_slash_command"):
         assert token in descriptors

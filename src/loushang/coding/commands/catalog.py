@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Any
 
-from loushang.coding.commands.profile import CODING_COMMAND_CATALOG_PROFILE
 from loushang.harness.commands import (
+    DEFAULT_LOCAL_COMMANDS_PROFILE,
     CommandCatalog,
     CommandDef,
     CommandDescriptor,
@@ -24,7 +24,7 @@ class CodingCommandCatalog:
     ) -> None:
         self._session_commands = session_commands
         self._catalog = MixedCommandCatalog(
-            profile=CODING_COMMAND_CATALOG_PROFILE,
+            profile=DEFAULT_LOCAL_COMMANDS_PROFILE,
             ports=MixedCommandCatalogPorts(
                 session_catalog=(
                     self._session_catalog if session_commands is not None else None

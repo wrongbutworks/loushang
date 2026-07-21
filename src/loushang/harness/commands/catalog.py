@@ -12,7 +12,7 @@ from loushang.harness.commands.descriptors import (
     CommandDescriptor,
     split_slash_command,
 )
-from loushang.harness.commands.types import CommandDef
+from loushang.harness.commands.types import CommandDef, CommandKind
 
 SourceInfoT = TypeVar("SourceInfoT")
 
@@ -183,6 +183,83 @@ class LocalCommandCatalogProfile:
 EMPTY_LOCAL_COMMAND_CATALOG_PROFILE = LocalCommandCatalogProfile()
 
 
+# These commands are host/session controls shared by Agent products.  Products
+# can select a subset or add domain commands without copying the definitions.
+DEFAULT_LOCAL_COMMANDS_PROFILE = LocalCommandCatalogProfile(
+    local_commands_by_name={
+        "model": CommandDef(
+            id="harness.ui.model",
+            name="model",
+            kind=CommandKind.LOCAL_UI,
+            description="Select model",
+            source="harness",
+        ),
+        "models": CommandDef(
+            id="harness.ui.models",
+            name="models",
+            kind=CommandKind.LOCAL_UI,
+            description="Show available models",
+            source="harness",
+        ),
+        "command": CommandDef(
+            id="harness.ui.command",
+            name="command",
+            kind=CommandKind.LOCAL_UI,
+            description="Select command",
+            source="harness",
+        ),
+        "commands": CommandDef(
+            id="harness.ui.commands",
+            name="commands",
+            kind=CommandKind.LOCAL_UI,
+            description="Show commands",
+            source="harness",
+        ),
+        "hotkeys": CommandDef(
+            id="harness.ui.hotkeys",
+            name="hotkeys",
+            kind=CommandKind.LOCAL_UI,
+            description="Show keyboard shortcuts",
+            source="harness",
+        ),
+        "settings": CommandDef(
+            id="harness.ui.settings",
+            name="settings",
+            kind=CommandKind.LOCAL_UI,
+            description="Open settings",
+            source="harness",
+        ),
+        "config": CommandDef(
+            id="harness.ui.config",
+            name="config",
+            kind=CommandKind.LOCAL_UI,
+            description="Open settings",
+            source="harness",
+        ),
+        "terminal": CommandDef(
+            id="harness.ui.terminal",
+            name="terminal",
+            kind=CommandKind.LOCAL_UI,
+            description="Show terminal diagnostics",
+            source="harness",
+        ),
+    },
+    local_command_names_by_route={
+        "model_select": "model",
+        "models": "models",
+        "command_select": "command",
+        "commands": "commands",
+        "hotkeys": "hotkeys",
+        "settings": "settings",
+        "config": "config",
+        "terminal": "terminal",
+    },
+    local_commands_accepting_args=frozenset(
+        {"command", "commands", "model", "models"}
+    ),
+)
+
+
 @dataclass(frozen=True, slots=True)
 class MixedCommandCatalogPorts(Generic[SourceInfoT]):
     """Product adapters for acquiring and projecting session commands."""
@@ -299,6 +376,7 @@ def _known_command_names(
 
 
 __all__ = [
+    "DEFAULT_LOCAL_COMMANDS_PROFILE",
     "EMPTY_LOCAL_COMMAND_CATALOG_PROFILE",
     "LocalCommandCatalogProfile",
     "MixedCommandCatalog",

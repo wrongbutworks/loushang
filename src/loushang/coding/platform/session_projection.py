@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from loushang.agent import Agent
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.agent_transcript import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     AgentTranscriptRecord,

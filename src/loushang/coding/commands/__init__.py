@@ -1,9 +1,3 @@
-from loushang.coding.commands.types import (
-    BUILTIN_SLASH_COMMANDS,
-    BuiltinSlashCommand,
-)
+from loushang.coding.commands.catalog import CodingCommandCatalog
 
-__all__ = [
-    "BUILTIN_SLASH_COMMANDS",
-    "BuiltinSlashCommand",
-]
+__all__ = ["CodingCommandCatalog"]
