@@ -1,3 +1,8 @@
 """Product-neutral extension loading, registration, and dispatch substrate."""
 
-__all__: list[str] = []
+from loushang.harness.extensions.provider_runtime import (
+    ExtensionProviderRuntime,
+    ProviderFactory,
+)
+
+__all__ = ["ExtensionProviderRuntime", "ProviderFactory"]

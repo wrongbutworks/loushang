@@ -59,7 +59,7 @@ from loushang.coding.session.extension_input_adapter import (
     CodingExtensionInputAdapter,
 )
 from loushang.coding.session.extension_provider_controller import (
-    ExtensionProviderController,
+    provider_from_extension_config,
 )
 from loushang.coding.session.extension_replacement_controller import (
     ExtensionReplacementController,
@@ -116,6 +116,7 @@ from loushang.harness.events import (
     RuntimeEvent,
     SessionRuntimeEventPayload,
 )
+from loushang.harness.extensions import ExtensionProviderRuntime
 from loushang.harness.extensions.agent import (
     ExtensionAgentEventRuntime,
     ExtensionAgentHookRuntime,
@@ -461,9 +462,10 @@ class AgentSession(SessionFacade):
             agent=self.agent,
             runtime=self._extension_input_runtime,
         )
-        self._extension_provider_controller = ExtensionProviderController(
+        self._extension_provider_controller = ExtensionProviderRuntime(
             model_registry=self.model_registry,
             api_provider_registry=self.api_provider_registry,
+            provider_factory=provider_from_extension_config,
         )
         self._extension_replacement_controller = ExtensionReplacementController(
             get_runtime_host=lambda: self._extension_runtime_host,

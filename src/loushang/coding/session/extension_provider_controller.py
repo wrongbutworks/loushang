@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import replace
 
-from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.model import (
     Auth,
     Capabilities,
@@ -18,38 +17,7 @@ from loushang.ai.model import (
 )
 
 
-@dataclass
-class ExtensionProviderController:
-    model_registry: object | None
-    api_provider_registry: ApiProviderRegistry
-
-    def register_provider(self, name: str, config: object) -> None:
-        registrar = getattr(self.model_registry, "register_provider", None)
-        if not callable(registrar):
-            return
-        existing_provider = self.get_registered_provider(name)
-        registrar(_provider_from_extension_config(name, config, existing_provider=existing_provider))
-
-    def unregister_provider(self, name: str) -> None:
-        remover = getattr(self.model_registry, "unregister_provider", None)
-        if callable(remover):
-            remover(name)
-        source_id = _extension_provider_source_id(name)
-        self.api_provider_registry.unregister_api_providers(source_id)
-
-    def get_registered_provider(self, name: str) -> Provider | None:
-        ai_registry = getattr(self.model_registry, "ai_registry", None)
-        getter = getattr(ai_registry, "get_provider", None)
-        if not callable(getter):
-            return None
-        return getter(name)
-
-
-def _extension_provider_source_id(name: str) -> str:
-    return f"provider:{name}"
-
-
-def _provider_from_extension_config(
+def provider_from_extension_config(
     name: str,
     config: object,
     *,

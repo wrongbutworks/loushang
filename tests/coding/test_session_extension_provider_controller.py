@@ -9,8 +9,9 @@ from loushang.ai.model import Endpoint, Model, Provider
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.coding.control import ModelRegistry
 from loushang.coding.session.extension_provider_controller import (
-    ExtensionProviderController,
+    provider_from_extension_config,
 )
+from loushang.harness.extensions import ExtensionProviderRuntime
 
 
 class _ApiProvider:
@@ -53,9 +54,10 @@ def test_extension_provider_controller_registers_native_provider_against_existin
         }
     )
     model_registry = ModelRegistry(ai_registry=ai_registry)
-    controller = ExtensionProviderController(
+    controller = ExtensionProviderRuntime(
         model_registry=model_registry,
         api_provider_registry=ApiProviderRegistry(),
+        provider_factory=provider_from_extension_config,
     )
 
     controller.register_provider(
@@ -101,9 +103,10 @@ def test_extension_provider_controller_registers_native_provider_against_existin
 def test_extension_provider_controller_registers_canonical_endpoint_auth() -> None:
     ai_registry = AiModelRegistry()
     model_registry = ModelRegistry(ai_registry=ai_registry)
-    controller = ExtensionProviderController(
+    controller = ExtensionProviderRuntime(
         model_registry=model_registry,
         api_provider_registry=ApiProviderRegistry(),
+        provider_factory=provider_from_extension_config,
     )
 
     controller.register_provider(
@@ -134,9 +137,10 @@ def test_extension_provider_controller_unregisters_provider_and_source_registrat
     api_registry = ApiProviderRegistry()
     model_registry = ModelRegistry(ai_registry=ai_registry)
     api_registry.register_api_provider(_ApiProvider(), source_id="provider:proxy")
-    controller = ExtensionProviderController(
+    controller = ExtensionProviderRuntime(
         model_registry=model_registry,
         api_provider_registry=api_registry,
+        provider_factory=provider_from_extension_config,
     )
 
     controller.unregister_provider("proxy")
@@ -146,9 +150,10 @@ def test_extension_provider_controller_unregisters_provider_and_source_registrat
 
 
 def test_extension_provider_controller_rejects_pi_style_provider_config() -> None:
-    controller = ExtensionProviderController(
+    controller = ExtensionProviderRuntime(
         model_registry=ModelRegistry(ai_registry=AiModelRegistry()),
         api_provider_registry=ApiProviderRegistry(),
+        provider_factory=provider_from_extension_config,
     )
 
     with pytest.raises(ValueError, match="pi-style flat provider config"):
