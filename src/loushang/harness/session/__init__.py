@@ -9,6 +9,7 @@ from loushang.harness.session.application_input import (
     ApplicationInputDelivery,
     ApplicationInputRuntime,
 )
+from loushang.harness.session.bash import BashExecutionPorts, BashExecutionRuntime
 from loushang.harness.session.capabilities import (
     AgentToolPort,
     CommandRuntimeSource,
@@ -155,6 +156,8 @@ __all__ = [
     "AgentInspectionPort",
     "AfterTurnPolicyPort",
     "AgentToolPort",
+    "BashExecutionPorts",
+    "BashExecutionRuntime",
     "AgentSessionInspector",
     "AgentSessionState",
     "AgentStateInspectionPort",
