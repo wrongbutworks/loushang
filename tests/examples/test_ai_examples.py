@@ -320,60 +320,16 @@ def test_image_input_example_reports_image_counts(capsys) -> None:
     assert payload == summary
 
 
-def test_chatgpt_coding_plan_example_loads_call_time_auth_only(
-    tmp_path: Path,
-) -> None:
+def test_chatgpt_coding_plan_example_delegates_credential_loading_to_ai_auth() -> None:
     module = _load_module(
         Path("examples/ai/chatgpt_coding_plan.py"),
         "examples_ai_chatgpt_coding_plan_credentials",
     )
-    auth_path = tmp_path / "auth.json"
-    auth_path.write_text(
-        json.dumps(
-            {
-                "auth_mode": "chatgpt",
-                "tokens": {
-                    "access_token": "access-token",
-                    "account_id": "account-id",
-                    "refresh_token": "refresh-token",
-                    "id_token": "ignored-id-token",
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
 
-    auth = module.load_auth(auth_path)
-
-    assert auth.access_token == "access-token"
-    assert auth.extra_headers == {
-        "chatgpt-account-id": "account-id",
-    }
-
-
-@pytest.mark.parametrize(
-    "payload",
-    [
-        [],
-        {"auth_mode": "apikey"},
-        {"auth_mode": "chatgpt"},
-        {"auth_mode": "chatgpt", "tokens": {"account_id": "account-id"}},
-        {"auth_mode": "chatgpt", "tokens": {"access_token": "token"}},
-    ],
-)
-def test_chatgpt_coding_plan_example_rejects_invalid_auth_file(
-    tmp_path: Path,
-    payload: object,
-) -> None:
-    module = _load_module(
-        Path("examples/ai/chatgpt_coding_plan.py"),
-        "examples_ai_chatgpt_coding_plan_invalid",
-    )
-    auth_path = tmp_path / "auth.json"
-    auth_path.write_text(json.dumps(payload), encoding="utf-8")
-
-    with pytest.raises((KeyError, TypeError)):
-        module.load_auth(auth_path)
+    assert not hasattr(module, "load_auth")
+    source = Path("examples/ai/chatgpt_coding_plan.py").read_text(encoding="utf-8")
+    assert "read_text" not in source
+    assert "access_token" not in source
 
 
 def test_chatgpt_coding_plan_example_calls_public_responses_path(
@@ -387,18 +343,6 @@ def test_chatgpt_coding_plan_example_calls_public_responses_path(
         "examples_ai_chatgpt_coding_plan_call",
     )
     auth_path = tmp_path / "auth.json"
-    auth_path.write_text(
-        json.dumps(
-            {
-                "auth_mode": "chatgpt",
-                "tokens": {
-                    "access_token": "access-token",
-                    "account_id": "account-id",
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
     captured: dict[str, object] = {}
     model = object()
 
@@ -438,27 +382,12 @@ def test_chatgpt_coding_plan_example_calls_public_responses_path(
     )
     assert captured["model"] is model
     options = captured["options"]
-    assert options.auth.access_token == "access-token"
-    assert options.auth.extra_headers == {
-        "chatgpt-account-id": "account-id",
-    }
+    assert options.auth is None
+    assert options.credential is None
+    assert options.credential_file == auth_path
     assert not hasattr(options, "oauth_credentials")
     assert options.max_output_tokens is None
     assert options.reasoning.effort == "low"
-
-
-def test_chatgpt_coding_plan_example_reports_corrupt_auth_file(
-    tmp_path: Path,
-) -> None:
-    module = _load_module(
-        Path("examples/ai/chatgpt_coding_plan.py"),
-        "examples_ai_chatgpt_coding_plan_corrupt",
-    )
-    auth_path = tmp_path / "auth.json"
-    auth_path.write_text("{", encoding="utf-8")
-
-    with pytest.raises(json.JSONDecodeError):
-        module.load_auth(auth_path)
 
 
 def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:

@@ -86,14 +86,14 @@ register_api_provider(custom_adapter)
 
 ## ChatGPT Coding Plan
 
-`chatgpt_coding_plan.py` 只做四件事：
+`chatgpt_coding_plan.py` 只做三件事：
 
-1. 读取 `~/.codex/auth.json`。
-2. 取得当前 access token 和 account ID。
-3. 构造 `OAuthBearerAuth`。
-4. 调用 `openai:coding-responses:gpt-5.5`。
+1. 选择 `openai:coding-responses:gpt-5.5`。
+2. 可选地把 credential 文件路径交给 `CallOptions`。
+3. 调用公共 `stream()`。
 
-示例不执行登录、续期、写回或凭证存储。外部认证状态必须在调用前已经有效。
+`loushang.ai.auth` 的实验 OpenAI Codex adapter 负责读取 `~/.codex/auth.json`
+并转换成请求认证；示例本身不读取 token 文件、不刷新 token、也不判断 provider。
 
 ## Live tests
 

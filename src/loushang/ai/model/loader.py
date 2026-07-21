@@ -83,7 +83,9 @@ ALLOWED_CAPABILITY_KEYS = frozenset(
 ALLOWED_PRICING_KEYS = frozenset(
     {"currency", "input", "output", "cacheRead", "cacheWrite"}
 )
-ALLOWED_AUTH_KEYS = frozenset({"kind", "apiKeyEnv", "apiKeyEnvs", "header", "prefix"})
+ALLOWED_AUTH_KEYS = frozenset(
+    {"kind", "provider", "apiKeyEnv", "apiKeyEnvs", "header", "prefix"}
+)
 REMOVED_CATALOG_FIELDS = frozenset({"compat", "protocol", "dialect"})
 
 
@@ -308,7 +310,7 @@ def _validate_auth_mapping(value: object, path: str) -> None:
     unknown = sorted(set(mapping) - ALLOWED_AUTH_KEYS)
     if unknown:
         raise ValueError(f"models registry field has unknown keys at {path}: {unknown}")
-    for key in ("kind", "apiKeyEnv", "header"):
+    for key in ("kind", "provider", "apiKeyEnv", "header"):
         if key in mapping:
             _require_str(mapping[key], f"{path}.{key}")
     if "prefix" in mapping and not isinstance(mapping["prefix"], str):

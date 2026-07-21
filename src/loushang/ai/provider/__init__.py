@@ -9,6 +9,7 @@ from loushang.ai.provider.protocol import (
 from loushang.ai.provider.resolution import (
     ensure_request_api,
     normalize_provider_request_for_api,
+    prepare_request_for_model,
     resolve_endpoint_for_model,
     resolve_request_for_model,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "ensure_request_api",
     "normalize_provider_request_for_api",
     "normalize_provider_error",
+    "prepare_request_for_model",
     "resolve_endpoint_for_model",
     "resolve_request_for_model",
     "start_provider_runtime",

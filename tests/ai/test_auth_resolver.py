@@ -1,0 +1,199 @@
+from __future__ import annotations
+
+import asyncio
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import pytest
+
+from loushang.ai import ApiKeyAuth, CallOptions, OAuthBearerAuth, OAuthCredential
+from loushang.ai.auth import FileCredentialStore, RefreshFailedError, resolve_auth
+from loushang.ai.auth.store import save_credential_file
+from loushang.ai.model import Auth, Model
+
+
+def _oauth_model() -> Model:
+    return Model(
+        id="model-a",
+        provider="model-provider",
+        endpoint="endpoint-a",
+        api="openai-responses",
+        base_url="https://example.test/v1",
+        auth=Auth(kind="oauth", provider="example-oauth"),
+    )
+
+
+def _api_key_model() -> Model:
+    return Model(
+        id="model-a",
+        provider="model-provider",
+        endpoint="endpoint-a",
+        api="openai-responses",
+        base_url="https://example.test/v1",
+        auth=Auth(kind="apiKey", api_key_env="EXAMPLE_API_KEY"),
+    )
+
+
+def _credential(token: str, *, expires_at: int = 2000) -> OAuthCredential:
+    return OAuthCredential(
+        provider="example-oauth",
+        access_token=token,
+        refresh_token=f"refresh-{token}",
+        expires_at=expires_at,
+        extra_headers={"x-account": token},
+    )
+
+
+@dataclass
+class _FakeProvider:
+    id: str = "example-oauth"
+    refreshed: list[OAuthCredential] = field(default_factory=list)
+    fail_refresh: bool = False
+
+    async def login(self, *, authorize=None) -> OAuthCredential:
+        del authorize
+        return _credential("login")
+
+    async def refresh(self, credential: OAuthCredential) -> OAuthCredential:
+        self.refreshed.append(credential)
+        if self.fail_refresh:
+            raise RuntimeError("refresh failed")
+        return _credential("refreshed", expires_at=4000)
+
+    async def revoke(self, credential: OAuthCredential) -> None:
+        del credential
+
+
+def test_resolver_priority_explicit_auth_then_credential_file_store_and_env(
+    tmp_path: Path,
+) -> None:
+    store = FileCredentialStore(tmp_path / "store")
+    store.save(_credential("store"))
+    file_path = tmp_path / "file-auth.json"
+    save_credential_file(file_path, _credential("file"))
+    explicit_credential = _credential("explicit-credential")
+    provider = _FakeProvider()
+
+    async def scenario():
+        explicit_auth = await resolve_auth(
+            _oauth_model(),
+            options=CallOptions(
+                auth=OAuthBearerAuth("explicit-auth"),
+                credential=explicit_credential,
+                credential_file=file_path,
+            ),
+            store=store,
+            providers={provider.id: provider},
+            now=1000,
+        )
+        direct_credential = await resolve_auth(
+            _oauth_model(),
+            options=CallOptions(
+                credential=explicit_credential,
+                credential_file=file_path,
+            ),
+            store=store,
+            providers={provider.id: provider},
+            now=1000,
+        )
+        file_credential = await resolve_auth(
+            _oauth_model(),
+            options=CallOptions(credential_file=file_path),
+            store=store,
+            providers={provider.id: provider},
+            now=1000,
+        )
+        stored_credential = await resolve_auth(
+            _oauth_model(),
+            store=store,
+            providers={provider.id: provider},
+            now=1000,
+        )
+        env_api_key = await resolve_auth(
+            _api_key_model(),
+            env={"EXAMPLE_API_KEY": "env-key"},
+        )
+        return (
+            explicit_auth,
+            direct_credential,
+            file_credential,
+            stored_credential,
+            env_api_key,
+        )
+
+    (
+        explicit_auth,
+        direct_credential,
+        file_credential,
+        stored_credential,
+        env_api_key,
+    ) = asyncio.run(scenario())
+
+    assert explicit_auth == OAuthBearerAuth("explicit-auth")
+    assert direct_credential == OAuthBearerAuth(
+        "explicit-credential", extra_headers={"x-account": "explicit-credential"}
+    )
+    assert file_credential == OAuthBearerAuth(
+        "file", extra_headers={"x-account": "file"}
+    )
+    assert stored_credential == OAuthBearerAuth(
+        "store", extra_headers={"x-account": "store"}
+    )
+    assert env_api_key == ApiKeyAuth("env-key")
+
+
+def test_unexpired_oauth_token_is_not_refreshed(tmp_path: Path) -> None:
+    provider = _FakeProvider()
+    auth = asyncio.run(
+        resolve_auth(
+            _oauth_model(),
+            credential=_credential("current", expires_at=2000),
+            providers={provider.id: provider},
+            now=1000,
+        )
+    )
+
+    assert auth == OAuthBearerAuth("current", extra_headers={"x-account": "current"})
+    assert provider.refreshed == []
+
+
+def test_expiring_store_token_is_refreshed_and_saved(tmp_path: Path) -> None:
+    provider = _FakeProvider()
+    store = FileCredentialStore(tmp_path)
+    expiring = _credential("expiring", expires_at=1030)
+    store.save(expiring)
+
+    auth = asyncio.run(
+        resolve_auth(
+            _oauth_model(),
+            store=store,
+            providers={provider.id: provider},
+            now=1000,
+        )
+    )
+
+    assert provider.refreshed == [expiring]
+    assert auth == OAuthBearerAuth(
+        "refreshed", extra_headers={"x-account": "refreshed"}
+    )
+    assert store.load(provider.id) == _credential("refreshed", expires_at=4000)
+
+
+def test_refresh_failure_is_structured(tmp_path: Path) -> None:
+    provider = _FakeProvider(fail_refresh=True)
+
+    with pytest.raises(RefreshFailedError) as exc_info:
+        asyncio.run(
+            resolve_auth(
+                _oauth_model(),
+                credential=_credential("expired", expires_at=900),
+                providers={provider.id: provider},
+                now=1000,
+            )
+        )
+
+    assert exc_info.value.info.details == {
+        "oauth_provider": "example-oauth",
+        "cause": "RuntimeError",
+        "recovery": "login",
+    }

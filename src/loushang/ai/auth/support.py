@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 
 from loushang.ai.auth.credentials import ApiKeyAuth, AuthCredential, OAuthBearerAuth
+from loushang.ai.auth.errors import MissingCredentialError
 from loushang.ai.errors import AIAuthenticationError, AIConfigurationError
 from loushang.ai.model import Auth
 from loushang.observability.problem import JSONValue
@@ -16,7 +17,7 @@ AuthConfig = Auth
 _HTTP_TOKEN = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 
 
-class MissingAuthError(AIAuthenticationError):
+class MissingAuthError(MissingCredentialError):
     pass
 
 
@@ -201,6 +202,17 @@ def _resolve_default_credential(
             details={"auth_kind": str(kind)},
         )
 
+    api_key = resolve_api_key_auth(declaration, model=model, env=env).value
+    header, prefix = _resolve_header_prefix(declaration)
+    return header, {header: f"{prefix}{api_key}"}
+
+
+def resolve_api_key_auth(
+    declaration,
+    *,
+    model,
+    env: Mapping[str, str],
+) -> ApiKeyAuth:
     env_names = _api_key_env_names(declaration)
     api_key = next(
         (
@@ -216,10 +228,9 @@ def _resolve_default_credential(
             provider=model.provider_id,
             endpoint=model.endpoint_id,
             model=model.id,
-            details={"expected_env": list(env_names)},
+            details={"expected_env": list(env_names), "recovery": "configure"},
         )
-    header, prefix = _resolve_header_prefix(declaration)
-    return header, {header: f"{prefix}{api_key}"}
+    return ApiKeyAuth(api_key)
 
 
 def _resolve_header_prefix(declaration) -> tuple[str, str]:
@@ -359,4 +370,5 @@ __all__ = [
     "resolve_auth_for_request",
     "resolve_default_auth",
     "resolve_explicit_auth",
+    "resolve_api_key_auth",
 ]

@@ -314,6 +314,10 @@ def test_provider_endpoint_and_model_to_raw_include_optional_fields() -> None:
 
 def test_auth_to_raw_omits_empty_optional_fields() -> None:
     assert Auth(kind="oauth").to_raw() == {"kind": "oauth"}
+    assert Auth(kind="oauth", provider="example-oauth").to_raw() == {
+        "kind": "oauth",
+        "provider": "example-oauth",
+    }
     assert Auth(
         kind="apiKey",
         api_key_env="PRIMARY_KEY",

@@ -509,6 +509,7 @@ def merge_adapter_config(
 @dataclass(frozen=True)
 class Auth:
     kind: str = "apiKey"
+    provider: str | None = None
     api_key_env: str | None = None
     api_key_envs: tuple[str, ...] = ()
     header: str = "Authorization"
@@ -517,6 +518,10 @@ class Auth:
     def __post_init__(self) -> None:
         if self.kind not in {"apiKey", "oauth", "none"}:
             raise ValueError(f"unsupported auth kind: {self.kind!r}")
+        if self.provider is not None and (
+            not isinstance(self.provider, str) or not self.provider
+        ):
+            raise ValueError("auth provider must be a non-empty string or None")
         if self.api_key_env is not None and (
             not isinstance(self.api_key_env, str) or not self.api_key_env
         ):
@@ -538,6 +543,7 @@ class Auth:
             return None
         return cls(
             kind=raw.get("kind", "apiKey"),  # type: ignore[arg-type]
+            provider=_as_optional_str(raw.get("provider")),
             api_key_env=_as_optional_str(raw.get("apiKeyEnv")),
             api_key_envs=_as_str_tuple(raw.get("apiKeyEnvs")),
             header=raw.get("header", "Authorization"),  # type: ignore[arg-type]
@@ -546,6 +552,8 @@ class Auth:
 
     def to_raw(self) -> dict[str, object]:
         raw: dict[str, object] = {"kind": self.kind}
+        if self.provider is not None:
+            raw["provider"] = self.provider
         if self.api_key_env is not None:
             raw["apiKeyEnv"] = self.api_key_env
         if self.api_key_envs:

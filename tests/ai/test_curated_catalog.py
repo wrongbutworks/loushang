@@ -176,6 +176,7 @@ def test_coding_route_is_oauth_openai_responses_without_product_adapter() -> Non
     assert endpoint.preferred is False
     assert endpoint.auth is not None
     assert endpoint.auth.kind == "oauth"
+    assert endpoint.auth.provider == "openai-codex"
     assert endpoint.auth.api_key_env is None
     assert endpoint.auth.api_key_envs == ()
     assert dict(endpoint.headers) == {

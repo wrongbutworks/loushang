@@ -2,8 +2,15 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
+from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
+from loushang.ai.auth.credentials import OAuthCredential
+from loushang.ai.auth.oauth.base import OAuthProvider
+from loushang.ai.auth.resolver import resolve_auth
+from loushang.ai.auth.store import FileCredentialStore
 from loushang.ai.auth.support import resolve_auth_for_model
 from loushang.ai.context import NormalizedContext
 from loushang.ai.model import Model
@@ -15,7 +22,11 @@ from loushang.ai.model.domain import (
     OpenAIResponsesConfig,
     default_adapter_config,
 )
-from loushang.ai.options import get_max_output_tokens, get_reasoning_options
+from loushang.ai.options import (
+    CallOptions,
+    get_max_output_tokens,
+    get_reasoning_options,
+)
 from loushang.ai.provider.protocol import ProviderContext, ProviderRequest
 
 
@@ -122,6 +133,50 @@ def resolve_request_for_model(
         reasoning_effort=reasoning_effort,
         reasoning_enabled=reasoning_enabled,
         temperature=temperature,
+    )
+
+
+async def prepare_request_for_model(
+    model: Model,
+    *,
+    context: ProviderContext | None = None,
+    options: CallOptions | None = None,
+    credential: OAuthCredential | None = None,
+    credential_file: str | Path | None = None,
+    store: FileCredentialStore | None = None,
+    providers: Mapping[str, OAuthProvider] | None = None,
+    env: Mapping[str, str] | None = None,
+    refresh_window_seconds: float = 60.0,
+    now: float | None = None,
+) -> ProviderRequest:
+    """Resolve lifecycle credentials before creating the provider request."""
+
+    resolved_env = dict(os.environ) if env is None else dict(env)
+    request_auth = await resolve_auth(
+        model,
+        options=options,
+        credential=credential,
+        credential_file=credential_file,
+        store=store,
+        providers=providers,
+        env=resolved_env,
+        refresh_window_seconds=refresh_window_seconds,
+        now=now,
+    )
+    if options is None:
+        prepared_options = CallOptions(auth=request_auth) if request_auth else None
+    else:
+        prepared_options = replace(
+            options,
+            auth=request_auth,
+            credential=None,
+            credential_file=None,
+        )
+    return resolve_request_for_model(
+        model,
+        context=context,
+        options=prepared_options,
+        env=resolved_env,
     )
 
 

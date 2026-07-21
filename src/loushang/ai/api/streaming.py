@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from loushang.ai.api_registry import get_default_api_provider_registry
+from loushang.ai.auth.resolver import resolve_auth
 from loushang.ai.bootstrap import register_builtin_ai_providers
 from loushang.ai.context import NormalizedContext, normalize_context_result
 from loushang.ai.diagnostics import NormalizationDiagnostic
@@ -251,10 +252,20 @@ async def _start_stream(
     require_stream: bool,
 ):
     options = _validate_call_options(options)
-    resolved = resolve_request_for_model(model, options=options)
+    request_auth = await resolve_auth(model, options=options)
+    if options is None:
+        prepared_options = CallOptions(auth=request_auth) if request_auth else None
+    else:
+        prepared_options = replace(
+            options,
+            auth=request_auth,
+            credential=None,
+            credential_file=None,
+        )
+    resolved = resolve_request_for_model(model, options=prepared_options)
     resolved_model = resolved.model
     options = _normalize_cache_key_for_adapter(
-        options,
+        prepared_options,
         _resolved_adapter_config(resolved_model),
     )
     normalization_result = normalize_context_result(

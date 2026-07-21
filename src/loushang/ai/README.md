@@ -1,8 +1,8 @@
 # `loushang.ai`
 
 `loushang.ai` 是底层模型调用 SDK。它负责模型 catalog、调用参数解析、消息与工具
-归一化、协议适配、流式事件组装、调用期认证、错误和 usage。它不负责 agent 编排、
-会话持久化、账号登录、凭证续期、浏览器交互、配额控制或产品路由。
+归一化、协议适配、流式事件组装、API key 与 OAuth credential 生命周期、错误和
+usage。它不负责 agent 编排、会话持久化、登录 UI、浏览器交互、配额控制或产品路由。
 
 ## 架构
 
@@ -11,6 +11,7 @@
 ```text
 Model
 -> CallOptions
+-> resolve_auth
 -> resolve_request_for_model
 -> ProviderRequest
 -> protocol adapter
@@ -25,7 +26,7 @@ Model
 - `provider/`：请求解析、adapter 调用边界、deadline、retry、取消和错误映射。
 - `protocols/`：三个生产协议 adapter 与离线 faux adapter。
 - `event_stream/`：raw part 到统一事件和最终消息的组装。
-- `auth/`：当前调用所需 credential 与 header 解析。
+- `auth/`：API key 解析、OAuth credential 生命周期和请求 auth 转换。
 - `tool/`：工具 schema、参数校验和协议 payload 转换。
 - `api/`：`stream`、`complete`、`complete_structured`。
 - `context.py` / `messages.py`：严格输入归一化。
@@ -111,6 +112,8 @@ register_api_provider(custom_adapter)
 
 - `cancellation`
 - `auth`
+- `credential`
+- `credential_file`
 - `headers`
 - `cache_retention`
 - `cache_key`
@@ -159,7 +162,7 @@ ProviderRequest(
 
 ## Auth
 
-AI 包只处理调用期认证：
+AI 包拥有 API key 解析和 OAuth credential 生命周期：
 
 ```text
 catalog endpoint headers
@@ -170,20 +173,24 @@ catalog endpoint headers
 
 后两层不能覆盖 primary credential header。
 
-`ApiKeyAuth(value)` 和 `OAuthBearerAuth(access_token, extra_headers={...})` 是仅有的
-credential 输入。认证 header 名称和 prefix 优先由有效 model 的 `Auth` 声明。
+`ApiKeyAuth(value)` 和 `OAuthBearerAuth(access_token, extra_headers={...})` 是请求级
+认证；`OAuthCredential` 是可保存、加载和刷新的生命周期 credential。认证 header
+名称和 prefix 优先由有效 model 的 `Auth` 声明。
 provider、endpoint、model 的 auth 采用完整替换：model 优先，其次 endpoint，最后
 provider，不跨层拼接。
 
-endpoint 静态 headers 是协议事实，不属于 auth。AI 包不读取、更新或持久化外部登录
-状态。
+endpoint 静态 headers 是协议事实，不属于 auth。模型调用前，resolver 按显式 auth、
+显式 credential、credential file、默认 store、API key env 的顺序解析，并在需要时
+通过 OAuth provider adapter 自动 refresh。
 
-ChatGPT Coding Plan 示例只读取 `~/.codex/auth.json` 中当前 access token 和 account
-ID，构造 `OAuthBearerAuth`，再调用：
+ChatGPT Coding Plan 示例直接调用：
 
 ```python
 get_model("openai", "coding-responses", "gpt-5.5")
 ```
+
+实验 `openai-codex` adapter 负责转换现有 `~/.codex/auth.json`；示例和上层不读取
+token 文件。完整 API、文件格式和 provider 扩展方式见 `docs/auth/oauth.md`。
 
 ## 正确性契约
 

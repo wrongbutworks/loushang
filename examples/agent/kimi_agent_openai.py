@@ -24,6 +24,8 @@ from loushang.agent import (
     AgentToolResult,
 )
 from loushang.ai import (
+    ApiKeyAuth,
+    CallOptions,
     Model,
     TextPart,
     get_model,
@@ -100,7 +102,7 @@ def _build_model() -> Model:
 async def main() -> None:
     model = _build_model()
 
-    # Create agent with system prompt and API key resolver
+    # Explicit request auth is an AI SDK concern; the agent only forwards options.
     agent = Agent(
         initial_state=AgentState(
             system_prompt=(
@@ -111,7 +113,7 @@ async def main() -> None:
             thinking_level="off",
             tools=[CalcTool()],
         ),
-        get_api_key=lambda provider: _resolve_api_key(),
+        call_options=CallOptions(auth=ApiKeyAuth(_resolve_api_key())),
     )
 
     # Subscribe to events for streaming output
