@@ -57,6 +57,7 @@ class _FakeProvider:
 @dataclass
 class _FakeSource:
     id: str = "fake-source"
+    supports_refresh: bool = False
 
     def load(self) -> OAuthCredential | None:
         return OAuthCredential(provider=self.id, access_token="source-access")
@@ -425,6 +426,7 @@ def test_openai_codex_source_only_imports_external_credentials(
 ) -> None:
     path = tmp_path / "auth.json"
     source = OpenAICodexCredentialSource(path)
+    assert source.supports_refresh is False
     assert source.load() is None
     path.write_text(
         json.dumps(

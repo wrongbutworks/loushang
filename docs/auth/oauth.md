@@ -66,9 +66,11 @@ resolution order is:
 6. Model-configured API-key environment variables.
 
 An OAuth token within the refresh window is refreshed before `ProviderRequest`
-is created. The updated token is atomically written back when its source is a
-Loushang credential file or the default store. OAuth provider adapters receive
-the lifecycle credential; model protocol adapters receive only request-level
+is created when it belongs to provider-managed lifecycle state. An imported
+credential is refresh-eligible only when its `CredentialSource` explicitly sets
+`supports_refresh = True`; the registered OAuth provider still performs the
+refresh. Updated Loushang credential files and default-store credentials are
+written back atomically. Model protocol adapters receive only request-level
 auth and resolved headers, never the lifecycle credential or its source.
 
 ## External credential import vs OAuth login
@@ -87,6 +89,12 @@ An OAuth provider means Loushang owns the authorization-code lifecycle for a
 configured client. A credential source only converts credential state created
 and managed by another application. Registering a source never makes
 `auth.login(source_id)` available.
+
+`CredentialSource.supports_refresh` defaults to `False`. Setting it to `True`
+does not give the source a refresh method; it only declares that an imported
+credential may be handed to a separately registered `OAuthProvider` for
+refresh. A near-expiry credential from a source that does not opt in raises
+`CredentialExpiredError` instead of entering provider refresh.
 
 The OAuth provider registry is empty by default. Applications explicitly
 register only providers with complete, authorized client configuration. The
@@ -195,7 +203,7 @@ registered during import.
 OAuth provider. It may read a file-backed Codex ChatGPT login from
 `~/.codex/auth.json` and convert it into an `OAuthCredential`. It has no
 `login`, `refresh`, or `revoke` methods and never appears in the OAuth provider
-registry.
+registry. It explicitly declares `supports_refresh = False`.
 
 Loushang does not own an OpenAI OAuth client and does not overwrite the Codex
 credential. Codex owns its browser login and token refresh lifecycle; run
@@ -207,7 +215,8 @@ experimental file import is unavailable. Treat the file as a password. See the
 A custom importer implements `CredentialSource.load()` and `load_file()`, then
 registers with `register_credential_source()`. It converts external state into
 `OAuthCredential` only; it must not implement provider login, refresh, or
-revocation.
+revocation. It should opt into `supports_refresh = True` only when a registered
+provider is authorized and compatible with the imported credential lifecycle.
 
 ## Errors
 
@@ -215,7 +224,8 @@ Lifecycle failures are structured authentication errors:
 
 - `MissingCredentialError`: follow `recovery`; a provider uses `login`, while
   the Codex source uses `codex_login`.
-- `CredentialExpiredError`: log in again when no refresh path exists.
+- `CredentialExpiredError`: log in again when no refresh path exists, including
+  when a credential source has `supports_refresh = False`.
 - `RefreshFailedError`: refresh failed or no provider owns refresh; the
   `recovery` detail identifies the external or provider login path.
 - `InvalidCredentialError`: repair or replace malformed/incompatible data.

@@ -8,7 +8,12 @@ from pathlib import Path
 import pytest
 
 from loushang.ai import ApiKeyAuth, CallOptions, OAuthBearerAuth, OAuthCredential
-from loushang.ai.auth import FileCredentialStore, RefreshFailedError, resolve_auth
+from loushang.ai.auth import (
+    CredentialExpiredError,
+    FileCredentialStore,
+    RefreshFailedError,
+    resolve_auth,
+)
 from loushang.ai.auth.store import save_credential_file
 from loushang.ai.model import Auth, Model
 
@@ -63,6 +68,22 @@ class _FakeProvider:
 
     async def revoke(self, credential: OAuthCredential) -> None:
         del credential
+
+
+@dataclass
+class _FakeSource:
+    supports_refresh: bool
+    id: str = "example-oauth"
+    credential: OAuthCredential = field(
+        default_factory=lambda: _credential("source", expires_at=1030)
+    )
+
+    def load(self) -> OAuthCredential | None:
+        return self.credential
+
+    def load_file(self, path: str | Path) -> OAuthCredential:
+        del path
+        return self.credential
 
 
 def test_resolver_priority_explicit_auth_then_credential_file_store_and_env(
@@ -200,6 +221,57 @@ def test_refresh_failure_is_structured(tmp_path: Path) -> None:
     }
 
 
+def test_credential_source_without_refresh_support_expires_structurally(
+    tmp_path: Path,
+) -> None:
+    source = _FakeSource(supports_refresh=False)
+    provider = _FakeProvider()
+
+    with pytest.raises(
+        CredentialExpiredError,
+        match="credential source does not support refresh",
+    ) as exc_info:
+        asyncio.run(
+            resolve_auth(
+                _oauth_model(),
+                store=FileCredentialStore(tmp_path),
+                sources={source.id: source},
+                providers={provider.id: provider},
+                now=1000,
+            )
+        )
+
+    assert provider.refreshed == []
+    assert exc_info.value.info.details == {
+        "oauth_provider": "example-oauth",
+        "recovery": "external_login",
+        "credential_source": "example-oauth",
+    }
+
+
+def test_credential_source_with_refresh_support_uses_registered_provider(
+    tmp_path: Path,
+) -> None:
+    source = _FakeSource(supports_refresh=True)
+    provider = _FakeProvider()
+
+    auth = asyncio.run(
+        resolve_auth(
+            _oauth_model(),
+            store=FileCredentialStore(tmp_path),
+            sources={source.id: source},
+            providers={provider.id: provider},
+            now=1000,
+        )
+    )
+
+    assert provider.refreshed == [source.credential]
+    assert auth == OAuthBearerAuth(
+        "refreshed",
+        extra_headers={"x-account": "refreshed"},
+    )
+
+
 def test_openai_codex_source_file_resolves_without_oauth_provider(
     tmp_path: Path,
 ) -> None:
@@ -266,7 +338,10 @@ def test_openai_codex_source_never_impersonates_refresh_provider(
         auth=Auth(kind="oauth", provider="openai-codex"),
     )
 
-    with pytest.raises(RefreshFailedError) as exc_info:
+    with pytest.raises(
+        CredentialExpiredError,
+        match="credential source does not support refresh",
+    ) as exc_info:
         asyncio.run(
             resolve_auth(
                 model,

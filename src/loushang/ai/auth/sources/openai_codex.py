@@ -15,6 +15,7 @@ class OpenAICodexCredentialSource:
     id = "openai-codex"
     experimental = True
     recovery = "codex_login"
+    supports_refresh = False
 
     def __init__(self, auth_path: str | Path | None = None) -> None:
         self._auth_path = (

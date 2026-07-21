@@ -192,6 +192,16 @@ async def _refresh_if_needed(
         recovery_details["credential_source"] = source_id
     if not credential.expires_within(refresh_window_seconds, now=now):
         return credential
+    if resolved.source in {"credential_source", "credential_source_file"}:
+        source = _source_for(provider_id, sources)
+        if source is None or getattr(source, "supports_refresh", False) is not True:
+            raise CredentialExpiredError(
+                "OAuth credential source does not support refresh.",
+                provider=getattr(model, "provider_id", None),
+                endpoint=getattr(model, "endpoint_id", None),
+                model=getattr(model, "id", None),
+                details=recovery_details,
+            )
     if credential.refresh_token is None:
         raise CredentialExpiredError(
             "OAuth credential is expired or near expiry and has no refresh token.",

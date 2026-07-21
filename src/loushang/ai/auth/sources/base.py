@@ -11,6 +11,7 @@ class CredentialSource(Protocol):
     """Imports an existing external credential without owning OAuth login."""
 
     id: str
+    supports_refresh: bool = False
 
     def load(self) -> OAuthCredential | None: ...
 
