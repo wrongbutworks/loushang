@@ -127,7 +127,7 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
     assert offenders == []
 
 
-def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> None:
+def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None:
     harness_root = Path("src/loushang/harness")
     profile_allowlists = {
         harness_root / "agent_transcript": (
@@ -145,6 +145,11 @@ def test_harness_agent_profiles_have_narrow_ai_agent_dependency_allowlists() -> 
         ),
         harness_root / "extensions" / "agent": (
             "loushang.ai.types",
+            "loushang.agent",
+        ),
+        harness_root / "extensions": (
+            "loushang.ai.api_registry",
+            "loushang.ai.model",
             "loushang.agent",
         ),
     }
@@ -2298,7 +2303,10 @@ def test_harness_extension_runtime_core_boundary_is_documented() -> None:
         sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
     )
 
-    assert extensions.__all__ == []
+    assert set(extensions.__all__) == {
+        "ExtensionProviderRuntime",
+        "ProviderFactory",
+    }
     assert "ExtensionContributionAPI" not in harness.__all__
 
     readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
@@ -3469,11 +3477,9 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
             "loushang.harness.capabilities.prompt_assembly.assemble_prompt",
         },
         Path("src/loushang/coding/session/command_controller.py"): {
-            "loushang.harness.capabilities.prompt_preflight.PromptPreflightResult",
-            "loushang.harness.session.SessionCommandRuntime",
+            "loushang.harness.session.SessionCommandController",
         },
         Path("src/loushang/coding/session/tool_controller.py"): {
-            "loushang.harness.capabilities.prompt_assembly.assemble_prompt",
             "loushang.harness.session.SessionToolRuntime",
         },
     }
