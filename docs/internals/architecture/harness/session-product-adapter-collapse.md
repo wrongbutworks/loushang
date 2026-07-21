@@ -26,9 +26,10 @@ an inspection controller merely to adapt Coding policy.
 - `AgentSession` now supplies `AgentSessionInspector` directly as its Facade
   inspection port. The removed `coding.session.SessionViewController` was only
   a binding wrapper around the Harness inspector.
-- Pi-style statistics and camelCase fork-candidate payloads live in
-  `coding.platform.session_projection` as pure Coding projections. They are
-  not a Harness state model or a session controller.
+- Session statistics and fork-candidate projection now live in
+  `harness.session.inspection_projection` with a canonical snake_case shape.
+  They are shared inspection facts, not a Product state model or session
+  controller.
 - `AgentSession` now binds Coding retry settings, its Agent state, and the
   overflow classifier directly to `AgentTranscriptRetryRuntime`. The removed
   `coding.session.RetryController` was only a constructor wrapper.
@@ -52,6 +53,16 @@ an inspection controller merely to adapt Coding policy.
   typed ports prevent a reverse Session dependency. `ExtensionSessionRuntime`
   owns bind/refresh/invalidation coordination. The removed Coding controllers
   were implementation-only wrappers around these product-neutral mechanics.
+- `harness.extensions.agent.input_adapter` owns normalized extension input
+  delivery, `harness.extensions.agent.replacement` owns replacement callback
+  plumbing, and `harness.extensions.provider_config` owns native provider
+  value-object parsing. Coding supplies only its provider/model policy
+  callback and extension API surface.
+- Transcript export, settings binding, tool coordination, and session
+  inspection projection are Harness-owned. Coding no longer has parallel
+  `session/export.py`, `session/session_settings_controller.py`,
+  `session/types.py`, `session/tool_controller.py`, or platform inspection
+  projection modules.
 
 ## Product Boundary
 
@@ -63,7 +74,8 @@ Coding retains:
   other code-tool semantics, command handlers, and summary prompts/model calls;
 - Coding extension API/hooks, package/root/trust policy, diagnostics wording,
   session index policy, cwd/session-file acceptance, and lifecycle cleanup;
-- Pi/RPC/TUI/HTML wire projections, command aliases, and Coding display state.
+- Product RPC/TUI/HTML presentation contracts, command aliases, and display
+  state.
 
 These are Product semantics, not reusable Host/Session mechanics. Moving them
 to Harness would create false neutrality and make Research, Design, PPT, and
@@ -81,7 +93,8 @@ projection.
 
 - Harness Facade tests compose `SessionFacadePorts` with independent fake
   Product ports.
-- Coding session tests verify the direct inspector and Pi projection preserve
-  context usage, stats, fork-candidate, retry, and `AgentSession` behavior.
+- Coding session tests verify the direct inspector and shared inspection
+  projection preserve context usage, stats, fork-candidate, retry, and
+  `AgentSession` behavior.
 - Architecture tests require Coding to adopt the Harness Facade, inspector,
   and retry runtime while prohibiting the removed controller paths.

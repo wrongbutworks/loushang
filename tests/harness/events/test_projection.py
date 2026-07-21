@@ -11,6 +11,8 @@ from loushang.harness.events import (
     normalize_event_select,
     project_runtime_event,
     select_runtime_event_views,
+    serialize_session_event,
+    snake_case_json_keys,
 )
 from loushang.protocol import JsonValueError
 
@@ -55,6 +57,20 @@ def test_runtime_event_projection_retains_source_envelope_and_snapshots_json() -
     assert view.source_record_id == "record-1"
     assert view.correlation_id == "tool-1"
     assert view.payload == {"type": "assistant_delta", "content": {"text": "hello"}}
+
+
+def test_runtime_event_projection_normalizes_payload_keys() -> None:
+    view = project_runtime_event(
+        _event(),
+        event_type="tool_execution_end",
+        view="tools",
+        payload={"toolCallId": "tc1", "renderedToolResult": {"isPartial": False}},
+    )
+
+    assert view.payload == {
+        "tool_call_id": "tc1",
+        "rendered_tool_result": {"is_partial": False},
+    }
 
 
 def test_runtime_event_view_rejects_unsafe_payload_and_invalid_delivery_hint() -> None:
@@ -113,6 +129,27 @@ def test_runtime_event_selector_rejects_invalid_patterns() -> None:
         normalize_event_select(("assistant_*", 1))  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="non-empty"):
         normalize_event_select(("",))
+
+
+def test_session_event_json_contract_is_snake_case_only() -> None:
+    payload = serialize_session_event(
+        {
+            "type": "queue_update",
+            "steering": ["now"],
+            "follow_up": ["later"],
+        }
+    )
+
+    assert payload == {
+        "type": "queue_update",
+        "steering": ["now"],
+        "follow_up": ["later"],
+    }
+    assert snake_case_json_keys(
+        {"assistantMessageEvent": {"contentIndex": 0, "toolCallId": "tc1"}}
+    ) == {
+        "assistant_message_event": {"content_index": 0, "tool_call_id": "tc1"}
+    }
 
 
 def test_events_package_exposes_lazy_public_contracts() -> None:

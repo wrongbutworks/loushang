@@ -14,7 +14,7 @@ from loushang.ai.types import (
     Usage,
 )
 from loushang.coding.session import AgentSession
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.tools.workspace import create_write_tool
 from loushang.observability import get_problem_store, log_context, reset_observability
 

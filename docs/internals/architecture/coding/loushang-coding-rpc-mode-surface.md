@@ -41,13 +41,13 @@ package-level `loushang.channel` protocol layer。长期 channel 设计见
 `RpcMode` 默认转发标准 projected session event。启动时传入 `render_tool_events=True`
 或 CLI 使用 `--mode rpc --render-tool-events` 后，工具事件会附加展示 payload：
 
-- `tool_execution_start.renderedToolCall`
-- `tool_execution_update.renderedToolResult`
-- `tool_execution_end.renderedToolResult`
+- `tool_execution_start.rendered_tool_call`
+- `tool_execution_update.rendered_tool_result`
+- `tool_execution_end.rendered_tool_result`
 
 这只是 event stream 的 additive 字段，不改变 RPC command response 语义。
-客户端可以基于 `contractVersion` 判断 rendered payload 版本；如果字段不存在，应回退到原始
-`toolName` / `args` / `result` 展示。
+客户端可以基于 `contract_version` 判断 rendered payload 版本；如果字段不存在，应回退到原始
+`tool_name` / `args` / `result` 展示。
 
 详细合约见：
 

@@ -161,7 +161,7 @@ def test_tool_render_runtime_renders_tool_execution_events_with_partial_flags() 
             )
         )
         return {
-            "text": f"{context.state['path']} {result.content[0].text} partial={options.isPartial}"
+            "text": f"{context.state['path']} {result.content[0].text} partial={options.is_partial}"
         }
 
     definition = ToolDefinition(

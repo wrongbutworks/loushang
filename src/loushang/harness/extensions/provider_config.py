@@ -1,3 +1,5 @@
+"""Normalize native extension provider configuration into AI value objects."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping

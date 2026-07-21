@@ -1,4 +1,4 @@
-"""Coding presentation adapter over the shared Agent transcript exporters."""
+"""Product-neutral session export adapter over Agent transcript exporters."""
 
 from __future__ import annotations
 
@@ -17,11 +17,11 @@ from loushang.harness.agent_transcript import (
 from loushang.protocol import require_json_mapping
 
 if TYPE_CHECKING:
-    from loushang.coding.session.agent_session import AgentSession
+    from loushang.harness.session.facade import SessionFacade
 
 
 def export_session_to_jsonl(
-    session: AgentSession, output_path: str | None = None
+    session: SessionFacade, output_path: str | None = None
 ) -> str:
     path = (
         Path(output_path)
@@ -36,7 +36,7 @@ def export_session_to_jsonl(
 
 
 def export_session_to_html(
-    session: AgentSession, output_path: str | None = None
+    session: SessionFacade, output_path: str | None = None
 ) -> str:
     path = (
         Path(output_path)
@@ -54,7 +54,7 @@ def export_session_to_html(
     )
 
 
-def _build_export_request(session: AgentSession) -> TranscriptExportRequest:
+def _build_export_request(session: SessionFacade) -> TranscriptExportRequest:
     stats = session._session_inspector.build_session_stats()
     context_usage = stats.context_usage
     entries = session.session_manager.get_entries()
@@ -89,7 +89,7 @@ def _build_export_request(session: AgentSession) -> TranscriptExportRequest:
     )
 
 
-def _default_jsonl_export_path(session: AgentSession) -> Path:
+def _default_jsonl_export_path(session: SessionFacade) -> Path:
     cwd = Path(session.session_manager.get_cwd()).expanduser().resolve()
     timestamp = (
         datetime.now(UTC)
@@ -101,13 +101,13 @@ def _default_jsonl_export_path(session: AgentSession) -> Path:
     return cwd / f"session-{timestamp}.jsonl"
 
 
-def _default_html_export_path(session: AgentSession) -> Path:
+def _default_html_export_path(session: SessionFacade) -> Path:
     return (
         session.session_manager.get_session_dir() / f"{session.session_id}-export.html"
     )
 
 
-def _custom_message_renderer(session: AgentSession):
+def _custom_message_renderer(session: SessionFacade):
     runner = getattr(session, "extension_runner", None)
     getter = (
         getattr(runner, "get_message_renderer", None) if runner is not None else None
@@ -115,7 +115,7 @@ def _custom_message_renderer(session: AgentSession):
     return getter if callable(getter) else None
 
 
-def _export_theme(session: AgentSession) -> dict[str, str]:
+def _export_theme(session: SessionFacade) -> dict[str, str]:
     theme = getattr(session, "export_theme", None)
     if isinstance(theme, dict):
         return {str(key): str(value) for key, value in theme.items()}

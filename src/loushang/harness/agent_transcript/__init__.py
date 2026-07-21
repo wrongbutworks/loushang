@@ -89,6 +89,10 @@ from loushang.harness.agent_transcript.interaction import (
     user_message_text,
     validate_model,
 )
+from loushang.harness.agent_transcript.session_export import (
+    export_session_to_html,
+    export_session_to_jsonl,
+)
 from loushang.harness.agent_transcript.kinds import (
     AGENT_MESSAGE_KIND,
     APPLICATION_MESSAGE_KIND,
@@ -353,6 +357,8 @@ __all__ = [
     "estimate_record_tokens",
     "export_agent_transcript_to_html",
     "export_agent_transcript_to_jsonl",
+    "export_session_to_html",
+    "export_session_to_jsonl",
     "execute_branch_summary",
     "execute_transcript_compaction",
     "filter_agent_transcript_session_summaries",

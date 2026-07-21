@@ -209,21 +209,11 @@ class SessionStartEvent:
     previous_session_file: str | None = None
     type: Literal["session_start"] = "session_start"
 
-    @property
-    def previousSessionFile(self) -> str | None:
-        return self.previous_session_file
-
-
 @dataclass(frozen=True)
 class SessionShutdownEvent:
     reason: str = "quit"
     target_session_file: str | None = None
     type: Literal["session_shutdown"] = "session_shutdown"
-
-    @property
-    def targetSessionFile(self) -> str | None:
-        return self.target_session_file
-
 
 @dataclass(frozen=True)
 class SessionRefreshEvent:
@@ -238,11 +228,6 @@ class SessionBeforeSwitchEvent:
     target_session_file: str | None = None
     type: Literal["session_before_switch"] = "session_before_switch"
 
-    @property
-    def targetSessionFile(self) -> str | None:
-        return self.target_session_file
-
-
 @dataclass(frozen=True)
 class SessionBeforeForkEvent:
     entry_id: str
@@ -250,22 +235,12 @@ class SessionBeforeForkEvent:
     position: str = "before"
     type: Literal["session_before_fork"] = "session_before_fork"
 
-    @property
-    def entryId(self) -> str:
-        return self.entry_id
-
-
 @dataclass(frozen=True)
 class SessionBeforeCompactEvent:
     reason: str
     cwd: str
     custom_instructions: str | None = None
     type: Literal["session_before_compact"] = "session_before_compact"
-
-    @property
-    def customInstructions(self) -> str | None:
-        return self.custom_instructions
-
 
 @dataclass(frozen=True)
 class SessionBeforeTreeEvent:
@@ -278,27 +253,6 @@ class SessionBeforeTreeEvent:
     replace_instructions: bool = False
     label: str | None = None
     type: Literal["session_before_tree"] = "session_before_tree"
-
-    @property
-    def targetId(self) -> str:
-        return self.target_id
-
-    @property
-    def oldLeafId(self) -> str | None:
-        return self.old_leaf_id
-
-    @property
-    def newLeafId(self) -> str | None:
-        return self.new_leaf_id
-
-    @property
-    def customInstructions(self) -> str | None:
-        return self.custom_instructions
-
-    @property
-    def replaceInstructions(self) -> bool:
-        return self.replace_instructions
-
 
 @dataclass(frozen=True)
 class SessionActionDecision:

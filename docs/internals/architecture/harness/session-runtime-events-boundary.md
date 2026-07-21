@@ -94,16 +94,15 @@ to this Product projection.
 
 Coding continues to own:
 
-- Pi-compatible event field names and JSON casing;
 - RPC, print, TUI, and extension filtering;
 - tool-render enrichment and Product artifact display;
-- Product-specific event payloads and compatibility exports.
+- Product-specific event payloads and exports.
 
 Harness additionally owns `RuntimeEventView`: a strict-JSON, source-preserving
 transport view and generic exact/trailing-wildcard selector. Products create a
-view only after applying their own event mapping and render policy. Coding's Pi
-aliases, event names, tool render enrichment, and RPC stream shape remain
-Coding-owned.
+view only after applying their own event mapping and render policy. The shared
+view payload uses snake_case; Coding retains event names, tool render
+enrichment, and Product stream policy without alias expansion.
 
 `loushang.channel` may carry an already-created `RuntimeEventView`; it depends
 only on this value contract, while Harness never imports Channel. This neither

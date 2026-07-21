@@ -12,6 +12,12 @@ _EXPORT_MODULES = {
     "AgentRunSpec": "loushang.harness.types",
     "AgentRunStatus": "loushang.harness.types",
     "run_agent": "loushang.harness.runner",
+    "ResourceBootstrapPorts": "loushang.harness.bootstrap",
+    "ResourceBootstrapResult": "loushang.harness.bootstrap",
+    "ResourceBootstrapRuntime": "loushang.harness.bootstrap",
+    "BootstrapActivationPlan": "loushang.harness.bootstrap",
+    "BootstrapActivationResult": "loushang.harness.bootstrap",
+    "BootstrapActivationRuntime": "loushang.harness.bootstrap",
 }
 
 

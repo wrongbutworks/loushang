@@ -78,14 +78,14 @@ def test_wrap_tool_definition_preserves_tool_renderers() -> None:
         return AgentToolResult(content=[TextPart(type="text", text="ok")], details={})
 
     def render_call(args, theme, context: ToolRenderContext):
-        return {"text": f"call {args['path']} {theme['accent']} {context.toolCallId}"}
+        return {"text": f"call {args['path']} {theme['accent']} {context.tool_call_id}"}
 
     def render_result(
         result, options: ToolRenderResultOptions, theme, context: ToolRenderContext
     ):
         del result, theme
         return {
-            "text": f"result expanded={options.expanded} partial={context.isPartial}"
+            "text": f"result expanded={options.expanded} partial={context.is_partial}"
         }
 
     definition = ToolDefinition(

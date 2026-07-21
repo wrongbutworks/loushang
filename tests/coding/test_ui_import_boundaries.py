@@ -194,12 +194,12 @@ NON_UI_CODING_OWNERS = (
     "loushang.coding.model_selection",
     "loushang.coding.diagnostics.debug_status",
     "loushang.coding.event.presentation_policy",
-    "loushang.coding.interaction.controller",
     "loushang.coding.interaction.intent",
     "loushang.coding.presentation.session",
 )
 
 CODING_TUI_FEATURE_OWNERS = (
+    "loushang.coding.interaction.controller",
     "loushang.coding.interaction.screen_host",
     "loushang.coding.interaction.settings_profile",
     "loushang.coding.interaction.tui_profile",
@@ -872,7 +872,8 @@ def test_shared_action_presentation_keeps_product_controller_and_copy_outside() 
         assert token not in shared
 
     assert "class HostActionResult" in result_owner
-    assert "HostActionResult" in controller
+    assert "ConversationUiController" in controller
+    assert "HostActionResult" not in controller
     assert "class ControllerResult" not in controller
     assert "ImagePart" in screen_host
     assert "PromptIntent" in screen_host
@@ -1030,22 +1031,17 @@ def test_shared_command_catalog_keeps_coding_definitions_and_raw_adaptation_outs
     coding = Path("src/loushang/coding/commands/catalog.py").read_text(
         encoding="utf-8"
     )
-    profile = Path("src/loushang/coding/commands/profile.py").read_text(
+    profile = Path("src/loushang/harness/commands/catalog.py").read_text(
         encoding="utf-8"
     )
 
     assert "loushang.coding" not in shared
     assert "loushang.coding" not in descriptors
 
-    for token in (
-        "coding.ui.model",
-        "coding.session.",
-        "CommandEffectKind",
-        "raw_command",
-    ):
+    for token in ("coding.ui.model", "coding.session.", "raw_command"):
         assert token not in shared
 
-    for token in ("coding.ui.model", "coding.ui.config", "model_select", "terminal"):
+    for token in ("harness.ui.model", "harness.ui.config", "model_select", "terminal"):
         assert token in profile
 
     for token in ("coding.session.", "CommandEffectKind", "raw_command"):
@@ -1056,7 +1052,7 @@ def test_shared_command_catalog_keeps_coding_definitions_and_raw_adaptation_outs
         assert token in coding
 
     assert "LocalCommandCatalogProfile" in shared
-    assert "LocalCommandCatalogProfile" in profile
+    assert "LocalCommandCatalogProfile" in shared
 
     for token in ("CommandCatalog", "CommandDescriptor", "split_slash_command"):
         assert token in descriptors
@@ -1166,8 +1162,8 @@ def test_tool_transcript_projection_keeps_raw_coding_policy_at_product_edge() ->
     for token in (
         "AgentToolResult",
         "ToolDefinitionResolver",
-        'tool_call_id", event.get("toolCallId',
-        'tool_name", event.get("toolName',
+        'event.get("tool_call_id")',
+        'event.get("tool_name")',
         "render_tool_result_presentation",
     ):
         assert token not in shared

@@ -30,19 +30,22 @@ from loushang.coding.resource_runtime import (
 )
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession
+from loushang.coding.session_manager import SessionManager
 from loushang.coding.source_info import executable_source_identity
-from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import context_item_to_model_message
+from loushang.harness.bootstrap import (
+    BootstrapActivationPlan,
+    BootstrapActivationRuntime,
+    ResourceBootstrapPorts,
+    ResourceBootstrapRuntime,
+)
 from loushang.harness.capabilities import bind_capability_composition_runtime
 from loushang.harness.capabilities.packs import (
     CapabilityPack,
     CapabilityPackComposer,
 )
 from loushang.harness.capabilities.prompt_assembly import assemble_prompt
-from loushang.harness.config import (
-    ConfigActivationRuntime,
-    ConfigActivationStep,
-)
+from loushang.harness.config import ConfigActivationStep
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticRecord, StartupCheckResult
 from loushang.harness.extensions.context import SessionStartEvent
@@ -233,32 +236,38 @@ def create_agent_session_services(
     _apply_resource_loader_options(
         resolved_services.resource_loader, resource_loader_options
     )
-    resource_bundle = resolved_services.resource_loader.discover_resources(resolved_cwd)
-    loader_diagnostics = tuple(resource_bundle.diagnostics)
-    extension_runner = ExtensionRunner(resource_bundle.extensions)
-    flag_diagnostics = _apply_extension_flag_values(
-        extension_runner, extension_flag_values
+    bootstrap_runtime = ResourceBootstrapRuntime(
+        ResourceBootstrapPorts(
+            discover_resources=lambda loader, resource_cwd: loader.discover_resources(
+                resource_cwd
+            ),
+            create_extension_runtime=lambda bundle: ExtensionRunner(bundle.extensions),
+            apply_extension_flags=_apply_extension_flag_values,
+            rediscover_resources=lambda runner, bundle: runner.discover_resources(
+                bundle
+            ),
+            bundle_diagnostics=lambda bundle: tuple(bundle.diagnostics),
+            extension_diagnostics=lambda runner: runner.get_diagnostics(),
+            normalize_diagnostic=lambda diagnostic, phase, source: (
+                resolved_services.diagnostics_service.normalize_resource_diagnostic(
+                    diagnostic,
+                    phase=phase,
+                    source=source,
+                )
+            ),
+        )
     )
-    resource_bundle = extension_runner.discover_resources(resource_bundle)
-    diagnostics = tuple(
-        resolved_services.diagnostics_service.normalize_resource_diagnostic(
-            diagnostic,
-            phase="resource_loading",
-            source=source,
-        )
-        for source, source_diagnostics in (
-            ("loader", loader_diagnostics),
-            ("extensions", extension_runner.get_diagnostics()),
-            ("bootstrap", flag_diagnostics),
-        )
-        for diagnostic in source_diagnostics
+    prepared = bootstrap_runtime.prepare(
+        loader=resolved_services.resource_loader,
+        cwd=resolved_cwd,
+        extension_flags=extension_flag_values,
     )
     return AgentSessionServices(
         cwd=str(resolved_cwd),
         services=resolved_services,
-        resource_bundle=resource_bundle,
-        extension_runner=extension_runner,
-        diagnostics=diagnostics,
+        resource_bundle=prepared.resource_bundle,
+        extension_runner=prepared.extension_runtime,
+        diagnostics=prepared.diagnostics,
     )
 
 
@@ -492,64 +501,67 @@ def _activate_session_configuration(
         extension_flag_values=extension_flag_values,
         skill_activation_runtime=skill_activation_runtime or SkillActivationRuntime(),
     )
-    runtime = ConfigActivationRuntime(
-        (
-            ConfigActivationStep(
-                "startup_checks",
-                select=lambda config: config.package_roots,
-                apply=_activate_startup_checks,
-            ),
-            ConfigActivationStep(
-                "package_sources",
-                select=lambda config: config.package_sources,
-                apply=_activate_package_sources,
-                depends_on=("startup_checks",),
-            ),
-            ConfigActivationStep(
-                "resource_roots",
-                select=lambda config: (
-                    config.package_roots,
-                    config.package_sources,
-                    config.plugin_sources,
-                    config.disabled_plugins,
-                    config.resource_roots,
+    runtime = BootstrapActivationRuntime(
+        BootstrapActivationPlan(
+            steps=(
+                ConfigActivationStep(
+                    "startup_checks",
+                    select=lambda config: config.package_roots,
+                    apply=_activate_startup_checks,
                 ),
-                apply=_activate_resource_roots,
-                depends_on=("package_sources",),
-            ),
-            ConfigActivationStep(
-                "resources",
-                select=lambda config: config.disabled_skills,
-                apply=_activate_resources,
-                depends_on=("resource_roots",),
-            ),
-            ConfigActivationStep(
-                "extensions",
-                select=lambda config: (
-                    config.disabled_skills,
-                    config.disabled_plugins,
+                ConfigActivationStep(
+                    "package_sources",
+                    select=lambda config: config.package_sources,
+                    apply=_activate_package_sources,
+                    depends_on=("startup_checks",),
                 ),
-                apply=_activate_extensions,
-                depends_on=("resources",),
-            ),
-            ConfigActivationStep(
-                "cwd_audit",
-                select=lambda config: config.resource_roots,
-                apply=_activate_cwd_audit,
-                depends_on=("extensions",),
-            ),
-            ConfigActivationStep(
-                "model_registry",
-                select=lambda config: config.enabled_models,
-                apply=_activate_model_registry,
-                depends_on=("cwd_audit",),
-            ),
+                ConfigActivationStep(
+                    "resource_roots",
+                    select=lambda config: (
+                        config.package_roots,
+                        config.package_sources,
+                        config.plugin_sources,
+                        config.disabled_plugins,
+                        config.resource_roots,
+                    ),
+                    apply=_activate_resource_roots,
+                    depends_on=("package_sources",),
+                ),
+                ConfigActivationStep(
+                    "resources",
+                    select=lambda config: config.disabled_skills,
+                    apply=_activate_resources,
+                    depends_on=("resource_roots",),
+                ),
+                ConfigActivationStep(
+                    "extensions",
+                    select=lambda config: (
+                        config.disabled_skills,
+                        config.disabled_plugins,
+                    ),
+                    apply=_activate_extensions,
+                    depends_on=("resources",),
+                ),
+                ConfigActivationStep(
+                    "cwd_audit",
+                    select=lambda config: config.resource_roots,
+                    apply=_activate_cwd_audit,
+                    depends_on=("extensions",),
+                ),
+                ConfigActivationStep(
+                    "model_registry",
+                    select=lambda config: config.enabled_models,
+                    apply=_activate_model_registry,
+                    depends_on=("cwd_audit",),
+                ),
+            )
         )
     )
-    report = runtime.start(settings, state)
+    result = runtime.activate(settings, state)
+    report = result.report
     if report.failures:
         raise report.failures[0].error
-    return state
+    return result.context
 
 
 def _activate_startup_checks(

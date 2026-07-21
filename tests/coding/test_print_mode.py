@@ -1425,7 +1425,7 @@ def test_print_mode_json_compact_view_projects_assistant_stream_and_tool_lifecyc
             "tool_execution_end",
         ]
         assert lines[2]["delta"] == "he"
-        assert lines[3]["message"]["responseId"] == "resp-1"
+        assert lines[3]["message"]["response_id"] == "resp-1"
 
     asyncio.run(scenario())
 
@@ -1452,7 +1452,7 @@ def test_print_mode_json_can_include_rendered_tool_event_payloads() -> None:
     def render_result(result, options, theme, context):
         del theme
         return {
-            "text": f"{context.state['command']} {result.content[0].text} partial={options.isPartial}"
+            "text": f"{context.state['command']} {result.content[0].text} partial={options.is_partial}"
         }
 
     definition = ToolDefinition(
@@ -1538,23 +1538,23 @@ def test_print_mode_json_can_include_rendered_tool_event_payloads() -> None:
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         assert exit_code == 0
-        assert "renderedToolCall" not in lines[0]
-        assert lines[1]["renderedToolCall"] == {
+        assert "rendered_tool_call" not in lines[0]
+        assert lines[1]["rendered_tool_call"] == {
             "type": "text",
             "text": "call echo hi",
-            "plainText": "call echo hi",
-            "contractVersion": 1,
+            "plain_text": "call echo hi",
+            "contract_version": 1,
             "status": "running",
         }
-        assert lines[2]["renderedToolResult"] == {
+        assert lines[2]["rendered_tool_result"] == {
             "type": "text",
             "text": "echo hi running partial=True",
-            "plainText": "echo hi running partial=True",
-            "isPartial": True,
+            "plain_text": "echo hi running partial=True",
+            "is_partial": True,
             "expanded": False,
-            "contractVersion": 1,
+            "contract_version": 1,
             "status": "partial",
-            "collapsedText": "echo hi running partial=True",
+            "collapsed_text": "echo hi running partial=True",
             "artifacts": [],
         }
 
@@ -1656,7 +1656,7 @@ def test_print_mode_json_event_select_filters_projected_events() -> None:
             stdout=stdout,
             output_mode="json",
             event_view="compact",
-            event_select=("assistant.delta", "assistant.final"),
+            event_select=("assistant_delta", "assistant_final"),
         )
 
         exit_code = await mode.run_once("hello")
@@ -2157,82 +2157,82 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
         assert "messages" in payload
         messages = payload["messages"]
         assert isinstance(messages, list)
-        assert messages[0]["responseId"] == "resp-1"
+        assert messages[0]["response_id"] == "resp-1"
         assert messages[1]["role"] == "application"
-        assert "response_id" not in messages[0]
+        assert "responseId" not in messages[0]
 
     def check_turn_end(payload: dict[str, object]) -> None:
         assert payload["type"] == "turn_end"
-        assert "toolResults" in payload
-        assert "tool_results" not in payload
-        assert payload["message"]["responseId"] == "resp-1"
-        assert payload["toolResults"][0]["toolCallId"] == "tool-call-1"
+        assert "tool_results" in payload
+        assert "toolResults" not in payload
+        assert payload["message"]["response_id"] == "resp-1"
+        assert payload["tool_results"][0]["tool_call_id"] == "tool-call-1"
 
     def check_message_start(payload: dict[str, object]) -> None:
         assert payload["type"] == "message_start"
-        assert payload["message"]["responseId"] == "resp-1"
-        assert "response_id" not in payload["message"]
+        assert payload["message"]["response_id"] == "resp-1"
+        assert "responseId" not in payload["message"]
 
     def check_message_update(payload: dict[str, object]) -> None:
         assert payload["type"] == "message_update"
-        assert "assistantMessageEvent" in payload
-        assert "assistant_message_event" not in payload
-        assert payload["assistantMessageEvent"]["contentIndex"] == 0
-        assert payload["assistantMessageEvent"]["delta"] == "he"
+        assert "assistant_message_event" in payload
+        assert "assistantMessageEvent" not in payload
+        assert payload["assistant_message_event"]["content_index"] == 0
+        assert payload["assistant_message_event"]["delta"] == "he"
 
     def check_message_end(payload: dict[str, object]) -> None:
         assert payload["type"] == "message_end"
-        assert payload["message"]["responseId"] == "resp-1"
+        assert payload["message"]["response_id"] == "resp-1"
 
     def check_tool_execution_start(payload: dict[str, object]) -> None:
         assert payload["type"] == "tool_execution_start"
-        assert payload["toolCallId"] == "t1"
-        assert payload["toolName"] == "bash"
-        assert "tool_call_id" not in payload
-        assert "tool_name" not in payload
+        assert payload["tool_call_id"] == "t1"
+        assert payload["tool_name"] == "bash"
+        assert "toolCallId" not in payload
+        assert "toolName" not in payload
 
     def check_tool_execution_update(payload: dict[str, object]) -> None:
         assert payload["type"] == "tool_execution_update"
-        assert payload["partialResult"]["content"][0]["text"] == "progress"
-        assert payload["partialResult"]["details"] == {"done": False}
-        assert payload["partialResult"]["terminate"] is False
-        assert "partial_result" not in payload
+        assert payload["partial_result"]["content"][0]["text"] == "progress"
+        assert payload["partial_result"]["details"] == {"done": False}
+        assert payload["partial_result"]["terminate"] is False
+        assert "partialResult" not in payload
 
     def check_tool_execution_end(payload: dict[str, object]) -> None:
         assert payload["type"] == "tool_execution_end"
-        assert payload["toolCallId"] == "t1"
+        assert payload["tool_call_id"] == "t1"
         assert payload["result"]["content"][0]["text"] == "ok"
         assert payload["result"]["details"] == {"ok": True}
         assert payload["result"]["terminate"] is False
-        assert payload["isError"] is False
-        assert "is_error" not in payload
+        assert payload["is_error"] is False
+        assert "isError" not in payload
 
     def check_queue_update(payload: dict[str, object]) -> None:
         assert payload["type"] == "queue_update"
-        assert payload["followUp"] == ["b"]
-        assert "follow_up" not in payload
+        assert payload["follow_up"] == ["b"]
+        assert "followUp" not in payload
 
     def check_compaction_start(payload: dict[str, object]) -> None:
         assert payload == {"type": "compaction_start", "reason": "manual"}
 
     def check_compaction_end(payload: dict[str, object]) -> None:
         assert payload["type"] == "compaction_end"
-        assert payload["willRetry"] is True
-        assert payload["errorMessage"] == "later"
-        assert "will_retry" not in payload
-        assert "error_message" not in payload
+        assert payload["will_retry"] is True
+        assert payload["error_message"] == "later"
+        assert "willRetry" not in payload
+        assert "errorMessage" not in payload
 
     def check_auto_retry_start(payload: dict[str, object]) -> None:
         assert payload["type"] == "auto_retry_start"
-        assert payload["maxAttempts"] == 3
-        assert payload["delayMs"] == 100
-        assert payload["errorMessage"] == "boom"
-        assert "max_attempts" not in payload
+        assert payload["max_attempts"] == 3
+        assert payload["delay_ms"] == 100
+        assert payload["error_message"] == "boom"
+        assert "maxAttempts" not in payload
 
     def check_auto_retry_end(payload: dict[str, object]) -> None:
         assert payload["type"] == "auto_retry_end"
-        assert payload["finalError"] == "ignored"
-        assert "final_error" not in payload
+        assert payload["final_error"] == "ignored"
+        assert "finalError" not in payload
 
     session_events = [
         ({"type": "agent_start"}, check_agent_start),
@@ -2490,6 +2490,6 @@ def test_print_mode_json_event_sink_rejects_non_finite_values_without_output() -
             }
         )
 
-    assert exc_info.value.path == "print_json_event.delayMs"
+    assert exc_info.value.path == "print_json_event.delay_ms"
     assert "non-finite float" in str(exc_info.value)
     assert stdout.getvalue() == ""

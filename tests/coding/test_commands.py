@@ -26,24 +26,18 @@ def test_parse_slash_command_rejects_non_commands_and_empty_names() -> None:
     assert parse_slash_command("/   ") is None
 
 
-def test_builtin_slash_commands_match_pi_style_core_surface() -> None:
-    from loushang.coding.commands import BUILTIN_SLASH_COMMANDS
+def test_standard_session_commands_have_shared_metadata() -> None:
+    from loushang.harness.session import STANDARD_SESSION_COMMANDS
 
-    commands = {command.name: command.description for command in BUILTIN_SLASH_COMMANDS}
+    commands = {command.name: command.description for command in STANDARD_SESSION_COMMANDS}
 
     assert commands == {
-        "settings": "Open settings menu",
-        "model": "Select model (opens selector UI)",
-        "scoped-models": "Enable/disable models for Ctrl+P cycling",
         "export": "Export session (HTML default, or specify path: .html/.jsonl)",
         "import": "Import and resume a session from a JSONL file",
-        "share": "Share session as a secret GitHub gist",
         "copy": "Copy an assistant message to clipboard",
         "name": "Set session display name",
         "session": "Show session info and stats",
-        "terminal": "Show terminal capabilities and protocol diagnostics",
         "changelog": "Show changelog entries",
-        "hotkeys": "Show all keyboard shortcuts",
         "fork": "Create a new fork from a previous user message",
         "clone": "Duplicate the current session at the current position",
         "tree": "Navigate session tree (switch branches)",
@@ -53,7 +47,6 @@ def test_builtin_slash_commands_match_pi_style_core_surface() -> None:
         "compact": "Manually compact the session context",
         "resume": "Resume a different session",
         "reload": "Reload keybindings, extensions, skills, prompts, and themes",
-        "quit": "Quit loushang",
     }
 
 

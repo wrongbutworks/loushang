@@ -8,6 +8,7 @@ from typing import Any, Literal, Protocol, TextIO
 
 from loushang.harness.conversation import NativeConversationHeaderCodec
 from loushang.harness.events import RuntimeEvent
+from loushang.harness.events.projection import RuntimeEventView
 from loushang.harness.host.mode import ModeAdapter, ModeState, dispose_host
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.protocol import require_json_value
@@ -27,8 +28,8 @@ class PlainEventProjection:
     normalize_select: Callable[[str | Sequence[str] | None], Sequence[str]]
     project_session_event: Callable[..., Sequence[dict[str, Any]]]
     should_emit_projected_event: Callable[[dict[str, Any], Sequence[str]], bool]
-    project_runtime_event_to_json_views: Callable[..., Sequence[object]]
-    should_emit_runtime_event_view: Callable[[object, Sequence[str]], bool]
+    project_runtime_event_to_json_views: Callable[..., Sequence[RuntimeEventView]]
+    should_emit_runtime_event_view: Callable[[RuntimeEventView, Sequence[str]], bool]
 
 
 class PlainWorkPort(Protocol):

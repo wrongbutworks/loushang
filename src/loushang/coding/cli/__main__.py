@@ -7,7 +7,7 @@ import json
 import os
 import sys
 from collections.abc import Callable, Mapping, Sequence
-from contextlib import contextmanager, nullcontext, redirect_stderr
+from contextlib import redirect_stderr
 from dataclasses import asdict, dataclass, replace
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
@@ -17,7 +17,7 @@ from typing import Any, TextIO
 from loushang.ai.model import ModelSelection, model_selection_ref
 from loushang.ai.model.registry import get_default_model_registry
 from loushang.ai.types import ImagePart
-from loushang.channel import ProductHostStreams, dispose_product_host, stdout_guard
+from loushang.channel import ProductHostLifecycle
 from loushang.coding.bootstrap import (
     BootstrapServices,
     create_agent_session_runtime,
@@ -291,7 +291,12 @@ async def run_cli(
     tui_runner=run_coding_tui,
 ) -> int:
     raw_argv = list(argv or ())
-    streams = ProductHostStreams.resolve(stdin=stdin, stdout=stdout, stderr=stderr)
+    host_lifecycle = ProductHostLifecycle.resolve(
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
+    )
+    streams = host_lifecycle.streams
     stdin = streams.stdin
     stdout = streams.stdout
     stderr = streams.stderr
@@ -306,7 +311,7 @@ async def run_cli(
     _apply_offline_mode(bootstrap_args)
 
     if bootstrap_args.help:
-        with _stdout_guard_context(bootstrap_args, stdout, stderr):
+        with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(bootstrap_args)):
             extension_flags = await _collect_extension_flags_for_help(
                 raw_argv=raw_argv,
                 project_root=project_root,
@@ -359,7 +364,7 @@ async def run_cli(
     if work_log_inspect_result is not None:
         return work_log_inspect_result
 
-    with _stdout_guard_context(bootstrap_args, stdout, stderr):
+    with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(bootstrap_args)):
         resolved_services = services or build_default_services(project_root)
         _report_settings_errors_for_resource_commands(
             bootstrap_args, resolved_services, stderr
@@ -421,7 +426,7 @@ async def run_cli(
         services=resolved_services,
         cwd=project_root,
     ):
-        with _stdout_guard_context(bootstrap_args, stdout, stderr):
+        with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(bootstrap_args)):
             runtime = _invoke_runtime_builder(
                 runtime_builder,
                 args=runtime_args,
@@ -431,7 +436,7 @@ async def run_cli(
                 tool_registry=tool_registry,
                 approval_resolver=interactive_approval_resolver,
             )
-        with _stdout_guard_context(runtime_args, stdout, stderr):
+        with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(runtime_args)):
             list_sessions_result = _run_list_sessions(
                 runtime_args, runtime, stdout, stderr
             )
@@ -439,7 +444,7 @@ async def run_cli(
             return list_sessions_result
 
         try:
-            with _stdout_guard_context(bootstrap_args, stdout, stderr):
+            with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(bootstrap_args)):
                 session = await _resolve_session(runtime_args, runtime, project_root)
         except (
             FileNotFoundError,
@@ -459,7 +464,7 @@ async def run_cli(
     )
     if args is None:
         return parse_error_code
-    with _stdout_guard_context(args, stdout, stderr):
+    with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(args)):
         _apply_extension_flag_values(session, args.extension_flag_values)
 
         if args.session_name is not None:
@@ -690,7 +695,7 @@ async def run_cli(
                     )
                     if exit_code != 0:
                         if not is_last_turn:
-                            await _dispose_runtime_or_session(runtime, session)
+                            await host_lifecycle.dispose(runtime, session)
                         return exit_code
                 return 0
 
@@ -737,7 +742,7 @@ async def run_cli(
                     )
                     if exit_code != 0:
                         if not is_last_turn:
-                            await _dispose_runtime_or_session(runtime, session)
+                            await host_lifecycle.dispose(runtime, session)
                         return exit_code
                 return 0
 
@@ -803,13 +808,9 @@ async def run_cli(
                 )
                 if exit_code != 0:
                     if not is_last_turn:
-                        await _dispose_runtime_or_session(runtime, session)
+                        await host_lifecycle.dispose(runtime, session)
                     return exit_code
             return 0
-
-
-async def _dispose_runtime_or_session(runtime: Any, session: Any) -> None:
-    await dispose_product_host(runtime, session)
 
 
 def _prepared_turn_policy_metadata(
@@ -974,16 +975,6 @@ def _stdout_guard_enabled(args: CliArgs) -> bool:
         or args.update_all_packages
         or args.check_package_updates
     )
-
-
-@contextmanager
-def _stdout_guard_context(args: CliArgs, stdout: TextIO, stderr: TextIO):
-    with (
-        stdout_guard(stdout=stdout, stderr=stderr)
-        if _stdout_guard_enabled(args)
-        else nullcontext()
-    ):
-        yield
 
 
 async def _run_fake_prompt_steps_workflow_if_requested(

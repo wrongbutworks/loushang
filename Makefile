@@ -33,7 +33,7 @@ HARNESSTUI_SHARED_SOURCES := \
 HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/platform/__init__.py \
 	src/loushang/coding/platform/footer_data_provider.py \
-	src/loushang/coding/session/builtin_commands.py \
+	src/loushang/coding/session/command_controller.py \
 	src/loushang/coding/ui
 HARNESSTUI_TEST_SUPPORT := \
 	tests/coding/tui_support

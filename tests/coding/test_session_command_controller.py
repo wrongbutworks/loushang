@@ -10,15 +10,15 @@ from loushang.coding.extensions import (
     LoadedExtension,
     RegisteredCommand,
 )
-from loushang.coding.session.builtin_commands import BuiltinCommandBackend
 from loushang.coding.session.command_controller import CommandController
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.diagnostics import DiagnosticsService
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
     SkillDescriptor,
 )
+from loushang.harness.session import StandardSessionCommandPorts
 from loushang.tui.clipboard import ClipboardCopyResult
 
 
@@ -130,28 +130,27 @@ def test_command_controller_lists_builtin_commands_before_extension_and_resource
         get_extension_runner=lambda: runner,
         get_resource_bundle=lambda: bundle,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(),
+        standard_ports=StandardSessionCommandPorts(),
     )
 
     commands = controller.list_commands()
 
     assert [command.name for command in commands[:4]] == [
-        "settings",
-        "model",
-        "scoped-models",
         "export",
+        "import",
+        "copy",
+        "name",
     ]
     assert {command.name for command in commands} >= {
         "copy",
         "name",
         "session",
-        "terminal",
         "changelog",
         "tools",
         "deploy",
         "plan",
     }
-    assert all(command.source == "builtin" for command in commands[:21])
+    assert all(command.source == "builtin" for command in commands[:15])
     assert commands[0].source_info.source == "builtin"
 
 
@@ -274,7 +273,7 @@ def test_command_controller_dispatches_extension_before_builtin_and_resource(
         get_extension_runner=lambda: runner,
         get_resource_bundle=lambda: bundle,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(set_session_name=builtin_names.append),
+        standard_ports=StandardSessionCommandPorts(set_session_name=builtin_names.append),
     )
 
     result = asyncio.run(controller.execute_command_async("/name", "Project Alpha"))
@@ -302,7 +301,7 @@ def test_command_controller_executes_builtin_name_session_and_unsupported_comman
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             set_session_name=names.append,
             get_session_info=lambda: {"session_id": "session-1", "cwd": "/tmp/project"},
         ),
@@ -312,7 +311,6 @@ def test_command_controller_executes_builtin_name_session_and_unsupported_comman
         controller.execute_command_async("/name", "Project Alpha")
     )
     session_result = asyncio.run(controller.execute_command_async("/session", ""))
-    model_result = asyncio.run(controller.execute_command_async("/model", ""))
 
     assert name_result is not None
     assert name_result.result == {
@@ -329,13 +327,7 @@ def test_command_controller_executes_builtin_name_session_and_unsupported_comman
         "status": "ok",
         "session": {"session_id": "session-1", "cwd": "/tmp/project"},
     }
-    assert model_result is not None
-    assert model_result.result == {
-        "source": "builtin",
-        "command": "model",
-        "status": "unsupported",
-        "message": 'Builtin command "/model" is handled by the interactive shell.',
-    }
+    assert controller.extract_builtin_command_invocation("/model") is None
 
 
 def test_command_controller_executes_builtin_tools_list_and_mutations(tmp_path) -> None:
@@ -363,7 +355,7 @@ def test_command_controller_executes_builtin_tools_list_and_mutations(tmp_path) 
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             get_active_tool_names=lambda: list(active_tools),
             get_all_tools=lambda: list(all_tools),
             set_active_tools=_set_active_tools,
@@ -414,7 +406,7 @@ def test_command_controller_builtin_tools_preserves_tool_source_info(tmp_path) -
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             get_active_tool_names=lambda: ["review_lookup"],
             get_all_tools=lambda: [
                 {
@@ -498,7 +490,7 @@ def test_command_controller_executes_builtin_extensions_list_and_detail(
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(get_extensions=lambda: extensions),
+        standard_ports=StandardSessionCommandPorts(get_extensions=lambda: extensions),
     )
 
     list_result = asyncio.run(controller.execute_command_async("/extensions", ""))
@@ -560,7 +552,7 @@ def test_command_controller_builtin_extensions_reports_unknown_extension(
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             get_extensions=lambda: [{"id": "acme.review", "name": "Acme Review"}]
         ),
     )
@@ -589,7 +581,7 @@ def test_command_controller_builtin_tools_rejects_unknown_tool(tmp_path) -> None
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             get_active_tool_names=lambda: ["read"],
             get_all_tools=lambda: [{"name": "read", "description": "Read files"}],
             set_active_tools=lambda tool_names: None,
@@ -622,7 +614,7 @@ def test_command_controller_executes_builtin_copy_by_recent_index(tmp_path) -> N
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             get_recent_assistant_texts=lambda: ("latest answer", "previous answer"),
             copy_text=_copy_text,
         ),
@@ -664,7 +656,7 @@ def test_command_controller_rejects_invalid_builtin_copy_index(tmp_path) -> None
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             get_recent_assistant_texts=lambda: ("latest answer",)
         ),
     )
@@ -703,7 +695,7 @@ def test_command_controller_keeps_legacy_builtin_copy_backend(tmp_path) -> None:
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             get_last_assistant_text=lambda: "legacy latest",
             copy_text=lambda text: (
                 copied.append(text) or ClipboardCopyResult(ok=True, command="fake-copy")
@@ -767,7 +759,7 @@ def test_command_controller_executes_builtin_runtime_session_commands(tmp_path) 
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             new_session=_new_session,
             resume_session=_resume_session,
             fork_session=_fork,
@@ -866,7 +858,7 @@ def test_command_controller_projects_standard_session_argument_errors(tmp_path) 
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(
+        standard_ports=StandardSessionCommandPorts(
             resume_session=_resume,
             fork_session=_fork,
             navigate_tree=_navigate_tree,
@@ -1001,7 +993,7 @@ def test_command_controller_preflight_async_consumes_builtin_command(tmp_path) -
         get_extension_runner=lambda: None,
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
-        builtin_backend=BuiltinCommandBackend(set_session_name=names.append),
+        standard_ports=StandardSessionCommandPorts(set_session_name=names.append),
     )
 
     result = asyncio.run(controller.preflight_user_input_async("/name Project Alpha"))

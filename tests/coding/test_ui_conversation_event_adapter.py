@@ -298,16 +298,16 @@ def test_coding_tool_adapter_exposes_read_only_neutral_views_and_projector() -> 
     call = projector.call_view(
         {
             "type": "tool_execution_start",
-            "toolCallId": "tc1",
-            "toolName": "bash",
+            "tool_call_id": "tc1",
+            "tool_name": "bash",
             "args": {"command": "pytest -q"},
         }
     )
     result = projector.result_view(
         {
             "type": "tool_execution_end",
-            "toolCallId": "tc1",
-            "toolName": "bash",
+            "tool_call_id": "tc1",
+            "tool_name": "bash",
             "result": AgentToolResult(
                 content=[TextPart(type="text", text="1 passed")], details={}
             ),

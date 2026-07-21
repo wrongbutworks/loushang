@@ -12,7 +12,7 @@ from loushang.coding.capability_plan import (
     resolve_coding_capability_profile,
 )
 from loushang.coding.runtime_profile import CODING_RUNTIME_PROFILE_METADATA_KEY
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.agent_transcript import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
     TURN_AWARE_SUMMARY_VERSION,

@@ -2,10 +2,11 @@
 
 ## Status
 
-Status: the standard-handler cutover, descriptor canonicalization, session
-diagnostics, and resource/extension source adapters are implemented for the
-initial Wave 3 subset. Product builtin descriptor/data reduction remains a
-later follow-up.
+Status: the standard-handler cutover, descriptor canonicalization, neutral
+result projection, shared local-command profile, session diagnostics, and
+resource/extension source adapters are implemented for the initial Wave 3
+subset. `coding.session.builtin_commands` and the duplicate Coding command
+definition modules have been removed.
 
 This Wave makes standard typed session commands a Harness capability pack. It
 does not make every current Coding slash command standard and it does not
@@ -59,13 +60,12 @@ owns Product errors nor creates a second source-ordering policy.
 
 ## Source Classification
 
-The current implementation is concentrated in
-`coding.session.builtin_commands` (710 lines) and
-`coding.session.command_controller` (413 lines). The shared descriptor contract
-now lives in `harness.commands.descriptors`; Coding retains its 22 descriptor
-entries, which include local UI routes,
-Product wording, and commands without a generic session meaning. The Wave
-classifies each capability before moving code.
+The former implementation was concentrated in
+`coding.session.builtin_commands` and `coding.session.command_controller`.
+Standard session metadata, parsing, typed execution, and neutral result
+projection now live in `harness.session.command_pack`. Generic local command
+definitions live in `harness.commands.DEFAULT_LOCAL_COMMANDS_PROFILE`.
+Coding retains only the catalog adapter and Product-specific command overlays.
 
 | Current command capability | Wave 3 owner | Product injection or retained owner |
 | --- | --- | --- |
@@ -196,27 +196,27 @@ The final Coding adapter may contain only:
 
 - a `StandardSessionCommandPorts` binding to its identity, export/import,
   lifecycle, compaction, and transcript navigation facades;
-- the Product profile and Coding-only command descriptors;
+- the Product profile and any Coding-only command descriptors;
 - extension/resource command adaptation, including Product diagnostics;
-- compatibility conversion from `SessionCommandResult` to the existing
-  `CommandExecutionResult` and RPC/TUI representation.
+- conversion from the neutral standard result mapping to
+  `CommandExecutionResult`.
 
 The following are deleted or reduced in this cutover:
 
-- duplicated parsing and dispatch for the admitted command subset in
+- duplicated parsing, dispatch, descriptors, and result projection in
   `coding.session.builtin_commands`;
 
 `SessionCommandDescriptor`, `CommandSourceInfo`, and `SlashCommandInfo` are
 canonical `harness.commands` contracts. Coding's `commands` package now owns
-only its builtin command data. The prompt/skill resource descriptor projection
+only its catalog adapter and future Product overlays. The prompt/skill resource descriptor projection
 also lives in `harness.commands.resources`; Coding retains diagnostics and
 result presentation. Resolved extension commands are projected by
 `harness.extensions.commands`; Coding retains extension error diagnostics and
 result presentation. `harness.session.command_sources` now owns the extension
 and resource source adapters. Coding's controller binds its extension runner,
 shared diagnostics runtime, result projection, and builtin source. Product builtin
-descriptor reduction remains a later follow-up and is not counted as completed
-LOC while public command-list ordering remains Coding-owned.
+descriptor reduction is complete for the standard session subset; local UI
+commands come from `DEFAULT_LOCAL_COMMANDS_PROFILE` and Product overlays.
 
 The following remain outside this Wave:
 

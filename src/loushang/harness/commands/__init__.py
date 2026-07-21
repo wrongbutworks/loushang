@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from loushang.harness.commands.catalog import (
+    DEFAULT_LOCAL_COMMANDS_PROFILE,
     EMPTY_LOCAL_COMMAND_CATALOG_PROFILE,
     LocalCommandCatalogProfile,
     MixedCommandCatalog,
@@ -50,6 +51,7 @@ __all__ = [
     "CommandHandlerBinding",
     "CommandKind",
     "CommandSourceInfo",
+    "DEFAULT_LOCAL_COMMANDS_PROFILE",
     "EMPTY_LOCAL_COMMAND_CATALOG_PROFILE",
     "LocalCommandCatalogProfile",
     "MixedCommandCatalog",

@@ -8,10 +8,10 @@ from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.model import Endpoint, Model, Provider
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.coding.control import ModelRegistry
-from loushang.coding.session.extension_provider_controller import (
+from loushang.harness.extensions import ExtensionProviderRuntime
+from loushang.harness.extensions.provider_config import (
     provider_from_extension_config,
 )
-from loushang.harness.extensions import ExtensionProviderRuntime
 
 
 class _ApiProvider:

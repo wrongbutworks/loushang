@@ -1,11 +1,11 @@
-"""Coding-owned event dictionaries projected from the runtime event stream."""
+"""Shared session event dictionaries projected from runtime facts."""
 
 from __future__ import annotations
 
 from typing import Literal, NotRequired, TypeAlias, TypedDict
 
-from loushang.agent import AgentEvent
-from loushang.harness.events import (
+from loushang.agent.types import AgentEvent
+from loushang.harness.events.session import (
     CompactionReason,
     PackageProgressAction,
     PackageProgressType,
@@ -117,3 +117,18 @@ AgentSessionEvent: TypeAlias = (
     | PackageProgressSessionEvent
     | ToolPolicyAuditSessionEvent
 )
+
+
+__all__ = [
+    "AgentSessionEvent",
+    "AutoRetryEndEvent",
+    "AutoRetryStartEvent",
+    "BranchSummaryEndEvent",
+    "BranchSummaryStartEvent",
+    "CompactionEndEvent",
+    "CompactionStartEvent",
+    "PackageProgressSessionEvent",
+    "QueueUpdateEvent",
+    "SessionInfoChangedEvent",
+    "ToolPolicyAuditSessionEvent",
+]

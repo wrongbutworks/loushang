@@ -28,7 +28,7 @@ def test_coding_command_catalog_classifies_local_and_session_commands() -> None:
     assert settings_effect is not None
     assert settings_effect.kind is CommandEffectKind.LOCAL_UI
     assert settings_effect.command.kind is CommandKind.LOCAL_UI
-    assert settings_effect.command.id == "coding.ui.settings"
+    assert settings_effect.command.id == "harness.ui.settings"
 
     name_effect = catalog.effect_for_route(
         ConversationHostRoute.DISPATCH,

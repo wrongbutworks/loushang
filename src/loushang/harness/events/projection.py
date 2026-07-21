@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, TypeAlias
 
+from loushang.harness.events.session_serialization import snake_case_json_keys
 from loushang.harness.events.types import (
     RuntimeEvent,
     _require_optional_text,
@@ -98,7 +99,10 @@ def project_runtime_event(
         occurred_at=event.occurred_at,
         event_type=event_type,
         view=view,
-        payload=require_json_mapping(dict(payload), name="runtime_event_projection"),
+        payload=require_json_mapping(
+            dict(snake_case_json_keys(dict(payload))),
+            name="runtime_event_projection",
+        ),
         delivery_hint=delivery_hint,
         session_id=event.session_id,
         run_id=event.run_id,
