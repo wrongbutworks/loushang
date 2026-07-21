@@ -5,12 +5,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from loushang.coding.event.projection import (
-    JsonEventView,
-    _event_correlation_id,
-    _expand_patterns,
-    project_session_event,
-)
 from loushang.harness.events import (
     RuntimeEvent,
     RuntimeEventDeliveryHint,
@@ -18,6 +12,12 @@ from loushang.harness.events import (
     matches_event_select,
     project_runtime_event,
     project_session_runtime_event,
+)
+from loushang.harness.events.session_projection import (
+    JsonEventView,
+    _event_correlation_id,
+    _expand_patterns,
+    project_session_event,
 )
 from loushang.harness.events.session_serialization import snake_case_json_keys
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime

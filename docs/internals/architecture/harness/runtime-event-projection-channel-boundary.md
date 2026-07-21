@@ -2,13 +2,17 @@
 
 ## Decision
 
-`loushang.harness.events` owns the neutral `RuntimeEvent` envelope and the
-transport-ready `RuntimeEventView` value contract. `loushang.channel` owns the
-external envelope, JSON codec, and JSONL frame that can deliver an already
-created view. Product code owns the conversion from a typed runtime payload to
-an event type, view name, strict JSON payload, rendering, and any genuinely
-product-specific wire shape. The shared runtime event payload uses one
-snake_case vocabulary; Pi/camelCase aliases are not accepted or emitted.
+`loushang.harness.events` owns the neutral `RuntimeEvent` envelope, the
+transport-ready `RuntimeEventView` value contract, the shared session-event
+dictionary types, and the standard session view projection. The projection
+accepts a neutral mapping and owns full/compact/assistant-stream/tools/final
+views, tool-render enrichment through injected Harness presentation ports, and
+stream shaping. `loushang.channel` owns the external envelope, JSON codec, and
+JSONL frame that can deliver an already created view. Product code owns only
+the conversion from a Product/runtime source into a session mapping plus any
+genuinely product-specific final presentation policy. The shared runtime event
+payload uses one snake_case vocabulary; Pi/camelCase aliases are not accepted
+or emitted.
 
 ```text
 RuntimeEvent (Harness)
@@ -74,10 +78,11 @@ subscription, acknowledgement, replay, or delivery scheduling.
 
 ```text
 harness.events     -> protocol
+harness.events.session_projection -> agent, ai, harness.presentation
 channel             -> work
 channel             -> harness.events.projection (RuntimeEventView only)
-coding.event        -> harness.events
-coding.mode         -> coding.event
+coding.event        -> harness.events (thin import surface)
+coding.mode         -> harness.events + coding.event (runtime/Product adapter)
 ```
 
 Harness has no Channel import. Channel may import only the projection value
@@ -87,10 +92,12 @@ runtime views without making its transport part of the Host runtime.
 
 ## Coding Adoption
 
-Coding retains `AgentSessionEvent` and its product view/tool-render policy. Its
-runtime adapter maps an incoming `RuntimeEvent` to existing Coding session
-events and constructs a `RuntimeEventView` using the shared snake_case payload
-contract. JSON PrintMode and RpcMode subscribe to
+Coding retains its accepted `AgentSessionEvent` import surface and the
+runtime adapter that maps an incoming `RuntimeEvent` to a session mapping.
+`harness.events.session_types` and `harness.events.session_projection` own the
+dictionary contracts and standard view/render mechanics; Coding's event module
+is only a thin import surface while Product-specific runtime/work mapping and
+final presentation remain in Coding. JSON PrintMode and RpcMode subscribe to
 `subscribe_runtime_events()` when the session offers it. The old `subscribe()`
 path remains only for text display and compatibility session doubles.
 

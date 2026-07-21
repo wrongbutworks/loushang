@@ -29,9 +29,6 @@ from loushang.coding.control import (
     RetrySettings,
     SettingsManager,
 )
-from loushang.coding.event import (
-    AgentSessionEvent,
-)
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
 from loushang.coding.platform.session_projection import (
@@ -99,6 +96,7 @@ from loushang.harness.capabilities import (
 from loushang.harness.context import serialize_context_usage_payload
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.events import (
+    AgentSessionEvent,
     CompactionReason,
     ConversationMetadataChanged,
     PackageProgressChanged,

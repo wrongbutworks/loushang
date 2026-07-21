@@ -106,12 +106,13 @@ normalized delivery instruction through injected ports.
 
 ### Event projection
 
-`coding.event.AgentSessionEvent` remains the typed Coding input contract. The
-shared serialized event projection is Harness-owned. The following remain
+`harness.events.session_types.AgentSessionEvent` is the shared typed session
+mapping contract, with a Coding import surface retained during cutover. The
+standard serialized event projection is Harness-owned. The following remain
 Coding-owned in this Wave:
 
-- `JsonEventView` selection, tool-render enrichment, and Coding presentation
-  wording;
+- RuntimeEvent-to-session mapping, Product view selection/overrides, and
+  Coding presentation wording;
 - `event_writes_transcript` and cancellation wording;
 - the conversion from neutral `RuntimeEvent` payloads to Coding dictionaries.
 
@@ -119,12 +120,13 @@ Harness serializes resulting event payloads with one recursive snake_case
 normalizer. It does not accept or emit Pi/camelCase aliases, and selector
 matching accepts only exact names and trailing-wildcard prefixes.
 
-The typed `AgentSessionEvent` input remains in Coding for this Wave. Production
-consumers use common facts from `subscribe_runtime_events()` or
+The Coding import surface for `AgentSessionEvent` remains only during this
+Wave. Production consumers use common facts from `subscribe_runtime_events()` or
 `RuntimeEventView` wherever the shared API already provides them. Coding still
-selects views and rendering at its UI/RPC/print/extension boundary, while
-Harness owns the canonical snake_case serialization. No new Harness event type
-may encode Product aliases.
+binds Product/work mapping and any final presentation override at its
+UI/RPC/print/extension boundary, while Harness owns the canonical view,
+rendering, and snake_case serialization. No new Harness event type may encode
+Product aliases.
 
 ## Shared Hook Contract
 
@@ -238,8 +240,10 @@ no compatibility promise beyond the current branch.
 3. **Coding adapter and event facade reduction**
    - Completed: made `ExtensionRunner` a Coding loader/API/context adapter over
      the shared dispatchers; delete `coding.extensions.hooks`.
-   - Keep `AgentSessionEvent` as the Coding input type, but route serialized
-     event fields through Harness's snake_case serializer. Lock the canonical
+   - Keep the Coding import surface only while consumers move; the shared
+     `harness.events.session_types.AgentSessionEvent` contract and
+     `harness.events.session_projection` views own serialized event fields,
+     snake_case shaping, and standard render enrichment. Lock the canonical
      output with golden tests and add an import gate that prevents a second
      neutral event engine; the existing `AgentSession.subscribe()` and Work
      projection adapters remain in place.

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.json_codec import serialize_assistant_message_event
-from loushang.coding.event.types import AgentSessionEvent
 from loushang.harness.agent_transcript import create_agent_transcript_message_codec
-from loushang.harness.events import matches_event_select
+from loushang.harness.events.projection import matches_event_select
 from loushang.harness.events.session_serialization import (
     serialize_session_event,
     snake_case_json_keys,
@@ -16,6 +15,7 @@ from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRunt
 from loushang.harness.tools.core import ToolRenderOutput
 from loushang.protocol import JsonValueError, require_json_mapping
 
+SessionEvent: TypeAlias = Mapping[str, Any]
 JsonEventView = Literal["full", "compact", "assistant_stream", "tools", "final"]
 
 SUPPORTED_JSON_EVENT_VIEWS: tuple[JsonEventView, ...] = (
@@ -33,7 +33,7 @@ def select_events(*patterns: str) -> tuple[str, ...]:
 
 
 def project_session_event(
-    event: AgentSessionEvent,
+    event: SessionEvent,
     *,
     event_view: JsonEventView,
     tool_render_runtime: ToolRenderRuntime | None = None,
@@ -111,7 +111,7 @@ def _expand_patterns(patterns: Sequence[str]) -> tuple[str, ...]:
     return tuple(patterns)
 
 
-def _project_compact_event(event: AgentSessionEvent) -> list[dict[str, Any]]:
+def _project_compact_event(event: SessionEvent) -> list[dict[str, Any]]:
     event_type = event["type"]
     if event_type in {"tool_execution_start", "tool_execution_end"}:
         return [serialize_session_event(event)]
@@ -124,7 +124,7 @@ def _project_compact_event(event: AgentSessionEvent) -> list[dict[str, Any]]:
     return []
 
 
-def _project_assistant_stream_event(event: AgentSessionEvent) -> list[dict[str, Any]]:
+def _project_assistant_stream_event(event: SessionEvent) -> list[dict[str, Any]]:
     event_type = event["type"]
     if event_type == "message_update":
         assistant_delta = _serialize_assistant_delta(event)
@@ -135,7 +135,7 @@ def _project_assistant_stream_event(event: AgentSessionEvent) -> list[dict[str, 
     return []
 
 
-def _project_tools_event(event: AgentSessionEvent) -> list[dict[str, Any]]:
+def _project_tools_event(event: SessionEvent) -> list[dict[str, Any]]:
     if event["type"] in {
         "tool_execution_start",
         "tool_execution_update",
@@ -147,7 +147,7 @@ def _project_tools_event(event: AgentSessionEvent) -> list[dict[str, Any]]:
 
 def _with_rendered_tool_payloads(
     payloads: list[dict[str, Any]],
-    event: AgentSessionEvent,
+    event: SessionEvent,
     *,
     tool_render_runtime: ToolRenderRuntime | None,
     tool_definition_resolver: ToolDefinitionResolver | None,
@@ -224,7 +224,7 @@ def _with_rendered_tool_payloads(
 
 
 def _render_tool_event(
-    event: AgentSessionEvent,
+    event: SessionEvent,
     *,
     tool_render_runtime: ToolRenderRuntime,
     tool_definition_resolver: ToolDefinitionResolver,
@@ -269,7 +269,7 @@ def _serialize_tool_render_output(rendered: ToolRenderOutput) -> dict[str, Any] 
 
 def _with_render_contract(
     payload: dict[str, Any],
-    event: AgentSessionEvent,
+    event: SessionEvent,
     *,
     output_key: str,
     expanded: bool,
@@ -305,7 +305,7 @@ def _payload_plain_text(payload: dict[str, Any] | None) -> str | None:
     return text if isinstance(text, str) else None
 
 
-def _rendered_tool_result_status(event: AgentSessionEvent) -> str:
+def _rendered_tool_result_status(event: SessionEvent) -> str:
     if event["type"] == "tool_execution_update":
         return "partial"
     result = event.get("result")
@@ -323,7 +323,7 @@ def _rendered_tool_result_status(event: AgentSessionEvent) -> str:
 
 
 def _rendered_tool_duration_ms(
-    event: AgentSessionEvent, payload: Mapping[str, Any]
+    event: SessionEvent, payload: Mapping[str, Any]
 ) -> int | None:
     for candidate in (payload.get("duration_ms"),):
         resolved = _non_negative_int(candidate)
@@ -355,7 +355,7 @@ def _non_negative_int(value: object) -> int | None:
     return None
 
 
-def _rendered_tool_artifacts(event: AgentSessionEvent) -> list[dict[str, str]]:
+def _rendered_tool_artifacts(event: SessionEvent) -> list[dict[str, str]]:
     result = (
         event.get("partial_result")
         if event["type"] == "tool_execution_update"
@@ -407,14 +407,14 @@ def _artifact_stream(key: str) -> str | None:
     return None
 
 
-def _project_final_event(event: AgentSessionEvent) -> list[dict[str, Any]]:
+def _project_final_event(event: SessionEvent) -> list[dict[str, Any]]:
     if event["type"] != "message_end":
         return []
     assistant_final = _serialize_assistant_final(event)
     return [assistant_final] if assistant_final is not None else []
 
 
-def _serialize_assistant_delta(event: AgentSessionEvent) -> dict[str, Any] | None:
+def _serialize_assistant_delta(event: SessionEvent) -> dict[str, Any] | None:
     if event["type"] != "message_update":
         return None
     message = event["message"]
@@ -439,7 +439,7 @@ def _serialize_assistant_delta(event: AgentSessionEvent) -> dict[str, Any] | Non
     }
 
 
-def _serialize_assistant_final(event: AgentSessionEvent) -> dict[str, Any] | None:
+def _serialize_assistant_final(event: SessionEvent) -> dict[str, Any] | None:
     if event["type"] != "message_end":
         return None
     message = event["message"]
@@ -462,3 +462,14 @@ def _event_correlation_id(payload: dict[str, Any]) -> str | None:
         if isinstance(value, str) and value:
             return value
     return None
+
+
+__all__ = [
+    "JsonEventView",
+    "SUPPORTED_JSON_EVENT_VIEWS",
+    "SessionEvent",
+    "project_session_event",
+    "select_events",
+    "shape_stream_event",
+    "should_emit_projected_event",
+]

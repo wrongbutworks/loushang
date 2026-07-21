@@ -6,16 +6,18 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any, Literal, TextIO
 
 from loushang.coding.event import (
-    SUPPORTED_JSON_EVENT_VIEWS,
     project_runtime_event_to_json_views,
-    project_session_event,
-    should_emit_projected_event,
     should_emit_runtime_event_view,
 )
 from loushang.coding.work_executor import SubmitCodingTurn
 from loushang.coding.work_runtime import CodingWorkRuntime
 from loushang.coding.work_shell import CodingWorkShell
-from loushang.harness.events import normalize_event_select
+from loushang.harness.events import (
+    SUPPORTED_JSON_EVENT_VIEWS,
+    normalize_event_select,
+    project_session_event,
+    should_emit_projected_event,
+)
 from loushang.harnesstui.conversation.plain_mode import (
     PlainEventProjection,
     PlainHost,
