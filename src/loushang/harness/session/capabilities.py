@@ -94,6 +94,36 @@ ToolDefaultSelection = Callable[[], Iterable[str]]
 ToolContributionResolver = Callable[..., ToolResolutionResult]
 
 
+@dataclass(frozen=True)
+class ToolActivationProfile:
+    """Product-selected defaults for the shared tool activation coordinator."""
+
+    preferred_names: tuple[str, ...] = ()
+    builtin_names: frozenset[str] = frozenset()
+    activate_new_tools: bool = False
+
+    def default_names(
+        self,
+        definitions: Iterable[ToolDefinition],
+        allowed_names: set[str] | None = None,
+    ) -> list[str]:
+        available = [definition.name for definition in definitions]
+        if allowed_names is not None:
+            return [name for name in available if name in allowed_names]
+        available_set = set(available)
+        selected = [name for name in self.preferred_names if name in available_set]
+        selected.extend(
+            name
+            for name in available
+            if name not in self.builtin_names and name not in selected
+        )
+        return selected
+
+    def should_activate_new(self, name: str, definition: ToolDefinition) -> bool:
+        del definition
+        return self.activate_new_tools and name not in self.builtin_names
+
+
 def create_tool_prompt_rebuilder(
     *,
     agent: AgentToolPort,

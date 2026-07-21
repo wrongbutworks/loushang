@@ -10,7 +10,11 @@ from loushang.harness.capabilities.prompt import PromptSectionComposer
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.activation import ResourceActivationRuntime
 from loushang.harness.resources.types import ResourceBundle
-from loushang.harness.session import SessionToolRuntime, create_tool_prompt_rebuilder
+from loushang.harness.session import (
+    SessionToolRuntime,
+    ToolActivationProfile,
+    create_tool_prompt_rebuilder,
+)
 from loushang.harness.tools.contribution import resolve_tool_contributions
 from loushang.harness.tools.core import ToolDefinition, project_tool_definition
 from loushang.harness.tools.workspace.context import ToolContext
@@ -58,6 +62,7 @@ class ToolController:
     get_diagnostics_service: Callable[[], DiagnosticsService | None]
     emit_tool_audit_event: Callable[[dict[str, object]], Awaitable[None]] | None = None
     default_activate_new_tools: bool = False
+    activation_profile: ToolActivationProfile | None = None
     show_empty_tool_prompt: bool = False
     resource_activation_runtime: ResourceActivationRuntime = field(
         default_factory=ResourceActivationRuntime
@@ -68,13 +73,29 @@ class ToolController:
     _runtime: SessionToolRuntime = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        profile = self.activation_profile or ToolActivationProfile(
+            preferred_names=_DEFAULT_ACTIVE_TOOL_NAMES,
+            builtin_names=_BUILTIN_TOOL_NAMES,
+            activate_new_tools=self.default_activate_new_tools,
+        )
+        if profile.activate_new_tools != self.default_activate_new_tools:
+            profile = ToolActivationProfile(
+                preferred_names=profile.preferred_names,
+                builtin_names=profile.builtin_names,
+                activate_new_tools=self.default_activate_new_tools,
+            )
         self._runtime = SessionToolRuntime(
             agent=self.agent,
             tool_registry=self.tool_registry,
             allowed_tool_names=self.allowed_tool_names,
             initial_active_tool_names=self.initial_active_tool_names,
-            default_active_tool_names=self._default_active_tool_names,
-            should_activate_new_tool=self._should_activate_new_tool,
+            default_active_tool_names=lambda: profile.default_names(
+                self.tool_registry.list_enabled_definitions()
+                if self.tool_registry is not None
+                else [],
+                self.allowed_tool_names,
+            ),
+            should_activate_new_tool=profile.should_activate_new,
             build_tool_context=self.build_tool_context,
             rebuild_prompt=create_tool_prompt_rebuilder(
                 agent=self.agent,
@@ -158,30 +179,6 @@ class ToolController:
 
     def rebuild_prompt_and_tools_view(self) -> None:
         self._runtime.rebuild_prompt_and_tools_view()
-
-    def _default_active_tool_names(self) -> list[str]:
-        if self.tool_registry is None:
-            return []
-        enabled_names = [
-            definition.name
-            for definition in self.tool_registry.list_enabled_definitions()
-        ]
-        if self.allowed_tool_names is not None:
-            return self.filter_allowed_tool_names(enabled_names)
-        enabled_name_set = set(enabled_names)
-        active_names = [
-            name for name in _DEFAULT_ACTIVE_TOOL_NAMES if name in enabled_name_set
-        ]
-        active_names.extend(
-            name
-            for name in enabled_names
-            if name not in _BUILTIN_TOOL_NAMES and name not in active_names
-        )
-        return active_names
-
-    def _should_activate_new_tool(self, name: str, definition: ToolDefinition) -> bool:
-        del definition
-        return self.default_activate_new_tools and name not in _BUILTIN_TOOL_NAMES
 
     async def _emit_tool_audit_event(
         self,

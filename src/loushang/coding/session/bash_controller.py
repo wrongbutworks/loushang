@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
@@ -15,7 +14,6 @@ from loushang.harness.session import (
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.protocol import (
     normalize_bash_result_from_protocol,
-    project_bash_result_for_protocol,
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import ExecOutputChunk
@@ -24,7 +22,6 @@ ExtensionRunnerProvider = Callable[[], ExtensionRunner | None]
 ToolRegistryProvider = Callable[[], WorkspaceToolRegistry | None]
 ExtensionDiagnosticsSync = Callable[..., None]
 OutputCallback = Callable[[ExecOutputChunk], Awaitable[None] | None]
-PiStyleOutputCallback = Callable[[str], Awaitable[None] | None]
 
 
 def _noop_sync_extension_diagnostics(*, phase: str) -> None:
@@ -116,39 +113,6 @@ class BashController:
             operations=operations,
         )
 
-    async def execute_pi_style(
-        self,
-        command: str,
-        on_chunk: PiStyleOutputCallback | None = None,
-        options: dict[str, object] | None = None,
-    ) -> dict[str, object]:
-        async def _on_output(chunk: ExecOutputChunk) -> None:
-            if on_chunk is None:
-                return
-            result = on_chunk(chunk.text)
-            if inspect.isawaitable(result):
-                await result
-
-        options = dict(options or {})
-        cwd = options.get("cwd")
-        stdin = options.get("stdin")
-        result = await self.execute_bash(
-            command,
-            cwd=cwd if isinstance(cwd, str) else None,
-            timeout_seconds=_option_float(
-                options.get("timeout_seconds", options.get("timeoutSeconds"))
-            ),
-            stdin=stdin if isinstance(stdin, str) else None,
-            exclude_from_context=bool(
-                options.get(
-                    "excludeFromContext", options.get("exclude_from_context", False)
-                )
-            ),
-            on_output=_on_output if on_chunk is not None else None,
-            operations=options.get("operations"),
-        )
-        return project_bash_result_for_protocol(result)
-
     def abort(self) -> None:
         self._runtime.abort()
 
@@ -163,23 +127,6 @@ class BashController:
             command=command,
             result=result,
             exclude_from_context=exclude_from_context,
-        )
-
-    async def record_pi_style_result(
-        self,
-        command: str,
-        result: dict[str, object],
-        options: dict[str, object] | None = None,
-    ) -> None:
-        options = dict(options or {})
-        await self.record_result(
-            command=command,
-            result=normalize_bash_result_from_protocol(result),
-            exclude_from_context=bool(
-                options.get(
-                    "excludeFromContext", options.get("exclude_from_context", False)
-                )
-            ),
         )
 
     def _get_bash_definition(self) -> ToolDefinition | None:
@@ -254,7 +201,3 @@ def _bash_operations_from_extension_user_bash_result(
     if isinstance(event_result, dict):
         return event_result.get("operations")
     return getattr(event_result, "operations", None)
-
-
-def _option_float(value: object) -> float | None:
-    return float(value) if isinstance(value, int | float) else None
