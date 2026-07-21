@@ -5,10 +5,10 @@ from typing import Any, Literal
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.json_codec import serialize_assistant_message_event
-from loushang.coding.event.serialization import serialize_session_event
 from loushang.coding.event.types import AgentSessionEvent
 from loushang.harness.agent_transcript import create_agent_transcript_message_codec
 from loushang.harness.events import matches_event_select
+from loushang.harness.events.session_serialization import serialize_session_event
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.harness.tools.core import ToolRenderOutput
 from loushang.harness.tools.workspace.protocol import project_tool_details_for_protocol

@@ -11,9 +11,9 @@ from loushang.coding.event.runtime_view import (
     shape_runtime_event_view,
     should_emit_runtime_event_view,
 )
-from loushang.coding.event.serialization import serialize_session_event
 from loushang.coding.event.types import AgentSessionEvent
 from loushang.harness.events import project_session_runtime_event
+from loushang.harness.events.session_serialization import serialize_session_event
 
 __all__ = [
     "AgentSessionEvent",

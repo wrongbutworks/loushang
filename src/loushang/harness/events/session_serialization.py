@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from loushang.agent.json_codec import serialize_tool_result
 from loushang.ai.json_codec import serialize_assistant_message_event
-from loushang.coding.event.types import AgentSessionEvent
 from loushang.harness.agent_transcript import create_agent_transcript_message_codec
 from loushang.harness.context import serialize_context_usage_payload
 from loushang.protocol import require_json_value
@@ -13,7 +13,7 @@ _MESSAGE_CODEC = create_agent_transcript_message_codec()
 serialize_agent_message = _MESSAGE_CODEC.serialize
 
 
-def serialize_session_event(event: AgentSessionEvent) -> dict[str, Any]:
+def serialize_session_event(event: Mapping[str, object]) -> dict[str, Any]:
     event_type = event["type"]
 
     if event_type in {"agent_start", "turn_start"}:
@@ -159,3 +159,6 @@ def serialize_session_event(event: AgentSessionEvent) -> dict[str, Any]:
             payload["errorMessage"] = event["error_message"]
         return payload
     raise ValueError(f"Unsupported session event type: {event_type}")
+
+
+__all__ = ["serialize_session_event"]
