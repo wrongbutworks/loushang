@@ -6,7 +6,7 @@ from pathlib import Path
 from loushang.agent import Agent
 from loushang.agent.types import AgentToolResult
 from loushang.coding.session.tool_controller import ToolController
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.diagnostics import DiagnosticsService
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.tools.core import tool

@@ -14,7 +14,7 @@ from loushang.ai.types import (
     UserMessage,
 )
 from loushang.coding.session import AgentSession
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.agent_transcript.file_store import (
     load_agent_transcript_file as load_session_file,
 )

@@ -9,7 +9,7 @@ and pass them in through narrow ports.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar
 
@@ -94,6 +94,14 @@ class SessionCommandExecutionPort(Protocol):
         on_output: OutputCallback | None = None,
         operations: object | None = None,
     ) -> dict[str, object]: ...
+
+    async def record_result(
+        self,
+        *,
+        command: str,
+        result: Mapping[str, object],
+        exclude_from_context: bool = False,
+    ) -> None: ...
 
     def abort(self) -> None: ...
 
@@ -616,6 +624,49 @@ class SessionFacade(
             operations=operations,
         )
 
+    async def execute_bash(
+        self,
+        command: str,
+        *,
+        cwd: str | None = None,
+        env: list[list[str] | tuple[str, str]]
+        | tuple[tuple[str, str], ...]
+        | None = None,
+        timeout_seconds: float | None = None,
+        stdin: str | None = None,
+        exclude_from_context: bool = False,
+        on_output: OutputCallback | None = None,
+        operations: object | None = None,
+    ) -> dict[str, object]:
+        """Execute the bound shell capability through the common facade."""
+
+        return await self.execute_command_tool(
+            command,
+            cwd=cwd,
+            env=env,
+            timeout_seconds=timeout_seconds,
+            stdin=stdin,
+            exclude_from_context=exclude_from_context,
+            on_output=on_output,
+            operations=operations,
+        )
+
+    async def record_bash_result(
+        self,
+        command: str,
+        result: Mapping[str, object],
+        *,
+        exclude_from_context: bool = False,
+    ) -> None:
+        record_result = getattr(self.command_execution, "record_result", None)
+        if not callable(record_result):
+            raise RuntimeError("Command result recording is not available.")
+        await record_result(
+            command=command,
+            result=result,
+            exclude_from_context=exclude_from_context,
+        )
+
     @property
     def is_command_running(self) -> bool:
         return self.command_execution.is_running
@@ -635,6 +686,11 @@ class SessionFacade(
 
     def abort_command(self) -> None:
         self.command_execution.abort()
+
+    def abort_bash(self) -> None:
+        """Abort the bound shell capability through the common facade."""
+
+        self.abort_command()
 
     def abort_retry(self) -> None:
         self.retry.abort()

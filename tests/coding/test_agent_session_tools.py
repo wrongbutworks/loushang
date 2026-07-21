@@ -912,7 +912,7 @@ def test_session_active_tools_still_materialize_after_substrate_migration(
 
     from loushang.ai.model import Capabilities, Model
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.tools.core import tool
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,

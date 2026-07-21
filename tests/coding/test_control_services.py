@@ -130,7 +130,7 @@ def test_create_services_provides_settings_and_model_resolution_for_sessions(
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session import ModelSelection
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     services = create_services(ai_model_registry=AiModelRegistry())
     services.model_registry.register_model(_model("alpha", name="Alpha"))
@@ -276,7 +276,7 @@ def test_create_services_can_use_preloaded_persistent_settings_manager(
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
     from loushang.coding.session import ModelSelection
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     global_settings_path = tmp_path / "global-settings.json"
     project_settings_path = tmp_path / "project-settings.json"
@@ -334,7 +334,7 @@ def test_session_restores_persisted_model_and_accepts_model_selection_updates(
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session import ModelSelection
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     services = create_services(ai_model_registry=AiModelRegistry())
     services.model_registry.register_model(_model("alpha", name="Alpha"))

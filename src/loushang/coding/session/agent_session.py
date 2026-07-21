@@ -29,10 +29,8 @@ from loushang.coding.control import (
     RetrySettings,
     SettingsManager,
 )
-from loushang.coding.event import (
-    AgentSessionEvent,
-)
 from loushang.coding.extensions import ExtensionRunner
+from loushang.coding.platform.changelog import read_changelog_for_cwd
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
 from loushang.coding.platform.session_projection import (
     project_pi_session_stats,
@@ -43,10 +41,6 @@ from loushang.coding.resource_runtime import (
 )
 from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
-)
-from loushang.coding.session.builtin_commands import (
-    BuiltinCommandBackend,
-    read_changelog_for_cwd,
 )
 from loushang.coding.session.command_controller import CommandController
 from loushang.coding.session.export import (
@@ -70,7 +64,7 @@ from loushang.coding.session.tool_controller import ToolController
 from loushang.coding.session.types import (
     CommandExecutionResult,
 )
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.agent_transcript import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
     TURN_AWARE_SUMMARY_VERSION,
@@ -99,6 +93,7 @@ from loushang.harness.capabilities import (
 from loushang.harness.context import serialize_context_usage_payload
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.events import (
+    AgentSessionEvent,
     CompactionReason,
     ConversationMetadataChanged,
     PackageProgressChanged,
@@ -139,6 +134,7 @@ from loushang.harness.session import (
     SessionFacade,
     SessionResourceRefreshRuntime,
     SessionRuntime,
+    StandardSessionCommandPorts,
     TranscriptRuntimePort,
     TurnPolicyPort,
     UserCommandHookResult,
@@ -151,7 +147,6 @@ from loushang.harness.tools.workspace.protocol import (
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import (
-    ExecOutputChunk,
     ExecRequest,
     ExecResult,
     ExecService,
@@ -162,6 +157,14 @@ SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]
 # The former Coding-named projection is now implemented by Harness.
 # project_runtime_event_to_session_event remains an external migration label.
 RuntimeEventListener = Callable[[RuntimeEvent[object]], Awaitable[None] | None]
+
+
+def _copy_to_clipboard(text: str) -> object:
+    """Bind the shared /copy command to the active terminal clipboard."""
+
+    from loushang.tui.clipboard import copy_to_clipboard
+
+    return copy_to_clipboard(text)
 
 
 async def _execute_coding_compaction(**kwargs: object) -> object:
@@ -364,15 +367,16 @@ class AgentSession(SessionFacade):
             get_resource_bundle=lambda: self.resource_bundle,
             get_diagnostics_service=lambda: self.diagnostics_service,
             diagnostics_runtime=self._diagnostics_bridge,
-            builtin_backend=BuiltinCommandBackend(
+            standard_ports=StandardSessionCommandPorts(
                 get_session_info=self._get_builtin_session_info,
                 set_session_name=self.set_session_name,
-                export_to_html=self.export_to_html,
-                export_to_jsonl=self.export_to_jsonl,
+                export_html=self.export_to_html,
+                export_jsonl=self.export_to_jsonl,
                 compact=self.compact,
                 reload=self.reload_extension_runtime,
                 get_recent_assistant_texts=self.get_recent_assistant_texts,
                 get_last_assistant_text=self.get_last_assistant_text,
+                copy_text=_copy_to_clipboard,
                 get_changelog=lambda args: read_changelog_for_cwd(
                     self.session_manager.get_cwd(), args
                 ),
@@ -858,11 +862,6 @@ class AgentSession(SessionFacade):
             await self.set_thinking_level(thinking_level)
         return selection
 
-    def _model_selection_from_scoped_model(
-        self, scoped: dict[str, object]
-    ) -> ModelSelection | None:
-        return self._selection_runtime.model_selection_from_scoped_model(scoped)
-
     async def set_thinking_level(self, level: ThinkingLevel) -> None:
         await self._selection_runtime.set_thinking_level(level)
 
@@ -871,9 +870,6 @@ class AgentSession(SessionFacade):
 
     def supports_thinking(self) -> bool:
         return self._selection_runtime.supports_thinking()
-
-    def supports_xhigh_thinking(self) -> bool:
-        return self.supports_thinking()
 
     def get_available_thinking_levels(self) -> list[ThinkingLevel]:
         return self._selection_runtime.get_available_thinking_levels()
@@ -915,46 +911,6 @@ class AgentSession(SessionFacade):
         await self._dispatch_event(
             ConversationMetadataChanged(name=self.session_name),
             source_record_id=record_id,
-        )
-
-    # Public facade: bash execution.
-
-    async def execute_bash(
-        self,
-        command: str,
-        *,
-        cwd: str | None = None,
-        env: list[list[str] | tuple[str, str]]
-        | tuple[tuple[str, str], ...]
-        | None = None,
-        timeout_seconds: float | None = None,
-        stdin: str | None = None,
-        exclude_from_context: bool = False,
-        on_output: Callable[[ExecOutputChunk], Awaitable[None] | None] | None = None,
-        operations: object | None = None,
-    ) -> dict[str, object]:
-        return await super().execute_command_tool(
-            command,
-            cwd=cwd,
-            env=env,
-            timeout_seconds=timeout_seconds,
-            stdin=stdin,
-            exclude_from_context=exclude_from_context,
-            on_output=on_output,
-            operations=operations,
-        )
-
-    async def record_bash_result(
-        self,
-        command: str,
-        result: dict[str, object],
-        *,
-        exclude_from_context: bool = False,
-    ) -> None:
-        await self._bash_runtime.record_result(
-            command=command,
-            result=result,
-            exclude_from_context=exclude_from_context,
         )
 
     # Public facade: extension runtime configuration.
@@ -1022,9 +978,6 @@ class AgentSession(SessionFacade):
             await self._refresh_extension_runtime(reason="active_tools_changed")
 
     # Public facade: run controls, retry, compaction, and tree navigation.
-
-    def abort_bash(self) -> None:
-        super().abort_command()
 
     @property
     def auto_retry_enabled(self) -> bool:

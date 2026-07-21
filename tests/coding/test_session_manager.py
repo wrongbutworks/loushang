@@ -14,7 +14,7 @@ def _async_test(test):
 
 @_async_test
 async def test_append_entry_advances_leaf_id(tmp_path) -> None:
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = await SessionManager.new(
         session_dir=tmp_path,
@@ -32,7 +32,7 @@ async def test_commit_observer_receives_exact_receipts_and_skips_idempotent_hits
     tmp_path,
 ) -> None:
     from loushang.ai.types import UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript import ApplicationMessage
 
     manager = await SessionManager.new(
@@ -67,7 +67,7 @@ async def test_commit_observer_receives_exact_receipts_and_skips_idempotent_hits
 
 @_async_test
 async def test_load_summary_awaits_session_load(tmp_path) -> None:
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = await SessionManager.new(
         session_dir=tmp_path,
@@ -84,7 +84,7 @@ async def test_load_summary_awaits_session_load(tmp_path) -> None:
 
 @_async_test
 async def test_new_session_manager_has_header_and_no_leaf(tmp_path) -> None:
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = await SessionManager.new(
         session_dir=tmp_path,
@@ -98,7 +98,7 @@ async def test_new_session_manager_has_header_and_no_leaf(tmp_path) -> None:
 
 @_async_test
 async def test_new_session_manager_accepts_custom_session_id(tmp_path) -> None:
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = await SessionManager.new(
         session_dir=tmp_path,
@@ -117,7 +117,7 @@ async def test_new_session_manager_accepts_custom_session_id(tmp_path) -> None:
 
 @_async_test
 async def test_in_memory_session_manager_accepts_custom_session_id() -> None:
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = await SessionManager.in_memory(
         cwd="/tmp/project", session_id="memory-session"
@@ -132,7 +132,7 @@ async def test_loaded_non_persistent_session_is_mutable_without_rewriting_source
     tmp_path,
 ) -> None:
     from loushang.ai.types import UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     source = await SessionManager.new(
         session_dir=tmp_path,
@@ -164,7 +164,7 @@ async def test_loaded_non_persistent_session_is_mutable_without_rewriting_source
 async def test_new_session_manager_rejects_blank_custom_session_id(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     with pytest.raises(ValueError, match="session_id must not be blank"):
         await SessionManager.new(
@@ -180,7 +180,7 @@ async def test_branch_changes_active_leaf_without_losing_existing_path(
     tmp_path,
 ) -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = await SessionManager.new(
         session_dir=tmp_path,
@@ -237,7 +237,7 @@ async def test_branch_changes_active_leaf_without_losing_existing_path(
 @_async_test
 async def test_create_branched_session_persists_only_selected_path(tmp_path) -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = await SessionManager.new(
         session_dir=tmp_path,
@@ -289,7 +289,7 @@ async def test_create_branched_session_persists_only_selected_path(tmp_path) -> 
 async def test_append_message_rejects_non_transcript_messages(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = await SessionManager.new(
         session_dir=tmp_path,
@@ -307,7 +307,7 @@ async def test_session_manager_rejects_non_json_custom_metadata(tmp_path) -> Non
 
     import pytest
 
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.protocol import JsonValueError
 
     manager = await SessionManager.new(
@@ -325,7 +325,7 @@ async def test_session_manager_rejects_non_json_custom_metadata(tmp_path) -> Non
 @_async_test
 async def test_branch_with_summary_creates_projected_branch_entry(tmp_path) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript import (
         CONTEXT_BRANCH_SUMMARY_KIND,
         BranchContextSummary,
@@ -379,7 +379,7 @@ async def test_branch_summary_commit_failure_restores_selected_leaf(
     import pytest
 
     from loushang.ai.types import UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = await SessionManager.new(
         session_dir=tmp_path,
@@ -408,7 +408,7 @@ async def test_branch_summary_commit_failure_restores_selected_leaf(
 @_async_test
 async def test_get_tree_and_children_reflect_current_branches(tmp_path) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = await SessionManager.new(
         session_dir=tmp_path,
@@ -446,7 +446,7 @@ async def test_get_tree_and_children_reflect_current_branches(tmp_path) -> None:
 @_async_test
 async def test_labels_are_indexed_and_rebuilt_on_reload(tmp_path) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = await SessionManager.new(
         session_dir=tmp_path,
@@ -475,7 +475,7 @@ async def test_labels_are_indexed_and_rebuilt_on_reload(tmp_path) -> None:
 @_async_test
 async def test_list_skips_invalid_session_files(tmp_path) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project", persist=True
@@ -503,7 +503,7 @@ async def test_list_skips_invalid_session_files(tmp_path) -> None:
 @_async_test
 async def test_session_summary_includes_context_metadata(tmp_path) -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project", persist=True
@@ -555,7 +555,7 @@ async def test_list_summaries_and_find_sessions_query_across_session_files(
     tmp_path,
 ) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript import SessionQuery
 
     first = await SessionManager.new(
@@ -620,7 +620,7 @@ async def test_list_summaries_and_find_sessions_query_across_session_files(
 async def test_list_summaries_skips_one_projection_failure(
     tmp_path, monkeypatch
 ) -> None:
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript import catalog as catalog_module
     from loushang.harness.conversation import FunctionalConversationProjector
 
@@ -664,7 +664,7 @@ async def test_session_manager_rename_session_file_appends_session_info(
     tmp_path,
 ) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project", persist=True
@@ -692,7 +692,7 @@ async def test_session_manager_rename_session_file_appends_session_info(
 async def test_session_manager_delete_session_file_preserves_stable_lock(
     tmp_path,
 ) -> None:
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project", persist=True
@@ -713,7 +713,7 @@ async def test_session_manager_delete_session_file_preserves_stable_lock(
 async def test_session_manager_rename_and_delete_refresh_existing_index(
     tmp_path,
 ) -> None:
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     first = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project", persist=True
@@ -749,7 +749,7 @@ async def test_session_manager_rename_and_delete_refresh_existing_index(
 async def test_session_manager_rename_and_delete_survive_index_refresh_failure(
     tmp_path, monkeypatch
 ) -> None:
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     first = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project", persist=True
@@ -787,7 +787,7 @@ async def test_session_manager_delete_session_file_refuses_current_session_alias
 ) -> None:
     import pytest
 
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     real_dir = tmp_path / "real"
     alias_dir = tmp_path / "alias"
@@ -812,7 +812,7 @@ async def test_session_manager_delete_session_file_refuses_current_session_alias
 async def test_find_sessions_matches_parent_session_across_symlink_aliases(
     tmp_path,
 ) -> None:
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript import SessionQuery
 
     real_dir = tmp_path / "real"
@@ -849,7 +849,7 @@ async def test_find_sessions_supports_quoted_phrase_regex_and_named_filter(
     tmp_path,
 ) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript import SessionQuery
 
     first = await SessionManager.new(
@@ -898,7 +898,7 @@ async def test_find_sessions_relevance_sort_scores_earlier_matches_before_recent
     tmp_path,
 ) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript import SessionQuery
 
     early_match = await SessionManager.new(
@@ -937,7 +937,7 @@ async def test_session_summary_searches_all_messages_and_uses_message_modified_t
     tmp_path,
 ) -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript import SessionQuery
 
     first = await SessionManager.new(
@@ -1006,7 +1006,7 @@ async def test_session_metadata_accepts_message_timestamps_in_milliseconds(
     tmp_path,
 ) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.observability import (
         get_problem_store,
         log_context,
@@ -1048,7 +1048,7 @@ async def test_session_metadata_accepts_message_timestamps_in_milliseconds(
 
 @_async_test
 async def test_session_summary_indexes_diagnostic_custom_entries(tmp_path) -> None:
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript import SessionQuery
 
     clean = await SessionManager.new(
@@ -1106,7 +1106,7 @@ async def test_session_summary_indexes_diagnostic_custom_entries(tmp_path) -> No
 @_async_test
 async def test_session_manager_writes_and_queries_session_index(tmp_path) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript import SessionQuery
 
     first = await SessionManager.new(
@@ -1163,7 +1163,7 @@ async def test_session_manager_writes_and_queries_session_index(tmp_path) -> Non
 @_async_test
 async def test_session_manager_rebuilds_invalid_session_index(tmp_path) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     session = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project", persist=True
@@ -1193,7 +1193,7 @@ async def test_session_manager_preserves_corrupt_index_for_diagnostics(
     tmp_path,
 ) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     session = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project", persist=True
@@ -1225,7 +1225,7 @@ async def test_session_manager_rebuilds_stale_index_when_indexed_session_file_di
     import json
 
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     first = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/project-a", persist=True
@@ -1272,7 +1272,7 @@ async def test_session_manager_rebuilds_nested_stale_indexes_during_all_index_qu
     import json
 
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     root = await SessionManager.new(
         session_dir=tmp_path, cwd="/tmp/root-project", persist=True
@@ -1313,7 +1313,7 @@ async def test_session_manager_rebuilds_nested_stale_indexes_during_all_index_qu
 async def test_find_sessions_rejects_negative_limit(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript import SessionQuery
 
     with pytest.raises(ValueError, match="limit"):
@@ -1323,7 +1323,7 @@ async def test_find_sessions_rejects_negative_limit(tmp_path) -> None:
 @_async_test
 async def test_session_manager_open_can_override_session_dir_and_cwd(tmp_path) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     source_dir = tmp_path / "source"
     future_dir = tmp_path / "future"
@@ -1354,7 +1354,7 @@ async def test_session_manager_open_rejects_invalid_empty_session_file(
 ) -> None:
     import pytest
 
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript.file_store import (
         AgentTranscriptFileError as SessionFileError,
     )
@@ -1379,7 +1379,7 @@ async def test_session_manager_open_rejects_invalid_header_session_file(
 ) -> None:
     import pytest
 
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript.file_store import (
         AgentTranscriptFileError as SessionFileError,
     )
@@ -1401,7 +1401,7 @@ async def test_session_manager_open_rejects_missing_header_session_file(
 ) -> None:
     import pytest
 
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript.file_store import (
         AgentTranscriptFileError as SessionFileError,
     )
@@ -1429,7 +1429,7 @@ async def test_session_manager_rejects_session_v3_without_rewriting_it(
 
     import pytest
 
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript.file_store import (
         AgentTranscriptFileError as SessionFileError,
     )
@@ -1462,7 +1462,7 @@ async def test_session_manager_continue_recent_uses_latest_summary_or_creates_ne
     tmp_path,
 ) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     empty = await SessionManager.continue_recent(
         session_dir=tmp_path / "empty", cwd="/tmp/project"
@@ -1499,7 +1499,7 @@ async def test_session_manager_continue_recent_uses_latest_summary_or_creates_ne
 @_async_test
 async def test_session_manager_in_memory_and_fork_from(tmp_path) -> None:
     from loushang.ai.types import TextPart, UserMessage
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     memory = await SessionManager.in_memory(cwd="/tmp/memory")
     assert memory.get_cwd() == "/tmp/memory"

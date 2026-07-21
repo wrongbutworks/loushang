@@ -37,6 +37,7 @@ from loushang.harness.config import (
     LayeredConfig,
     SchemaConfigCodec,
     ScopedConfigRuntime,
+    SettingsRuntime,
     decode_dataclass_patch,
     encode_dataclass_diff,
 )
@@ -687,15 +688,17 @@ class SettingsManager:
             Path(project_settings_path) if project_settings_path is not None else None
         )
         self._adapter_errors: list[SettingsError] = []
-        self._config = ScopedConfigRuntime(
-            LayeredConfig(
-                codec=_CONTROL_CONFIG_CODEC,
-                layers=(
-                    ConfigLayer("global", global_path, persistent=True),
-                    ConfigLayer("project", project_path, persistent=True),
-                    ConfigLayer("session"),
-                ),
-                initial={"session": initial} if initial is not None else None,
+        self._config = SettingsRuntime(
+            ScopedConfigRuntime(
+                LayeredConfig(
+                    codec=_CONTROL_CONFIG_CODEC,
+                    layers=(
+                        ConfigLayer("global", global_path, persistent=True),
+                        ConfigLayer("project", project_path, persistent=True),
+                        ConfigLayer("session"),
+                    ),
+                    initial={"session": initial} if initial is not None else None,
+                )
             )
         )
 

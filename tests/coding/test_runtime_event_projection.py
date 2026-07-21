@@ -195,14 +195,14 @@ def test_runtime_projection_creates_transport_view_with_source_identity() -> Non
     assert view.delivery_hint == "coalesce"
     assert view.payload == {
         "type": "assistant_delta",
-        "eventType": "text_delta",
-        "contentIndex": 0,
+        "event_type": "text_delta",
+        "content_index": 0,
         "delta": "hello",
     }
     assert shape_runtime_event_view(view) == {
         "type": "assistant_delta",
-        "eventType": "text_delta",
-        "contentIndex": 0,
+        "event_type": "text_delta",
+        "content_index": 0,
         "delta": "hello",
         "stream": {"kind": "session_event", "view": "assistant_stream"},
     }

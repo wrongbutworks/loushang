@@ -5,7 +5,7 @@ import asyncio
 from loushang.agent import Agent
 from loushang.coding.session import RunState as CodingRunState
 from loushang.coding.session.agent_session import AgentSession
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.host.queue import HostInputQueue
 from loushang.harness.host.runtime import HostRuntime
 from loushang.harness.host.types import (

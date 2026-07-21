@@ -8,7 +8,7 @@ import pytest
 from loushang.agent import Agent
 from loushang.ai.types import TextPart
 from loushang.coding.session.extension_input_adapter import CodingExtensionInputAdapter
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.extensions.agent import ExtensionInputRuntime
 from loushang.harness.session import (
     ApplicationInputRuntime,

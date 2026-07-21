@@ -257,7 +257,7 @@ def test_session_configuration_activation_stops_and_reraises_original_failure(
 
 def test_create_agent_session_uses_manager_header_as_agent_session_id(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -280,7 +280,7 @@ def test_create_agent_session_keeps_runtime_approval_resolver(tmp_path) -> None:
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     resolver = InteractiveApprovalResolver(
         fallback=HeadlessApprovalResolver(mode="deny")
@@ -306,7 +306,7 @@ def test_create_agent_session_result_returns_sdk_creation_snapshot(tmp_path) -> 
     from loushang.coding import CreateAgentSessionResult, create_agent_session_result
     from loushang.coding.bootstrap import create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     missing_package_root = tmp_path / "missing-package"
@@ -384,7 +384,7 @@ def test_create_agent_session_from_services_uses_cwd_bound_services(tmp_path) ->
         create_agent_session_from_services,
         create_agent_session_services,
     )
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -453,7 +453,7 @@ def test_create_agent_session_from_services_applies_extension_flag_values(
         create_agent_session_from_services,
         create_agent_session_services,
     )
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     extensions_dir = project_root / "extensions"
@@ -527,7 +527,7 @@ def test_audit_cwd_bound_services_reports_project_settings_mismatch(tmp_path) ->
     from loushang.coding.bootstrap import audit_cwd_bound_services, create_services
     from loushang.coding.control import SettingsManager
     from loushang.coding.control.settings_store import default_project_settings_path
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -553,7 +553,7 @@ def test_audit_cwd_bound_services_reports_project_settings_mismatch(tmp_path) ->
 
 def test_audit_cwd_bound_services_accepts_matching_resource_bundle(tmp_path) -> None:
     from loushang.coding.bootstrap import audit_cwd_bound_services, create_services
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.resources.types import ResourceBundle
 
     project = tmp_path / "project"
@@ -647,7 +647,7 @@ def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
@@ -701,7 +701,7 @@ def test_create_agent_session_applies_allowed_tool_names_to_default_active_tools
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
@@ -740,7 +740,7 @@ def test_create_agent_session_no_tools_builtin_keeps_dynamic_extension_tools(
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
@@ -832,7 +832,7 @@ def test_create_agent_session_no_tools_all_hides_dynamic_extension_tools_and_pro
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
@@ -917,7 +917,7 @@ def test_create_agent_session_runtime_applies_allowed_tool_names(tmp_path) -> No
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
@@ -955,7 +955,7 @@ def test_create_agent_session_uses_settings_package_roots_for_external_package_p
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     package_root = tmp_path / "packages" / "review-pack"
@@ -1006,7 +1006,7 @@ def test_create_agent_session_uses_settings_package_roots_for_external_package_p
 def test_reload_extension_runtime_reloads_settings_resource_roots(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     first_root = tmp_path / "first-resources"
@@ -1071,7 +1071,7 @@ def test_create_agent_session_uses_settings_package_sources_with_filters(
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     package_root = tmp_path / "packages" / "review-pack"
@@ -1130,7 +1130,7 @@ def test_create_agent_session_uses_settings_plugin_sources_for_external_package_
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     plugin_root = tmp_path / "plugins" / "debug-pack"
@@ -1201,7 +1201,7 @@ def test_create_agent_session_materializes_git_package_sources_by_default(
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     source_repo = tmp_path / "source"
     source_repo.mkdir()
@@ -1241,7 +1241,7 @@ def test_create_agent_session_auto_materializes_configured_remote_package_source
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -1298,7 +1298,7 @@ def test_create_agent_session_applies_disabled_plugin_sources(tmp_path) -> None:
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     plugin_root = tmp_path / "plugins" / "debug-pack"
@@ -1344,7 +1344,7 @@ def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     skill_dir = project_root / "skills" / "debug"
@@ -1378,7 +1378,7 @@ def test_create_agent_session_marks_disabled_skills(tmp_path) -> None:
 
 def test_create_agent_session_includes_tool_prompt_from_registry(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
@@ -1411,7 +1411,7 @@ def test_create_agent_session_synthesizes_definitions_from_legacy_tools(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
@@ -1461,7 +1461,7 @@ def test_create_agent_session_defaults_custom_tools_active_without_defaulting_al
 ) -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.coding.tool_pack import register_coding_builtin_tools
     from loushang.harness.tools.workspace import ToolDefinition
     from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
@@ -1590,7 +1590,7 @@ def test_create_agent_session_uses_saved_default_model_endpoint_when_valid(
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session import ModelSelection
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     ai_registry = _ai_model_registry(
         Model(id="alpha", name="Alpha", provider="demo", endpoint="responses"),
@@ -1631,7 +1631,7 @@ def test_create_agent_session_falls_back_when_saved_default_model_is_missing(
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session import ModelSelection
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     ai_registry = AiModelRegistry()
     services = create_services(ai_model_registry=ai_registry)
@@ -1671,7 +1671,7 @@ def test_create_agent_session_falls_back_when_saved_default_model_is_ambiguous(
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session import ModelSelection
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     ai_registry = _ai_model_registry(
         Model(id="alpha", name="Alpha", provider="demo", endpoint="responses"),
@@ -1711,7 +1711,7 @@ def test_create_agent_session_falls_back_when_saved_default_endpoint_is_unavaila
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.session import ModelSelection
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     ai_registry = _ai_model_registry(
         Model(id="alpha", name="Alpha", provider="demo", endpoint="responses"),
@@ -1821,7 +1821,7 @@ def test_create_agent_session_passes_resource_loader_into_agent_session(
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     class _RecordingLoader(DefaultResourceLoader):
         def __init__(self) -> None:
@@ -1851,7 +1851,7 @@ def test_runtime_tool_failures_still_surface_as_tool_result_errors(tmp_path) -> 
     import asyncio
 
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     class RuntimeTool:
         name = "runtime_tool"
@@ -1929,7 +1929,7 @@ def test_create_agent_session_projects_application_messages_to_model_input(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript import ApplicationMessage
 
     manager = asyncio.run(
@@ -1961,7 +1961,7 @@ def test_create_agent_session_convert_to_llm_blocks_images_when_configured(
     from loushang.ai.types import ImagePart, TextPart, ToolResultMessage, UserMessage
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, ImageSettings, SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     services = create_services(
         settings_manager=SettingsManager(
@@ -2018,7 +2018,7 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.resources.types import (
         ExtensionDescriptor,
         PromptFragmentDescriptor,
@@ -2119,7 +2119,7 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.resources.types import (
         ExtensionDescriptor,
         ResourceBundle,
@@ -2262,7 +2262,7 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.resources.types import (
         ExtensionDescriptor,
         ResourceBundle,
@@ -2575,7 +2575,7 @@ def test_create_agent_session_passes_compaction_settings_to_session(
 
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import CompactionSettings
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript import CompactionResult
 
     services = create_services()
@@ -2631,7 +2631,7 @@ def test_create_agent_session_passes_compaction_settings_to_session(
 def test_create_agent_session_passes_control_thinking_settings(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, RetrySettings, SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     services = create_services(
         settings_manager=SettingsManager(
@@ -2656,7 +2656,7 @@ def test_create_agent_session_passes_control_thinking_settings(tmp_path) -> None
 def test_create_agent_session_applies_enabled_models_as_scoped_models(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import ControlConfig, SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     first = _model()
     second = Model(
@@ -2707,7 +2707,7 @@ def test_create_agent_session_records_resource_loading_diagnostics(tmp_path) -> 
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
     from loushang.harness.resources.diagnostics import ResourceDiagnostic
     from loushang.harness.resources.types import ResourceBundle
 
@@ -2753,7 +2753,7 @@ def test_create_agent_session_records_startup_package_root_diagnostics(
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     missing_package_root = tmp_path / "missing-package"
@@ -2799,7 +2799,7 @@ def test_create_agent_session_records_executable_source_identity_diagnostic(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(
@@ -2837,7 +2837,7 @@ def test_create_agent_session_records_package_lockfile_diagnostics(tmp_path) -> 
     from loushang.coding.resource_runtime import (
         CodingPackageMaterializer as PackageMaterializer,
     )
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     lockfile = tmp_path / "package-lock.json"
     lockfile.write_text("not json", encoding="utf-8")
@@ -2874,7 +2874,7 @@ def test_create_agent_session_records_invalid_plugin_source_and_continues(
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import SettingsManager
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     project_root = tmp_path / "project"
     invalid_plugin = tmp_path / "invalid-plugin"

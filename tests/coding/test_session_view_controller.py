@@ -17,7 +17,7 @@ from loushang.coding.platform.session_projection import (
     project_pi_session_stats,
 )
 from loushang.coding.session.types import ModelSelection, RunState
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.conversation import CommandExecutionRecord
 from loushang.harness.session import AgentSessionInspector
 

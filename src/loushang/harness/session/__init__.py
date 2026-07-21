@@ -32,6 +32,8 @@ from loushang.harness.session.command_controller import (
 )
 from loushang.harness.session.command_pack import (
     STANDARD_SESSION_COMMAND_PROFILE,
+    STANDARD_SESSION_COMMANDS,
+    StandardSessionCommandDefinition,
     StandardSessionCommandDisposition,
     StandardSessionCommandId,
     StandardSessionCommandPorts,
@@ -40,6 +42,8 @@ from loushang.harness.session.command_pack import (
     StandardSessionExport,
     execute_standard_session_command_async,
     is_standard_session_command,
+    list_standard_session_command_descriptors,
+    project_standard_session_command_result,
 )
 from loushang.harness.session.command_sources import (
     ExtensionCommandErrorRecorder,
@@ -107,6 +111,9 @@ from loushang.harness.session.lifecycle import (
     TransitionCandidateCallback,
     TransitionReleaseCallback,
 )
+from loushang.harness.session.lifecycle_adapter import (
+    SessionLifecycleOperationAdapter,
+)
 from loushang.harness.session.model_selection import (
     ModelCandidates,
     ModelSelectionApplyResult,
@@ -171,6 +178,7 @@ __all__ = [
     "BuiltinCommandMatcher",
     "BuiltinDescriptorProvider",
     "STANDARD_SESSION_COMMAND_PROFILE",
+    "STANDARD_SESSION_COMMANDS",
     "ContextUsage",
     "DEFAULT_FORK_PROFILE",
     "ExtensionDiagnosticsPort",
@@ -211,11 +219,14 @@ __all__ = [
     "SessionCommandExecutionPort",
     "SessionCommandExecutionRuntime",
     "StandardSessionCommandDisposition",
+    "StandardSessionCommandDefinition",
     "StandardSessionExport",
     "StandardSessionCommandId",
     "StandardSessionCommandPorts",
     "StandardSessionCommandProfile",
     "StandardSessionCommandResult",
+    "list_standard_session_command_descriptors",
+    "project_standard_session_command_result",
     "SessionCommandsPort",
     "SessionCommandRuntime",
     "SessionDiagnosticsPort",
@@ -232,6 +243,7 @@ __all__ = [
     "SessionOperationRuntime",
     "SessionOperationUnavailableError",
     "SessionLifecycleOperationPorts",
+    "SessionLifecycleOperationAdapter",
     "SessionResourcePort",
     "SessionRetryPort",
     "SessionDiagnosticScope",

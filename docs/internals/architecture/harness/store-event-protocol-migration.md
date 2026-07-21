@@ -23,7 +23,7 @@ implement the protocols, but their features do not belong in this migration.
 
 ## Problem
 
-`coding.store.SessionManager` remains a high-fan-in Product facade over several
+`coding.session_manager.SessionManager` remains a high-fan-in Product facade over several
 mechanisms that are already neutral:
 
 - Native Conversation load and append;
@@ -434,7 +434,7 @@ No Coding runtime behavior changes in this commit.
 - retain one journal-free in-memory repository and prevalidate each graph
   mutation before backend commit;
 - move common create/load/append/header/branch/tree/fork/context mechanics from
-  `coding.store.SessionManager`;
+  `coding.session_manager.SessionManager`;
 - inject the File Store from Coding bootstrap while the existing Product
   catalog/index remains a separate Coding projection;
 - keep Coding storage roots, summaries, queries, recovery choice, naming, and
@@ -493,15 +493,13 @@ defer or repeat that mutation cutover.
 
 ## Expected Coding End State
 
-`coding.store` should no longer contain a persistence engine or session
-repository facade. If the package remains, it contains only Product adapters:
+The `coding.store` package is removed. The remaining Product adapter lives in
+`coding.session_manager` and contains no persistence engine or session
+repository facade:
 
 ```text
-coding.store
-  profile.py       Coding roots and default File composition
-  projection.py    SessionSummary and index projection
-  query.py         Coding search defaults and filters
-  recovery.py      Product recovery acceptance and diagnostics
+coding.session_manager.py
+  SessionManager   Coding roots, runtime-profile binding, and restored-header validation
 ```
 
 `coding.event` should contain only Product projections:
@@ -513,7 +511,7 @@ coding.event
   product_types.py genuinely Coding-only payloads, if any
 ```
 
-`SessionManager` remains a Coding Product adapter over
+`coding.session_manager.SessionManager` remains a Coding Product adapter over
 `AgentTranscriptSessionStore`; `AgentSessionEvent` remains a Product
 projection contract rather than the common runtime event model.
 
