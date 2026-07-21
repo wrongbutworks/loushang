@@ -14,8 +14,11 @@ import inspect
 import io
 import sys
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, TextIO, TypeAlias, TypeVar, cast, get_args
+
+from .stdout_guard import stdout_guard
 
 ProductHostActionType: TypeAlias = Literal[
     "start",
@@ -57,6 +60,40 @@ class ProductHostStreams:
             stdout=sys.stdout if stdout is None else stdout,
             stderr=sys.stderr if stderr is None else stderr,
         )
+
+
+@dataclass(frozen=True)
+class ProductHostLifecycle:
+    """Shared stdio and shutdown lifecycle for product CLI hosts.
+
+    The product still decides when structured output needs protection. Channel
+    owns stream binding, stdout takeover, and disposal fallback.
+    """
+
+    streams: ProductHostStreams
+
+    @classmethod
+    def resolve(
+        cls,
+        *,
+        stdin: TextIO | None = None,
+        stdout: TextIO | None = None,
+        stderr: TextIO | None = None,
+    ) -> "ProductHostLifecycle":
+        return cls(ProductHostStreams.resolve(stdin=stdin, stdout=stdout, stderr=stderr))
+
+    def output_guard(self, *, enabled: bool) -> AbstractContextManager[None]:
+        if not enabled:
+            from contextlib import nullcontext
+
+            return nullcontext()
+        return stdout_guard(
+            stdout=self.streams.stdout,
+            stderr=self.streams.stderr,
+        )
+
+    async def dispose(self, *candidates: object) -> bool:
+        return await dispose_product_host(*candidates)
 
 
 @dataclass(frozen=True)
@@ -260,6 +297,7 @@ __all__ = [
     "ProductHostAction",
     "ProductHostActionType",
     "ProductHostAdapter",
+    "ProductHostLifecycle",
     "ProductHostRuntime",
     "ProductHostStreams",
     "ProductHostState",

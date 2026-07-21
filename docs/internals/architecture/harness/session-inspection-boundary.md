@@ -20,14 +20,14 @@ diagnostic availability, model selection, and compaction threshold values.
 The inspector does not choose tools, models, compaction policy, diagnostics,
 or session naming policy.
 
-## Coding Binding
+### Coding Binding
 
-Coding `AgentSession` binds the Coding session record and existing runtime
-callbacks directly to `AgentSessionInspector`. Pi-style stats and camelCase
-fork-candidate serialization are pure functions in
-`coding.platform.session_projection`; TUI/RPC/HTML presentation remains
-Coding-owned. The accepted `coding.session.types` imports re-export the
-Harness-owned observation types.
+Coding `AgentSession` binds the Product session record and existing runtime
+callbacks directly to `AgentSessionInspector`. The shared
+`harness.session.inspection_projection` provides transport-neutral session
+statistics and fork candidates using the canonical snake_case shape. TUI,
+RPC, and HTML presentation may add Product-specific fields without re-owning
+the inspection calculation.
 
 ## Dependency Rule
 
@@ -40,7 +40,7 @@ APIs, configuration, or presentation types.
 
 - Harness tests assemble the inspector with a memory transcript and Agent
   without importing Coding.
-- Coding projection tests preserve context usage, stats, fork candidates,
-  assistant text, and Pi stats behavior.
-- Architecture tests require the Coding adapter to use the Harness inspector
+- Product projection tests preserve context usage, stats, fork candidates, and
+  assistant text.
+- Architecture tests require the session adapter to use the Harness inspector
   and prevent a Coding import from entering the shared implementation.

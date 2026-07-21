@@ -57,6 +57,21 @@ def format_changelog_entries(entries: list[ChangelogEntry], *, limit: int | None
     return "\n\n".join(parts)
 
 
+def read_changelog_for_cwd(cwd: str | Path, args: str = "") -> dict[str, object]:
+    """Read the nearest project changelog for the shared session command."""
+
+    del args
+    path = find_changelog_path(cwd)
+    if path is None:
+        return {"path": None, "entries": [], "text": ""}
+    entries = parse_changelog(path)
+    return {
+        "path": path.as_posix(),
+        "entries": [entry.__dict__ for entry in entries[:3]],
+        "text": format_changelog_entries(entries, limit=3),
+    }
+
+
 def _append_entry(entries: list[ChangelogEntry], title: str | None, body_lines: list[str]) -> None:
     if title is None:
         return
@@ -71,4 +86,10 @@ def _append_entry(entries: list[ChangelogEntry], title: str | None, body_lines: 
     entries.append(ChangelogEntry(version=version, date=date, body=body))
 
 
-__all__ = ["ChangelogEntry", "find_changelog_path", "format_changelog_entries", "parse_changelog"]
+__all__ = [
+    "ChangelogEntry",
+    "find_changelog_path",
+    "format_changelog_entries",
+    "parse_changelog",
+    "read_changelog_for_cwd",
+]

@@ -7,7 +7,7 @@ from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
 )
 from loushang.coding.session import AgentSession
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.resources.watcher import ResourceChangeWatcher
 
 

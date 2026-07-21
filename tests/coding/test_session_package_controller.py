@@ -12,7 +12,7 @@ from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
 )
 from loushang.coding.session.package_controller import PackageController
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.resources.packages.materializer import (
     PythonPackageInstallerBackend,
 )

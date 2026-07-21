@@ -72,9 +72,9 @@ the profile its queue and application-input capabilities through ports.
 | `coding.extensions.hooks.HookDispatcher` | Agent extension hook mechanism over an existing Harness route plan | Move its implementation to `harness.extensions.agent.hooks` as `ExtensionToolHookDispatcher`; delete the Coding module. |
 | `coding.extensions.runner.ExtensionRunner` prompt/context/tool/session-hook reducers | Shared Agent-session routing, with Product context and error ports | Extract to narrowly named helpers in `harness.extensions.agent.hooks` and `harness.extensions.session_runtime`; reduce `ExtensionRunner` to a Coding binding adapter. |
 | Existing `harness.session.extension_events.ExtensionAgentEventRuntime` | In-process extension lifecycle callback adapter | Move to `harness.extensions.agent.lifecycle`; inject its clock and map stable Agent lifecycle facts only. It must not publish `RuntimeEvent` or Coding event dictionaries. |
-| `coding.extensions.runner.ExtensionRunner` loader construction, Coding API binding, legacy field aliases, and error payload shape | Coding compatibility adapter | Retain in Coding. |
+| `coding.extensions.runner.ExtensionRunner` loader construction, Coding API binding, and error payload shape | Coding product adapter | Retain in Coding. Extension event objects use the shared snake_case fields. |
 | `coding.extensions.api.ExtensionAPI` | Coding session/model/provider extension API | Retain in Coding. Provider registration must not move into Harness. |
-| `coding.extensions.loader.ExtensionLoader` | Product loader configuration | Retain as the small API-factory, permission-policy, and legacy-event-name adapter. |
+| `coding.extensions.loader.ExtensionLoader` | Product loader configuration | Retain as the small API-factory, permission-policy, and Product event-registration adapter. |
 | `coding.extensions.policy` | Coding capability defaults | Retain in Coding. |
 
 The extracted runtime must accept explicit ports for extension context creation,
@@ -106,21 +106,27 @@ normalized delivery instruction through injected ports.
 
 ### Event projection
 
-`coding.event.AgentSessionEvent` is an external Coding projection contract.
-The following remain Coding-owned in this Wave:
+`harness.events.session_types.AgentSessionEvent` is the shared typed session
+mapping contract, with a Coding import surface retained during cutover. The
+standard serialized event projection is Harness-owned. The following remain
+Coding-owned in this Wave:
 
-- Pi-compatible event names, selector aliases, camelCase field names, and
-  `JsonEventView` selection;
-- `serialize_session_event`, tool-render enrichment, and Coding presentation
-  wording;
+- RuntimeEvent-to-session mapping, Product view selection/overrides, and
+  Coding presentation wording;
 - `event_writes_transcript` and cancellation wording;
 - the conversion from neutral `RuntimeEvent` payloads to Coding dictionaries.
 
-There is no structural event migration in this Wave. Production consumers use
-common facts from `subscribe_runtime_events()` or `RuntimeEventView` wherever
-the shared API already provides them. Coding creates its compatibility event
-dictionaries only at its UI/RPC/print/extension projection boundary. No new
-Harness event type may encode Coding aliases.
+Harness serializes resulting event payloads with one recursive snake_case
+normalizer. It does not accept or emit Pi/camelCase aliases, and selector
+matching accepts only exact names and trailing-wildcard prefixes.
+
+The Coding import surface for `AgentSessionEvent` remains only during this
+Wave. Production consumers use common facts from `subscribe_runtime_events()` or
+`RuntimeEventView` wherever the shared API already provides them. Coding still
+binds Product/work mapping and any final presentation override at its
+UI/RPC/print/extension boundary, while Harness owns the canonical view,
+rendering, and snake_case serialization. No new Harness event type may encode
+Product aliases.
 
 ## Shared Hook Contract
 
@@ -179,9 +185,10 @@ The standard behavior is fixed as follows:
   failures are contained by the existing router error policy and reported
   through the injected diagnostic/error ports.
 
-Coding's remaining adapter binds these dispatchers to its `ExtensionRuntime`,
-constructs its product runtime context, and applies legacy aliases only at the
-extension API boundary.
+Coding's remaining adapter binds these dispatchers to its `ExtensionRuntime`
+and constructs its product runtime context. Extension event objects expose the
+shared snake_case fields directly; no legacy Pi/camelCase aliases are added at
+the extension boundary.
 
 ## Product Injection
 
@@ -197,10 +204,11 @@ Harness receives only typed or capability-shaped ports:
 | session decision coercer | Product compatibility decision policy |
 | normalized extension input adapter | Product wire parsing, defaults, and error wording |
 | lifecycle fact adapter and clock | Stable Agent lifecycle correlation and deterministic timestamps |
-| event view projector | Coding aliases, rendering, and wire schema |
+| event view projector | Coding view selection, rendering, and product additions; Harness owns the shared snake_case wire schema |
 
-Provider registration, model selection, session file policy, Coding event
-aliases, and terminal rendering are excluded from the shared dispatchers.
+Provider registration, model selection, session file policy, and terminal
+rendering are excluded from the shared dispatchers. No event aliases are
+generated at this boundary.
 
 ## Delivery Sequence
 
@@ -230,16 +238,19 @@ no compatibility promise beyond the current branch.
    - Verify with a fake Product that has no Coding imports.
 
 3. **Coding adapter and event facade reduction**
-   - Completed: made `ExtensionRunner` a Coding loader/API/context/alias adapter over the
-     shared dispatchers; delete `coding.extensions.hooks`.
-   - Do no structural event migration. Lock the existing Coding projections
-     with golden tests and add an import gate that prevents a second neutral
-     event engine; the existing `AgentSession.subscribe()` and Work projection
-     adapters remain in place.
+   - Completed: made `ExtensionRunner` a Coding loader/API/context adapter over
+     the shared dispatchers; delete `coding.extensions.hooks`.
+   - Keep the Coding import surface only while consumers move; the shared
+     `harness.events.session_types.AgentSessionEvent` contract and
+     `harness.events.session_projection` views own serialized event fields,
+     snake_case shaping, and standard render enrichment. Lock the canonical
+     output with golden tests and add an import gate that prevents a second
+     neutral event engine; the existing `AgentSession.subscribe()` and Work
+     projection adapters remain in place.
    - Add import gates: `harness.extensions.agent` may depend only on the
      declared stable Agent/AI value APIs and has no Coding import; no Coding
-     production code imports the deleted dispatcher; `coding.event` remains
-     the only owner of Coding event alias and wire serialization.
+     production code imports the deleted dispatcher; `harness.events` is the
+     only owner of shared event wire serialization.
    - Update the migration ledger with measured canonical LOC.
 
 ## Verification
@@ -260,7 +271,8 @@ Focused tests must cover:
 - Coding's `before_agent_start` factory/coercer and session decision coercer
   preserve legacy event/result behavior;
 - Coding extension API deferred provider actions remain Coding-owned;
-- Coding JSON/RPC/print event golden fixtures remain equivalent as JSON values;
+- Coding JSON/RPC/print event golden fixtures use the canonical snake_case
+  fields;
 - a fake Product can run the shared hook runtime without importing Coding.
 
 Run targeted Harness and Coding extension/event tests first, then the relevant
@@ -271,7 +283,7 @@ architecture-import suite and the non-live consumer suite.
 This Wave does not:
 
 - replace `AgentEvent`, `RuntimeEvent`, `WorkEvent`, or `AgentSessionEvent`;
-- move Pi aliases or Coding JSON schemas into Harness;
+- move Coding-specific event content or Product command schemas into Harness;
 - add an event log, outbox, transport acknowledgement, or cross-process bus;
 - add an external-process, stdin/JSON, exit-code, or shell-hook adapter. A
   future OEM process-hook integration is a separate adapter at

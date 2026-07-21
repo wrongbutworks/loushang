@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.agent_transcript import build_agent_transcript_session_context
 
 

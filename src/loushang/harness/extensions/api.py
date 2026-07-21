@@ -139,12 +139,6 @@ class ExtensionContributionAPI:
             on_error="fail_chain",
         )
 
-    def registerTool(
-        self,
-        tool_definition: ToolDefinition | DecoratedTool | AgentTool[object],
-    ) -> None:
-        self.register_tool(tool_definition)
-
     def register_command(
         self,
         name: str,
@@ -202,13 +196,6 @@ class ExtensionContributionAPI:
         renderer: Callable[[object, object, object], object | None],
     ) -> None:
         self._message_renderers[custom_type] = renderer
-
-    def registerMessageRenderer(
-        self,
-        custom_type: str,
-        renderer: Callable[[object, object, object], object | None],
-    ) -> None:
-        self.register_message_renderer(custom_type, renderer)
 
     def bind_runtime_state(self, runtime_state: object) -> None:
         self._runtime_state = runtime_state

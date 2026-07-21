@@ -3,11 +3,12 @@ from __future__ import annotations
 
 def test_session_settings_controller_returns_defaults_without_manager() -> None:
     from loushang.coding.control import CompactionSettings, RetrySettings
-    from loushang.coding.session.session_settings_controller import (
-        SessionSettingsController,
-    )
+    from loushang.harness.session.settings import SessionSettingsBinding
 
-    controller = SessionSettingsController(settings_manager=None)
+    controller = SessionSettingsBinding(
+        default_compaction=CompactionSettings,
+        default_retry=RetrySettings,
+    )
 
     assert controller.get_settings_manager() is None
     assert controller.get_compaction_settings() == CompactionSettings()
@@ -17,11 +18,10 @@ def test_session_settings_controller_returns_defaults_without_manager() -> None:
 
 
 def test_session_settings_controller_lazily_creates_manager_for_auto_flags() -> None:
-    from loushang.coding.session.session_settings_controller import (
-        SessionSettingsController,
-    )
+    from loushang.coding.control import SettingsManager
+    from loushang.harness.session.settings import SessionSettingsBinding
 
-    controller = SessionSettingsController(settings_manager=None)
+    controller = SessionSettingsBinding(create_settings_manager=SettingsManager)
 
     controller.set_auto_retry_enabled(False)
     controller.set_auto_compaction_enabled(False)
@@ -34,12 +34,10 @@ def test_session_settings_controller_lazily_creates_manager_for_auto_flags() -> 
 
 def test_session_settings_controller_persists_queue_modes_to_existing_manager(tmp_path) -> None:
     from loushang.coding.control import SettingsManager
-    from loushang.coding.session.session_settings_controller import (
-        SessionSettingsController,
-    )
+    from loushang.harness.session.settings import SessionSettingsBinding
 
     settings_path = tmp_path / "settings.json"
-    controller = SessionSettingsController(
+    controller = SessionSettingsBinding(
         settings_manager=SettingsManager(global_settings_path=settings_path)
     )
 

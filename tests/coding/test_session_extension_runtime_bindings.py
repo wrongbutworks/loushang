@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 
-from loushang.coding.session.extension_runtime_bindings import (
+from loushang.ai.model import ModelSelection
+from loushang.harness.extensions.runtime_bindings import (
     ExtensionRuntimeBindingFactory,
 )
-from loushang.coding.session.types import ContextUsage, ModelSelection
+from loushang.harness.session.inspection import ContextUsage
 
 
 def test_extension_runtime_binding_factory_wires_session_callbacks_and_ui_error_handler() -> (

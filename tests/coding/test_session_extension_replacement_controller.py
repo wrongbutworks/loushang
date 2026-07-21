@@ -5,9 +5,7 @@ import inspect
 
 import pytest
 
-from loushang.coding.session.extension_replacement_controller import (
-    ExtensionReplacementController,
-)
+from loushang.harness.extensions.agent.replacement import ExtensionReplacementRuntime
 from loushang.harness.runtime import SessionOperationResult
 
 
@@ -142,7 +140,7 @@ def test_extension_replacement_controller_forks_and_runs_with_session_callback()
     async def _with_session(context):
         events.append(("withSession", context))
 
-    controller = ExtensionReplacementController(get_runtime_host=lambda: host)
+    controller = ExtensionReplacementRuntime(get_runtime_host=lambda: host)
 
     result = asyncio.run(
         controller.fork("entry-1", {"position": "before", "withSession": _with_session})
@@ -151,7 +149,6 @@ def test_extension_replacement_controller_forks_and_runs_with_session_callback()
     assert result == {
         "cancelled": False,
         "selected_text": "selected text",
-        "selectedText": "selected text",
     }
     assert host.calls == [("fork_operation", ("entry-1", "before"))]
     assert events == [("withSession", "context:after")]
@@ -171,7 +168,7 @@ def test_extension_replacement_controller_new_session_runs_setup_before_with_ses
     async def _with_session(context):
         events.append(("withSession", context))
 
-    controller = ExtensionReplacementController(get_runtime_host=lambda: host)
+    controller = ExtensionReplacementRuntime(get_runtime_host=lambda: host)
 
     result = asyncio.run(
         controller.new_session(
@@ -191,7 +188,7 @@ def test_extension_replacement_controller_new_session_runs_setup_before_with_ses
 def test_extension_replacement_controller_reports_cancelled_without_runtime_host() -> (
     None
 ):
-    controller = ExtensionReplacementController(get_runtime_host=lambda: None)
+    controller = ExtensionReplacementRuntime(get_runtime_host=lambda: None)
 
     assert asyncio.run(controller.fork("entry-1")) == {"cancelled": True}
     assert asyncio.run(controller.new_session()) == {"cancelled": True}
@@ -204,7 +201,7 @@ def test_extension_replacement_controller_validates_callbacks_and_fork_position(
     None
 ):
     host = RuntimeHost(Session("before"), Session("after"))
-    controller = ExtensionReplacementController(get_runtime_host=lambda: host)
+    controller = ExtensionReplacementRuntime(get_runtime_host=lambda: host)
 
     with pytest.raises(ValueError, match="Unsupported fork position"):
         asyncio.run(controller.fork("entry-1", {"position": "after"}))
@@ -222,7 +219,7 @@ def test_extension_replacement_controller_validates_callbacks_and_fork_position(
 def test_extension_replacement_controller_creates_replaced_command_context() -> None:
     runner = Runner()
     session = ReplacedSession(runner)
-    controller = ExtensionReplacementController(get_runtime_host=lambda: None)
+    controller = ExtensionReplacementRuntime(get_runtime_host=lambda: None)
 
     async def scenario() -> None:
         context = controller.create_context(session)
@@ -250,7 +247,7 @@ def test_extension_replacement_controller_replaced_context_send_methods_obey_sta
 ):
     runner = Runner()
     session = ReplacedSession(runner)
-    controller = ExtensionReplacementController(get_runtime_host=lambda: None)
+    controller = ExtensionReplacementRuntime(get_runtime_host=lambda: None)
     context = controller.create_context(session)
     context.invalidated = True
 

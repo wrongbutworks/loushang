@@ -1,4 +1,8 @@
-"""Coding wire-format adapter for the shared extension Agent input profile."""
+"""Wire adapter for the shared extension Agent input profile.
+
+The adapter is Product-neutral: Products bind their public extension message
+shape to this normalized input runtime while Harness owns delivery policy.
+"""
 
 from __future__ import annotations
 
@@ -23,8 +27,8 @@ class ExtensionInputAgentPort(Protocol):
 
 
 @dataclass
-class CodingExtensionInputAdapter:
-    """Parse Coding/Pi extension input and call the typed shared runtime."""
+class ExtensionInputAdapter:
+    """Normalize extension input and call the typed shared runtime."""
 
     agent: ExtensionInputAgentPort
     runtime: ExtensionInputRuntime
@@ -128,4 +132,4 @@ def _part_text(part: object) -> str | None:
     return value if isinstance(value, str) else None
 
 
-__all__ = ["CodingExtensionInputAdapter"]
+__all__ = ["ExtensionInputAdapter"]

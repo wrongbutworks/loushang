@@ -45,8 +45,8 @@ classify Product diagnostics.
 
 Products choose their session roots, whether persistence is enabled, the
 runtime transcript profile, product-specific projected fields, retention,
-display names, and CLI/RPC/TUI presentation. `coding.store.SessionManager`
-remains a compatibility facade and product lifecycle adapter; it delegates the
+display names, and CLI/RPC/TUI presentation. `coding.session_manager.SessionManager`
+remains the Product lifecycle adapter; it delegates the
 standard read model instead of maintaining a second catalog.
 
 ## Extensibility

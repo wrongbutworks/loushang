@@ -10,7 +10,7 @@ RuntimeHostProvider = Callable[[], object | None]
 
 
 @dataclass
-class ExtensionReplacementController:
+class ExtensionReplacementRuntime:
     get_runtime_host: RuntimeHostProvider
 
     def create_context(self, session: object) -> object:
@@ -152,7 +152,6 @@ def _operation_payload(
     result: dict[str, object] = {"cancelled": operation.cancelled}
     if include_selected_text and isinstance(operation.payload, str):
         result["selected_text"] = operation.payload
-        result["selectedText"] = operation.payload
     return result
 
 

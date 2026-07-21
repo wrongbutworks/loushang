@@ -9,7 +9,7 @@ and pass them in through narrow ports.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar
 
@@ -95,6 +95,14 @@ class SessionCommandExecutionPort(Protocol):
         operations: object | None = None,
     ) -> dict[str, object]: ...
 
+    async def record_result(
+        self,
+        *,
+        command: str,
+        result: Mapping[str, object],
+        exclude_from_context: bool = False,
+    ) -> None: ...
+
     def abort(self) -> None: ...
 
 
@@ -166,6 +174,78 @@ class SessionResourcePort(Protocol):
     async def refresh_resources(self) -> None: ...
 
     def request_resource_refresh(self) -> None: ...
+
+
+class SessionSettingsPort(Protocol):
+    """Optional queue/settings controls supplied by a Product config store."""
+
+    def get_settings_manager(self) -> object | None: ...
+
+    def get_steering_mode(self) -> str: ...
+
+    def set_steering_mode(self, mode: str) -> None: ...
+
+    def get_follow_up_mode(self) -> str: ...
+
+    def set_follow_up_mode(self, mode: str) -> None: ...
+
+
+class SessionModelPort(Protocol):
+    """Optional model and thinking selection supplied by a Product/AI port."""
+
+    def get_model_selection(self) -> object | None: ...
+
+    async def set_model(self, model: object) -> None: ...
+
+    async def cycle_model(self, direction: str = "forward") -> object | None: ...
+
+    async def set_thinking_level(self, level: object) -> None: ...
+
+    async def cycle_thinking_level(self) -> object | None: ...
+
+    def supports_thinking(self) -> bool: ...
+
+    def get_available_thinking_levels(self) -> list[object]: ...
+
+    def get_available_models(self) -> list[object]: ...
+
+    def get_available_model_details(self) -> list[object]: ...
+
+    def get_scoped_models(self) -> list[dict[str, object]]: ...
+
+    def set_scoped_models(self, scoped_models: list[dict[str, object]]) -> None: ...
+
+
+class SessionExtensionPort(Protocol):
+    """Optional extension and resource watcher lifecycle supplied by a Product."""
+
+    async def start_extension_runtime(self, *, reason: str = "startup") -> None: ...
+
+    async def reload_extension_runtime(self) -> None: ...
+
+    async def poll_resource_changes(self) -> bool: ...
+
+    def start_resource_watcher(self, *, interval_seconds: float = 1.0) -> None: ...
+
+    async def stop_resource_watcher(self) -> None: ...
+
+    def set_extension_ui_context(self, ui_context: object | None) -> None: ...
+
+    def set_extension_runtime_host(self, runtime_host: object | None) -> None: ...
+
+
+class SessionApplicationInputPort(Protocol):
+    """Optional normalized application/user input supplied by a Product."""
+
+    async def send_message(
+        self, message: object, options: object | None = None
+    ) -> None: ...
+
+    async def send_user_message(
+        self, content: object, options: object | None = None
+    ) -> None: ...
+
+    def has_pending_messages(self) -> bool: ...
 
 
 class SessionDiagnosticsPort(Protocol):
@@ -331,6 +411,10 @@ class SessionFacadePorts(
     resources: SessionResourcePort
     diagnostics: SessionDiagnosticsPort | None = None
     packages: SessionPackagePort | None = None
+    model_selection: SessionModelPort | None = None
+    extensions: SessionExtensionPort | None = None
+    settings: SessionSettingsPort | None = None
+    application_input: SessionApplicationInputPort | None = None
 
 
 @dataclass
@@ -365,6 +449,10 @@ class SessionFacade(
     resources: SessionResourcePort
     diagnostics: SessionDiagnosticsPort | None = None
     packages: SessionPackagePort | None = None
+    model_selection: SessionModelPort | None = None
+    extensions: SessionExtensionPort | None = None
+    settings: SessionSettingsPort | None = None
+    application_input: SessionApplicationInputPort | None = None
 
     @classmethod
     def from_ports(
@@ -396,7 +484,17 @@ class SessionFacade(
             resources=ports.resources,
             diagnostics=ports.diagnostics,
             packages=ports.packages,
+            model_selection=ports.model_selection,
+            extensions=ports.extensions,
+            settings=ports.settings,
+            application_input=ports.application_input,
         )
+
+    @property
+    def session_control(self) -> SessionControlPort:
+        """Expose the shared control surface without a Product subclass."""
+
+        return self
 
     @property
     def session_id(self) -> str:
@@ -433,6 +531,18 @@ class SessionFacade(
     def get_tool_definition(self, name: str) -> ToolT | None:
         return self.tools.get_tool_definition(name)
 
+    def get_all_tool_infos(self) -> list[dict[str, object]]:
+        getter = getattr(self.tools, "get_all_tool_infos", None)
+        if not callable(getter):
+            return []
+        return list(getter())
+
+    def list_extensions(self) -> list[dict[str, object]]:
+        getter = getattr(self.extensions, "list_extensions", None)
+        if not callable(getter):
+            return []
+        return list(getter())
+
     def list_commands(self) -> list[CommandDescriptorT]:
         return list(self.commands.list_commands())
 
@@ -445,6 +555,132 @@ class SessionFacade(
 
     def get_context_usage(self) -> UsageT | None:
         return self.view.get_context_usage()
+
+    async def send_message(
+        self, message: object, options: object | None = None
+    ) -> None:
+        await self._require_application_input().send_message(message, options)
+
+    async def send_user_message(
+        self, content: object, options: object | None = None
+    ) -> None:
+        await self._require_application_input().send_user_message(content, options)
+
+    def has_pending_messages(self) -> bool:
+        return self._require_application_input().has_pending_messages()
+
+    def _require_application_input(self) -> SessionApplicationInputPort:
+        if self.application_input is None:
+            raise RuntimeError("Application input is not available.")
+        return self.application_input
+
+    @property
+    def settings_manager(self) -> object | None:
+        return self.settings.get_settings_manager() if self.settings else None
+
+    @property
+    def steering_mode(self) -> str:
+        return self._require_settings().get_steering_mode()
+
+    def set_steering_mode(self, mode: str) -> None:
+        self._require_settings().set_steering_mode(mode)
+
+    @property
+    def follow_up_mode(self) -> str:
+        return self._require_settings().get_follow_up_mode()
+
+    def set_follow_up_mode(self, mode: str) -> None:
+        self._require_settings().set_follow_up_mode(mode)
+
+    def _require_settings(self) -> SessionSettingsPort:
+        if self.settings is None:
+            raise RuntimeError("Session settings are not available.")
+        return self.settings
+
+    def get_session_stats(self) -> dict[str, object]:
+        """Project common Agent/session counters for a transport host."""
+
+        from loushang.harness.session.inspection_projection import project_session_stats
+
+        return project_session_stats(
+            agent=self.runtime.agent,
+            session_manager=self.transcript,
+            context_usage=self.view.get_context_usage(),
+        )
+
+    @property
+    def model(self) -> object:
+        """Expose the bound Agent model without selecting a provider."""
+
+        return getattr(self.runtime.agent, "model")
+
+    @property
+    def thinking_level(self) -> object:
+        """Expose the bound Agent thinking level."""
+
+        return getattr(self.runtime.agent, "thinking_level")
+
+    @property
+    def is_streaming(self) -> bool:
+        return bool(getattr(self.runtime.agent, "is_streaming", False))
+
+    @property
+    def system_prompt(self) -> str:
+        return str(getattr(self.runtime.agent, "system_prompt", ""))
+
+    @property
+    def retry_attempt(self) -> int:
+        return int(getattr(self.retry, "attempt", 0))
+
+    @property
+    def messages(self) -> list[object]:
+        state = getattr(self.runtime.agent, "state", None)
+        messages = getattr(state, "messages", ())
+        return messages if isinstance(messages, list) else list(messages)
+
+    @property
+    def extension_runner(self) -> object | None:
+        getter = getattr(self.runtime.turn_policy, "get_extension_runner", None)
+        return getter() if callable(getter) else None
+
+    def get_model_selection(self) -> object | None:
+        return self._require_model_selection().get_model_selection()
+
+    async def set_model(self, model: object) -> None:
+        await self._require_model_selection().set_model(model)
+
+    async def cycle_model(self, direction: str = "forward") -> object | None:
+        return await self._require_model_selection().cycle_model(direction)
+
+    async def set_thinking_level(self, level: object) -> None:
+        await self._require_model_selection().set_thinking_level(level)
+
+    async def cycle_thinking_level(self) -> object | None:
+        return await self._require_model_selection().cycle_thinking_level()
+
+    def supports_thinking(self) -> bool:
+        return self._require_model_selection().supports_thinking()
+
+    def get_available_thinking_levels(self) -> list[object]:
+        return self._require_model_selection().get_available_thinking_levels()
+
+    def get_available_models(self) -> list[object]:
+        return self._require_model_selection().get_available_models()
+
+    def get_available_model_details(self) -> list[object]:
+        return self._require_model_selection().get_available_model_details()
+
+    @property
+    def scoped_models(self) -> list[dict[str, object]]:
+        return self._require_model_selection().get_scoped_models()
+
+    def set_scoped_models(self, scoped_models: list[dict[str, object]]) -> None:
+        self._require_model_selection().set_scoped_models(scoped_models)
+
+    def _require_model_selection(self) -> SessionModelPort:
+        if self.model_selection is None:
+            raise RuntimeError("Model selection is not available.")
+        return self.model_selection
 
     def get_last_diagnostics(self, limit: int = 50) -> list[DiagnosticRecord]:
         return self.diagnostics.get_last_diagnostics(limit) if self.diagnostics else []
@@ -616,6 +852,49 @@ class SessionFacade(
             operations=operations,
         )
 
+    async def execute_bash(
+        self,
+        command: str,
+        *,
+        cwd: str | None = None,
+        env: list[list[str] | tuple[str, str]]
+        | tuple[tuple[str, str], ...]
+        | None = None,
+        timeout_seconds: float | None = None,
+        stdin: str | None = None,
+        exclude_from_context: bool = False,
+        on_output: OutputCallback | None = None,
+        operations: object | None = None,
+    ) -> dict[str, object]:
+        """Execute the bound shell capability through the common facade."""
+
+        return await self.execute_command_tool(
+            command,
+            cwd=cwd,
+            env=env,
+            timeout_seconds=timeout_seconds,
+            stdin=stdin,
+            exclude_from_context=exclude_from_context,
+            on_output=on_output,
+            operations=operations,
+        )
+
+    async def record_bash_result(
+        self,
+        command: str,
+        result: Mapping[str, object],
+        *,
+        exclude_from_context: bool = False,
+    ) -> None:
+        record_result = getattr(self.command_execution, "record_result", None)
+        if not callable(record_result):
+            raise RuntimeError("Command result recording is not available.")
+        await record_result(
+            command=command,
+            result=result,
+            exclude_from_context=exclude_from_context,
+        )
+
     @property
     def is_command_running(self) -> bool:
         return self.command_execution.is_running
@@ -635,6 +914,11 @@ class SessionFacade(
 
     def abort_command(self) -> None:
         self.command_execution.abort()
+
+    def abort_bash(self) -> None:
+        """Abort the bound shell capability through the common facade."""
+
+        self.abort_command()
 
     def abort_retry(self) -> None:
         self.retry.abort()
@@ -679,6 +963,34 @@ class SessionFacade(
     def request_resource_refresh(self) -> None:
         self.resources.request_resource_refresh()
 
+    async def start_extension_runtime(self, *, reason: str = "startup") -> None:
+        await self._require_extensions().start_extension_runtime(reason=reason)
+
+    async def reload_extension_runtime(self) -> None:
+        await self._require_extensions().reload_extension_runtime()
+
+    async def poll_resource_changes(self) -> bool:
+        return await self._require_extensions().poll_resource_changes()
+
+    def start_resource_watcher(self, *, interval_seconds: float = 1.0) -> None:
+        self._require_extensions().start_resource_watcher(
+            interval_seconds=interval_seconds
+        )
+
+    async def stop_resource_watcher(self) -> None:
+        await self._require_extensions().stop_resource_watcher()
+
+    def set_extension_ui_context(self, ui_context: object | None) -> None:
+        self._require_extensions().set_extension_ui_context(ui_context)
+
+    def set_extension_runtime_host(self, runtime_host: object | None) -> None:
+        self._require_extensions().set_extension_runtime_host(runtime_host)
+
+    def _require_extensions(self) -> SessionExtensionPort:
+        if self.extensions is None:
+            raise RuntimeError("Extension runtime is not available.")
+        return self.extensions
+
 
 __all__ = [
     "OutputCallback",
@@ -690,8 +1002,10 @@ __all__ = [
     "SessionEventProjector",
     "SessionFacade",
     "SessionFacadePorts",
+    "SessionExtensionPort",
     "SessionIdentityPort",
     "SessionMaintenancePort",
+    "SessionModelPort",
     "SessionDiagnosticsPort",
     "SessionPackagePort",
     "SessionResourcePort",

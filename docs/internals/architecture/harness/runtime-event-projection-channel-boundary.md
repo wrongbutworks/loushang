@@ -2,12 +2,19 @@
 
 ## Decision
 
-`loushang.harness.events` owns the neutral `RuntimeEvent` envelope and the
-transport-ready `RuntimeEventView` value contract. `loushang.channel` owns the
-external envelope, JSON codec, and JSONL frame that can deliver an already
-created view. Product code owns the conversion from a typed runtime payload to
-an event type, view name, strict JSON payload, aliases, rendering, and any
-product wire shape.
+`loushang.harness.events` owns the neutral `RuntimeEvent` envelope, the
+transport-ready `RuntimeEventView` value contract, the shared session-event
+dictionary types, the standard session view projection, and the runtime-view
+selector/stream shaper. `harness.events.runtime_views` owns the complete
+RuntimeEvent-to-view path, including delivery hints and correlation IDs.
+`harness.events.recording_policy` owns the neutral decision about which runtime
+facts become transcript records and the shared cancelled-error classifier.
+`loushang.channel` owns the external envelope, JSON codec, and JSONL frame that
+can deliver an already created view. Product code owns only the conversion from
+a Product/runtime source into a session mapping plus any genuinely
+product-specific final presentation policy. The shared runtime event payload
+uses one snake_case vocabulary; Pi/camelCase aliases are not accepted or
+emitted.
 
 ```text
 RuntimeEvent (Harness)
@@ -41,7 +48,8 @@ durable transcript fact.
 
 The view constructor rejects invalid source metadata, unsafe JSON, and unknown
 delivery hints. The generic selector accepts only exact matches and a trailing
-`*`; Product aliases such as Coding's `assistant.*` remain Product policy.
+`*`; aliases such as `assistant.*` are not expanded by any shared runtime
+event path.
 
 ## Channel Contract
 
@@ -72,10 +80,13 @@ subscription, acknowledgement, replay, or delivery scheduling.
 
 ```text
 harness.events     -> protocol
+harness.events.session_projection -> agent, ai, harness.presentation
+harness.events.runtime_views      -> harness.events (shared view pipeline)
+harness.events.recording_policy   -> protocol-safe event facts
 channel             -> work
 channel             -> harness.events.projection (RuntimeEventView only)
-coding.event        -> harness.events
-coding.mode         -> coding.event
+coding.event        -> harness.events (thin import surface only)
+coding.mode         -> harness.events + coding.event (Product adapter)
 ```
 
 Harness has no Channel import. Channel may import only the projection value
@@ -85,13 +96,16 @@ runtime views without making its transport part of the Host runtime.
 
 ## Coding Adoption
 
-Coding retains `AgentSessionEvent` and its Pi-compatible serialisation. Its
-runtime adapter maps an incoming `RuntimeEvent` to existing Coding session
-events, applies Coding's selected JSON view and tool renderer, and constructs a
-`RuntimeEventView`. JSON PrintMode and RpcMode subscribe to
-`subscribe_runtime_events()` when the session offers it, then retain their
-existing printed JSON and RPC stream shape. The old `subscribe()` path remains
-only for text display and compatibility session doubles.
+Coding retains its accepted `AgentSessionEvent` import surface and the
+Product/runtime adapter that maps an incoming `RuntimeEvent` to a session
+mapping. `harness.events.session_types`, `harness.events.session_projection`,
+`harness.events.runtime_views`, and `harness.events.recording_policy` own the
+shared contracts and mechanics. Coding's event module is now only a thin
+import facade (the recording-policy facade exists for the established public
+import path); Product/work mapping and final presentation remain in Coding.
+JSON PrintMode and RpcMode subscribe to `subscribe_runtime_events()` when the
+session offers it. The old `subscribe()` path remains only for text display and
+compatibility session doubles.
 
 ## Exclusions
 

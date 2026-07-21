@@ -68,7 +68,7 @@ from loushang.coding.session import (
     TokenUsageTotals,
     TreeNavigationResult,
 )
-from loushang.coding.store import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.coding.tool_pack import (
     CODING_BUILTIN_TOOL_NAMES,
     CODING_BUILTIN_TOOL_PACK,

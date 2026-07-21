@@ -81,7 +81,7 @@
   `prompt_guidelines` 作为附加工具使用建议追加。这对齐 参考实现中 extension tool 可隐藏但仍可由 runtime/extension 调用的语义。
 - 工具执行失败严格对齐 `reference CLI`：工具抛异常，agent loop 生成 `ToolResultMessage(is_error=True)` 并送回模型；`tools` 不直接把普通执行失败写入 diagnostics。
 - `AgentToolResult.terminate` 是工具执行语义的一部分；event/RPC/print JSON 投影必须保留 `terminate`，便于客户端理解工具批次是否请求终止 agent loop。
-- 工具 renderer callback 属于 tool definition 的展示能力；`renderedToolCall` / `renderedToolResult`
+- 工具 renderer callback 属于 tool definition 的展示能力；`rendered_tool_call` / `rendered_tool_result`
   的 wire 合约属于 event projection / mode 边界，见
   [Loushang Coding Rendered Tool Events](../loushang-coding-rendered-tool-events.md)。
 - 全局 `ToolsOptions.policy_engine` 会传入 bash/read/write/edit/ls/find/grep。默认策略保持 allow；配置

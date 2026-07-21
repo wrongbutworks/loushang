@@ -104,12 +104,10 @@ def test_extension_api_registers_message_renderer() -> None:
 
     api = ExtensionAPI(name="demo", source_path=Path("/tmp/demo.py"))
     api.register_message_renderer("demo.card", _renderer)
-    api.registerMessageRenderer("demo.banner", _renderer)
     loaded = api.build_loaded_extension()
 
     assert loaded.message_renderers == {
         "demo.card": _renderer,
-        "demo.banner": _renderer,
     }
 
 
@@ -422,7 +420,7 @@ def test_extension_api_exports_runtime_binding_types() -> None:
     assert (
         SessionStartEvent(
             reason="new", previous_session_file="/tmp/old.jsonl"
-        ).previousSessionFile
+        ).previous_session_file
         == "/tmp/old.jsonl"
     )
     assert SessionStartEvent().type == "session_start"
@@ -435,7 +433,7 @@ def test_extension_api_exports_runtime_binding_types() -> None:
     assert (
         SessionShutdownEvent(
             reason="resume", target_session_file="/tmp/target.jsonl"
-        ).targetSessionFile
+        ).target_session_file
         == "/tmp/target.jsonl"
     )
     assert SessionShutdownEvent().type == "session_shutdown"
@@ -464,7 +462,7 @@ def test_extension_api_v2_core_types_include_session_control_hooks() -> None:
     assert (
         SessionBeforeSwitchEvent(
             reason="resume", cwd="/tmp/project", target_session_file="/tmp/target.jsonl"
-        ).targetSessionFile
+        ).target_session_file
         == "/tmp/target.jsonl"
     )
     assert (
@@ -476,7 +474,7 @@ def test_extension_api_v2_core_types_include_session_control_hooks() -> None:
         == "entry-1"
     )
     assert (
-        SessionBeforeForkEvent(entry_id="entry-1", cwd="/tmp/project").entryId
+        SessionBeforeForkEvent(entry_id="entry-1", cwd="/tmp/project").entry_id
         == "entry-1"
     )
     assert (
@@ -490,7 +488,7 @@ def test_extension_api_v2_core_types_include_session_control_hooks() -> None:
     assert (
         SessionBeforeCompactEvent(
             reason="manual", cwd="/tmp/project", custom_instructions="keep"
-        ).customInstructions
+        ).custom_instructions
         == "keep"
     )
     assert (
@@ -513,11 +511,11 @@ def test_extension_api_v2_core_types_include_session_control_hooks() -> None:
         custom_instructions="summarize",
         replace_instructions=True,
     )
-    assert tree_event.targetId == "entry-1"
-    assert tree_event.oldLeafId == "entry-2"
-    assert tree_event.newLeafId == "entry-3"
-    assert tree_event.customInstructions == "summarize"
-    assert tree_event.replaceInstructions is True
+    assert tree_event.target_id == "entry-1"
+    assert tree_event.old_leaf_id == "entry-2"
+    assert tree_event.new_leaf_id == "entry-3"
+    assert tree_event.custom_instructions == "summarize"
+    assert tree_event.replace_instructions is True
     assert SessionActionDecision(cancel=True).cancel is True
 
 

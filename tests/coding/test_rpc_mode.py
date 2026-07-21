@@ -19,17 +19,12 @@ from loushang.ai.model.domain import (
     Pricing,
 )
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.session.types import (
-    AgentSessionState,
-    CommandSourceInfo,
-    RunState,
-    SessionCommandDescriptor,
-)
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
     CompactionResult,
     SessionQuery,
 )
+from loushang.harness.commands import CommandSourceInfo, SessionCommandDescriptor
 from loushang.harness.conversation import ConversationRecord
 from loushang.harness.diagnostics import (
     DiagnosticRecord,
@@ -38,12 +33,14 @@ from loushang.harness.diagnostics import (
     ErrorReport,
 )
 from loushang.harness.events import RuntimeEvent
+from loushang.harness.host.types import RunState
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
     SkillDescriptor,
 )
 from loushang.harness.runtime import SessionOperationResult
+from loushang.harness.session.inspection import AgentSessionState
 
 
 def _assistant_message(text: str) -> AssistantMessage:
@@ -946,15 +943,15 @@ def test_rpc_mode_projects_stream_event_shape_and_tool_correlation() -> None:
 
     event = _parse_jsonl(stdout)[0]
     assert event["type"] == "tool_execution_update"
-    assert event["eventType"] == "tool_execution_update"
-    assert event["correlationId"] == "tc1"
+    assert event["event_type"] == "tool_execution_update"
+    assert event["correlation_id"] == "tc1"
     assert event["stream"] == {
         "kind": "session_event",
         "view": "tools",
-        "correlationId": "tc1",
+        "correlation_id": "tc1",
     }
-    assert event["toolCallId"] == "tc1"
-    assert event["toolName"] == "bash"
+    assert event["tool_call_id"] == "tc1"
+    assert event["tool_name"] == "bash"
 
 
 def test_rpc_mode_prefers_common_runtime_event_stream() -> None:
@@ -991,7 +988,7 @@ def test_rpc_mode_prefers_common_runtime_event_stream() -> None:
     assert _parse_jsonl(stdout) == [
         {
             "type": "agent_start",
-            "eventType": "agent_start",
+            "event_type": "agent_start",
             "stream": {"kind": "session_event", "view": "full"},
         }
     ]
@@ -1015,7 +1012,7 @@ def test_rpc_mode_can_include_rendered_tool_event_payloads() -> None:
     def render_result(result, options, theme, context):
         del theme
         return {
-            "text": f"{context.state['command']} {result.content[0].text} partial={options.isPartial}"
+            "text": f"{context.state['command']} {result.content[0].text} partial={options.is_partial}"
         }
 
     definition = ToolDefinition(
@@ -1065,22 +1062,22 @@ def test_rpc_mode_can_include_rendered_tool_event_payloads() -> None:
         )
 
     lines = _parse_jsonl(stdout)
-    assert lines[0]["renderedToolCall"] == {
+    assert lines[0]["rendered_tool_call"] == {
         "type": "text",
         "text": "call echo hi",
-        "plainText": "call echo hi",
-        "contractVersion": 1,
+        "plain_text": "call echo hi",
+        "contract_version": 1,
         "status": "running",
     }
-    assert lines[1]["renderedToolResult"] == {
+    assert lines[1]["rendered_tool_result"] == {
         "type": "text",
         "text": "echo hi running partial=True",
-        "plainText": "echo hi running partial=True",
-        "isPartial": True,
+        "plain_text": "echo hi running partial=True",
+        "is_partial": True,
         "expanded": False,
-        "contractVersion": 1,
+        "contract_version": 1,
         "status": "partial",
-        "collapsedText": "echo hi running partial=True",
+        "collapsed_text": "echo hi running partial=True",
         "artifacts": [],
     }
 
@@ -4987,7 +4984,7 @@ def test_rpc_mode_binds_extension_context_ui_methods_to_rpc_requests(tmp_path) -
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     extension_runner = ExtensionRunner(
         [
@@ -5041,7 +5038,7 @@ def test_rpc_mode_extension_context_excludes_pi_style_camel_case_ui_methods(
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     extension_runner = ExtensionRunner(
         [LoadedExtension(name="rpc-ui", source_path=Path("/tmp/rpc_ui.py"))]
@@ -5081,7 +5078,7 @@ def test_rpc_mode_extension_context_ui_namespace_is_snake_case_only(tmp_path) ->
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     extension_runner = ExtensionRunner(
         [LoadedExtension(name="rpc-ui", source_path=Path("/tmp/rpc_ui.py"))]
@@ -5133,7 +5130,7 @@ def test_rpc_mode_extension_context_excludes_pi_style_headless_ui_methods(
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     extension_runner = ExtensionRunner(
         [LoadedExtension(name="rpc-ui", source_path=Path("/tmp/rpc_ui.py"))]
@@ -5397,7 +5394,7 @@ def test_rpc_mode_rebinds_extension_ui_context_after_session_switch(tmp_path) ->
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     def _session(session_id: str, extension_runner: ExtensionRunner) -> AgentSession:
         return AgentSession(
@@ -5461,7 +5458,7 @@ def test_rpc_mode_emits_extension_error_for_hook_failures(tmp_path) -> None:
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
-    from loushang.coding.store import SessionManager
+    from loushang.coding.session_manager import SessionManager
 
     def _broken_hook(session, ctx):
         del session, ctx

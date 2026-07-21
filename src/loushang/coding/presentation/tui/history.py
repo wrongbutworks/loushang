@@ -10,7 +10,7 @@ from loushang.coding.presentation.tui.tool_transcript import (
     build_coding_tool_transcript_projection,
     tool_block_to_record,
 )
-from loushang.coding.store.session_manager import SessionManager
+from loushang.coding.session_manager import SessionManager
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
     APPLICATION_MESSAGE_KIND,

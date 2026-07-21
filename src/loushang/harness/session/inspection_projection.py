@@ -1,11 +1,9 @@
-"""Coding-specific projections over Harness session inspection values."""
+"""Product-neutral projections over Harness session inspection values."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from loushang.agent import Agent
-from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     AgentTranscriptRecord,
@@ -15,10 +13,10 @@ from loushang.harness.context import serialize_context_usage_payload
 from loushang.harness.session import AgentSessionInspector, ContextUsage
 
 
-def project_pi_session_stats(
+def project_session_stats(
     *,
-    agent: Agent,
-    session_manager: SessionManager,
+    agent: object,
+    session_manager: object,
     context_usage: ContextUsage | None,
 ) -> dict[str, object]:
     """Project common inspection facts into Coding's Pi-compatible payload."""
@@ -66,33 +64,33 @@ def project_pi_session_stats(
             tool_results += 1
     session_file = session_manager.get_session_file()
     return {
-        "sessionFile": str(session_file) if session_file is not None else None,
-        "sessionId": session_manager.get_session_record().session_id,
-        "userMessages": user_messages,
-        "assistantMessages": assistant_messages,
-        "toolCalls": tool_calls,
-        "toolResults": tool_results,
-        "totalMessages": len(messages),
+        "session_file": str(session_file) if session_file is not None else None,
+        "session_id": session_manager.get_session_record().session_id,
+        "user_messages": user_messages,
+        "assistant_messages": assistant_messages,
+        "tool_calls": tool_calls,
+        "tool_results": tool_results,
+        "total_messages": len(messages),
         "tokens": {
             "input": total_input,
             "output": total_output,
-            "cacheRead": total_cache_read,
-            "cacheWrite": total_cache_write,
+            "cache_read": total_cache_read,
+            "cache_write": total_cache_write,
             "total": total_input + total_output + total_cache_read + total_cache_write,
         },
         "cost": total_cost,
-        "contextUsage": serialize_context_usage_payload(context_usage),
-        "latestCompaction": _latest_compaction_payload(session_manager.get_branch()),
+        "context_usage": serialize_context_usage_payload(context_usage),
+        "latest_compaction": _latest_compaction_payload(session_manager.get_branch()),
     }
 
 
-def project_pi_fork_candidates(
+def project_fork_candidates(
     inspector: AgentSessionInspector,
 ) -> list[dict[str, str]]:
     """Project common transcript fork candidates into Coding's wire shape."""
 
     return [
-        {"entryId": message["entry_id"], "text": message["text"]}
+        {"entry_id": message["entry_id"], "text": message["text"]}
         for message in inspector.get_user_messages_for_forking()
     ]
 
@@ -109,13 +107,13 @@ def _latest_compaction_payload(
         details = checkpoint.details if isinstance(checkpoint.details, Mapping) else {}
         plan = details.get("compactionPlan")
         return {
-            "entryId": entry.record_id,
-            "firstKeptEntryId": checkpoint.first_kept_record_id,
-            "tokensBefore": checkpoint.tokens_before,
-            "fromHook": checkpoint.from_hook,
+            "entry_id": entry.record_id,
+            "first_kept_entry_id": checkpoint.first_kept_record_id,
+            "tokens_before": checkpoint.tokens_before,
+            "from_hook": checkpoint.from_hook,
             "plan": dict(plan) if isinstance(plan, Mapping) else None,
         }
     return None
 
 
-__all__ = ["project_pi_fork_candidates", "project_pi_session_stats"]
+__all__ = ["project_fork_candidates", "project_session_stats"]

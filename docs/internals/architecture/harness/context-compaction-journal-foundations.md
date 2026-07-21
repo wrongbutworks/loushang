@@ -99,9 +99,10 @@ different product semantics:
 - `coding.compaction` owns context cut-point planning, recent-token retention,
   a compaction coordinator, summary production, and Coding-specific summary
   quality rules;
-- `coding.store` owns cross-platform file locking, atomic JSONL rewrite,
-  append/load recovery, a parent-linked entry graph, branch selection, fork,
-  and a session index;
+- `harness.agent_transcript` owns cross-platform file locking, atomic JSONL
+  rewrite, append/load recovery, a parent-linked entry graph, branch selection,
+  fork, and a session index; Coding binds it through
+  `coding.session_manager`;
 - `work.event_log` owns another in-memory and JSONL append/query/subscribe
   implementation;
 - before this wave, `loushang.harness.context` owned only budget accounting and
@@ -582,7 +583,8 @@ The initial migration must preserve:
 - invalid entry-line skip behavior;
 - append fsync and atomic rewrite behavior;
 - session id, cwd, parent session, leaf selection, labels, and fork outputs;
-- current `SessionManager` and `coding.store` public imports;
+- the public `loushang.coding.SessionManager` import; the retired
+  `coding.store` package is not preserved;
 - current compaction triggers, cut points, retained messages, summary payloads,
   and public result behavior when Coding selects its compatibility strategy.
 
@@ -733,9 +735,9 @@ final wave merge, but it does not block progress on the other adapters.
 | `coding.compaction.compaction` | common packing/reducer boundary plus opaque-record turn/cut planning | Coding compatibility records, message/token adapters, prompts, AI completion, transcript mapping, and file details |
 | `coding.compaction.service` | single-flight coordinator state, cancellation, and failure lifecycle | Coding invocation and artifact projection adapter |
 | `coding.session.context_usage` | existing Harness budget and usage inputs only | trigger policy, model lookup, and Coding stale-entry interpretation |
-| `coding.store.file_lock` | Harness journal locking | compatibility alias |
-| `coding.store.file_codec` | JSONL framing and atomic IO | SessionHeader/SessionEntry codec |
-| `coding.store.session_manager` | conversation repository/catalog/query, branch/tree/fork/LCA/delta, checkpoint replay, and projection-index mechanics | projection schema/fields, lifecycle, cwd, labels, naming, recovery, and retention |
+| removed `coding.store.file_lock` | Harness journal locking | no Coding alias remains |
+| removed `coding.store.file_codec` | JSONL framing and atomic IO | SessionHeader/SessionEntry codec remains in Harness |
+| `coding.session_manager.SessionManager` | Coding Product runtime binding | projection schema/fields, lifecycle, cwd, labels, naming, recovery, and retention |
 | `work.event_log` | matching JSONL I/O only | Work normalization, in-memory backend, positions, filters, query, replay, subscriptions, records, and public adapters |
 | `coding.message.json_codec` | superseded by `loushang.harness.agent_transcript` for common transcript records | AI owns base codecs, Agent owns extension codec composition, and Products own only domain payload codecs |
 
