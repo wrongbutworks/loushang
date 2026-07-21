@@ -7,11 +7,14 @@ project their own responses and errors.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+from typing import Any
 
 from loushang.ai.types import ImagePart
+from loushang.harness.runtime import SessionOperationResult
 from loushang.harness.session.facade import SessionControlPort
 
 
@@ -79,6 +82,20 @@ class SessionPromptRequest:
             raise TypeError("Session prompt source must be a string.")
 
 
+@dataclass(frozen=True)
+class SessionLifecycleOperationPorts:
+    """Product callbacks for standard session replacement operations."""
+
+    new_session: Callable[
+        [str | None, str | None], Awaitable[SessionOperationResult[Any, Any]]
+    ]
+    restore_session: Callable[[str | Path], Awaitable[SessionOperationResult[Any, Any]]]
+    fork_session: Callable[
+        [str | None, str], Awaitable[SessionOperationResult[Any, Any]]
+    ]
+    clone_session: Callable[[], Awaitable[SessionOperationResult[Any, Any]]] | None = None
+
+
 class SessionOperationRuntime:
     """Execute admitted session control groups through one explicit port.
 
@@ -92,6 +109,7 @@ class SessionOperationRuntime:
         control: SessionControlPort,
         *,
         availability: SessionOperationAvailability | None = None,
+        lifecycle: SessionLifecycleOperationPorts | None = None,
     ) -> None:
         self._control = control
         self._availability = (
@@ -99,6 +117,7 @@ class SessionOperationRuntime:
             if availability is None
             else availability
         )
+        self._lifecycle = lifecycle
 
     @property
     def availability(self) -> SessionOperationAvailability:
@@ -121,6 +140,40 @@ class SessionOperationRuntime:
             prompt_kwargs["images"] = list(request.images)
         await self._control.prompt(request.text, **prompt_kwargs)
         await self._control.wait_for_idle()
+
+    async def new_session(
+        self,
+        *,
+        cwd: str | None = None,
+        parent_session: str | None = None,
+    ) -> SessionOperationResult[Any, Any]:
+        self._require_lifecycle_port()
+        return await self._lifecycle.new_session(cwd, parent_session)
+
+    async def restore_session(
+        self,
+        session_ref: str | Path,
+    ) -> SessionOperationResult[Any, Any]:
+        self._require_lifecycle_port()
+        return await self._lifecycle.restore_session(session_ref)
+
+    async def fork_session(
+        self,
+        entry_id: str | None,
+        *,
+        position: str = "at",
+    ) -> SessionOperationResult[Any, Any]:
+        self._require_lifecycle_port()
+        return await self._lifecycle.fork_session(entry_id, position)
+
+    async def clone_session(self) -> SessionOperationResult[Any, Any]:
+        """Create an independent session at the current product position."""
+        self._require_lifecycle_port()
+        if self._lifecycle.clone_session is None:
+            raise SessionOperationUnavailableError(
+                "Session clone operation is unavailable"
+            )
+        return await self._lifecycle.clone_session()
 
     def steer(self, text: str, *, images: Iterable[ImagePart] = ()) -> None:
         self._require(SessionOperationCapability.INPUT)
@@ -220,11 +273,19 @@ class SessionOperationRuntime:
     def _require(self, capability: SessionOperationCapability) -> None:
         self._availability.require(capability)
 
+    def _require_lifecycle_port(self) -> None:
+        self._require(SessionOperationCapability.LIFECYCLE)
+        if self._lifecycle is None:
+            raise SessionOperationUnavailableError(
+                "Session lifecycle operation ports are not bound"
+            )
+
 
 __all__ = [
     "SessionOperationAvailability",
     "SessionOperationCapability",
     "SessionOperationRuntime",
     "SessionOperationUnavailableError",
+    "SessionLifecycleOperationPorts",
     "SessionPromptRequest",
 ]

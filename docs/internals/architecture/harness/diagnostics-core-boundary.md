@@ -64,8 +64,9 @@ phase, source, level, and correlation values.
 The generic Coding diagnostic facade is removed. Product and extension code
 imports records, query values, and `DiagnosticsService` from the canonical
 owners in `loushang.harness.diagnostics`; Coding retains only
-`coding.diagnostics.serialization` and `coding.diagnostics.problem_bridge` as
-its product projections.
+`coding.diagnostics.serialization` and an observability source-classification
+resolver as its product projections. Coding's source-classification resolver
+remains Product-owned.
 
 Harness diagnostic symbols are public from the focused
 `loushang.harness.diagnostics` subpackage, but are not promoted to top-level
@@ -77,7 +78,8 @@ directly.
 This migration does not move or redesign:
 
 - `coding.diagnostics.serialization` and its camelCase RPC/SDK payload shape;
-- `coding.diagnostics.problem_bridge` and observability-source mapping;
+- Coding's observability-source classification, including its `config` to
+  `model` policy;
 - bootstrap, resource, provider, model, extension, session, policy, exec, or
   tool checks;
 - diagnostic emission timing or product severity choices;
@@ -95,14 +97,18 @@ The target direction is:
 
 ```text
 coding checks / sessions / tools / runtime -> loushang.harness.diagnostics.service
-coding serializers / problem bridge       -> loushang.harness.diagnostics.types
+coding serializers                           -> loushang.harness.diagnostics.types
+coding observability policy                  -> loushang.harness.diagnostics.observability_bridge
+loushang.harness.diagnostics.observability_bridge -> loushang.observability
 loushang.harness.diagnostics.service       -> loushang.harness.resources.diagnostics
 ```
 
-Harness diagnostics must not import coding, method, work, TUI, AI, agent
-runtime, provider, observability, or product packages. No diagnostic symbols
-are added to top-level `loushang.harness.__all__`; the focused diagnostics
-subpackage is the canonical public owner.
+The diagnostics core (`types` and `service`) must not import coding, method,
+work, TUI, AI, agent runtime, provider, observability, or product packages.
+`loushang.harness.diagnostics.observability_bridge` is an optional adapter:
+it may import observability but must not import a Product. No diagnostic
+symbols are added to top-level `loushang.harness.__all__`; the focused
+diagnostics subpackage is the canonical public owner.
 
 ## Migration Result
 

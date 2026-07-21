@@ -67,26 +67,3 @@ def test_tool_artifact_paths_for_protocol_dedupes_projected_paths() -> None:
     )
 
     assert paths == ["/tmp/full.log", "/tmp/stdout.log", "/tmp/stderr.log"]
-
-
-def test_bash_result_protocol_projection_and_normalization_are_boundary_only() -> None:
-    from loushang.harness.tools.workspace.protocol import (
-        normalize_bash_result_from_protocol,
-        project_bash_result_for_protocol,
-    )
-
-    result = {
-        "output": "hi\n",
-        "exit_code": 0,
-        "cancelled": False,
-        "truncated": False,
-        "full_output_path": "/tmp/out.log",
-    }
-
-    projected = project_bash_result_for_protocol(result)
-
-    assert projected["exitCode"] == 0
-    assert projected["fullOutputPath"] == "/tmp/out.log"
-    assert "exitCode" not in result
-    assert "fullOutputPath" not in result
-    assert normalize_bash_result_from_protocol(projected) == result

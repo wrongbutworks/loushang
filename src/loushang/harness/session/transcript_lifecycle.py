@@ -10,20 +10,169 @@ from __future__ import annotations
 
 import errno
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from inspect import isawaitable
 from pathlib import Path
 from typing import Generic, TypeVar
 
 from loushang.harness.agent_transcript.directory import (
     AgentTranscriptDirectoryRuntime,
 )
+from loushang.harness.diagnostics.types import (
+    DiagnosticRecord,
+    DiagnosticsQuery,
+    DiagnosticSummary,
+    ErrorReport,
+)
 from loushang.harness.runtime import SessionOperationResult
-from loushang.harness.session.lifecycle import MissingCwdPolicy, SessionLifecycleRuntime
+from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
+from loushang.harness.session.lifecycle import (
+    MissingCwdPolicy,
+    SessionLifecycleRuntime,
+    SessionLifecycleTransition,
+)
 
 SessionT = TypeVar("SessionT")
 PayloadT = TypeVar("PayloadT")
+TranscriptSessionT = TypeVar("TranscriptSessionT")
+ValueT = TypeVar("ValueT")
 
 SessionCallback = Callable[[SessionT], Awaitable[None] | None]
 LifecycleCallback = Callable[[], Awaitable[None] | None]
+SessionDiagnosticsProvider = Callable[[object | None], SessionDiagnosticsRuntime]
+TranscriptSessionBuilder = Callable[
+    [TranscriptSessionT, SessionT | None, SessionLifecycleTransition],
+    SessionT | Awaitable[SessionT],
+]
+TranscriptSessionValidator = Callable[[TranscriptSessionT], None | Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class ProductTranscriptSessionLifecyclePorts(Generic[TranscriptSessionT, SessionT]):
+    """Product transcript storage operations used by the lifecycle store.
+
+    The ports deliberately deal in a Product's transcript-session type rather
+    than Agent or provider types. The generic store joins those transcript
+    operations to ``SessionLifecycleRuntime`` and releases a transcript if the
+    Product runtime session cannot be built.
+    """
+
+    create_transcript: Callable[
+        [str, str | None], Awaitable[TranscriptSessionT] | TranscriptSessionT
+    ]
+    restore_transcript: Callable[
+        [str | Path, str | None], Awaitable[TranscriptSessionT] | TranscriptSessionT
+    ]
+    fork_transcript: Callable[
+        [TranscriptSessionT, str | None],
+        Awaitable[TranscriptSessionT] | TranscriptSessionT,
+    ]
+    dispose_transcript: Callable[[TranscriptSessionT], Awaitable[None] | None]
+    transcript_for_session: Callable[[SessionT], TranscriptSessionT]
+    transcript_cwd: Callable[[TranscriptSessionT], str]
+    transcript_session_ref: Callable[[TranscriptSessionT], str | None]
+    transcript_leaf_entry_id: Callable[[TranscriptSessionT], str | None]
+
+
+class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, SessionT]):
+    """Adapt Product transcript sessions to the common lifecycle store port.
+
+    A Product supplies transcript persistence and runtime-session construction.
+    This class owns the common create, restore, fork, association, and failed
+    construction cleanup path without selecting a transcript format, store, or
+    Product runtime.
+    """
+
+    def __init__(
+        self,
+        *,
+        ports: ProductTranscriptSessionLifecyclePorts[TranscriptSessionT, SessionT],
+        build_session: TranscriptSessionBuilder[TranscriptSessionT, SessionT],
+        validate_restored_transcript: TranscriptSessionValidator[TranscriptSessionT]
+        | None = None,
+    ) -> None:
+        self._ports = ports
+        self._build_session = build_session
+        self._validate_restored_transcript = validate_restored_transcript
+        self._transcripts_by_session_id: dict[int, TranscriptSessionT] = {}
+
+    async def create(
+        self,
+        current_session: SessionT | None,
+        transition: SessionLifecycleTransition,
+        *,
+        cwd: str,
+        parent_session_ref: str | None,
+    ) -> SessionT:
+        transcript = await _maybe_await(
+            self._ports.create_transcript(cwd, parent_session_ref)
+        )
+        return await self._build_or_dispose(transcript, current_session, transition)
+
+    async def restore(
+        self,
+        current_session: SessionT | None,
+        transition: SessionLifecycleTransition,
+        session_ref: str | Path,
+        *,
+        cwd_override: str | None = None,
+    ) -> SessionT:
+        transcript = await _maybe_await(
+            self._ports.restore_transcript(session_ref, cwd_override)
+        )
+        try:
+            if self._validate_restored_transcript is not None:
+                await _maybe_await(self._validate_restored_transcript(transcript))
+        except BaseException:
+            await _maybe_await(self._ports.dispose_transcript(transcript))
+            raise
+        return await self._build_or_dispose(transcript, current_session, transition)
+
+    async def fork(
+        self,
+        session: SessionT,
+        transition: SessionLifecycleTransition,
+        target_entry_id: str | None,
+    ) -> SessionT:
+        transcript = await _maybe_await(
+            self._ports.fork_transcript(
+                self._transcript_for_session(session), target_entry_id
+            )
+        )
+        return await self._build_or_dispose(transcript, session, transition)
+
+    def get_cwd(self, session: SessionT) -> str:
+        return self._ports.transcript_cwd(self._transcript_for_session(session))
+
+    def get_session_ref(self, session: SessionT) -> str | None:
+        return self._ports.transcript_session_ref(self._transcript_for_session(session))
+
+    def get_leaf_entry_id(self, session: SessionT) -> str | None:
+        return self._ports.transcript_leaf_entry_id(
+            self._transcript_for_session(session)
+        )
+
+    async def _build_or_dispose(
+        self,
+        transcript: TranscriptSessionT,
+        current_session: SessionT | None,
+        transition: SessionLifecycleTransition,
+    ) -> SessionT:
+        try:
+            session = await _maybe_await(
+                self._build_session(transcript, current_session, transition)
+            )
+        except BaseException:
+            await _maybe_await(self._ports.dispose_transcript(transcript))
+            raise
+        self._transcripts_by_session_id[id(session)] = transcript
+        return session
+
+    def _transcript_for_session(self, session: SessionT) -> TranscriptSessionT:
+        try:
+            return self._transcripts_by_session_id[id(session)]
+        except KeyError:
+            return self._ports.transcript_for_session(session)
 
 
 class AgentTranscriptSessionRuntime(
@@ -47,6 +196,7 @@ class AgentTranscriptSessionRuntime(
         session_index_refresh_interval: float = 0.5,
         session_index_flush_delay: float = 0.25,
         record_index_refresh_failure: Callable[[Exception, bool], None] | None = None,
+        diagnostics_runtime: SessionDiagnosticsProvider | None = None,
     ) -> None:
         super().__init__(
             session_dir=session_dir,
@@ -56,6 +206,7 @@ class AgentTranscriptSessionRuntime(
             record_index_refresh_failure=record_index_refresh_failure,
         )
         self._lifecycle = lifecycle
+        self._diagnostics_runtime = diagnostics_runtime
 
     @property
     def lifecycle(self) -> SessionLifecycleRuntime[SessionT, PayloadT]:
@@ -170,6 +321,51 @@ class AgentTranscriptSessionRuntime(
     def get_current_session(self) -> SessionT | None:
         return self.current_session
 
+    def _session_diagnostics(self) -> SessionDiagnosticsRuntime | None:
+        if self._diagnostics_runtime is None:
+            return None
+        return self._diagnostics_runtime(self.current_session)
+
+    def get_last_diagnostics(self, limit: int = 50) -> list[DiagnosticRecord]:
+        runtime = self._session_diagnostics()
+        return runtime.get_last_diagnostics(limit=limit) if runtime else []
+
+    def get_diagnostics(
+        self, query: DiagnosticsQuery | None = None
+    ) -> list[DiagnosticRecord]:
+        runtime = self._session_diagnostics()
+        return runtime.get_diagnostics(query=query) if runtime else []
+
+    def get_session_diagnostics(
+        self, query: DiagnosticsQuery | None = None
+    ) -> list[DiagnosticRecord]:
+        runtime = self._session_diagnostics()
+        return runtime.get_session_diagnostics(query=query) if runtime else []
+
+    def get_diagnostics_summary(
+        self, query: DiagnosticsQuery | None = None
+    ) -> DiagnosticSummary:
+        runtime = self._session_diagnostics()
+        return (
+            runtime.get_diagnostics_summary(query=query)
+            if runtime
+            else DiagnosticSummary(0, 0, 0, 0)
+        )
+
+    def get_session_diagnostics_summary(
+        self, query: DiagnosticsQuery | None = None
+    ) -> DiagnosticSummary:
+        runtime = self._session_diagnostics()
+        return (
+            runtime.get_session_diagnostics_summary(query=query)
+            if runtime
+            else DiagnosticSummary(0, 0, 0, 0)
+        )
+
+    def get_last_error_report(self) -> ErrorReport | None:
+        runtime = self._session_diagnostics()
+        return runtime.get_last_error_report() if runtime else None
+
     def resolve_session_file(self, session_ref: str | Path) -> Path:
         """Resolve an exact path, filename, or unambiguous current-session id."""
 
@@ -210,7 +406,16 @@ def require_session_operation_session(
     return result.current
 
 
+async def _maybe_await(value: ValueT | Awaitable[ValueT]) -> ValueT:
+    if isawaitable(value):
+        return await value
+    return value
+
+
 __all__ = [
     "AgentTranscriptSessionRuntime",
+    "ProductTranscriptSessionLifecyclePorts",
+    "ProductTranscriptSessionLifecycleStore",
     "require_session_operation_session",
+    "SessionDiagnosticsProvider",
 ]

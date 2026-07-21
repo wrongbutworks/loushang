@@ -23,6 +23,17 @@ planning, work event persistence, or AI provider behavior.
 - [Coding To Harness Migration Inventory](coding-to-harness-migration-inventory.md)
   records how the current `loushang.coding` modules should be classified before
   implementation moves code.
+- [Coding To Shared-Layer Migration Plan](coding-shared-layer-migration-plan.md)
+  records the accepted long-term owner map, Agent/AI dependency policy,
+  mandatory rebaseline ledger, revised six delivery waves, and closure gates
+  for turning Coding into a declarative Product adapter.
+- [Coding Shared-Layer Migration Ledger](coding-shared-layer-migration-ledger.md)
+  records the concrete source-to-owner cutover scope for each delivery wave.
+- [Coding Shared-Layer Owner Rebaseline](coding-shared-layer-owner-rebaseline.md)
+  records shared owners, actual Coding adapters and kernels, and the source
+  boundary required before a further migration wave can claim LOC.
+- [Diagnostics Export Boundary](diagnostics-export-boundary.md) defines the
+  reusable archive, structural redaction, and product projection contract.
 - [Slice 1 Closure Status](slice-1-status.md) records the approval, tools-core,
   contribution, and presentation substrate that has landed on `lane/harness`,
   plus deferred runtime and product-adapter work.
@@ -118,6 +129,14 @@ planning, work event persistence, or AI provider behavior.
   defines live tool activation, dynamic command composition and dispatch, and
   selected command-tool execution while Products retain policy, command
   implementations, extension semantics, prompts, and presentation.
+- [Standard Session Command Pack Boundary](session-command-pack-boundary.md)
+  defines the shared parsing and callback delegation for selected session
+  commands while Products retain descriptor order, wording, result projection,
+  local commands, and UI/transport behavior.
+- [Session RPC Operation Cutover Boundary](session-rpc-operation-boundary.md)
+- [Session Interaction And Command Collapse Boundary](session-interaction-command-collapse-boundary.md)
+  defines how Channel command routing and Harness session operations replace
+  Coding RPC glue without changing Coding's public JSONL contract.
 - [Session Facade Boundary](session-facade-boundary.md) defines the common
   Product-facing operation surface over already-bound session runtimes while
   Products retain model/auth, prompts, extension protocols, lifecycle policy,
@@ -229,7 +248,7 @@ dependencies. The exact allowlists are recorded in the
 [Agent Transcript Profile Boundary](agent-transcript-profile-boundary.md) and
 [Session Runtime Core](product-runtime-injection/components/session-runtime-core.md).
 
-Harness must not import:
+Neutral Harness core packages must not import:
 
 - `loushang.coding`
 - `loushang.design`
@@ -239,8 +258,13 @@ Harness must not import:
 - `loushang.method`
 - `loushang.work`
 - `loushang.tui`
-- `loushang.ai`, except the explicitly allowlisted data and codec modules used
-  by optional Agent transcript and Session profiles
+
+Agent/AI integration packages may import stable public `loushang.agent` and
+`loushang.ai` capabilities when their documented contract requires it. They do
+not own provider registration, credentials, default model policy, or
+provider-specific behavior, and Agent/AI packages must not reverse-depend on
+Harness. The exact per-package allowance belongs in that package's boundary
+document and import test.
 
 If a harness contract needs to refer to method, work, channel, UI, or product
 state, it should carry opaque ids, neutral metadata, or protocol-shaped values.

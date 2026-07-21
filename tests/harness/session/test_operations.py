@@ -4,7 +4,9 @@ import asyncio
 
 import pytest
 
+from loushang.harness.runtime import SessionOperationResult
 from loushang.harness.session import (
+    SessionLifecycleOperationPorts,
     SessionOperationAvailability,
     SessionOperationCapability,
     SessionOperationRuntime,
@@ -98,6 +100,27 @@ class _Control:
         return lambda: None
 
 
+class _Lifecycle:
+    def __init__(self) -> None:
+        self.calls: list[tuple[object, ...]] = []
+
+    async def new_session(self, cwd, parent_session):
+        self.calls.append(("new", cwd, parent_session))
+        return SessionOperationResult(None, "new", None, False)
+
+    async def restore_session(self, session_ref):
+        self.calls.append(("restore", session_ref))
+        return SessionOperationResult("old", "restored", None, True)
+
+    async def fork_session(self, entry_id, position):
+        self.calls.append(("fork", entry_id, position))
+        return SessionOperationResult("old", "forked", "text", False)
+
+    async def clone_session(self):
+        self.calls.append(("clone",))
+        return SessionOperationResult("clone", "cloned", None, False)
+
+
 def test_session_operation_runtime_runs_input_and_maintenance_through_control() -> None:
     async def scenario() -> None:
         control = _Control()
@@ -148,6 +171,35 @@ def test_session_operation_runtime_runs_input_and_maintenance_through_control() 
         assert control.auto_compaction_enabled is False
         assert control.compact_requests == ["retain decisions"]
         assert control.compaction_aborted is True
+
+    asyncio.run(scenario())
+
+
+def test_session_operation_runtime_routes_lifecycle_through_product_ports() -> None:
+    async def scenario() -> None:
+        lifecycle = _Lifecycle()
+        runtime = SessionOperationRuntime(
+            _Control(),
+            lifecycle=SessionLifecycleOperationPorts(
+                new_session=lifecycle.new_session,
+                restore_session=lifecycle.restore_session,
+                fork_session=lifecycle.fork_session,
+                clone_session=lifecycle.clone_session,
+            ),
+        )
+
+        assert (
+            await runtime.new_session(cwd="/project", parent_session="parent")
+        ).current == "new"
+        assert (await runtime.restore_session("saved.jsonl")).current == "restored"
+        assert (await runtime.fork_session("leaf", position="before")).payload == "text"
+        assert (await runtime.clone_session()).current == "cloned"
+        assert lifecycle.calls == [
+            ("new", "/project", "parent"),
+            ("restore", "saved.jsonl"),
+            ("fork", "leaf", "before"),
+            ("clone",),
+        ]
 
     asyncio.run(scenario())
 

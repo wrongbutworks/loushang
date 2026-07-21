@@ -3,11 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from loushang.ai.model import ModelSelection
-from loushang.coding.commands import CommandSourceInfo, SessionCommandDescriptor
-from loushang.harness.agent_transcript import CompactionDecision, ContextUsageSnapshot
+from loushang.harness.agent_transcript import (
+    CompactionDecision,
+    ContextUsageSnapshot,
+)
 from loushang.harness.agent_transcript import (
     TranscriptNavigationResult as TreeNavigationResult,
 )
+from loushang.harness.commands import CommandSourceInfo, SessionCommandDescriptor
 from loushang.harness.host.types import RunState as RunState
 from loushang.harness.session.inspection import (
     AgentSessionState,

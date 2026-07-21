@@ -1,5 +1,4 @@
 from loushang.coding.extensions.api import ExtensionAPI
-from loushang.coding.extensions.hooks import HookDispatcher, HookKind
 from loushang.coding.extensions.loader import ExtensionLoader
 from loushang.coding.extensions.policy import (
     ExtensionPolicyDecision,
@@ -84,8 +83,6 @@ __all__ = [
     "ExtensionInventory",
     "ExtensionSurfaceDescriptor",
     "ExtensionSurfaceType",
-    "HookDispatcher",
-    "HookKind",
     "InputEvent",
     "InputEventResult",
     "InputSource",

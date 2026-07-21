@@ -7,7 +7,9 @@ from types import SimpleNamespace
 from loushang.ai.types import AssistantMessage, TextPart, Usage
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticsQuery
+from loushang.harness.extensions.types import ResolvedCommand
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.source import SourceInfo
 from loushang.harness.session import (
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
@@ -20,6 +22,15 @@ class _ExtensionDiagnostics:
 
     def get_diagnostics(self) -> list[ResourceDiagnostic]:
         return list(self.diagnostics)
+
+
+async def _async_handler(_args: str, _context: object) -> None:
+    return None
+
+
+def _source_info(path: str) -> SourceInfo[Path]:
+    source_path = Path(path)
+    return SourceInfo(path=source_path, base_dir=source_path.parent)
 
 
 def _runtime(
@@ -134,6 +145,36 @@ def test_session_diagnostics_records_agent_and_policy_tool_failures() -> None:
     assert records[2].details["tool_call_id"] == "tc-policy-1"
     assert records[3].type == "warning"
     assert records[3].details["path"] == "/tmp/project/blocked.txt"
+
+
+def test_session_diagnostics_records_standard_command_failures() -> None:
+    diagnostics = DiagnosticsService()
+    runtime = _runtime(diagnostics)
+    command = ResolvedCommand(
+        name="deploy",
+        handler=_async_handler,
+        invocation_name="deploy",
+        extension_name="deploy-ext",
+        source_info=_source_info("/tmp/project/extensions/deploy.py"),
+    )
+
+    runtime.record_command_not_found("missing", "args")
+    runtime.record_preflight_diagnostics(
+        (ResourceDiagnostic(code="unresolved_prompt_reference", message="missing"),)
+    )
+    runtime.record_extension_command_error(command=command, exc=RuntimeError("boom"))
+
+    records = diagnostics.get_diagnostics()
+    assert [record.code for record in records] == [
+        "command_not_found",
+        "unresolved_prompt_reference",
+        "extension_command_failed",
+    ]
+    assert {record.session_id for record in records} == {"session-1"}
+    assert records[0].type == "warning"
+    assert records[2].source == "extensions"
+    assert records[2].source_path == Path("/tmp/project/extensions/deploy.py")
+    assert records[2].details["extension_name"] == "deploy-ext"
 
 
 def test_session_diagnostics_uses_tool_event_projection_and_rejects_unsafe_details() -> (

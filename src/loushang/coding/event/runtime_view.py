@@ -11,15 +11,13 @@ from loushang.coding.event.projection import (
     _expand_patterns,
     project_session_event,
 )
-from loushang.coding.event.runtime_projection import (
-    project_runtime_event_to_session_event,
-)
 from loushang.harness.events import (
     RuntimeEvent,
     RuntimeEventDeliveryHint,
     RuntimeEventView,
     matches_event_select,
     project_runtime_event,
+    project_session_runtime_event,
 )
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 
@@ -38,7 +36,7 @@ def project_runtime_event_to_json_views(
     enrichment.  Harness owns the resulting transport-safe envelope.
     """
 
-    session_event = project_runtime_event_to_session_event(event)
+    session_event = project_session_runtime_event(event)
     if session_event is None:
         return ()
     views: list[RuntimeEventView] = []

@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import json
 import platform
-import re
 import sys
-import zipfile
 from collections.abc import Callable
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError
@@ -13,6 +10,10 @@ from pathlib import Path
 from typing import Any
 
 from loushang.coding.diagnostics.serialization import serialize_diagnostic
+from loushang.harness.diagnostics.export import (
+    DiagnosticExportArtifact,
+    export_diagnostics_archive,
+)
 
 DEFAULT_DIAGNOSTICS_LIMIT = 50
 
@@ -33,13 +34,22 @@ def export_diagnostics_bundle(
     bundle_path = _resolve_output_path(root, output, generated_at)
     diagnostics = _collect_diagnostics(diagnostics_service)
 
-    debug_latest = _default_debug_latest() if debug_latest_path is None else Path(debug_latest_path).expanduser()
-    trace_latest = _default_trace_latest() if trace_latest_path is None else Path(trace_latest_path).expanduser()
+    debug_latest = (
+        _default_debug_latest()
+        if debug_latest_path is None
+        else Path(debug_latest_path).expanduser()
+    )
+    trace_latest = (
+        _default_trace_latest()
+        if trace_latest_path is None
+        else Path(trace_latest_path).expanduser()
+    )
     session_latest = sessions / "latest.jsonl"
 
-    bundle_path.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        manifest = _manifest(
+    return export_diagnostics_archive(
+        output_path=bundle_path,
+        readme=_readme(),
+        manifest=_manifest(
             project_root=root,
             session_dir=sessions,
             generated_at=generated_at,
@@ -47,17 +57,19 @@ def export_diagnostics_bundle(
             trace_latest=trace_latest,
             session_latest=session_latest,
             diagnostics=diagnostics,
-        )
-        archive.writestr("README.txt", _readme())
-        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-        archive.writestr("diagnostics.json", json.dumps(diagnostics, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-        _write_latest_file(archive, "debug/latest.log", debug_latest)
-        _write_latest_file(archive, "traces/latest.jsonl", trace_latest)
-        _write_latest_file(archive, "sessions/latest.jsonl", session_latest)
-    return bundle_path
+        ),
+        diagnostics=diagnostics,
+        artifacts=(
+            DiagnosticExportArtifact("debug/latest.log", debug_latest),
+            DiagnosticExportArtifact("traces/latest.jsonl", trace_latest),
+            DiagnosticExportArtifact("sessions/latest.jsonl", session_latest),
+        ),
+    )
 
 
-def _resolve_output_path(root: Path, output: str | Path | None, generated_at: datetime) -> Path:
+def _resolve_output_path(
+    root: Path, output: str | Path | None, generated_at: datetime
+) -> Path:
     if output is not None:
         return Path(output).expanduser().resolve()
     timestamp = generated_at.strftime("%Y%m%dT%H%M%SZ")
@@ -76,7 +88,9 @@ def _manifest(
 ) -> dict[str, object]:
     return {
         "schemaVersion": 1,
-        "generatedAt": generated_at.isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "generatedAt": generated_at.isoformat(timespec="seconds").replace(
+            "+00:00", "Z"
+        ),
         "cwd": str(project_root),
         "sessionDir": str(session_dir),
         "python": sys.version.split()[0],
@@ -108,35 +122,10 @@ def _collect_diagnostics(diagnostics_service: Any | None) -> list[dict[str, obje
         try:
             normalized.append(serialize_diagnostic(record))
         except Exception:
-            normalized.append({"repr": repr(record)})
+            # Diagnostics archives are shareable artifacts. Never serialize an
+            # arbitrary record representation after the product projection fails.
+            continue
     return normalized
-
-
-def _write_latest_file(archive: zipfile.ZipFile, arcname: str, path: Path) -> None:
-    if not _path_exists(path):
-        return
-    try:
-        content = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return
-    archive.writestr(arcname, _redact_text(content))
-
-
-def _redact_text(content: str) -> str:
-    redacted = content
-    for pattern, replacement in _REDACTION_PATTERNS:
-        redacted = pattern.sub(replacement, redacted)
-    return redacted
-
-
-_REDACTION_PATTERNS = (
-    (re.compile(r"(?i)(authorization\s*[:=]\s*bearer\s+)[^\s,;}\"']+"), r"\1[REDACTED]"),
-    (re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+"), r"\1[REDACTED]"),
-    (
-        re.compile(r"(?i)(\"?(?:api[_-]?key|token|secret)\"?\s*[:=]\s*\"?)[^\",\s}]+(\"?)"),
-        r"\1[REDACTED]\2",
-    ),
-)
 
 
 def _path_exists(path: Path) -> bool:

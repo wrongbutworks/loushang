@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_executable_source_identity_projects_stable_runtime_details(monkeypatch, tmp_path) -> None:
+def test_executable_source_identity_projects_stable_runtime_details(
+    monkeypatch, tmp_path
+) -> None:
     import sys
 
     from loushang.coding.source_info import executable_source_identity
@@ -29,11 +31,18 @@ def test_executable_source_identity_projects_stable_runtime_details(monkeypatch,
     assert "virtual_env" in details
     assert isinstance(details["sys_prefix"], str)
     assert isinstance(details["sys_base_prefix"], str)
-    assert details["import_source"] in {"editable", "installed", "source-tree", "unknown"}
+    assert details["import_source"] in {
+        "editable",
+        "installed",
+        "source-tree",
+        "unknown",
+    }
     assert details["install_mode"] in {"editable", "source-tree", "package", "unknown"}
 
 
-def test_executable_source_identity_marks_path_candidates_active_and_shadowed(tmp_path) -> None:
+def test_executable_source_identity_marks_path_candidates_active_and_shadowed(
+    tmp_path,
+) -> None:
     from loushang.coding.source_info import executable_source_identity
 
     first_bin = tmp_path / "first" / "bin"
@@ -72,7 +81,7 @@ def test_executable_source_identity_gracefully_degrades_outside_git(tmp_path) ->
 
 
 def test_source_info_from_resource_descriptor_projects_package_provenance() -> None:
-    from loushang.coding.source_info import source_info_from_resource_descriptor
+    from loushang.harness.resources.source import source_info_from_resource_descriptor
     from loushang.harness.resources.types import PromptFragmentDescriptor
 
     descriptor = PromptFragmentDescriptor(
@@ -94,8 +103,10 @@ def test_source_info_from_resource_descriptor_projects_package_provenance() -> N
     assert info.base_dir == "/tmp/plugin/prompts"
 
 
-def test_source_info_from_resource_descriptor_projects_project_local_provenance() -> None:
-    from loushang.coding.source_info import source_info_from_resource_descriptor
+def test_source_info_from_resource_descriptor_projects_project_local_provenance() -> (
+    None
+):
+    from loushang.harness.resources.source import source_info_from_resource_descriptor
     from loushang.harness.resources.types import SkillDescriptor
 
     descriptor = SkillDescriptor(

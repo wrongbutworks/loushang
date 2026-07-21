@@ -273,7 +273,7 @@ def test_agent_session_exposes_compaction_service_surface(
     )
 
     assert session.get_compaction_status().is_compacting is False
-    result = asyncio.run(session.compact_session(custom_instructions="preserve tasks"))
+    result = asyncio.run(session.compact(custom_instructions="preserve tasks"))
 
     assert result.summary == "public surface summary"
     assert result.first_kept_entry_id == assistant_id

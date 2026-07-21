@@ -31,7 +31,6 @@ from loushang.coding.control import (
 )
 from loushang.coding.event import (
     AgentSessionEvent,
-    project_runtime_event_to_session_event,
 )
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
@@ -55,14 +54,14 @@ from loushang.coding.session.export import (
     export_session_to_html,
     export_session_to_jsonl,
 )
+from loushang.coding.session.extension_input_adapter import (
+    CodingExtensionInputAdapter,
+)
 from loushang.coding.session.extension_provider_controller import (
-    ExtensionProviderController,
+    provider_from_extension_config,
 )
 from loushang.coding.session.extension_replacement_controller import (
     ExtensionReplacementController,
-)
-from loushang.coding.session.extension_runtime_bindings import (
-    ExtensionRuntimeBindingFactory,
 )
 from loushang.coding.session.package_controller import PackageController
 from loushang.coding.session.session_settings_controller import (
@@ -72,7 +71,6 @@ from loushang.coding.session.tool_controller import ToolController
 from loushang.coding.session.types import (
     CommandExecutionResult,
 )
-from loushang.coding.session.usage_payload import serialize_context_usage_payload
 from loushang.coding.store import SessionManager
 from loushang.harness.agent_transcript import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
@@ -99,19 +97,21 @@ from loushang.harness.capabilities import (
     CapabilityCompositionRuntime,
     bind_capability_composition_runtime,
 )
+from loushang.harness.context import serialize_context_usage_payload
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.diagnostics.types import (
-    DiagnosticRecord,
-    DiagnosticsQuery,
-    DiagnosticSummary,
-    ErrorReport,
-)
 from loushang.harness.events import (
     CompactionReason,
     ConversationMetadataChanged,
     PackageProgressChanged,
     RuntimeEvent,
     SessionRuntimeEventPayload,
+    project_session_runtime_event,
+)
+from loushang.harness.extensions import ExtensionProviderRuntime
+from loushang.harness.extensions.agent import (
+    ExtensionAgentEventRuntime,
+    ExtensionAgentHookRuntime,
+    ExtensionInputRuntime,
 )
 from loushang.harness.extensions.context import (
     ReplacedSessionContext,
@@ -120,21 +120,18 @@ from loushang.harness.extensions.context import (
     SessionShutdownEvent,
     SessionStartEvent,
 )
+from loushang.harness.extensions.runtime_bindings import ExtensionRuntimeBindingFactory
 from loushang.harness.extensions.session_runtime import ExtensionSessionRuntime
 from loushang.harness.host.retry import RetryPolicy
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.packages.materializer import PackageProgressEvent
 from loushang.harness.resources.types import (
-    PromptFragmentDescriptor,
     ResourceBundle,
 )
 from loushang.harness.resources.watcher import ResourceChangeWatcher
 from loushang.harness.runtime import CancellationSignal
 from loushang.harness.session import (
     AfterTurnPolicyPort,
-    ExtensionAgentEventRuntime,
-    ExtensionAgentHookRuntime,
-    ExtensionInputRuntime,
     SessionControlPort,
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
@@ -155,6 +152,8 @@ from loushang.harness.workspace.exec import (
 )
 
 SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]
+# The former Coding-named projection is now implemented by Harness.
+# project_runtime_event_to_session_event remains an external migration label.
 RuntimeEventListener = Callable[[RuntimeEvent[object]], Awaitable[None] | None]
 
 
@@ -354,6 +353,7 @@ class AgentSession(SessionFacade):
             get_extension_runner=lambda: self._extension_runner,
             get_resource_bundle=lambda: self.resource_bundle,
             get_diagnostics_service=lambda: self.diagnostics_service,
+            diagnostics_runtime=self._diagnostics_bridge,
             builtin_backend=BuiltinCommandBackend(
                 get_session_info=self._get_builtin_session_info,
                 set_session_name=self.set_session_name,
@@ -446,15 +446,19 @@ class AgentSession(SessionFacade):
                 check_auto_compaction=self._check_auto_compaction,
             ),
         )
-        self._extension_message_controller = ExtensionInputRuntime(
-            agent=self.agent,
-            queue_controller=self._session_runtime.queue,
+        self._extension_input_runtime = ExtensionInputRuntime(
             application_inputs=self._session_runtime.application_inputs,
+            prepared_user_inputs=self._session_runtime.queue,
             run_prompt=self._session_runtime.run_agent_prompt,
         )
-        self._extension_provider_controller = ExtensionProviderController(
+        self._extension_message_controller = CodingExtensionInputAdapter(
+            agent=self.agent,
+            runtime=self._extension_input_runtime,
+        )
+        self._extension_provider_controller = ExtensionProviderRuntime(
             model_registry=self.model_registry,
             api_provider_registry=self.api_provider_registry,
+            provider_factory=provider_from_extension_config,
         )
         self._extension_replacement_controller = ExtensionReplacementController(
             get_runtime_host=lambda: self._extension_runtime_host,
@@ -555,6 +559,8 @@ class AgentSession(SessionFacade):
             identity=self,
             maintenance=self,
             resources=self._resource_refresh_runtime,
+            diagnostics=self._diagnostics_bridge,
+            packages=self._package_controller,
         )
         session_context = self.session_manager.build_session_context()
         self._apply_agent_transcript_context(session_context)
@@ -669,62 +675,6 @@ class AgentSession(SessionFacade):
             command=command, exc=exc
         )
 
-    def get_last_diagnostics(self, limit: int = 50) -> list[DiagnosticRecord]:
-        return self._diagnostics_bridge.get_last_diagnostics(limit=limit)
-
-    def get_diagnostics(
-        self, query: DiagnosticsQuery | None = None
-    ) -> list[DiagnosticRecord]:
-        return self._diagnostics_bridge.get_diagnostics(query=query)
-
-    def get_session_diagnostics(
-        self, query: DiagnosticsQuery | None = None
-    ) -> list[DiagnosticRecord]:
-        return self._diagnostics_bridge.get_session_diagnostics(query=query)
-
-    def get_diagnostics_summary(
-        self, query: DiagnosticsQuery | None = None
-    ) -> DiagnosticSummary:
-        return self._diagnostics_bridge.get_diagnostics_summary(query=query)
-
-    def get_session_diagnostics_summary(
-        self, query: DiagnosticsQuery | None = None
-    ) -> DiagnosticSummary:
-        return self._diagnostics_bridge.get_session_diagnostics_summary(query=query)
-
-    def get_last_error_report(self) -> ErrorReport | None:
-        return self._diagnostics_bridge.get_last_error_report()
-
-    def get_packages(
-        self, *, catalog_path: str | None = None
-    ) -> list[dict[str, object]]:
-        return self._package_controller.get_packages(catalog_path=catalog_path)
-
-    async def materialize_package(self, source: str) -> dict[str, object]:
-        return await self._package_controller.materialize_package(source)
-
-    async def install_package(
-        self, source: str, *, scope: str = "project"
-    ) -> dict[str, object]:
-        return await self._package_controller.install_package(source, scope=scope)
-
-    async def update_package(self, source: str) -> dict[str, object]:
-        return await self._package_controller.update_package(source)
-
-    async def update_packages(self) -> list[dict[str, object]]:
-        return await self._package_controller.update_packages()
-
-    async def check_package_updates(self) -> list[dict[str, object]]:
-        return await self._package_controller.check_package_updates()
-
-    def remove_package(self, source: str) -> dict[str, object]:
-        return self._package_controller.remove_package(source)
-
-    def uninstall_package(
-        self, source: str, *, scope: str = "project"
-    ) -> dict[str, object]:
-        return self._package_controller.uninstall_package(source, scope=scope)
-
     def get_context_usage(self):
         return serialize_context_usage_payload(super().get_context_usage())
 
@@ -794,10 +744,6 @@ class AgentSession(SessionFacade):
         return self.agent.state.messages
 
     @property
-    def session_file(self):
-        return super().get_session_file()
-
-    @property
     def extension_runner(self) -> ExtensionRunner | None:
         return self._extension_runner
 
@@ -823,10 +769,6 @@ class AgentSession(SessionFacade):
         self._selection_runtime.set_scoped_models(scoped_models)
 
     @property
-    def prompt_templates(self) -> list[PromptFragmentDescriptor]:
-        return super().get_prompt_templates()
-
-    @property
     def settings_manager(self) -> SettingsManager | None:
         return self._settings_controller.get_settings_manager()
 
@@ -836,7 +778,7 @@ class AgentSession(SessionFacade):
 
     def subscribe(self, listener: SessionEventListener) -> Callable[[], None]:
         def project(event: RuntimeEvent[object]) -> AgentSessionEvent | None:
-            return project_runtime_event_to_session_event(event)
+            return project_session_runtime_event(event)
 
         return super().subscribe(
             listener,
@@ -967,14 +909,6 @@ class AgentSession(SessionFacade):
             exclude_from_context=exclude_from_context,
         )
 
-    @property
-    def is_bash_running(self) -> bool:
-        return super().is_command_running
-
-    @property
-    def has_pending_bash_messages(self) -> bool:
-        return super().has_pending_command_messages
-
     # Public facade: extension runtime configuration.
 
     async def reload_extension_runtime(self) -> None:
@@ -1041,9 +975,6 @@ class AgentSession(SessionFacade):
 
     # Public facade: run controls, retry, compaction, and tree navigation.
 
-    def abort(self) -> bool:
-        return super().abort()
-
     def abort_bash(self) -> None:
         super().abort_command()
 
@@ -1072,11 +1003,6 @@ class AgentSession(SessionFacade):
         )
         assert result is not None
         return result
-
-    async def compact_session(
-        self, custom_instructions: str | None = None
-    ) -> CompactionResult:
-        return await self.compact(custom_instructions=custom_instructions)
 
     async def maybe_compact_after_turn(
         self, assistant_message: AssistantMessage
@@ -1477,9 +1403,6 @@ class AgentSession(SessionFacade):
     ) -> None:
         """Submit an application message through the standard session input path."""
         await self._send_message_from_extension(message, options)
-
-    async def _send_message_from_extension_async(self, app_message) -> None:
-        await self._extension_message_controller._send_message_async(app_message)
 
     def _create_replaced_session_context(
         self, session: object | None

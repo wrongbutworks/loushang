@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from copy import deepcopy
 from dataclasses import dataclass
 from typing import cast
 
@@ -10,8 +9,13 @@ from loushang.agent.types import (
     AgentMessage,
     BeforeToolCallResult,
 )
-from loushang.coding.extensions.hooks import HookDispatcher
 from loushang.coding.extensions.loader import ExtensionLoader
+from loushang.harness.extensions.agent.hooks import (
+    BeforeAgentStartState,
+    ExtensionPromptHookDispatcher,
+    ExtensionSessionHookDispatcher,
+    ExtensionToolHookDispatcher,
+)
 from loushang.harness.extensions.context import (
     BoundExtensionContext,
     ExtensionCommandContext,
@@ -27,16 +31,9 @@ from loushang.harness.extensions.context import (
 from loushang.harness.extensions.registry import (
     source_info_from_extension as _source_info_from_extension,
 )
-from loushang.harness.extensions.routing import (
-    ResolvedExtensionRoute,
-    RouteStep,
-)
+from loushang.harness.extensions.routing import ResolvedExtensionRoute
 from loushang.harness.extensions.runtime import ExtensionRuntime
-from loushang.harness.extensions.types import (
-    BeforeAgentStartResult,
-    ContextResult,
-    LoadedExtension,
-)
+from loushang.harness.extensions.types import BeforeAgentStartResult, LoadedExtension
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
@@ -84,19 +81,6 @@ class _BeforeAgentStartContext:
     @property
     def cwd(self) -> str:
         return self.base.cwd
-
-
-@dataclass
-class _ContextEvent:
-    messages: list[AgentMessage]
-
-
-@dataclass(frozen=True)
-class _BeforeAgentStartState:
-    system_prompt: str
-    extra_messages: tuple[object, ...] = ()
-    diagnostics: tuple[ResourceDiagnostic, ...] = ()
-    system_prompt_changed: bool = False
 
 
 class ExtensionRunner(ExtensionRuntime):
@@ -204,7 +188,7 @@ class ExtensionRunner(ExtensionRuntime):
         )
 
         def event_factory(
-            state: _BeforeAgentStartState,
+            state: BeforeAgentStartState,
             route: ResolvedExtensionRoute,
         ) -> _ExtensionEvent:
             del route
@@ -219,63 +203,18 @@ class ExtensionRunner(ExtensionRuntime):
                 systemPromptOptions=system_prompt_options,
             )
 
-        def reducer(
-            state: _BeforeAgentStartState,
-            result: object,
-            route: ResolvedExtensionRoute,
-        ) -> RouteStep[_BeforeAgentStartState]:
-            del route
-            coerced = _coerce_before_agent_start_result(result)
-            if coerced is None:
-                return RouteStep(state)
-            next_system_prompt = coerced.system_prompt
-            if next_system_prompt is None and coerced.system_prompt_append:
-                next_system_prompt = (
-                    f"{state.system_prompt}\n\n{coerced.system_prompt_append}"
-                )
-            return RouteStep(
-                _BeforeAgentStartState(
-                    system_prompt=(
-                        next_system_prompt
-                        if next_system_prompt is not None
-                        else state.system_prompt
-                    ),
-                    extra_messages=(
-                        *state.extra_messages,
-                        *coerced.extra_messages,
-                    ),
-                    diagnostics=(*state.diagnostics, *coerced.diagnostics),
-                    system_prompt_changed=(
-                        state.system_prompt_changed or next_system_prompt is not None
-                    ),
-                )
-            )
-
-        outcome = await self._plain_diagnostic_router.reduce(
-            "before_agent_start",
-            _BeforeAgentStartState(system_prompt=system_prompt or ""),
+        result = await ExtensionPromptHookDispatcher(
+            self._plain_diagnostic_router,
+            diagnostics=self._diagnostics,
+        ).reduce_before_agent_start(
+            system_prompt=system_prompt or "",
+            context_factory=lambda _extension: context,
             event_factory=event_factory,
-            reducer=reducer,
-            context_factory=lambda extension: context,
+            result_coercer=_coerce_before_agent_start_result,
         )
-        state = outcome.state
-        prompt_state[0] = state.system_prompt
-        diagnostics = list(state.diagnostics)
-        if diagnostics:
-            self._diagnostics.extend(diagnostics)
-        if (
-            not state.extra_messages
-            and not state.system_prompt_changed
-            and not diagnostics
-        ):
-            return None
-        return BeforeAgentStartResult(
-            system_prompt=(
-                state.system_prompt if state.system_prompt_changed else None
-            ),
-            extra_messages=list(state.extra_messages),
-            diagnostics=diagnostics,
-        )
+        if result is not None and result.system_prompt is not None:
+            prompt_state[0] = result.system_prompt
+        return result
 
     async def emit_session_shutdown(self, session: object) -> None:
         await self._emit_session_hook("session_shutdown", session)
@@ -290,55 +229,52 @@ class ExtensionRunner(ExtensionRuntime):
     async def before_session_fork(
         self, event: object
     ) -> SessionBeforeForkResult | None:
-        result = await self._emit_decision_hook(
-            "session_before_fork",
-            event,
-            fallback_cwd=getattr(event, "cwd", ""),
-            result_type=SessionActionDecision,
-        )
-        if result is None:
-            return None
-        if isinstance(result, SessionBeforeForkResult):
-            return result
-        return SessionBeforeForkResult(
-            cancel=result.cancel,
-            diagnostics=result.diagnostics,
+        return cast(
+            SessionBeforeForkResult | None,
+            await self._emit_decision_hook(
+                "session_before_fork",
+                event,
+                fallback_cwd=getattr(event, "cwd", ""),
+                result_type=SessionBeforeForkResult,
+                decision_coercer=lambda result: SessionBeforeForkResult(
+                    cancel=result.cancel,
+                    diagnostics=result.diagnostics,
+                ),
+            ),
         )
 
     async def before_session_compact(
         self, event: object
     ) -> SessionBeforeCompactResult | None:
-        result = await self._emit_decision_hook(
-            "session_before_compact",
-            event,
-            fallback_cwd=getattr(event, "cwd", ""),
-            result_type=SessionActionDecision,
-        )
-        if result is None:
-            return None
-        if isinstance(result, SessionBeforeCompactResult):
-            return result
-        return SessionBeforeCompactResult(
-            cancel=result.cancel,
-            diagnostics=result.diagnostics,
+        return cast(
+            SessionBeforeCompactResult | None,
+            await self._emit_decision_hook(
+                "session_before_compact",
+                event,
+                fallback_cwd=getattr(event, "cwd", ""),
+                result_type=SessionBeforeCompactResult,
+                decision_coercer=lambda result: SessionBeforeCompactResult(
+                    cancel=result.cancel,
+                    diagnostics=result.diagnostics,
+                ),
+            ),
         )
 
     async def before_session_tree(
         self, event: object
     ) -> SessionBeforeTreeResult | None:
-        result = await self._emit_decision_hook(
-            "session_before_tree",
-            event,
-            fallback_cwd=getattr(event, "cwd", ""),
-            result_type=SessionActionDecision,
-        )
-        if result is None:
-            return None
-        if isinstance(result, SessionBeforeTreeResult):
-            return result
-        return SessionBeforeTreeResult(
-            cancel=result.cancel,
-            diagnostics=result.diagnostics,
+        return cast(
+            SessionBeforeTreeResult | None,
+            await self._emit_decision_hook(
+                "session_before_tree",
+                event,
+                fallback_cwd=getattr(event, "cwd", ""),
+                result_type=SessionBeforeTreeResult,
+                decision_coercer=lambda result: SessionBeforeTreeResult(
+                    cancel=result.cancel,
+                    diagnostics=result.diagnostics,
+                ),
+            ),
         )
 
     async def emit_context(
@@ -349,40 +285,14 @@ class ExtensionRunner(ExtensionRuntime):
         cwd: str = "",
     ) -> list[AgentMessage]:
         del signal
-
-        current_messages = deepcopy(messages)
         context = self._context_from_runtime(fallback_cwd=cwd)
-
-        def reducer(
-            state: list[AgentMessage],
-            result: object,
-            route: ResolvedExtensionRoute,
-        ) -> RouteStep[list[AgentMessage]]:
-            if not isinstance(result, ContextResult):
-                self._diagnostics.append(
-                    ResourceDiagnostic(
-                        code="invalid_extension_context_result",
-                        message="context hooks must return ContextResult or None.",
-                        source_path=route.extension.source_path,
-                    )
-                )
-                return RouteStep(state)
-            if result.diagnostics:
-                self._diagnostics.extend(result.diagnostics)
-            return RouteStep(
-                cast(list[AgentMessage], result.messages)
-                if result.messages is not None
-                else state
-            )
-
-        outcome = await self._plain_diagnostic_router.reduce(
-            "context",
-            current_messages,
-            event_factory=lambda state, route: _ContextEvent(messages=state),
-            reducer=reducer,
-            context_factory=lambda extension: context,
+        return await ExtensionPromptHookDispatcher(
+            self._plain_diagnostic_router,
+            diagnostics=self._diagnostics,
+        ).transform_context(
+            messages,
+            context_factory=lambda _extension: context,
         )
-        return outcome.state
 
     async def before_tool_call(
         self, event, signal: object | None = None
@@ -398,8 +308,8 @@ class ExtensionRunner(ExtensionRuntime):
             _context_from_agent_event(event).cwd
         ).after_tool_call(event, signal)
 
-    def _tool_hook_dispatcher(self, fallback_cwd: str) -> HookDispatcher:
-        return HookDispatcher(
+    def _tool_hook_dispatcher(self, fallback_cwd: str) -> ExtensionToolHookDispatcher:
+        return ExtensionToolHookDispatcher(
             self._extensions,
             context_factory=lambda _extension: self._context_from_runtime(
                 fallback_cwd=fallback_cwd
@@ -417,7 +327,10 @@ class ExtensionRunner(ExtensionRuntime):
 
     async def _emit_session_hook(self, hook_name: str, session: object) -> None:
         fallback_cwd = _context_from_session(session).cwd
-        await self._router.observe(
+        await ExtensionSessionHookDispatcher(
+            self._router,
+            diagnostics=self._diagnostics,
+        ).observe_session(
             hook_name,
             session,
             context_factory=lambda extension: self._context_from_runtime(
@@ -433,38 +346,20 @@ class ExtensionRunner(ExtensionRuntime):
         *,
         fallback_cwd: str,
         result_type: type[SessionActionDecision] = SessionActionDecision,
+        decision_coercer: Callable[[SessionActionDecision], SessionActionDecision]
+        | None = None,
     ) -> SessionActionDecision | None:
         context = self._context_from_runtime(fallback_cwd=fallback_cwd)
-
-        def reducer(
-            state: SessionActionDecision | None,
-            result: object,
-            route: ResolvedExtensionRoute,
-        ) -> RouteStep[SessionActionDecision | None]:
-            if not isinstance(result, result_type):
-                expected_name = result_type.__name__
-                self._diagnostics.append(
-                    ResourceDiagnostic(
-                        code=f"invalid_extension_{hook_name}_decision",
-                        message=(
-                            f"{hook_name} hooks must return {expected_name} or None."
-                        ),
-                        source_path=route.extension.source_path,
-                    )
-                )
-                return RouteStep(state)
-            if result.diagnostics:
-                self._diagnostics.extend(result.diagnostics)
-            return RouteStep(result)
-
-        outcome = await self._router.reduce(
+        return await ExtensionSessionHookDispatcher(
+            self._router,
+            diagnostics=self._diagnostics,
+        ).reduce_session_decision(
             hook_name,
-            None,
-            event_factory=lambda state, route: event,
-            reducer=reducer,
-            context_factory=lambda extension: context,
+            event,
+            context_factory=lambda _extension: context,
+            result_type=result_type,
+            decision_coercer=decision_coercer,
         )
-        return outcome.state
 
     def _context_from_runtime(
         self,

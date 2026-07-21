@@ -6,7 +6,13 @@ from loushang.ai.model import Model, ModelSelection
 
 
 class _Session:
-    def __init__(self, *, current: object | None = None, selections: list[object] | None = None, details: list[object] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        current: object | None = None,
+        selections: list[object] | None = None,
+        details: list[object] | None = None,
+    ) -> None:
         self.current = current
         self.selections = list(selections or [])
         self.details = list(details or [])
@@ -25,7 +31,9 @@ class _Session:
         self.set_model_calls.append(selection)
         normalized = selection
         if isinstance(selection, Model):
-            normalized = ModelSelection(provider=selection.provider_id, model_id=selection.id)
+            normalized = ModelSelection(
+                provider=selection.provider_id, model_id=selection.id
+            )
         self.current = normalized
 
 
@@ -35,19 +43,29 @@ class _ScopedSession:
 
 
 def test_model_label_from_selection_hides_unknown_model() -> None:
-    from loushang.coding.model_selection import model_label_from_selection
+    from loushang.ai.model import model_label_from_selection
 
-    assert model_label_from_selection(ModelSelection(provider="unknown", model_id="unknown")) is None
+    assert (
+        model_label_from_selection(
+            ModelSelection(provider="unknown", model_id="unknown")
+        )
+        is None
+    )
 
 
 def test_model_label_from_selection_formats_provider_and_model() -> None:
-    from loushang.coding.model_selection import model_label_from_selection
+    from loushang.ai.model import model_label_from_selection
 
-    assert model_label_from_selection(ModelSelection(provider="kimi-code", model_id="kimi-for-coding")) == "kimi-code/kimi-for-coding"
+    assert (
+        model_label_from_selection(
+            ModelSelection(provider="kimi-code", model_id="kimi-for-coding")
+        )
+        == "kimi-code/kimi-for-coding"
+    )
 
 
 def test_model_selection_normalization_strips_external_identifiers() -> None:
-    from loushang.coding.model_selection import normalize_model_selection
+    from loushang.ai.model import normalize_model_selection
 
     assert normalize_model_selection(
         {
@@ -63,7 +81,7 @@ def test_model_selection_normalization_strips_external_identifiers() -> None:
 
 
 def test_current_model_first_preserves_relative_order() -> None:
-    from loushang.coding.model_selection import current_model_first
+    from loushang.ai.model import current_model_first
 
     items = ["provider/a", "provider/b", "provider/a"]
 
@@ -75,7 +93,7 @@ def test_current_model_first_preserves_relative_order() -> None:
 
 
 def test_iter_scoped_model_selections_keeps_distinct_endpoints_and_dedupes() -> None:
-    from loushang.coding.model_selection import iter_scoped_model_selections
+    from loushang.harness.session.model_selection import iter_scoped_model_selections
 
     first = ModelSelection(provider="provider", endpoint_id="first", model_id="model")
     duplicate = {"model": first}
@@ -100,8 +118,14 @@ def test_ensure_usable_session_model_keeps_existing_usable_model() -> None:
 def test_ensure_usable_session_model_prefers_kimi_coding_anthropic_detail() -> None:
     from loushang.coding.model_selection import ensure_usable_session_model
 
-    preferred = Model(id="kimi-for-coding", provider="kimi-code", endpoint="kimi-code-anthropic")
-    fallback = Model(id="kimi-for-coding", provider="kimi-code", endpoint="openai-completions:cn:coding")
+    preferred = Model(
+        id="kimi-for-coding", provider="kimi-code", endpoint="kimi-code-anthropic"
+    )
+    fallback = Model(
+        id="kimi-for-coding",
+        provider="kimi-code",
+        endpoint="openai-completions:cn:coding",
+    )
     session = _Session(
         current=ModelSelection(provider="unknown", model_id="unknown"),
         details=[fallback, preferred],
