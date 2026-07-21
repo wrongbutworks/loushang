@@ -9,7 +9,6 @@ from loushang.channel import dispose_product_host
 from loushang.coding.event import (
     SUPPORTED_JSON_EVENT_VIEWS,
     JsonEventView,
-    normalize_event_select,
     project_runtime_event_to_json_views,
     project_session_event,
     should_emit_projected_event,
@@ -20,7 +19,7 @@ from loushang.coding.work_executor import SubmitCodingTurn
 from loushang.coding.work_runtime import CodingWorkRuntime
 from loushang.coding.work_shell import CodingWorkShell
 from loushang.harness.conversation import NativeConversationHeaderCodec
-from loushang.harness.events import RuntimeEvent
+from loushang.harness.events import RuntimeEvent, normalize_event_select
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.protocol import require_json_value
 from loushang.work import EventLogBackend
@@ -30,10 +29,6 @@ _HEADER_CODEC = NativeConversationHeaderCodec()
 
 class _CodingPrintFailure(RuntimeError):
     pass
-
-
-def serialize_session_header(header) -> dict[str, object]:
-    return dict(_HEADER_CODEC.encode_header(header))
 
 
 class PrintMode(ModeAdapter):
@@ -166,7 +161,7 @@ class PrintMode(ModeAdapter):
         try:
             if self.output_mode == "json":
                 header = self.session.session_manager.get_header()
-                self._write_json_line(serialize_session_header(header))
+                self._write_json_line(dict(_HEADER_CODEC.encode_header(header)))
             unsubscribe = self._subscribe_to_events()
             await self._prompt_session(
                 user_input,
@@ -222,7 +217,7 @@ class PrintMode(ModeAdapter):
         try:
             if self.output_mode == "json":
                 header = self.session.session_manager.get_header()
-                self._write_json_line(serialize_session_header(header))
+                self._write_json_line(dict(_HEADER_CODEC.encode_header(header)))
             unsubscribe = self._subscribe_to_events()
             shell = CodingWorkShell(
                 session=self.session,
