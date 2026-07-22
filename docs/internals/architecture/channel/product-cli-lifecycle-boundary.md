@@ -23,6 +23,7 @@ resource/package wording, Work/Method preparation, or output schemas.
 | CLI new/restore/continue/fork selection | `harness.cli.session_resolution` | Coding supplies parsed arguments and runtime binding | Harness uses existing session lifecycle ports; no second session engine is introduced |
 | Extension flag discovery and application | `harness.cli.extension_flags` | Coding supplies second-pass argparse typing and help text | Runner inspection is best-effort and has no Coding dependency |
 | Method catalog and plan listing projection | `harness.cli.method_listing` | Coding supplies Method discovery and domain-specific compiler callback | Harness owns shape/formatting; Method domain is injected rather than hard-coded |
+| Work event-log inspection and plan projection | `loushang.work.cli` | Coding supplies path/run/format flags | Work owns event-log reading and projection; Coding only adapts command errors and streams |
 
 ## Non-goals
 
