@@ -29,7 +29,7 @@ def test_coding_policy_reexports_harness_owned_approval_contracts() -> None:
     assert coding_policy.DenyApprovalResolver is harness_approval.DenyApprovalResolver
 
 
-def test_coding_interactive_approval_resolver_remains_product_owned() -> None:
+def test_coding_interactive_approval_resolver_uses_shared_lifecycle() -> None:
     import loushang.harness.approval as harness_approval
     from loushang.coding.policy import (
         InteractiveApprovalResolver,
@@ -39,8 +39,12 @@ def test_coding_interactive_approval_resolver_remains_product_owned() -> None:
         PolicyEnforcementError as HarnessPolicyEnforcementError,
     )
 
-    assert not hasattr(harness_approval, "InteractiveApprovalResolver")
+    assert hasattr(harness_approval, "InteractiveApprovalResolver")
     assert InteractiveApprovalResolver.__module__ == "loushang.coding.policy.approval"
+    assert issubclass(
+        InteractiveApprovalResolver,
+        harness_approval.InteractiveApprovalResolver,
+    )
     assert PolicyEnforcementError is HarnessPolicyEnforcementError
 
 

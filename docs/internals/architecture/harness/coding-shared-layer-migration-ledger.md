@@ -295,3 +295,43 @@ Closure probes:
   before;
 - diagnostic JSON retains the existing field names; any snake_case protocol
   change requires explicit approval in a later contract migration.
+
+### Wave 6, Slice C: Shared Workspace Policy Engine (Complete)
+
+`coding.policy.engine` was an implementation duplicate over the existing
+Harness policy subjects, matchers, command normalization, and rule evaluator.
+The evaluator now lives in `harness.policy_engine.PolicyEngine` and accepts a
+product rule-id namespace plus product-supplied rule values. Coding retains a
+thin `PolicyEngine` binding that preserves its historic `coding.*` rule ids and
+default policy values; no decision codes, messages, or tool behavior changed.
+
+| Source region | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| `coding.policy.engine` rule assembly and action/tool evaluation | `harness.policy_engine.PolicyEngine` | Product namespace binding and policy defaults | Complete |
+
+Slice C accounting: the Coding implementation shrank from 298 to 17 LOC
+(-281); Harness gained the shared implementation at 300 LOC. The shared module
+has no Product imports. Coding policy and workspace-tool regressions remain
+covered by the existing tests, with independent Harness probes for non-Coding
+rule namespaces.
+
+The same slice also collapsed the callback-backed approval lifecycle. The
+`ApprovalBroker` wrapper, presenter lifecycle, timeout/cancellation behavior,
+and result correlation now live in `harness.approval.InteractiveApprovalResolver`.
+Coding keeps only its `action`/`risk` payload projector and a thin subclass:
+
+| Source region | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| `coding.policy.approval.InteractiveApprovalResolver` | `harness.approval.InteractiveApprovalResolver` | Coding approval payload fields | Complete |
+
+Approval accounting: Coding shrank from 135 to 56 LOC (-79); Harness gained
+104 LOC of parameterized lifecycle and presenter code. Existing Coding approval
+tests and independent Harness policy probes pass; the shared approval module has
+no Product imports.
+
+Package source trust evaluation is also now a shared resource capability. The
+`PackageSecurityPolicy` and `PackageSourceSecurityReport` types moved to
+`harness.resources.packages.security`; Coding only re-exports them while it
+continues to choose when a package operation asks for a security decision.
+This keeps trusted-host/source configuration injectable for Design, PPT, and
+other Products without changing the existing package wire shape.

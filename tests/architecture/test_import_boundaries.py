@@ -1583,12 +1583,16 @@ def test_harness_diagnostics_symbols_are_subpackage_exports_only() -> None:
         "DiagnosticSummary",
         "DiagnosticsQuery",
         "DiagnosticsService",
+        "collect_diagnostics",
         "ErrorReport",
+        "path_exists",
+        "resolve_export_output_path",
         "StartupCheck",
         "StartupCheckResult",
         "serialize_diagnostic",
         "serialize_diagnostic_summary",
         "serialize_error_report",
+        "utc_now",
     }
 
     assert diagnostic_symbols.isdisjoint(set(harness.__all__))
@@ -2619,7 +2623,7 @@ def test_harness_control_plane_symbols_are_not_top_level_exports() -> None:
 def test_coding_control_plane_adapters_use_harness_mechanisms() -> None:
     approval_path = Path("src/loushang/coding/policy/approval.py")
     approval_imports = set(_absolute_imports(approval_path))
-    assert "loushang.harness.approval.ApprovalBroker" in approval_imports
+    assert "loushang.harness.approval.InteractiveApprovalResolver" in approval_imports
 
     approval_tree = ast.parse(
         approval_path.read_text(encoding="utf-8"),
@@ -2636,7 +2640,7 @@ def test_coding_control_plane_adapters_use_harness_mechanisms() -> None:
         for node in ast.walk(approval_tree)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
     }
-    assert "ApprovalBroker" in approval_calls
+    assert "super" in approval_calls
     assert not any(
         _matches_any(imported, ("asyncio",)) for imported in approval_imports
     )
@@ -2646,11 +2650,7 @@ def test_coding_control_plane_adapters_use_harness_mechanisms() -> None:
 
     policy_path = Path("src/loushang/coding/policy/engine.py")
     policy_imports = set(_absolute_imports(policy_path))
-    assert {
-        "loushang.harness.policy.RulePolicyEvaluator",
-        "loushang.harness.policy.normalize_command_subject",
-    }.issubset(policy_imports)
-
+    assert "loushang.harness.policy_engine.PolicyEngine" in policy_imports
     policy_tree = ast.parse(
         policy_path.read_text(encoding="utf-8"),
         filename=policy_path.as_posix(),
@@ -2660,13 +2660,14 @@ def test_coding_control_plane_adapters_use_harness_mechanisms() -> None:
         for node in ast.walk(policy_tree)
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
     }
-    assert {
-        "_direct_command_tokens",
-        "_split_env_string",
-        "_unwrap_env_command",
-        "_unwrap_leading_wrappers",
-    }.isdisjoint(policy_function_names)
-    assert not any(_matches_any(imported, ("shlex",)) for imported in policy_imports)
+    assert policy_function_names <= {"__init__"}
+
+    shared_policy_path = Path("src/loushang/harness/policy_engine.py")
+    shared_policy_imports = set(_absolute_imports(shared_policy_path))
+    assert not any(
+        _matches_any(imported, ("loushang.coding", "loushang.design", "loushang.ppt"))
+        for imported in shared_policy_imports
+    )
 
     extension_paths = (
         Path("src/loushang/coding/extensions/runner.py"),
