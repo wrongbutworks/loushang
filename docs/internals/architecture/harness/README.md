@@ -149,6 +149,10 @@ planning, work event persistence, or AI provider behavior.
 - [Session Product Adapter Collapse](session-product-adapter-collapse.md)
   records the direct Facade/inspector/retry bindings that remove redundant
   Coding session controllers while preserving Coding product ports.
+- [Session Product Runtime Composition Boundary](session-product-runtime-composition-boundary.md)
+  defines the shared active-session composition adapter and the Product ports
+  that keep transcript storage, fork policy, cwd policy, diagnostics, and
+  lifecycle effects configurable.
 - [Session Inspection Boundary](session-inspection-boundary.md) defines
   Product-neutral Agent/transcript state, context usage, and statistics while
   Products retain display and wire-format projection.

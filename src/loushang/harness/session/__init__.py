@@ -151,6 +151,18 @@ from loushang.harness.session.operations import (
     SessionOperationUnavailableError,
     SessionPromptRequest,
 )
+from loushang.harness.session.product_runtime import (
+    ProductSessionRuntime,
+    ProductSessionRuntimePorts,
+    dispose_session_only,
+    emit_session_shutdown,
+    invoke_session_factory,
+    resolve_existing_cwd,
+    session_file_from_manager,
+    session_file_from_session,
+    session_id_from_session,
+    session_manager_ref,
+)
 from loushang.harness.session.prompt_controller import PromptController
 from loushang.harness.session.queue_controller import QueueController
 from loushang.harness.session.resource_refresh import (
@@ -224,6 +236,8 @@ __all__ = [
     "ModelCandidates",
     "ModelSelectionApplyResult",
     "PromptController",
+    "ProductSessionRuntime",
+    "ProductSessionRuntimePorts",
     "ProductTranscriptSessionLifecyclePorts",
     "ProductTranscriptSessionLifecycleStore",
     "PersistModelSelection",
@@ -292,6 +306,14 @@ __all__ = [
     "project_fork_candidates",
     "project_session_stats",
     "SessionResourceRefreshRuntime",
+    "dispose_session_only",
+    "emit_session_shutdown",
+    "invoke_session_factory",
+    "resolve_existing_cwd",
+    "session_file_from_manager",
+    "session_file_from_session",
+    "session_id_from_session",
+    "session_manager_ref",
     "SessionToolRuntime",
     "SessionToolController",
     "ToolController",

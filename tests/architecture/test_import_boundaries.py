@@ -2026,8 +2026,8 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
         "src/loushang/coding/runtime/agent_session_runtime.py"
     ).read_text(encoding="utf-8")
     assert "class AgentSessionRuntime(" in runtime_source
-    assert "SessionLifecycleOperationAdapter[AgentSession, str]" in runtime_source
-    assert "AgentTranscriptSessionRuntime[AgentSession, str]" in runtime_source
+    assert "ProductSessionRuntime[AgentSession, SessionManager, str]" in runtime_source
+    assert "ProductSessionRuntimePorts(" in runtime_source
     assert "SessionManager.list_summaries" not in runtime_source
     assert "SessionManager.refresh_index" not in runtime_source
 
@@ -3306,8 +3306,8 @@ def test_harness_product_runtime_core_is_documented_and_adopted() -> None:
             "loushang.harness.runtime.RuntimeBindingState",
         },
         Path("src/loushang/coding/runtime/agent_session_runtime.py"): {
-            "loushang.harness.session.AgentTranscriptSessionRuntime",
-            "loushang.harness.session.SessionLifecycleRuntime",
+            "loushang.harness.session.ProductSessionRuntime",
+            "loushang.harness.session.ProductSessionRuntimePorts",
         },
     }
     missing: list[str] = []
@@ -3365,8 +3365,8 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
             "loushang.harness.session.lifecycle.SessionLifecycleRuntime",
         },
         Path("src/loushang/coding/runtime/agent_session_runtime.py"): {
-            "loushang.harness.session.SessionLifecycleRuntime",
-            "loushang.harness.session.AgentTranscriptSessionRuntime",
+            "loushang.harness.session.ProductSessionRuntime",
+            "loushang.harness.session.ProductSessionRuntimePorts",
         },
         Path("src/loushang/harness/extensions/session_runtime.py"): {
             "loushang.harness.extensions.lifecycle.ExtensionRuntimeCoordinator",
@@ -3425,6 +3425,16 @@ def test_session_lifecycle_runtime_is_documented_neutral_and_adopted() -> None:
         sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
     )
 
+    composition_path = Path(
+        "docs/internals/architecture/harness/session-product-runtime-composition-boundary.md"
+    )
+    assert composition_path.exists()
+    composition_text = " ".join(
+        composition_path.read_text(encoding="utf-8").split()
+    )
+    assert "`harness.session.ProductSessionRuntime`" in composition_text
+    assert "does not create a second session engine" in composition_text
+
     readme_text = Path("docs/internals/architecture/harness/README.md").read_text(
         encoding="utf-8"
     )
@@ -3437,6 +3447,7 @@ def test_session_lifecycle_runtime_is_documented_neutral_and_adopted() -> None:
         in inventory_text
     )
     assert "`harness.session.AgentTranscriptSessionRuntime` composes" in inventory_text
+    assert "`harness.session.ProductSessionRuntime` binds" in inventory_text
 
     boundary = ImportBoundary(
         name="session lifecycle",
@@ -3467,8 +3478,8 @@ def test_session_lifecycle_runtime_is_documented_neutral_and_adopted() -> None:
     imports = set(
         _absolute_imports(Path("src/loushang/coding/runtime/agent_session_runtime.py"))
     )
-    assert "loushang.harness.session.AgentTranscriptSessionRuntime" in imports
-    assert "loushang.harness.session.SessionLifecycleRuntime" in imports
+    assert "loushang.harness.session.ProductSessionRuntime" in imports
+    assert "loushang.harness.session.ProductSessionRuntimePorts" in imports
     assert "loushang.harness.runtime.SessionOperationCoordinator" not in imports
 
 
