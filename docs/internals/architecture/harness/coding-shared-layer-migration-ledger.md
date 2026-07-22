@@ -335,3 +335,20 @@ Package source trust evaluation is also now a shared resource capability. The
 continues to choose when a package operation asks for a security decision.
 This keeps trusted-host/source configuration injectable for Design, PPT, and
 other Products without changing the existing package wire shape.
+
+### Wave 6, Slice D: Session Observability Binding (Complete)
+
+The repeated CLI/session observability binding now lives in
+`harness.diagnostics.observability_runtime`. It owns scope parsing, explicit or
+environment-derived output paths, startup/session labels, sink binding, and
+debug enable/disable lifecycle. Coding keeps only its source classification
+(`config` problems are presented as `model`) and the historic wrapper names.
+
+| Source region | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| `coding.observability` session/startup context and debug file lifecycle | `harness.diagnostics.observability_runtime` | Coding diagnostic source mapping and wrapper names | Complete |
+
+Slice D accounting: Coding shrank from 157 to 109 LOC (-48); Harness gained
+187 LOC of parameterized binding. Existing Coding observability bridge tests
+and an independent Harness directory-injection probe pass. No debug/trace
+environment variables or file naming behavior changed.

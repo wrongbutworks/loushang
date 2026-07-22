@@ -1,27 +1,25 @@
+"""Coding observability binding over the shared Harness runtime."""
+
 from __future__ import annotations
 
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 from loushang.harness.diagnostics.observability_bridge import (
-    DiagnosticsProblemStore,
     diagnostic_source_for_problem,
 )
-from loushang.harness.diagnostics.types import DiagnosticSource
-from loushang.observability import (
-    ProblemRecord,
-    disable_debug_file,
-    enable_debug_file,
-    observability_runtime_context,
-    parse_scopes,
-    path_from_args_or_env,
-    session_log_label,
-    value_from_args_or_env,
+from loushang.harness.diagnostics.observability_runtime import (
+    disable_session_debug,
+    session_observability_context,
+    startup_observability_context,
 )
+from loushang.harness.diagnostics.observability_runtime import (
+    enable_session_debug as _enable_session_debug,
+)
+from loushang.observability import ProblemRecord, session_log_label
 
 
 @contextmanager
@@ -32,30 +30,15 @@ def coding_observability_context(
     cwd: str | Path,
     mode: str,
 ) -> Iterator[None]:
-    cwd_path = Path(cwd).expanduser().resolve()
-    session_id = _session_id(session)
-    session_label = _safe_session_label(session_id)
-    debug_raw = value_from_args_or_env(args, "debug", "LOUSHANG_DEBUG_SCOPES")
-    trace_raw = value_from_args_or_env(args, "trace", "LOUSHANG_TRACE_SCOPES")
-    debug_scopes = parse_scopes(debug_raw, bare_default=("all",))
-    trace_scopes = parse_scopes(trace_raw, bare_default=("all",))
-    debug_path = _debug_path(
-        args=args, session_label=session_label, debug_raw=debug_raw
-    )
-    trace_path = _trace_path(
-        args=args, session_label=session_label, trace_raw=trace_raw
-    )
-    problem_sink = _problem_sink(session)
-
-    with observability_runtime_context(
-        session_id=session_id,
-        cwd=cwd_path,
+    with session_observability_context(
+        args=args,
+        session=session,
+        cwd=cwd,
         mode=mode,
-        debug_path=debug_path,
-        debug_scopes=debug_scopes,
-        trace_path=trace_path,
-        trace_scopes=trace_scopes,
-        problem_sink=problem_sink,
+        source_resolver=_coding_diagnostic_source,
+        debug_dir=_default_debug_dir(),
+        trace_dir=_default_trace_dir(),
+        session_label=_safe_session_label(_session_id(session)),
     ):
         yield
 
@@ -67,15 +50,14 @@ def coding_startup_observability_context(
     services: Any,
     cwd: str | Path,
 ) -> Iterator[None]:
-    startup_session = SimpleNamespace(
-        session_id=None,
-        diagnostics_service=getattr(services, "diagnostics_service", None),
-    )
-    with coding_observability_context(
+    with startup_observability_context(
         args=args,
-        session=startup_session,
+        services=services,
         cwd=cwd,
-        mode="startup",
+        source_resolver=_coding_diagnostic_source,
+        debug_dir=_default_debug_dir(),
+        trace_dir=_default_trace_dir(),
+        session_label=_safe_session_label(None),
     ):
         yield
 
@@ -86,35 +68,17 @@ def enable_session_debug(
     scopes: tuple[str, ...] = ("all",),
     debug_file: str | Path | None = None,
 ) -> Path:
-    session_id = _session_id(session)
-    debug_path = (
-        Path(debug_file).expanduser().resolve()
-        if debug_file is not None
-        else _default_debug_dir() / f"{_safe_session_label(session_id)}.log"
+    return _enable_session_debug(
+        session=session,
+        scopes=scopes,
+        debug_file=debug_file,
     )
-    return enable_debug_file(debug_path, scopes=scopes)
 
 
-def disable_session_debug() -> None:
-    disable_debug_file()
-
-
-def _debug_path(*, args: Any, session_label: str, debug_raw: str | None) -> Path | None:
-    explicit = path_from_args_or_env(args, "debug_file", "LOUSHANG_DEBUG_FILE")
-    if explicit:
-        return Path(explicit).expanduser().resolve()
-    if debug_raw is None:
-        return None
-    return _default_debug_dir() / f"{session_label}.log"
-
-
-def _trace_path(*, args: Any, session_label: str, trace_raw: str | None) -> Path | None:
-    explicit = path_from_args_or_env(args, "trace_file", "LOUSHANG_TRACE_FILE")
-    if explicit:
-        return Path(explicit).expanduser().resolve()
-    if trace_raw is None:
-        return None
-    return _default_trace_dir() / f"{session_label}.jsonl"
+def _coding_diagnostic_source(record: ProblemRecord):
+    if record.source == "config":
+        return "model"
+    return diagnostic_source_for_problem(record)
 
 
 def _session_id(session: Any) -> str | None:
@@ -123,26 +87,6 @@ def _session_id(session: Any) -> str | None:
     except Exception:
         return None
     return value if isinstance(value, str) and value else None
-
-
-def _problem_sink(session: Any):
-    diagnostics_service = getattr(session, "diagnostics_service", None)
-    if diagnostics_service is None or not callable(
-        getattr(diagnostics_service, "record", None)
-    ):
-        return None
-    return DiagnosticsProblemStore(
-        diagnostics_service,
-        source_resolver=_coding_diagnostic_source,
-    )
-
-
-def _coding_diagnostic_source(record: ProblemRecord) -> DiagnosticSource:
-    """Apply Coding's model-configuration diagnostic classification."""
-
-    if record.source == "config":
-        return "model"
-    return diagnostic_source_for_problem(record)
 
 
 def _safe_session_label(session_id: str | None) -> str:
@@ -155,3 +99,11 @@ def _default_debug_dir() -> Path:
 
 def _default_trace_dir() -> Path:
     return Path.home() / ".loushang" / "traces"
+
+
+__all__ = [
+    "coding_observability_context",
+    "coding_startup_observability_context",
+    "disable_session_debug",
+    "enable_session_debug",
+]
