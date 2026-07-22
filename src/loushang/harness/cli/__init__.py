@@ -73,6 +73,11 @@ from loushang.harness.cli.session_listing import (
     format_session_records,
     list_session_records,
 )
+from loushang.harness.cli.session_resolution import (
+    SessionResolutionRequest,
+    resolve_latest_session_file,
+    resolve_session,
+)
 from loushang.harness.cli.skill_listing import (
     SkillListingError,
     format_skill_records,
@@ -120,6 +125,9 @@ __all__ = [
     "PackageLifecycleResult",
     "package_lifecycle_failure",
     "run_package_lifecycle",
+    "SessionResolutionRequest",
+    "resolve_latest_session_file",
+    "resolve_session",
     "DiagnosticsListingError",
     "DiagnosticsListingRequest",
     "format_diagnostic_records",

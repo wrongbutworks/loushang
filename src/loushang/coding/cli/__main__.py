@@ -90,6 +90,7 @@ from loushang.harness.cli import (
     ResourceToggleRequest,
     SessionListingError,
     SessionListingRequest,
+    SessionResolutionRequest,
     SkillListingError,
     apply_resource_toggles,
     build_session_query,
@@ -109,7 +110,11 @@ from loushang.harness.cli import (
     list_plugin_records,
     list_session_records,
     list_skill_records,
+    resolve_session,
     run_package_lifecycle,
+)
+from loushang.harness.cli import (
+    resolve_latest_session_file as resolve_latest_session_file_shared,
 )
 from loushang.harness.extensions.types import ResolvedFlag
 from loushang.harness.host.prompt_input import (
@@ -118,7 +123,6 @@ from loushang.harness.host.prompt_input import (
 )
 from loushang.harness.resources.plugins import is_remote_plugin_source
 from loushang.harness.scenario.loader import load_workflow, resolve_workflow_files
-from loushang.harness.session import require_session_operation_session
 from loushang.harness.session.model_selection import format_model_metadata_table
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.method import MethodCompiler, MethodContext, MethodLoader
@@ -1656,52 +1660,20 @@ def _record_package_policy_diagnostic(
 
 
 async def _resolve_session(args: CliArgs, runtime: Any, project_root: Path):
-    if isinstance(args.resume, str):
-        session = require_session_operation_session(
-            await runtime.restore_session_operation(args.resume)
-        )
-    elif args.continue_ or args.resume:
-        latest_session_file = _resolve_latest_session_file(runtime)
-        if latest_session_file is None:
-            raise RuntimeError(
-                "No existing session found. Use --session or --resume <session> to restore a specific session."
-            )
-        session = require_session_operation_session(
-            await runtime.restore_session_operation(latest_session_file)
-        )
-    elif args.session:
-        session = require_session_operation_session(
-            await runtime.restore_session_operation(args.session)
-        )
-    else:
-        session = require_session_operation_session(
-            await runtime.new_session_operation(cwd=str(project_root))
-        )
-
-    if args.fork:
-        try:
-            session = require_session_operation_session(
-                await runtime.fork_session_operation(args.fork, position="at")
-            )
-        except Exception as error:
-            raise RuntimeError(f"Failed to fork session: {error}") from error
-    return session
+    return await resolve_session(
+        runtime,
+        SessionResolutionRequest(
+            session=args.session,
+            continue_=args.continue_,
+            resume=args.resume,
+            fork=args.fork,
+            cwd=project_root,
+        ),
+    )
 
 
 def _resolve_latest_session_file(runtime: Any) -> str | None:
-    try:
-        sessions = runtime.list_sessions()
-    except Exception as error:
-        raise RuntimeError(f"Failed to list sessions: {error}") from error
-    if not isinstance(sessions, list):
-        raise RuntimeError("session listing returned an invalid response.")
-    if not sessions:
-        return None
-    for latest_session in sessions:
-        session_file = getattr(latest_session, "session_file", None)
-        if session_file is not None:
-            return str(session_file)
-    return None
+    return resolve_latest_session_file_shared(runtime)
 
 
 def _resolve_model_selection(args: CliArgs) -> ModelSelection | None:
