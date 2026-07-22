@@ -185,6 +185,48 @@ def test_session_runtime_publishes_transcript_commit_receipts_in_order() -> None
     asyncio.run(scenario())
 
 
+def test_session_runtime_defers_continue_until_host_is_idle() -> None:
+    async def scenario() -> None:
+        agent = Agent()
+        release = asyncio.Event()
+        continued: list[bool] = []
+
+        async def continue_run() -> None:
+            continued.append(True)
+
+        agent.continue_run = continue_run  # type: ignore[method-assign]
+        runtime = SessionRuntime(
+            agent=agent,
+            transcript=TranscriptRuntimePort(
+                session_id="session-3",
+                append_message=lambda message: _append_message(message),
+                commit_application_message=lambda message: _commit_application_message(
+                    message
+                ),
+                refresh_context=lambda: None,
+                set_commit_observer=lambda observer: None,
+            ),
+            turn_policy=_turn_policy(),
+            after_turn_policy=_after_turn_policy(),
+        )
+
+        active = asyncio.create_task(
+            runtime.host_runtime.run(lambda: release.wait())
+        )
+        await asyncio.sleep(0)
+        deferred = asyncio.create_task(runtime.continue_run())
+        await asyncio.sleep(0)
+        assert not deferred.done()
+
+        release.set()
+        await active
+        await deferred
+        assert continued == [True]
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
 def _turn_policy() -> TurnPolicyPort:
     async def preflight(text: str, **kwargs: object) -> _PreflightResult:
         del kwargs

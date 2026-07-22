@@ -422,14 +422,10 @@ def test_process_event_requires_active_run_signal() -> None:
     asyncio.run(scenario())
 
 
-def test_get_api_key_is_forwarded_to_stream_function_options() -> None:
+def test_request_auth_is_forwarded_to_stream_function_options() -> None:
     from loushang.agent import Agent
 
     captured_auth: list[object] = []
-
-    async def get_api_key(provider: str) -> str:
-        assert provider == "faux"
-        return "secret-token"
 
     async def stream_fn(model, context, options=None):
         captured_auth.append(getattr(options, "auth", None))
@@ -438,7 +434,7 @@ def test_get_api_key_is_forwarded_to_stream_function_options() -> None:
     async def scenario() -> None:
         agent = Agent(
             stream_fn=stream_fn,
-            get_api_key=get_api_key,
+            call_options=CallOptions(auth=ApiKeyAuth("secret-token")),
             initial_state=agent_state_seed(),
         )
         await agent.prompt("hi")
@@ -448,15 +444,11 @@ def test_get_api_key_is_forwarded_to_stream_function_options() -> None:
     asyncio.run(scenario())
 
 
-def test_get_api_key_uses_oauth_bearer_for_oauth_model() -> None:
+def test_agent_forwards_oauth_request_auth_without_provider_judgment() -> None:
     from loushang.agent import Agent
     from loushang.agent.types import AgentState
 
     captured_auth: list[object] = []
-
-    async def get_api_key(provider: str) -> str:
-        assert provider == "faux"
-        return "oauth-token"
 
     async def stream_fn(model, context, options=None):
         captured_auth.append(getattr(options, "auth", None))
@@ -473,7 +465,7 @@ def test_get_api_key_uses_oauth_bearer_for_oauth_model() -> None:
         )
         agent = Agent(
             stream_fn=stream_fn,
-            get_api_key=get_api_key,
+            call_options=CallOptions(auth=OAuthBearerAuth("oauth-token")),
             initial_state=AgentState(
                 system_prompt="",
                 model=oauth_model,

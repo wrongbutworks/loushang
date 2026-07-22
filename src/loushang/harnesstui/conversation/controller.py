@@ -7,13 +7,23 @@ import inspect
 import traceback
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol, cast
 
 from loushang.harness.commands import CommandEffectKind
 from loushang.harness.host.types import HostActionResult
 
 CommandCatalogFactory = Callable[[Any], Any]
 ImageParts = tuple[object, ...] | list[object] | None
+
+
+class _TextIntent(Protocol):
+    @property
+    def text(self) -> str: ...
+
+
+class _BashIntent(Protocol):
+    @property
+    def command(self) -> str: ...
 
 
 @dataclass
@@ -49,20 +59,24 @@ class ConversationUiController:
             if self.prompt_intent_type is not None and isinstance(
                 intent, self.prompt_intent_type
             ):
+                prompt_intent = cast(_TextIntent, intent)
                 command_result = await self._dispatch_session_command(intent)
                 if command_result is not None:
                     return command_result
-                await self._prompt(intent.text, images=getattr(intent, "images", None))
+                await self._prompt(
+                    prompt_intent.text,
+                    images=getattr(prompt_intent, "images", None),
+                )
                 return HostActionResult()
             if self.bash_intent_type is not None and isinstance(
                 intent, self.bash_intent_type
             ):
-                await self._bash(intent.command)
+                await self._bash(cast(_BashIntent, intent).command)
                 return HostActionResult()
             if self.follow_up_intent_type is not None and isinstance(
                 intent, self.follow_up_intent_type
             ):
-                return await self.follow_up(intent.text)
+                return await self.follow_up(cast(_TextIntent, intent).text)
             if self.abort_intent_type is not None and isinstance(
                 intent, self.abort_intent_type
             ):

@@ -17,6 +17,7 @@ from _support import (
     resolve_api_key,
 )
 
+from loushang.ai import ApiKeyAuth, CallOptions
 from loushang.coding import (
     create_agent_session_runtime,
 )
@@ -91,7 +92,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _configure_session(session) -> None:
-    session.agent.get_api_key = lambda provider: resolve_api_key()
+    session.agent.call_options = CallOptions(auth=ApiKeyAuth(resolve_api_key()))
     attach_stream_printer(session)
 
 

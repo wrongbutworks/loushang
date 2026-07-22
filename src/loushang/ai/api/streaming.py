@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 
 from loushang.ai.api_registry import get_default_api_provider_registry
+from loushang.ai.auth.credentials import AuthCredential
+from loushang.ai.auth.resolver import resolve_auth
 from loushang.ai.bootstrap import register_builtin_ai_providers
 from loushang.ai.context import NormalizedContext, normalize_context_result
 from loushang.ai.diagnostics import NormalizationDiagnostic
@@ -251,10 +253,20 @@ async def _start_stream(
     require_stream: bool,
 ):
     options = _validate_call_options(options)
-    resolved = resolve_request_for_model(model, options=options)
+    request_auth = await resolve_auth(model, options=options)
+    if options is None:
+        prepared_options = CallOptions(auth=request_auth) if request_auth else None
+    else:
+        prepared_options = replace(
+            options,
+            auth=request_auth,
+            credential=None,
+            credential_file=None,
+        )
+    resolved = resolve_request_for_model(model, options=prepared_options)
     resolved_model = resolved.model
     options = _normalize_cache_key_for_adapter(
-        options,
+        prepared_options,
         _resolved_adapter_config(resolved_model),
     )
     normalization_result = normalize_context_result(
@@ -304,11 +316,13 @@ async def stream(
     model: Model,
     context,
     options: CallOptions | None = None,
+    *,
+    auth: AuthCredential | None = None,
 ):
     return await _start_stream(
         model,
         context,
-        options,
+        _with_explicit_auth(options, auth),
         mode="stream",
         require_stream=True,
     )
@@ -318,11 +332,13 @@ async def complete(
     model: Model,
     context,
     options: CallOptions | None = None,
+    *,
+    auth: AuthCredential | None = None,
 ):
     event_stream = await _start_stream(
         model,
         context,
-        options,
+        _with_explicit_auth(options, auth),
         mode="complete",
         require_stream=False,
     )
@@ -335,10 +351,24 @@ async def complete_structured(
     output: StructuredOutputOptions | None = None,
     *,
     options: CallOptions | None = None,
+    auth: AuthCredential | None = None,
 ) -> StructuredOutputResult:
     structured_output = output or get_structured_output_options(options)
     if structured_output is None:
         raise ValueError("complete_structured requires StructuredOutputOptions")
     call_options = with_structured_output_options(options, structured_output)
-    message = await complete(model, context, call_options)
+    message = await complete(model, context, call_options, auth=auth)
     return parse_structured_output(message, structured_output)
+
+
+def _with_explicit_auth(
+    options: CallOptions | None,
+    auth: AuthCredential | None,
+) -> CallOptions | None:
+    if auth is None:
+        return options
+    if options is None:
+        return CallOptions(auth=auth)
+    if options.auth is not None:
+        raise ValueError("Pass request auth through either auth= or CallOptions.auth, not both")
+    return replace(options, auth=auth)

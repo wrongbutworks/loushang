@@ -144,6 +144,57 @@ def test_endpoint_accepts_base_url_env_without_literal_url() -> None:
     validate_model_registry_raw(raw)
 
 
+def test_model_registry_accepts_generic_oauth_configuration(tmp_path: Path) -> None:
+    oauth = {
+        "client_id": "client",
+        "authorization_endpoint": "https://oauth.test/authorize",
+        "token_endpoint": "https://oauth.test/token",
+        "scopes": ["model.invoke"],
+    }
+    raw = _registry_raw(
+        endpoint_adapter={"developerRole": False},
+        endpoint_extra={"auth": {"kind": "oauth", "oauth": oauth}},
+    )
+
+    registry = load_model_registry_from_file(_write_registry(tmp_path, raw))
+    model = registry.get_model("custom", "test-endpoint", "test-model")
+
+    assert model.auth is not None
+    assert model.auth.oauth is not None
+    assert model.auth.oauth.client_id == "client"
+    assert model.auth.oauth.scopes == ("model.invoke",)
+
+
+@pytest.mark.parametrize(
+    "oauth",
+    [
+        {
+            "authorization_endpoint": "https://oauth.test/authorize",
+            "token_endpoint": "https://oauth.test/token",
+        },
+        {
+            "client_id": "client",
+            "authorization_endpoint": "https://oauth.test/authorize",
+            "token_endpoint": "https://oauth.test/token",
+            "scopes": ["same", "same"],
+        },
+        {
+            "client_id": "client",
+            "authorization_endpoint": "https://oauth.test/authorize",
+            "token_endpoint": "https://oauth.test/token",
+            "vendor_extension": True,
+        },
+    ],
+)
+def test_model_registry_rejects_invalid_generic_oauth_configuration(
+    oauth: dict[str, object],
+) -> None:
+    raw = _registry_raw(endpoint_extra={"auth": {"kind": "oauth", "oauth": oauth}})
+
+    with pytest.raises(ValueError, match="oauth"):
+        validate_model_registry_raw(raw)
+
+
 def _set_nested(
     raw: dict[str, object],
     path: tuple[str, ...],

@@ -46,7 +46,7 @@ Endpoint static headers and `CallOptions.headers` are also supported. Header res
 
 The AI package does not own browser login, callback handling, refresh, credential persistence, account switching, logout, subscription state, or workspace binding. Applications resolve those concerns before calling `loushang.ai`.
 
-For a ChatGPT coding-plan request, the application may read an existing credential file at its edge, extract the access token and account header, construct `OAuthBearerAuth`, and call the ordinary OpenAI Responses adapter using `openai:coding-responses:gpt-5.5`. This is a credential source and endpoint distinction, not a new provider or protocol family.
+For a ChatGPT coding-plan request, the experimental `OpenAICodexCredentialSource` may import an existing Codex credential file, convert it to request auth, and call the ordinary OpenAI Responses adapter using `openai:coding-responses:gpt-5.5`. Upper layers do not parse the token file. This is a credential-source and endpoint distinction, not an OAuth provider or a new protocol family.
 
 ## Provider Request
 

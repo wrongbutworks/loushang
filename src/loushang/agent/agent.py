@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import replace
 from typing import Any
 
 from loushang.agent.agent_loop import run_agent_loop, run_agent_loop_continue
@@ -117,7 +118,7 @@ class Agent:
         self.convert_to_llm = options.convert_to_llm or _default_convert_to_llm
         self.transform_context = options.transform_context
         self.stream_fn = options.stream_fn or _default_stream
-        self.get_api_key = options.get_api_key
+        self.call_options = options.call_options or CallOptions()
         self.before_tool_call = options.before_tool_call
         self.after_tool_call = options.after_tool_call
         self.steering_queue = PendingMessageQueue(options.steering_mode)
@@ -501,21 +502,24 @@ class Agent:
         async def get_follow_up_messages() -> list[AgentMessage]:
             return self.follow_up_queue.drain()
 
+        call_options = replace(
+            self.call_options,
+            cache_key=self.call_options.cache_key or self.session_id,
+            reasoning=self.call_options.reasoning
+            or _reasoning_options(
+                self._state.thinking_level,
+                self.thinking_budgets,
+            ),
+            retry=self.call_options.retry or _retry_options(self.max_retry_delay_ms),
+        )
         return AgentLoopConfig(
             model=self._state.model,
-            call_options=CallOptions(
-                cache_key=self.session_id,
-                reasoning=_reasoning_options(
-                    self._state.thinking_level, self.thinking_budgets
-                ),
-                retry=_retry_options(self.max_retry_delay_ms),
-            ),
+            call_options=call_options,
             tool_execution=self.tool_execution,
             before_tool_call=self.before_tool_call,
             after_tool_call=self.after_tool_call,
             convert_to_llm=self.convert_to_llm,
             transform_context=self.transform_context,
-            get_api_key=self.get_api_key,
             get_steering_messages=get_steering_messages,
             get_follow_up_messages=get_follow_up_messages,
         )

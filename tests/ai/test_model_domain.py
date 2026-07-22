@@ -13,6 +13,7 @@ from loushang.ai.model import (
     Endpoint,
     Model,
     ModelRegistry,
+    OAuthConfig,
     OpenAICompletionsConfig,
     OpenAIResponsesConfig,
     Pricing,
@@ -314,6 +315,10 @@ def test_provider_endpoint_and_model_to_raw_include_optional_fields() -> None:
 
 def test_auth_to_raw_omits_empty_optional_fields() -> None:
     assert Auth(kind="oauth").to_raw() == {"kind": "oauth"}
+    assert Auth(kind="oauth", provider="example-oauth").to_raw() == {
+        "kind": "oauth",
+        "provider": "example-oauth",
+    }
     assert Auth(
         kind="apiKey",
         api_key_env="PRIMARY_KEY",
@@ -327,6 +332,35 @@ def test_auth_to_raw_omits_empty_optional_fields() -> None:
         "header": "X-Key",
         "prefix": "",
     }
+
+
+def test_oauth_config_round_trips_through_auth() -> None:
+    oauth = OAuthConfig(
+        client_id="client",
+        authorization_endpoint="https://oauth.test/authorize",
+        token_endpoint="https://oauth.test/token",
+        scopes=("model.invoke", "model.read"),
+        redirect_uri="http://127.0.0.1:9876/callback",
+    )
+
+    raw = Auth(kind="oauth", provider="example-oauth", oauth=oauth).to_raw()
+
+    assert raw == {
+        "kind": "oauth",
+        "provider": "example-oauth",
+        "oauth": {
+            "client_id": "client",
+            "authorization_endpoint": "https://oauth.test/authorize",
+            "token_endpoint": "https://oauth.test/token",
+            "scopes": ["model.invoke", "model.read"],
+            "redirect_uri": "http://127.0.0.1:9876/callback",
+        },
+    }
+    assert Auth.from_raw(raw) == Auth(
+        kind="oauth",
+        provider="example-oauth",
+        oauth=oauth,
+    )
 
 
 def test_pricing_round_trip_preserves_unknown_and_zero_components() -> None:

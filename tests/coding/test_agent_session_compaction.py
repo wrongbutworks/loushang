@@ -1349,7 +1349,9 @@ def test_agent_session_overflow_recovery_emits_compaction_with_retry_flag(
         nonlocal continue_runs
         continue_runs += 1
 
-    monkeypatch.setattr(session, "continue_run", _continue_run)
+    monkeypatch.setattr(
+        session._session_runtime, "schedule_continue_run", _continue_run
+    )
     session.subscribe(events.append)
 
     async def scenario() -> None:
@@ -1462,7 +1464,9 @@ def test_agent_session_overflow_recovery_is_limited_to_one_attempt(
         "loushang.coding.session.agent_session._execute_coding_compaction",
         _fake_compact,
     )
-    monkeypatch.setattr(session, "continue_run", _continue_run)
+    monkeypatch.setattr(
+        session._session_runtime, "schedule_continue_run", _continue_run
+    )
     session.subscribe(events.append)
 
     async def scenario() -> None:

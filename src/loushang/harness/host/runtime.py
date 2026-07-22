@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, cast
 
 from loushang.harness.host.events import EventListener, OrderedEventBus
 from loushang.harness.host.types import (
@@ -44,6 +44,8 @@ class HostRuntime(Generic[T]):
         self._abort_requested = False
         self._next_run_id = 1
         self._dispose_lock = asyncio.Lock()
+        self._deferred_tasks: set[asyncio.Task[object]] = set()
+        self._deferred_by_key: dict[str, asyncio.Task[object]] = {}
 
     @property
     def status(self) -> HostStatus:
@@ -117,6 +119,78 @@ class HostRuntime(Generic[T]):
             run_id=resolved_run_id,
         )
         return result
+
+    async def run_after_idle(
+        self,
+        operation: RunOperation[T],
+        *,
+        run_id: str | None = None,
+    ) -> T:
+        """Run an operation once this host and its external driver are idle.
+
+        ``run()`` intentionally rejects concurrent callers. Deferred work
+        such as an automatic retry needs different semantics: it waits for the
+        current run to finish, then enters ``run()`` from the same task without
+        yielding between the idle check and the state transition.
+        """
+
+        current_task = asyncio.current_task()
+        while True:
+            active_task = self._active_task
+            if active_task is current_task:
+                raise HostStateError(
+                    "cannot run after idle from the active host run"
+                )
+            if active_task is not None:
+                await active_task
+                continue
+
+            if self._status in {"running", "aborting"} or self._driver_is_running():
+                await self.wait_for_idle()
+                continue
+
+            # There is no await between the final idle check above and the
+            # state transition performed by run(), so another asyncio task
+            # cannot claim the host in between.
+            return await self.run(operation, run_id=run_id)
+
+    def defer_run(
+        self,
+        operation: RunOperation[T],
+        *,
+        key: str | None = None,
+        run_id: str | None = None,
+    ) -> asyncio.Task[T]:
+        """Schedule one operation to run after this host becomes idle.
+
+        The returned task is also owned by the host runtime.  A caller may
+        await it for the result, but dropping it cannot create an unhandled
+        background-task exception.  ``key`` coalesces equivalent deferred
+        operations, such as retry and compaction requests for one continuation.
+        """
+
+        if key is not None:
+            existing = self._deferred_by_key.get(key)
+            if existing is not None:
+                if not existing.done():
+                    return cast(asyncio.Task[T], existing)
+                self._deferred_by_key.pop(key, None)
+
+        task = asyncio.create_task(self.run_after_idle(operation, run_id=run_id))
+        task_object = cast(asyncio.Task[object], task)
+        self._deferred_tasks.add(task_object)
+        if key is not None:
+            self._deferred_by_key[key] = task_object
+        task.add_done_callback(self._observe_deferred_task)
+        return task
+
+    def _observe_deferred_task(self, task: asyncio.Task[object]) -> None:
+        self._deferred_tasks.discard(task)
+        for key, pending in tuple(self._deferred_by_key.items()):
+            if pending is task:
+                self._deferred_by_key.pop(key, None)
+        if not task.cancelled():
+            task.exception()
 
     def abort(self) -> bool:
         if self._status == "disposed" or not self.is_active:

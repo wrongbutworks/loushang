@@ -138,6 +138,37 @@ def test_retry_coordinator_cleans_up_when_a_driver_fails() -> None:
     assert coordinator.attempt == 0
 
 
+def test_retry_coordinator_observes_deferred_continuation_failure() -> None:
+    outcomes: list[RetryOutcome] = []
+
+    async def fail_continue() -> None:
+        raise RuntimeError("host is already running")
+
+    coordinator = RetryCoordinator(
+        create_cancel_handle=CancelHandle,
+        cancel=lambda handle: setattr(handle, "cancelled", True),
+        delay=lambda delay_ms, handle: _noop(),
+        continue_run=fail_continue,
+        on_started=lambda attempt: _noop(),
+        on_finished=lambda outcome: _append(outcomes, outcome),
+    )
+
+    async def scenario() -> None:
+        assert await coordinator.retry("busy", policy=RetryPolicy(True, 1, 1))
+        await coordinator.wait()
+
+    asyncio.run(scenario())
+
+    assert outcomes == [
+        RetryOutcome(
+            success=False,
+            attempt=1,
+            error="host is already running",
+        )
+    ]
+    assert coordinator.is_retrying is False
+
+
 def _coordinator(
     attempts: list[RetryAttempt],
     outcomes: list[RetryOutcome],

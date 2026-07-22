@@ -694,6 +694,7 @@
           "region": "global",
           "auth": {
             "kind": "oauth",
+            "provider": "openai-codex",
             "header": "Authorization",
             "prefix": "Bearer "
           },

@@ -33,7 +33,7 @@ HARNESSTUI_SHARED_SOURCES := \
 HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/platform/__init__.py \
 	src/loushang/coding/platform/footer_data_provider.py \
-	src/loushang/coding/session/builtin_commands.py \
+	src/loushang/coding/session/command_controller.py \
 	src/loushang/coding/ui
 HARNESSTUI_TEST_SUPPORT := \
 	tests/coding/tui_support
@@ -122,7 +122,7 @@ test:
 	. .venv/bin/activate && uv run pytest tests -q
 
 test-ai:
-	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run pytest tests/ai tests/protocols tests/examples/test_ai_examples.py -m "not live" -q
+	. .venv/bin/activate && $(AI_OFFLINE_ENV) uv run pytest tests/ai tests/protocols tests/examples/test_ai_examples.py tests/examples/test_auth_examples.py -m "not live" -q
 
 check-ai: lint-ai typecheck-ai check-ai-catalog check-ai-imports check-ai-examples check-ai-coverage
 
@@ -159,10 +159,10 @@ test-tui-render-contract:
 	uv --cache-dir .uv-cache run --extra dev pytest tests/tui tests/harnesstui tests/coding -m tui_render_contract -q
 
 lint-ai:
-	. .venv/bin/activate && uv run ruff check src/loushang/ai examples/ai tests/ai tests/protocols scripts/ai
+	. .venv/bin/activate && uv run ruff check src/loushang/ai examples/ai examples/auth tests/ai tests/protocols tests/examples/test_auth_examples.py scripts/ai
 
 fmt-ai:
-	. .venv/bin/activate && uv run ruff format src/loushang/ai examples/ai tests/ai tests/protocols scripts/ai
+	. .venv/bin/activate && uv run ruff format src/loushang/ai examples/ai examples/auth tests/ai tests/protocols tests/examples/test_auth_examples.py scripts/ai
 
 typecheck-ai:
 	. .venv/bin/activate && uv run mypy src/loushang/ai

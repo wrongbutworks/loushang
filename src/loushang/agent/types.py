@@ -421,10 +421,6 @@ class TransformContextFn(Protocol):
     ) -> Awaitable[list[AgentMessage]]: ...
 
 
-class GetApiKeyFn(Protocol):
-    def __call__(self, provider: str) -> str | None | Awaitable[str | None]: ...
-
-
 @runtime_checkable
 class AgentTool(Protocol[TDetails]):
     name: str
@@ -548,7 +544,6 @@ class AgentLoopConfig:
     convert_to_llm: ConvertToLlmFn
     call_options: CallOptions = field(default_factory=CallOptions)
     transform_context: TransformContextFn | None = None
-    get_api_key: GetApiKeyFn | None = None
     get_steering_messages: Callable[[], Awaitable[list[AgentMessage]]] | None = None
     get_follow_up_messages: Callable[[], Awaitable[list[AgentMessage]]] | None = None
     tool_execution: ToolExecutionMode = "parallel"
@@ -624,7 +619,7 @@ class AgentOptions:
     convert_to_llm: ConvertToLlmFn | None = None
     transform_context: TransformContextFn | None = None
     stream_fn: StreamFn | None = None
-    get_api_key: GetApiKeyFn | None = None
+    call_options: CallOptions | None = None
     before_tool_call: (
         Callable[
             [BeforeToolCallContext, object | None],
@@ -833,7 +828,6 @@ __all__ = [
     "BeforeToolCallResult",
     "ConvertToLlmFn",
     "CustomAgentMessage",
-    "GetApiKeyFn",
     "ProxyAssistantMessageEvent",
     "ProxyStreamOptions",
     "StreamFn",

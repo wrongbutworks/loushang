@@ -192,18 +192,21 @@ model catalog 声明 primary auth header 名称和 prefix。最终请求 headers
 provider、endpoint、model 的 auth 使用完整替换。model 声明优先于 endpoint，
 endpoint 优先于 provider，不做跨层局部合并。
 
-AI 包不执行登录、凭证续期、打开浏览器或持久化账号状态。这些操作必须在调用 SDK 前
-由外部完成。
+AI 包负责配置驱动的 OAuth 协议、callback、credential 存储与允许的 refresh；
+上层调用 `auth.login(model)`、展示返回的 `authorization_url`，然后等待
+`session.wait()`。AI 包不拥有产品 UI，也不会打开浏览器。
+`auth.get_auth(model)` 只解析已有认证，绝不启动登录。
 
-ChatGPT Coding Plan 示例从已有 `~/.codex/auth.json` 读取当前 token 和 account ID，
-构造 `OAuthBearerAuth`，并调用：
+OpenAI Codex 当前不是 Loushang OAuth provider。当前支持只导入已有 Codex CLI
+credential，不执行 ChatGPT OAuth login。live 示例不解析 token 文件，也不直接调用
+实验 credential source；它调用 `get_auth(model)`，把结果传给请求，然后调用：
 
 ```python
 get_model("openai", "coding-responses", "gpt-5.5")
 ```
 
 详见
-[chatgpt_coding_plan.py](../../../examples/ai/chatgpt_coding_plan.py)。
+[openai_codex_live_example.py](../../../examples/auth/openai_codex_live_example.py)。
 
 ## 自定义 Catalog
 

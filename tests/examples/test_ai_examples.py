@@ -320,87 +320,44 @@ def test_image_input_example_reports_image_counts(capsys) -> None:
     assert payload == summary
 
 
-def test_chatgpt_coding_plan_example_loads_call_time_auth_only(
-    tmp_path: Path,
-) -> None:
+def test_openai_codex_live_example_leaves_credential_import_to_auth_api() -> None:
     module = _load_module(
-        Path("examples/ai/chatgpt_coding_plan.py"),
-        "examples_ai_chatgpt_coding_plan_credentials",
-    )
-    auth_path = tmp_path / "auth.json"
-    auth_path.write_text(
-        json.dumps(
-            {
-                "auth_mode": "chatgpt",
-                "tokens": {
-                    "access_token": "access-token",
-                    "account_id": "account-id",
-                    "refresh_token": "refresh-token",
-                    "id_token": "ignored-id-token",
-                },
-            }
-        ),
-        encoding="utf-8",
+        Path("examples/auth/openai_codex_live_example.py"),
+        "examples_auth_openai_codex_live",
     )
 
-    auth = module.load_auth(auth_path)
-
-    assert auth.access_token == "access-token"
-    assert auth.extra_headers == {
-        "chatgpt-account-id": "account-id",
-    }
-
-
-@pytest.mark.parametrize(
-    "payload",
-    [
-        [],
-        {"auth_mode": "apikey"},
-        {"auth_mode": "chatgpt"},
-        {"auth_mode": "chatgpt", "tokens": {"account_id": "account-id"}},
-        {"auth_mode": "chatgpt", "tokens": {"access_token": "token"}},
-    ],
-)
-def test_chatgpt_coding_plan_example_rejects_invalid_auth_file(
-    tmp_path: Path,
-    payload: object,
-) -> None:
-    module = _load_module(
-        Path("examples/ai/chatgpt_coding_plan.py"),
-        "examples_ai_chatgpt_coding_plan_invalid",
+    assert not hasattr(module, "load_auth")
+    source = Path("examples/auth/openai_codex_live_example.py").read_text(
+        encoding="utf-8"
     )
-    auth_path = tmp_path / "auth.json"
-    auth_path.write_text(json.dumps(payload), encoding="utf-8")
-
-    with pytest.raises((KeyError, TypeError)):
-        module.load_auth(auth_path)
+    assert "read_text" not in source
+    assert "access_token" not in source
+    assert "OpenAICodexCredentialSource" not in source
 
 
-def test_chatgpt_coding_plan_example_calls_public_responses_path(
+def test_openai_codex_import_example_calls_public_responses_path(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     from loushang.ai import AssistantMessage, TextPart
 
     module = _load_module(
-        Path("examples/ai/chatgpt_coding_plan.py"),
-        "examples_ai_chatgpt_coding_plan_call",
-    )
-    auth_path = tmp_path / "auth.json"
-    auth_path.write_text(
-        json.dumps(
-            {
-                "auth_mode": "chatgpt",
-                "tokens": {
-                    "access_token": "access-token",
-                    "account_id": "account-id",
-                },
-            }
-        ),
-        encoding="utf-8",
+        Path("examples/auth/openai_codex_live_example.py"),
+        "examples_auth_openai_codex_live_call",
     )
     captured: dict[str, object] = {}
     model = object()
+    request_auth = object()
+
+    class AuthenticatedStatus:
+        authenticated = True
+        auth_kind = "oauth"
+        provider = "openai-codex"
+        source = "credential_source"
+        source_description = "Use existing Codex CLI login"
+        source_recovery_hint = "Run codex login"
+        experimental = True
+        actions: tuple[str, ...] = ()
 
     def fake_get_model(provider_id: str, endpoint_id: str, model_id: str):
         captured["model_id"] = (provider_id, endpoint_id, model_id)
@@ -421,44 +378,49 @@ def test_chatgpt_coding_plan_example_calls_public_responses_path(
                 timestamp=0.0,
             )
 
-    async def fake_stream(selected_model, context, options):
+    async def fake_get_auth(selected_model):
+        captured["auth_model"] = selected_model
+        return request_auth
+
+    async def fake_status(selected_model):
+        captured["status_model"] = selected_model
+        return AuthenticatedStatus()
+
+    async def fake_stream(selected_model, context, options, *, auth=None):
         captured["model"] = selected_model
         captured["context"] = context
         captured["options"] = options
+        captured["auth"] = auth
         return FakeEventStream()
 
-    monkeypatch.setattr(module, "get_model", fake_get_model)
-    monkeypatch.setattr(module, "stream", fake_stream)
+    monkeypatch.setattr(module.ai, "get_model", fake_get_model)
+    monkeypatch.setattr(module.ai.auth, "status", fake_status)
+    monkeypatch.setattr(module.ai.auth, "get_auth", fake_get_auth)
+    monkeypatch.setattr(module.ai, "stream", fake_stream)
 
-    assert asyncio.run(module.run(auth_path)) == "ok"
+    assert asyncio.run(module.run()) == "ok"
     assert captured["model_id"] == (
         "openai",
         "coding-responses",
         "gpt-5.5",
     )
     assert captured["model"] is model
+    assert captured["status_model"] is model
+    assert captured["auth_model"] is model
+    assert captured["auth"] is request_auth
     options = captured["options"]
-    assert options.auth.access_token == "access-token"
-    assert options.auth.extra_headers == {
-        "chatgpt-account-id": "account-id",
-    }
+    assert options.auth is None
+    assert options.credential is None
+    assert options.credential_file is None
     assert not hasattr(options, "oauth_credentials")
     assert options.max_output_tokens is None
     assert options.reasoning.effort == "low"
-
-
-def test_chatgpt_coding_plan_example_reports_corrupt_auth_file(
-    tmp_path: Path,
-) -> None:
-    module = _load_module(
-        Path("examples/ai/chatgpt_coding_plan.py"),
-        "examples_ai_chatgpt_coding_plan_corrupt",
-    )
-    auth_path = tmp_path / "auth.json"
-    auth_path.write_text("{", encoding="utf-8")
-
-    with pytest.raises(json.JSONDecodeError):
-        module.load_auth(auth_path)
+    output = capsys.readouterr().out
+    assert '"authenticated": true' in output
+    assert '"source": "credential_source"' in output
+    assert "Resolved authentication: object" in output
+    assert "Model response:\nok" in output
+    assert "Reply exactly: ok" not in captured["context"]["messages"][0]["content"]
 
 
 def test_errors_retry_example_reports_redacted_error_payload(capsys) -> None:
