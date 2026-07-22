@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from loushang.harness.cli import (
     STANDARD_CLI_PROFILE,
     CliArgumentSpec,
     CliCommandSpec,
+    CliOperationRuntime,
+    CliOperationSpec,
     CliProfileError,
     parse_args,
 )
@@ -98,3 +102,21 @@ def test_allow_unknown_preserves_unowned_flags_for_product_boundary() -> None:
 
     assert invocation.unknown == ("--future-flag",)
     assert invocation.positionals == ("value", "message")
+
+
+def test_operation_runtime_dispatches_sync_and_async_product_handlers() -> None:
+    profile = STANDARD_CLI_PROFILE.augment(
+        commands=(CliCommandSpec("design.export", ("export",)),)
+    )
+    invocation = parse_args(["export", "deck"], profile)
+    runtime = CliOperationRuntime(
+        {
+            "design.export": CliOperationSpec(
+                "design.export", lambda value: {"positionals": value.positionals}
+            )
+        }
+    )
+
+    result = asyncio.run(runtime.dispatch(invocation))
+
+    assert result == {"positionals": ("deck",)}

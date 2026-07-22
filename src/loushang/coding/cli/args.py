@@ -5,8 +5,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
+from loushang.coding.cli.profile import CODING_CLI_PROFILE
 from loushang.harness.cli import register_profile_arguments
-from loushang.harness.cli.profile import STANDARD_CLI_PROFILE
 from loushang.harness.extensions.types import RegisteredFlag, ResolvedFlag
 
 CliMode = Literal["text", "print", "json", "rpc", "channel"]
@@ -415,31 +415,7 @@ def _build_parser() -> ArgumentParser:
         formatter_class=RawTextHelpFormatter,
     )
     parser.add_argument("messages", nargs="*")
-    register_profile_arguments(parser, STANDARD_CLI_PROFILE)
-    parser.add_argument("--method", help="Guide one coding turn with a discovered method.")
-    parser.add_argument("--no-method", action="store_true", help="Run one coding turn without method guidance.")
-    parser.add_argument(
-        "--prompt-steps",
-        "-ps",
-        help="Run a prompt workflow file against a coding session.",
-    )
-    parser.add_argument(
-        "--work-log",
-        help="Write WorkOperation/WorkEvent records for one-shot text/print/json prompts to a JSONL file.",
-    )
-    parser.add_argument(
-        "--work-log-inspect",
-        metavar="PATH",
-        help="Inspect a work event JSONL log without starting a session.",
-    )
-    parser.add_argument("--work-log-run", help="Filter --work-log-inspect output to one run id.")
-    parser.add_argument("--work-log-inspect-format", choices=("text", "json", "plans", "plans-json"), default="text")
-    parser.add_argument("--list-methods", action="store_true")
-    parser.add_argument("--list-methods-format", choices=("tsv", "json"), default="tsv")
-    parser.add_argument("--show-method")
-    parser.add_argument("--show-method-format", choices=("text", "json"), default="text")
-    parser.add_argument("--show-method-plan")
-    parser.add_argument("--show-method-plan-format", choices=("text", "json"), default="text")
+    register_profile_arguments(parser, CODING_CLI_PROFILE)
     return parser
 
 

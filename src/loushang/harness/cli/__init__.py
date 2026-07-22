@@ -6,6 +6,12 @@ from loushang.harness.cli.parser import (
     register_profile_arguments,
 )
 from loushang.harness.cli.profile import STANDARD_CLI_PROFILE, CliProfile
+from loushang.harness.cli.runtime import (
+    CliOperationHandler,
+    CliOperationRuntime,
+    CliOperationSpec,
+    CliOperationUnavailableError,
+)
 from loushang.harness.cli.types import (
     CliArgumentSpec,
     CliCommandSpec,
@@ -18,6 +24,10 @@ __all__ = [
     "CliArgumentSpec",
     "CliCommandSpec",
     "CliInvocation",
+    "CliOperationHandler",
+    "CliOperationRuntime",
+    "CliOperationSpec",
+    "CliOperationUnavailableError",
     "CliProfile",
     "CliProfileError",
     "STANDARD_CLI_PROFILE",
