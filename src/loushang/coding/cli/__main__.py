@@ -77,6 +77,8 @@ from loushang.harness.cli import (
     CommandListingError,
     DiagnosticsListingError,
     DiagnosticsListingRequest,
+    ExportOperationError,
+    ExportRequest,
     ModelListingError,
     ModelListingRequest,
     PluginListingError,
@@ -84,8 +86,10 @@ from loushang.harness.cli import (
     SessionListingRequest,
     SkillListingError,
     build_session_query,
+    export_session,
     format_command_records,
     format_diagnostic_records,
+    format_export_result,
     format_package_records,
     format_plugin_records,
     format_session_records,
@@ -1806,33 +1810,15 @@ def _run_export(
     if args.export is None:
         return None
 
-    if args.export_format == "jsonl":
-        exporter = getattr(session, "export_to_jsonl", None)
-    else:
-        exporter = getattr(session, "export_to_html", None)
-    if not callable(exporter):
-        stderr.write(f"Error: {args.export_format} export is not available.\n")
-        return 1
-
-    export_target = args.export if args.export != "" else None
     try:
-        output_path = exporter(export_target)
-    except Exception as error:
+        result = export_session(
+            session,
+            ExportRequest(format=args.export_format, output=args.export),
+        )
+    except ExportOperationError as error:
         stderr.write(f"Error: {_format_cli_error(error)}\n")
         return 1
-    if args.export_result_format == "json":
-        stdout.write(
-            json.dumps(
-                {
-                    "path": output_path,
-                    "format": args.export_format,
-                },
-                ensure_ascii=False,
-            )
-            + "\n"
-        )
-    else:
-        stdout.write(f"Exported to: {output_path}\n")
+    stdout.write(format_export_result(result, args.export_result_format))
     return 0
 
 

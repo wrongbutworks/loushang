@@ -11,6 +11,15 @@ from loushang.harness.cli.diagnostics_listing import (
     format_diagnostic_records,
     list_diagnostic_records,
 )
+from loushang.harness.cli.export import (
+    ExportFormat,
+    ExportOperationError,
+    ExportRequest,
+    ExportResult,
+    ExportResultFormat,
+    export_session,
+    format_export_result,
+)
 from loushang.harness.cli.model_listing import (
     ModelListingError,
     ModelListingRequest,
@@ -85,6 +94,13 @@ __all__ = [
     "DiagnosticsListingRequest",
     "format_diagnostic_records",
     "list_diagnostic_records",
+    "ExportFormat",
+    "ExportOperationError",
+    "ExportRequest",
+    "ExportResult",
+    "ExportResultFormat",
+    "export_session",
+    "format_export_result",
     "CommandListingError",
     "format_command_records",
     "list_command_records",
