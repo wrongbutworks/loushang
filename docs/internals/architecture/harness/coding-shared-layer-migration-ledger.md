@@ -84,7 +84,7 @@ The detailed boundary is
 
 | Source region | Shared owner | Product injection or retained Coding owner | Deletion condition |
 | --- | --- | --- | --- |
-| `coding.session.agent_session` composition and operation coordination | `harness.session.composition`, `harness.session.operations_runtime`, and `harness.session.agent_adapter` | Coding supplies model restoration, resource/package policy, provider/footer behavior, compaction and branch-summary executors, replacement validation, and Product callbacks. | Complete: `AgentSession` reduced from 1,729 to 510 lines; the shared modules have no Coding import. |
+| `coding.session.agent_session` composition and operation coordination | `harness.session.composition`, `harness.session.operations_runtime`, and `harness.session.agent_adapter` | Coding supplies model restoration, resource/package policy, provider/footer behavior, compaction and branch-summary executors, replacement validation, and Product callbacks. | Complete: after an integration merge reintroduced direct assembly, `AgentSession` was restored from 1,732 to 522 lines; the shared modules have no Coding import. |
 
 Wave 4, Slice A closure probes:
 
