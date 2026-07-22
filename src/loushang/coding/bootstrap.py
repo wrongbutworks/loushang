@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field, replace
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -46,7 +46,7 @@ from loushang.harness.capabilities.packs import CapabilityPackComposer
 from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.config import ConfigActivationStep
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.diagnostics.types import DiagnosticRecord, StartupCheckResult
+from loushang.harness.diagnostics.types import StartupCheckResult
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.resources.activation import SkillActivationRuntime
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
@@ -61,6 +61,11 @@ from loushang.harness.resources.packages.source_resolver import (
 )
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.session import (
+    AgentSessionConstructionRequest,
+    AgentSessionConstructionRuntime,
+    AgentSessionServices,
+    BootstrapServices,
+    CreateAgentSessionResult,
     CwdBoundServicesAudit,
 )
 from loushang.harness.session import (
@@ -82,9 +87,6 @@ from loushang.harness.session import (
     normalize_no_tools as _normalize_no_tools,
 )
 from loushang.harness.session import (
-    resolve_initial_active_tool_names as _resolve_initial_active_tool_names,
-)
-from loushang.harness.session import (
     split_model_thinking_pattern as _split_model_thinking_pattern,
 )
 from loushang.harness.tools.contribution import (
@@ -98,15 +100,6 @@ ServicesFactory = Callable[[str], "BootstrapServices"]
 NoToolsMode = Literal["all", "builtin"]
 ExtensionFlagValues = Mapping[str, bool | str]
 CwdBoundServicesAuditIssue = _CwdBoundServicesAuditIssue
-
-
-@dataclass(frozen=True)
-class BootstrapServices:
-    settings_manager: SettingsManager
-    model_registry: ModelRegistry
-    resource_loader: DefaultResourceLoader
-    diagnostics_service: DiagnosticsService
-    exec_service: ExecService = field(default_factory=ExecService)
 
 
 @dataclass
@@ -124,43 +117,6 @@ class _SessionConfigurationState:
     @property
     def session_id(self) -> str:
         return self.session_manager.get_header().conversation_id
-
-
-@dataclass(frozen=True)
-class AgentSessionServices:
-    cwd: str
-    services: BootstrapServices
-    resource_bundle: ResourceBundle | None = None
-    extension_runner: ExtensionRunner | None = None
-    diagnostics: tuple[DiagnosticRecord, ...] = ()
-
-    @property
-    def settings_manager(self) -> SettingsManager:
-        return self.services.settings_manager
-
-    @property
-    def model_registry(self) -> ModelRegistry:
-        return self.services.model_registry
-
-    @property
-    def resource_loader(self) -> DefaultResourceLoader:
-        return self.services.resource_loader
-
-    @property
-    def diagnostics_service(self) -> DiagnosticsService:
-        return self.services.diagnostics_service
-
-    @property
-    def exec_service(self) -> ExecService:
-        return self.services.exec_service
-
-
-@dataclass(frozen=True)
-class CreateAgentSessionResult:
-    session: AgentSession
-    resource_bundle: ResourceBundle | None
-    diagnostics: tuple[DiagnosticRecord, ...]
-    cwd_bound_services_audit: CwdBoundServicesAudit | None = None
 
 
 def create_services(
@@ -372,86 +328,92 @@ def create_agent_session(
             resolved_model = model
 
         no_tools_mode = _normalize_no_tools(no_tools)
-        resolved_tool_registry = tool_registry
-        allowed_tool_names_set = (
-            set(allowed_tool_names) if allowed_tool_names is not None else None
-        )
-        if no_tools_mode == "all":
-            allowed_tool_names_set = set()
-        if resolved_tool_registry is None and tools:
-            resolved_tool_registry = WorkspaceToolRegistry()
-            for tool in tools:
-                resolved_tool_registry.register_tool(tool)
-
-        resource_bundle, resolved_tool_registry, extension_tool_diagnostics = (
-            _register_extension_tools(
+        def _register_session_extension_tools(
+            bundle: ResourceBundle,
+            registry: WorkspaceToolRegistry | None,
+        ) -> tuple[
+            ResourceBundle,
+            WorkspaceToolRegistry | None,
+            list[ResourceDiagnostic],
+        ]:
+            return _register_extension_tools(
                 extension_runner=extension_runner,
-                resource_bundle=resource_bundle,
-                tool_registry=resolved_tool_registry,
+                resource_bundle=bundle,
+                tool_registry=registry,
                 pack_composer=capability_runtime.tool_pack_composer,
             )
-        )
-        _record_resource_diagnostics(
-            diagnostics_service=services.diagnostics_service,
-            diagnostics=extension_tool_diagnostics,
-            phase="resource_loading",
-            source="bootstrap",
-            session_id=session_id,
-        )
-        if no_tools_mode == "all" and resolved_tool_registry is None:
-            resolved_tool_registry = WorkspaceToolRegistry()
-        resolved_active_tool_names = _resolve_initial_active_tool_names(
-            active_tool_names=active_tool_names,
-            allowed_tool_names=allowed_tool_names_set,
-            no_tools_mode=no_tools_mode,
-            tool_registry=resolved_tool_registry,
-        )
-        initial_state: dict[str, object] = {
-            "system_prompt": resolved_prompt,
-            "thinking_level": resolved_thinking,
-            "tools": [],
-        }
-        if resolved_model is not None:
-            initial_state["model"] = resolved_model
 
-        agent_kwargs: dict[str, object] = {
-            "initial_state": initial_state,
-            "session_id": session_id,
-            "convert_to_llm": _convert_to_llm_with_block_images(
-                services.settings_manager
-            ),
-            "steering_mode": settings.steering_mode,
-            "follow_up_mode": settings.follow_up_mode,
-            "thinking_budgets": settings.thinking_budgets,
-            "max_retry_delay_ms": settings.retry.provider_max_retry_delay_ms,
-        }
-        if stream_fn is not None:
-            agent_kwargs["stream_fn"] = stream_fn
+        def _record_extension_diagnostics(
+            diagnostics: Sequence[object],
+        ) -> None:
+            _record_resource_diagnostics(
+                diagnostics_service=services.diagnostics_service,
+                diagnostics=list(diagnostics),
+                phase="resource_loading",
+                source="bootstrap",
+                session_id=session_id,
+            )
 
-        agent = agent_factory(**agent_kwargs)
-        agent.session_id = session_id
-        session = AgentSession(
-            agent=agent,
-            session_manager=session_manager,
-            settings_manager=services.settings_manager,
-            model_registry=services.model_registry,
-            resource_loader=services.resource_loader,
-            resource_bundle=resource_bundle,
-            extension_runner=extension_runner,
-            tool_registry=resolved_tool_registry,
-            allowed_tool_names=[] if no_tools_mode == "all" else allowed_tool_names,
-            active_tool_names=resolved_active_tool_names,
-            default_activate_new_tools=(
-                no_tools_mode != "all" and active_tool_names is None
+        def _create_session(
+            agent: Agent,
+            bundle: ResourceBundle,
+            registry: WorkspaceToolRegistry | None,
+            initial_active_tool_names: list[str] | None,
+            session_base_prompt: str,
+            session_no_tools_mode: NoToolsMode | None,
+        ) -> AgentSession:
+            return AgentSession(
+                agent=agent,
+                session_manager=session_manager,
+                settings_manager=services.settings_manager,
+                model_registry=services.model_registry,
+                resource_loader=services.resource_loader,
+                resource_bundle=bundle,
+                extension_runner=extension_runner,
+                tool_registry=registry,
+                allowed_tool_names=[]
+                if session_no_tools_mode == "all"
+                else allowed_tool_names,
+                active_tool_names=initial_active_tool_names,
+                default_activate_new_tools=(
+                    session_no_tools_mode != "all" and active_tool_names is None
+                ),
+                show_empty_tool_prompt=session_no_tools_mode == "all",
+                base_prompt=session_base_prompt,
+                diagnostics_service=services.diagnostics_service,
+                session_start_event=session_start_event,
+                package_materializer=resolved_package_materializer,
+                exec_service=services.exec_service,
+                approval_resolver=approval_resolver,
+                capability_runtime=capability_runtime,
+            )
+
+        session = AgentSessionConstructionRuntime[Agent, AgentSession, ResourceBundle, WorkspaceToolRegistry]().construct(
+            AgentSessionConstructionRequest(
+                session_id=session_id,
+                base_prompt=base_prompt,
+                resolved_prompt=resolved_prompt,
+                thinking_level=resolved_thinking,
+                model=resolved_model,
+                convert_to_llm=_convert_to_llm_with_block_images(
+                    services.settings_manager
+                ),
+                steering_mode=settings.steering_mode,
+                follow_up_mode=settings.follow_up_mode,
+                thinking_budgets=settings.thinking_budgets,
+                max_retry_delay_ms=settings.retry.provider_max_retry_delay_ms,
+                stream_fn=stream_fn,
+                resource_bundle=resource_bundle,
+                tools=tools,
+                tool_registry=tool_registry,
+                allowed_tool_names=allowed_tool_names,
+                active_tool_names=active_tool_names,
+                no_tools_mode=no_tools_mode,
             ),
-            show_empty_tool_prompt=no_tools_mode == "all",
-            base_prompt=base_prompt,
-            diagnostics_service=services.diagnostics_service,
-            session_start_event=session_start_event,
-            package_materializer=resolved_package_materializer,
-            exec_service=services.exec_service,
-            approval_resolver=approval_resolver,
-            capability_runtime=capability_runtime,
+            agent_factory=agent_factory,
+            register_extension_tools=_register_session_extension_tools,
+            record_extension_diagnostics=_record_extension_diagnostics,
+            session_factory=_create_session,
         )
         session.cwd_bound_services_audit = cwd_bound_services_audit
         scoped_models = _scoped_models_from_enabled_patterns(

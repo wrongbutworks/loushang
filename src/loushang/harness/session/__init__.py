@@ -20,6 +20,15 @@ from loushang.harness.session.bindings import (
     SessionMaintenanceBinding,
     SessionModelBinding,
 )
+from loushang.harness.session.bootstrap import (
+    AgentBootstrapRequest,
+    AgentBootstrapRuntime,
+    AgentSessionConstructionRequest,
+    AgentSessionConstructionRuntime,
+    AgentSessionServices,
+    BootstrapServices,
+    CreateAgentSessionResult,
+)
 from loushang.harness.session.bootstrap_utils import (
     NoToolsMode,
     append_system_prompt_fragments,
@@ -222,6 +231,13 @@ __all__ = [
     "AgentEventRouter",
     "AgentSessionAdapterMixin",
     "initialize_composed_session",
+    "AgentBootstrapRequest",
+    "AgentBootstrapRuntime",
+    "AgentSessionConstructionRequest",
+    "AgentSessionConstructionRuntime",
+    "AgentSessionServices",
+    "BootstrapServices",
+    "CreateAgentSessionResult",
     "AgentInspectionPort",
     "AfterTurnPolicyPort",
     "AgentToolPort",

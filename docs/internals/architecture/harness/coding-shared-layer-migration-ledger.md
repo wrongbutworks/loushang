@@ -378,3 +378,35 @@ Slice E accounting: Coding shrank by approximately 178 implementation lines
 while Harness gained approximately 312 lines plus focused Harness probes.
 Existing Coding model/bootstrap behavior is unchanged; the new Harness tests
 exercise the same operations without importing Coding.
+
+### Wave 7, Slice A: Agent Bootstrap Construction Collapse (Complete)
+
+The Agent construction boundary is now explicit in `harness.session.bootstrap`.
+Harness owns the neutral construction request/result contracts and the shared
+pipeline that:
+
+1. builds the initial Agent state and constructor kwargs;
+2. creates a workspace registry when requested;
+3. registers Product-provided extension tools;
+4. records extension diagnostics through a Product callback;
+5. resolves initial active tools; and
+6. invokes the Product session factory.
+
+Coding retains the service factories, resource/extension policies, model
+resolution, prompt defaults, image policy, approval binding, and the concrete
+`AgentSession` constructor. No Coding type is imported by the Harness module,
+and no second session runtime was introduced.
+
+| Source region | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| bootstrap service/result data contracts | `harness.session.bootstrap` | Product-specific service types supplied as generic values | Complete |
+| Agent initial state and constructor kwargs | `AgentBootstrapRuntime` | Agent factory selection and Product session factory | Complete |
+| tool registry/extension contribution/active-tool pipeline | `AgentSessionConstructionRuntime` | Extension pack IDs, diagnostics normalization, and tool policy | Complete |
+
+Slice A accounting: `coding/bootstrap.py` is approximately 1,315→1,277 LOC;
+the shared construction contracts/runtime add approximately 240 LOC. The
+reduction is intentionally limited to the construction boundary: the
+remaining bootstrap code is activation policy and Product service wiring,
+which cannot move without changing ownership or duplicating the existing
+resource activation runtime. Independent Harness construction probes and the
+Coding bootstrap/session regression suite pass.

@@ -5,8 +5,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Literal
 
-from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
-
 NoToolsMode = Literal["all", "builtin"]
 
 
@@ -60,7 +58,7 @@ def resolve_initial_active_tool_names(
     active_tool_names: list[str] | None,
     allowed_tool_names: set[str] | None,
     no_tools_mode: NoToolsMode | None,
-    tool_registry: WorkspaceToolRegistry | None,
+    tool_registry: object | None,
 ) -> list[str] | None:
     if no_tools_mode == "all":
         return []
@@ -76,14 +74,17 @@ def resolve_initial_active_tool_names(
 
 
 def non_builtin_tool_names(
-    tool_registry: WorkspaceToolRegistry | None,
+    tool_registry: object | None,
 ) -> list[str]:
     if tool_registry is None:
         return []
     builtin_names = {"bash", "read", "ls", "find", "grep", "write", "edit"}
+    list_enabled_definitions = getattr(tool_registry, "list_enabled_definitions", None)
+    if not callable(list_enabled_definitions):
+        return []
     return [
         definition.name
-        for definition in tool_registry.list_enabled_definitions()
+        for definition in list_enabled_definitions()
         if definition.name not in builtin_names
     ]
 
