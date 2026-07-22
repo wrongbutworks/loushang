@@ -3418,6 +3418,7 @@ def test_session_lifecycle_runtime_is_documented_neutral_and_adopted() -> None:
         "`SessionLifecycleStore`",
         "default position is `at`",
         "default fork position: before",
+        "`resolve_fork_target`",
         "Fork target lookup, position validation, and target resolution happen while",
         "must not import Agent, AI, Coding",
     }

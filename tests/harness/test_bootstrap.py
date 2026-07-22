@@ -5,8 +5,12 @@ from loushang.harness.bootstrap import (
     BootstrapActivationRuntime,
     ResourceBootstrapPorts,
     ResourceBootstrapRuntime,
+    register_extension_tools,
 )
 from loushang.harness.config.activation import ConfigActivationStep
+from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
 
 def test_resource_bootstrap_orders_flags_before_extension_rediscovery() -> None:
@@ -128,3 +132,42 @@ def test_bootstrap_activation_runtime_reports_failure_and_rolls_back() -> None:
     assert result.report.failures[0].step == "extensions"
     assert calls == ["dispose"]
     assert context == ["resources", "disposed"]
+
+
+def test_extension_tool_registration_is_product_neutral(tmp_path) -> None:
+    async def execute(_name, _arguments, _context, _signal):
+        return {"ok": True}
+
+    tool = ToolDefinition(
+        name="review",
+        label="Review",
+        description="Review changes",
+        parameters={"type": "object", "properties": {}, "required": []},
+        execute=execute,
+    )
+
+    class ExtensionRuntime:
+        def list_tool_definitions(self):
+            return [tool]
+
+        def get_tool_source_info(self, name: str):
+            return {"source": "extension", "name": name}
+
+    registry = WorkspaceToolRegistry()
+    bundle = ResourceBundle(cwd=tmp_path)
+    result_bundle, result_registry, diagnostics = register_extension_tools(
+        extension_runtime=ExtensionRuntime(),
+        resource_bundle=bundle,
+        tool_registry=registry,
+        list_tool_definitions=lambda runtime: runtime.list_tool_definitions(),
+        get_tool_source_info=lambda runtime, name: runtime.get_tool_source_info(name),
+        merge_diagnostics=lambda current, values: current.merge(diagnostics=list(values)),
+        make_conflict_diagnostic=lambda name, message: (name, message),
+    )
+
+    assert result_bundle is bundle
+    assert result_registry is registry
+    assert diagnostics == []
+    assert [definition.name for definition in registry.list_definitions()] == [
+        "review"
+    ]

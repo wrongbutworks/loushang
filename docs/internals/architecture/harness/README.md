@@ -153,6 +153,9 @@ planning, work event persistence, or AI provider behavior.
   defines the shared active-session composition adapter and the Product ports
   that keep transcript storage, fork policy, cwd policy, diagnostics, and
   lifecycle effects configurable.
+- [Bootstrap Tool Contribution Boundary](bootstrap-tool-contribution-boundary.md)
+  defines shared extension-tool contribution projection, pack composition,
+  conflict filtering, and registry registration through Product callbacks.
 - [Session Inspection Boundary](session-inspection-boundary.md) defines
   Product-neutral Agent/transcript state, context usage, and statistics while
   Products retain display and wire-format projection.

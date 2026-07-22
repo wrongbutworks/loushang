@@ -42,6 +42,7 @@ from loushang.harness.session import (
     invoke_session_factory,
     require_session_operation_session,
     resolve_existing_cwd,
+    resolve_fork_target,
     session_file_from_session,
     session_id_from_session,
     session_manager_ref,
@@ -583,18 +584,20 @@ class AgentSessionRuntime(
 def _resolve_fork_target(
     manager: SessionManager, entry_id: str, *, position: str
 ) -> tuple[str | None, str | None]:
-    if position == "at":
-        return entry_id, None
-    if position != "before":
-        raise ValueError(f"Unsupported fork position: {position}")
-    entry = manager.get_entry(entry_id)
-    if (
-        entry is None
-        or entry.kind != AGENT_MESSAGE_KIND
-        or not isinstance(entry.payload, UserMessage)
-    ):
-        raise ValueError("Fork position 'before' requires a user message entry.")
-    return entry.parent_id, _user_message_text(entry.payload)
+    selection = resolve_fork_target(
+        manager,
+        entry_id,
+        position=position,
+        get_entry=lambda current, target: current.get_entry(target),
+        is_before_target=lambda entry: (
+            entry.kind == AGENT_MESSAGE_KIND
+            and isinstance(entry.payload, UserMessage)
+        ),
+        get_parent_id=lambda entry: entry.parent_id,
+        project_payload=lambda entry: _user_message_text(entry.payload),
+        invalid_before_message="Fork position 'before' requires a user message entry.",
+    )
+    return selection.target_entry_id, selection.payload
 
 
 def _resolve_coding_fork_target(

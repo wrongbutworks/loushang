@@ -41,6 +41,9 @@ Harness owns:
   supports only `at`.
 - configurable `ForkProfile` and `ForkTargetResolver` injection. A Product can
   add positions and resolve them against its own tree/payload semantics.
+- `resolve_fork_target`, which owns the reusable `at`/`before` grammar and
+  parent-target selection while a Product supplies only its boundary predicate,
+  parent accessor, and optional payload projection.
 - the common missing-cwd decision shape: error by default, or a
   Product-selected fallback cwd when that policy is requested.
 - `AgentTranscriptSessionRuntime`, which composes an already-configured

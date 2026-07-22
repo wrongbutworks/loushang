@@ -29,6 +29,8 @@ Harness owns the composition and delegation for:
   transcript operations;
 - current-session, session-reference, cwd, and leaf-entry lookup through
   typed Product ports;
+- generic `resolve_fork_target` position grammar and parent-target selection,
+  with Product-supplied boundary and payload callbacks;
 - reflection-only helpers for invoking an optional lifecycle event, resolving
   an import cwd, emitting shutdown, and disposing a bound session.
 
@@ -52,7 +54,8 @@ lifecycle policy, diagnostics scope, or presentation adapter.
 Fork, transcript lifecycle, cwd handling, diagnostics, and extension
 lifecycle are all reusable capabilities. Harness owns their algorithms and
 contracts; Coding only supplies its current transcript/store binding,
-`before` fork resolver, cwd acceptance/error adapter, diagnostic codes and
+fork boundary predicate and payload projection, cwd acceptance/error adapter,
+diagnostic codes and
 scope, extension event mapping, index policy, model/auth policy, and product
 presentation. Those differences are callbacks or profile values rather than
 parallel implementations in Coding.

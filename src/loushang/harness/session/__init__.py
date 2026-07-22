@@ -129,6 +129,7 @@ from loushang.harness.session.lifecycle import (
     SessionLifecycleTransition,
     TransitionCandidateCallback,
     TransitionReleaseCallback,
+    resolve_fork_target,
 )
 from loushang.harness.session.lifecycle_adapter import (
     SessionLifecycleOperationAdapter,
@@ -231,6 +232,7 @@ __all__ = [
     "ForkProfile",
     "ForkSelection",
     "ForkTargetResolver",
+    "resolve_fork_target",
     "MissingCwdPolicy",
     "MissingSessionCwdError",
     "ModelCandidates",
