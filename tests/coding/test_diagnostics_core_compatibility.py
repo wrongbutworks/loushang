@@ -19,8 +19,8 @@ def test_coding_diagnostics_generic_facades_are_removed() -> None:
     assert DiagnosticsService.__module__ == "loushang.harness.diagnostics.service"
 
 
-def test_coding_serialization_remains_product_owned() -> None:
-    from loushang.coding.diagnostics import serialize_diagnostic
+def test_diagnostics_serialization_is_harness_owned() -> None:
+    from loushang.harness.diagnostics import serialize_diagnostic
     from loushang.harness.diagnostics.types import DiagnosticRecord
 
     record = DiagnosticRecord(
@@ -33,9 +33,7 @@ def test_coding_serialization_remains_product_owned() -> None:
         session_id="s1",
     )
 
-    assert (
-        serialize_diagnostic.__module__ == "loushang.coding.diagnostics.serialization"
-    )
+    assert serialize_diagnostic.__module__ == "loushang.harness.diagnostics.serialization"
     assert serialize_diagnostic(record) == {
         "type": "error",
         "code": "tool_failed",

@@ -35,6 +35,11 @@ from loushang.harness.resources.packages.operations import (
     PackageSourceRegistration,
     PackageUpdatePreparation,
 )
+from loushang.harness.resources.packages.projection import (
+    project_package_entries,
+    project_package_entry,
+    serialize_package_materialization_record,
+)
 from loushang.harness.resources.packages.roots import (
     ResolvedPackageResourceRoots,
     resolve_package_resource_roots,
@@ -100,10 +105,13 @@ __all__ = [
     "package_source_match_key",
     "package_source_scopes",
     "package_source_from_raw",
+    "project_package_entries",
+    "project_package_entry",
     "python_package_name",
     "python_package_requirement",
     "remote_package_name",
     "resolve_package_manifest",
     "resolve_package_resource_roots",
+    "serialize_package_materialization_record",
     "summarize_package_resources",
 ]

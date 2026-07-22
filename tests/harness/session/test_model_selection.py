@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 from loushang.ai.model import ModelSelection
 from loushang.harness.session.model_selection import (
     apply_session_model_selection,
     ensure_usable_session_model,
+    format_model_metadata_table,
+    model_listing_matches_query,
+    normalize_model_listing,
+    unique_sorted_model_entries,
 )
 
 
@@ -48,3 +53,31 @@ def test_ensure_usable_session_model_uses_product_candidate_policy() -> None:
 
     assert result == candidate
     assert session.applied == [candidate]
+
+
+def test_model_listing_normalizes_dedupes_and_formats_shared_values() -> None:
+    raw = [
+        SimpleNamespace(
+            provider="openai",
+            model_id="gpt-5",
+            context_window=1_000_000,
+            max_tokens=4096,
+            reasoning=True,
+            supports_image_input=True,
+        ),
+        SimpleNamespace(provider="openai", model_id="gpt-5"),
+        SimpleNamespace(provider="anthropic", model_id="claude-3"),
+    ]
+
+    entries = normalize_model_listing(
+        unique_sorted_model_entries(raw), include_metadata=True
+    )
+
+    assert [entry["id"] for entry in entries] == [
+        "anthropic/claude-3",
+        "openai/gpt-5",
+    ]
+    assert model_listing_matches_query(entries[1], "og5")
+    assert format_model_metadata_table(entries).splitlines()[0].startswith(
+        "provider"
+    )

@@ -4,6 +4,10 @@ This optional Harness profile depends on the public Agent and AI message
 contracts. Products supply their own policies and integration callbacks.
 """
 
+from loushang.harness.session.agent_adapter import (
+    AgentSessionAdapterMixin,
+    initialize_composed_session,
+)
 from loushang.harness.session.agent_event_router import AgentEventRouter
 from loushang.harness.session.application_input import (
     ApplicationInputDelivery,
@@ -180,6 +184,8 @@ from loushang.harness.session.transcript_lifecycle import (
 
 __all__ = [
     "AgentEventRouter",
+    "AgentSessionAdapterMixin",
+    "initialize_composed_session",
     "AgentInspectionPort",
     "AfterTurnPolicyPort",
     "AgentToolPort",

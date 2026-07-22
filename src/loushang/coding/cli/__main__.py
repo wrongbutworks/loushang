@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import inspect
 import json
 import os
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import redirect_stderr
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, replace
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -16,8 +15,7 @@ from typing import Any, TextIO
 
 from loushang.ai.model import ModelSelection, model_selection_ref
 from loushang.ai.model.registry import get_default_model_registry
-from loushang.ai.types import ImagePart
-from loushang.channel import ProductHostLifecycle
+from loushang.channel import ProductHostLifecycle, stream_is_tty
 from loushang.coding.bootstrap import (
     BootstrapServices,
     create_agent_session_runtime,
@@ -31,7 +29,6 @@ from loushang.coding.control.settings_store import (
     default_project_settings_path,
 )
 from loushang.coding.diag_export import export_diagnostics_bundle
-from loushang.coding.diagnostics.serialization import serialize_diagnostic
 from loushang.coding.domain import (
     CodingDomainApp,
     CodingDomainPreparedTurn,
@@ -75,20 +72,33 @@ from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.work_executor import SubmitCodingTurn
 from loushang.coding.work_runtime import CodingWorkRuntime
 from loushang.coding.workflow import run_prompt_steps_workflow
-from loushang.harness.agent_transcript import SessionQuery
+from loushang.harness.agent_transcript import (
+    SessionQuery,
+    project_session_record,
+)
+from loushang.harness.commands import project_command_descriptor
+from loushang.harness.diagnostics.serialization import serialize_diagnostic
 from loushang.harness.extensions.types import ResolvedFlag
+from loushang.harness.host.prompt_input import (
+    PromptInputPlan,
+    resolve_prompt_input,
+)
 from loushang.harness.resources.plugins import (
     PluginManager,
     is_remote_plugin_source,
+    project_installed_plugin,
+)
+from loushang.harness.resources.skills import (
+    project_skill_descriptor,
 )
 from loushang.harness.scenario.loader import load_workflow, resolve_workflow_files
 from loushang.harness.session import require_session_operation_session
-from loushang.harness.tools.workspace.path_utils import resolve_tool_path
-from loushang.harness.tools.workspace.read import (
-    PillowReadImageResizer,
-    detect_image_dimensions,
-    format_image_dimension_note,
-    image_exceeds_inline_limits,
+from loushang.harness.session.model_selection import (
+    format_model_metadata_table,
+    model_listing_getter,
+    model_listing_matches_query,
+    normalize_model_listing,
+    unique_sorted_model_entries,
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.method import MethodCompiler, MethodContext, MethodLoader
@@ -98,11 +108,7 @@ _MISSING = object()
 _WORK_LOG_INSPECT_LIMIT = 20
 
 
-@dataclass(frozen=True)
-class PrintInputPlan:
-    user_input: str | None
-    images: list[ImagePart] | None
-    follow_up_messages: tuple[str, ...]
+PrintInputPlan = PromptInputPlan
 
 
 def build_default_services(project_root: Path) -> BootstrapServices:
@@ -654,9 +660,11 @@ async def run_cli(
                         work_event_log=work_event_log,
                         coding_work_runtime=coding_work_runtime,
                     )
-                for turn_index, prepared_turn in enumerate(prepared_turns):
-                    is_first_turn = turn_index == 0
-                    is_last_turn = turn_index == len(prepared_turns) - 1
+                async def run_prompt_turn(
+                    prepared_turn: CodingDomainPreparedTurn,
+                    is_first_turn: bool,
+                    is_last_turn: bool,
+                ) -> int:
                     planned_constraint = _prepared_turn_policy_metadata(
                         prepared_turn, "planned_constraint"
                     )
@@ -669,7 +677,7 @@ async def run_cli(
                     step_facts = _prepared_turn_policy_metadata(
                         prepared_turn, "step_facts"
                     )
-                    exit_code = await prompt_runner(
+                    return await prompt_runner(
                         runtime=runtime,
                         session=session,
                         prompt=prepared_turn.prepared_prompt,
@@ -693,17 +701,20 @@ async def run_cli(
                         step_facts=step_facts,
                         dispose=is_last_turn,
                     )
-                    if exit_code != 0:
-                        if not is_last_turn:
-                            await host_lifecycle.dispose(runtime, session)
-                        return exit_code
-                return 0
+
+                return await host_lifecycle.run_turns(
+                    prepared_turns,
+                    run_turn=run_prompt_turn,
+                    dispose_candidates=(runtime, session),
+                )
 
             output_mode = "text" if args.mode == "print" else args.mode
             if print_runner is not run_print_mode:
-                for turn_index, prepared_turn in enumerate(prepared_turns):
-                    is_first_turn = turn_index == 0
-                    is_last_turn = turn_index == len(prepared_turns) - 1
+                async def run_print_turn(
+                    prepared_turn: CodingDomainPreparedTurn,
+                    is_first_turn: bool,
+                    is_last_turn: bool,
+                ) -> int:
                     planned_constraint = _prepared_turn_policy_metadata(
                         prepared_turn, "planned_constraint"
                     )
@@ -716,7 +727,7 @@ async def run_cli(
                     step_facts = _prepared_turn_policy_metadata(
                         prepared_turn, "step_facts"
                     )
-                    exit_code = await print_runner(
+                    return await print_runner(
                         runtime=runtime,
                         session=session,
                         user_input=prepared_turn.prepared_prompt,
@@ -740,11 +751,12 @@ async def run_cli(
                         step_facts=step_facts,
                         dispose=is_last_turn,
                     )
-                    if exit_code != 0:
-                        if not is_last_turn:
-                            await host_lifecycle.dispose(runtime, session)
-                        return exit_code
-                return 0
+
+                return await host_lifecycle.run_turns(
+                    prepared_turns,
+                    run_turn=run_print_turn,
+                    dispose_candidates=(runtime, session),
+                )
 
             if (
                 mode_runner is run_mode
@@ -767,9 +779,11 @@ async def run_cli(
                     coding_work_runtime=coding_work_runtime,
                 )
 
-            for turn_index, prepared_turn in enumerate(prepared_turns):
-                is_first_turn = turn_index == 0
-                is_last_turn = turn_index == len(prepared_turns) - 1
+            async def run_mode_turn(
+                prepared_turn: CodingDomainPreparedTurn,
+                is_first_turn: bool,
+                is_last_turn: bool,
+            ) -> int:
                 planned_constraint = _prepared_turn_policy_metadata(
                     prepared_turn, "planned_constraint"
                 )
@@ -778,7 +792,7 @@ async def run_cli(
                 )
                 plan_facts = _prepared_turn_policy_metadata(prepared_turn, "plan_facts")
                 step_facts = _prepared_turn_policy_metadata(prepared_turn, "step_facts")
-                exit_code = await mode_runner(
+                return await mode_runner(
                     config=ModeConfig(
                         mode=args.mode,
                         render_tool_events=args.render_tool_events,
@@ -806,11 +820,12 @@ async def run_cli(
                     step_facts=step_facts,
                     dispose=is_last_turn,
                 )
-                if exit_code != 0:
-                    if not is_last_turn:
-                        await host_lifecycle.dispose(runtime, session)
-                    return exit_code
-            return 0
+
+            return await host_lifecycle.run_turns(
+                prepared_turns,
+                run_turn=run_mode_turn,
+                dispose_candidates=(runtime, session),
+            )
 
 
 def _prepared_turn_policy_metadata(
@@ -1016,7 +1031,7 @@ def _effective_tui(args: CliArgs, *, stdin: TextIO, stdout: TextIO) -> bool:
         return True
     if args.no_tui:
         return False
-    if not (_stream_is_tty(stdin) and _stream_is_tty(stdout)):
+    if not (stream_is_tty(stdin) and stream_is_tty(stdout)):
         return False
     if args.mode != "text":
         return False
@@ -1930,69 +1945,7 @@ def _run_diag_export(
 
 
 def _normalize_session_record(record: Any) -> dict[str, object]:
-    metadata = _safe_getattr(record, "metadata", None)
-    session_file = _safe_getattr(record, "session_file", None)
-    if metadata is not None:
-        normalized = {
-            "session_id": _string_attr(record, "session_id"),
-            "cwd": _string_attr(record, "cwd"),
-            "session_file": _safe_string(session_file)
-            if session_file is not None
-            else None,
-            "parent_session": _nullable_string_attr(record, "parent_session"),
-            "leaf_id": _nullable_string_attr(record, "leaf_id"),
-            "metadata": {
-                "created_at": _string_attr(metadata, "created_at"),
-                "updated_at": _string_attr(metadata, "updated_at"),
-                "name": _nullable_string_attr(metadata, "name"),
-            },
-        }
-    else:
-        normalized = {
-            "session_id": _string_attr(record, "session_id"),
-            "cwd": _string_attr(record, "cwd"),
-            "session_file": _safe_string(session_file)
-            if session_file is not None
-            else None,
-            "parent_session": _nullable_string_attr(record, "parent_session"),
-            "leaf_id": _nullable_string_attr(record, "leaf_id"),
-            "metadata": {
-                "created_at": _string_attr(record, "created_at"),
-                "updated_at": _string_attr(record, "updated_at"),
-                "name": _nullable_string_attr(record, "name"),
-            },
-        }
-
-    for field_name in (
-        "message_count",
-        "entry_count",
-        "first_message",
-        "all_messages_text",
-        "last_message_preview",
-        "model",
-        "has_diagnostics",
-        "diagnostic_count",
-        "last_diagnostic_code",
-        "last_diagnostic_level",
-    ):
-        value = _safe_getattr(record, field_name, _MISSING)
-        if value is not _MISSING:
-            normalized[field_name] = _json_safe_value(value)
-    return normalized
-
-
-def _json_safe_value(value: Any) -> object:
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, dict):
-        return {
-            _safe_string(key): _json_safe_value(item) for key, item in value.items()
-        }
-    if isinstance(value, list | tuple):
-        return [_json_safe_value(item) for item in value]
-    if isinstance(value, str | int | float | bool) or value is None:
-        return value
-    return _safe_string(value)
+    return project_session_record(record)
 
 
 def _try_normalize_session_record(record: Any) -> dict[str, object] | None:
@@ -2000,18 +1953,6 @@ def _try_normalize_session_record(record: Any) -> dict[str, object] | None:
         return _normalize_session_record(record)
     except Exception:
         return None
-
-
-def _string_attr(target: Any, name: str) -> str:
-    value = _safe_getattr(target, name, "")
-    return value if isinstance(value, str) else _safe_string(value)
-
-
-def _nullable_string_attr(target: Any, name: str) -> str | None:
-    value = _safe_getattr(target, name, None)
-    if value is None:
-        return None
-    return value if isinstance(value, str) else _safe_string(value)
 
 
 def _safe_getattr(target: Any, name: str, default: object) -> object:
@@ -2028,139 +1969,15 @@ def _resolve_print_input_plan(
     *,
     auto_resize_images: bool = True,
 ) -> PrintInputPlan:
-    file_text, images = _process_file_args(
-        args.file_args,
-        cwd,
+    return resolve_prompt_input(
+        prompt=args.prompt,
+        messages=tuple(args.messages),
+        message_prompts=tuple(args.message_prompts),
+        file_args=tuple(args.file_args),
+        stdin=stdin,
+        cwd=cwd,
         auto_resize_images=auto_resize_images,
     )
-    parts: list[str] = []
-    stdin_content = _read_stdin_prompt(stdin)
-    if stdin_content is not None:
-        parts.append(stdin_content)
-    if file_text:
-        parts.append(file_text)
-    if args.prompt is not None:
-        parts.append(args.prompt.strip())
-    if args.messages:
-        parts.append(" ".join(args.messages).strip())
-
-    user_input = "".join(parts).strip() or None
-    follow_up_messages = tuple(args.message_prompts)
-    if user_input is None and follow_up_messages:
-        user_input = follow_up_messages[0]
-        follow_up_messages = follow_up_messages[1:]
-    return PrintInputPlan(
-        user_input=user_input,
-        images=images or None,
-        follow_up_messages=follow_up_messages,
-    )
-
-
-def _process_file_args(
-    file_args: tuple[str, ...],
-    cwd: Path,
-    *,
-    auto_resize_images: bool = True,
-) -> tuple[str, list[ImagePart]]:
-    text_parts: list[str] = []
-    images: list[ImagePart] = []
-    for file_arg in file_args:
-        path = _resolve_at_file_path(file_arg, cwd)
-        payload = path.read_bytes()
-        if not payload:
-            continue
-        mime_type = _detect_supported_image_mime_type(path, payload)
-        if mime_type is not None:
-            original_dimensions = detect_image_dimensions(mime_type, payload)
-            dimensions = original_dimensions
-            encoded = base64.b64encode(payload)
-            dimension_note: str | None = None
-            if auto_resize_images and image_exceeds_inline_limits(encoded, dimensions):
-                resize_result = PillowReadImageResizer().resize_image(
-                    payload,
-                    mime_type=mime_type,
-                    dimensions=dimensions,
-                )
-                if resize_result is None:
-                    text_parts.append(
-                        f'<file name="{path}">'
-                        "[Image omitted: could not be resized below the inline image size limit.]"
-                        "</file>\n"
-                    )
-                    continue
-                payload = resize_result.payload
-                mime_type = resize_result.mime_type
-                dimensions = resize_result.dimensions or detect_image_dimensions(
-                    mime_type, payload
-                )
-                original_dimensions = (
-                    resize_result.original_dimensions or original_dimensions
-                )
-                encoded = base64.b64encode(payload)
-                dimension_note = format_image_dimension_note(
-                    original_dimensions=original_dimensions,
-                    dimensions=dimensions,
-                    was_resized=resize_result.was_resized,
-                )
-            images.append(
-                ImagePart(
-                    type="image",
-                    data=encoded.decode("ascii"),
-                    mime_type=mime_type,
-                )
-            )
-            text_parts.append(f'<file name="{path}">{dimension_note or ""}</file>\n')
-            continue
-        try:
-            content = payload.decode("utf-8")
-        except UnicodeDecodeError as error:
-            raise RuntimeError(f"Could not read file {path}: {error}") from error
-        text_parts.append(f'<file name="{path}">\n{content}\n</file>\n')
-    return "".join(text_parts), images
-
-
-def _resolve_at_file_path(file_arg: str, cwd: Path) -> Path:
-    return resolve_tool_path(file_arg, cwd=str(cwd))
-
-
-def _detect_supported_image_mime_type(path: Path, payload: bytes) -> str | None:
-    suffix = path.suffix.lower()
-    if suffix in {".jpg", ".jpeg"} and payload.startswith(b"\xff\xd8\xff"):
-        return "image/jpeg"
-    if suffix == ".png" and payload.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "image/png"
-    if suffix == ".gif" and (
-        payload.startswith(b"GIF87a") or payload.startswith(b"GIF89a")
-    ):
-        return "image/gif"
-    if (
-        suffix == ".webp"
-        and len(payload) >= 12
-        and payload.startswith(b"RIFF")
-        and payload[8:12] == b"WEBP"
-    ):
-        return "image/webp"
-    return None
-
-
-def _read_stdin_prompt(stdin: TextIO) -> str | None:
-    if _stream_is_tty(stdin):
-        return None
-    content = stdin.read()
-    if not isinstance(content, str):
-        return None
-    stripped = content.strip()
-    return stripped or None
-
-
-def _stream_is_tty(stream: TextIO) -> bool:
-    isatty = getattr(stream, "isatty", None)
-    if not callable(isatty):
-        return False
-    try:
-        return bool(isatty())
-    except OSError:
-        return False
 
 
 def _collect_extension_flags(session: Any) -> dict[str, ResolvedFlag]:
@@ -2201,7 +2018,7 @@ def _run_list_models(
     if args.list_models is False:
         return None
 
-    getter, include_metadata = _model_listing_getter(session)
+    getter, include_metadata = model_listing_getter(session)
     if getter is None:
         stderr.write("Error: model registry is not available.\n")
         return 1
@@ -2218,176 +2035,26 @@ def _run_list_models(
     if not isinstance(models, list):
         stderr.write("Error: model listing returned an invalid response.\n")
         return 1
-    sorted_models = _unique_sorted_models(models)
-    normalized_models = _normalize_model_entries(
+    sorted_models = unique_sorted_model_entries(models)
+    normalized_models = normalize_model_listing(
         sorted_models, include_metadata=include_metadata
     )
     if query:
         normalized_models = [
             entry
             for entry in normalized_models
-            if _model_entry_matches_query(entry, query)
+            if model_listing_matches_query(entry, query)
         ]
     if args.list_models_format == "json":
         stdout.write(json.dumps(normalized_models, ensure_ascii=False) + "\n")
         return 0
 
     if include_metadata:
-        _write_model_metadata_table(normalized_models, stdout)
+        stdout.write(format_model_metadata_table(normalized_models))
         return 0
     for selection in normalized_models:
         stdout.write(f"{selection['provider']}/{selection['model_id']}\n")
     return 0
-
-
-def _model_listing_getter(session: Any) -> tuple[Callable[[], object] | None, bool]:
-    details_getter = getattr(session, "get_available_model_details", None)
-    if callable(details_getter):
-        return details_getter, True
-    getter = getattr(session, "get_available_models", None)
-    if callable(getter):
-        return getter, False
-    return None, False
-
-
-def _unique_sorted_models(models: list[Any]) -> list[Any]:
-    by_key: dict[tuple[str, str], Any] = {}
-    for selection in models:
-        provider = _model_provider(selection)
-        model_id = _model_id(selection)
-        if isinstance(provider, str) and isinstance(model_id, str):
-            by_key.setdefault((provider, model_id), selection)
-    return [by_key[key] for key in sorted(by_key)]
-
-
-def _normalize_model_entries(
-    models: list[Any], *, include_metadata: bool = False
-) -> list[dict[str, object]]:
-    entries: list[dict[str, object]] = []
-    for selection in models:
-        provider = _model_provider(selection)
-        model_id = _model_id(selection)
-        if not isinstance(provider, str) or not isinstance(model_id, str):
-            continue
-        entry: dict[str, object] = {
-            "provider": provider,
-            "model_id": model_id,
-            "id": f"{provider}/{model_id}",
-        }
-        if include_metadata:
-            entry.update(
-                {
-                    "context_window": _optional_int_attr(selection, "context_window"),
-                    "max_tokens": _optional_int_attr(selection, "max_tokens"),
-                    "supports_thinking": _bool_model_attr(
-                        selection, "supports_thinking", "reasoning"
-                    ),
-                    "supports_images": _bool_model_attr(
-                        selection, "supports_image_input"
-                    ),
-                }
-            )
-        entries.append(entry)
-    return entries
-
-
-def _model_provider(selection: Any) -> str | None:
-    provider = _safe_getattr(selection, "provider", None)
-    if isinstance(provider, str):
-        return provider
-    provider_id = _safe_getattr(selection, "provider_id", None)
-    return provider_id if isinstance(provider_id, str) else None
-
-
-def _model_id(selection: Any) -> str | None:
-    model_id = _safe_getattr(selection, "model_id", None)
-    if isinstance(model_id, str):
-        return model_id
-    model_id = _safe_getattr(selection, "id", None)
-    return model_id if isinstance(model_id, str) else None
-
-
-def _optional_int_attr(selection: Any, attr: str) -> int | None:
-    value = _safe_getattr(selection, attr, None)
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
-
-
-def _bool_model_attr(selection: Any, *attrs: str) -> bool:
-    for attr in attrs:
-        value = _safe_getattr(selection, attr, None)
-        if isinstance(value, bool):
-            return value
-    return False
-
-
-def _model_entry_matches_query(selection: dict[str, object], query: str) -> bool:
-    provider = str(selection.get("provider") or "").lower()
-    model_id = str(selection.get("model_id") or "").lower()
-    if not provider and not model_id:
-        return False
-    if query in provider:
-        return True
-    if query in model_id:
-        return True
-    haystack = f"{provider}/{model_id}"
-    return query in haystack or _is_subsequence(query, haystack)
-
-
-def _is_subsequence(needle: str, haystack: str) -> bool:
-    if not needle:
-        return True
-    haystack_iter = iter(haystack)
-    return all(char in haystack_iter for char in needle)
-
-
-def _write_model_metadata_table(
-    models: list[dict[str, object]], stdout: TextIO
-) -> None:
-    rows = [
-        (
-            str(model["provider"]),
-            str(model["model_id"]),
-            _format_context_window(model.get("context_window")),
-            _format_optional_int(model.get("max_tokens")),
-            _format_bool(model.get("supports_thinking")),
-            _format_bool(model.get("supports_images")),
-        )
-        for model in models
-    ]
-    headers = ("provider", "model", "context", "max-out", "thinking", "images")
-    widths = [
-        max(len(headers[index]), *(len(row[index]) for row in rows))
-        if rows
-        else len(headers[index])
-        for index in range(len(headers))
-    ]
-    stdout.write(_format_model_table_row(headers, widths) + "\n")
-    for row in rows:
-        stdout.write(_format_model_table_row(row, widths) + "\n")
-
-
-def _format_model_table_row(row: tuple[str, ...], widths: list[int]) -> str:
-    return "  ".join(
-        value.ljust(widths[index]) for index, value in enumerate(row)
-    ).rstrip()
-
-
-def _format_context_window(value: object) -> str:
-    if not isinstance(value, int) or isinstance(value, bool):
-        return "-"
-    if value >= 1_000_000 and value % 1_000_000 == 0:
-        return f"{value // 1_000_000}M"
-    if value >= 1000 and value % 1000 == 0:
-        return f"{value // 1000}K"
-    return str(value)
-
-
-def _format_optional_int(value: object) -> str:
-    return str(value) if isinstance(value, int) and not isinstance(value, bool) else "-"
-
-
-def _format_bool(value: object) -> str:
-    return "yes" if value is True else "no"
 
 
 def _run_list_commands(
@@ -2415,7 +2082,10 @@ def _run_list_commands(
 
     serialized_commands: list[dict[str, object]] = []
     for command in commands:
-        serialized = _try_serialize_command_descriptor(command)
+        try:
+            serialized = project_command_descriptor(command)
+        except Exception:
+            serialized = None
         if serialized is not None:
             serialized_commands.append(serialized)
     if args.list_commands_format == "json":
@@ -2488,9 +2158,9 @@ def _run_list_skills(
         stderr.write("Error: skill loader is not available.\n")
         return 1
     normalized = [
-        _normalize_skill_entry(skill)
+        normalized
         for skill in skills
-        if _normalize_skill_entry(skill) is not None
+        if (normalized := project_skill_descriptor(skill)) is not None
     ]
     if args.list_skills_format == "json":
         stdout.write(json.dumps(normalized, ensure_ascii=False) + "\n")
@@ -2516,48 +2186,6 @@ def _session_skills(session: Any) -> list[Any] | None:
             return None
         return loaded if isinstance(loaded, list) else None
     return None
-
-
-def _normalize_skill_entry(skill: Any) -> dict[str, object] | None:
-    name = _safe_getattr(skill, "name", None)
-    if not isinstance(name, str) or not name:
-        return None
-    source_path = _safe_getattr(skill, "source_path", None)
-    source_root = _safe_getattr(skill, "source_root", None)
-    return {
-        "name": name,
-        "id": _safe_getattr(skill, "id", "") or "",
-        "canonical_name": _safe_getattr(skill, "canonical_name", "") or "",
-        "description": _safe_getattr(skill, "description", "") or "",
-        "path": _safe_string(source_path),
-        "source_kind": _safe_getattr(skill, "source_kind", "") or "",
-        "source_scope": _safe_getattr(skill, "source_scope", "") or "",
-        "source": _safe_getattr(skill, "source", "") or "",
-        "source_root": _safe_string(source_root) if source_root is not None else "",
-        "disable_model_invocation": bool(
-            _safe_getattr(skill, "disable_model_invocation", False)
-        ),
-        "enabled": bool(_safe_getattr(skill, "enabled", True)),
-        "diagnostics": [
-            normalized
-            for diagnostic in _safe_getattr(skill, "diagnostics", ()) or ()
-            if (normalized := _normalize_skill_diagnostic(diagnostic)) is not None
-        ],
-    }
-
-
-def _normalize_skill_diagnostic(diagnostic: Any) -> dict[str, object] | None:
-    code = _safe_getattr(diagnostic, "code", None)
-    if not isinstance(code, str) or not code:
-        return None
-    return {
-        "code": code,
-        "message": _safe_getattr(diagnostic, "message", "") or "",
-        "path": _safe_string(_safe_getattr(diagnostic, "source_path", "")),
-        "resource_type": _safe_getattr(diagnostic, "resource_type", None),
-        "source_kind": _safe_getattr(diagnostic, "source_kind", None),
-        "metadata": _json_safe_value(_safe_getattr(diagnostic, "metadata", {})),
-    }
 
 
 def _run_method_visibility(
@@ -2877,7 +2505,7 @@ def _run_list_plugins(
         stderr.write(f"Error: {_format_cli_error(error)}\n")
         return 1
 
-    normalized = [_normalize_plugin_entry(plugin) for plugin in plugins]
+    normalized = [project_installed_plugin(plugin) for plugin in plugins]
     if args.list_plugins_format == "json":
         stdout.write(json.dumps(normalized, ensure_ascii=False) + "\n")
         return 0
@@ -2886,25 +2514,6 @@ def _run_list_plugins(
             f"{plugin['name']}\t{plugin['version']}\t{plugin['path']}\t{plugin['enabled']}\n"
         )
     return 0
-
-
-def _normalize_plugin_entry(plugin: Any) -> dict[str, object]:
-    manifest = _safe_getattr(plugin, "manifest", None)
-    source = _safe_getattr(plugin, "source", None)
-    source_kind = _safe_getattr(source, "kind", "local")
-    source_value = (
-        _safe_getattr(source, "url", None)
-        if source_kind == "remote"
-        else _safe_getattr(source, "path", "")
-    )
-    return {
-        "name": _safe_string(_safe_getattr(manifest, "name", "")),
-        "version": _safe_string(_safe_getattr(manifest, "version", "")),
-        "path": "" if source_kind == "remote" else _safe_string(source_value),
-        "source": _safe_string(source_value),
-        "kind": source_kind if isinstance(source_kind, str) else "local",
-        "enabled": bool(_safe_getattr(plugin, "enabled", False)),
-    }
 
 
 def _run_list_packages(
@@ -3152,32 +2761,6 @@ def _package_lifecycle_failure(record: object) -> str | None:
         if isinstance(message, str) and message
         else "Package lifecycle failed."
     )
-
-
-def _serialize_command_descriptor(command: object) -> dict[str, object] | None:
-    name = _safe_getattr(command, "name", None)
-    if not isinstance(name, str) or not name:
-        return None
-    description = _safe_getattr(command, "description", None)
-    source = _safe_getattr(command, "source", None)
-    source_info = _safe_getattr(command, "source_info", None)
-    payload: dict[str, object] = {
-        "name": name,
-        "description": description if isinstance(description, str) else "",
-        "source": source if isinstance(source, str) else "",
-        "source_info": {"path": _safe_string(_safe_getattr(source_info, "path", ""))},
-    }
-    argument_hint = _safe_getattr(command, "argument_hint", None)
-    if isinstance(argument_hint, str) and argument_hint:
-        payload["argument_hint"] = argument_hint
-    return payload
-
-
-def _try_serialize_command_descriptor(command: object) -> dict[str, object] | None:
-    try:
-        return _serialize_command_descriptor(command)
-    except Exception:
-        return None
 
 
 def _safe_string(value: Any) -> str:

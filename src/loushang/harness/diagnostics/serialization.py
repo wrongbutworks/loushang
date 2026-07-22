@@ -1,3 +1,5 @@
+"""Stable JSON projection for the shared diagnostics contract."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
@@ -57,7 +59,11 @@ def serialize_diagnostic_summary(summary: DiagnosticSummary) -> dict[str, object
         "byCode": dict(summary.by_code),
         "bySource": dict(summary.by_source),
         "byPhase": dict(summary.by_phase),
-        "latestError": serialize_diagnostic(summary.latest_error) if summary.latest_error is not None else None,
+        "latestError": (
+            serialize_diagnostic(summary.latest_error)
+            if summary.latest_error is not None
+            else None
+        ),
     }
 
 
@@ -81,3 +87,10 @@ def _tool_correlation_value(details: dict[str, object], *keys: str) -> str | Non
         if isinstance(value, str) and value:
             return value
     return None
+
+
+__all__ = [
+    "serialize_diagnostic",
+    "serialize_diagnostic_summary",
+    "serialize_error_report",
+]

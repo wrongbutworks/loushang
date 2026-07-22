@@ -6,9 +6,10 @@ Superseded by the zero-compatibility resource facade cutover.
 
 The package/plugin distinction and CLI/RPC wire semantics remain valid, but
 the former `coding.package.*` and `coding.plugin.*` paths were removed. Generic
-package and plugin APIs are now imported from `loushang.harness.resources`;
-Coding binds product defaults in `coding.resource_runtime` and retains its
-wire projection in `coding.package_projection`.
+package and plugin APIs, including catalog/materialization projections, are now
+imported from `loushang.harness.resources`; Coding binds product defaults in
+`coding.resource_runtime` and retains only discovery/materializer wiring in
+`coding.package_projection`.
 
 ## Context
 

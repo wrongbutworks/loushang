@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, TextIO
 
-from loushang.coding.diagnostics.serialization import (
+from loushang.harness.diagnostics.serialization import (
     serialize_diagnostic,
     serialize_diagnostic_summary,
     serialize_error_report,

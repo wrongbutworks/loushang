@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -121,6 +121,171 @@ def _dedupe_model_selections(values: object) -> list[ModelSelection]:
     return selections
 
 
+def model_listing_getter(
+    session: object,
+) -> tuple[Callable[[], object] | None, bool]:
+    """Resolve the preferred model-detail getter for a Product host."""
+
+    details_getter = getattr(session, "get_available_model_details", None)
+    if callable(details_getter):
+        return details_getter, True
+    getter = getattr(session, "get_available_models", None)
+    if callable(getter):
+        return getter, False
+    return None, False
+
+
+def unique_sorted_model_entries(models: Iterable[object]) -> list[object]:
+    """Dedupe model values by provider/model id in stable display order."""
+
+    by_key: dict[tuple[str, str], object] = {}
+    for selection in models:
+        provider = _model_provider(selection)
+        model_id = _model_id(selection)
+        if isinstance(provider, str) and isinstance(model_id, str):
+            by_key.setdefault((provider, model_id), selection)
+    return [by_key[key] for key in sorted(by_key)]
+
+
+def normalize_model_listing(
+    models: Iterable[object], *, include_metadata: bool = False
+) -> list[dict[str, object]]:
+    """Project model selections into the shared host listing shape."""
+
+    entries: list[dict[str, object]] = []
+    for selection in models:
+        provider = _model_provider(selection)
+        model_id = _model_id(selection)
+        if not isinstance(provider, str) or not isinstance(model_id, str):
+            continue
+        entry: dict[str, object] = {
+            "provider": provider,
+            "model_id": model_id,
+            "id": f"{provider}/{model_id}",
+        }
+        if include_metadata:
+            entry.update(
+                {
+                    "context_window": _optional_int_attr(selection, "context_window"),
+                    "max_tokens": _optional_int_attr(selection, "max_tokens"),
+                    "supports_thinking": _bool_model_attr(
+                        selection, "supports_thinking", "reasoning"
+                    ),
+                    "supports_images": _bool_model_attr(
+                        selection, "supports_image_input"
+                    ),
+                }
+            )
+        entries.append(entry)
+    return entries
+
+
+def model_listing_matches_query(entry: Mapping[str, object], query: str) -> bool:
+    """Match a normalized model entry by substring or subsequence."""
+
+    provider = str(entry.get("provider") or "").lower()
+    model_id = str(entry.get("model_id") or "").lower()
+    if not provider and not model_id:
+        return False
+    if query in provider or query in model_id:
+        return True
+    haystack = f"{provider}/{model_id}"
+    return query in haystack or _is_subsequence(query, haystack)
+
+
+def format_model_metadata_table(models: Sequence[Mapping[str, object]]) -> str:
+    """Format the canonical human-readable model metadata table."""
+
+    rows = [
+        (
+            str(model["provider"]),
+            str(model["model_id"]),
+            _format_context_window(model.get("context_window")),
+            _format_optional_int(model.get("max_tokens")),
+            _format_bool(model.get("supports_thinking")),
+            _format_bool(model.get("supports_images")),
+        )
+        for model in models
+    ]
+    headers = ("provider", "model", "context", "max-out", "thinking", "images")
+    widths = [
+        max(len(headers[index]), *(len(row[index]) for row in rows))
+        if rows
+        else len(headers[index])
+        for index in range(len(headers))
+    ]
+    lines = [_format_model_table_row(headers, widths)]
+    lines.extend(_format_model_table_row(row, widths) for row in rows)
+    return "\n".join(lines) + "\n"
+
+
+def _model_provider(selection: object) -> str | None:
+    provider = _safe_model_getattr(selection, "provider", None)
+    if isinstance(provider, str):
+        return provider
+    provider_id = _safe_model_getattr(selection, "provider_id", None)
+    return provider_id if isinstance(provider_id, str) else None
+
+
+def _model_id(selection: object) -> str | None:
+    model_id = _safe_model_getattr(selection, "model_id", None)
+    if isinstance(model_id, str):
+        return model_id
+    model_id = _safe_model_getattr(selection, "id", None)
+    return model_id if isinstance(model_id, str) else None
+
+
+def _optional_int_attr(selection: object, attr: str) -> int | None:
+    value = _safe_model_getattr(selection, attr, None)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _bool_model_attr(selection: object, *attrs: str) -> bool:
+    for attr in attrs:
+        value = _safe_model_getattr(selection, attr, None)
+        if isinstance(value, bool):
+            return value
+    return False
+
+
+def _safe_model_getattr(selection: object, name: str, default: object) -> object:
+    try:
+        return getattr(selection, name, default)
+    except Exception:
+        return default
+
+
+def _is_subsequence(needle: str, haystack: str) -> bool:
+    if not needle:
+        return True
+    haystack_iter = iter(haystack)
+    return all(char in haystack_iter for char in needle)
+
+
+def _format_model_table_row(row: tuple[str, ...], widths: list[int]) -> str:
+    return "  ".join(
+        value.ljust(widths[index]) for index, value in enumerate(row)
+    ).rstrip()
+
+
+def _format_context_window(value: object) -> str:
+    if not isinstance(value, int) or isinstance(value, bool):
+        return "-"
+    if value >= 1_000_000 and value % 1_000_000 == 0:
+        return f"{value // 1_000_000}M"
+    if value >= 1000 and value % 1000 == 0:
+        return f"{value // 1000}K"
+    return str(value)
+
+
+def _format_optional_int(value: object) -> str:
+    return str(value) if isinstance(value, int) and not isinstance(value, bool) else "-"
+
+
+def _format_bool(value: object) -> str:
+    return "yes" if value is True else "no"
+
+
 async def _maybe_await(value: Any) -> Any:
     return await value if inspect.isawaitable(value) else value
 
@@ -134,4 +299,9 @@ __all__ = [
     "get_session_model_selection",
     "iter_available_model_selections",
     "iter_scoped_model_selections",
+    "format_model_metadata_table",
+    "model_listing_getter",
+    "model_listing_matches_query",
+    "normalize_model_listing",
+    "unique_sorted_model_entries",
 ]

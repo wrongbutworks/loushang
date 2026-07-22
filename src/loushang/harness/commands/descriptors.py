@@ -198,6 +198,59 @@ def complete_slash_commands(
     return completions
 
 
+def project_command_descriptor(
+    command: object,
+) -> dict[str, object] | None:
+    """Project command metadata for generic CLI/resource listings.
+
+    This is deliberately a transport-neutral, snake_case projection.  RPC and
+    product-specific serializers may add their own wire fields, but a command
+    listing should not need to know which product supplied the descriptor.
+    Malformed or partially unavailable descriptors are ignored, matching the
+    existing best-effort listing behavior.
+    """
+
+    name = _safe_command_getattr(command, "name", None)
+    if not isinstance(name, str) or not name:
+        return None
+    description = _safe_command_getattr(command, "description", None)
+    source = _safe_command_getattr(command, "source", None)
+    source_info = _safe_command_getattr(command, "source_info", None)
+    payload: dict[str, object] = {
+        "name": name,
+        "description": description if isinstance(description, str) else "",
+        "source": source if isinstance(source, str) else "",
+        "source_info": {
+            "path": _safe_command_string(
+                _safe_command_getattr(source_info, "path", "")
+            )
+        },
+    }
+    argument_hint = _safe_command_getattr(command, "argument_hint", None)
+    if isinstance(argument_hint, str) and argument_hint:
+        payload["argument_hint"] = argument_hint
+    return payload
+
+
+def _safe_command_getattr(target: object, name: str, default: object) -> object:
+    try:
+        return getattr(target, name)
+    except Exception:
+        return default
+
+
+def _safe_command_string(value: object) -> str:
+    if value is None:
+        return ""
+    try:
+        return str(value)
+    except Exception:
+        try:
+            return repr(value)
+        except Exception:
+            return ""
+
+
 @dataclass(frozen=True)
 class CommandDispatchOutcome(Generic[ResultT]):
     handled: bool

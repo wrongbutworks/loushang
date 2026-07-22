@@ -246,15 +246,13 @@ def test_diagnostics_service_summarizes_records_with_occurrences() -> None:
 
 
 def test_diagnostics_serialization_projects_stable_json_shape() -> None:
-    from loushang.coding.diagnostics import (
-        serialize_diagnostic,
-        serialize_diagnostic_summary,
-        serialize_error_report,
-    )
     from loushang.harness.diagnostics import (
         DiagnosticRecord,
         DiagnosticSummary,
         ErrorReport,
+        serialize_diagnostic,
+        serialize_diagnostic_summary,
+        serialize_error_report,
     )
 
     record = DiagnosticRecord(

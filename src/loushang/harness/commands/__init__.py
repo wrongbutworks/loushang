@@ -25,6 +25,7 @@ from loushang.harness.commands.descriptors import (
     dispatch_command_async,
     normalize_command_name,
     parse_slash_command,
+    project_command_descriptor,
     split_slash_command,
 )
 from loushang.harness.commands.resources import (
@@ -69,5 +70,6 @@ __all__ = [
     "normalize_command_name",
     "list_resource_command_descriptors",
     "parse_slash_command",
+    "project_command_descriptor",
     "split_slash_command",
 ]

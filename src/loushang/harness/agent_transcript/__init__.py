@@ -19,6 +19,7 @@ from loushang.harness.agent_transcript.catalog import (
     list_all_indexed_agent_transcript_session_summaries,
     load_agent_transcript_session_metadata,
     project_agent_transcript_session_summary,
+    project_session_record,
     refresh_all_agent_transcript_session_indexes,
     same_agent_transcript_session_path,
 )
@@ -88,10 +89,6 @@ from loushang.harness.agent_transcript.interaction import (
     model_selection_from_model,
     user_message_text,
     validate_model,
-)
-from loushang.harness.agent_transcript.session_export import (
-    export_session_to_html,
-    export_session_to_jsonl,
 )
 from loushang.harness.agent_transcript.kinds import (
     AGENT_MESSAGE_KIND,
@@ -167,6 +164,10 @@ from loushang.harness.agent_transcript.session import (
     AgentTranscriptSession,
     ApplicationMessageIdFactory,
     CommitObserver,
+)
+from loushang.harness.agent_transcript.session_export import (
+    export_session_to_html,
+    export_session_to_jsonl,
 )
 from loushang.harness.agent_transcript.session_factory import (
     AgentTranscriptSessionFactory,
@@ -384,6 +385,7 @@ __all__ = [
     "record_is_visible",
     "record_role",
     "project_agent_transcript_session_summary",
+    "project_session_record",
     "refresh_all_agent_transcript_session_indexes",
     "same_agent_transcript_session_path",
     "has_post_compaction_usage",

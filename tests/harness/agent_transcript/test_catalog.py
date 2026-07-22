@@ -12,6 +12,7 @@ from loushang.harness.agent_transcript import (
     build_agent_transcript_label_indexes,
     build_agent_transcript_session_context,
     find_all_agent_transcript_session_summaries,
+    project_session_record,
     write_agent_transcript_file,
 )
 from loushang.harness.conversation import ConversationHeader, ConversationRecord
@@ -111,3 +112,65 @@ def test_catalog_context_and_labels_use_selected_standard_record_path() -> None:
     ]
     assert labels == {"selected": "important"}
     assert timestamps == {"selected": "2026-07-18T00:00:02Z"}
+
+
+def test_project_session_record_preserves_catalog_listing_shape() -> None:
+    record = SessionRecordLike(
+        session_id="session-1",
+        cwd="/workspace",
+        session_file=Path("/tmp/session.jsonl"),
+        parent_session=None,
+        leaf_id="leaf-1",
+        metadata=MetadataLike(
+            created_at="2026-07-18T00:00:00Z",
+            updated_at="2026-07-18T00:00:01Z",
+            name="Demo",
+        ),
+        message_count=2,
+        model={"provider": "test", "model_id": "small"},
+    )
+
+    assert project_session_record(record) == {
+        "session_id": "session-1",
+        "cwd": "/workspace",
+        "session_file": "/tmp/session.jsonl",
+        "parent_session": None,
+        "leaf_id": "leaf-1",
+        "metadata": {
+            "created_at": "2026-07-18T00:00:00Z",
+            "updated_at": "2026-07-18T00:00:01Z",
+            "name": "Demo",
+        },
+        "message_count": 2,
+        "model": {"provider": "test", "model_id": "small"},
+    }
+
+
+class MetadataLike:
+    def __init__(self, *, created_at: str, updated_at: str, name: str) -> None:
+        self.created_at = created_at
+        self.updated_at = updated_at
+        self.name = name
+
+
+class SessionRecordLike:
+    def __init__(
+        self,
+        *,
+        session_id: str,
+        cwd: str,
+        session_file: Path,
+        parent_session: str | None,
+        leaf_id: str | None,
+        metadata: MetadataLike,
+        message_count: int,
+        model: dict[str, str],
+    ) -> None:
+        self.session_id = session_id
+        self.cwd = cwd
+        self.session_file = session_file
+        self.parent_session = parent_session
+        self.leaf_id = leaf_id
+        self.metadata = metadata
+        self.message_count = message_count
+        self.model = model

@@ -77,6 +77,30 @@ Wave 2 contract probes:
   profile; lifecycle callback order and timestamps are deterministic under an
   injected clock.
 
+## Wave 4, Slice A: Agent Session Adapter Collapse (Complete)
+
+The detailed boundary is
+[Session Agent Runtime Boundary](session-agent-session-boundary.md).
+
+| Source region | Shared owner | Product injection or retained Coding owner | Deletion condition |
+| --- | --- | --- | --- |
+| `coding.session.agent_session` composition and operation coordination | `harness.session.composition`, `harness.session.operations_runtime`, and `harness.session.agent_adapter` | Coding supplies model restoration, resource/package policy, provider/footer behavior, compaction and branch-summary executors, replacement validation, and Product callbacks. | Complete: `AgentSession` reduced from 1,729 to 510 lines; the shared modules have no Coding import. |
+
+Wave 4, Slice A closure probes:
+
+- AgentSession, retry, export, and tool regressions pass without changing the
+  public session or RPC surface;
+- Harness owns resource watching, command/preflight forwarding, extension
+  lifecycle, event dispatch, approval lifecycle, transcript export, and
+  composed-session initialization;
+- a source-level architecture probe rejects `loushang.coding` imports from
+  the new session adapter modules;
+- the Coding implementation reduction is 70.5% (1,219 of 1,729 lines), with
+  the remaining code limited to the product responsibilities listed above;
+- the implementation diff deletes 1,399 Coding lines and adds 1,949 shared
+  Harness lines (a 0.72 deletion/addition ratio); tests and documentation are
+  excluded from this accounting.
+
 ## Later Waves
 
 Wave 3's initial command-handler cutover is implemented in
@@ -210,3 +234,37 @@ These are adapter collapses rather than new protocol layers. Harness and Channel
 do not import Coding, and no RPC/CLI wire fields changed in this wave. The
 lifecycle contract is verified with independent Harness/Channel fakes plus the
 existing Coding settings and CLI regressions.
+
+### Wave 6, Slice B: Generic Product CLI Surfaces (In Progress)
+
+The detailed boundary is [Product CLI Lifecycle Boundary](../channel/product-cli-lifecycle-boundary.md).
+This slice extracts only object-shape and lifecycle mechanisms. It does not move
+Coding argument grammar, mode selection, package/work/method handlers, product
+wording, or RPC schemas.
+
+| Source region | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| repeated prompt/print/mode turn loops and TTY probing | `channel.ProductHostLifecycle` | Turn values, runner selection, output, and disposal candidates | Complete |
+| prompt/stdin/file/image input resolution | `harness.host.prompt_input` | CLI argument grammar and product prompt policy | Complete |
+| model listing normalization and metadata formatting | `harness.session.model_selection` | Preferred model candidates and persistence wording | Complete |
+| command descriptor listing projection | `harness.commands.project_command_descriptor` | Descriptor source selection and JSON/TSV output | Complete |
+| skill/plugin/session catalog listing projections | `harness.resources.*`, `harness.agent_transcript.catalog` | Discovery, settings, query grammar, and output format | Complete |
+| diagnostic record/error/summary serialization | `harness.diagnostics.serialization` | Existing call sites only; camelCase output retained | Complete |
+| package catalog and materialization record projection | `harness.resources.packages.projection` | Coding retains resource discovery, materializer policy, and command selection | Complete |
+
+Slice B accounting (implementation only): `coding.cli.__main__` is 3,358 to
+2,941 LOC (-417); the former Coding diagnostics serializer is deleted (83 LOC);
+the shared mechanisms add approximately 890 LOC across Channel/Harness. The
+deletion/addition ratio is approximately 0.71. Tests and documentation are not
+counted. The lower ratio is intentional: this slice establishes reusable
+contracts and does not delete product handlers or CLI grammar.
+
+Closure probes:
+
+- CLI/model/prompt/channel regressions preserve existing output and lifecycle
+  behavior;
+- Harness/Channel modules have no Coding import;
+- malformed resource and command objects remain best-effort and are skipped as
+  before;
+- diagnostic JSON retains the existing field names; any snake_case protocol
+  change requires explicit approval in a later contract migration.
