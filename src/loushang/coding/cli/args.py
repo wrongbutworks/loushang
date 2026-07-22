@@ -5,6 +5,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
+from loushang.harness.cli import register_profile_arguments
+from loushang.harness.cli.profile import STANDARD_CLI_PROFILE
 from loushang.harness.extensions.types import RegisteredFlag, ResolvedFlag
 
 CliMode = Literal["text", "print", "json", "rpc", "channel"]
@@ -413,82 +415,13 @@ def _build_parser() -> ArgumentParser:
         formatter_class=RawTextHelpFormatter,
     )
     parser.add_argument("messages", nargs="*")
-    parser.add_argument("--help", "-h", action="store_true")
-    parser.add_argument("--version", "-v", action="store_true")
-    parser.add_argument("--source-info", action="store_true")
-    parser.add_argument("--source-info-format", choices=("text", "json"), default="text")
-    parser.add_argument(
-        "--mode",
-        choices=("text", "print", "json", "rpc", "channel"),
-        default="text",
-    )
+    register_profile_arguments(parser, STANDARD_CLI_PROFILE)
     parser.add_argument("--method", help="Guide one coding turn with a discovered method.")
     parser.add_argument("--no-method", action="store_true", help="Run one coding turn without method guidance.")
-    parser.add_argument(
-        "--prompt",
-        "-p",
-        help="Run one coding prompt and render a stable transcript.",
-    )
     parser.add_argument(
         "--prompt-steps",
         "-ps",
         help="Run a prompt workflow file against a coding session.",
-    )
-    parser.add_argument("--tui", action="store_true")
-    parser.add_argument("--no-tui", action="store_true")
-    parser.add_argument("--no-session", action="store_true")
-    parser.add_argument("--session")
-    parser.add_argument("--session-name")
-    parser.add_argument("--list-sessions", action="store_true")
-    parser.add_argument("--all-sessions", action="store_true")
-    parser.add_argument("--list-sessions-format", choices=("tsv", "json"), default="tsv")
-    parser.add_argument("--session-index", action="store_true")
-    parser.add_argument("--refresh-session-index", action="store_true")
-    parser.add_argument("--session-cwd")
-    parser.add_argument("--session-name-filter")
-    parser.add_argument("--session-parent")
-    parser.add_argument("--session-query")
-    parser.add_argument("--session-has-diagnostics", dest="session_has_diagnostics", action="store_true", default=None)
-    parser.add_argument("--session-no-diagnostics", dest="session_has_diagnostics", action="store_false")
-    parser.add_argument("--session-limit", type=int)
-    parser.add_argument("--fork")
-    parser.add_argument("--session-dir")
-    parser.add_argument("--cwd")
-    parser.add_argument("--provider")
-    parser.add_argument("--model")
-    parser.add_argument("--continue", "-c", dest="continue_", action="store_true")
-    parser.add_argument("--resume", "-r", nargs="?", const=True, default=False, metavar="SESSION")
-    parser.add_argument("--list-models", nargs="?", const="", default=False)
-    parser.add_argument("--list-models-format", choices=("text", "json"), default="text")
-    parser.add_argument("--models")
-    parser.add_argument("--extension", "-e", action="append", default=[])
-    parser.add_argument("--no-extensions", "-ne", action="store_true")
-    parser.add_argument("--skill", action="append", default=[])
-    parser.add_argument("--no-skills", "-ns", dest="no_skills", action="store_true")
-    parser.add_argument("--prompt-template", action="append", default=[])
-    parser.add_argument(
-        "--no-prompt-templates",
-        "-np",
-        dest="no_prompt_templates",
-        action="store_true",
-    )
-    parser.add_argument("--theme", action="append", default=[])
-    parser.add_argument("--no-themes", action="store_true")
-    parser.add_argument("--system-prompt")
-    parser.add_argument("--append-system-prompt", action="append", default=[])
-    parser.add_argument("--verbose", action="store_true")
-    parser.add_argument("--debug", default=None)
-    parser.add_argument("--debug-file")
-    parser.add_argument("--trace", default=None)
-    parser.add_argument("--trace-file")
-    parser.add_argument("--offline", action="store_true")
-    parser.add_argument("--export", nargs="?", const="")
-    parser.add_argument("--export-format", choices=("html", "jsonl"), default="html")
-    parser.add_argument("--export-result-format", choices=("text", "json"), default="text")
-    parser.add_argument(
-        "--render-tool-events",
-        action="store_true",
-        help="Attach rendered_tool_call/rendered_tool_result payloads to JSON tool events.",
     )
     parser.add_argument(
         "--work-log",
@@ -501,53 +434,12 @@ def _build_parser() -> ArgumentParser:
     )
     parser.add_argument("--work-log-run", help="Filter --work-log-inspect output to one run id.")
     parser.add_argument("--work-log-inspect-format", choices=("text", "json", "plans", "plans-json"), default="text")
-    parser.add_argument("--message", dest="message_prompts", action="append", default=[])
-    parser.add_argument("--tool", dest="tool_flags", action="append", default=[])
-    parser.add_argument("--tools", "-t", dest="tools", action="append", default=[])
-    parser.add_argument("--no-tools", "-nt", dest="no_tools", action="store_true")
-    parser.add_argument("--no-builtin-tools", "-nbt", dest="no_builtin_tools", action="store_true")
-    parser.add_argument(
-        "--thinking",
-        choices=("off", "minimal", "low", "medium", "high", "xhigh"),
-    )
-    parser.add_argument("--no-context-files", "-nc", dest="no_context_files", action="store_true")
-    parser.add_argument("--list-commands", action="store_true")
-    parser.add_argument("--list-commands-format", choices=("tsv", "json"), default="tsv")
-    parser.add_argument("--list-diagnostics", action="store_true")
-    parser.add_argument("--list-diagnostics-format", choices=("tsv", "json"), default="tsv")
-    parser.add_argument("--diagnostics-limit", type=int, default=50)
-    parser.add_argument("--diag-export", action="store_true")
-    parser.add_argument("--diag-output")
-    parser.add_argument("--list-skills", action="store_true")
-    parser.add_argument("--list-skills-format", choices=("tsv", "json"), default="tsv")
     parser.add_argument("--list-methods", action="store_true")
     parser.add_argument("--list-methods-format", choices=("tsv", "json"), default="tsv")
     parser.add_argument("--show-method")
     parser.add_argument("--show-method-format", choices=("text", "json"), default="text")
     parser.add_argument("--show-method-plan")
     parser.add_argument("--show-method-plan-format", choices=("text", "json"), default="text")
-    parser.add_argument("--enable-skill", action="append", default=[])
-    parser.add_argument("--disable-skill", action="append", default=[])
-    parser.add_argument("--list-plugins", action="store_true")
-    parser.add_argument("--list-plugins-format", choices=("tsv", "json"), default="tsv")
-    parser.add_argument("--list-packages", action="store_true")
-    parser.add_argument("--list-packages-format", choices=("text", "tsv", "json"), default="text")
-    parser.add_argument("--package-catalog")
-    parser.add_argument("--install-package", action="append", default=[])
-    parser.add_argument("--uninstall-package", action="append", default=[])
-    parser.add_argument("--package-scope", choices=("global", "project"), default="global")
-    parser.add_argument("--update-packages", action="store_true")
-    parser.add_argument("--check-package-updates", action="store_true")
-    parser.add_argument("--materialize-package", action="append", default=[])
-    parser.add_argument("--update-package", action="append", default=[])
-    parser.add_argument("--remove-package", action="append", default=[])
-    parser.add_argument("--add-plugin-source", "--add-plugin", dest="add_plugin_source", action="append", default=[])
-    parser.add_argument("--remove-plugin-source", "--remove-plugin", dest="remove_plugin_source", action="append", default=[])
-    parser.add_argument("--enable-plugin", action="append", default=[])
-    parser.add_argument("--disable-plugin", action="append", default=[])
-    parser.add_argument("--command")
-    parser.add_argument("--command-args", default="")
-    parser.add_argument("--command-result-format", choices=("raw", "json"), default="raw")
     return parser
 
 
