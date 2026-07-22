@@ -28,6 +28,10 @@ from loushang.harness.cli.export import (
     export_session,
     format_export_result,
 )
+from loushang.harness.cli.extension_flags import (
+    apply_extension_flag_values,
+    collect_extension_flags,
+)
 from loushang.harness.cli.model_listing import (
     ModelListingError,
     ModelListingRequest,
@@ -130,6 +134,8 @@ __all__ = [
     "resolve_session",
     "DiagnosticsListingError",
     "DiagnosticsListingRequest",
+    "apply_extension_flag_values",
+    "collect_extension_flags",
     "format_diagnostic_records",
     "list_diagnostic_records",
     "ExportFormat",

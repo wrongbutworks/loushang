@@ -11,7 +11,7 @@ from dataclasses import asdict, replace
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, TextIO, cast
 
 from loushang.ai.model import (
     ModelSelection,
@@ -116,6 +116,12 @@ from loushang.harness.cli import (
     list_skill_records,
     resolve_session,
     run_package_lifecycle,
+)
+from loushang.harness.cli import (
+    apply_extension_flag_values as apply_extension_flag_values_shared,
+)
+from loushang.harness.cli import (
+    collect_extension_flags as collect_extension_flags_shared,
 )
 from loushang.harness.cli import (
     resolve_latest_session_file as resolve_latest_session_file_shared,
@@ -1837,32 +1843,11 @@ def _resolve_print_input_plan(
 
 
 def _collect_extension_flags(session: Any) -> dict[str, ResolvedFlag]:
-    runner = getattr(session, "extension_runner", None)
-    if runner is None:
-        return {}
-    getter = getattr(runner, "get_flags", None)
-    if not callable(getter):
-        return {}
-    flags = getter()
-    collected: dict[str, ResolvedFlag] = {}
-    for flag in flags:
-        name = getattr(flag, "name", None)
-        if isinstance(name, str) and name:
-            collected[name] = flag
-    return collected
+    return cast(dict[str, ResolvedFlag], collect_extension_flags_shared(session))
 
 
 def _apply_extension_flag_values(session: Any, values: dict[str, bool | str]) -> None:
-    if not values:
-        return
-    runner = getattr(session, "extension_runner", None)
-    if runner is None:
-        return
-    setter = getattr(runner, "set_flag_value", None)
-    if not callable(setter):
-        return
-    for name, value in values.items():
-        setter(name, value)
+    apply_extension_flag_values_shared(session, values)
 
 
 def _run_list_models(
