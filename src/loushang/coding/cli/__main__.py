@@ -7,7 +7,7 @@ import os
 import sys
 from collections.abc import Mapping, Sequence
 from contextlib import redirect_stderr
-from dataclasses import asdict, replace
+from dataclasses import replace
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -139,7 +139,12 @@ from loushang.harness.scenario.loader import load_workflow, resolve_workflow_fil
 from loushang.harness.session.model_selection import format_model_metadata_table
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.method import MethodCompiler, MethodContext, MethodLoader
-from loushang.work import JsonlEventLogBackend, project_work_plan_runs
+from loushang.work import (
+    JsonlEventLogBackend,
+    WorkLogInspectionError,
+    inspect_work_log,
+    resolve_work_log_path,
+)
 
 _MISSING = object()
 _WORK_LOG_INSPECT_LIMIT = 20
@@ -1189,265 +1194,22 @@ def _run_work_log_inspect(
     if args.work_log_inspect is None:
         return None
     try:
-        event_log = JsonlEventLogBackend(
-            _resolve_work_log_path(args.work_log_inspect, project_root)
+        output = inspect_work_log(
+            args.work_log_inspect,
+            project_root=project_root,
+            run_id=args.work_log_run,
+            output_format=args.work_log_inspect_format,
+            limit=_WORK_LOG_INSPECT_LIMIT,
         )
-        entries = event_log.query(run_id=args.work_log_run)
-    except Exception as error:
+    except WorkLogInspectionError as error:
         stderr.write(f"Error: {_format_cli_error(error)}\n")
         return 1
-    if args.work_log_inspect_format == "json":
-        raw_entries = entries[-_WORK_LOG_INSPECT_LIMIT:]
-        stdout.write(
-            json.dumps(
-                [_work_log_entry_summary(entry) for entry in raw_entries],
-                ensure_ascii=False,
-            )
-            + "\n"
-        )
-    elif args.work_log_inspect_format == "plans-json":
-        stdout.write(
-            json.dumps(
-                [asdict(plan) for plan in project_work_plan_runs(entries)],
-                ensure_ascii=False,
-            )
-            + "\n"
-        )
-    elif args.work_log_inspect_format == "plans":
-        _write_work_log_plan_summary(entries, stdout)
-    else:
-        _write_work_log_text(entries[-_WORK_LOG_INSPECT_LIMIT:], stdout)
+    stdout.write(output)
     return 0
 
 
 def _resolve_work_log_path(raw_path: str, project_root: Path) -> Path:
-    path = Path(raw_path).expanduser()
-    if not path.is_absolute():
-        path = project_root / path
-    return path
-
-
-def _write_work_log_text(entries: list[Any], stdout: TextIO) -> None:
-    stdout.write(
-        "\t".join(
-            [
-                "sequence",
-                "kind",
-                "run_id",
-                "session_id",
-                "delivery_hint",
-                "method_id",
-                "plan_id",
-                "step_id",
-                "step_index",
-                "step_title",
-            ]
-        )
-        + "\n"
-    )
-    for entry in entries:
-        step_index = _work_log_entry_step_index(entry)
-        stdout.write(
-            "\t".join(
-                [
-                    str(entry.sequence),
-                    _work_log_entry_kind(entry),
-                    entry.run_id,
-                    entry.session_id,
-                    _work_log_entry_delivery_hint(entry),
-                    _work_log_entry_method_id(entry),
-                    _work_log_entry_plan_id(entry),
-                    _work_log_entry_step_id(entry),
-                    "" if step_index is None else str(step_index),
-                    _work_log_entry_step_title(entry),
-                ]
-            )
-            + "\n"
-        )
-
-
-def _write_work_log_plan_summary(entries: list[Any], stdout: TextIO) -> None:
-    stdout.write(
-        "\t".join(
-            [
-                "type",
-                "index",
-                "id",
-                "status",
-                "run_id",
-                "method_id",
-                "completed_steps",
-                "failed_steps",
-                "current_step",
-                "title",
-                "deviation",
-            ]
-        )
-        + "\n"
-    )
-    for plan in project_work_plan_runs(entries):
-        stdout.write(
-            "\t".join(
-                [
-                    "plan",
-                    "",
-                    plan.plan_id,
-                    plan.status,
-                    "",
-                    plan.method_id or "",
-                    f"{plan.completed_step_count}/{plan.step_count}",
-                    str(plan.failed_step_count),
-                    plan.current_step_id or "",
-                    "",
-                    "",
-                ]
-            )
-            + "\n"
-        )
-        for fallback_index, step in enumerate(plan.steps, start=1):
-            stdout.write(
-                "\t".join(
-                    [
-                        "step",
-                        _work_log_plan_step_index(step.metadata, fallback_index),
-                        step.step_id,
-                        step.status,
-                        step.run_id,
-                        step.method_id or plan.method_id or "",
-                        "",
-                        "",
-                        "",
-                        step.title or "",
-                        _work_log_plan_step_deviation_summary(step.deviation),
-                    ]
-                )
-                + "\n"
-            )
-
-
-def _work_log_plan_step_index(
-    metadata: Mapping[str, object], fallback_index: int
-) -> str:
-    step_index = metadata.get("step_index")
-    if isinstance(step_index, int) and not isinstance(step_index, bool):
-        return str(step_index + 1)
-    return str(fallback_index)
-
-
-def _work_log_plan_step_deviation_summary(deviation: Any) -> str:
-    if deviation is None:
-        return ""
-    deviation_type = getattr(deviation, "deviation_type", "")
-    reason = getattr(deviation, "reason", "")
-    if deviation_type and reason:
-        return f"{deviation_type}: {reason}"
-    if deviation_type:
-        return str(deviation_type)
-    if reason:
-        return str(reason)
-    return ""
-
-
-def _work_log_entry_summary(entry: Any) -> dict[str, object]:
-    summary: dict[str, object] = {
-        "entry_id": entry.entry_id,
-        "entry_type": entry.entry_type,
-        "sequence": entry.sequence,
-        "kind": _work_log_entry_kind(entry),
-        "run_id": entry.run_id,
-        "session_id": entry.session_id,
-        "operation_id": entry.operation_id,
-        "event_id": entry.event_id,
-        "delivery_hint": _work_log_entry_delivery_hint(entry),
-    }
-    method_id = _work_log_entry_method_id(entry)
-    if method_id:
-        summary["method_id"] = method_id
-    plan_id = _work_log_entry_plan_id(entry)
-    if plan_id:
-        summary["plan_id"] = plan_id
-    step_id = _work_log_entry_step_id(entry)
-    if step_id:
-        summary["step_id"] = step_id
-    step_index = _work_log_entry_step_index(entry)
-    if step_index is not None:
-        summary["step_index"] = step_index
-    step_title = _work_log_entry_step_title(entry)
-    if step_title:
-        summary["step_title"] = step_title
-    for key in (
-        "tool_call_id",
-        "tool_name",
-        "action_id",
-        "policy_disposition",
-        "policy_code",
-        "policy_reason",
-        "approval_required",
-        "approval_decision",
-        "approval_reason",
-        "argument_keys",
-        "path",
-        "file_path",
-        "command",
-    ):
-        value = _work_log_entry_payload_value(entry, key)
-        if isinstance(value, str | bool | int | float | list | tuple):
-            summary[key] = value
-    return summary
-
-
-def _work_log_entry_kind(entry: Any) -> str:
-    kind = entry.payload.get("kind")
-    if isinstance(kind, str) and kind:
-        return kind
-    return str(entry.entry_type)
-
-
-def _work_log_entry_delivery_hint(entry: Any) -> str:
-    delivery_hint = entry.payload.get("delivery_hint")
-    if isinstance(delivery_hint, str):
-        return delivery_hint
-    return ""
-
-
-def _work_log_entry_method_id(entry: Any) -> str:
-    return _work_log_entry_string_payload_value(entry, "method_id")
-
-
-def _work_log_entry_plan_id(entry: Any) -> str:
-    return _work_log_entry_string_payload_value(entry, "plan_id")
-
-
-def _work_log_entry_step_id(entry: Any) -> str:
-    return _work_log_entry_string_payload_value(entry, "step_id")
-
-
-def _work_log_entry_step_title(entry: Any) -> str:
-    return _work_log_entry_string_payload_value(entry, "step_title")
-
-
-def _work_log_entry_step_index(entry: Any) -> int | None:
-    step_index = _work_log_entry_payload_value(entry, "step_index")
-    if isinstance(step_index, int) and not isinstance(step_index, bool):
-        return step_index
-    return None
-
-
-def _work_log_entry_string_payload_value(entry: Any, key: str) -> str:
-    value = _work_log_entry_payload_value(entry, key)
-    if isinstance(value, str):
-        return value
-    return ""
-
-
-def _work_log_entry_payload_value(entry: Any, key: str) -> object | None:
-    value = entry.payload.get(key)
-    if value is not None:
-        return value
-    nested_payload = entry.payload.get("payload")
-    if isinstance(nested_payload, dict):
-        return nested_payload.get(key)
-    return None
+    return resolve_work_log_path(raw_path, project_root)
 
 
 def _has_command_style_operation(args: CliArgs) -> bool:

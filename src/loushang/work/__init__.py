@@ -93,6 +93,12 @@ _LAZY_EXPORTS = {
         "loushang.work.plan_projection",
         "project_work_plan_runs",
     ),
+    "WorkLogInspectionError": (
+        "loushang.work.cli",
+        "WorkLogInspectionError",
+    ),
+    "inspect_work_log": ("loushang.work.cli", "inspect_work_log"),
+    "resolve_work_log_path": ("loushang.work.cli", "resolve_work_log_path"),
     "project_work_runs": ("loushang.work.run_projection", "project_work_runs"),
     "WorkRunReplayError": (
         "loushang.work.run_projection",
@@ -194,4 +200,7 @@ __all__ = [
     "project_agent_event_to_work_facts",
     "project_work_plan_runs",
     "project_work_runs",
+    "WorkLogInspectionError",
+    "inspect_work_log",
+    "resolve_work_log_path",
 ]
