@@ -6,8 +6,9 @@ layout.
 
 ## Baseline
 
-`src/loushang/coding/session/agent_session.py` started at 1,729 lines and is
-now 510 lines after the first cutover.
+`src/loushang/coding/session/agent_session.py` was restored to the composed
+adapter after an integration merge reintroduced direct runtime assembly. It is
+now 522 lines, down from 1,732 lines in the merged baseline.
 Most of its constructor assembles already shared Harness runtimes: transcript
 context, queue and turn policy, retry, compaction/navigation, resource
 refresh, tool activation, extension lifecycle, and session disposal.
@@ -30,9 +31,9 @@ The Harness runtime must not import Coding, Method, Work, or product resource
 content.  It may use the stable Agent/AI value contracts already admitted by
 `harness.session`.
 
-The implementation diff deletes 1,399 Coding lines and adds 1,949 shared
-Harness lines.  This is a 0.72 deletion/addition ratio; tests and
-documentation are excluded.
+The shared Harness composition already exists; this re-application deletes
+1,210 Coding lines without adding another runtime engine. Tests and
+documentation are excluded from the LOC accounting.
 
 Coding keeps only its product plan and adapters: preferred model policy,
 resource roots, command wording, Coding compaction/branch-summary prompts,
@@ -44,7 +45,7 @@ behavior.
 The old `AgentSession` implementation is reduced to a thin Product adapter.
 No generic queue, retry, compaction/navigation, extension lifecycle,
 tool/resource controller, transcript export, or disposal implementation may
-remain duplicated in Coding.  The remaining 510 lines are limited to
+remain duplicated in Coding.  The remaining 522 lines are limited to
 composition inputs, model restoration, resource/package policy, provider and
 footer behavior, replacement validation, and Product compaction/branch hooks.
 
