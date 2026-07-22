@@ -1,5 +1,11 @@
 """Composable, product-neutral CLI grammar and parsing."""
 
+from loushang.harness.cli.model_listing import (
+    ModelListingError,
+    ModelListingRequest,
+    ModelListingResult,
+    list_model_entries,
+)
 from loushang.harness.cli.parser import (
     build_parser,
     parse_args,
@@ -42,6 +48,10 @@ __all__ = [
     "build_session_query",
     "format_session_records",
     "list_session_records",
+    "ModelListingError",
+    "ModelListingRequest",
+    "ModelListingResult",
+    "list_model_entries",
     "CliProfile",
     "CliProfileError",
     "STANDARD_CLI_PROFILE",

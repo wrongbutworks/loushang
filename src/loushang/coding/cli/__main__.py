@@ -74,10 +74,13 @@ from loushang.coding.work_runtime import CodingWorkRuntime
 from loushang.coding.workflow import run_prompt_steps_workflow
 from loushang.harness.agent_transcript.catalog import project_session_record
 from loushang.harness.cli import (
+    ModelListingError,
+    ModelListingRequest,
     SessionListingError,
     SessionListingRequest,
     build_session_query,
     format_session_records,
+    list_model_entries,
     list_session_records,
 )
 from loushang.harness.commands import project_command_descriptor
@@ -97,13 +100,7 @@ from loushang.harness.resources.skills import (
 )
 from loushang.harness.scenario.loader import load_workflow, resolve_workflow_files
 from loushang.harness.session import require_session_operation_session
-from loushang.harness.session.model_selection import (
-    format_model_metadata_table,
-    model_listing_getter,
-    model_listing_matches_query,
-    normalize_model_listing,
-    unique_sorted_model_entries,
-)
+from loushang.harness.session.model_selection import format_model_metadata_table
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.method import MethodCompiler, MethodContext, MethodLoader
 from loushang.work import JsonlEventLogBackend, project_work_plan_runs
@@ -1925,38 +1922,24 @@ def _run_list_models(
     if args.list_models is False:
         return None
 
-    getter, include_metadata = model_listing_getter(session)
-    if getter is None:
-        stderr.write("Error: model registry is not available.\n")
-        return 1
-
     query = ""
     if isinstance(args.list_models, str):
         query = args.list_models.strip().lower()
 
     try:
-        models = getter()
-    except Exception as error:
+        result = list_model_entries(
+            session,
+            ModelListingRequest(query=query),
+        )
+    except ModelListingError as error:
         stderr.write(f"Error: {_format_cli_error(error)}\n")
         return 1
-    if not isinstance(models, list):
-        stderr.write("Error: model listing returned an invalid response.\n")
-        return 1
-    sorted_models = unique_sorted_model_entries(models)
-    normalized_models = normalize_model_listing(
-        sorted_models, include_metadata=include_metadata
-    )
-    if query:
-        normalized_models = [
-            entry
-            for entry in normalized_models
-            if model_listing_matches_query(entry, query)
-        ]
+    normalized_models = list(result.entries)
     if args.list_models_format == "json":
         stdout.write(json.dumps(normalized_models, ensure_ascii=False) + "\n")
         return 0
 
-    if include_metadata:
+    if result.includes_metadata:
         stdout.write(format_model_metadata_table(normalized_models))
         return 0
     for selection in normalized_models:
