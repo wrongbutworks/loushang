@@ -5,7 +5,7 @@ import inspect
 from collections.abc import Awaitable, Callable
 from typing import Generic, TypeVar, cast
 
-from loushang.harness.host.events import EventListener, OrderedEventBus
+from loushang.harness.events import EventListener, OrderedEventBus
 from loushang.harness.host.types import (
     HostLifecycleEvent,
     HostLifecycleEventKind,
