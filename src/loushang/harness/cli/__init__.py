@@ -12,6 +12,7 @@ from loushang.harness.cli.model_listing import (
     ModelListingResult,
     list_model_entries,
 )
+from loushang.harness.cli.package_listing import format_package_records
 from loushang.harness.cli.parser import (
     build_parser,
     parse_args,
@@ -70,6 +71,7 @@ __all__ = [
     "PluginListingError",
     "format_plugin_records",
     "list_plugin_records",
+    "format_package_records",
     "ModelListingError",
     "ModelListingRequest",
     "ModelListingResult",

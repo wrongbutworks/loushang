@@ -84,6 +84,7 @@ from loushang.harness.cli import (
     SkillListingError,
     build_session_query,
     format_diagnostic_records,
+    format_package_records,
     format_plugin_records,
     format_session_records,
     format_skill_records,
@@ -2380,98 +2381,13 @@ def _run_list_packages(
         return 1
 
     if args.list_packages_format == "json":
-        stdout.write(json.dumps(packages, ensure_ascii=False) + "\n")
-        return 0
-    if args.list_packages_format == "tsv":
-        _write_package_tsv_list(packages, stdout)
-        return 0
-    _write_package_text_list(packages, stdout)
+        output_format = "json"
+    elif args.list_packages_format == "tsv":
+        output_format = "tsv"
+    else:
+        output_format = "text"
+    stdout.write(format_package_records(packages, output_format))
     return 0
-
-
-def _write_package_tsv_list(packages: list[dict[str, object]], stdout: TextIO) -> None:
-    for package in packages:
-        stdout.write(
-            f"{package['name']}\t{package['kind']}\t{package['scope']}\t{package['version']}\t"
-            f"{package['source']}\t{package['path']}\t{package['enabled']}\t"
-            f"{package['prompts']}\t{package['skills']}\t{package['extensions']}\t"
-            f"{package['themes']}\t{package['diagnostics']}\n"
-        )
-
-
-def _write_package_text_list(packages: list[dict[str, object]], stdout: TextIO) -> None:
-    if not packages:
-        stdout.write("No packages.\n")
-        return
-    scope_order = ("user", "project", "session", "merged", "catalog")
-    scopes = {str(package.get("scope", "")) for package in packages}
-    ordered_scopes = [scope for scope in scope_order if scope in scopes]
-    ordered_scopes.extend(sorted(scope for scope in scopes if scope not in scope_order))
-    first_group = True
-    for scope in ordered_scopes:
-        scoped_packages = [
-            package for package in packages if str(package.get("scope", "")) == scope
-        ]
-        if not scoped_packages:
-            continue
-        if not first_group:
-            stdout.write("\n")
-        first_group = False
-        stdout.write(f"{_package_scope_title(scope)}:\n")
-        for package in scoped_packages:
-            stdout.write(f"  {_format_package_summary_line(package)}\n")
-            source = str(package.get("source", ""))
-            path = str(package.get("path", ""))
-            if source:
-                stdout.write(f"    source: {source}\n")
-            if path:
-                stdout.write(f"    path: {path}\n")
-            resources = _format_package_resources(package)
-            if resources:
-                stdout.write(f"    resources: {resources}\n")
-
-
-def _package_scope_title(scope: str) -> str:
-    labels = {
-        "user": "User packages",
-        "project": "Project packages",
-        "session": "Session packages",
-        "merged": "Merged packages",
-        "catalog": "Catalog packages",
-    }
-    return labels.get(scope, f"{scope.title()} packages")
-
-
-def _format_package_summary_line(package: dict[str, object]) -> str:
-    parts = [str(package.get("name", ""))]
-    version = str(package.get("version", ""))
-    if version:
-        parts.append(version)
-    kind = str(package.get("kind", ""))
-    if kind:
-        parts.append(f"[{kind}]")
-    status: list[str] = []
-    if package.get("enabled") is False:
-        status.append("disabled")
-    if package.get("filtered") is True:
-        status.append("filtered")
-    lifecycle = str(package.get("lifecycle", ""))
-    if lifecycle and lifecycle not in {"installed", "remote_registered"}:
-        status.append(lifecycle)
-    if str(package.get("security", "")) == "denied":
-        status.append("denied")
-    if status:
-        parts.append(", ".join(status))
-    return " ".join(part for part in parts if part)
-
-
-def _format_package_resources(package: dict[str, object]) -> str:
-    parts: list[str] = []
-    for key in ("prompts", "skills", "extensions", "themes", "diagnostics"):
-        value = package.get(key)
-        if isinstance(value, int) and value > 0:
-            parts.append(f"{key}={value}")
-    return " ".join(parts)
 
 
 async def _run_package_lifecycle(
