@@ -78,15 +78,18 @@ from loushang.harness.cli import (
     DiagnosticsListingRequest,
     ModelListingError,
     ModelListingRequest,
+    PluginListingError,
     SessionListingError,
     SessionListingRequest,
     SkillListingError,
     build_session_query,
     format_diagnostic_records,
+    format_plugin_records,
     format_session_records,
     format_skill_records,
     list_diagnostic_records,
     list_model_entries,
+    list_plugin_records,
     list_session_records,
     list_skill_records,
 )
@@ -96,11 +99,7 @@ from loushang.harness.host.prompt_input import (
     PromptInputPlan,
     resolve_prompt_input,
 )
-from loushang.harness.resources.plugins import (
-    PluginManager,
-    is_remote_plugin_source,
-    project_installed_plugin,
-)
+from loushang.harness.resources.plugins import is_remote_plugin_source
 from loushang.harness.scenario.loader import load_workflow, resolve_workflow_files
 from loushang.harness.session import require_session_operation_session
 from loushang.harness.session.model_selection import format_model_metadata_table
@@ -2331,31 +2330,14 @@ def _run_list_plugins(
     if not args.list_plugins:
         return None
 
-    settings_manager = getattr(services, "settings_manager", None)
-    get_settings = getattr(settings_manager, "get_settings", None)
-    if not callable(get_settings):
-        stderr.write("Error: plugin settings are not available.\n")
-        return 1
     try:
-        settings = get_settings()
-        plugin_sources = getattr(settings, "plugin_sources", ())
-        disabled_plugins = getattr(settings, "disabled_plugins", ())
-        manager = PluginManager(disabled_plugins=tuple(disabled_plugins))
-        for source in plugin_sources:
-            manager.add_plugin_source(source)
-        plugins = manager.list_plugins()
-    except Exception as error:
+        normalized = list_plugin_records(
+            getattr(services, "settings_manager", None)
+        )
+    except PluginListingError as error:
         stderr.write(f"Error: {_format_cli_error(error)}\n")
         return 1
-
-    normalized = [project_installed_plugin(plugin) for plugin in plugins]
-    if args.list_plugins_format == "json":
-        stdout.write(json.dumps(normalized, ensure_ascii=False) + "\n")
-        return 0
-    for plugin in normalized:
-        stdout.write(
-            f"{plugin['name']}\t{plugin['version']}\t{plugin['path']}\t{plugin['enabled']}\n"
-        )
+    stdout.write(format_plugin_records(normalized, args.list_plugins_format))
     return 0
 
 

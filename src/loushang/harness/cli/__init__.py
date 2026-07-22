@@ -17,6 +17,11 @@ from loushang.harness.cli.parser import (
     parse_args,
     register_profile_arguments,
 )
+from loushang.harness.cli.plugin_listing import (
+    PluginListingError,
+    format_plugin_records,
+    list_plugin_records,
+)
 from loushang.harness.cli.profile import STANDARD_CLI_PROFILE, CliProfile
 from loushang.harness.cli.runtime import (
     CliOperationHandler,
@@ -62,6 +67,9 @@ __all__ = [
     "SkillListingError",
     "format_skill_records",
     "list_skill_records",
+    "PluginListingError",
+    "format_plugin_records",
+    "list_plugin_records",
     "ModelListingError",
     "ModelListingRequest",
     "ModelListingResult",
