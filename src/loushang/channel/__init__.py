@@ -43,6 +43,7 @@ from loushang.channel.product_host import (
     dispatch_product_host_action,
     dispose_product_host,
     normalize_product_host_action,
+    stream_is_tty,
 )
 from loushang.channel.remote_ui import RemoteUiContext
 from loushang.channel.rpc_jsonl import (
@@ -122,6 +123,7 @@ __all__ = [
     "project_channel_value",
     "dispatch_product_host_action",
     "normalize_product_host_action",
+    "stream_is_tty",
     "rpc_jsonl_frame_from_json",
     "rpc_jsonl_frame_to_json",
     "flush_raw_stdout",

@@ -38,12 +38,11 @@ from loushang.harness.bootstrap import (
     BootstrapActivationRuntime,
     ResourceBootstrapPorts,
     ResourceBootstrapRuntime,
+    project_extension_tool_contributions,
+    register_extension_tools,
 )
 from loushang.harness.capabilities import bind_capability_composition_runtime
-from loushang.harness.capabilities.packs import (
-    CapabilityPack,
-    CapabilityPackComposer,
-)
+from loushang.harness.capabilities.packs import CapabilityPackComposer
 from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.config import ConfigActivationStep
 from loushang.harness.diagnostics.service import DiagnosticsService
@@ -62,8 +61,6 @@ from loushang.harness.resources.packages.source_resolver import (
 )
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.tools.contribution import (
-    ToolContribution,
-    ToolResolutionResult,
     resolve_tool_contributions,
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
@@ -1145,111 +1142,34 @@ def _register_extension_tools(
     tool_registry: WorkspaceToolRegistry | None,
     pack_composer: CapabilityPackComposer | None = None,
 ) -> tuple[ResourceBundle, WorkspaceToolRegistry | None, list[ResourceDiagnostic]]:
-    extension_tools = extension_runner.list_tool_definitions()
-    if not extension_tools:
-        return resource_bundle, tool_registry, []
-    resolved_tool_registry = tool_registry
-    if resolved_tool_registry is None:
-        resolved_tool_registry = WorkspaceToolRegistry()
-
-    resolution = _resolve_extension_tool_contributions(
-        extension_runner=extension_runner,
-        tool_registry=resolved_tool_registry,
+    return register_extension_tools(
+        extension_runtime=extension_runner,
+        resource_bundle=resource_bundle,
+        tool_registry=tool_registry,
+        list_tool_definitions=lambda runner: runner.list_tool_definitions(),
+        get_tool_source_info=lambda runner, name: runner.get_tool_source_info(name),
+        merge_diagnostics=lambda bundle, diagnostics: bundle.merge(
+            diagnostics=diagnostics
+        ),
+        make_conflict_diagnostic=lambda name, message: ResourceDiagnostic(
+            code="extension_tool_conflict",
+            message=message,
+        ),
         pack_composer=pack_composer,
+        resolve_contributions=resolve_tool_contributions,
+        product_pack_id="coding.registry",
+        extension_pack_id="coding.extensions",
     )
-    conflict_diagnostics = _extension_tool_conflict_diagnostics(resolution)
-    diagnostics: list[ResourceDiagnostic] = list(conflict_diagnostics.values())
-    for contribution in _extension_tool_registration_contributions(
-        resolution, conflict_names=set(conflict_diagnostics)
-    ):
-        resolved_tool_registry.register_tool(
-            contribution.definition,
-            source_info=contribution.source_info,
-        )
-
-    if diagnostics:
-        resource_bundle = resource_bundle.merge(diagnostics=diagnostics)
-    return resource_bundle, resolved_tool_registry, diagnostics
-
-
-def _resolve_extension_tool_contributions(
-    *,
-    extension_runner: ExtensionRunner,
-    tool_registry: WorkspaceToolRegistry,
-    pack_composer: CapabilityPackComposer | None = None,
-) -> ToolResolutionResult:
-    return resolve_tool_contributions(
-        (pack_composer or CapabilityPackComposer())
-        .compose(
-            (
-                CapabilityPack(
-                    pack_id="coding.registry",
-                    source="product",
-                    priority=100,
-                    items=tool_registry.list_contributions(),
-                ),
-                CapabilityPack(
-                    pack_id="coding.extensions",
-                    source="extension",
-                    items=_extension_tool_contributions(extension_runner),
-                ),
-            )
-        )
-        .items,
-        fail_on_errors=False,
-    )
-
-
-def _extension_tool_registration_contributions(
-    resolution: ToolResolutionResult,
-    *,
-    conflict_names: set[str],
-) -> tuple[ToolContribution, ...]:
-    contributions: list[ToolContribution] = []
-    for contribution in resolution.contributions:
-        if not _is_extension_tool_contribution(contribution):
-            continue
-        if contribution.definition.name in conflict_names:
-            continue
-        contributions.append(contribution)
-    return tuple(contributions)
 
 
 def _extension_tool_contributions(
     extension_runner: ExtensionRunner,
-) -> tuple[ToolContribution, ...]:
-    return tuple(
-        ToolContribution(
-            definition,
-            source_info=extension_runner.get_tool_source_info(definition.name),
-            metadata={
-                "kind": "extension_tool",
-                "extension_tool": definition.name,
-            },
-        )
-        for definition in extension_runner.list_tool_definitions()
+):
+    return project_extension_tool_contributions(
+        extension_runner,
+        list_tool_definitions=lambda runner: runner.list_tool_definitions(),
+        get_tool_source_info=lambda runner, name: runner.get_tool_source_info(name),
     )
-
-
-def _extension_tool_conflict_diagnostics(
-    resolution: ToolResolutionResult,
-) -> dict[str, ResourceDiagnostic]:
-    conflicts: dict[str, ResourceDiagnostic] = {}
-    for diagnostic in resolution.diagnostics:
-        if diagnostic.code != "duplicate_tool":
-            continue
-        name = diagnostic.details.get("name")
-        if not isinstance(name, str):
-            continue
-        conflicts[name] = ResourceDiagnostic(
-            code="extension_tool_conflict",
-            message=f"Extension tool '{name}' conflicts with an existing registry tool.",
-        )
-    return conflicts
-
-
-def _is_extension_tool_contribution(contribution: ToolContribution) -> bool:
-    return contribution.metadata.get("kind") == "extension_tool"
 
 
 def _convert_to_llm_with_block_images(settings_manager: SettingsManager):

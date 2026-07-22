@@ -21,6 +21,7 @@ from loushang.harness.runtime import (
 
 SessionT = TypeVar("SessionT")
 PayloadT = TypeVar("PayloadT")
+EntryT = TypeVar("EntryT")
 SessionLifecycleReason = str
 MissingCwdPolicy = Literal["error", "fallback"]
 
@@ -576,6 +577,32 @@ def _default_fork_target(
     return ForkSelection(target_entry_id=entry_id)
 
 
+def resolve_fork_target(
+    session: SessionT,
+    entry_id: str,
+    *,
+    position: str,
+    get_entry: Callable[[SessionT, str], EntryT | None],
+    is_before_target: Callable[[EntryT], bool],
+    get_parent_id: Callable[[EntryT], str | None],
+    project_payload: Callable[[EntryT], PayloadT | None] | None = None,
+    invalid_before_message: str = (
+        "Fork position 'before' requires a valid boundary entry."
+    ),
+) -> ForkSelection[PayloadT]:
+    """Resolve a Product's before/at fork strategy without payload knowledge."""
+
+    if position == "at":
+        return ForkSelection(target_entry_id=entry_id)
+    if position != "before":
+        raise ValueError(f"Unsupported fork position: {position}")
+    entry = get_entry(session, entry_id)
+    if entry is None or not is_before_target(entry):
+        raise ValueError(invalid_before_message)
+    payload = project_payload(entry) if project_payload is not None else None
+    return ForkSelection(target_entry_id=get_parent_id(entry), payload=payload)
+
+
 def _with_fallback_cwd(
     error: MissingSessionCwdError,
     fallback_cwd: str | None,
@@ -604,6 +631,7 @@ __all__ = [
     "FileCopy",
     "ForkProfile",
     "ForkSelection",
+    "resolve_fork_target",
     "ForkTargetResolver",
     "MissingCwdPolicy",
     "MissingSessionCwdError",

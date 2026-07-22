@@ -161,9 +161,10 @@ It does not retain a second implementation of scanning, provenance, merging,
 package materialization, package catalog construction, source resolution, or
 `AGENTS.md` discovery. `harness.resources.packages` owns the structured
 catalog, scoped source resolver, materialization lifecycle, manifest summary,
-and conflict diagnostics. `CodingPackageMaterializer` supplies Coding's
-settings object and package security policy, while `coding.package_projection`
-projects the structured catalog into Coding's CLI/RPC JSON schema.
+and conflict diagnostics. `harness.resources.packages.projection` owns the
+structured catalog and materialization-record projection; `CodingPackageMaterializer`
+supplies Coding's settings object and package security policy, while
+`coding.package_projection` retains only discovery/materializer wiring.
 
 ## Security Boundary
 

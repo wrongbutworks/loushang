@@ -12,7 +12,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar
 
 from loushang.agent.types import AgentMessage
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
@@ -46,6 +46,7 @@ from loushang.observability import get_log
 RecordT = TypeVar("RecordT")
 
 _LEAF_UNSET = object()
+_MISSING = object()
 _SESSION_INDEX_VERSION = 1
 _SESSION_INDEX_FILENAME = ".session-index.json"
 _PROFILE = AgentTranscriptProfile.default()
@@ -109,6 +110,115 @@ class SessionTreeNode(Generic[RecordT]):
     children: tuple["SessionTreeNode[RecordT]", ...] = ()
     label: str | None = None
     label_timestamp: str | None = None
+
+
+def project_session_record(record: object) -> dict[str, object]:
+    """Project a session catalog record into the portable listing shape."""
+
+    metadata = _safe_session_getattr(record, "metadata", None)
+    session_file = _safe_session_getattr(record, "session_file", None)
+    if metadata is not None:
+        normalized = {
+            "session_id": _session_string_attr(record, "session_id"),
+            "cwd": _session_string_attr(record, "cwd"),
+            "session_file": _safe_session_string(session_file)
+            if session_file is not None
+            else None,
+            "parent_session": _session_nullable_string_attr(record, "parent_session"),
+            "leaf_id": _session_nullable_string_attr(record, "leaf_id"),
+            "metadata": {
+                "created_at": _session_string_attr(metadata, "created_at"),
+                "updated_at": _session_string_attr(metadata, "updated_at"),
+                "name": _session_nullable_string_attr(metadata, "name"),
+            },
+        }
+    else:
+        normalized = {
+            "session_id": _session_string_attr(record, "session_id"),
+            "cwd": _session_string_attr(record, "cwd"),
+            "session_file": _safe_session_string(session_file)
+            if session_file is not None
+            else None,
+            "parent_session": _session_nullable_string_attr(record, "parent_session"),
+            "leaf_id": _session_nullable_string_attr(record, "leaf_id"),
+            "metadata": {
+                "created_at": _session_string_attr(record, "created_at"),
+                "updated_at": _session_string_attr(record, "updated_at"),
+                "name": _session_nullable_string_attr(record, "name"),
+            },
+        }
+
+    for field_name in (
+        "message_count",
+        "entry_count",
+        "first_message",
+        "all_messages_text",
+        "last_message_preview",
+        "model",
+        "has_diagnostics",
+        "diagnostic_count",
+        "last_diagnostic_code",
+        "last_diagnostic_level",
+    ):
+        value = _safe_session_getattr(record, field_name, _MISSING)
+        if value is not _MISSING:
+            normalized[field_name] = _json_safe_session_value(value)
+    return normalized
+
+
+def try_project_session_record(record: object) -> dict[str, object] | None:
+    """Best-effort session projection for catalogs containing bad records."""
+
+    try:
+        return project_session_record(record)
+    except Exception:
+        return None
+
+
+def _session_string_attr(target: object, name: str) -> str:
+    value = _safe_session_getattr(target, name, "")
+    return value if isinstance(value, str) else _safe_session_string(value)
+
+
+def _session_nullable_string_attr(target: object, name: str) -> str | None:
+    value = _safe_session_getattr(target, name, None)
+    if value is None:
+        return None
+    return value if isinstance(value, str) else _safe_session_string(value)
+
+
+def _safe_session_getattr(target: object, name: str, default: object) -> object:
+    try:
+        return getattr(target, name, default)
+    except Exception:
+        return default
+
+
+def _safe_session_string(value: object) -> str:
+    if value is None:
+        return ""
+    try:
+        return str(value)
+    except Exception:
+        try:
+            return repr(value)
+        except Exception:
+            return ""
+
+
+def _json_safe_session_value(value: Any) -> object:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {
+            _safe_session_string(key): _json_safe_session_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list | tuple):
+        return [_json_safe_session_value(item) for item in value]
+    if isinstance(value, str | int | float | bool) or value is None:
+        return value
+    return _safe_session_string(value)
 
 
 def agent_transcript_header_cwd(header: ConversationHeader) -> str:

@@ -16,6 +16,7 @@ from loushang.harness.session import (
     SessionLifecycleHooks,
     SessionLifecycleRuntime,
     SessionLifecycleTransition,
+    resolve_fork_target,
 )
 
 
@@ -277,6 +278,41 @@ def test_product_transcript_store_disposes_restore_when_runtime_build_fails() ->
         assert ports.disposed == ["saved.jsonl"]
 
     asyncio.run(scenario())
+
+
+def test_resolve_fork_target_supports_product_boundary_predicates() -> None:
+    @dataclass(frozen=True)
+    class Entry:
+        parent_id: str | None
+        is_boundary: bool
+        prompt: str
+
+    entries = {
+        "user": Entry("parent", True, "continue from here"),
+        "tool": Entry("user", False, "tool output"),
+    }
+
+    before = resolve_fork_target(
+        entries,
+        "user",
+        position="before",
+        get_entry=lambda current, entry_id: current.get(entry_id),
+        is_before_target=lambda entry: entry.is_boundary,
+        get_parent_id=lambda entry: entry.parent_id,
+        project_payload=lambda entry: entry.prompt,
+    )
+    assert before.target_entry_id == "parent"
+    assert before.payload == "continue from here"
+
+    at = resolve_fork_target(
+        entries,
+        "tool",
+        position="at",
+        get_entry=lambda current, entry_id: current.get(entry_id),
+        is_before_target=lambda entry: entry.is_boundary,
+        get_parent_id=lambda entry: entry.parent_id,
+    )
+    assert at.target_entry_id == "tool"
 
 
 def _raise_build() -> _Session:

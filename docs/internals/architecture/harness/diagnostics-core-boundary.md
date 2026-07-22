@@ -64,7 +64,7 @@ phase, source, level, and correlation values.
 The generic Coding diagnostic facade is removed. Product and extension code
 imports records, query values, and `DiagnosticsService` from the canonical
 owners in `loushang.harness.diagnostics`; Coding retains only
-`coding.diagnostics.serialization` and an observability source-classification
+`harness.diagnostics.serialization` and an observability source-classification
 resolver as its product projections. Coding's source-classification resolver
 remains Product-owned.
 
@@ -77,7 +77,7 @@ directly.
 
 This migration does not move or redesign:
 
-- `coding.diagnostics.serialization` and its camelCase RPC/SDK payload shape;
+- `harness.diagnostics.serialization` and its existing camelCase RPC/SDK payload shape;
 - Coding's observability-source classification, including its `config` to
   `model` policy;
 - bootstrap, resource, provider, model, extension, session, policy, exec, or

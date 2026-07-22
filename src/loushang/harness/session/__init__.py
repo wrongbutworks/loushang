@@ -4,6 +4,10 @@ This optional Harness profile depends on the public Agent and AI message
 contracts. Products supply their own policies and integration callbacks.
 """
 
+from loushang.harness.session.agent_adapter import (
+    AgentSessionAdapterMixin,
+    initialize_composed_session,
+)
 from loushang.harness.session.agent_event_router import AgentEventRouter
 from loushang.harness.session.application_input import (
     ApplicationInputDelivery,
@@ -125,6 +129,7 @@ from loushang.harness.session.lifecycle import (
     SessionLifecycleTransition,
     TransitionCandidateCallback,
     TransitionReleaseCallback,
+    resolve_fork_target,
 )
 from loushang.harness.session.lifecycle_adapter import (
     SessionLifecycleOperationAdapter,
@@ -146,6 +151,18 @@ from loushang.harness.session.operations import (
     SessionOperationRuntime,
     SessionOperationUnavailableError,
     SessionPromptRequest,
+)
+from loushang.harness.session.product_runtime import (
+    ProductSessionRuntime,
+    ProductSessionRuntimePorts,
+    dispose_session_only,
+    emit_session_shutdown,
+    invoke_session_factory,
+    resolve_existing_cwd,
+    session_file_from_manager,
+    session_file_from_session,
+    session_id_from_session,
+    session_manager_ref,
 )
 from loushang.harness.session.prompt_controller import PromptController
 from loushang.harness.session.queue_controller import QueueController
@@ -180,6 +197,8 @@ from loushang.harness.session.transcript_lifecycle import (
 
 __all__ = [
     "AgentEventRouter",
+    "AgentSessionAdapterMixin",
+    "initialize_composed_session",
     "AgentInspectionPort",
     "AfterTurnPolicyPort",
     "AgentToolPort",
@@ -213,11 +232,14 @@ __all__ = [
     "ForkProfile",
     "ForkSelection",
     "ForkTargetResolver",
+    "resolve_fork_target",
     "MissingCwdPolicy",
     "MissingSessionCwdError",
     "ModelCandidates",
     "ModelSelectionApplyResult",
     "PromptController",
+    "ProductSessionRuntime",
+    "ProductSessionRuntimePorts",
     "ProductTranscriptSessionLifecyclePorts",
     "ProductTranscriptSessionLifecycleStore",
     "PersistModelSelection",
@@ -286,6 +308,14 @@ __all__ = [
     "project_fork_candidates",
     "project_session_stats",
     "SessionResourceRefreshRuntime",
+    "dispose_session_only",
+    "emit_session_shutdown",
+    "invoke_session_factory",
+    "resolve_existing_cwd",
+    "session_file_from_manager",
+    "session_file_from_session",
+    "session_id_from_session",
+    "session_manager_ref",
     "SessionToolRuntime",
     "SessionToolController",
     "ToolController",

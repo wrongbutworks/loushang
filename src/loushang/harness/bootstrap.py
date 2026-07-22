@@ -12,11 +12,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Generic, TypeVar
 
+from loushang.harness.capabilities.packs import (
+    CapabilityPack,
+    CapabilityPackComposer,
+)
 from loushang.harness.config.activation import (
     ConfigActivationReport,
     ConfigActivationRuntime,
     ConfigActivationStep,
 )
+from loushang.harness.tools.contribution import (
+    ToolContribution,
+    ToolResolutionResult,
+    resolve_tool_contributions,
+)
+from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
 LoaderT = TypeVar("LoaderT")
 BundleT = TypeVar("BundleT")
@@ -25,6 +36,9 @@ DiagnosticT = TypeVar("DiagnosticT")
 ActivationConfigT = TypeVar("ActivationConfigT")
 ActivationContextT = TypeVar("ActivationContextT")
 FlagValues = Mapping[str, bool | str] | None
+ExtensionToolDiagnosticFactory = Callable[[str, str], DiagnosticT]
+BundleDiagnosticMerger = Callable[[BundleT, Sequence[DiagnosticT]], BundleT]
+ExtensionToolResolver = Callable[..., ToolResolutionResult]
 
 
 @dataclass(frozen=True)
@@ -134,6 +148,106 @@ class BootstrapActivationRuntime(Generic[ActivationConfigT, ActivationContextT])
         return self._runtime.ordered_names
 
 
+def project_extension_tool_contributions(
+    extension_runtime: ExtensionT,
+    *,
+    list_tool_definitions: Callable[[ExtensionT], Sequence[ToolDefinition]],
+    get_tool_source_info: Callable[[ExtensionT, str], object | None],
+) -> tuple[ToolContribution, ...]:
+    """Project extension-provided tools into the shared contribution shape."""
+
+    return tuple(
+        ToolContribution(
+            definition,
+            source_info=get_tool_source_info(extension_runtime, definition.name),
+            metadata={
+                "kind": "extension_tool",
+                "extension_tool": definition.name,
+            },
+        )
+        for definition in list_tool_definitions(extension_runtime)
+    )
+
+
+def register_extension_tools(
+    *,
+    extension_runtime: ExtensionT,
+    resource_bundle: BundleT,
+    tool_registry: WorkspaceToolRegistry | None,
+    list_tool_definitions: Callable[[ExtensionT], Sequence[ToolDefinition]],
+    get_tool_source_info: Callable[[ExtensionT, str], object | None],
+    merge_diagnostics: BundleDiagnosticMerger,
+    make_conflict_diagnostic: ExtensionToolDiagnosticFactory,
+    pack_composer: CapabilityPackComposer | None = None,
+    resolve_contributions: ExtensionToolResolver = resolve_tool_contributions,
+    product_pack_id: str = "product.tools",
+    extension_pack_id: str = "extension.tools",
+) -> tuple[BundleT, WorkspaceToolRegistry | None, list[DiagnosticT]]:
+    """Merge extension tools into a Product registry without Product imports.
+
+    The registry and extension runtime are Product bindings. Harness owns the
+    deterministic contribution composition, conflict filtering, and source
+    projection; the Product decides how diagnostics are represented and how a
+    resource bundle stores them.
+    """
+
+    extension_tools = tuple(list_tool_definitions(extension_runtime))
+    if not extension_tools:
+        return resource_bundle, tool_registry, []
+
+    resolved_registry = tool_registry or WorkspaceToolRegistry()
+    extension_contributions = project_extension_tool_contributions(
+        extension_runtime,
+        list_tool_definitions=list_tool_definitions,
+        get_tool_source_info=get_tool_source_info,
+    )
+    composer = pack_composer or CapabilityPackComposer()
+    resolution = resolve_contributions(
+        composer.compose(
+            (
+                CapabilityPack(
+                    pack_id=product_pack_id,
+                    source="product",
+                    priority=100,
+                    items=resolved_registry.list_contributions(),
+                ),
+                CapabilityPack(
+                    pack_id=extension_pack_id,
+                    source="extension",
+                    items=extension_contributions,
+                ),
+            )
+        ).items,
+        fail_on_errors=False,
+    )
+    conflict_names = {
+        name
+        for diagnostic in resolution.diagnostics
+        if diagnostic.code == "duplicate_tool"
+        for name in (diagnostic.details.get("name"),)
+        if isinstance(name, str)
+    }
+    diagnostics: list[DiagnosticT] = [
+        make_conflict_diagnostic(
+            name,
+            f"Extension tool '{name}' conflicts with an existing registry tool.",
+        )
+        for name in sorted(conflict_names)
+    ]
+    for contribution in resolution.contributions:
+        if contribution.metadata.get("kind") != "extension_tool":
+            continue
+        if contribution.definition.name in conflict_names:
+            continue
+        resolved_registry.register_tool(
+            contribution.definition,
+            source_info=contribution.source_info,
+        )
+    if diagnostics:
+        resource_bundle = merge_diagnostics(resource_bundle, diagnostics)
+    return resource_bundle, resolved_registry, diagnostics
+
+
 __all__ = [
     "ResourceBootstrapPorts",
     "ResourceBootstrapResult",
@@ -141,4 +255,6 @@ __all__ = [
     "BootstrapActivationPlan",
     "BootstrapActivationResult",
     "BootstrapActivationRuntime",
+    "project_extension_tool_contributions",
+    "register_extension_tools",
 ]

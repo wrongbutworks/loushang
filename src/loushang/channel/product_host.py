@@ -13,7 +13,7 @@ import asyncio
 import inspect
 import io
 import sys
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, TextIO, TypeAlias, TypeVar, cast, get_args
@@ -35,6 +35,7 @@ ProductHostInputHandler = Callable[[str], Awaitable[None] | None]
 ProductHostFailureHandler = Callable[[Exception], Awaitable[None] | None]
 ProductHostStateReader = Callable[["ProductHostAdapter"], ProductHostState]
 TaskT = TypeVar("TaskT")
+TurnT = TypeVar("TurnT")
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,30 @@ class ProductHostLifecycle:
 
     async def dispose(self, *candidates: object) -> bool:
         return await dispose_product_host(*candidates)
+
+    async def run_turns(
+        self,
+        turns: Sequence[TurnT],
+        *,
+        run_turn: Callable[[TurnT, bool, bool], Awaitable[int]],
+        dispose_candidates: Sequence[object] = (),
+    ) -> int:
+        """Run ordered product turns and dispose after an intermediate failure.
+
+        The helper owns only ordering and lifecycle cleanup.  Products provide
+        the turn runner, so prompt preparation, output shape, and command
+        semantics remain outside Channel.
+        """
+
+        for index, turn in enumerate(turns):
+            is_first = index == 0
+            is_last = index == len(turns) - 1
+            exit_code = await run_turn(turn, is_first, is_last)
+            if exit_code != 0:
+                if not is_last:
+                    await self.dispose(*dispose_candidates)
+                return exit_code
+        return 0
 
 
 @dataclass(frozen=True)
@@ -293,6 +318,18 @@ def _stream_supports_fileno(stream: TextIO) -> bool:
     return True
 
 
+def stream_is_tty(stream: TextIO) -> bool:
+    """Return whether an injected stream represents an interactive terminal."""
+
+    isatty = getattr(stream, "isatty", None)
+    if not callable(isatty):
+        return False
+    try:
+        return bool(isatty())
+    except OSError:
+        return False
+
+
 __all__ = [
     "ProductHostAction",
     "ProductHostActionType",
@@ -306,4 +343,5 @@ __all__ = [
     "dispose_product_host",
     "dispatch_product_host_action",
     "normalize_product_host_action",
+    "stream_is_tty",
 ]

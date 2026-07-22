@@ -9,8 +9,6 @@ from loushang.coding.control import SettingsManager
 from loushang.coding.control.settings_manager import SettingsScope
 from loushang.coding.package_projection import (
     collect_coding_package_catalog,
-    project_package_entries,
-    serialize_package_materialization_record,
 )
 from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
@@ -22,6 +20,10 @@ from loushang.harness.resources.packages.catalog_diagnostics import (
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.operations import PackageOperationsRuntime
+from loushang.harness.resources.packages.projection import (
+    project_package_entries,
+    serialize_package_materialization_record,
+)
 from loushang.harness.resources.packages.roots import resolve_package_resource_roots
 from loushang.harness.resources.packages.source import PackageSourceConfig
 from loushang.harness.resources.packages.source_resolver import (

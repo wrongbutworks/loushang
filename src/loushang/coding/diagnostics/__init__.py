@@ -1,11 +1,5 @@
-from loushang.coding.diagnostics.serialization import (
-    serialize_diagnostic,
-    serialize_diagnostic_summary,
-    serialize_error_report,
-)
+"""Coding diagnostic UI adapters.
 
-__all__ = [
-    "serialize_diagnostic",
-    "serialize_diagnostic_summary",
-    "serialize_error_report",
-]
+The shared diagnostic JSON projection lives in ``loushang.harness``.  This
+package remains for Coding's debug-status presentation only.
+"""

@@ -1,0 +1,35 @@
+# Product CLI Lifecycle Boundary
+
+This boundary covers only process-host mechanics shared by product CLIs.  It
+does not move argument grammar, mode selection, product command handlers,
+resource/package wording, Work/Method preparation, or output schemas.
+
+## Ownership
+
+| Source mechanism | Shared owner | Product injection | Deletion condition |
+| --- | --- | --- | --- |
+| Repeated sequential turn invocation and non-final failure disposal in `coding.cli.__main__` | `channel.ProductHostLifecycle.run_turns` | Product supplies turn values, invocation callback, and runtime/session disposal candidates | Coding uses the lifecycle helper for prompt, print, and mode runner loops; no duplicate loop remains |
+| TTY detection for injected streams | `channel.stream_is_tty` | None | Coding does not implement its own `isatty` probe |
+| Prompt/stdin/file/image input normalization | `harness.host.prompt_input` | Coding supplies prompt/file arguments and the image-resize choice | Coding keeps argument parsing and prompt policy; shared resolver has no Coding import |
+| Model listing normalization, sorting, query matching, and metadata table | `harness.session.model_selection` | Coding supplies the model getter and selects JSON/TSV output | Coding keeps preferred-model policy and persistence wording |
+| Command descriptor listing projection | `harness.commands.project_command_descriptor` | Coding supplies descriptors and chooses JSON/TSV output | RPC serializers remain separate; no product wire fields are changed |
+| Skill and installed-plugin listing projections | `harness.resources.skills.project_skill_descriptor`, `harness.resources.plugins.project_installed_plugin` | Coding supplies resource/settings discovery and output format | Harness owns only object-shape normalization; enable/disable and wording remain Coding |
+| Session catalog record projection | `harness.agent_transcript.project_session_record` | Coding supplies catalog query and output format | Coding keeps query grammar; Harness owns the portable record shape |
+| Diagnostic record/error/summary JSON projection | `harness.diagnostics.serialization` | Products may select output transport; existing field shape is retained | No Coding serializer implementation remains; camelCase is preserved to avoid an unapproved protocol change |
+| Package catalog/materialization record projection | `harness.resources.packages.projection` | Coding supplies discovery/materializer policy and output selection | Package records are projected without Coding imports; discovery and policy remain injectable |
+
+## Non-goals
+
+The Channel layer must not import Coding, Harness, Agent, Method, or Work.  It
+must not parse Coding arguments, choose a mode, construct a session, or project
+product output.  Harness resource/session projections likewise do not parse
+Coding arguments or own product wording.  This slice therefore preserves all
+CLI grammar, handlers, wire fields, error text, and product turn metadata.
+
+## Acceptance
+
+- prompt, print, and interactive mode runner ordering is unchanged;
+- a non-final non-zero runner result disposes the injected runtime/session;
+- final-turn failures do not cause a second disposal;
+- a fake product can use the helper without importing Coding;
+- the source diff is recorded in the shared-layer migration ledger.

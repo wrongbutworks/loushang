@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from loushang.harness.diagnostics.serialization import (
+    serialize_diagnostic,
+    serialize_diagnostic_summary,
+    serialize_error_report,
+)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import (
     DiagnosticLevel,
@@ -24,4 +29,7 @@ __all__ = [
     "ErrorReport",
     "StartupCheck",
     "StartupCheckResult",
+    "serialize_diagnostic",
+    "serialize_diagnostic_summary",
+    "serialize_error_report",
 ]

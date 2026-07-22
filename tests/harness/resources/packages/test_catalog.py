@@ -6,10 +6,12 @@ from pathlib import Path
 
 from loushang.harness.resources.packages.catalog import (
     PackageCatalogBuilder,
+    PackageCatalogEntry,
     PackageCatalogSources,
     package_catalog_sources,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
+from loushang.harness.resources.packages.projection import project_package_entry
 from loushang.harness.resources.packages.source import PackageSourceConfig
 from loushang.harness.resources.types import PackageResourceSummary
 
@@ -63,6 +65,36 @@ def test_catalog_projects_prepared_remote_source_without_product_policy(
     assert entries[0].lifecycle == "materialization_pending"
     assert entries[0].enabled is False
     assert entries[0].path == tmp_path / "packages" / "review-pack"
+
+
+def test_package_projection_is_available_without_coding() -> None:
+    entry = PackageCatalogEntry(
+        name="review-pack",
+        kind="package_root",
+        scope="project",
+        version="1.0.0",
+        source="/workspace/packages/review-pack",
+        path=Path("/workspace/packages/review-pack"),
+        enabled=True,
+        summary=PackageResourceSummary(source_root=Path("/workspace/packages")),
+    )
+
+    assert project_package_entry(entry) == {
+        "name": "review-pack",
+        "kind": "package_root",
+        "packageKind": "local_package_root",
+        "scope": "project",
+        "version": "1.0.0",
+        "source": "/workspace/packages/review-pack",
+        "path": "/workspace/packages/review-pack",
+        "enabled": True,
+        "prompts": 0,
+        "skills": 0,
+        "extensions": 0,
+        "themes": 0,
+        "diagnostics": 0,
+        "description": "",
+    }
 
 
 def test_catalog_sources_resolve_scoped_local_paths_and_prefer_project_sources(

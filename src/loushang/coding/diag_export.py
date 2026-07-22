@@ -9,11 +9,11 @@ from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.diagnostics.serialization import serialize_diagnostic
 from loushang.harness.diagnostics.export import (
     DiagnosticExportArtifact,
     export_diagnostics_archive,
 )
+from loushang.harness.diagnostics.serialization import serialize_diagnostic
 
 DEFAULT_DIAGNOSTICS_LIMIT = 50
 

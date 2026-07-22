@@ -46,6 +46,10 @@ an inspection controller merely to adapt Coding policy.
   through a Product-supplied provider. `AgentSessionRuntime` keeps its Coding
   lifecycle, cwd, file-store, and package-policy adapters while no longer
   repeating diagnostics forwarding methods or a current-session accessor.
+- `ProductSessionRuntime` now composes the existing lifecycle transaction,
+  transcript directory runtime, and public lifecycle operation adapter through
+  one neutral Product-port bundle. `AgentSessionRuntime` is a Coding binding
+  of that composition boundary rather than a second lifecycle owner.
 - `ExtensionInputRuntime`, `ExtensionAgentHookRuntime`, and
   `ExtensionAgentEventRuntime` own standard extension input delivery, Agent
   hook composition, and lifecycle-event mirroring in the optional
@@ -66,7 +70,7 @@ an inspection controller merely to adapt Coding policy.
 
 ## Product Boundary
 
-Coding retains:
+Coding retains only:
 
 - model registry, model/auth resolution, provider registration, and model or
   thinking selection policy;
@@ -81,10 +85,11 @@ These are Product semantics, not reusable Host/Session mechanics. Moving them
 to Harness would create false neutrality and make Research, Design, PPT, and
 OEM adapters depend on Coding vocabulary.
 
-`AgentTranscriptSessionRuntime` composes the common lifecycle transaction with
-the transcript directory/catalog runtime. `AgentSessionRuntime` binds that
-facade directly and retains only the Coding file-store, cwd acceptance,
-`before` fork interpretation, extension hooks, diagnostics, package APIs,
+`ProductSessionRuntime` composes the common lifecycle transaction with the
+transcript directory/catalog runtime. `AgentSessionRuntime` binds that
+composition directly and retains only the Coding file-store, cwd acceptance,
+the selected transcript/store binding, `before` fork resolver, cwd/error
+adapter, extension event mapping, diagnostics codes, package APIs,
 session-index policy, and presentation ports. This wave does not move
 ModelRegistry, authentication, Coding extension APIs, code tools, or UI
 projection.
