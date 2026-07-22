@@ -72,9 +72,13 @@ from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.work_executor import SubmitCodingTurn
 from loushang.coding.work_runtime import CodingWorkRuntime
 from loushang.coding.workflow import run_prompt_steps_workflow
-from loushang.harness.agent_transcript import (
-    SessionQuery,
-    project_session_record,
+from loushang.harness.agent_transcript.catalog import project_session_record
+from loushang.harness.cli import (
+    SessionListingError,
+    SessionListingRequest,
+    build_session_query,
+    format_session_records,
+    list_session_records,
 )
 from loushang.harness.commands import project_command_descriptor
 from loushang.harness.diagnostics.serialization import serialize_diagnostic
@@ -1753,128 +1757,42 @@ def _run_list_sessions(
         return None
 
     try:
-        query = _session_query_from_args(args)
-    except ValueError as error:
+        query = build_session_query(
+            cwd=args.session_cwd,
+            name=args.session_name_filter,
+            parent_session=args.session_parent,
+            text=args.session_query,
+            has_diagnostics=args.session_has_diagnostics,
+            limit=args.session_limit,
+        )
+        records = list_session_records(
+            runtime,
+            SessionListingRequest(
+                query=query,
+                all_sessions=args.all_sessions,
+                indexed=args.session_index or args.refresh_session_index,
+                refresh_index=args.refresh_session_index,
+            ),
+            record_projector=_try_normalize_session_record,
+        )
+    except (SessionListingError, ValueError) as error:
         stderr.write(f"Error: {_format_cli_error(error)}\n")
         return 1
-    use_index = args.session_index or args.refresh_session_index
-    if args.refresh_session_index:
-        refresher = getattr(
-            runtime,
-            "refresh_all_session_indexes"
-            if args.all_sessions
-            else "refresh_session_index",
-            None,
-        )
-        if not callable(refresher):
-            stderr.write("Error: session index refresh is not available.\n")
-            return 1
-        try:
-            refresher()
-        except Exception as error:
-            stderr.write(f"Error: {_format_cli_error(error)}\n")
-            return 1
-
-    if args.all_sessions and query is not None:
-        lister = getattr(
-            runtime,
-            "find_all_indexed_session_summaries"
-            if use_index
-            else "find_all_session_summaries",
-            None,
-        )
-        if callable(lister):
-
-            def call_lister():
-                return lister(query)
-        else:
-            call_lister = None
-    elif query is not None:
-        lister = getattr(
-            runtime,
-            "find_indexed_session_summaries" if use_index else "find_session_summaries",
-            None,
-        )
-        if callable(lister):
-
-            def call_lister():
-                return lister(query)
-        else:
-            call_lister = None
-    else:
-        if args.all_sessions:
-            lister = getattr(
-                runtime,
-                "list_all_indexed_session_summaries"
-                if use_index
-                else "list_all_session_summaries",
-                None,
-            )
-        else:
-            lister = getattr(
-                runtime,
-                "list_indexed_session_summaries"
-                if use_index
-                else "list_session_summaries",
-                None,
-            )
-        if not callable(lister) and not use_index:
-            lister = getattr(runtime, "list_session_summaries", None)
-        if not callable(lister) and not use_index:
-            lister = getattr(runtime, "list_sessions", None)
-        call_lister = lister if callable(lister) else None
-    if not callable(call_lister):
-        stderr.write("Error: session listing is not available.\n")
-        return 1
-
-    try:
-        records = call_lister()
-    except Exception as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    if not isinstance(records, list):
-        stderr.write("Error: session listing returned an invalid response.\n")
-        return 1
-
-    normalized_sessions = [_try_normalize_session_record(record) for record in records]
-    normalized_sessions = [
-        record for record in normalized_sessions if record is not None
-    ]
-
-    if args.list_sessions_format == "json":
-        stdout.write(json.dumps(normalized_sessions, ensure_ascii=False) + "\n")
-        return 0
-
-    for record in normalized_sessions:
-        metadata = record["metadata"]
-        name = metadata["name"] if isinstance(metadata["name"], str) else ""
-        stdout.write(
-            f"{record['session_id']}\t{record['session_file']}\t{record['cwd']}\t"
-            f"{metadata['updated_at']}\t{name}\n"
-        )
+    stdout.write(format_session_records(records, args.list_sessions_format))
     return 0
 
 
-def _session_query_from_args(args: CliArgs) -> SessionQuery | None:
-    if args.session_limit is not None and args.session_limit < 0:
-        raise ValueError("Session query limit must be non-negative")
-    if (
-        args.session_cwd is None
-        and args.session_name_filter is None
-        and args.session_parent is None
-        and args.session_query is None
-        and args.session_has_diagnostics is None
-        and args.session_limit is None
-    ):
+def _normalize_session_record(record: Any) -> dict[str, object]:
+    """Coding test seam delegating session projection to Harness."""
+
+    return project_session_record(record)
+
+
+def _try_normalize_session_record(record: Any) -> dict[str, object] | None:
+    try:
+        return _normalize_session_record(record)
+    except Exception:
         return None
-    return SessionQuery(
-        cwd=args.session_cwd,
-        name=args.session_name_filter,
-        parent_session=args.session_parent,
-        text=args.session_query,
-        has_diagnostics=args.session_has_diagnostics,
-        limit=args.session_limit,
-    )
 
 
 def _run_export(
@@ -1942,17 +1860,6 @@ def _run_diag_export(
 
     stdout.write(f"Exported diagnostics to: {output_path}\n")
     return 0
-
-
-def _normalize_session_record(record: Any) -> dict[str, object]:
-    return project_session_record(record)
-
-
-def _try_normalize_session_record(record: Any) -> dict[str, object] | None:
-    try:
-        return _normalize_session_record(record)
-    except Exception:
-        return None
 
 
 def _safe_getattr(target: Any, name: str, default: object) -> object:
