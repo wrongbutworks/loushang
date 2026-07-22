@@ -1,5 +1,11 @@
 """Composable, product-neutral CLI grammar and parsing."""
 
+from loushang.harness.cli.diagnostics_listing import (
+    DiagnosticsListingError,
+    DiagnosticsListingRequest,
+    format_diagnostic_records,
+    list_diagnostic_records,
+)
 from loushang.harness.cli.model_listing import (
     ModelListingError,
     ModelListingRequest,
@@ -52,6 +58,10 @@ __all__ = [
     "ModelListingRequest",
     "ModelListingResult",
     "list_model_entries",
+    "DiagnosticsListingError",
+    "DiagnosticsListingRequest",
+    "format_diagnostic_records",
+    "list_diagnostic_records",
     "CliProfile",
     "CliProfileError",
     "STANDARD_CLI_PROFILE",

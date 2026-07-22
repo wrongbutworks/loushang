@@ -74,17 +74,20 @@ from loushang.coding.work_runtime import CodingWorkRuntime
 from loushang.coding.workflow import run_prompt_steps_workflow
 from loushang.harness.agent_transcript.catalog import project_session_record
 from loushang.harness.cli import (
+    DiagnosticsListingError,
+    DiagnosticsListingRequest,
     ModelListingError,
     ModelListingRequest,
     SessionListingError,
     SessionListingRequest,
     build_session_query,
+    format_diagnostic_records,
     format_session_records,
+    list_diagnostic_records,
     list_model_entries,
     list_session_records,
 )
 from loushang.harness.commands import project_command_descriptor
-from loushang.harness.diagnostics.serialization import serialize_diagnostic
 from loushang.harness.extensions.types import ResolvedFlag
 from loushang.harness.host.prompt_input import (
     PromptInputPlan,
@@ -1998,39 +2001,15 @@ def _run_list_diagnostics(
 ) -> int | None:
     if not args.list_diagnostics:
         return None
-
-    if args.diagnostics_limit <= 0:
-        stderr.write("Error: diagnostics limit must be greater than zero.\n")
-        return 1
-
-    getter = getattr(session, "get_last_diagnostics", None)
-    if not callable(getter):
-        stderr.write("Error: diagnostics are not available.\n")
-        return 1
     try:
-        diagnostics = getter(limit=args.diagnostics_limit)
-    except Exception as error:
+        normalized = list_diagnostic_records(
+            session,
+            DiagnosticsListingRequest(limit=args.diagnostics_limit),
+        )
+    except DiagnosticsListingError as error:
         stderr.write(f"Error: {_format_cli_error(error)}\n")
         return 1
-    if not isinstance(diagnostics, list):
-        stderr.write("Error: diagnostics returned an invalid response.\n")
-        return 1
-
-    normalized = []
-    for record in diagnostics:
-        try:
-            normalized.append(serialize_diagnostic(record))
-        except Exception:
-            continue
-    if args.list_diagnostics_format == "json":
-        stdout.write(json.dumps(normalized, ensure_ascii=False) + "\n")
-        return 0
-
-    for record in normalized:
-        stdout.write(
-            f"{record['type']}\t{record['phase']}\t{record['source']}\t{record['code']}\t"
-            f"{record['occurrenceCount']}\t{record['message']}\n"
-        )
+    stdout.write(format_diagnostic_records(normalized, args.list_diagnostics_format))
     return 0
 
 
