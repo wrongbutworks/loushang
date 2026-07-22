@@ -3511,7 +3511,8 @@ def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
     assert "_clone_from_builtin" not in session_source
     assert "_import_from_builtin" not in session_source
     assert "SessionRpcOperationBinding" in rpc_source
-    assert "require_session_operation_session" in cli_source
+    assert "ProductHostLifecycle" in cli_source
+    assert "require_session_operation_session" not in cli_source
 
 
 def test_product_capability_composition_core_is_documented_and_adopted() -> None:

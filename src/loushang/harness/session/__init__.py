@@ -20,6 +20,16 @@ from loushang.harness.session.bindings import (
     SessionMaintenanceBinding,
     SessionModelBinding,
 )
+from loushang.harness.session.bootstrap_utils import (
+    NoToolsMode,
+    append_system_prompt_fragments,
+    loader_append_system_prompt,
+    loader_system_prompt_override,
+    non_builtin_tool_names,
+    normalize_no_tools,
+    resolve_initial_active_tool_names,
+    split_model_thinking_pattern,
+)
 from loushang.harness.session.capabilities import (
     AgentToolPort,
     CommandRuntimeSource,
@@ -68,6 +78,11 @@ from loushang.harness.session.command_sources import (
     ResourceCommandResultFactory,
     ResourceCommandSourceRuntime,
     ResourceDiagnosticsRecorder,
+)
+from loushang.harness.session.cwd_audit import (
+    CwdBoundServicesAudit,
+    CwdBoundServicesAuditIssue,
+    audit_cwd_bound_services,
 )
 from loushang.harness.session.diagnostics import (
     ExtensionDiagnosticsPort,
@@ -133,6 +148,14 @@ from loushang.harness.session.lifecycle import (
 )
 from loushang.harness.session.lifecycle_adapter import (
     SessionLifecycleOperationAdapter,
+)
+from loushang.harness.session.model_preferences import (
+    PreferredModel,
+    available_model_details,
+    persistence_warning_message,
+    preferred_model_candidates,
+    preferred_model_details,
+    preferred_model_selection,
 )
 from loushang.harness.session.model_selection import (
     ModelCandidates,
@@ -210,6 +233,17 @@ __all__ = [
     "AgentTranscriptSessionRuntime",
     "ApplicationInputDelivery",
     "ApplicationInputRuntime",
+    "CwdBoundServicesAudit",
+    "CwdBoundServicesAuditIssue",
+    "audit_cwd_bound_services",
+    "NoToolsMode",
+    "append_system_prompt_fragments",
+    "loader_append_system_prompt",
+    "loader_system_prompt_override",
+    "non_builtin_tool_names",
+    "normalize_no_tools",
+    "resolve_initial_active_tool_names",
+    "split_model_thinking_pattern",
     "CommandRuntimeSource",
     "SessionCommandController",
     "CommandExecutionResult",
@@ -235,6 +269,8 @@ __all__ = [
     "resolve_fork_target",
     "MissingCwdPolicy",
     "MissingSessionCwdError",
+    "PreferredModel",
+    "available_model_details",
     "ModelCandidates",
     "ModelSelectionApplyResult",
     "PromptController",
@@ -243,6 +279,10 @@ __all__ = [
     "ProductTranscriptSessionLifecyclePorts",
     "ProductTranscriptSessionLifecycleStore",
     "PersistModelSelection",
+    "persistence_warning_message",
+    "preferred_model_candidates",
+    "preferred_model_details",
+    "preferred_model_selection",
     "QueueController",
     "RefreshFailureRecorder",
     "ResourceBundleProvider",

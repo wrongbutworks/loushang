@@ -352,3 +352,29 @@ Slice D accounting: Coding shrank from 157 to 109 LOC (-48); Harness gained
 187 LOC of parameterized binding. Existing Coding observability bridge tests
 and an independent Harness directory-injection probe pass. No debug/trace
 environment variables or file naming behavior changed.
+
+### Wave 6, Slice E: Top-Level Session Bootstrap Leaves (Complete)
+
+Several top-level Coding helpers were implementation-only session mechanics,
+despite being located beside the Product bootstrap entry point. They now live
+under the Harness session package and accept only neutral values or existing
+Harness ports:
+
+| Source region | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| preferred model detail/selection matching and candidate ordering | `harness.session.model_preferences` | `PREFERRED_CODING_MODELS` and the settings persistence binding | Complete |
+| cwd/project/resource consistency audit | `harness.session.cwd_audit` | Coding settings/resource object extraction and diagnostic capture | Complete |
+| no-tools normalization and initial tool activation selection | `harness.session.bootstrap_utils` | Product bootstrap argument wiring | Complete |
+| resource prompt override lookup and fragment assembly | `harness.session.bootstrap_utils` | Product default prompt and resource content | Complete |
+| scoped model/thinking suffix parsing | `harness.session.bootstrap_utils` | Product model registry lookup and payload assembly | Complete |
+
+This is a leaf extraction, not a second bootstrap runtime. Harness does not
+construct Coding services or sessions; it only exposes reusable value-level
+operations. Coding's public import names remain available while their
+implementation ownership moves to Harness.
+
+Slice E accounting: Coding shrank by approximately 178 implementation lines
+(`bootstrap.py` 1,381→1,315 and `model_selection.py` 137→67 in this slice),
+while Harness gained approximately 312 lines plus focused Harness probes.
+Existing Coding model/bootstrap behavior is unchanged; the new Harness tests
+exercise the same operations without importing Coding.

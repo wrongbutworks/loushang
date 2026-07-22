@@ -60,6 +60,33 @@ from loushang.harness.resources.packages.source_resolver import (
     package_source_scopes,
 )
 from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.session import (
+    CwdBoundServicesAudit,
+)
+from loushang.harness.session import (
+    CwdBoundServicesAuditIssue as _CwdBoundServicesAuditIssue,
+)
+from loushang.harness.session import (
+    append_system_prompt_fragments as _append_system_prompt_fragments,
+)
+from loushang.harness.session import (
+    audit_cwd_bound_services as _audit_cwd_bound_services,
+)
+from loushang.harness.session import (
+    loader_append_system_prompt as _loader_append_system_prompt,
+)
+from loushang.harness.session import (
+    loader_system_prompt_override as _loader_system_prompt_override,
+)
+from loushang.harness.session import (
+    normalize_no_tools as _normalize_no_tools,
+)
+from loushang.harness.session import (
+    resolve_initial_active_tool_names as _resolve_initial_active_tool_names,
+)
+from loushang.harness.session import (
+    split_model_thinking_pattern as _split_model_thinking_pattern,
+)
 from loushang.harness.tools.contribution import (
     resolve_tool_contributions,
 )
@@ -70,6 +97,7 @@ AgentFactory = Callable[..., Agent]
 ServicesFactory = Callable[[str], "BootstrapServices"]
 NoToolsMode = Literal["all", "builtin"]
 ExtensionFlagValues = Mapping[str, bool | str]
+CwdBoundServicesAuditIssue = _CwdBoundServicesAuditIssue
 
 
 @dataclass(frozen=True)
@@ -79,24 +107,6 @@ class BootstrapServices:
     resource_loader: DefaultResourceLoader
     diagnostics_service: DiagnosticsService
     exec_service: ExecService = field(default_factory=ExecService)
-
-
-@dataclass(frozen=True)
-class CwdBoundServicesAuditIssue:
-    code: str
-    message: str
-    details: dict[str, object]
-    level: Literal["info", "warning", "error"] = "warning"
-
-
-@dataclass(frozen=True)
-class CwdBoundServicesAudit:
-    session_cwd: str
-    issues: list[CwdBoundServicesAuditIssue]
-
-    @property
-    def ok(self) -> bool:
-        return not self.issues
 
 
 @dataclass
@@ -274,37 +284,11 @@ def audit_cwd_bound_services(
     services: BootstrapServices,
     resource_bundle: ResourceBundle | None = None,
 ) -> CwdBoundServicesAudit:
-    session_cwd = _resolve_for_audit(session_manager.get_cwd())
-    issues: list[CwdBoundServicesAuditIssue] = []
-    project_root = _settings_project_root(services.settings_manager)
-    if project_root is not None and not _path_is_at_or_under(session_cwd, project_root):
-        issues.append(
-            CwdBoundServicesAuditIssue(
-                code="settings_project_cwd_mismatch",
-                message=(
-                    "Project-scoped settings are bound to a different project root "
-                    "than the session cwd."
-                ),
-                details={
-                    "project_root": str(project_root),
-                    "session_cwd": str(session_cwd),
-                },
-            )
-        )
-    if resource_bundle is not None:
-        resource_cwd = _resolve_for_audit(resource_bundle.cwd)
-        if resource_cwd != session_cwd:
-            issues.append(
-                CwdBoundServicesAuditIssue(
-                    code="resource_bundle_cwd_mismatch",
-                    message="Resource bundle cwd does not match the session cwd.",
-                    details={
-                        "resource_cwd": str(resource_cwd),
-                        "session_cwd": str(session_cwd),
-                    },
-                )
-            )
-    return CwdBoundServicesAudit(session_cwd=str(session_cwd), issues=issues)
+    return _audit_cwd_bound_services(
+        session_cwd=session_manager.get_cwd(),
+        project_root=_settings_project_root(services.settings_manager),
+        resource_cwd=resource_bundle.cwd if resource_bundle is not None else None,
+    )
 
 
 def create_agent_session(
@@ -418,7 +402,7 @@ def create_agent_session(
             resolved_tool_registry = WorkspaceToolRegistry()
         resolved_active_tool_names = _resolve_initial_active_tool_names(
             active_tool_names=active_tool_names,
-            allowed_tool_names_set=allowed_tool_names_set,
+            allowed_tool_names=allowed_tool_names_set,
             no_tools_mode=no_tools_mode,
             tool_registry=resolved_tool_registry,
         )
@@ -973,79 +957,6 @@ def _default_package_materializer(
     )
 
 
-def _normalize_no_tools(no_tools: NoToolsMode | bool | None) -> NoToolsMode | None:
-    if no_tools is True:
-        return "all"
-    if no_tools in (False, None):
-        return None
-    if no_tools in {"all", "builtin"}:
-        return no_tools
-    raise ValueError("no_tools must be 'all', 'builtin', True, False, or None")
-
-
-def _loader_system_prompt_override(resource_loader: object) -> str | None:
-    getter = getattr(resource_loader, "get_system_prompt_override", None)
-    if not callable(getter):
-        return None
-    value = getter()
-    return value if isinstance(value, str) else None
-
-
-def _loader_append_system_prompt(resource_loader: object) -> list[str]:
-    getter = getattr(resource_loader, "get_append_system_prompt_overrides", None)
-    if not callable(getter):
-        return []
-    values = getter()
-    if not isinstance(values, list | tuple):
-        return []
-    return [value for value in values if isinstance(value, str) and value.strip()]
-
-
-def _append_system_prompt_fragments(base_prompt: str, fragments: list[str]) -> str:
-    parts = (
-        [base_prompt.strip()]
-        if isinstance(base_prompt, str) and base_prompt.strip()
-        else []
-    )
-    parts.extend(
-        fragment.strip()
-        for fragment in fragments
-        if isinstance(fragment, str) and fragment.strip()
-    )
-    return "\n\n".join(parts)
-
-
-def _resolve_initial_active_tool_names(
-    *,
-    active_tool_names: list[str] | None,
-    allowed_tool_names_set: set[str] | None,
-    no_tools_mode: NoToolsMode | None,
-    tool_registry: WorkspaceToolRegistry | None,
-) -> list[str] | None:
-    if no_tools_mode == "all":
-        return []
-    if active_tool_names is not None:
-        names = list(active_tool_names)
-    elif no_tools_mode == "builtin":
-        names = _non_builtin_tool_names(tool_registry)
-    else:
-        return None
-    if allowed_tool_names_set is not None:
-        return [name for name in names if name in allowed_tool_names_set]
-    return names
-
-
-def _non_builtin_tool_names(tool_registry: WorkspaceToolRegistry | None) -> list[str]:
-    if tool_registry is None:
-        return []
-    builtin_names = {"bash", "read", "ls", "find", "grep", "write", "edit"}
-    return [
-        definition.name
-        for definition in tool_registry.list_enabled_definitions()
-        if definition.name not in builtin_names
-    ]
-
-
 def _reload_model_registry_with_project_layer(
     model_registry: ModelRegistry,
     *,
@@ -1091,14 +1002,6 @@ def _settings_project_root(settings_manager: SettingsManager) -> Path | None:
     return resolved.parent if resolved.name == ".loushang" else resolved
 
 
-def _path_is_at_or_under(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-    except ValueError:
-        return False
-    return True
-
-
 def _scoped_models_from_enabled_patterns(
     patterns: tuple[str, ...] | None,
     model_registry: ModelRegistry,
@@ -1122,17 +1025,6 @@ def _scoped_models_from_enabled_patterns(
             scoped["thinkingLevel"] = thinking_level
         scoped_models.append(scoped)
     return scoped_models
-
-
-def _split_model_thinking_pattern(pattern: str) -> tuple[str, ThinkingLevel | None]:
-    name, separator, suffix = pattern.rpartition(":")
-    if (
-        separator
-        and suffix in {"off", "minimal", "low", "medium", "high", "xhigh"}
-        and name
-    ):
-        return name, suffix
-    return pattern, None
 
 
 def _register_extension_tools(
