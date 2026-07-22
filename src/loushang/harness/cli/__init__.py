@@ -32,6 +32,11 @@ from loushang.harness.cli.session_listing import (
     format_session_records,
     list_session_records,
 )
+from loushang.harness.cli.skill_listing import (
+    SkillListingError,
+    format_skill_records,
+    list_skill_records,
+)
 from loushang.harness.cli.types import (
     CliArgumentSpec,
     CliCommandSpec,
@@ -54,6 +59,9 @@ __all__ = [
     "build_session_query",
     "format_session_records",
     "list_session_records",
+    "SkillListingError",
+    "format_skill_records",
+    "list_skill_records",
     "ModelListingError",
     "ModelListingRequest",
     "ModelListingResult",

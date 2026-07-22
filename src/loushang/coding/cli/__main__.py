@@ -80,12 +80,15 @@ from loushang.harness.cli import (
     ModelListingRequest,
     SessionListingError,
     SessionListingRequest,
+    SkillListingError,
     build_session_query,
     format_diagnostic_records,
     format_session_records,
+    format_skill_records,
     list_diagnostic_records,
     list_model_entries,
     list_session_records,
+    list_skill_records,
 )
 from loushang.harness.commands import project_command_descriptor
 from loushang.harness.extensions.types import ResolvedFlag
@@ -97,9 +100,6 @@ from loushang.harness.resources.plugins import (
     PluginManager,
     is_remote_plugin_source,
     project_installed_plugin,
-)
-from loushang.harness.resources.skills import (
-    project_skill_descriptor,
 )
 from loushang.harness.scenario.loader import load_workflow, resolve_workflow_files
 from loushang.harness.session import require_session_operation_session
@@ -2022,39 +2022,13 @@ def _run_list_skills(
     if not args.list_skills:
         return None
 
-    skills = _session_skills(session)
-    if skills is None:
-        stderr.write("Error: skill loader is not available.\n")
+    try:
+        records = list_skill_records(session)
+    except SkillListingError as error:
+        stderr.write(f"Error: {_format_cli_error(error)}\n")
         return 1
-    normalized = [
-        normalized
-        for skill in skills
-        if (normalized := project_skill_descriptor(skill)) is not None
-    ]
-    if args.list_skills_format == "json":
-        stdout.write(json.dumps(normalized, ensure_ascii=False) + "\n")
-        return 0
-    for skill in normalized:
-        stdout.write(
-            f"{skill['name']}\t{skill['source_kind']}\t{skill['path']}\t{skill['enabled']}\n"
-        )
+    stdout.write(format_skill_records(records, args.list_skills_format))
     return 0
-
-
-def _session_skills(session: Any) -> list[Any] | None:
-    bundle = getattr(session, "resource_bundle", None)
-    skills = getattr(bundle, "skills", None)
-    if isinstance(skills, list):
-        return skills
-    loader = getattr(session, "resource_loader", None)
-    getter = getattr(loader, "get_skills", None)
-    if callable(getter):
-        try:
-            loaded = getter()
-        except Exception:
-            return None
-        return loaded if isinstance(loaded, list) else None
-    return None
 
 
 def _run_method_visibility(
