@@ -51,6 +51,36 @@ def model_selection_ref(selection: ModelSelection) -> str:
     return f"{selection.provider}/{selection.model_id}"
 
 
+def parse_model_selection_reference(
+    model: str | None,
+    *,
+    provider: str | None = None,
+) -> ModelSelection | None:
+    """Parse stable CLI model reference forms without provider policy."""
+
+    if provider is None and model is None:
+        return None
+    if provider is None and model is not None and model.count(":") >= 2:
+        provider_id, rest = model.split(":", 1)
+        endpoint_id, model_id = rest.rsplit(":", 1)
+        if provider_id and endpoint_id and model_id:
+            return ModelSelection(
+                provider=provider_id,
+                endpoint_id=endpoint_id,
+                model_id=model_id,
+            )
+    if provider is not None and model is not None:
+        return ModelSelection(provider=provider, model_id=model)
+    if provider is None and model is not None and "/" in model:
+        provider_id, model_id = model.split("/", 1)
+        if provider_id and model_id:
+            return ModelSelection(provider=provider_id, model_id=model_id)
+    raise ValueError(
+        "Model selection requires --provider and --model, "
+        "--model provider/model_id, or --model provider:endpoint:model_id."
+    )
+
+
 def current_model_first(
     items: Iterable[T],
     *,
@@ -93,5 +123,6 @@ __all__ = [
     "is_usable_model_selection",
     "model_label_from_selection",
     "model_selection_ref",
+    "parse_model_selection_reference",
     "normalize_model_selection",
 ]
