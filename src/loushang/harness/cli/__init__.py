@@ -38,6 +38,12 @@ from loushang.harness.cli.plugin_listing import (
     list_plugin_records,
 )
 from loushang.harness.cli.profile import STANDARD_CLI_PROFILE, CliProfile
+from loushang.harness.cli.resource_toggles import (
+    ResourceToggleError,
+    ResourceToggleRequest,
+    ResourceToggleResult,
+    apply_resource_toggles,
+)
 from loushang.harness.cli.runtime import (
     CliOperationHandler,
     CliOperationRuntime,
@@ -85,6 +91,10 @@ __all__ = [
     "PluginListingError",
     "format_plugin_records",
     "list_plugin_records",
+    "ResourceToggleError",
+    "ResourceToggleRequest",
+    "ResourceToggleResult",
+    "apply_resource_toggles",
     "format_package_records",
     "ModelListingError",
     "ModelListingRequest",

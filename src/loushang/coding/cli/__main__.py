@@ -82,9 +82,12 @@ from loushang.harness.cli import (
     ModelListingError,
     ModelListingRequest,
     PluginListingError,
+    ResourceToggleError,
+    ResourceToggleRequest,
     SessionListingError,
     SessionListingRequest,
     SkillListingError,
+    apply_resource_toggles,
     build_session_query,
     export_session,
     format_command_records,
@@ -1590,45 +1593,38 @@ def _run_resource_toggles(
         stderr.write("Error: settings manager is not available.\n")
         return 1
     try:
-        for name in args.disable_skills:
-            settings_manager.disable_skill(name, scope="project")
-            stdout.write(f"disabled skill\t{name}\n")
-        for name in args.enable_skills:
-            settings_manager.enable_skill(name, scope="project")
-            stdout.write(f"enabled skill\t{name}\n")
-        for source in args.remove_plugin_sources:
-            removed = settings_manager.remove_plugin_source(source, scope="project")
-            if removed is False:
-                stderr.write(f"Error: no matching plugin source found: {source}\n")
-                return 1
-            stdout.write(f"removed plugin source\t{source}\n")
-        for source in args.add_plugin_sources:
+        def evaluate_plugin_source(source: str) -> str | None:
             decision = PackageSecurityPolicy().evaluate_package_source(source)
             if decision.disposition == "deny":
-                _record_package_policy_diagnostic(
-                    services, source=source, reason=decision.reason
-                )
-                stderr.write(f"Error: {decision.reason}\n")
-                return 1
-            added = settings_manager.add_plugin_source(source, scope="project")
-            if added is False:
-                stderr.write(f"Error: plugin source already exists: {source}\n")
-                return 1
-            label = (
-                "remote plugin source"
-                if is_remote_plugin_source(source)
-                else "plugin source"
-            )
-            stdout.write(f"added {label}\t{source}\n")
-        for name in args.disable_plugins:
-            settings_manager.disable_plugin(name, scope="project")
-            stdout.write(f"disabled plugin\t{name}\n")
-        for name in args.enable_plugins:
-            settings_manager.enable_plugin(name, scope="project")
-            stdout.write(f"enabled plugin\t{name}\n")
+                return decision.reason or "Package source denied by policy."
+            return None
+
+        result = apply_resource_toggles(
+            settings_manager,
+            ResourceToggleRequest(
+                enable_skills=tuple(args.enable_skills),
+                disable_skills=tuple(args.disable_skills),
+                add_plugin_sources=tuple(args.add_plugin_sources),
+                remove_plugin_sources=tuple(args.remove_plugin_sources),
+                enable_plugins=tuple(args.enable_plugins),
+                disable_plugins=tuple(args.disable_plugins),
+            ),
+            evaluate_plugin_source=evaluate_plugin_source,
+            is_remote_plugin_source=is_remote_plugin_source,
+            on_policy_denied=lambda source, reason: _record_package_policy_diagnostic(
+                services, source=source, reason=reason
+            ),
+        )
+    except ResourceToggleError as error:
+        for message in error.messages:
+            stdout.write(f"{message}\n")
+        stderr.write(f"Error: {_format_cli_error(error)}\n")
+        return 1
     except Exception as error:
         stderr.write(f"Error: {_format_cli_error(error)}\n")
         return 1
+    for message in result.messages:
+        stdout.write(f"{message}\n")
     return 0
 
 
