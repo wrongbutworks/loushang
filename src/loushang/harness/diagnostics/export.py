@@ -9,8 +9,9 @@ from __future__ import annotations
 import json
 import re
 import zipfile
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 
@@ -52,6 +53,70 @@ def export_diagnostics_archive(
         for artifact in artifacts:
             _write_text_artifact(archive, artifact)
     return resolved_output
+
+
+def collect_diagnostics(
+    diagnostics_service: object | None,
+    *,
+    serializer: Callable[[object], Mapping[str, object]],
+    limit: int = 50,
+) -> list[dict[str, object]]:
+    """Collect safe diagnostic mappings from an injected service.
+
+    Services in older Products accepted either ``limit=`` or one positional
+    argument.  The compatibility probe belongs here, while the serializer is
+    injected so Products retain their external diagnostic schema.
+    """
+
+    getter = getattr(diagnostics_service, "get_last_diagnostics", None)
+    if not callable(getter):
+        return []
+    try:
+        records = getter(limit=limit)
+    except TypeError:
+        records = getter(limit)
+    except Exception:
+        return []
+    if not isinstance(records, list | tuple):
+        return []
+    normalized: list[dict[str, object]] = []
+    for record in records:
+        try:
+            normalized.append(dict(serializer(record)))
+        except Exception:
+            continue
+    return normalized
+
+
+def resolve_export_output_path(
+    project_root: str | Path,
+    output: str | Path | None,
+    generated_at: datetime,
+    *,
+    directory: str = ".loushang/diagnostics",
+    prefix: str = "loushang-diag",
+) -> Path:
+    """Resolve an explicit or timestamped archive path without Product IO."""
+
+    if output is not None:
+        return Path(output).expanduser().resolve()
+    timestamp = generated_at.strftime("%Y%m%dT%H%M%SZ")
+    return Path(project_root).expanduser().resolve() / directory / f"{prefix}-{timestamp}.zip"
+
+
+def path_exists(path: str | Path) -> bool:
+    """Return false instead of leaking an inaccessible artifact path."""
+
+    try:
+        return Path(path).exists()
+    except OSError:
+        return False
+
+
+def utc_now() -> datetime:
+    """Return the shared UTC clock used by diagnostic archive adapters."""
+
+    return datetime.now(UTC)
 
 
 def redact_json_value(value: object) -> object:
@@ -132,7 +197,11 @@ _REDACTION_PATTERNS = (
 
 __all__ = [
     "DiagnosticExportArtifact",
+    "collect_diagnostics",
     "export_diagnostics_archive",
+    "path_exists",
     "redact_json_value",
     "redact_text",
+    "resolve_export_output_path",
+    "utc_now",
 ]
