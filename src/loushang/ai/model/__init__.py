@@ -41,6 +41,7 @@ from loushang.ai.model.selection import (
     model_label_from_selection,
     model_selection_ref,
     normalize_model_selection,
+    parse_model_selection_reference,
 )
 
 __all__ = [
@@ -74,6 +75,7 @@ __all__ = [
     "is_usable_model_selection",
     "model_label_from_selection",
     "model_selection_ref",
+    "parse_model_selection_reference",
     "normalize_model_selection",
     "reload_default_model_registry",
     "resolve_model_api",

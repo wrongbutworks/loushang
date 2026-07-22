@@ -29,6 +29,9 @@ planning, work event persistence, or AI provider behavior.
   for turning Coding into a declarative Product adapter.
 - [Coding Shared-Layer Migration Ledger](coding-shared-layer-migration-ledger.md)
   records the concrete source-to-owner cutover scope for each delivery wave.
+- [CLI Product Host Collapse](cli-product-host-collapse.md) defines ordered
+  standard CLI operation dispatch and shared session/resource/package host
+  operations while Products retain grammar, policy, and mode selection.
 - [Coding Shared-Layer Owner Rebaseline](coding-shared-layer-owner-rebaseline.md)
   records shared owners, actual Coding adapters and kernels, and the source
   boundary required before a further migration wave can claim LOC.
@@ -83,9 +86,9 @@ planning, work event persistence, or AI provider behavior.
 - [Product Configuration Runtime Boundary](product-configuration-runtime-boundary.md)
   defines transactional layered configuration, declarative Product schema
   adapters, scoped change records, injected value resolution, and activation
-  DAG ownership while preserving Product fields, defaults, paths, effects,
-  diagnostics and model-selection behavior while request authentication remains
-  AI-owned.
+  DAG ownership. Its optional Agent profile composes those existing components
+  into standard cross-product settings types, codecs, getters, and setters while
+  Products retain paths, overlays, effects, diagnostics, and presentation.
 - [Product Runtime Injection Architecture](product-runtime-injection/README.md)
   records proposed requirements and the component directory for Product,
   OEM, and extension selection of runtime capabilities. Detailed component

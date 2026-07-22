@@ -225,6 +225,18 @@ def model_choice_display_label(choice: ModelChoice) -> str:
     return choice.label
 
 
+def model_choice_descriptions_by_label(
+    choices: Iterable[ModelChoice],
+) -> dict[str, str]:
+    """Collect non-empty detail text for selector rows."""
+
+    return {
+        choice.label: choice.description
+        for choice in choices
+        if choice.description
+    }
+
+
 def current_model_choice_first(
     choices: Iterable[ModelChoice],
     *,
@@ -383,6 +395,7 @@ __all__ = [
     "matching_model_choices",
     "model_choice_select_items",
     "model_choice_description",
+    "model_choice_descriptions_by_label",
     "model_choice_display_label",
     "model_choice_matches",
     "model_choice_value",

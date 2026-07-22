@@ -7,13 +7,17 @@ import os
 import sys
 from collections.abc import Mapping, Sequence
 from contextlib import redirect_stderr
-from dataclasses import asdict, replace
+from dataclasses import replace
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, TextIO, cast
 
-from loushang.ai.model import ModelSelection, model_selection_ref
+from loushang.ai.model import (
+    ModelSelection,
+    model_selection_ref,
+    parse_model_selection_reference,
+)
 from loushang.ai.model.registry import get_default_model_registry
 from loushang.channel import ProductHostLifecycle, stream_is_tty
 from loushang.coding.bootstrap import (
@@ -23,7 +27,6 @@ from loushang.coding.bootstrap import (
     create_services,
 )
 from loushang.coding.cli.args import CliArgs, ExtensionFlag, help_text, parse_args
-from loushang.coding.control import SettingsManager
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
@@ -72,37 +75,65 @@ from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.work_executor import SubmitCodingTurn
 from loushang.coding.work_runtime import CodingWorkRuntime
 from loushang.coding.workflow import run_prompt_steps_workflow
-from loushang.harness.agent_transcript import (
-    SessionQuery,
-    project_session_record,
+from loushang.harness.cli import (
+    CliLaunchPlan,
+    CliOperationSequence,
+    CliOperationStage,
+    CommandExecutionRequest,
+    DiagnosticsListingRequest,
+    ExportRequest,
+    MethodListingError,
+    MethodListingRequest,
+    ModelListingRequest,
+    PackageLifecycleRequest,
+    ResourceToggleRequest,
+    SessionListingOperationRequest,
+    SessionResolutionRequest,
+    cli_help_belongs_on_stderr,
+    cli_observability_mode,
+    cli_output_guard_enabled,
+    cli_runtime_error,
+    cli_static_error,
+    format_package_records,
+    resolve_effective_tui,
+    resolve_session,
+    run_command_listing_operation,
+    run_command_operation,
+    run_diagnostics_listing_operation,
+    run_export_operation,
+    run_method_listing,
+    run_model_listing_operation,
+    run_package_lifecycle_operation,
+    run_plugin_listing_operation,
+    run_resource_toggle_operation,
+    run_session_listing_operation,
+    run_skill_listing_operation,
 )
-from loushang.harness.commands import project_command_descriptor
-from loushang.harness.diagnostics.serialization import serialize_diagnostic
+from loushang.harness.cli import (
+    apply_extension_flag_values as apply_extension_flag_values_shared,
+)
+from loushang.harness.cli import (
+    collect_extension_flags as collect_extension_flags_shared,
+)
+from loushang.harness.cli import (
+    resolve_latest_session_file as resolve_latest_session_file_shared,
+)
+from loushang.harness.config.agent import SettingsManager
 from loushang.harness.extensions.types import ResolvedFlag
 from loushang.harness.host.prompt_input import (
     PromptInputPlan,
     resolve_prompt_input,
 )
-from loushang.harness.resources.plugins import (
-    PluginManager,
-    is_remote_plugin_source,
-    project_installed_plugin,
-)
-from loushang.harness.resources.skills import (
-    project_skill_descriptor,
-)
+from loushang.harness.resources.plugins import is_remote_plugin_source
 from loushang.harness.scenario.loader import load_workflow, resolve_workflow_files
-from loushang.harness.session import require_session_operation_session
-from loushang.harness.session.model_selection import (
-    format_model_metadata_table,
-    model_listing_getter,
-    model_listing_matches_query,
-    normalize_model_listing,
-    unique_sorted_model_entries,
-)
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.method import MethodCompiler, MethodContext, MethodLoader
-from loushang.work import JsonlEventLogBackend, project_work_plan_runs
+from loushang.work import (
+    JsonlEventLogBackend,
+    WorkLogInspectionError,
+    inspect_work_log,
+    resolve_work_log_path,
+)
 
 _MISSING = object()
 _WORK_LOG_INSPECT_LIMIT = 20
@@ -315,16 +346,21 @@ async def run_cli(
         return parse_error_code
     project_root = Path(cwd or bootstrap_args.cwd or Path.cwd()).resolve()
     _apply_offline_mode(bootstrap_args)
+    bootstrap_launch_plan = _cli_launch_plan(bootstrap_args)
 
     if bootstrap_args.help:
-        with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(bootstrap_args)):
+        with host_lifecycle.output_guard(
+            enabled=cli_output_guard_enabled(bootstrap_launch_plan)
+        ):
             extension_flags = await _collect_extension_flags_for_help(
                 raw_argv=raw_argv,
                 project_root=project_root,
                 services=services,
                 runtime_builder=runtime_builder,
             )
-        help_output = stderr if _help_belongs_on_stderr(bootstrap_args) else stdout
+        help_output = (
+            stderr if cli_help_belongs_on_stderr(bootstrap_launch_plan) else stdout
+        )
         help_output.write(_help_text(extension_flags))
         return 0
     if bootstrap_args.version:
@@ -338,31 +374,9 @@ async def run_cli(
             stdout.write(format_source_identity_text(source_identity) + "\n")
         return 0
 
-    if bootstrap_args.tui and bootstrap_args.no_tui:
-        stderr.write("Error: --tui and --no-tui cannot be used together.\n")
-        return 2
-    if bootstrap_args.fork and not (
-        bootstrap_args.session or bootstrap_args.continue_ or bootstrap_args.resume
-    ):
-        stderr.write("Error: --fork requires --session or --continue / --resume.\n")
-        return 2
-    if bootstrap_args.session and (bootstrap_args.continue_ or bootstrap_args.resume):
-        stderr.write("Error: --session cannot be used with --continue or --resume.\n")
-        return 2
-    if bootstrap_args.continue_ and bootstrap_args.resume:
-        stderr.write("Error: --continue and --resume cannot be used together.\n")
-        return 2
-    work_log_error = _work_log_static_error(bootstrap_args)
-    if work_log_error is not None:
-        stderr.write(f"Error: {work_log_error}.\n")
-        return 2
-    method_error = _method_static_error(bootstrap_args)
-    if method_error is not None:
-        stderr.write(f"Error: {method_error}.\n")
-        return 2
-    channel_error = _channel_static_error(bootstrap_args)
-    if channel_error is not None:
-        stderr.write(f"Error: {channel_error}.\n")
+    static_error = cli_static_error(bootstrap_launch_plan)
+    if static_error is not None:
+        stderr.write(f"Error: {static_error}.\n")
         return 2
     work_log_inspect_result = _run_work_log_inspect(
         bootstrap_args, project_root, stdout, stderr
@@ -370,13 +384,32 @@ async def run_cli(
     if work_log_inspect_result is not None:
         return work_log_inspect_result
 
-    with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(bootstrap_args)):
+    with host_lifecycle.output_guard(
+        enabled=cli_output_guard_enabled(bootstrap_launch_plan)
+    ):
         resolved_services = services or build_default_services(project_root)
         _report_settings_errors_for_resource_commands(
             bootstrap_args, resolved_services, stderr
         )
-        resource_toggle_result = _run_resource_toggles(
-            bootstrap_args, resolved_services, stdout, stderr
+        resource_toggle_request = ResourceToggleRequest(
+            enable_skills=tuple(bootstrap_args.enable_skills),
+            disable_skills=tuple(bootstrap_args.disable_skills),
+            add_plugin_sources=tuple(bootstrap_args.add_plugin_sources),
+            remove_plugin_sources=tuple(bootstrap_args.remove_plugin_sources),
+            enable_plugins=tuple(bootstrap_args.enable_plugins),
+            disable_plugins=tuple(bootstrap_args.disable_plugins),
+        )
+        resource_toggle_result = run_resource_toggle_operation(
+            getattr(resolved_services, "settings_manager", None),
+            resource_toggle_request if resource_toggle_request.has_operations else None,
+            stdout=stdout,
+            stderr=stderr,
+            evaluate_plugin_source=_package_source_policy_reason,
+            is_remote_plugin_source=is_remote_plugin_source,
+            on_policy_denied=lambda source, reason: _record_package_policy_diagnostic(
+                resolved_services, source=source, reason=reason
+            ),
+            format_error=_format_cli_error,
         )
         if resource_toggle_result is not None:
             return resource_toggle_result
@@ -432,7 +465,9 @@ async def run_cli(
         services=resolved_services,
         cwd=project_root,
     ):
-        with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(bootstrap_args)):
+        with host_lifecycle.output_guard(
+            enabled=cli_output_guard_enabled(bootstrap_launch_plan)
+        ):
             runtime = _invoke_runtime_builder(
                 runtime_builder,
                 args=runtime_args,
@@ -442,15 +477,38 @@ async def run_cli(
                 tool_registry=tool_registry,
                 approval_resolver=interactive_approval_resolver,
             )
-        with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(runtime_args)):
-            list_sessions_result = _run_list_sessions(
-                runtime_args, runtime, stdout, stderr
+        runtime_launch_plan = _cli_launch_plan(runtime_args)
+        with host_lifecycle.output_guard(
+            enabled=cli_output_guard_enabled(runtime_launch_plan)
+        ):
+            list_sessions_result = run_session_listing_operation(
+                runtime,
+                SessionListingOperationRequest(
+                    output_format=runtime_args.list_sessions_format,
+                    cwd=runtime_args.session_cwd,
+                    name=runtime_args.session_name_filter,
+                    parent_session=runtime_args.session_parent,
+                    text=runtime_args.session_query,
+                    has_diagnostics=runtime_args.session_has_diagnostics,
+                    limit=runtime_args.session_limit,
+                    all_sessions=runtime_args.all_sessions,
+                    indexed=runtime_args.session_index
+                    or runtime_args.refresh_session_index,
+                    refresh_index=runtime_args.refresh_session_index,
+                )
+                if runtime_args.list_sessions
+                else None,
+                stdout=stdout,
+                stderr=stderr,
+                format_error=_format_cli_error,
             )
         if list_sessions_result is not None:
             return list_sessions_result
 
         try:
-            with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(bootstrap_args)):
+            with host_lifecycle.output_guard(
+                enabled=cli_output_guard_enabled(bootstrap_launch_plan)
+            ):
                 session = await _resolve_session(runtime_args, runtime, project_root)
         except (
             FileNotFoundError,
@@ -470,7 +528,8 @@ async def run_cli(
     )
     if args is None:
         return parse_error_code
-    with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(args)):
+    launch_plan = _cli_launch_plan(args)
+    with host_lifecycle.output_guard(enabled=cli_output_guard_enabled(launch_plan)):
         _apply_extension_flag_values(session, args.extension_flag_values)
 
         if args.session_name is not None:
@@ -487,60 +546,161 @@ async def run_cli(
         if override_result is not None:
             return override_result
 
-        export_result = _run_export(args, session, stdout, stderr)
-        if export_result is not None:
-            return export_result
-
-        list_commands_result = _run_list_commands(args, session, stdout, stderr)
-        if list_commands_result is not None:
-            return list_commands_result
-
-        list_diagnostics_result = _run_list_diagnostics(args, session, stdout, stderr)
-        if list_diagnostics_result is not None:
-            return list_diagnostics_result
-
-        list_skills_result = _run_list_skills(args, session, stdout, stderr)
-        if list_skills_result is not None:
-            return list_skills_result
-
-        method_visibility_result = _run_method_visibility(
-            args, project_root, stdout, stderr
+        package_lifecycle_request = PackageLifecycleRequest(
+            install=tuple(args.install_packages),
+            materialize=tuple(args.materialize_packages),
+            update=tuple(args.update_packages),
+            remove=tuple(args.remove_packages),
+            uninstall=tuple(args.uninstall_packages),
+            check_updates=args.check_package_updates,
+            update_all=args.update_all_packages,
+            scope=args.package_scope,
         )
-        if method_visibility_result is not None:
-            return method_visibility_result
-
-        list_plugins_result = _run_list_plugins(args, resolved_services, stdout, stderr)
-        if list_plugins_result is not None:
-            return list_plugins_result
-
-        list_packages_result = _run_list_packages(
-            args, session, resolved_services, project_root, stdout, stderr
+        model_listing_request = (
+            ModelListingRequest(
+                query=args.list_models.strip().lower()
+                if isinstance(args.list_models, str)
+                else ""
+            )
+            if args.list_models is not False
+            else None
         )
-        if list_packages_result is not None:
-            return list_packages_result
+        standard_operation_result = await CliOperationSequence(
+            (
+                CliOperationStage(
+                    "export",
+                    lambda: run_export_operation(
+                        session,
+                        ExportRequest(format=args.export_format, output=args.export)
+                        if args.export is not None
+                        else None,
+                        result_format=args.export_result_format,
+                        stdout=stdout,
+                        stderr=stderr,
+                        format_error=_format_cli_error,
+                    ),
+                ),
+                CliOperationStage(
+                    "list_commands",
+                    lambda: run_command_listing_operation(
+                        session,
+                        args.list_commands_format if args.list_commands else None,
+                        stdout=stdout,
+                        stderr=stderr,
+                        format_error=_format_cli_error,
+                    ),
+                ),
+                CliOperationStage(
+                    "list_diagnostics",
+                    lambda: run_diagnostics_listing_operation(
+                        session,
+                        DiagnosticsListingRequest(limit=args.diagnostics_limit)
+                        if args.list_diagnostics
+                        else None,
+                        output_format=args.list_diagnostics_format,
+                        stdout=stdout,
+                        stderr=stderr,
+                        format_error=_format_cli_error,
+                    ),
+                ),
+                CliOperationStage(
+                    "list_skills",
+                    lambda: run_skill_listing_operation(
+                        session,
+                        args.list_skills_format if args.list_skills else None,
+                        stdout=stdout,
+                        stderr=stderr,
+                        format_error=_format_cli_error,
+                    ),
+                ),
+                CliOperationStage(
+                    "method_visibility",
+                    lambda: _run_method_visibility(
+                        args, project_root, stdout, stderr
+                    ),
+                ),
+                CliOperationStage(
+                    "list_plugins",
+                    lambda: run_plugin_listing_operation(
+                        getattr(resolved_services, "settings_manager", None),
+                        args.list_plugins_format if args.list_plugins else None,
+                        stdout=stdout,
+                        stderr=stderr,
+                        format_error=_format_cli_error,
+                    ),
+                ),
+                CliOperationStage(
+                    "list_packages",
+                    lambda: _run_list_packages(
+                        args,
+                        session,
+                        resolved_services,
+                        project_root,
+                        stdout,
+                        stderr,
+                    ),
+                ),
+                CliOperationStage(
+                    "package_lifecycle",
+                    lambda: run_package_lifecycle_operation(
+                        session,
+                        package_lifecycle_request
+                        if package_lifecycle_request.has_operations
+                        else None,
+                        stdout=stdout,
+                        stderr=stderr,
+                        evaluate_install_source=_package_source_policy_reason,
+                        on_policy_denied=lambda source, reason: (
+                            _record_package_policy_diagnostic(
+                                resolved_services, source=source, reason=reason
+                            )
+                        ),
+                        format_error=_format_cli_error,
+                    ),
+                ),
+                CliOperationStage(
+                    "command",
+                    lambda: run_command_operation(
+                        session,
+                        CommandExecutionRequest(
+                            command=args.command,
+                            args=args.command_args,
+                            result_format=args.command_result_format,
+                        )
+                        if args.command is not None
+                        else None,
+                        stdout=stdout,
+                        stderr=stderr,
+                        format_error=_format_cli_error,
+                    ),
+                ),
+                CliOperationStage(
+                    "list_models",
+                    lambda: run_model_listing_operation(
+                        session,
+                        model_listing_request,
+                        output_format=args.list_models_format,
+                        stdout=stdout,
+                        stderr=stderr,
+                        format_error=_format_cli_error,
+                    ),
+                ),
+            )
+        ).run()
+        if standard_operation_result is not None:
+            return standard_operation_result
 
-        package_lifecycle_result = await _run_package_lifecycle(
-            args, session, resolved_services, stdout, stderr
+        effective_tui = resolve_effective_tui(
+            launch_plan,
+            stdin_is_tty=stream_is_tty(stdin),
+            stdout_is_tty=stream_is_tty(stdout),
         )
-        if package_lifecycle_result is not None:
-            return package_lifecycle_result
-
-        command_result = await _run_command(args, session, stdout, stderr)
-        if command_result is not None:
-            return command_result
-
-        list_models_result = _run_list_models(args, session, stdout, stderr)
-        if list_models_result is not None:
-            return list_models_result
-
-        effective_tui = _effective_tui(args, stdin=stdin, stdout=stdout)
-        work_log_error = _work_log_runtime_error(args, effective_tui=effective_tui)
-        if work_log_error is not None:
-            stderr.write(f"Error: {work_log_error}.\n")
-            return 2
-        method_error = _method_runtime_error(args, effective_tui=effective_tui)
-        if method_error is not None:
-            stderr.write(f"Error: {method_error}.\n")
+        runtime_error = cli_runtime_error(
+            launch_plan,
+            effective_tui=effective_tui,
+        )
+        if runtime_error is not None:
+            stderr.write(f"Error: {runtime_error}.\n")
             return 2
         work_event_log = _resolve_work_event_log(args.work_log, project_root)
         coding_work_runtime = (
@@ -552,7 +712,7 @@ async def run_cli(
             args=args,
             session=session,
             cwd=project_root,
-            mode=_observability_mode(args, effective_tui=effective_tui),
+            mode=cli_observability_mode(launch_plan, effective_tui=effective_tui),
         ):
             if effective_tui:
                 return await tui_runner(
@@ -954,41 +1114,76 @@ def _cwd_bound_services_factory(
     return build_for_cwd
 
 
-def _help_belongs_on_stderr(args: CliArgs) -> bool:
-    return bool(
-        args.prompt is not None
-        or args.prompt_steps is not None
-        or args.mode in {"print", "json", "rpc", "channel"}
+def _cli_launch_plan(args: CliArgs) -> CliLaunchPlan:
+    command_operations = (
+        args.list_sessions,
+        args.source_info,
+        args.list_models is not False,
+        args.list_commands,
+        args.list_diagnostics,
+        args.list_skills,
+        args.list_methods,
+        args.show_method is not None,
+        args.show_method_plan is not None,
+        args.list_plugins,
+        args.list_packages,
+        args.export is not None,
+        args.diag_export,
+        args.command is not None,
+        bool(args.enable_skills),
+        bool(args.disable_skills),
+        bool(args.add_plugin_sources),
+        bool(args.remove_plugin_sources),
+        bool(args.enable_plugins),
+        bool(args.disable_plugins),
+        bool(args.install_packages),
+        bool(args.uninstall_packages),
+        bool(args.materialize_packages),
+        bool(args.update_packages),
+        bool(args.remove_packages),
+        args.update_all_packages,
+        args.check_package_updates,
+        args.work_log_inspect is not None,
     )
-
-
-def _stdout_guard_enabled(args: CliArgs) -> bool:
-    if (
-        args.prompt is not None
-        or args.prompt_steps is not None
-        or args.mode in {"print", "json", "rpc", "channel"}
-    ):
-        return True
-    return bool(
-        (args.list_sessions and args.list_sessions_format == "json")
-        or (args.list_models is not False and args.list_models_format == "json")
-        or (args.list_commands and args.list_commands_format == "json")
-        or (args.list_diagnostics and args.list_diagnostics_format == "json")
-        or (args.list_skills and args.list_skills_format == "json")
-        or (args.list_methods and args.list_methods_format == "json")
-        or (args.show_method is not None and args.show_method_format == "json")
-        or (
-            args.show_method_plan is not None and args.show_method_plan_format == "json"
-        )
-        or (args.list_plugins and args.list_plugins_format == "json")
-        or (args.list_packages and args.list_packages_format == "json")
-        or (args.export is not None and args.export_result_format == "json")
-        or (args.command is not None and args.command_result_format == "json")
-        or bool(args.materialize_packages)
-        or bool(args.update_packages)
-        or bool(args.remove_packages)
-        or args.update_all_packages
-        or args.check_package_updates
+    structured_operations = (
+        args.list_sessions and args.list_sessions_format == "json",
+        args.list_models is not False and args.list_models_format == "json",
+        args.list_commands and args.list_commands_format == "json",
+        args.list_diagnostics and args.list_diagnostics_format == "json",
+        args.list_skills and args.list_skills_format == "json",
+        args.list_methods and args.list_methods_format == "json",
+        args.show_method is not None and args.show_method_format == "json",
+        args.show_method_plan is not None
+        and args.show_method_plan_format == "json",
+        args.list_plugins and args.list_plugins_format == "json",
+        args.list_packages and args.list_packages_format == "json",
+        args.export is not None and args.export_result_format == "json",
+        args.command is not None and args.command_result_format == "json",
+        bool(args.materialize_packages),
+        bool(args.update_packages),
+        bool(args.remove_packages),
+        args.update_all_packages,
+        args.check_package_updates,
+    )
+    return CliLaunchPlan(
+        mode=args.mode,
+        force_tui=args.tui,
+        disable_tui=args.no_tui,
+        prompt_requested=args.prompt is not None,
+        workflow_requested=args.prompt_steps is not None,
+        message_input=bool(args.messages),
+        file_input=bool(args.file_args),
+        follow_up_input=bool(args.message_prompts),
+        render_tool_events=args.render_tool_events,
+        work_log_requested=args.work_log is not None,
+        method_requested=args.method is not None,
+        method_disabled=args.no_method,
+        session_requested=args.session is not None,
+        continue_requested=args.continue_,
+        resume_requested=args.resume,
+        fork_requested=args.fork is not None,
+        command_operation=any(command_operations),
+        structured_operation_output=any(structured_operations),
     )
 
 
@@ -1024,86 +1219,6 @@ async def _run_fake_prompt_steps_workflow_if_requested(
 
 def _workflow_output_mode(args: CliArgs) -> str:
     return "json" if args.mode == "json" else "text"
-
-
-def _effective_tui(args: CliArgs, *, stdin: TextIO, stdout: TextIO) -> bool:
-    if args.tui:
-        return True
-    if args.no_tui:
-        return False
-    if not (stream_is_tty(stdin) and stream_is_tty(stdout)):
-        return False
-    if args.mode != "text":
-        return False
-    if args.prompt is not None or args.prompt_steps is not None:
-        return False
-    if args.messages or args.file_args or args.message_prompts:
-        return False
-    return not _has_command_style_operation(args)
-
-
-def _work_log_static_error(args: CliArgs) -> str | None:
-    if args.work_log is None:
-        return None
-    if args.tui:
-        return "--work-log is not supported in TUI mode"
-    if args.mode == "rpc":
-        return "--work-log is not supported in RPC mode"
-    if args.mode == "channel":
-        return "--work-log is not supported in Channel mode"
-    if args.prompt_steps is not None:
-        return "--work-log is not supported with --prompt-steps"
-    return None
-
-
-def _work_log_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None:
-    if args.work_log is None:
-        return None
-    if effective_tui:
-        return "--work-log is not supported in TUI mode"
-    return None
-
-
-def _method_static_error(args: CliArgs) -> str | None:
-    if args.method is not None and args.no_method:
-        return "--method cannot be used with --no-method"
-    if args.method is None:
-        return None
-    if args.tui:
-        return "--method is not supported in TUI mode"
-    if args.mode == "rpc":
-        return "--method is not supported in RPC mode"
-    if args.mode == "channel":
-        return "--method is not supported in Channel mode"
-    if args.prompt_steps is not None:
-        return "--method is not supported with --prompt-steps"
-    return None
-
-
-def _channel_static_error(args: CliArgs) -> str | None:
-    if args.mode != "channel":
-        return None
-    if args.tui:
-        return "--tui is not supported in Channel mode"
-    if args.prompt is not None:
-        return "--prompt is not supported in Channel mode"
-    if args.prompt_steps is not None:
-        return "--prompt-steps is not supported in Channel mode"
-    if args.messages:
-        return "positional messages are not supported in Channel mode"
-    if args.file_args:
-        return "@file arguments are not supported in Channel mode"
-    if args.render_tool_events:
-        return "--render-tool-events is not supported in Channel mode"
-    return None
-
-
-def _method_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None:
-    if args.method is None:
-        return None
-    if effective_tui:
-        return "--method is not supported in TUI mode"
-    return None
 
 
 def _method_policy_from_args(
@@ -1152,308 +1267,22 @@ def _run_work_log_inspect(
     if args.work_log_inspect is None:
         return None
     try:
-        event_log = JsonlEventLogBackend(
-            _resolve_work_log_path(args.work_log_inspect, project_root)
+        output = inspect_work_log(
+            args.work_log_inspect,
+            project_root=project_root,
+            run_id=args.work_log_run,
+            output_format=args.work_log_inspect_format,
+            limit=_WORK_LOG_INSPECT_LIMIT,
         )
-        entries = event_log.query(run_id=args.work_log_run)
-    except Exception as error:
+    except WorkLogInspectionError as error:
         stderr.write(f"Error: {_format_cli_error(error)}\n")
         return 1
-    if args.work_log_inspect_format == "json":
-        raw_entries = entries[-_WORK_LOG_INSPECT_LIMIT:]
-        stdout.write(
-            json.dumps(
-                [_work_log_entry_summary(entry) for entry in raw_entries],
-                ensure_ascii=False,
-            )
-            + "\n"
-        )
-    elif args.work_log_inspect_format == "plans-json":
-        stdout.write(
-            json.dumps(
-                [asdict(plan) for plan in project_work_plan_runs(entries)],
-                ensure_ascii=False,
-            )
-            + "\n"
-        )
-    elif args.work_log_inspect_format == "plans":
-        _write_work_log_plan_summary(entries, stdout)
-    else:
-        _write_work_log_text(entries[-_WORK_LOG_INSPECT_LIMIT:], stdout)
+    stdout.write(output)
     return 0
 
 
 def _resolve_work_log_path(raw_path: str, project_root: Path) -> Path:
-    path = Path(raw_path).expanduser()
-    if not path.is_absolute():
-        path = project_root / path
-    return path
-
-
-def _write_work_log_text(entries: list[Any], stdout: TextIO) -> None:
-    stdout.write(
-        "\t".join(
-            [
-                "sequence",
-                "kind",
-                "run_id",
-                "session_id",
-                "delivery_hint",
-                "method_id",
-                "plan_id",
-                "step_id",
-                "step_index",
-                "step_title",
-            ]
-        )
-        + "\n"
-    )
-    for entry in entries:
-        step_index = _work_log_entry_step_index(entry)
-        stdout.write(
-            "\t".join(
-                [
-                    str(entry.sequence),
-                    _work_log_entry_kind(entry),
-                    entry.run_id,
-                    entry.session_id,
-                    _work_log_entry_delivery_hint(entry),
-                    _work_log_entry_method_id(entry),
-                    _work_log_entry_plan_id(entry),
-                    _work_log_entry_step_id(entry),
-                    "" if step_index is None else str(step_index),
-                    _work_log_entry_step_title(entry),
-                ]
-            )
-            + "\n"
-        )
-
-
-def _write_work_log_plan_summary(entries: list[Any], stdout: TextIO) -> None:
-    stdout.write(
-        "\t".join(
-            [
-                "type",
-                "index",
-                "id",
-                "status",
-                "run_id",
-                "method_id",
-                "completed_steps",
-                "failed_steps",
-                "current_step",
-                "title",
-                "deviation",
-            ]
-        )
-        + "\n"
-    )
-    for plan in project_work_plan_runs(entries):
-        stdout.write(
-            "\t".join(
-                [
-                    "plan",
-                    "",
-                    plan.plan_id,
-                    plan.status,
-                    "",
-                    plan.method_id or "",
-                    f"{plan.completed_step_count}/{plan.step_count}",
-                    str(plan.failed_step_count),
-                    plan.current_step_id or "",
-                    "",
-                    "",
-                ]
-            )
-            + "\n"
-        )
-        for fallback_index, step in enumerate(plan.steps, start=1):
-            stdout.write(
-                "\t".join(
-                    [
-                        "step",
-                        _work_log_plan_step_index(step.metadata, fallback_index),
-                        step.step_id,
-                        step.status,
-                        step.run_id,
-                        step.method_id or plan.method_id or "",
-                        "",
-                        "",
-                        "",
-                        step.title or "",
-                        _work_log_plan_step_deviation_summary(step.deviation),
-                    ]
-                )
-                + "\n"
-            )
-
-
-def _work_log_plan_step_index(
-    metadata: Mapping[str, object], fallback_index: int
-) -> str:
-    step_index = metadata.get("step_index")
-    if isinstance(step_index, int) and not isinstance(step_index, bool):
-        return str(step_index + 1)
-    return str(fallback_index)
-
-
-def _work_log_plan_step_deviation_summary(deviation: Any) -> str:
-    if deviation is None:
-        return ""
-    deviation_type = getattr(deviation, "deviation_type", "")
-    reason = getattr(deviation, "reason", "")
-    if deviation_type and reason:
-        return f"{deviation_type}: {reason}"
-    if deviation_type:
-        return str(deviation_type)
-    if reason:
-        return str(reason)
-    return ""
-
-
-def _work_log_entry_summary(entry: Any) -> dict[str, object]:
-    summary: dict[str, object] = {
-        "entry_id": entry.entry_id,
-        "entry_type": entry.entry_type,
-        "sequence": entry.sequence,
-        "kind": _work_log_entry_kind(entry),
-        "run_id": entry.run_id,
-        "session_id": entry.session_id,
-        "operation_id": entry.operation_id,
-        "event_id": entry.event_id,
-        "delivery_hint": _work_log_entry_delivery_hint(entry),
-    }
-    method_id = _work_log_entry_method_id(entry)
-    if method_id:
-        summary["method_id"] = method_id
-    plan_id = _work_log_entry_plan_id(entry)
-    if plan_id:
-        summary["plan_id"] = plan_id
-    step_id = _work_log_entry_step_id(entry)
-    if step_id:
-        summary["step_id"] = step_id
-    step_index = _work_log_entry_step_index(entry)
-    if step_index is not None:
-        summary["step_index"] = step_index
-    step_title = _work_log_entry_step_title(entry)
-    if step_title:
-        summary["step_title"] = step_title
-    for key in (
-        "tool_call_id",
-        "tool_name",
-        "action_id",
-        "policy_disposition",
-        "policy_code",
-        "policy_reason",
-        "approval_required",
-        "approval_decision",
-        "approval_reason",
-        "argument_keys",
-        "path",
-        "file_path",
-        "command",
-    ):
-        value = _work_log_entry_payload_value(entry, key)
-        if isinstance(value, str | bool | int | float | list | tuple):
-            summary[key] = value
-    return summary
-
-
-def _work_log_entry_kind(entry: Any) -> str:
-    kind = entry.payload.get("kind")
-    if isinstance(kind, str) and kind:
-        return kind
-    return str(entry.entry_type)
-
-
-def _work_log_entry_delivery_hint(entry: Any) -> str:
-    delivery_hint = entry.payload.get("delivery_hint")
-    if isinstance(delivery_hint, str):
-        return delivery_hint
-    return ""
-
-
-def _work_log_entry_method_id(entry: Any) -> str:
-    return _work_log_entry_string_payload_value(entry, "method_id")
-
-
-def _work_log_entry_plan_id(entry: Any) -> str:
-    return _work_log_entry_string_payload_value(entry, "plan_id")
-
-
-def _work_log_entry_step_id(entry: Any) -> str:
-    return _work_log_entry_string_payload_value(entry, "step_id")
-
-
-def _work_log_entry_step_title(entry: Any) -> str:
-    return _work_log_entry_string_payload_value(entry, "step_title")
-
-
-def _work_log_entry_step_index(entry: Any) -> int | None:
-    step_index = _work_log_entry_payload_value(entry, "step_index")
-    if isinstance(step_index, int) and not isinstance(step_index, bool):
-        return step_index
-    return None
-
-
-def _work_log_entry_string_payload_value(entry: Any, key: str) -> str:
-    value = _work_log_entry_payload_value(entry, key)
-    if isinstance(value, str):
-        return value
-    return ""
-
-
-def _work_log_entry_payload_value(entry: Any, key: str) -> object | None:
-    value = entry.payload.get(key)
-    if value is not None:
-        return value
-    nested_payload = entry.payload.get("payload")
-    if isinstance(nested_payload, dict):
-        return nested_payload.get(key)
-    return None
-
-
-def _has_command_style_operation(args: CliArgs) -> bool:
-    return bool(
-        args.list_sessions
-        or args.source_info
-        or args.list_models is not False
-        or args.list_commands
-        or args.list_diagnostics
-        or args.list_skills
-        or args.list_methods
-        or args.show_method is not None
-        or args.show_method_plan is not None
-        or args.list_plugins
-        or args.list_packages
-        or args.export is not None
-        or args.diag_export
-        or args.command is not None
-        or args.enable_skills
-        or args.disable_skills
-        or args.add_plugin_sources
-        or args.remove_plugin_sources
-        or args.enable_plugins
-        or args.disable_plugins
-        or args.install_packages
-        or args.uninstall_packages
-        or args.materialize_packages
-        or args.update_packages
-        or args.remove_packages
-        or args.update_all_packages
-        or args.check_package_updates
-        or args.work_log_inspect is not None
-    )
-
-
-def _observability_mode(args: CliArgs, *, effective_tui: bool) -> str:
-    if effective_tui:
-        return "tui"
-    if args.prompt is not None:
-        return "prompt"
-    if args.prompt_steps is not None:
-        return "workflow"
-    return args.mode
+    return resolve_work_log_path(raw_path, project_root)
 
 
 def _parse_args_for_cli(
@@ -1560,68 +1389,6 @@ def _report_settings_errors(
         stderr.write(f"Warning ({context}, {scope} settings): {message}\n")
 
 
-def _run_resource_toggles(
-    args: CliArgs,
-    services: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if not (
-        args.enable_skills
-        or args.disable_skills
-        or args.add_plugin_sources
-        or args.remove_plugin_sources
-        or args.enable_plugins
-        or args.disable_plugins
-    ):
-        return None
-    settings_manager = getattr(services, "settings_manager", None)
-    if settings_manager is None:
-        stderr.write("Error: settings manager is not available.\n")
-        return 1
-    try:
-        for name in args.disable_skills:
-            settings_manager.disable_skill(name, scope="project")
-            stdout.write(f"disabled skill\t{name}\n")
-        for name in args.enable_skills:
-            settings_manager.enable_skill(name, scope="project")
-            stdout.write(f"enabled skill\t{name}\n")
-        for source in args.remove_plugin_sources:
-            removed = settings_manager.remove_plugin_source(source, scope="project")
-            if removed is False:
-                stderr.write(f"Error: no matching plugin source found: {source}\n")
-                return 1
-            stdout.write(f"removed plugin source\t{source}\n")
-        for source in args.add_plugin_sources:
-            decision = PackageSecurityPolicy().evaluate_package_source(source)
-            if decision.disposition == "deny":
-                _record_package_policy_diagnostic(
-                    services, source=source, reason=decision.reason
-                )
-                stderr.write(f"Error: {decision.reason}\n")
-                return 1
-            added = settings_manager.add_plugin_source(source, scope="project")
-            if added is False:
-                stderr.write(f"Error: plugin source already exists: {source}\n")
-                return 1
-            label = (
-                "remote plugin source"
-                if is_remote_plugin_source(source)
-                else "plugin source"
-            )
-            stdout.write(f"added {label}\t{source}\n")
-        for name in args.disable_plugins:
-            settings_manager.disable_plugin(name, scope="project")
-            stdout.write(f"disabled plugin\t{name}\n")
-        for name in args.enable_plugins:
-            settings_manager.enable_plugin(name, scope="project")
-            stdout.write(f"enabled plugin\t{name}\n")
-    except Exception as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    return 0
-
-
 def _record_package_policy_diagnostic(
     services: Any, *, source: str, reason: str | None
 ) -> None:
@@ -1643,74 +1410,24 @@ def _record_package_policy_diagnostic(
 
 
 async def _resolve_session(args: CliArgs, runtime: Any, project_root: Path):
-    if isinstance(args.resume, str):
-        session = require_session_operation_session(
-            await runtime.restore_session_operation(args.resume)
-        )
-    elif args.continue_ or args.resume:
-        latest_session_file = _resolve_latest_session_file(runtime)
-        if latest_session_file is None:
-            raise RuntimeError(
-                "No existing session found. Use --session or --resume <session> to restore a specific session."
-            )
-        session = require_session_operation_session(
-            await runtime.restore_session_operation(latest_session_file)
-        )
-    elif args.session:
-        session = require_session_operation_session(
-            await runtime.restore_session_operation(args.session)
-        )
-    else:
-        session = require_session_operation_session(
-            await runtime.new_session_operation(cwd=str(project_root))
-        )
-
-    if args.fork:
-        try:
-            session = require_session_operation_session(
-                await runtime.fork_session_operation(args.fork, position="at")
-            )
-        except Exception as error:
-            raise RuntimeError(f"Failed to fork session: {error}") from error
-    return session
+    return await resolve_session(
+        runtime,
+        SessionResolutionRequest(
+            session=args.session,
+            continue_=args.continue_,
+            resume=args.resume,
+            fork=args.fork,
+            cwd=project_root,
+        ),
+    )
 
 
 def _resolve_latest_session_file(runtime: Any) -> str | None:
-    try:
-        sessions = runtime.list_sessions()
-    except Exception as error:
-        raise RuntimeError(f"Failed to list sessions: {error}") from error
-    if not isinstance(sessions, list):
-        raise RuntimeError("session listing returned an invalid response.")
-    if not sessions:
-        return None
-    for latest_session in sessions:
-        session_file = getattr(latest_session, "session_file", None)
-        if session_file is not None:
-            return str(session_file)
-    return None
+    return resolve_latest_session_file_shared(runtime)
 
 
 def _resolve_model_selection(args: CliArgs) -> ModelSelection | None:
-    if args.provider is None and args.model is None:
-        return None
-    if args.provider is None and args.model is not None and args.model.count(":") >= 2:
-        provider, rest = args.model.split(":", 1)
-        endpoint_id, model_id = rest.rsplit(":", 1)
-        if provider and endpoint_id and model_id:
-            return ModelSelection(
-                provider=provider, endpoint_id=endpoint_id, model_id=model_id
-            )
-    if args.provider is not None and args.model is not None:
-        return ModelSelection(provider=args.provider, model_id=args.model)
-    if args.provider is None and args.model is not None and "/" in args.model:
-        provider, model_id = args.model.split("/", 1)
-        if provider and model_id:
-            return ModelSelection(provider=provider, model_id=model_id)
-    raise ValueError(
-        "Model selection requires --provider and --model, "
-        "--model provider/model_id, or --model provider:endpoint:model_id."
-    )
+    return parse_model_selection_reference(args.model, provider=args.provider)
 
 
 async def _apply_model_and_thinking_overrides(
@@ -1743,179 +1460,6 @@ async def _apply_model_and_thinking_overrides(
     return None
 
 
-def _run_list_sessions(
-    args: CliArgs,
-    runtime: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if not args.list_sessions:
-        return None
-
-    try:
-        query = _session_query_from_args(args)
-    except ValueError as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    use_index = args.session_index or args.refresh_session_index
-    if args.refresh_session_index:
-        refresher = getattr(
-            runtime,
-            "refresh_all_session_indexes"
-            if args.all_sessions
-            else "refresh_session_index",
-            None,
-        )
-        if not callable(refresher):
-            stderr.write("Error: session index refresh is not available.\n")
-            return 1
-        try:
-            refresher()
-        except Exception as error:
-            stderr.write(f"Error: {_format_cli_error(error)}\n")
-            return 1
-
-    if args.all_sessions and query is not None:
-        lister = getattr(
-            runtime,
-            "find_all_indexed_session_summaries"
-            if use_index
-            else "find_all_session_summaries",
-            None,
-        )
-        if callable(lister):
-
-            def call_lister():
-                return lister(query)
-        else:
-            call_lister = None
-    elif query is not None:
-        lister = getattr(
-            runtime,
-            "find_indexed_session_summaries" if use_index else "find_session_summaries",
-            None,
-        )
-        if callable(lister):
-
-            def call_lister():
-                return lister(query)
-        else:
-            call_lister = None
-    else:
-        if args.all_sessions:
-            lister = getattr(
-                runtime,
-                "list_all_indexed_session_summaries"
-                if use_index
-                else "list_all_session_summaries",
-                None,
-            )
-        else:
-            lister = getattr(
-                runtime,
-                "list_indexed_session_summaries"
-                if use_index
-                else "list_session_summaries",
-                None,
-            )
-        if not callable(lister) and not use_index:
-            lister = getattr(runtime, "list_session_summaries", None)
-        if not callable(lister) and not use_index:
-            lister = getattr(runtime, "list_sessions", None)
-        call_lister = lister if callable(lister) else None
-    if not callable(call_lister):
-        stderr.write("Error: session listing is not available.\n")
-        return 1
-
-    try:
-        records = call_lister()
-    except Exception as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    if not isinstance(records, list):
-        stderr.write("Error: session listing returned an invalid response.\n")
-        return 1
-
-    normalized_sessions = [_try_normalize_session_record(record) for record in records]
-    normalized_sessions = [
-        record for record in normalized_sessions if record is not None
-    ]
-
-    if args.list_sessions_format == "json":
-        stdout.write(json.dumps(normalized_sessions, ensure_ascii=False) + "\n")
-        return 0
-
-    for record in normalized_sessions:
-        metadata = record["metadata"]
-        name = metadata["name"] if isinstance(metadata["name"], str) else ""
-        stdout.write(
-            f"{record['session_id']}\t{record['session_file']}\t{record['cwd']}\t"
-            f"{metadata['updated_at']}\t{name}\n"
-        )
-    return 0
-
-
-def _session_query_from_args(args: CliArgs) -> SessionQuery | None:
-    if args.session_limit is not None and args.session_limit < 0:
-        raise ValueError("Session query limit must be non-negative")
-    if (
-        args.session_cwd is None
-        and args.session_name_filter is None
-        and args.session_parent is None
-        and args.session_query is None
-        and args.session_has_diagnostics is None
-        and args.session_limit is None
-    ):
-        return None
-    return SessionQuery(
-        cwd=args.session_cwd,
-        name=args.session_name_filter,
-        parent_session=args.session_parent,
-        text=args.session_query,
-        has_diagnostics=args.session_has_diagnostics,
-        limit=args.session_limit,
-    )
-
-
-def _run_export(
-    args: CliArgs,
-    session: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if args.export is None:
-        return None
-
-    if args.export_format == "jsonl":
-        exporter = getattr(session, "export_to_jsonl", None)
-    else:
-        exporter = getattr(session, "export_to_html", None)
-    if not callable(exporter):
-        stderr.write(f"Error: {args.export_format} export is not available.\n")
-        return 1
-
-    export_target = args.export if args.export != "" else None
-    try:
-        output_path = exporter(export_target)
-    except Exception as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    if args.export_result_format == "json":
-        stdout.write(
-            json.dumps(
-                {
-                    "path": output_path,
-                    "format": args.export_format,
-                },
-                ensure_ascii=False,
-            )
-            + "\n"
-        )
-    else:
-        stdout.write(f"Exported to: {output_path}\n")
-    return 0
-
-
 def _run_diag_export(
     args: CliArgs,
     project_root: Path,
@@ -1944,17 +1488,6 @@ def _run_diag_export(
     return 0
 
 
-def _normalize_session_record(record: Any) -> dict[str, object]:
-    return project_session_record(record)
-
-
-def _try_normalize_session_record(record: Any) -> dict[str, object] | None:
-    try:
-        return _normalize_session_record(record)
-    except Exception:
-        return None
-
-
 def _safe_getattr(target: Any, name: str, default: object) -> object:
     try:
         return getattr(target, name, default)
@@ -1981,211 +1514,11 @@ def _resolve_print_input_plan(
 
 
 def _collect_extension_flags(session: Any) -> dict[str, ResolvedFlag]:
-    runner = getattr(session, "extension_runner", None)
-    if runner is None:
-        return {}
-    getter = getattr(runner, "get_flags", None)
-    if not callable(getter):
-        return {}
-    flags = getter()
-    collected: dict[str, ResolvedFlag] = {}
-    for flag in flags:
-        name = getattr(flag, "name", None)
-        if isinstance(name, str) and name:
-            collected[name] = flag
-    return collected
+    return cast(dict[str, ResolvedFlag], collect_extension_flags_shared(session))
 
 
 def _apply_extension_flag_values(session: Any, values: dict[str, bool | str]) -> None:
-    if not values:
-        return
-    runner = getattr(session, "extension_runner", None)
-    if runner is None:
-        return
-    setter = getattr(runner, "set_flag_value", None)
-    if not callable(setter):
-        return
-    for name, value in values.items():
-        setter(name, value)
-
-
-def _run_list_models(
-    args: CliArgs,
-    session: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if args.list_models is False:
-        return None
-
-    getter, include_metadata = model_listing_getter(session)
-    if getter is None:
-        stderr.write("Error: model registry is not available.\n")
-        return 1
-
-    query = ""
-    if isinstance(args.list_models, str):
-        query = args.list_models.strip().lower()
-
-    try:
-        models = getter()
-    except Exception as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    if not isinstance(models, list):
-        stderr.write("Error: model listing returned an invalid response.\n")
-        return 1
-    sorted_models = unique_sorted_model_entries(models)
-    normalized_models = normalize_model_listing(
-        sorted_models, include_metadata=include_metadata
-    )
-    if query:
-        normalized_models = [
-            entry
-            for entry in normalized_models
-            if model_listing_matches_query(entry, query)
-        ]
-    if args.list_models_format == "json":
-        stdout.write(json.dumps(normalized_models, ensure_ascii=False) + "\n")
-        return 0
-
-    if include_metadata:
-        stdout.write(format_model_metadata_table(normalized_models))
-        return 0
-    for selection in normalized_models:
-        stdout.write(f"{selection['provider']}/{selection['model_id']}\n")
-    return 0
-
-
-def _run_list_commands(
-    args: CliArgs,
-    session: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if not args.list_commands:
-        return None
-
-    getter = getattr(session, "list_commands", None)
-    if not callable(getter):
-        stderr.write("Error: command registry is not available.\n")
-        return 1
-
-    try:
-        commands = getter()
-    except Exception as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    if not isinstance(commands, list):
-        stderr.write("Error: command registry returned an invalid response.\n")
-        return 1
-
-    serialized_commands: list[dict[str, object]] = []
-    for command in commands:
-        try:
-            serialized = project_command_descriptor(command)
-        except Exception:
-            serialized = None
-        if serialized is not None:
-            serialized_commands.append(serialized)
-    if args.list_commands_format == "json":
-        stdout.write(json.dumps(serialized_commands, ensure_ascii=False) + "\n")
-        return 0
-
-    for command in serialized_commands:
-        stdout.write(
-            f"{command['name']}\t{command['source']}\t{command['source_info']['path']}\t"
-            f"{command['description']}\n"
-        )
-    return 0
-
-
-def _run_list_diagnostics(
-    args: CliArgs,
-    session: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if not args.list_diagnostics:
-        return None
-
-    if args.diagnostics_limit <= 0:
-        stderr.write("Error: diagnostics limit must be greater than zero.\n")
-        return 1
-
-    getter = getattr(session, "get_last_diagnostics", None)
-    if not callable(getter):
-        stderr.write("Error: diagnostics are not available.\n")
-        return 1
-    try:
-        diagnostics = getter(limit=args.diagnostics_limit)
-    except Exception as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    if not isinstance(diagnostics, list):
-        stderr.write("Error: diagnostics returned an invalid response.\n")
-        return 1
-
-    normalized = []
-    for record in diagnostics:
-        try:
-            normalized.append(serialize_diagnostic(record))
-        except Exception:
-            continue
-    if args.list_diagnostics_format == "json":
-        stdout.write(json.dumps(normalized, ensure_ascii=False) + "\n")
-        return 0
-
-    for record in normalized:
-        stdout.write(
-            f"{record['type']}\t{record['phase']}\t{record['source']}\t{record['code']}\t"
-            f"{record['occurrenceCount']}\t{record['message']}\n"
-        )
-    return 0
-
-
-def _run_list_skills(
-    args: CliArgs,
-    session: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if not args.list_skills:
-        return None
-
-    skills = _session_skills(session)
-    if skills is None:
-        stderr.write("Error: skill loader is not available.\n")
-        return 1
-    normalized = [
-        normalized
-        for skill in skills
-        if (normalized := project_skill_descriptor(skill)) is not None
-    ]
-    if args.list_skills_format == "json":
-        stdout.write(json.dumps(normalized, ensure_ascii=False) + "\n")
-        return 0
-    for skill in normalized:
-        stdout.write(
-            f"{skill['name']}\t{skill['source_kind']}\t{skill['path']}\t{skill['enabled']}\n"
-        )
-    return 0
-
-
-def _session_skills(session: Any) -> list[Any] | None:
-    bundle = getattr(session, "resource_bundle", None)
-    skills = getattr(bundle, "skills", None)
-    if isinstance(skills, list):
-        return skills
-    loader = getattr(session, "resource_loader", None)
-    getter = getattr(loader, "get_skills", None)
-    if callable(getter):
-        try:
-            loaded = getter()
-        except Exception:
-            return None
-        return loaded if isinstance(loaded, list) else None
-    return None
+    apply_extension_flag_values_shared(session, values)
 
 
 def _run_method_visibility(
@@ -2201,318 +1534,28 @@ def _run_method_visibility(
     ):
         return None
 
-    try:
-        methods = MethodLoader().discover_methods(project_root)
-    except Exception as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-
-    if args.list_methods:
-        normalized = [_normalize_method_entry(method) for method in methods]
-        if args.list_methods_format == "json":
-            stdout.write(json.dumps(normalized, ensure_ascii=False) + "\n")
-            return 0
-        for method in normalized:
-            stdout.write(
-                f"{method['id']}\t{method['name']}\t{method['kind']}\t"
-                f"{method['element_type']}\t{method['path']}\n"
-            )
-        return 0
-
-    if args.show_method_plan is not None:
-        method = _find_method(methods, args.show_method_plan)
-        if method is None:
-            stderr.write(f"Error: method not found: {args.show_method_plan}\n")
-            return 1
-        try:
-            plan = MethodCompiler().compile(
-                method, context=MethodContext(domain="coding")
-            )
-        except Exception as error:
-            stderr.write(f"Error: {_format_cli_error(error)}\n")
-            return 1
-        payload = _normalize_method_plan(method, plan)
-        if args.show_method_plan_format == "json":
-            stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
-            return 0
-        stdout.write(_format_method_plan_detail(payload))
-        return 0
-
-    method = _find_method(methods, args.show_method or "")
-    if method is None:
-        stderr.write(f"Error: method not found: {args.show_method}\n")
-        return 1
-    payload = _normalize_method_entry(method)
-    payload["description"] = _safe_getattr(method, "description", "") or ""
-    payload["content"] = _safe_getattr(method, "content", "") or ""
-    if args.show_method_format == "json":
-        stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
-        return 0
-    stdout.write(_format_method_detail(payload))
-    return 0
-
-
-def _find_method(methods: list[Any], id_or_name: str) -> Any | None:
-    for method in methods:
-        if (
-            _safe_getattr(method, "id", None) == id_or_name
-            or _safe_getattr(method, "name", None) == id_or_name
-        ):
-            return method
-    return None
-
-
-def _normalize_method_entry(method: Any) -> dict[str, object]:
-    return {
-        "id": _safe_getattr(method, "id", "") or "",
-        "name": _safe_getattr(method, "name", "") or "",
-        "kind": _safe_getattr(method, "kind", "") or "",
-        "element_type": _safe_getattr(method, "element_type", None),
-        "domain": _safe_getattr(method, "domain", None),
-        "meta_role": _safe_getattr(method, "meta_role", None),
-        "phase": _safe_getattr(method, "phase", None),
-        "path": _safe_getattr(method, "source_path", "") or "",
-        "applicability": _normalize_method_applicability(
-            _safe_getattr(method, "applicability", None)
-        ),
-    }
-
-
-def _normalize_method_applicability(applicability: Any) -> dict[str, object]:
-    return {
-        "domains": _string_list(_safe_getattr(applicability, "domains", ())),
-        "task_types": _string_list(_safe_getattr(applicability, "task_types", ())),
-        "contexts": _string_list(_safe_getattr(applicability, "contexts", ())),
-        "artifact_types": _string_list(
-            _safe_getattr(applicability, "artifact_types", ())
-        ),
-        "modalities": _string_list(_safe_getattr(applicability, "modalities", ())),
-        "toolchains": _string_list(_safe_getattr(applicability, "toolchains", ())),
-        "lifecycle": _string_list(_safe_getattr(applicability, "lifecycle", ())),
-        "capabilities": _string_list(_safe_getattr(applicability, "capabilities", ())),
-        "complexity": _optional_string(
-            _safe_getattr(applicability, "complexity", None)
-        ),
-        "risk": _optional_string(_safe_getattr(applicability, "risk", None)),
-        "tags": _normalize_method_tags(_safe_getattr(applicability, "tags", {})),
-    }
-
-
-def _normalize_method_plan(method: Any, plan: Any) -> dict[str, object]:
-    return {
-        "method": _normalize_method_entry(method),
-        "plan": {
-            "id": _safe_getattr(plan, "id", "") or "",
-            "method_id": _safe_getattr(plan, "method_id", "") or "",
-            "mode": _safe_getattr(plan, "mode", "") or "",
-            "phase": _safe_getattr(plan, "phase", None),
-            "activity": _safe_getattr(plan, "activity", None),
-            "task": _safe_getattr(plan, "task", None),
-            "metadata": _json_safe(_safe_getattr(plan, "metadata", {})),
-            "applicability": _normalize_method_applicability(
-                _safe_getattr(plan, "applicability", None)
-            ),
-        },
-        "steps": [
-            _normalize_method_plan_step(step)
-            for step in _safe_getattr(plan, "steps", ())
-        ],
-    }
-
-
-def _normalize_method_plan_step(step: Any) -> dict[str, object]:
-    return {
-        "id": _safe_getattr(step, "id", "") or "",
-        "title": _safe_getattr(step, "title", "") or "",
-        "executor": _safe_getattr(step, "executor", "") or "",
-        "role_variant": _safe_getattr(step, "role_variant", None),
-        "projection": _json_safe(_safe_getattr(step, "projection", {})),
-        "constraint": _json_safe(_safe_getattr(step, "constraint", {})),
-        "audit": _json_safe(_safe_getattr(step, "audit", {})),
-        "applicability": _normalize_method_applicability(
-            _safe_getattr(step, "applicability", None)
-        ),
-    }
-
-
-def _json_safe(value: Any) -> object:
-    if value is None or isinstance(value, str | int | float | bool):
-        return value
-    if isinstance(value, Mapping):
-        return {str(key): _json_safe(item) for key, item in value.items()}
-    if isinstance(value, list | tuple):
-        return [_json_safe(item) for item in value]
-    return str(value)
-
-
-def _normalize_method_tags(tags: Any) -> dict[str, list[str]]:
-    if not isinstance(tags, Mapping):
-        return {}
-    return {
-        key: _string_list(value)
-        for key, value in sorted(tags.items())
-        if isinstance(key, str) and key and _string_list(value)
-    }
-
-
-def _string_list(value: Any) -> list[str]:
-    if isinstance(value, str):
-        return [value] if value else []
-    if isinstance(value, list | tuple):
-        return [item for item in value if isinstance(item, str) and item]
-    return []
-
-
-def _optional_string(value: Any) -> str | None:
-    if isinstance(value, str) and value:
-        return value
-    return None
-
-
-def _format_method_detail(method: Mapping[str, object]) -> str:
-    lines = [
-        f"id: {method['id']}",
-        f"name: {method['name']}",
-        f"kind: {method['kind']}",
-    ]
-    for key in ("element_type", "domain", "meta_role", "phase", "path", "description"):
-        value = method.get(key)
-        if value:
-            lines.append(f"{key}: {value}")
-    applicability_lines = _format_method_applicability_lines(
-        method.get("applicability")
+    request = MethodListingRequest(
+        list_methods=args.list_methods,
+        list_format=args.list_methods_format,
+        show_method=args.show_method,
+        show_format=args.show_method_format,
+        show_method_plan=args.show_method_plan,
+        show_plan_format=args.show_method_plan_format,
     )
-    if applicability_lines:
-        lines.append("applicability:")
-        lines.extend(applicability_lines)
-    lines.append("")
-    lines.append(str(method.get("content", "")))
-    if not lines[-1].endswith("\n"):
-        lines[-1] = f"{lines[-1]}\n"
-    return "\n".join(lines)
-
-
-def _format_method_plan_detail(payload: Mapping[str, object]) -> str:
-    method = payload.get("method")
-    plan = payload.get("plan")
-    steps = payload.get("steps")
-    method_mapping = method if isinstance(method, Mapping) else {}
-    plan_mapping = plan if isinstance(plan, Mapping) else {}
-    lines = [
-        f"method_id: {method_mapping.get('id', '')}",
-        f"method_name: {method_mapping.get('name', '')}",
-        f"plan_id: {plan_mapping.get('id', '')}",
-        f"mode: {plan_mapping.get('mode', '')}",
-        "steps:",
-    ]
-    if isinstance(steps, list):
-        for index, raw_step in enumerate(steps, start=1):
-            if not isinstance(raw_step, Mapping):
-                continue
-            step_id = raw_step.get("id", "")
-            title = raw_step.get("title", "")
-            lines.append(f"  {index}. {step_id} - {title}")
-            guidance = _method_plan_step_guidance(raw_step)
-            if guidance:
-                lines.append(f"     guidance: {guidance}")
-            constraint = _method_plan_step_mapping(raw_step, "constraint")
-            if constraint:
-                lines.append(
-                    f"     constraint: {json.dumps(constraint, ensure_ascii=False)}"
-                )
-            audit = _method_plan_step_mapping(raw_step, "audit")
-            if audit:
-                lines.append(f"     audit: {json.dumps(audit, ensure_ascii=False)}")
-    lines.append("")
-    return "\n".join(lines)
-
-
-def _method_plan_step_guidance(step: Mapping[str, object]) -> str:
-    projection = step.get("projection")
-    if not isinstance(projection, Mapping):
-        return ""
-    step_guidance = projection.get("step_guidance")
-    if isinstance(step_guidance, str):
-        return step_guidance.strip()
-    content = projection.get("content")
-    if isinstance(content, str):
-        return content.strip()
-    return ""
-
-
-def _method_plan_step_mapping(
-    step: Mapping[str, object], key: str
-) -> Mapping[str, object]:
-    value = step.get(key)
-    if isinstance(value, Mapping):
-        return value
-    return {}
-
-
-def _format_method_applicability_lines(applicability: object) -> list[str]:
-    if not isinstance(applicability, Mapping):
-        return []
-    lines: list[str] = []
-    for key in (
-        "domains",
-        "task_types",
-        "contexts",
-        "artifact_types",
-        "modalities",
-        "toolchains",
-        "lifecycle",
-        "capabilities",
-    ):
-        values = _string_list(applicability.get(key))
-        if values:
-            lines.append(f"  {key}: {', '.join(values)}")
-    for key in ("complexity", "risk"):
-        value = applicability.get(key)
-        if isinstance(value, str) and value:
-            lines.append(f"  {key}: {value}")
-    tags = applicability.get("tags")
-    if isinstance(tags, Mapping):
-        for key, raw_values in sorted(tags.items()):
-            values = _string_list(raw_values)
-            if isinstance(key, str) and key and values:
-                lines.append(f"  tags.{key}: {', '.join(values)}")
-    return lines
-
-
-def _run_list_plugins(
-    args: CliArgs,
-    services: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if not args.list_plugins:
+    if not request.has_operation:
         return None
-
-    settings_manager = getattr(services, "settings_manager", None)
-    get_settings = getattr(settings_manager, "get_settings", None)
-    if not callable(get_settings):
-        stderr.write("Error: plugin settings are not available.\n")
-        return 1
     try:
-        settings = get_settings()
-        plugin_sources = getattr(settings, "plugin_sources", ())
-        disabled_plugins = getattr(settings, "disabled_plugins", ())
-        manager = PluginManager(disabled_plugins=tuple(disabled_plugins))
-        for source in plugin_sources:
-            manager.add_plugin_source(source)
-        plugins = manager.list_plugins()
-    except Exception as error:
+        result = run_method_listing(
+            request,
+            discover_methods=lambda: MethodLoader().discover_methods(project_root),
+            compile_plan=lambda method: MethodCompiler().compile(
+                method, context=MethodContext(domain="coding")
+            ),
+        )
+    except MethodListingError as error:
         stderr.write(f"Error: {_format_cli_error(error)}\n")
         return 1
-
-    normalized = [project_installed_plugin(plugin) for plugin in plugins]
-    if args.list_plugins_format == "json":
-        stdout.write(json.dumps(normalized, ensure_ascii=False) + "\n")
-        return 0
-    for plugin in normalized:
-        stdout.write(
-            f"{plugin['name']}\t{plugin['version']}\t{plugin['path']}\t{plugin['enabled']}\n"
-        )
+    stdout.write(result.output)
     return 0
 
 
@@ -2555,212 +1598,20 @@ def _run_list_packages(
         return 1
 
     if args.list_packages_format == "json":
-        stdout.write(json.dumps(packages, ensure_ascii=False) + "\n")
-        return 0
-    if args.list_packages_format == "tsv":
-        _write_package_tsv_list(packages, stdout)
-        return 0
-    _write_package_text_list(packages, stdout)
+        output_format = "json"
+    elif args.list_packages_format == "tsv":
+        output_format = "tsv"
+    else:
+        output_format = "text"
+    stdout.write(format_package_records(packages, output_format))
     return 0
 
 
-def _write_package_tsv_list(packages: list[dict[str, object]], stdout: TextIO) -> None:
-    for package in packages:
-        stdout.write(
-            f"{package['name']}\t{package['kind']}\t{package['scope']}\t{package['version']}\t"
-            f"{package['source']}\t{package['path']}\t{package['enabled']}\t"
-            f"{package['prompts']}\t{package['skills']}\t{package['extensions']}\t"
-            f"{package['themes']}\t{package['diagnostics']}\n"
-        )
-
-
-def _write_package_text_list(packages: list[dict[str, object]], stdout: TextIO) -> None:
-    if not packages:
-        stdout.write("No packages.\n")
-        return
-    scope_order = ("user", "project", "session", "merged", "catalog")
-    scopes = {str(package.get("scope", "")) for package in packages}
-    ordered_scopes = [scope for scope in scope_order if scope in scopes]
-    ordered_scopes.extend(sorted(scope for scope in scopes if scope not in scope_order))
-    first_group = True
-    for scope in ordered_scopes:
-        scoped_packages = [
-            package for package in packages if str(package.get("scope", "")) == scope
-        ]
-        if not scoped_packages:
-            continue
-        if not first_group:
-            stdout.write("\n")
-        first_group = False
-        stdout.write(f"{_package_scope_title(scope)}:\n")
-        for package in scoped_packages:
-            stdout.write(f"  {_format_package_summary_line(package)}\n")
-            source = str(package.get("source", ""))
-            path = str(package.get("path", ""))
-            if source:
-                stdout.write(f"    source: {source}\n")
-            if path:
-                stdout.write(f"    path: {path}\n")
-            resources = _format_package_resources(package)
-            if resources:
-                stdout.write(f"    resources: {resources}\n")
-
-
-def _package_scope_title(scope: str) -> str:
-    labels = {
-        "user": "User packages",
-        "project": "Project packages",
-        "session": "Session packages",
-        "merged": "Merged packages",
-        "catalog": "Catalog packages",
-    }
-    return labels.get(scope, f"{scope.title()} packages")
-
-
-def _format_package_summary_line(package: dict[str, object]) -> str:
-    parts = [str(package.get("name", ""))]
-    version = str(package.get("version", ""))
-    if version:
-        parts.append(version)
-    kind = str(package.get("kind", ""))
-    if kind:
-        parts.append(f"[{kind}]")
-    status: list[str] = []
-    if package.get("enabled") is False:
-        status.append("disabled")
-    if package.get("filtered") is True:
-        status.append("filtered")
-    lifecycle = str(package.get("lifecycle", ""))
-    if lifecycle and lifecycle not in {"installed", "remote_registered"}:
-        status.append(lifecycle)
-    if str(package.get("security", "")) == "denied":
-        status.append("denied")
-    if status:
-        parts.append(", ".join(status))
-    return " ".join(part for part in parts if part)
-
-
-def _format_package_resources(package: dict[str, object]) -> str:
-    parts: list[str] = []
-    for key in ("prompts", "skills", "extensions", "themes", "diagnostics"):
-        value = package.get(key)
-        if isinstance(value, int) and value > 0:
-            parts.append(f"{key}={value}")
-    return " ".join(parts)
-
-
-async def _run_package_lifecycle(
-    args: CliArgs, session: Any, services: Any, stdout: TextIO, stderr: TextIO
-) -> int | None:
-    install_operations: list[tuple[str, str, str]] = [
-        ("install_package", "install_package", source)
-        for source in args.install_packages
-    ]
-    operations: list[tuple[str, str, str]] = []
-    operations.extend(
-        ("materialize_package", "materialize_package", source)
-        for source in args.materialize_packages
-    )
-    operations.extend(
-        ("update_package", "update_package", source) for source in args.update_packages
-    )
-    operations.extend(
-        ("remove_package", "remove_package", source) for source in args.remove_packages
-    )
-    operations.extend(
-        ("uninstall_package", "uninstall_package", source)
-        for source in args.uninstall_packages
-    )
-    bulk_operations: list[tuple[str, str]] = []
-    if args.check_package_updates:
-        bulk_operations.append(("check_package_updates", "check_package_updates"))
-    if args.update_all_packages:
-        bulk_operations.append(("update_packages", "update_packages"))
-    if not operations and not install_operations and not bulk_operations:
-        return None
-    for command, method_name, source in install_operations:
-        decision = PackageSecurityPolicy().evaluate_package_source(source)
-        if decision.disposition == "deny":
-            _record_package_policy_diagnostic(
-                services, source=source, reason=decision.reason
-            )
-            stderr.write(f"Error: {decision.reason}\n")
-            return 1
-        method = getattr(session, method_name, None)
-        if not callable(method):
-            stderr.write(f"Error: {command} is not available.\n")
-            return 1
-        try:
-            record = method(source, scope=args.package_scope)
-            if inspect.isawaitable(record):
-                record = await record
-        except Exception as error:
-            stderr.write(f"Error: {_format_cli_error(error)}\n")
-            return 1
-        if failure := _package_lifecycle_failure(record):
-            stderr.write(f"Error: {failure}\n")
-            return 1
-        stdout.write(
-            json.dumps({"command": command, "record": record}, ensure_ascii=False)
-            + "\n"
-        )
-    for command, method_name in bulk_operations:
-        method = getattr(session, method_name, None)
-        if not callable(method):
-            stderr.write(f"Error: {command} is not available.\n")
-            return 1
-        try:
-            records = method()
-            if inspect.isawaitable(records):
-                records = await records
-        except Exception as error:
-            stderr.write(f"Error: {_format_cli_error(error)}\n")
-            return 1
-        if command == "update_packages" and isinstance(records, list):
-            for record in records:
-                if failure := _package_lifecycle_failure(record):
-                    stderr.write(f"Error: {failure}\n")
-                    return 1
-        stdout.write(
-            json.dumps({"command": command, "records": records}, ensure_ascii=False)
-            + "\n"
-        )
-    for command, method_name, source in operations:
-        method = getattr(session, method_name, None)
-        if not callable(method):
-            stderr.write(f"Error: {command} is not available.\n")
-            return 1
-        try:
-            if command == "uninstall_package":
-                record = method(source, scope=args.package_scope)
-            else:
-                record = method(source)
-            if inspect.isawaitable(record):
-                record = await record
-        except Exception as error:
-            stderr.write(f"Error: {_format_cli_error(error)}\n")
-            return 1
-        if failure := _package_lifecycle_failure(record):
-            stderr.write(f"Error: {failure}\n")
-            return 1
-        stdout.write(
-            json.dumps({"command": command, "record": record}, ensure_ascii=False)
-            + "\n"
-        )
-    return 0
-
-
-def _package_lifecycle_failure(record: object) -> str | None:
-    if not isinstance(record, Mapping):
-        return None
-    if record.get("lifecycle") != "failed":
-        return None
-    message = record.get("errorMessage", record.get("error_message"))
-    return (
-        str(message)
-        if isinstance(message, str) and message
-        else "Package lifecycle failed."
-    )
+def _package_source_policy_reason(source: str) -> str | None:
+    decision = PackageSecurityPolicy().evaluate_package_source(source)
+    if decision.disposition == "deny":
+        return decision.reason or "Package source denied by policy."
+    return None
 
 
 def _safe_string(value: Any) -> str:
@@ -2860,73 +1711,6 @@ def _package_version() -> str:
         return package_version("loushang")
     except PackageNotFoundError:
         return "0.1.0"
-
-
-async def _run_command(
-    args: CliArgs,
-    session: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if args.command is None:
-        return None
-
-    executor = getattr(session, "execute_command_async", None)
-    if not callable(executor):
-        stderr.write("Error: command execution is not available.\n")
-        return 1
-
-    invocation_name = args.command.strip()
-    if invocation_name.startswith("/"):
-        invocation_name = invocation_name[1:].strip()
-    if not invocation_name:
-        stderr.write("Error: --command requires a non-empty command name.\n")
-        return 2
-
-    try:
-        execution = await executor(invocation_name, args.command_args)
-    except Exception as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    if execution is None:
-        stderr.write(f"Error: command not found: {invocation_name}\n")
-        return 1
-
-    result = getattr(execution, "result", None)
-    if result is None and not hasattr(execution, "result"):
-        result = execution
-    if args.command_result_format == "json":
-        stdout.write(
-            json.dumps(
-                {
-                    "command": invocation_name,
-                    "args": args.command_args,
-                    "result": _json_safe_command_result(result),
-                },
-                ensure_ascii=False,
-            )
-            + "\n"
-        )
-        return 0
-    if result is None:
-        return 0
-    if isinstance(result, (dict, list, tuple)):
-        try:
-            text = json.dumps(result, ensure_ascii=False)
-        except TypeError:
-            text = repr(result)
-    else:
-        text = str(result)
-    stdout.write(f"{text}\n")
-    return 0
-
-
-def _json_safe_command_result(result: object) -> object:
-    try:
-        json.dumps(result, ensure_ascii=False)
-        return result
-    except TypeError:
-        return repr(result)
 
 
 def main(argv: list[str] | tuple[str, ...] | None = None) -> int:

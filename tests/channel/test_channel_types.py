@@ -62,6 +62,7 @@ def test_channel_public_api_exposes_boundary_and_jsonl_surfaces() -> None:
         "flush_raw_stdout",
         "is_stdout_taken_over",
         "restore_stdout",
+        "stream_is_tty",
         "stdout_guard",
         "take_over_stdout",
         "write_raw_stdout",

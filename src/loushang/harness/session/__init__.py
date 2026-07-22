@@ -20,6 +20,25 @@ from loushang.harness.session.bindings import (
     SessionMaintenanceBinding,
     SessionModelBinding,
 )
+from loushang.harness.session.bootstrap import (
+    AgentBootstrapRequest,
+    AgentBootstrapRuntime,
+    AgentSessionConstructionRequest,
+    AgentSessionConstructionRuntime,
+    AgentSessionServices,
+    BootstrapServices,
+    CreateAgentSessionResult,
+)
+from loushang.harness.session.bootstrap_utils import (
+    NoToolsMode,
+    append_system_prompt_fragments,
+    loader_append_system_prompt,
+    loader_system_prompt_override,
+    non_builtin_tool_names,
+    normalize_no_tools,
+    resolve_initial_active_tool_names,
+    split_model_thinking_pattern,
+)
 from loushang.harness.session.capabilities import (
     AgentToolPort,
     CommandRuntimeSource,
@@ -68,6 +87,11 @@ from loushang.harness.session.command_sources import (
     ResourceCommandResultFactory,
     ResourceCommandSourceRuntime,
     ResourceDiagnosticsRecorder,
+)
+from loushang.harness.session.cwd_audit import (
+    CwdBoundServicesAudit,
+    CwdBoundServicesAuditIssue,
+    audit_cwd_bound_services,
 )
 from loushang.harness.session.diagnostics import (
     ExtensionDiagnosticsPort,
@@ -134,8 +158,25 @@ from loushang.harness.session.lifecycle import (
 from loushang.harness.session.lifecycle_adapter import (
     SessionLifecycleOperationAdapter,
 )
+from loushang.harness.session.model_preferences import (
+    PreferredModel,
+    available_model_details,
+    persistence_warning_message,
+    preferred_model_candidates,
+    preferred_model_details,
+    preferred_model_selection,
+)
+from loushang.harness.session.model_resolution import (
+    DefaultModelResolution,
+    classify_model_resolution_failure,
+    record_default_model_unavailable,
+    resolve_default_model,
+    scoped_models_from_patterns,
+)
 from loushang.harness.session.model_selection import (
     ModelCandidates,
+    ModelChoiceData,
+    ModelIdentityData,
     ModelSelectionApplyResult,
     PersistModelSelection,
     apply_session_model_selection,
@@ -143,6 +184,8 @@ from loushang.harness.session.model_selection import (
     get_session_model_selection,
     iter_available_model_selections,
     iter_scoped_model_selections,
+    model_choice_data_from_details,
+    model_identity_data,
 )
 from loushang.harness.session.operations import (
     SessionLifecycleOperationPorts,
@@ -199,6 +242,13 @@ __all__ = [
     "AgentEventRouter",
     "AgentSessionAdapterMixin",
     "initialize_composed_session",
+    "AgentBootstrapRequest",
+    "AgentBootstrapRuntime",
+    "AgentSessionConstructionRequest",
+    "AgentSessionConstructionRuntime",
+    "AgentSessionServices",
+    "BootstrapServices",
+    "CreateAgentSessionResult",
     "AgentInspectionPort",
     "AfterTurnPolicyPort",
     "AgentToolPort",
@@ -210,6 +260,17 @@ __all__ = [
     "AgentTranscriptSessionRuntime",
     "ApplicationInputDelivery",
     "ApplicationInputRuntime",
+    "CwdBoundServicesAudit",
+    "CwdBoundServicesAuditIssue",
+    "audit_cwd_bound_services",
+    "NoToolsMode",
+    "append_system_prompt_fragments",
+    "loader_append_system_prompt",
+    "loader_system_prompt_override",
+    "non_builtin_tool_names",
+    "normalize_no_tools",
+    "resolve_initial_active_tool_names",
+    "split_model_thinking_pattern",
     "CommandRuntimeSource",
     "SessionCommandController",
     "CommandExecutionResult",
@@ -235,7 +296,16 @@ __all__ = [
     "resolve_fork_target",
     "MissingCwdPolicy",
     "MissingSessionCwdError",
+    "PreferredModel",
+    "DefaultModelResolution",
+    "classify_model_resolution_failure",
+    "record_default_model_unavailable",
+    "resolve_default_model",
+    "scoped_models_from_patterns",
+    "available_model_details",
     "ModelCandidates",
+    "ModelChoiceData",
+    "ModelIdentityData",
     "ModelSelectionApplyResult",
     "PromptController",
     "ProductSessionRuntime",
@@ -243,6 +313,10 @@ __all__ = [
     "ProductTranscriptSessionLifecyclePorts",
     "ProductTranscriptSessionLifecycleStore",
     "PersistModelSelection",
+    "persistence_warning_message",
+    "preferred_model_candidates",
+    "preferred_model_details",
+    "preferred_model_selection",
     "QueueController",
     "RefreshFailureRecorder",
     "ResourceBundleProvider",
@@ -345,6 +419,8 @@ __all__ = [
     "get_session_model_selection",
     "iter_available_model_selections",
     "iter_scoped_model_selections",
+    "model_choice_data_from_details",
+    "model_identity_data",
     "is_standard_session_command",
     "require_session_operation_session",
 ]

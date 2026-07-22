@@ -227,7 +227,7 @@ moving Coding content or command syntax:
 | --- | --- | --- |
 | `coding.runtime.agent_session_runtime` lifecycle forwarding | `harness.session.SessionLifecycleOperationAdapter` | CWD/session-file acceptance, fork policy, Coding hooks, diagnostics, and resource policy |
 | `coding.bootstrap` resource activation ordering and contained diagnostics | `harness.bootstrap.ResourceBootstrapRuntime` and `BootstrapActivationRuntime` | Resource loader, extension factory, flags, prompt/tool rebuild, and Product diagnostics callbacks |
-| `coding.control.settings_manager` layered settings mechanics | `harness.config.SettingsRuntime` over `ScopedConfigRuntime` | `ControlConfig`, field codecs, defaults, removed-field handling, and typed Product setters |
+| removed `coding.control.settings_manager` and `coding.control.types` | `harness.config.agent.SettingsManager` and standard Agent settings records over the existing `SettingsRuntime` / `ScopedConfigRuntime` / `LayeredConfig` chain | Coding settings paths, command-backed value execution, `ModelRegistry`, and Product-only policy/presentation |
 | `coding.cli.__main__` stream binding, output guard, and disposal fallback | `channel.ProductHostLifecycle` | Argument grammar, mode selection, Product startup policy, output format, and command handlers |
 
 These are adapter collapses rather than new protocol layers. Harness and Channel
@@ -259,6 +259,33 @@ deletion/addition ratio is approximately 0.71. Tests and documentation are not
 counted. The lower ratio is intentional: this slice establishes reusable
 contracts and does not delete product handlers or CLI grammar.
 
+### Slice B implementation follow-up: standard operation leaves
+
+The following additional leaves are now shared without changing Coding's
+argument grammar, operation order, security policy, or output fields:
+
+| Coding source mechanism | Shared owner | Product injection or retained Coding owner | Status |
+| --- | --- | --- | --- |
+| resource enable/disable and plugin-source toggle mutation | `harness.cli.resource_toggles` | Coding supplies `PackageSecurityPolicy`, remote-source labeling, and diagnostic capture | Complete |
+| asynchronous package install/materialize/update/remove/uninstall orchestration | `harness.cli.package_lifecycle` | Coding supplies install-source policy and JSONL serialization | Complete |
+| session command invocation, slash normalization, result extraction, and raw/JSON formatting | `harness.cli.command_execution` | Coding supplies CLI argument values and stream/error projection | Complete |
+| new/restore/continue/fork session selection | `harness.cli.session_resolution` over `harness.session` lifecycle ports | Coding supplies parsed CLI values and product runtime | Complete |
+| `provider/model`, `provider:endpoint:model`, and explicit provider+model parsing | `loushang.ai.model.parse_model_selection_reference` | Coding retains preferred model candidates and persistence wording | Complete |
+| extension flag discovery and application | `harness.cli.extension_flags` | Coding retains second-pass argparse typing and help text | Complete |
+| Method catalog normalization, lookup, plan projection, and text/JSON formatting | `harness.cli.method_listing` | Coding supplies discovery and `MethodCompiler(domain="coding")` callbacks | Complete |
+| Work event-log inspection, tailing, plan projection, and text/JSON formatting | `loushang.work.cli` | Coding retains CLI flag grammar and Work runtime binding | Complete |
+
+After these leaves, the implementation-only `coding.cli.__main__` count is
+1,994 lines (2,941 at the start of this follow-up). The remaining CLI code is
+deliberately not counted as shared yet: Method/Work preparation, Coding
+resource discovery and package materialization policy, mode selection, prompt
+policy, approval/tool setup, and final product/TUI/RPC projection still carry
+product semantics or require an explicit owner decision.
+
+The shared operation modules have independent fake-capability probes under
+`tests/harness/cli`. They return typed results and leave wire formatting to the
+Product host; no second session, package, or transport engine is introduced.
+
 Closure probes:
 
 - CLI/model/prompt/channel regressions preserve existing output and lifecycle
@@ -268,3 +295,269 @@ Closure probes:
   before;
 - diagnostic JSON retains the existing field names; any snake_case protocol
   change requires explicit approval in a later contract migration.
+
+### Wave 6, Slice C: Shared Workspace Policy Engine (Complete)
+
+`coding.policy.engine` was an implementation duplicate over the existing
+Harness policy subjects, matchers, command normalization, and rule evaluator.
+The evaluator now lives in `harness.policy_engine.PolicyEngine` and accepts a
+product rule-id namespace plus product-supplied rule values. Coding retains a
+thin `PolicyEngine` binding that preserves its historic `coding.*` rule ids and
+default policy values; no decision codes, messages, or tool behavior changed.
+
+| Source region | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| `coding.policy.engine` rule assembly and action/tool evaluation | `harness.policy_engine.PolicyEngine` | Product namespace binding and policy defaults | Complete |
+
+Slice C accounting: the Coding implementation shrank from 298 to 17 LOC
+(-281); Harness gained the shared implementation at 300 LOC. The shared module
+has no Product imports. Coding policy and workspace-tool regressions remain
+covered by the existing tests, with independent Harness probes for non-Coding
+rule namespaces.
+
+The same slice also collapsed the callback-backed approval lifecycle. The
+`ApprovalBroker` wrapper, presenter lifecycle, timeout/cancellation behavior,
+and result correlation now live in `harness.approval.InteractiveApprovalResolver`.
+Coding keeps only its `action`/`risk` payload projector and a thin subclass:
+
+| Source region | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| `coding.policy.approval.InteractiveApprovalResolver` | `harness.approval.InteractiveApprovalResolver` | Coding approval payload fields | Complete |
+
+Approval accounting: Coding shrank from 135 to 56 LOC (-79); Harness gained
+104 LOC of parameterized lifecycle and presenter code. Existing Coding approval
+tests and independent Harness policy probes pass; the shared approval module has
+no Product imports.
+
+Package source trust evaluation is also now a shared resource capability. The
+`PackageSecurityPolicy` and `PackageSourceSecurityReport` types moved to
+`harness.resources.packages.security`; Coding only re-exports them while it
+continues to choose when a package operation asks for a security decision.
+This keeps trusted-host/source configuration injectable for Design, PPT, and
+other Products without changing the existing package wire shape.
+
+### Wave 6, Slice D: Session Observability Binding (Complete)
+
+The repeated CLI/session observability binding now lives in
+`harness.diagnostics.observability_runtime`. It owns scope parsing, explicit or
+environment-derived output paths, startup/session labels, sink binding, and
+debug enable/disable lifecycle. Coding keeps only its source classification
+(`config` problems are presented as `model`) and the historic wrapper names.
+
+| Source region | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| `coding.observability` session/startup context and debug file lifecycle | `harness.diagnostics.observability_runtime` | Coding diagnostic source mapping and wrapper names | Complete |
+
+Slice D accounting: Coding shrank from 157 to 109 LOC (-48); Harness gained
+187 LOC of parameterized binding. Existing Coding observability bridge tests
+and an independent Harness directory-injection probe pass. No debug/trace
+environment variables or file naming behavior changed.
+
+### Wave 6, Slice E: Top-Level Session Bootstrap Leaves (Complete)
+
+Several top-level Coding helpers were implementation-only session mechanics,
+despite being located beside the Product bootstrap entry point. They now live
+under the Harness session package and accept only neutral values or existing
+Harness ports:
+
+| Source region | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| preferred model detail/selection matching and candidate ordering | `harness.session.model_preferences` | `PREFERRED_CODING_MODELS` and the settings persistence binding | Complete |
+| cwd/project/resource consistency audit | `harness.session.cwd_audit` | Coding settings/resource object extraction and diagnostic capture | Complete |
+| no-tools normalization and initial tool activation selection | `harness.session.bootstrap_utils` | Product bootstrap argument wiring | Complete |
+| resource prompt override lookup and fragment assembly | `harness.session.bootstrap_utils` | Product default prompt and resource content | Complete |
+| scoped model/thinking suffix parsing | `harness.session.bootstrap_utils` | Product model registry lookup and payload assembly | Complete |
+
+This is a leaf extraction, not a second bootstrap runtime. Harness does not
+construct Coding services or sessions; it only exposes reusable value-level
+operations. Coding's public import names remain available while their
+implementation ownership moves to Harness.
+
+Slice E accounting: Coding shrank by approximately 178 implementation lines
+(`bootstrap.py` 1,381→1,315 and `model_selection.py` 137→67 in this slice),
+while Harness gained approximately 312 lines plus focused Harness probes.
+Existing Coding model/bootstrap behavior is unchanged; the new Harness tests
+exercise the same operations without importing Coding.
+
+### Wave 7, Slice A: Agent Bootstrap Construction Collapse (Complete)
+
+The Agent construction boundary is now explicit in `harness.session.bootstrap`.
+Harness owns the neutral construction request/result contracts and the shared
+pipeline that:
+
+1. builds the initial Agent state and constructor kwargs;
+2. creates a workspace registry when requested;
+3. registers Product-provided extension tools;
+4. records extension diagnostics through a Product callback;
+5. resolves initial active tools; and
+6. invokes the Product session factory.
+
+Coding retains the service factories, resource/extension policies, model
+resolution, prompt defaults, image policy, approval binding, and the concrete
+`AgentSession` constructor. No Coding type is imported by the Harness module,
+and no second session runtime was introduced.
+
+| Source region | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| bootstrap service/result data contracts | `harness.session.bootstrap` | Product-specific service types supplied as generic values | Complete |
+| Agent initial state and constructor kwargs | `AgentBootstrapRuntime` | Agent factory selection and Product session factory | Complete |
+| tool registry/extension contribution/active-tool pipeline | `AgentSessionConstructionRuntime` | Extension pack IDs, diagnostics normalization, and tool policy | Complete |
+
+Slice A accounting: `coding/bootstrap.py` is approximately 1,315→1,277 LOC;
+the shared construction contracts/runtime add approximately 240 LOC. The
+reduction is intentionally limited to the construction boundary: the
+remaining bootstrap code is activation policy and Product service wiring,
+which cannot move without changing ownership or duplicating the existing
+resource activation runtime. Independent Harness construction probes and the
+Coding bootstrap/session regression suite pass.
+
+### Wave 7, Slice B: Model and Provider Resolution Collapse (Complete)
+
+Model catalog mechanics are now owned by `harness.model_catalog`. The shared
+catalog wraps the existing AI registry types without changing `loushang.ai`:
+layered builtin/user/project loading, provider/model registration, reference
+resolution, endpoint selection, and model construction are all reusable by
+other Products. Coding keeps only the historical import name as a zero-logic
+alias and continues to provide its preferred model list and Product defaults.
+
+Session bootstrap resolution also moved to explicit Harness operations in
+`harness.session.model_resolution`. It provides default-model fallback,
+stable failure classification, startup diagnostic recording, and scoped
+model/thinking pattern projection through typed callbacks. No runtime
+capability is discovered through `getattr`; Products bind the catalog and
+diagnostics ports explicitly.
+
+| Source region | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| `coding.control.model_registry` registry/reload/resolve/build implementation | `harness.model_catalog` | public zero-logic import alias | Complete |
+| bootstrap default-model fallback and failure diagnostics | `harness.session.model_resolution` | model preference/default selection | Complete |
+| enabled model/thinking pattern parsing and scoped payload assembly | `harness.session.model_resolution` | Product settings wiring | Complete |
+
+Slice B accounting: `coding/control/model_registry.py` shrank from 176 to 5
+LOC and `coding/bootstrap.py` from approximately 1,277 to 1,178 LOC. Harness
+gained the shared catalog and resolution helpers, with no changes to
+`loushang.ai.model` and no external wire behavior changes. Focused Coding
+regressions and independent Harness model-resolution probes pass.
+
+### Wave 7, Slice C: Session Public Adapter Audit (Already Complete)
+
+This requested slice is already present in the integration baseline and must
+not be repeated as a second migration. Commits `7c8fb1e1` and `808767a0` moved
+the common session facade, inspection, retry, transcript export, tool,
+extension, lifecycle, and maintenance coordination to Harness. The current
+`coding.session.AgentSession` is 522 LOC, down from approximately 1,732 LOC;
+its remaining code is composition wiring and Product behavior.
+
+| Remaining AgentSession region | Owner | Classification |
+| --- | --- | --- |
+| model/provider binding and preferred selection | Coding + Harness/AI ports | Product policy binding |
+| resource/package/tool contribution wiring | Coding resource policy + Harness runtimes | Product adapter |
+| compaction and branch-summary callbacks | Coding | Product prompt/executor semantics |
+| extension provider/footer/replacement callbacks | Coding + Harness extension ports | Product API and presentation |
+| context-usage camelCase projection | Coding public projection | Transform, not a pure forwarder |
+
+The audit found no remaining 600–900 LOC block that is both pure forwarding and
+safe to delete. Removing these methods would either change the public Coding
+projection or move Coding-specific prompt, provider, footer, cwd, package, or
+extension semantics into Harness. Therefore this slice has **0 additional
+LOC** and is accepted by existing session architecture gates rather than being
+artificially expanded. The next large reduction should target Settings
+Composition or CLI Product Host, where shared mechanisms still have separate
+owners.
+
+### Wave 7, Slice D: Model Selection TUI Runtime (Complete)
+
+The model-selection UI flow was a second copy of generic terminal interaction:
+filtering, completion projection, palette resolution, cancellation, ambiguity
+presentation, and the final apply-result message. Those operations now live in
+`harnesstui.selection.runtime` behind the explicit
+`ModelSelectionViewPort` contract. The port supplies normalized
+`ModelChoice` values, the current value, and an apply callback; it does not
+expose a Coding session or discover capabilities dynamically.
+
+Coding retains the AI/model-value projection, endpoint/detail normalization,
+preferred-model policy, settings persistence, and the public
+`coding.model_selection_tui` import surface. Its module now contains only the
+Coding acquisition adapter and these product bindings; no generic interaction
+copy or selection runtime is duplicated there.
+
+| Source region | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| model list filtering, completion, palette resolution and result presentation | `harnesstui.selection.runtime` | normalized choice acquisition | Complete |
+| model-selection apply/persistence boundary | `ModelSelectionViewPort` | `apply_model_selection` and warning policy | Complete |
+| Coding model details, endpoint identity and current-session projection | Coding adapter | AI value mapping and Product data | Retained |
+
+Slice D accounting: `coding/model_selection_tui.py` shrank from 279 to 164
+LOC (-115). `harnesstui.selection.runtime` adds 135 LOC for interaction
+mechanics; the Harness session model-selection contract adds 109 LOC for AI
+value normalization; and the explicit HarnessTUI binding converts those
+neutral records into view models without making the lightweight catalog import
+Harness. The total removed interaction/projection code is 175
+LOC against 289 shared LOC (0.61 deletion/addition). The interaction sub-slice
+alone is 100/135 (0.74); the lower aggregate reflects making the AI endpoint
+projection explicit rather than retaining dynamic attribute probing in Coding.
+`harnesstui` remains free of AI imports, Harness owns the AI-aware value
+contract, and no shared module imports Coding. Independent HarnessTUI probes,
+endpoint identity regressions, and the Coding model-list suite remain green.
+
+### Wave 7, Slice E: CLI Standard Operation Host (Complete)
+
+Coding previously repeated the same capability call, error projection, output
+write, and early-return loop around shared CLI leaf operations. The reusable
+host behavior now lives in `harness.cli.host_operations`, while
+`CliOperationSequence` owns ordered sync/async early-exit dispatch.
+
+| Source region | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| session catalog query validation, projection and output | `harness.cli.host_operations` | query values and selected format | Complete |
+| export, model/command/diagnostic/skill/plugin list execution | `harness.cli.host_operations` | operation enablement and declared order | Complete |
+| resource toggle and package lifecycle CLI result/error writing | `harness.cli.host_operations` | package security and diagnostic callbacks | Complete |
+| command invocation CLI result/error writing | `harness.cli.host_operations` | command arguments and result-format choice | Complete |
+| first-handled standard operation dispatch | `harness.cli.CliOperationSequence` | Product stage selection, insertion and order | Complete |
+| TTY selection, output guard, launch conflicts and runtime-mode projection | `harness.cli.CliLaunchPlan` | `CliArgs` to plan projection | Complete |
+
+Coding still owns Method visibility, package catalog fallback, diagnostics
+archive export, argument grammar, bootstrap policy, Work binding, and final
+mode selection. These are not hidden behind a compatibility facade.
+
+Slice E accounting (production implementation only):
+`coding/cli/__main__.py` changed from 1,994 to 1,725 LOC. The diff removes 575
+Coding lines and adds 306 lines of request/stage/plan declaration, for a net
+Coding reduction of 269 LOC. Harness adds approximately 601 production lines
+across the operation host, launch plan, sequence runtime, and public exports,
+giving a gross deleted/shared-added ratio of approximately 0.96. Tests and documentation are
+excluded from the ratio. The detailed boundary is documented in
+`cli-product-host-collapse.md`; the complete Coding CLI and independent Harness
+CLI suites remain green with unchanged operation precedence, output, and exit
+codes.
+
+### Wave 7, Slice F: Standard Agent Settings Profile (Complete)
+
+The former Coding settings manager already delegated its storage and
+transaction mechanics to `SettingsRuntime`, `ScopedConfigRuntime`, and
+`LayeredConfig`, but Coding still owned every standard Agent setting record,
+field codec, getter, setter, and collection mutation. These reusable surfaces
+now live in the optional `harness.config.agent` profile. The profile composes
+the existing config stack and does not introduce another settings engine.
+
+| Source region | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| standard Agent settings records and defaults | `harness.config.agent.types` | Product-only additions and overlays | Complete |
+| standard field codecs, validation, getters, setters, and mutations | `harness.config.agent.SettingsManager` | none | Complete |
+| layered load/merge/persist/reload, snapshots, listeners, issue drain | existing `harness.config` runtimes | none | Reused, not duplicated |
+| settings paths and command-backed value execution | Coding | `.loushang/coding` path and shell-runner policy | Retained |
+| model catalog policy | Coding/AI | preferred models and Product selection policy | Retained |
+
+The neutral config core remains free of Agent and AI imports. Only the explicit
+`config.agent` profile admits stable Agent/AI value types, and the entire config
+package remains free of Coding imports. Production Coding consumers now import
+the shared settings owner directly; `coding.control` retains only its public
+export identity alongside Product-owned control services.
+
+Slice F accounting (production implementation only): the deleted Coding
+implementation was 1,580 LOC (`settings_manager.py` 1,403 plus `types.py` 177).
+The shared profile contains 1,640 LOC including its 59-line public export, a
+gross deleted/shared-added ratio of 0.96. Coding Python fell from 15,737 to
+14,157 LOC. The behavior suite moved to the shared owner and the broader config,
+Coding control/package, and architecture regression completed with 211 passing
+tests.

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field, replace
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -10,11 +10,6 @@ from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.types import Message, TextPart
 from loushang.coding.capability_plan import resolve_coding_capability_profile
-from loushang.coding.control import (
-    ControlConfig,
-    ModelRegistry,
-    SettingsManager,
-)
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
@@ -45,9 +40,11 @@ from loushang.harness.capabilities import bind_capability_composition_runtime
 from loushang.harness.capabilities.packs import CapabilityPackComposer
 from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.config import ConfigActivationStep
+from loushang.harness.config.agent import ControlConfig, SettingsManager
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.diagnostics.types import DiagnosticRecord, StartupCheckResult
+from loushang.harness.diagnostics.types import StartupCheckResult
 from loushang.harness.extensions.context import SessionStartEvent
+from loushang.harness.model_catalog import ModelCatalog
 from loushang.harness.resources.activation import SkillActivationRuntime
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.layout import resolve_user_resource_roots
@@ -60,6 +57,35 @@ from loushang.harness.resources.packages.source_resolver import (
     package_source_scopes,
 )
 from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.session import (
+    AgentSessionConstructionRequest,
+    AgentSessionConstructionRuntime,
+    AgentSessionServices,
+    BootstrapServices,
+    CreateAgentSessionResult,
+    CwdBoundServicesAudit,
+    record_default_model_unavailable,
+    resolve_default_model,
+    scoped_models_from_patterns,
+)
+from loushang.harness.session import (
+    CwdBoundServicesAuditIssue as _CwdBoundServicesAuditIssue,
+)
+from loushang.harness.session import (
+    append_system_prompt_fragments as _append_system_prompt_fragments,
+)
+from loushang.harness.session import (
+    audit_cwd_bound_services as _audit_cwd_bound_services,
+)
+from loushang.harness.session import (
+    loader_append_system_prompt as _loader_append_system_prompt,
+)
+from loushang.harness.session import (
+    loader_system_prompt_override as _loader_system_prompt_override,
+)
+from loushang.harness.session import (
+    normalize_no_tools as _normalize_no_tools,
+)
 from loushang.harness.tools.contribution import (
     resolve_tool_contributions,
 )
@@ -70,33 +96,7 @@ AgentFactory = Callable[..., Agent]
 ServicesFactory = Callable[[str], "BootstrapServices"]
 NoToolsMode = Literal["all", "builtin"]
 ExtensionFlagValues = Mapping[str, bool | str]
-
-
-@dataclass(frozen=True)
-class BootstrapServices:
-    settings_manager: SettingsManager
-    model_registry: ModelRegistry
-    resource_loader: DefaultResourceLoader
-    diagnostics_service: DiagnosticsService
-    exec_service: ExecService = field(default_factory=ExecService)
-
-
-@dataclass(frozen=True)
-class CwdBoundServicesAuditIssue:
-    code: str
-    message: str
-    details: dict[str, object]
-    level: Literal["info", "warning", "error"] = "warning"
-
-
-@dataclass(frozen=True)
-class CwdBoundServicesAudit:
-    session_cwd: str
-    issues: list[CwdBoundServicesAuditIssue]
-
-    @property
-    def ok(self) -> bool:
-        return not self.issues
+CwdBoundServicesAuditIssue = _CwdBoundServicesAuditIssue
 
 
 @dataclass
@@ -116,43 +116,6 @@ class _SessionConfigurationState:
         return self.session_manager.get_header().conversation_id
 
 
-@dataclass(frozen=True)
-class AgentSessionServices:
-    cwd: str
-    services: BootstrapServices
-    resource_bundle: ResourceBundle | None = None
-    extension_runner: ExtensionRunner | None = None
-    diagnostics: tuple[DiagnosticRecord, ...] = ()
-
-    @property
-    def settings_manager(self) -> SettingsManager:
-        return self.services.settings_manager
-
-    @property
-    def model_registry(self) -> ModelRegistry:
-        return self.services.model_registry
-
-    @property
-    def resource_loader(self) -> DefaultResourceLoader:
-        return self.services.resource_loader
-
-    @property
-    def diagnostics_service(self) -> DiagnosticsService:
-        return self.services.diagnostics_service
-
-    @property
-    def exec_service(self) -> ExecService:
-        return self.services.exec_service
-
-
-@dataclass(frozen=True)
-class CreateAgentSessionResult:
-    session: AgentSession
-    resource_bundle: ResourceBundle | None
-    diagnostics: tuple[DiagnosticRecord, ...]
-    cwd_bound_services_audit: CwdBoundServicesAudit | None = None
-
-
 def create_services(
     *,
     ai_model_registry: AiModelRegistry | None = None,
@@ -163,7 +126,7 @@ def create_services(
     thinking_level: ThinkingLevel = "off",
     system_prompt: str = "",
 ) -> BootstrapServices:
-    model_registry = ModelRegistry(ai_registry=ai_model_registry)
+    model_registry = ModelCatalog(ai_registry=ai_model_registry)
     resolved_settings_manager = settings_manager or SettingsManager(
         ControlConfig(
             default_model=default_model,
@@ -274,37 +237,11 @@ def audit_cwd_bound_services(
     services: BootstrapServices,
     resource_bundle: ResourceBundle | None = None,
 ) -> CwdBoundServicesAudit:
-    session_cwd = _resolve_for_audit(session_manager.get_cwd())
-    issues: list[CwdBoundServicesAuditIssue] = []
-    project_root = _settings_project_root(services.settings_manager)
-    if project_root is not None and not _path_is_at_or_under(session_cwd, project_root):
-        issues.append(
-            CwdBoundServicesAuditIssue(
-                code="settings_project_cwd_mismatch",
-                message=(
-                    "Project-scoped settings are bound to a different project root "
-                    "than the session cwd."
-                ),
-                details={
-                    "project_root": str(project_root),
-                    "session_cwd": str(session_cwd),
-                },
-            )
-        )
-    if resource_bundle is not None:
-        resource_cwd = _resolve_for_audit(resource_bundle.cwd)
-        if resource_cwd != session_cwd:
-            issues.append(
-                CwdBoundServicesAuditIssue(
-                    code="resource_bundle_cwd_mismatch",
-                    message="Resource bundle cwd does not match the session cwd.",
-                    details={
-                        "resource_cwd": str(resource_cwd),
-                        "session_cwd": str(session_cwd),
-                    },
-                )
-            )
-    return CwdBoundServicesAudit(session_cwd=str(session_cwd), issues=issues)
+    return _audit_cwd_bound_services(
+        session_cwd=session_manager.get_cwd(),
+        project_root=_settings_project_root(services.settings_manager),
+        resource_cwd=resource_bundle.cwd if resource_bundle is not None else None,
+    )
 
 
 def create_agent_session(
@@ -376,102 +313,116 @@ def create_agent_session(
         resolved_model: Model | None
         if model is None:
             default_selection = settings.default_model
-            resolved_model = _resolve_default_model_candidate(
+            default_model_resolution = resolve_default_model(
                 default_selection,
-                model_registry=services.model_registry,
-                diagnostics_service=services.diagnostics_service,
-                session_id=session_id,
+                build_model=services.model_registry.build_model,
+                endpoint_lookup=services.model_registry.ai_registry.get_endpoint,
+                on_unavailable=lambda selection, error, reason: record_default_model_unavailable(
+                    selection,
+                    error=error,
+                    reason=reason,
+                    diagnostics_service=services.diagnostics_service,
+                    session_id=session_id,
+                ),
             )
+            resolved_model = default_model_resolution.model
         elif isinstance(model, ModelSelection):
             resolved_model = services.model_registry.build_model(model)
         else:
             resolved_model = model
 
         no_tools_mode = _normalize_no_tools(no_tools)
-        resolved_tool_registry = tool_registry
-        allowed_tool_names_set = (
-            set(allowed_tool_names) if allowed_tool_names is not None else None
-        )
-        if no_tools_mode == "all":
-            allowed_tool_names_set = set()
-        if resolved_tool_registry is None and tools:
-            resolved_tool_registry = WorkspaceToolRegistry()
-            for tool in tools:
-                resolved_tool_registry.register_tool(tool)
-
-        resource_bundle, resolved_tool_registry, extension_tool_diagnostics = (
-            _register_extension_tools(
+        def _register_session_extension_tools(
+            bundle: ResourceBundle,
+            registry: WorkspaceToolRegistry | None,
+        ) -> tuple[
+            ResourceBundle,
+            WorkspaceToolRegistry | None,
+            list[ResourceDiagnostic],
+        ]:
+            return _register_extension_tools(
                 extension_runner=extension_runner,
-                resource_bundle=resource_bundle,
-                tool_registry=resolved_tool_registry,
+                resource_bundle=bundle,
+                tool_registry=registry,
                 pack_composer=capability_runtime.tool_pack_composer,
             )
-        )
-        _record_resource_diagnostics(
-            diagnostics_service=services.diagnostics_service,
-            diagnostics=extension_tool_diagnostics,
-            phase="resource_loading",
-            source="bootstrap",
-            session_id=session_id,
-        )
-        if no_tools_mode == "all" and resolved_tool_registry is None:
-            resolved_tool_registry = WorkspaceToolRegistry()
-        resolved_active_tool_names = _resolve_initial_active_tool_names(
-            active_tool_names=active_tool_names,
-            allowed_tool_names_set=allowed_tool_names_set,
-            no_tools_mode=no_tools_mode,
-            tool_registry=resolved_tool_registry,
-        )
-        initial_state: dict[str, object] = {
-            "system_prompt": resolved_prompt,
-            "thinking_level": resolved_thinking,
-            "tools": [],
-        }
-        if resolved_model is not None:
-            initial_state["model"] = resolved_model
 
-        agent_kwargs: dict[str, object] = {
-            "initial_state": initial_state,
-            "session_id": session_id,
-            "convert_to_llm": _convert_to_llm_with_block_images(
-                services.settings_manager
-            ),
-            "steering_mode": settings.steering_mode,
-            "follow_up_mode": settings.follow_up_mode,
-            "thinking_budgets": settings.thinking_budgets,
-            "max_retry_delay_ms": settings.retry.provider_max_retry_delay_ms,
-        }
-        if stream_fn is not None:
-            agent_kwargs["stream_fn"] = stream_fn
+        def _record_extension_diagnostics(
+            diagnostics: Sequence[object],
+        ) -> None:
+            _record_resource_diagnostics(
+                diagnostics_service=services.diagnostics_service,
+                diagnostics=list(diagnostics),
+                phase="resource_loading",
+                source="bootstrap",
+                session_id=session_id,
+            )
 
-        agent = agent_factory(**agent_kwargs)
-        agent.session_id = session_id
-        session = AgentSession(
-            agent=agent,
-            session_manager=session_manager,
-            settings_manager=services.settings_manager,
-            model_registry=services.model_registry,
-            resource_loader=services.resource_loader,
-            resource_bundle=resource_bundle,
-            extension_runner=extension_runner,
-            tool_registry=resolved_tool_registry,
-            allowed_tool_names=[] if no_tools_mode == "all" else allowed_tool_names,
-            active_tool_names=resolved_active_tool_names,
-            default_activate_new_tools=(
-                no_tools_mode != "all" and active_tool_names is None
+        def _create_session(
+            agent: Agent,
+            bundle: ResourceBundle,
+            registry: WorkspaceToolRegistry | None,
+            initial_active_tool_names: list[str] | None,
+            session_base_prompt: str,
+            session_no_tools_mode: NoToolsMode | None,
+        ) -> AgentSession:
+            return AgentSession(
+                agent=agent,
+                session_manager=session_manager,
+                settings_manager=services.settings_manager,
+                model_registry=services.model_registry,
+                resource_loader=services.resource_loader,
+                resource_bundle=bundle,
+                extension_runner=extension_runner,
+                tool_registry=registry,
+                allowed_tool_names=[]
+                if session_no_tools_mode == "all"
+                else allowed_tool_names,
+                active_tool_names=initial_active_tool_names,
+                default_activate_new_tools=(
+                    session_no_tools_mode != "all" and active_tool_names is None
+                ),
+                show_empty_tool_prompt=session_no_tools_mode == "all",
+                base_prompt=session_base_prompt,
+                diagnostics_service=services.diagnostics_service,
+                session_start_event=session_start_event,
+                package_materializer=resolved_package_materializer,
+                exec_service=services.exec_service,
+                approval_resolver=approval_resolver,
+                capability_runtime=capability_runtime,
+            )
+
+        session = AgentSessionConstructionRuntime[Agent, AgentSession, ResourceBundle, WorkspaceToolRegistry]().construct(
+            AgentSessionConstructionRequest(
+                session_id=session_id,
+                base_prompt=base_prompt,
+                resolved_prompt=resolved_prompt,
+                thinking_level=resolved_thinking,
+                model=resolved_model,
+                convert_to_llm=_convert_to_llm_with_block_images(
+                    services.settings_manager
+                ),
+                steering_mode=settings.steering_mode,
+                follow_up_mode=settings.follow_up_mode,
+                thinking_budgets=settings.thinking_budgets,
+                max_retry_delay_ms=settings.retry.provider_max_retry_delay_ms,
+                stream_fn=stream_fn,
+                resource_bundle=resource_bundle,
+                tools=tools,
+                tool_registry=tool_registry,
+                allowed_tool_names=allowed_tool_names,
+                active_tool_names=active_tool_names,
+                no_tools_mode=no_tools_mode,
             ),
-            show_empty_tool_prompt=no_tools_mode == "all",
-            base_prompt=base_prompt,
-            diagnostics_service=services.diagnostics_service,
-            session_start_event=session_start_event,
-            package_materializer=resolved_package_materializer,
-            exec_service=services.exec_service,
-            approval_resolver=approval_resolver,
-            capability_runtime=capability_runtime,
+            agent_factory=agent_factory,
+            register_extension_tools=_register_session_extension_tools,
+            record_extension_diagnostics=_record_extension_diagnostics,
+            session_factory=_create_session,
         )
         session.cwd_bound_services_audit = cwd_bound_services_audit
-        scoped_models = _scoped_models_from_enabled_patterns(
-            settings.enabled_models, services.model_registry
+        scoped_models = scoped_models_from_patterns(
+            settings.enabled_models,
+            resolve_model=services.model_registry.get_model,
         )
         if scoped_models:
             session.set_scoped_models(scoped_models)
@@ -732,85 +683,6 @@ def _require_configured_extension_runner(
     return state.extension_runner
 
 
-def _resolve_default_model_candidate(
-    selection: ModelSelection | None,
-    *,
-    model_registry: ModelRegistry,
-    diagnostics_service: DiagnosticsService,
-    session_id: str,
-) -> Model | None:
-    if selection is None:
-        return None
-    try:
-        return model_registry.build_model(selection)
-    except (KeyError, ValueError) as error:
-        _record_default_model_unavailable(
-            selection,
-            error=error,
-            model_registry=model_registry,
-            diagnostics_service=diagnostics_service,
-            session_id=session_id,
-        )
-        return None
-
-
-def _record_default_model_unavailable(
-    selection: ModelSelection,
-    *,
-    error: Exception,
-    model_registry: ModelRegistry,
-    diagnostics_service: DiagnosticsService,
-    session_id: str,
-) -> None:
-    reason = _default_model_unavailable_reason(
-        selection,
-        error=error,
-        model_registry=model_registry,
-    )
-    selection_ref = (
-        f"{selection.provider}:{selection.endpoint_id}:{selection.model_id}"
-        if selection.endpoint_id
-        else f"{selection.provider}:{selection.model_id}"
-    )
-    message = f"Default model unavailable: {selection_ref}; using startup fallback."
-    diagnostics_service.record(
-        diagnostics_service.normalize_error(
-            code="default_model_unavailable",
-            error=message,
-            phase="startup",
-            source="model",
-            level="warning",
-            session_id=session_id,
-            details={
-                "provider": selection.provider,
-                "model_id": selection.model_id,
-                "endpoint_id": selection.endpoint_id,
-                "reason": reason,
-                "error": str(error),
-            },
-        )
-    )
-
-
-def _default_model_unavailable_reason(
-    selection: ModelSelection,
-    *,
-    error: Exception,
-    model_registry: ModelRegistry,
-) -> str:
-    if selection.endpoint_id:
-        endpoint = model_registry.ai_registry.get_endpoint(
-            selection.provider,
-            selection.endpoint_id,
-        )
-        if endpoint is None:
-            return "endpoint_unavailable"
-        return "missing"
-    if isinstance(error, ValueError):
-        return "ambiguous"
-    return "missing"
-
-
 def create_agent_session_from_services(
     *,
     agent_services: AgentSessionServices,
@@ -973,81 +845,8 @@ def _default_package_materializer(
     )
 
 
-def _normalize_no_tools(no_tools: NoToolsMode | bool | None) -> NoToolsMode | None:
-    if no_tools is True:
-        return "all"
-    if no_tools in (False, None):
-        return None
-    if no_tools in {"all", "builtin"}:
-        return no_tools
-    raise ValueError("no_tools must be 'all', 'builtin', True, False, or None")
-
-
-def _loader_system_prompt_override(resource_loader: object) -> str | None:
-    getter = getattr(resource_loader, "get_system_prompt_override", None)
-    if not callable(getter):
-        return None
-    value = getter()
-    return value if isinstance(value, str) else None
-
-
-def _loader_append_system_prompt(resource_loader: object) -> list[str]:
-    getter = getattr(resource_loader, "get_append_system_prompt_overrides", None)
-    if not callable(getter):
-        return []
-    values = getter()
-    if not isinstance(values, list | tuple):
-        return []
-    return [value for value in values if isinstance(value, str) and value.strip()]
-
-
-def _append_system_prompt_fragments(base_prompt: str, fragments: list[str]) -> str:
-    parts = (
-        [base_prompt.strip()]
-        if isinstance(base_prompt, str) and base_prompt.strip()
-        else []
-    )
-    parts.extend(
-        fragment.strip()
-        for fragment in fragments
-        if isinstance(fragment, str) and fragment.strip()
-    )
-    return "\n\n".join(parts)
-
-
-def _resolve_initial_active_tool_names(
-    *,
-    active_tool_names: list[str] | None,
-    allowed_tool_names_set: set[str] | None,
-    no_tools_mode: NoToolsMode | None,
-    tool_registry: WorkspaceToolRegistry | None,
-) -> list[str] | None:
-    if no_tools_mode == "all":
-        return []
-    if active_tool_names is not None:
-        names = list(active_tool_names)
-    elif no_tools_mode == "builtin":
-        names = _non_builtin_tool_names(tool_registry)
-    else:
-        return None
-    if allowed_tool_names_set is not None:
-        return [name for name in names if name in allowed_tool_names_set]
-    return names
-
-
-def _non_builtin_tool_names(tool_registry: WorkspaceToolRegistry | None) -> list[str]:
-    if tool_registry is None:
-        return []
-    builtin_names = {"bash", "read", "ls", "find", "grep", "write", "edit"}
-    return [
-        definition.name
-        for definition in tool_registry.list_enabled_definitions()
-        if definition.name not in builtin_names
-    ]
-
-
 def _reload_model_registry_with_project_layer(
-    model_registry: ModelRegistry,
+    model_registry: ModelCatalog,
     *,
     resource_bundle: ResourceBundle,
     session_cwd: str,
@@ -1089,50 +888,6 @@ def _settings_project_root(settings_manager: SettingsManager) -> Path | None:
         return None
     resolved = _resolve_for_audit(project_base_dir)
     return resolved.parent if resolved.name == ".loushang" else resolved
-
-
-def _path_is_at_or_under(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-    except ValueError:
-        return False
-    return True
-
-
-def _scoped_models_from_enabled_patterns(
-    patterns: tuple[str, ...] | None,
-    model_registry: ModelRegistry,
-) -> list[dict[str, object]]:
-    if not patterns:
-        return []
-    scoped_models: list[dict[str, object]] = []
-    for pattern in patterns:
-        model_name, thinking_level = _split_model_thinking_pattern(pattern)
-        selection = model_registry.get_model(model_name)
-        if selection is None:
-            continue
-        model_payload: dict[str, object] = {
-            "provider": selection.provider,
-            "model_id": selection.model_id,
-        }
-        if selection.endpoint_id:
-            model_payload["endpoint_id"] = selection.endpoint_id
-        scoped: dict[str, object] = {"model": model_payload}
-        if thinking_level is not None:
-            scoped["thinkingLevel"] = thinking_level
-        scoped_models.append(scoped)
-    return scoped_models
-
-
-def _split_model_thinking_pattern(pattern: str) -> tuple[str, ThinkingLevel | None]:
-    name, separator, suffix = pattern.rpartition(":")
-    if (
-        separator
-        and suffix in {"off", "minimal", "low", "medium", "high", "xhigh"}
-        and name
-    ):
-        return name, suffix
-    return pattern, None
 
 
 def _register_extension_tools(

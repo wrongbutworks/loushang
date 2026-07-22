@@ -44,6 +44,10 @@ from loushang.harness.resources.packages.roots import (
     ResolvedPackageResourceRoots,
     resolve_package_resource_roots,
 )
+from loushang.harness.resources.packages.security import (
+    PackageSecurityPolicy,
+    PackageSourceSecurityReport,
+)
 from loushang.harness.resources.packages.source import (
     PackageSourceConfig,
     PackageSourceIdentity,
@@ -88,6 +92,8 @@ __all__ = [
     "PackageSourceIdentity",
     "PackageSourcePolicy",
     "PackageResourceRefresh",
+    "PackageSecurityPolicy",
+    "PackageSourceSecurityReport",
     "PackageSourceRegistration",
     "PackageSourceResolver",
     "PackageUpdatePreparation",

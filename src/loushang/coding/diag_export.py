@@ -3,7 +3,7 @@ from __future__ import annotations
 import platform
 import sys
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -11,7 +11,11 @@ from typing import Any
 
 from loushang.harness.diagnostics.export import (
     DiagnosticExportArtifact,
+    collect_diagnostics,
     export_diagnostics_archive,
+    path_exists,
+    resolve_export_output_path,
+    utc_now,
 )
 from loushang.harness.diagnostics.serialization import serialize_diagnostic
 
@@ -30,9 +34,13 @@ def export_diagnostics_bundle(
 ) -> Path:
     root = Path(project_root).expanduser().resolve()
     sessions = Path(session_dir).expanduser().resolve()
-    generated_at = (now or _utc_now)()
-    bundle_path = _resolve_output_path(root, output, generated_at)
-    diagnostics = _collect_diagnostics(diagnostics_service)
+    generated_at = (now or utc_now)()
+    bundle_path = resolve_export_output_path(root, output, generated_at)
+    diagnostics = collect_diagnostics(
+        diagnostics_service,
+        serializer=serialize_diagnostic,
+        limit=DEFAULT_DIAGNOSTICS_LIMIT,
+    )
 
     debug_latest = (
         _default_debug_latest()
@@ -67,15 +75,6 @@ def export_diagnostics_bundle(
     )
 
 
-def _resolve_output_path(
-    root: Path, output: str | Path | None, generated_at: datetime
-) -> Path:
-    if output is not None:
-        return Path(output).expanduser().resolve()
-    timestamp = generated_at.strftime("%Y%m%dT%H%M%SZ")
-    return root / ".loushang" / "diagnostics" / f"loushang-diag-{timestamp}.zip"
-
-
 def _manifest(
     *,
     project_root: Path,
@@ -97,42 +96,12 @@ def _manifest(
         "platform": platform.platform(),
         "loushangVersion": _package_version(),
         "included": {
-            "debugLatest": _path_exists(debug_latest),
-            "traceLatest": _path_exists(trace_latest),
-            "sessionLatest": _path_exists(session_latest),
+            "debugLatest": path_exists(debug_latest),
+            "traceLatest": path_exists(trace_latest),
+            "sessionLatest": path_exists(session_latest),
             "diagnostics": bool(diagnostics),
         },
     }
-
-
-def _collect_diagnostics(diagnostics_service: Any | None) -> list[dict[str, object]]:
-    getter = getattr(diagnostics_service, "get_last_diagnostics", None)
-    if not callable(getter):
-        return []
-    try:
-        records = getter(limit=DEFAULT_DIAGNOSTICS_LIMIT)
-    except TypeError:
-        records = getter(DEFAULT_DIAGNOSTICS_LIMIT)
-    except Exception:
-        return []
-    if not isinstance(records, list | tuple):
-        return []
-    normalized: list[dict[str, object]] = []
-    for record in records:
-        try:
-            normalized.append(serialize_diagnostic(record))
-        except Exception:
-            # Diagnostics archives are shareable artifacts. Never serialize an
-            # arbitrary record representation after the product projection fails.
-            continue
-    return normalized
-
-
-def _path_exists(path: Path) -> bool:
-    try:
-        return path.exists()
-    except OSError:
-        return False
 
 
 def _default_debug_latest() -> Path:
@@ -141,10 +110,6 @@ def _default_debug_latest() -> Path:
 
 def _default_trace_latest() -> Path:
     return Path.home() / ".loushang" / "traces" / "latest"
-
-
-def _utc_now() -> datetime:
-    return datetime.now(UTC)
 
 
 def _package_version() -> str | None:

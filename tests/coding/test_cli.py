@@ -2748,8 +2748,8 @@ def test_run_cli_reports_list_sessions_invalid_payload(tmp_path) -> None:
 def test_run_cli_skips_session_records_that_fail_normalization(
     tmp_path, monkeypatch
 ) -> None:
-    from loushang.coding.cli import __main__ as cli_main
     from loushang.coding.cli.__main__ import run_cli
+    from loushang.harness.cli import host_operations
 
     valid_record = SimpleNamespace(
         session_id="session-1",
@@ -2764,15 +2764,11 @@ def test_run_cli_skips_session_records_that_fail_normalization(
         ),
     )
 
-    original = cli_main._normalize_session_record
-
-    def _broken_normalize_session_record(record: object) -> dict[str, object]:
-        if record == "broken":
-            raise RuntimeError("broken record")
-        return original(record)
-
+    original = host_operations.try_project_session_record
     monkeypatch.setattr(
-        cli_main, "_normalize_session_record", _broken_normalize_session_record
+        host_operations,
+        "try_project_session_record",
+        lambda record: None if record == "broken" else original(record),
     )
 
     runtime = FakeRuntime(FakeSession("unused"), records=["broken", valid_record])

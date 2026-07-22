@@ -20,6 +20,7 @@ def test_work_public_api_exposes_current_work_surface_without_multi_agent_types(
         "WorkEvent",
         "WorkEventFact",
         "WorkEventProjectionContext",
+        "WorkLogInspectionError",
         "WorkAcceptPort",
         "WorkCancelPort",
         "WorkCancellationFailedError",
@@ -53,6 +54,8 @@ def test_work_public_api_exposes_current_work_surface_without_multi_agent_types(
         "project_agent_event_to_work_facts",
         "project_work_plan_runs",
         "project_work_runs",
+        "inspect_work_log",
+        "resolve_work_log_path",
     }
 
     assert not hasattr(work, "AgentLane")

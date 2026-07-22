@@ -15,12 +15,7 @@ from loushang.coding.compaction.adapter import (
     execute_coding_branch_summary,
     execute_coding_compaction,
 )
-from loushang.coding.control import (
-    CompactionSettings,
-    ModelRegistry,
-    RetrySettings,
-    SettingsManager,
-)
+from loushang.coding.control.model_registry import ModelRegistry
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.platform.changelog import read_changelog_for_cwd
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
@@ -43,6 +38,11 @@ from loushang.harness.agent_transcript import (
 from loushang.harness.capabilities import (
     CapabilityCompositionRuntime,
     bind_capability_composition_runtime,
+)
+from loushang.harness.config.agent import (
+    CompactionSettings,
+    RetrySettings,
+    SettingsManager,
 )
 from loushang.harness.context import serialize_context_usage_payload
 from loushang.harness.diagnostics.service import DiagnosticsService

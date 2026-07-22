@@ -161,17 +161,28 @@ def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None
             "loushang.ai.model",
             "loushang.agent",
         ),
+        harness_root / "config" / "agent": (
+            "loushang.ai.model",
+            "loushang.agent",
+        ),
         harness_root / "host": (
             "loushang.ai.model",
             "loushang.ai.types",
             "loushang.agent",
         ),
-        harness_root / "events": (
-            "loushang.ai.json_codec",
-            "loushang.agent.json_codec",
-            "loushang.agent.types",
-        ),
-    }
+            harness_root / "events": (
+                "loushang.ai.json_codec",
+                "loushang.agent.json_codec",
+                "loushang.agent.types",
+            ),
+            harness_root / "model_catalog.py": (
+                "loushang.ai.model",
+                "loushang.ai.model.domain",
+                "loushang.ai.model.loader",
+                "loushang.ai.model.registry",
+                "loushang.ai.model.selection",
+            ),
+        }
     offenders: list[str] = []
 
     for path in sorted(harness_root.rglob("*.py")):
@@ -855,6 +866,38 @@ def test_channel_product_host_stdio_and_shutdown_helpers_are_neutral() -> None:
     assert "host_lifecycle.run_turns" in cli_source
     assert "host_lifecycle.output_guard" in cli_source
     assert not Path("src/loushang/coding/platform/output_guard.py").exists()
+
+
+def test_cli_product_host_operations_are_shared_and_product_neutral() -> None:
+    operations_source = Path(
+        "src/loushang/harness/cli/host_operations.py"
+    ).read_text(encoding="utf-8")
+    launch_source = Path("src/loushang/harness/cli/launch.py").read_text(
+        encoding="utf-8"
+    )
+    coding_source = Path("src/loushang/coding/cli/__main__.py").read_text(
+        encoding="utf-8"
+    )
+    boundary = Path(
+        "docs/internals/architecture/harness/cli-product-host-collapse.md"
+    ).read_text(encoding="utf-8")
+
+    for forbidden in (
+        "loushang.coding",
+        "loushang.method",
+        "loushang.work",
+        "loushang.tui",
+    ):
+        assert forbidden not in operations_source
+        assert forbidden not in launch_source
+    assert "CliOperationSequence" in coding_source
+    assert "CliLaunchPlan" in coding_source
+    assert "run_session_listing_operation" in coding_source
+    assert "def _run_list_sessions(" not in coding_source
+    assert "def _run_list_models(" not in coding_source
+    assert "def _run_command(" not in coding_source
+    assert "Shared Contracts" in boundary
+    assert "Dependency Rule" in boundary
 
 
 def test_session_inspection_is_neutral_and_adopted() -> None:
@@ -1583,12 +1626,16 @@ def test_harness_diagnostics_symbols_are_subpackage_exports_only() -> None:
         "DiagnosticSummary",
         "DiagnosticsQuery",
         "DiagnosticsService",
+        "collect_diagnostics",
         "ErrorReport",
+        "path_exists",
+        "resolve_export_output_path",
         "StartupCheck",
         "StartupCheckResult",
         "serialize_diagnostic",
         "serialize_diagnostic_summary",
         "serialize_error_report",
+        "utc_now",
     }
 
     assert diagnostic_symbols.isdisjoint(set(harness.__all__))
@@ -2152,7 +2199,7 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
         Path("src/loushang/coding/session_manager.py"): {
             "loushang.harness.agent_transcript.ProductTranscriptSession",
         },
-        Path("src/loushang/coding/control/settings_manager.py"): {
+            Path("src/loushang/harness/config/agent/manager.py"): {
             "loushang.harness.config.LayeredConfig",
         },
         Path("src/loushang/harness/agent_transcript/compaction.py"): {
@@ -2200,6 +2247,13 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
 
 def test_product_configuration_runtime_boundary_is_documented_and_adopted() -> None:
     import loushang.harness as harness
+    from loushang.coding.control import (
+        ControlConfig as CodingControlConfig,
+    )
+    from loushang.coding.control import (
+        SettingsManager as CodingSettingsManager,
+    )
+    from loushang.harness.config.agent import ControlConfig, SettingsManager
 
     design_path = Path(
         "docs/internals/architecture/harness/product-configuration-runtime-boundary.md"
@@ -2237,7 +2291,7 @@ def test_product_configuration_runtime_boundary_is_documented_and_adopted() -> N
     )
 
     expected_imports = {
-        Path("src/loushang/coding/control/settings_manager.py"): {
+            Path("src/loushang/harness/config/agent/manager.py"): {
             "loushang.harness.config.ConfigFieldSpec",
             "loushang.harness.config.LayeredConfig",
             "loushang.harness.config.SchemaConfigCodec",
@@ -2257,13 +2311,32 @@ def test_product_configuration_runtime_boundary_is_documented_and_adopted() -> N
             f"{path.as_posix()} missing {name}" for name in sorted(required - imports)
         )
     assert missing == []
+    assert not Path("src/loushang/coding/control/settings_manager.py").exists()
+    assert not Path("src/loushang/coding/control/types.py").exists()
+    assert CodingControlConfig is ControlConfig
+    assert CodingSettingsManager is SettingsManager
 
     assert (
         _find_forbidden_imports(
             ImportBoundary(
-                name="harness config",
+                name="harness config product boundary",
                 root=Path("src/loushang/harness/config"),
-                forbidden_prefixes=("loushang.ai", "loushang.coding"),
+                forbidden_prefixes=("loushang.coding",),
+            )
+        )
+        == []
+    )
+    agent_profile_paths = frozenset(
+        path.as_posix()
+        for path in Path("src/loushang/harness/config/agent").rglob("*.py")
+    )
+    assert (
+        _find_forbidden_imports(
+            ImportBoundary(
+                name="neutral harness config",
+                root=Path("src/loushang/harness/config"),
+                forbidden_prefixes=("loushang.ai", "loushang.agent"),
+                allowed_paths=agent_profile_paths,
             )
         )
         == []
@@ -2619,7 +2692,7 @@ def test_harness_control_plane_symbols_are_not_top_level_exports() -> None:
 def test_coding_control_plane_adapters_use_harness_mechanisms() -> None:
     approval_path = Path("src/loushang/coding/policy/approval.py")
     approval_imports = set(_absolute_imports(approval_path))
-    assert "loushang.harness.approval.ApprovalBroker" in approval_imports
+    assert "loushang.harness.approval.InteractiveApprovalResolver" in approval_imports
 
     approval_tree = ast.parse(
         approval_path.read_text(encoding="utf-8"),
@@ -2636,7 +2709,7 @@ def test_coding_control_plane_adapters_use_harness_mechanisms() -> None:
         for node in ast.walk(approval_tree)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
     }
-    assert "ApprovalBroker" in approval_calls
+    assert "super" in approval_calls
     assert not any(
         _matches_any(imported, ("asyncio",)) for imported in approval_imports
     )
@@ -2646,11 +2719,7 @@ def test_coding_control_plane_adapters_use_harness_mechanisms() -> None:
 
     policy_path = Path("src/loushang/coding/policy/engine.py")
     policy_imports = set(_absolute_imports(policy_path))
-    assert {
-        "loushang.harness.policy.RulePolicyEvaluator",
-        "loushang.harness.policy.normalize_command_subject",
-    }.issubset(policy_imports)
-
+    assert "loushang.harness.policy_engine.PolicyEngine" in policy_imports
     policy_tree = ast.parse(
         policy_path.read_text(encoding="utf-8"),
         filename=policy_path.as_posix(),
@@ -2660,13 +2729,14 @@ def test_coding_control_plane_adapters_use_harness_mechanisms() -> None:
         for node in ast.walk(policy_tree)
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
     }
-    assert {
-        "_direct_command_tokens",
-        "_split_env_string",
-        "_unwrap_env_command",
-        "_unwrap_leading_wrappers",
-    }.isdisjoint(policy_function_names)
-    assert not any(_matches_any(imported, ("shlex",)) for imported in policy_imports)
+    assert policy_function_names <= {"__init__"}
+
+    shared_policy_path = Path("src/loushang/harness/policy_engine.py")
+    shared_policy_imports = set(_absolute_imports(shared_policy_path))
+    assert not any(
+        _matches_any(imported, ("loushang.coding", "loushang.design", "loushang.ppt"))
+        for imported in shared_policy_imports
+    )
 
     extension_paths = (
         Path("src/loushang/coding/extensions/runner.py"),
@@ -3510,7 +3580,8 @@ def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
     assert "_clone_from_builtin" not in session_source
     assert "_import_from_builtin" not in session_source
     assert "SessionRpcOperationBinding" in rpc_source
-    assert "require_session_operation_session" in cli_source
+    assert "ProductHostLifecycle" in cli_source
+    assert "require_session_operation_session" not in cli_source
 
 
 def test_product_capability_composition_core_is_documented_and_adopted() -> None:

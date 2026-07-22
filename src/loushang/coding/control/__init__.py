@@ -4,8 +4,7 @@ from loushang.coding.control.config_value import (
     resolve_config_value,
 )
 from loushang.coding.control.model_registry import ModelRegistry
-from loushang.coding.control.settings_manager import SettingsError, SettingsManager
-from loushang.coding.control.types import (
+from loushang.harness.config.agent import (
     BranchSummarySettings,
     CompactionSettings,
     ControlConfig,
@@ -16,6 +15,8 @@ from loushang.coding.control.types import (
     MethodSettings,
     QueueMode,
     RetrySettings,
+    SettingsError,
+    SettingsManager,
     StatusLineControlSettings,
     TerminalSettings,
     ToolSettings,

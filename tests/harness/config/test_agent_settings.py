@@ -9,7 +9,7 @@ import pytest
 def test_settings_manager_loads_global_and_project_settings_with_project_precedence(
     tmp_path,
 ) -> None:
-    from loushang.coding.control import SettingsManager
+    from loushang.harness.config.agent import SettingsManager
 
     global_settings_path = tmp_path / "global-settings.json"
     project_settings_path = tmp_path / "project-settings.json"
@@ -80,7 +80,7 @@ def test_settings_manager_loads_global_and_project_settings_with_project_precede
 def test_settings_manager_loads_method_settings_with_project_precedence(
     tmp_path,
 ) -> None:
-    from loushang.coding.control import MethodSettings, SettingsManager
+    from loushang.harness.config.agent import MethodSettings, SettingsManager
 
     global_settings_path = tmp_path / "global-settings.json"
     project_settings_path = tmp_path / "project-settings.json"
@@ -107,7 +107,7 @@ def test_settings_manager_loads_method_settings_with_project_precedence(
 
 
 def test_settings_manager_persists_method_settings_updates(tmp_path) -> None:
-    from loushang.coding.control import MethodSettings, SettingsManager
+    from loushang.harness.config.agent import MethodSettings, SettingsManager
 
     global_settings_path = tmp_path / "global-settings.json"
     project_settings_path = tmp_path / "project-settings.json"
@@ -143,7 +143,10 @@ def test_settings_manager_persists_method_settings_updates(tmp_path) -> None:
 def test_settings_manager_loads_statusline_settings_with_project_precedence(
     tmp_path,
 ) -> None:
-    from loushang.coding.control import SettingsManager, StatusLineControlSettings
+    from loushang.harness.config.agent import (
+        SettingsManager,
+        StatusLineControlSettings,
+    )
 
     global_settings_path = tmp_path / "global-settings.json"
     project_settings_path = tmp_path / "project-settings.json"
@@ -187,7 +190,10 @@ def test_settings_manager_loads_statusline_settings_with_project_precedence(
 
 
 def test_settings_manager_persists_statusline_settings_updates(tmp_path) -> None:
-    from loushang.coding.control import SettingsManager, StatusLineControlSettings
+    from loushang.harness.config.agent import (
+        SettingsManager,
+        StatusLineControlSettings,
+    )
 
     settings_path = tmp_path / "settings.json"
     manager = SettingsManager(global_settings_path=settings_path)
@@ -233,7 +239,10 @@ def test_settings_manager_persists_statusline_settings_updates(tmp_path) -> None
 def test_settings_manager_ignores_invalid_statusline_patch_without_dropping_other_settings(
     tmp_path,
 ) -> None:
-    from loushang.coding.control import SettingsManager, StatusLineControlSettings
+    from loushang.harness.config.agent import (
+        SettingsManager,
+        StatusLineControlSettings,
+    )
 
     settings_path = tmp_path / "settings.json"
     settings_path.write_text(
@@ -262,7 +271,7 @@ def test_settings_manager_ignores_invalid_statusline_patch_without_dropping_othe
 def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(
     tmp_path,
 ) -> None:
-    from loushang.coding.control import (
+    from loushang.harness.config.agent import (
         BranchSummarySettings,
         CompactionSettings,
         ImageSettings,
@@ -433,7 +442,7 @@ def test_settings_manager_persists_scoped_updates_and_notifies_subscribers(
 def test_settings_manager_package_source_add_remove_uses_package_identity(
     tmp_path,
 ) -> None:
-    from loushang.coding.control import SettingsManager
+    from loushang.harness.config.agent import SettingsManager
 
     settings_path = tmp_path / "settings.json"
     manager = SettingsManager(global_settings_path=settings_path)
@@ -474,10 +483,10 @@ def test_settings_manager_package_source_add_remove_uses_package_identity(
     assert manager.get_package_sources() == []
 
 
-def test_settings_manager_exposes_pi_style_control_getters_and_setters(
+def test_settings_manager_exposes_standard_control_getters_and_setters(
     tmp_path,
 ) -> None:
-    from loushang.coding.control import SettingsManager
+    from loushang.harness.config.agent import SettingsManager
 
     settings_path = tmp_path / "settings.json"
     manager = SettingsManager(global_settings_path=settings_path)
@@ -554,7 +563,7 @@ def test_settings_manager_exposes_pi_style_control_getters_and_setters(
 
 
 def test_settings_manager_transport_setting_is_removed() -> None:
-    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.harness.config.agent import ControlConfig, SettingsManager
 
     manager = SettingsManager()
 
@@ -573,7 +582,7 @@ def test_settings_manager_transport_setting_is_removed() -> None:
 
 
 def test_settings_manager_reports_persisted_removed_transport_setting(tmp_path) -> None:
-    from loushang.coding.control import SettingsManager
+    from loushang.harness.config.agent import SettingsManager
 
     global_settings_path = tmp_path / "global-settings.json"
     global_settings_path.write_text(
@@ -601,10 +610,10 @@ def test_settings_manager_reports_persisted_removed_transport_setting(tmp_path) 
     assert "transport setting has been removed" in errors[0].message
 
 
-def test_settings_manager_control_getters_apply_pi_style_defaults_and_bounds(
+def test_settings_manager_control_getters_apply_standard_defaults_and_bounds(
     tmp_path, monkeypatch
 ) -> None:
-    from loushang.coding.control import SettingsManager
+    from loushang.harness.config.agent import SettingsManager
 
     monkeypatch.delenv("PI_HARDWARE_CURSOR", raising=False)
     manager = SettingsManager(global_settings_path=tmp_path / "settings.json")
@@ -634,7 +643,7 @@ def test_settings_manager_control_getters_apply_pi_style_defaults_and_bounds(
 def test_settings_manager_exposes_resource_and_package_source_getters_and_setters(
     tmp_path,
 ) -> None:
-    from loushang.coding.control import SettingsManager
+    from loushang.harness.config.agent import SettingsManager
     from loushang.harness.resources.packages.source import PackageSourceConfig
 
     manager = SettingsManager(global_settings_path=tmp_path / "settings.json")
@@ -675,7 +684,7 @@ def test_settings_manager_exposes_resource_and_package_source_getters_and_setter
 
 
 def test_settings_manager_initial_config_preserves_package_sources() -> None:
-    from loushang.coding.control import ControlConfig, SettingsManager
+    from loushang.harness.config.agent import ControlConfig, SettingsManager
     from loushang.harness.resources.packages.source import PackageSourceConfig
 
     source = PackageSourceConfig(
@@ -690,7 +699,7 @@ def test_settings_manager_initial_config_preserves_package_sources() -> None:
 
 
 def test_settings_manager_exposes_scope_patch_snapshots(tmp_path) -> None:
-    from loushang.coding.control import SettingsManager
+    from loushang.harness.config.agent import SettingsManager
 
     global_settings_path = tmp_path / "global-settings.json"
     project_settings_path = tmp_path / "project-settings.json"
@@ -722,7 +731,7 @@ def test_settings_manager_exposes_scope_patch_snapshots(tmp_path) -> None:
 
 
 def test_settings_manager_records_load_errors_without_failing_startup(tmp_path) -> None:
-    from loushang.coding.control import SettingsManager
+    from loushang.harness.config.agent import SettingsManager
 
     global_settings_path = tmp_path / "global-settings.json"
     project_settings_path = tmp_path / "project-settings.json"
@@ -747,7 +756,7 @@ def test_settings_manager_records_load_errors_without_failing_startup(tmp_path) 
 def test_settings_manager_reload_preserves_previous_scope_when_reload_fails(
     tmp_path,
 ) -> None:
-    from loushang.coding.control import SettingsManager
+    from loushang.harness.config.agent import SettingsManager
 
     project_settings_path = tmp_path / "project-settings.json"
     project_settings_path.write_text(

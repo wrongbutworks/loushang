@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from loushang.ai.model import (
+    Model,
     ModelSelection,
     is_usable_model_selection,
     normalize_model_selection,
@@ -22,6 +23,110 @@ class ModelSelectionApplyResult:
     selection: ModelSelection
     persisted: bool = False
     persistence_error: Exception | None = None
+
+
+@dataclass(frozen=True)
+class ModelIdentityData:
+    """Neutral model identity for a presentation or settings adapter."""
+
+    label: str | None = None
+    value: str | None = None
+
+
+@dataclass(frozen=True)
+class ModelChoiceData:
+    """Neutral model detail projected without a TUI dependency."""
+
+    label: str
+    value: str
+    selection: object
+    endpoint_id: str = ""
+    region: str = ""
+    lane: str = ""
+    api: str = ""
+    preferred_endpoint: bool = False
+    description: str = ""
+
+
+def model_identity_data(selection: object | None) -> ModelIdentityData:
+    normalized = normalize_model_selection(selection)
+    if normalized is None:
+        return ModelIdentityData()
+    label = f"{normalized.provider}/{normalized.model_id}"
+    value = (
+        f"{normalized.provider}:{normalized.endpoint_id}:{normalized.model_id}"
+        if normalized.endpoint_id
+        else None
+    )
+    return ModelIdentityData(label=label, value=value)
+
+
+def model_choice_data_from_details(
+    details: Iterable[object],
+) -> list[ModelChoiceData]:
+    choices: list[ModelChoiceData] = []
+    seen: set[str] = set()
+    for detail in details:
+        normalized = normalize_model_selection(detail)
+        if normalized is None:
+            continue
+        label = f"{normalized.provider}/{normalized.model_id}"
+        value = (
+            f"{normalized.provider}:{normalized.endpoint_id}:{normalized.model_id}"
+            if normalized.endpoint_id
+            else label
+        )
+        if value in seen:
+            continue
+        seen.add(value)
+        choices.append(
+            ModelChoiceData(
+                label=label,
+                value=value,
+                selection=detail,
+                endpoint_id=normalized.endpoint_id or "",
+                region=_detail_string(detail, "region"),
+                lane=_detail_string(detail, "lane"),
+                api=_detail_string(detail, "api"),
+                preferred_endpoint=_detail_bool(
+                    detail, "preferred_endpoint", "preferredEndpoint", "preferred"
+                ),
+                description=_detail_string(detail, "name", "family", "alias"),
+            )
+        )
+    return choices
+
+
+def _detail_string(value: object, *names: str) -> str:
+    for name in names:
+        field = _detail_field(value, name)
+        if isinstance(field, str) and field.strip():
+            return field.strip()
+    return ""
+
+
+def _detail_bool(value: object, *names: str) -> bool:
+    return any(_detail_field(value, name) is True for name in names)
+
+
+def _detail_field(value: object, name: str) -> object | None:
+    if isinstance(value, Mapping):
+        return value.get(name)
+    if isinstance(value, Model):
+        return {
+            "api": value.api,
+            "region": value.region,
+            "lane": value.lane,
+            "preferred_endpoint": value.preferred_endpoint,
+            "preferred": value.preferred_endpoint,
+            "name": value.name,
+            "family": value.family,
+            "alias": value.alias,
+        }.get(name)
+    try:
+        return vars(value).get(name)
+    except TypeError:
+        return None
 
 
 async def apply_session_model_selection(
@@ -292,6 +397,8 @@ async def _maybe_await(value: Any) -> Any:
 
 __all__ = [
     "ModelCandidates",
+    "ModelChoiceData",
+    "ModelIdentityData",
     "ModelSelectionApplyResult",
     "PersistModelSelection",
     "apply_session_model_selection",
@@ -302,6 +409,8 @@ __all__ = [
     "format_model_metadata_table",
     "model_listing_getter",
     "model_listing_matches_query",
+    "model_choice_data_from_details",
+    "model_identity_data",
     "normalize_model_listing",
     "unique_sorted_model_entries",
 ]

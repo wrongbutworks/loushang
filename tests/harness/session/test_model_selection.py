@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from loushang.ai.model import ModelSelection
+from loushang.ai.model import Model, ModelSelection
 from loushang.harness.session.model_selection import (
     apply_session_model_selection,
     ensure_usable_session_model,
     format_model_metadata_table,
+    model_choice_data_from_details,
+    model_identity_data,
     model_listing_matches_query,
     normalize_model_listing,
     unique_sorted_model_entries,
@@ -81,3 +83,22 @@ def test_model_listing_normalizes_dedupes_and_formats_shared_values() -> None:
     assert format_model_metadata_table(entries).splitlines()[0].startswith(
         "provider"
     )
+
+
+def test_model_choice_data_projects_ai_details_without_tui_dependency() -> None:
+    detail = Model(
+        id="gpt-5",
+        provider="openai",
+        endpoint="responses",
+        api="responses",
+        preferred_endpoint=True,
+        name="General model",
+    )
+
+    choices = model_choice_data_from_details([detail])
+
+    assert choices[0].value == "openai:responses:gpt-5"
+    assert choices[0].preferred_endpoint is True
+    assert model_identity_data(
+        ModelSelection(provider="openai", endpoint_id="responses", model_id="gpt-5")
+    ).value == "openai:responses:gpt-5"

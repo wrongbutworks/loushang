@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Awaitable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
@@ -352,6 +352,106 @@ class ApprovalBroker:
             )
 
 
+ApprovalPayloadProjector = Callable[[ApprovalRequest], Mapping[str, object]]
+
+
+@dataclass(frozen=True)
+class _CallbackApprovalPresenter(ApprovalPresenter):
+    callback: Callable[[dict[str, object]], Awaitable[None] | None]
+    payload_projector: ApprovalPayloadProjector
+    dismiss_callback: Callable[[str], Awaitable[None] | None] | None = None
+
+    async def present(self, request: ApprovalRequest) -> None:
+        payload = dict(self.payload_projector(request))
+        result = self.callback(payload)
+        if inspect.isawaitable(result):
+            await result
+
+    def dismiss(self, request: ApprovalRequest) -> Awaitable[None] | None:
+        if self.dismiss_callback is None or request.action_id is None:
+            return None
+        return self.dismiss_callback(request.action_id)
+
+
+@dataclass
+class InteractiveApprovalResolver:
+    """Reusable callback-backed approval lifecycle over :class:`ApprovalBroker`."""
+
+    fallback: ApprovalResolver
+    timeout_seconds: float | None = None
+    payload_projector: ApprovalPayloadProjector = approval_request_to_dict
+    _broker: ApprovalBroker = field(init=False, repr=False)
+    _request_presenter: Callable[[dict[str, object]], Awaitable[None] | None] | None = (
+        field(default=None, init=False, repr=False)
+    )
+    _request_dismisser: Callable[[str], Awaitable[None] | None] | None = field(
+        default=None, init=False, repr=False
+    )
+    _session_open: bool = field(default=True, init=False, repr=False)
+    _session_close_reason: str = field(
+        default="Session closed before approval was resolved",
+        init=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        self._broker = ApprovalBroker(
+            fallback=self.fallback,
+            timeout_seconds=self.timeout_seconds,
+        )
+
+    def set_request_presenter(
+        self,
+        presenter: Callable[[dict[str, object]], Awaitable[None] | None] | None,
+        *,
+        dismisser: Callable[[str], Awaitable[None] | None] | None = None,
+    ) -> None:
+        if presenter is None and dismisser is not None:
+            raise ValueError("dismisser requires a request presenter")
+        self._broker.set_presenter(
+            _CallbackApprovalPresenter(presenter, self.payload_projector, dismisser)
+            if presenter is not None
+            else None
+        )
+        self._request_presenter = presenter
+        self._request_dismisser = dismisser
+
+    async def resolve(self, request: ApprovalRequest) -> ApprovalDecision:
+        if not self._session_open:
+            return ApprovalDecision.deny(self._session_close_reason)
+        return await self._broker.resolve(request)
+
+    def open_session(self) -> None:
+        self._session_open = True
+
+    async def handle_result(
+        self, action_id: str, *, approved: bool, reason: str | None = None
+    ) -> bool:
+        return self._broker.resolve_request(
+            action_id,
+            ApprovalDecision.allow() if approved else ApprovalDecision.deny(reason),
+        )
+
+    def close_session(
+        self,
+        reason: str = "Session closed before approval was resolved",
+    ) -> int:
+        self._session_open = False
+        self._session_close_reason = reason
+        return self._broker.cancel_all(ApprovalDecision.deny(reason))
+
+    def dispose(
+        self, reason: str = "Session closed before approval was resolved"
+    ) -> int:
+        decision = ApprovalDecision.deny(reason)
+        self._session_open = False
+        self._session_close_reason = reason
+        self._broker.set_presenter(None)
+        self._request_presenter = None
+        self._request_dismisser = None
+        return self._broker.dispose(decision)
+
+
 class _FrozenDict(dict[str, Any]):
     """Immutable dict snapshot that remains compatible with serializers."""
 
@@ -511,7 +611,9 @@ __all__ = [
     "ApprovalResolver",
     "DenyApprovalResolver",
     "HeadlessApprovalResolver",
+    "InteractiveApprovalResolver",
     "MaybeAwaitable",
+    "ApprovalPayloadProjector",
     "approval_request_to_dict",
     "ensure_approval_action_id",
     "resolve_approval",
