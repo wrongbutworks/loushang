@@ -5,8 +5,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
-from loushang.coding.control import SettingsManager
-from loushang.coding.control.settings_manager import SettingsScope
 from loushang.coding.package_projection import (
     collect_coding_package_catalog,
 )
@@ -14,6 +12,7 @@ from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
 )
 from loushang.coding.session_manager import SessionManager
+from loushang.harness.config.agent import SettingsManager, SettingsScope
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.packages.catalog_diagnostics import (
     PackageCatalogDiagnosticsRecorder,

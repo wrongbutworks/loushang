@@ -91,7 +91,7 @@ entries.
 | `coding.cli` | Keep product | Product CLI. It may expose harness-backed behavior but remains coding-owned. |
 | `coding.message` | Migrated and removed | `harness.conversation` owns the neutral envelope, repository, replay, and opaque-record behavior. The optional `harness.agent_transcript` profile owns standard Agent transcript payloads, codecs, state/context projection, the pure record factory, idempotent application-message commit, and an explicit Session v3 external importer. Native Product load accepts only the current format. Coding keeps only product presentation and orchestration policy. |
 | `coding.session_manager` | Product adapter | `ConversationStore`, revision/CAS semantics, Memory/File backends, and the open Agent transcript service live in Harness. The current Native Agent transcript codec, journal policy, lock, file layout, discovery, `FileConversationStore` assembly, standard session-facing commit/label/context operations, catalog summary/query/index/tree read model, lifecycle mechanics, and `AgentTranscriptSessionFactory` header/create/load/recent-resume/fork orchestration now live in `harness.agent_transcript`. Coding's `SessionManager` retains only root/persist decisions, runtime/capability profile binding, restored-header validation, Product-only runtime capability access, and the public top-level `loushang.coding.SessionManager` name. The retired `coding.store` package has no compatibility facade. Database/Redis providers and journal-offset projection checkpoints remain deferred. |
-| `coding.control` | Product adapter | Transactional ordered layers and persistence, `ConfigFieldSpec` / `SchemaConfigCodec`, scoped revisions and `ConfigChange` records, subscriptions, issue collection, injected-runner value resolution, and the explicit activation DAG live in `loushang.harness.config`. Coding keeps `ControlConfig`, fields, defaults, validation, paths, removed-setting compatibility, convenience APIs, diagnostic wording, effect selection/order/callbacks, provider registration, persisted model-selection policy, commands, and UI. Harness neither executes shell commands nor stores credentials. `ModelRegistry` remains Product-owned; request authentication declarations and credential-to-header resolution remain AI-owned. Coding has no authentication lifecycle or credential store. |
+| `coding.control` | Product adapter | Transactional ordered layers and persistence, `ConfigFieldSpec` / `SchemaConfigCodec`, scoped revisions and `ConfigChange` records, subscriptions, issue collection, injected-runner value resolution, and the explicit activation DAG live in `loushang.harness.config`. The optional `harness.config.agent` profile owns the standard Agent-product settings records, codecs, defaults, getters, setters, and collection mutations by composing those existing engines. Coding keeps settings paths, its command-backed value runner, `ModelRegistry`, Product-only policy and presentation. Harness never stores credentials; request authentication declarations and credential-to-header resolution remain AI-owned. |
 | removed `coding.package`, `coding.plugin`, `coding.skill`; `coding.resources` | Canonical split complete / Product content | Package source/manifest/materialization, standard roots/layout, registry/resolver, discovery, skill-loading, structured package catalog, scoped source resolution, lifecycle summary, conflict diagnostics, install/update/remove/uninstall ordering, and package record projections live under `loushang.harness.resources`. `coding.resource_runtime` binds Coding's built-in content, `CLAUDE.md` convention, prompt assembly, package security policy, and settings fallback; `coding.package_projection` retains only discovery/materializer binding. `coding.resources` retains only built-in product content. No legacy import facades remain. |
 | `coding.workflow` | Product adapter | `loushang.harness.scenario` owns workflow schema, parser, runner, cancellation, waiting, event patterns, result values, fake adapter, read-only file assertions, and the injected command-runner protocol. Coding keeps CLI/reporting, model readiness, scenario activation, and legacy local-shell execution policy; shared scenario imports are direct. |
 | `coding.platform` | Canonical split complete | Git metadata is owned by `harness.workspace.git`; text and image clipboard capabilities are owned by `tui.clipboard` and `tui.clipboard_image`. Internal consumers use those canonical paths and the retired Coding facades are absent. Product update/version, footer projection, and output guards remain in Coding. |
@@ -281,10 +281,11 @@ semantic branch `harness/product-configuration-runtime`; see
 
 Harness now owns transactional layered configuration, Product-injected schema
 mechanics, typed scopes and revisioned change records, value resolution with an
-injected runner, and explicit activation DAG ordering and reporting. Coding
-adopts those mechanisms while retaining `ControlConfig`, all field semantics,
-defaults, validation, paths, removed-setting compatibility, convenience APIs,
-diagnostic wording, and configuration effect order and callbacks.
+injected runner, and explicit activation DAG ordering and reporting. The
+optional `harness.config.agent` profile composes those owners into the standard
+Agent settings contract, including `ControlConfig`, common field semantics,
+defaults, validation, accessors, and mutations. Coding retains paths, its shell
+runner, diagnostic projection, and configuration effect callbacks.
 
 The activation runtime is neither a service locator nor a Product or extension
 manifest. Harness does not execute a shell or store credentials. `ModelRegistry`,
@@ -563,10 +564,11 @@ kept as forwarding facades.
 - Do not add product imports from `loushang.harness`.
 - Default reusable concrete implementations to Harness; keep only
   domain-specific tool semantics in products.
-- Freeze Product configuration semantics and model-selection ownership, not neutral
-  configuration mechanisms. `ControlConfig` fields, defaults, validation,
-  paths, removed-setting compatibility, convenience APIs, diagnostic wording,
-  and effect selection/order/callbacks remain Product-owned.
+- Keep Product-only configuration semantics in the Product, not standard Agent
+  settings or neutral configuration mechanisms. Coding retains paths,
+  Product-only overlays, diagnostic wording, and effect callbacks; common
+  `ControlConfig` fields, codecs, defaults, and accessors live in the optional
+  `harness.config.agent` profile.
 - Do not route `ModelRegistry`, provider registration, persisted model
   selection, or AI request authentication through Harness. Harness neither
   executes shell commands nor stores credentials; command-backed values require

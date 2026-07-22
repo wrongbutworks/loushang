@@ -27,7 +27,6 @@ from loushang.coding.bootstrap import (
     create_services,
 )
 from loushang.coding.cli.args import CliArgs, ExtensionFlag, help_text, parse_args
-from loushang.coding.control import SettingsManager
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
@@ -76,49 +75,39 @@ from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.work_executor import SubmitCodingTurn
 from loushang.coding.work_runtime import CodingWorkRuntime
 from loushang.coding.workflow import run_prompt_steps_workflow
-from loushang.harness.agent_transcript.catalog import project_session_record
 from loushang.harness.cli import (
-    CommandExecutionError,
+    CliLaunchPlan,
+    CliOperationSequence,
+    CliOperationStage,
     CommandExecutionRequest,
-    CommandListingError,
-    DiagnosticsListingError,
     DiagnosticsListingRequest,
-    ExportOperationError,
     ExportRequest,
     MethodListingError,
     MethodListingRequest,
-    ModelListingError,
     ModelListingRequest,
-    PackageLifecycleError,
     PackageLifecycleRequest,
-    PluginListingError,
-    ResourceToggleError,
     ResourceToggleRequest,
-    SessionListingError,
-    SessionListingRequest,
+    SessionListingOperationRequest,
     SessionResolutionRequest,
-    SkillListingError,
-    apply_resource_toggles,
-    build_session_query,
-    execute_command,
-    export_session,
-    format_command_execution_result,
-    format_command_records,
-    format_diagnostic_records,
-    format_export_result,
+    cli_help_belongs_on_stderr,
+    cli_observability_mode,
+    cli_output_guard_enabled,
+    cli_runtime_error,
+    cli_static_error,
     format_package_records,
-    format_plugin_records,
-    format_session_records,
-    format_skill_records,
-    list_command_records,
-    list_diagnostic_records,
-    list_model_entries,
-    list_plugin_records,
-    list_session_records,
-    list_skill_records,
+    resolve_effective_tui,
     resolve_session,
+    run_command_listing_operation,
+    run_command_operation,
+    run_diagnostics_listing_operation,
+    run_export_operation,
     run_method_listing,
-    run_package_lifecycle,
+    run_model_listing_operation,
+    run_package_lifecycle_operation,
+    run_plugin_listing_operation,
+    run_resource_toggle_operation,
+    run_session_listing_operation,
+    run_skill_listing_operation,
 )
 from loushang.harness.cli import (
     apply_extension_flag_values as apply_extension_flag_values_shared,
@@ -129,6 +118,7 @@ from loushang.harness.cli import (
 from loushang.harness.cli import (
     resolve_latest_session_file as resolve_latest_session_file_shared,
 )
+from loushang.harness.config.agent import SettingsManager
 from loushang.harness.extensions.types import ResolvedFlag
 from loushang.harness.host.prompt_input import (
     PromptInputPlan,
@@ -136,7 +126,6 @@ from loushang.harness.host.prompt_input import (
 )
 from loushang.harness.resources.plugins import is_remote_plugin_source
 from loushang.harness.scenario.loader import load_workflow, resolve_workflow_files
-from loushang.harness.session.model_selection import format_model_metadata_table
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.method import MethodCompiler, MethodContext, MethodLoader
 from loushang.work import (
@@ -357,16 +346,21 @@ async def run_cli(
         return parse_error_code
     project_root = Path(cwd or bootstrap_args.cwd or Path.cwd()).resolve()
     _apply_offline_mode(bootstrap_args)
+    bootstrap_launch_plan = _cli_launch_plan(bootstrap_args)
 
     if bootstrap_args.help:
-        with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(bootstrap_args)):
+        with host_lifecycle.output_guard(
+            enabled=cli_output_guard_enabled(bootstrap_launch_plan)
+        ):
             extension_flags = await _collect_extension_flags_for_help(
                 raw_argv=raw_argv,
                 project_root=project_root,
                 services=services,
                 runtime_builder=runtime_builder,
             )
-        help_output = stderr if _help_belongs_on_stderr(bootstrap_args) else stdout
+        help_output = (
+            stderr if cli_help_belongs_on_stderr(bootstrap_launch_plan) else stdout
+        )
         help_output.write(_help_text(extension_flags))
         return 0
     if bootstrap_args.version:
@@ -380,31 +374,9 @@ async def run_cli(
             stdout.write(format_source_identity_text(source_identity) + "\n")
         return 0
 
-    if bootstrap_args.tui and bootstrap_args.no_tui:
-        stderr.write("Error: --tui and --no-tui cannot be used together.\n")
-        return 2
-    if bootstrap_args.fork and not (
-        bootstrap_args.session or bootstrap_args.continue_ or bootstrap_args.resume
-    ):
-        stderr.write("Error: --fork requires --session or --continue / --resume.\n")
-        return 2
-    if bootstrap_args.session and (bootstrap_args.continue_ or bootstrap_args.resume):
-        stderr.write("Error: --session cannot be used with --continue or --resume.\n")
-        return 2
-    if bootstrap_args.continue_ and bootstrap_args.resume:
-        stderr.write("Error: --continue and --resume cannot be used together.\n")
-        return 2
-    work_log_error = _work_log_static_error(bootstrap_args)
-    if work_log_error is not None:
-        stderr.write(f"Error: {work_log_error}.\n")
-        return 2
-    method_error = _method_static_error(bootstrap_args)
-    if method_error is not None:
-        stderr.write(f"Error: {method_error}.\n")
-        return 2
-    channel_error = _channel_static_error(bootstrap_args)
-    if channel_error is not None:
-        stderr.write(f"Error: {channel_error}.\n")
+    static_error = cli_static_error(bootstrap_launch_plan)
+    if static_error is not None:
+        stderr.write(f"Error: {static_error}.\n")
         return 2
     work_log_inspect_result = _run_work_log_inspect(
         bootstrap_args, project_root, stdout, stderr
@@ -412,13 +384,32 @@ async def run_cli(
     if work_log_inspect_result is not None:
         return work_log_inspect_result
 
-    with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(bootstrap_args)):
+    with host_lifecycle.output_guard(
+        enabled=cli_output_guard_enabled(bootstrap_launch_plan)
+    ):
         resolved_services = services or build_default_services(project_root)
         _report_settings_errors_for_resource_commands(
             bootstrap_args, resolved_services, stderr
         )
-        resource_toggle_result = _run_resource_toggles(
-            bootstrap_args, resolved_services, stdout, stderr
+        resource_toggle_request = ResourceToggleRequest(
+            enable_skills=tuple(bootstrap_args.enable_skills),
+            disable_skills=tuple(bootstrap_args.disable_skills),
+            add_plugin_sources=tuple(bootstrap_args.add_plugin_sources),
+            remove_plugin_sources=tuple(bootstrap_args.remove_plugin_sources),
+            enable_plugins=tuple(bootstrap_args.enable_plugins),
+            disable_plugins=tuple(bootstrap_args.disable_plugins),
+        )
+        resource_toggle_result = run_resource_toggle_operation(
+            getattr(resolved_services, "settings_manager", None),
+            resource_toggle_request if resource_toggle_request.has_operations else None,
+            stdout=stdout,
+            stderr=stderr,
+            evaluate_plugin_source=_package_source_policy_reason,
+            is_remote_plugin_source=is_remote_plugin_source,
+            on_policy_denied=lambda source, reason: _record_package_policy_diagnostic(
+                resolved_services, source=source, reason=reason
+            ),
+            format_error=_format_cli_error,
         )
         if resource_toggle_result is not None:
             return resource_toggle_result
@@ -474,7 +465,9 @@ async def run_cli(
         services=resolved_services,
         cwd=project_root,
     ):
-        with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(bootstrap_args)):
+        with host_lifecycle.output_guard(
+            enabled=cli_output_guard_enabled(bootstrap_launch_plan)
+        ):
             runtime = _invoke_runtime_builder(
                 runtime_builder,
                 args=runtime_args,
@@ -484,15 +477,38 @@ async def run_cli(
                 tool_registry=tool_registry,
                 approval_resolver=interactive_approval_resolver,
             )
-        with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(runtime_args)):
-            list_sessions_result = _run_list_sessions(
-                runtime_args, runtime, stdout, stderr
+        runtime_launch_plan = _cli_launch_plan(runtime_args)
+        with host_lifecycle.output_guard(
+            enabled=cli_output_guard_enabled(runtime_launch_plan)
+        ):
+            list_sessions_result = run_session_listing_operation(
+                runtime,
+                SessionListingOperationRequest(
+                    output_format=runtime_args.list_sessions_format,
+                    cwd=runtime_args.session_cwd,
+                    name=runtime_args.session_name_filter,
+                    parent_session=runtime_args.session_parent,
+                    text=runtime_args.session_query,
+                    has_diagnostics=runtime_args.session_has_diagnostics,
+                    limit=runtime_args.session_limit,
+                    all_sessions=runtime_args.all_sessions,
+                    indexed=runtime_args.session_index
+                    or runtime_args.refresh_session_index,
+                    refresh_index=runtime_args.refresh_session_index,
+                )
+                if runtime_args.list_sessions
+                else None,
+                stdout=stdout,
+                stderr=stderr,
+                format_error=_format_cli_error,
             )
         if list_sessions_result is not None:
             return list_sessions_result
 
         try:
-            with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(bootstrap_args)):
+            with host_lifecycle.output_guard(
+                enabled=cli_output_guard_enabled(bootstrap_launch_plan)
+            ):
                 session = await _resolve_session(runtime_args, runtime, project_root)
         except (
             FileNotFoundError,
@@ -512,7 +528,8 @@ async def run_cli(
     )
     if args is None:
         return parse_error_code
-    with host_lifecycle.output_guard(enabled=_stdout_guard_enabled(args)):
+    launch_plan = _cli_launch_plan(args)
+    with host_lifecycle.output_guard(enabled=cli_output_guard_enabled(launch_plan)):
         _apply_extension_flag_values(session, args.extension_flag_values)
 
         if args.session_name is not None:
@@ -529,60 +546,161 @@ async def run_cli(
         if override_result is not None:
             return override_result
 
-        export_result = _run_export(args, session, stdout, stderr)
-        if export_result is not None:
-            return export_result
-
-        list_commands_result = _run_list_commands(args, session, stdout, stderr)
-        if list_commands_result is not None:
-            return list_commands_result
-
-        list_diagnostics_result = _run_list_diagnostics(args, session, stdout, stderr)
-        if list_diagnostics_result is not None:
-            return list_diagnostics_result
-
-        list_skills_result = _run_list_skills(args, session, stdout, stderr)
-        if list_skills_result is not None:
-            return list_skills_result
-
-        method_visibility_result = _run_method_visibility(
-            args, project_root, stdout, stderr
+        package_lifecycle_request = PackageLifecycleRequest(
+            install=tuple(args.install_packages),
+            materialize=tuple(args.materialize_packages),
+            update=tuple(args.update_packages),
+            remove=tuple(args.remove_packages),
+            uninstall=tuple(args.uninstall_packages),
+            check_updates=args.check_package_updates,
+            update_all=args.update_all_packages,
+            scope=args.package_scope,
         )
-        if method_visibility_result is not None:
-            return method_visibility_result
-
-        list_plugins_result = _run_list_plugins(args, resolved_services, stdout, stderr)
-        if list_plugins_result is not None:
-            return list_plugins_result
-
-        list_packages_result = _run_list_packages(
-            args, session, resolved_services, project_root, stdout, stderr
+        model_listing_request = (
+            ModelListingRequest(
+                query=args.list_models.strip().lower()
+                if isinstance(args.list_models, str)
+                else ""
+            )
+            if args.list_models is not False
+            else None
         )
-        if list_packages_result is not None:
-            return list_packages_result
+        standard_operation_result = await CliOperationSequence(
+            (
+                CliOperationStage(
+                    "export",
+                    lambda: run_export_operation(
+                        session,
+                        ExportRequest(format=args.export_format, output=args.export)
+                        if args.export is not None
+                        else None,
+                        result_format=args.export_result_format,
+                        stdout=stdout,
+                        stderr=stderr,
+                        format_error=_format_cli_error,
+                    ),
+                ),
+                CliOperationStage(
+                    "list_commands",
+                    lambda: run_command_listing_operation(
+                        session,
+                        args.list_commands_format if args.list_commands else None,
+                        stdout=stdout,
+                        stderr=stderr,
+                        format_error=_format_cli_error,
+                    ),
+                ),
+                CliOperationStage(
+                    "list_diagnostics",
+                    lambda: run_diagnostics_listing_operation(
+                        session,
+                        DiagnosticsListingRequest(limit=args.diagnostics_limit)
+                        if args.list_diagnostics
+                        else None,
+                        output_format=args.list_diagnostics_format,
+                        stdout=stdout,
+                        stderr=stderr,
+                        format_error=_format_cli_error,
+                    ),
+                ),
+                CliOperationStage(
+                    "list_skills",
+                    lambda: run_skill_listing_operation(
+                        session,
+                        args.list_skills_format if args.list_skills else None,
+                        stdout=stdout,
+                        stderr=stderr,
+                        format_error=_format_cli_error,
+                    ),
+                ),
+                CliOperationStage(
+                    "method_visibility",
+                    lambda: _run_method_visibility(
+                        args, project_root, stdout, stderr
+                    ),
+                ),
+                CliOperationStage(
+                    "list_plugins",
+                    lambda: run_plugin_listing_operation(
+                        getattr(resolved_services, "settings_manager", None),
+                        args.list_plugins_format if args.list_plugins else None,
+                        stdout=stdout,
+                        stderr=stderr,
+                        format_error=_format_cli_error,
+                    ),
+                ),
+                CliOperationStage(
+                    "list_packages",
+                    lambda: _run_list_packages(
+                        args,
+                        session,
+                        resolved_services,
+                        project_root,
+                        stdout,
+                        stderr,
+                    ),
+                ),
+                CliOperationStage(
+                    "package_lifecycle",
+                    lambda: run_package_lifecycle_operation(
+                        session,
+                        package_lifecycle_request
+                        if package_lifecycle_request.has_operations
+                        else None,
+                        stdout=stdout,
+                        stderr=stderr,
+                        evaluate_install_source=_package_source_policy_reason,
+                        on_policy_denied=lambda source, reason: (
+                            _record_package_policy_diagnostic(
+                                resolved_services, source=source, reason=reason
+                            )
+                        ),
+                        format_error=_format_cli_error,
+                    ),
+                ),
+                CliOperationStage(
+                    "command",
+                    lambda: run_command_operation(
+                        session,
+                        CommandExecutionRequest(
+                            command=args.command,
+                            args=args.command_args,
+                            result_format=args.command_result_format,
+                        )
+                        if args.command is not None
+                        else None,
+                        stdout=stdout,
+                        stderr=stderr,
+                        format_error=_format_cli_error,
+                    ),
+                ),
+                CliOperationStage(
+                    "list_models",
+                    lambda: run_model_listing_operation(
+                        session,
+                        model_listing_request,
+                        output_format=args.list_models_format,
+                        stdout=stdout,
+                        stderr=stderr,
+                        format_error=_format_cli_error,
+                    ),
+                ),
+            )
+        ).run()
+        if standard_operation_result is not None:
+            return standard_operation_result
 
-        package_lifecycle_result = await _run_package_lifecycle(
-            args, session, resolved_services, stdout, stderr
+        effective_tui = resolve_effective_tui(
+            launch_plan,
+            stdin_is_tty=stream_is_tty(stdin),
+            stdout_is_tty=stream_is_tty(stdout),
         )
-        if package_lifecycle_result is not None:
-            return package_lifecycle_result
-
-        command_result = await _run_command(args, session, stdout, stderr)
-        if command_result is not None:
-            return command_result
-
-        list_models_result = _run_list_models(args, session, stdout, stderr)
-        if list_models_result is not None:
-            return list_models_result
-
-        effective_tui = _effective_tui(args, stdin=stdin, stdout=stdout)
-        work_log_error = _work_log_runtime_error(args, effective_tui=effective_tui)
-        if work_log_error is not None:
-            stderr.write(f"Error: {work_log_error}.\n")
-            return 2
-        method_error = _method_runtime_error(args, effective_tui=effective_tui)
-        if method_error is not None:
-            stderr.write(f"Error: {method_error}.\n")
+        runtime_error = cli_runtime_error(
+            launch_plan,
+            effective_tui=effective_tui,
+        )
+        if runtime_error is not None:
+            stderr.write(f"Error: {runtime_error}.\n")
             return 2
         work_event_log = _resolve_work_event_log(args.work_log, project_root)
         coding_work_runtime = (
@@ -594,7 +712,7 @@ async def run_cli(
             args=args,
             session=session,
             cwd=project_root,
-            mode=_observability_mode(args, effective_tui=effective_tui),
+            mode=cli_observability_mode(launch_plan, effective_tui=effective_tui),
         ):
             if effective_tui:
                 return await tui_runner(
@@ -996,41 +1114,76 @@ def _cwd_bound_services_factory(
     return build_for_cwd
 
 
-def _help_belongs_on_stderr(args: CliArgs) -> bool:
-    return bool(
-        args.prompt is not None
-        or args.prompt_steps is not None
-        or args.mode in {"print", "json", "rpc", "channel"}
+def _cli_launch_plan(args: CliArgs) -> CliLaunchPlan:
+    command_operations = (
+        args.list_sessions,
+        args.source_info,
+        args.list_models is not False,
+        args.list_commands,
+        args.list_diagnostics,
+        args.list_skills,
+        args.list_methods,
+        args.show_method is not None,
+        args.show_method_plan is not None,
+        args.list_plugins,
+        args.list_packages,
+        args.export is not None,
+        args.diag_export,
+        args.command is not None,
+        bool(args.enable_skills),
+        bool(args.disable_skills),
+        bool(args.add_plugin_sources),
+        bool(args.remove_plugin_sources),
+        bool(args.enable_plugins),
+        bool(args.disable_plugins),
+        bool(args.install_packages),
+        bool(args.uninstall_packages),
+        bool(args.materialize_packages),
+        bool(args.update_packages),
+        bool(args.remove_packages),
+        args.update_all_packages,
+        args.check_package_updates,
+        args.work_log_inspect is not None,
     )
-
-
-def _stdout_guard_enabled(args: CliArgs) -> bool:
-    if (
-        args.prompt is not None
-        or args.prompt_steps is not None
-        or args.mode in {"print", "json", "rpc", "channel"}
-    ):
-        return True
-    return bool(
-        (args.list_sessions and args.list_sessions_format == "json")
-        or (args.list_models is not False and args.list_models_format == "json")
-        or (args.list_commands and args.list_commands_format == "json")
-        or (args.list_diagnostics and args.list_diagnostics_format == "json")
-        or (args.list_skills and args.list_skills_format == "json")
-        or (args.list_methods and args.list_methods_format == "json")
-        or (args.show_method is not None and args.show_method_format == "json")
-        or (
-            args.show_method_plan is not None and args.show_method_plan_format == "json"
-        )
-        or (args.list_plugins and args.list_plugins_format == "json")
-        or (args.list_packages and args.list_packages_format == "json")
-        or (args.export is not None and args.export_result_format == "json")
-        or (args.command is not None and args.command_result_format == "json")
-        or bool(args.materialize_packages)
-        or bool(args.update_packages)
-        or bool(args.remove_packages)
-        or args.update_all_packages
-        or args.check_package_updates
+    structured_operations = (
+        args.list_sessions and args.list_sessions_format == "json",
+        args.list_models is not False and args.list_models_format == "json",
+        args.list_commands and args.list_commands_format == "json",
+        args.list_diagnostics and args.list_diagnostics_format == "json",
+        args.list_skills and args.list_skills_format == "json",
+        args.list_methods and args.list_methods_format == "json",
+        args.show_method is not None and args.show_method_format == "json",
+        args.show_method_plan is not None
+        and args.show_method_plan_format == "json",
+        args.list_plugins and args.list_plugins_format == "json",
+        args.list_packages and args.list_packages_format == "json",
+        args.export is not None and args.export_result_format == "json",
+        args.command is not None and args.command_result_format == "json",
+        bool(args.materialize_packages),
+        bool(args.update_packages),
+        bool(args.remove_packages),
+        args.update_all_packages,
+        args.check_package_updates,
+    )
+    return CliLaunchPlan(
+        mode=args.mode,
+        force_tui=args.tui,
+        disable_tui=args.no_tui,
+        prompt_requested=args.prompt is not None,
+        workflow_requested=args.prompt_steps is not None,
+        message_input=bool(args.messages),
+        file_input=bool(args.file_args),
+        follow_up_input=bool(args.message_prompts),
+        render_tool_events=args.render_tool_events,
+        work_log_requested=args.work_log is not None,
+        method_requested=args.method is not None,
+        method_disabled=args.no_method,
+        session_requested=args.session is not None,
+        continue_requested=args.continue_,
+        resume_requested=args.resume,
+        fork_requested=args.fork is not None,
+        command_operation=any(command_operations),
+        structured_operation_output=any(structured_operations),
     )
 
 
@@ -1066,86 +1219,6 @@ async def _run_fake_prompt_steps_workflow_if_requested(
 
 def _workflow_output_mode(args: CliArgs) -> str:
     return "json" if args.mode == "json" else "text"
-
-
-def _effective_tui(args: CliArgs, *, stdin: TextIO, stdout: TextIO) -> bool:
-    if args.tui:
-        return True
-    if args.no_tui:
-        return False
-    if not (stream_is_tty(stdin) and stream_is_tty(stdout)):
-        return False
-    if args.mode != "text":
-        return False
-    if args.prompt is not None or args.prompt_steps is not None:
-        return False
-    if args.messages or args.file_args or args.message_prompts:
-        return False
-    return not _has_command_style_operation(args)
-
-
-def _work_log_static_error(args: CliArgs) -> str | None:
-    if args.work_log is None:
-        return None
-    if args.tui:
-        return "--work-log is not supported in TUI mode"
-    if args.mode == "rpc":
-        return "--work-log is not supported in RPC mode"
-    if args.mode == "channel":
-        return "--work-log is not supported in Channel mode"
-    if args.prompt_steps is not None:
-        return "--work-log is not supported with --prompt-steps"
-    return None
-
-
-def _work_log_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None:
-    if args.work_log is None:
-        return None
-    if effective_tui:
-        return "--work-log is not supported in TUI mode"
-    return None
-
-
-def _method_static_error(args: CliArgs) -> str | None:
-    if args.method is not None and args.no_method:
-        return "--method cannot be used with --no-method"
-    if args.method is None:
-        return None
-    if args.tui:
-        return "--method is not supported in TUI mode"
-    if args.mode == "rpc":
-        return "--method is not supported in RPC mode"
-    if args.mode == "channel":
-        return "--method is not supported in Channel mode"
-    if args.prompt_steps is not None:
-        return "--method is not supported with --prompt-steps"
-    return None
-
-
-def _channel_static_error(args: CliArgs) -> str | None:
-    if args.mode != "channel":
-        return None
-    if args.tui:
-        return "--tui is not supported in Channel mode"
-    if args.prompt is not None:
-        return "--prompt is not supported in Channel mode"
-    if args.prompt_steps is not None:
-        return "--prompt-steps is not supported in Channel mode"
-    if args.messages:
-        return "positional messages are not supported in Channel mode"
-    if args.file_args:
-        return "@file arguments are not supported in Channel mode"
-    if args.render_tool_events:
-        return "--render-tool-events is not supported in Channel mode"
-    return None
-
-
-def _method_runtime_error(args: CliArgs, *, effective_tui: bool) -> str | None:
-    if args.method is None:
-        return None
-    if effective_tui:
-        return "--method is not supported in TUI mode"
-    return None
 
 
 def _method_policy_from_args(
@@ -1210,49 +1283,6 @@ def _run_work_log_inspect(
 
 def _resolve_work_log_path(raw_path: str, project_root: Path) -> Path:
     return resolve_work_log_path(raw_path, project_root)
-
-
-def _has_command_style_operation(args: CliArgs) -> bool:
-    return bool(
-        args.list_sessions
-        or args.source_info
-        or args.list_models is not False
-        or args.list_commands
-        or args.list_diagnostics
-        or args.list_skills
-        or args.list_methods
-        or args.show_method is not None
-        or args.show_method_plan is not None
-        or args.list_plugins
-        or args.list_packages
-        or args.export is not None
-        or args.diag_export
-        or args.command is not None
-        or args.enable_skills
-        or args.disable_skills
-        or args.add_plugin_sources
-        or args.remove_plugin_sources
-        or args.enable_plugins
-        or args.disable_plugins
-        or args.install_packages
-        or args.uninstall_packages
-        or args.materialize_packages
-        or args.update_packages
-        or args.remove_packages
-        or args.update_all_packages
-        or args.check_package_updates
-        or args.work_log_inspect is not None
-    )
-
-
-def _observability_mode(args: CliArgs, *, effective_tui: bool) -> str:
-    if effective_tui:
-        return "tui"
-    if args.prompt is not None:
-        return "prompt"
-    if args.prompt_steps is not None:
-        return "workflow"
-    return args.mode
 
 
 def _parse_args_for_cli(
@@ -1359,61 +1389,6 @@ def _report_settings_errors(
         stderr.write(f"Warning ({context}, {scope} settings): {message}\n")
 
 
-def _run_resource_toggles(
-    args: CliArgs,
-    services: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if not (
-        args.enable_skills
-        or args.disable_skills
-        or args.add_plugin_sources
-        or args.remove_plugin_sources
-        or args.enable_plugins
-        or args.disable_plugins
-    ):
-        return None
-    settings_manager = getattr(services, "settings_manager", None)
-    if settings_manager is None:
-        stderr.write("Error: settings manager is not available.\n")
-        return 1
-    try:
-        def evaluate_plugin_source(source: str) -> str | None:
-            decision = PackageSecurityPolicy().evaluate_package_source(source)
-            if decision.disposition == "deny":
-                return decision.reason or "Package source denied by policy."
-            return None
-
-        result = apply_resource_toggles(
-            settings_manager,
-            ResourceToggleRequest(
-                enable_skills=tuple(args.enable_skills),
-                disable_skills=tuple(args.disable_skills),
-                add_plugin_sources=tuple(args.add_plugin_sources),
-                remove_plugin_sources=tuple(args.remove_plugin_sources),
-                enable_plugins=tuple(args.enable_plugins),
-                disable_plugins=tuple(args.disable_plugins),
-            ),
-            evaluate_plugin_source=evaluate_plugin_source,
-            is_remote_plugin_source=is_remote_plugin_source,
-            on_policy_denied=lambda source, reason: _record_package_policy_diagnostic(
-                services, source=source, reason=reason
-            ),
-        )
-    except ResourceToggleError as error:
-        for message in error.messages:
-            stdout.write(f"{message}\n")
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    except Exception as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    for message in result.messages:
-        stdout.write(f"{message}\n")
-    return 0
-
-
 def _record_package_policy_diagnostic(
     services: Any, *, source: str, reason: str | None
 ) -> None:
@@ -1485,75 +1460,6 @@ async def _apply_model_and_thinking_overrides(
     return None
 
 
-def _run_list_sessions(
-    args: CliArgs,
-    runtime: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if not args.list_sessions:
-        return None
-
-    try:
-        query = build_session_query(
-            cwd=args.session_cwd,
-            name=args.session_name_filter,
-            parent_session=args.session_parent,
-            text=args.session_query,
-            has_diagnostics=args.session_has_diagnostics,
-            limit=args.session_limit,
-        )
-        records = list_session_records(
-            runtime,
-            SessionListingRequest(
-                query=query,
-                all_sessions=args.all_sessions,
-                indexed=args.session_index or args.refresh_session_index,
-                refresh_index=args.refresh_session_index,
-            ),
-            record_projector=_try_normalize_session_record,
-        )
-    except (SessionListingError, ValueError) as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    stdout.write(format_session_records(records, args.list_sessions_format))
-    return 0
-
-
-def _normalize_session_record(record: Any) -> dict[str, object]:
-    """Coding test seam delegating session projection to Harness."""
-
-    return project_session_record(record)
-
-
-def _try_normalize_session_record(record: Any) -> dict[str, object] | None:
-    try:
-        return _normalize_session_record(record)
-    except Exception:
-        return None
-
-
-def _run_export(
-    args: CliArgs,
-    session: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if args.export is None:
-        return None
-
-    try:
-        result = export_session(
-            session,
-            ExportRequest(format=args.export_format, output=args.export),
-        )
-    except ExportOperationError as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    stdout.write(format_export_result(result, args.export_result_format))
-    return 0
-
-
 def _run_diag_export(
     args: CliArgs,
     project_root: Path,
@@ -1615,96 +1521,6 @@ def _apply_extension_flag_values(session: Any, values: dict[str, bool | str]) ->
     apply_extension_flag_values_shared(session, values)
 
 
-def _run_list_models(
-    args: CliArgs,
-    session: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if args.list_models is False:
-        return None
-
-    query = ""
-    if isinstance(args.list_models, str):
-        query = args.list_models.strip().lower()
-
-    try:
-        result = list_model_entries(
-            session,
-            ModelListingRequest(query=query),
-        )
-    except ModelListingError as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    normalized_models = list(result.entries)
-    if args.list_models_format == "json":
-        stdout.write(json.dumps(normalized_models, ensure_ascii=False) + "\n")
-        return 0
-
-    if result.includes_metadata:
-        stdout.write(format_model_metadata_table(normalized_models))
-        return 0
-    for selection in normalized_models:
-        stdout.write(f"{selection['provider']}/{selection['model_id']}\n")
-    return 0
-
-
-def _run_list_commands(
-    args: CliArgs,
-    session: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if not args.list_commands:
-        return None
-
-    try:
-        records = list_command_records(session)
-    except CommandListingError as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    stdout.write(format_command_records(records, args.list_commands_format))
-    return 0
-
-
-def _run_list_diagnostics(
-    args: CliArgs,
-    session: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if not args.list_diagnostics:
-        return None
-    try:
-        normalized = list_diagnostic_records(
-            session,
-            DiagnosticsListingRequest(limit=args.diagnostics_limit),
-        )
-    except DiagnosticsListingError as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    stdout.write(format_diagnostic_records(normalized, args.list_diagnostics_format))
-    return 0
-
-
-def _run_list_skills(
-    args: CliArgs,
-    session: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if not args.list_skills:
-        return None
-
-    try:
-        records = list_skill_records(session)
-    except SkillListingError as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    stdout.write(format_skill_records(records, args.list_skills_format))
-    return 0
-
-
 def _run_method_visibility(
     args: CliArgs,
     project_root: Path,
@@ -1740,26 +1556,6 @@ def _run_method_visibility(
         stderr.write(f"Error: {_format_cli_error(error)}\n")
         return 1
     stdout.write(result.output)
-    return 0
-
-
-def _run_list_plugins(
-    args: CliArgs,
-    services: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if not args.list_plugins:
-        return None
-
-    try:
-        normalized = list_plugin_records(
-            getattr(services, "settings_manager", None)
-        )
-    except PluginListingError as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    stdout.write(format_plugin_records(normalized, args.list_plugins_format))
     return 0
 
 
@@ -1808,45 +1604,6 @@ def _run_list_packages(
     else:
         output_format = "text"
     stdout.write(format_package_records(packages, output_format))
-    return 0
-
-
-async def _run_package_lifecycle(
-    args: CliArgs, session: Any, services: Any, stdout: TextIO, stderr: TextIO
-) -> int | None:
-    request = PackageLifecycleRequest(
-        install=tuple(args.install_packages),
-        materialize=tuple(args.materialize_packages),
-        update=tuple(args.update_packages),
-        remove=tuple(args.remove_packages),
-        uninstall=tuple(args.uninstall_packages),
-        check_updates=args.check_package_updates,
-        update_all=args.update_all_packages,
-        scope=args.package_scope,
-    )
-    if not request.has_operations:
-        return None
-    try:
-        result = await run_package_lifecycle(
-            session,
-            request,
-            evaluate_install_source=lambda source: _package_source_policy_reason(
-                source
-            ),
-            on_policy_denied=lambda source, reason: _record_package_policy_diagnostic(
-                services, source=source, reason=reason
-            ),
-        )
-    except PackageLifecycleError as error:
-        for output in error.outputs:
-            stdout.write(json.dumps(output, ensure_ascii=False) + "\n")
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    for output in result.outputs:
-        stdout.write(
-            json.dumps(output, ensure_ascii=False)
-            + "\n"
-        )
     return 0
 
 
@@ -1954,32 +1711,6 @@ def _package_version() -> str:
         return package_version("loushang")
     except PackageNotFoundError:
         return "0.1.0"
-
-
-async def _run_command(
-    args: CliArgs,
-    session: Any,
-    stdout: TextIO,
-    stderr: TextIO,
-) -> int | None:
-    if args.command is None:
-        return None
-    try:
-        result = await execute_command(
-            session,
-            CommandExecutionRequest(
-                command=args.command,
-                args=args.command_args,
-                result_format=args.command_result_format,
-            ),
-        )
-    except CommandExecutionError as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 2 if "requires a non-empty" in str(error) else 1
-    stdout.write(
-        format_command_execution_result(result, result_format=args.command_result_format)
-    )
-    return 0
 
 
 def main(argv: list[str] | tuple[str, ...] | None = None) -> int:

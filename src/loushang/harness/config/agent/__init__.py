@@ -1,13 +1,17 @@
-from loushang.coding.control.config_value import (
-    ConfigCommandResult,
-    ConfigValueResolver,
-    resolve_config_value,
+"""Standard settings profile for Agent-backed products."""
+
+from loushang.harness.config.agent.manager import (
+    SettingsError,
+    SettingsListener,
+    SettingsManager,
+    SettingsScope,
 )
-from loushang.coding.control.model_registry import ModelRegistry
-from loushang.harness.config.agent import (
+from loushang.harness.config.agent.types import (
     BranchSummarySettings,
     CompactionSettings,
     ControlConfig,
+    DoubleEscapeAction,
+    ExternalToolPolicy,
     HeadlessApprovalMode,
     ImageSettings,
     KeybindingValue,
@@ -15,33 +19,41 @@ from loushang.harness.config.agent import (
     MethodSettings,
     QueueMode,
     RetrySettings,
-    SettingsError,
-    SettingsManager,
+    StatusLineAutoValue,
     StatusLineControlSettings,
+    StatusLineSeparator,
+    StatusLineStyle,
     TerminalSettings,
+    ThinkingBudgetMap,
     ToolSettings,
+    TreeFilterMode,
     WarningSettings,
 )
 
 __all__ = [
     "BranchSummarySettings",
-    "ConfigCommandResult",
-    "ConfigValueResolver",
     "CompactionSettings",
     "ControlConfig",
+    "DoubleEscapeAction",
+    "ExternalToolPolicy",
     "HeadlessApprovalMode",
     "ImageSettings",
     "KeybindingValue",
     "MarkdownSettings",
     "MethodSettings",
-    "ModelRegistry",
     "QueueMode",
     "RetrySettings",
     "SettingsError",
+    "SettingsListener",
     "SettingsManager",
+    "SettingsScope",
+    "StatusLineAutoValue",
     "StatusLineControlSettings",
+    "StatusLineSeparator",
+    "StatusLineStyle",
     "TerminalSettings",
+    "ThinkingBudgetMap",
     "ToolSettings",
+    "TreeFilterMode",
     "WarningSettings",
-    "resolve_config_value",
 ]

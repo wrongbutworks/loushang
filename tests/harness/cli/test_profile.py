@@ -9,7 +9,9 @@ from loushang.harness.cli import (
     CliArgumentSpec,
     CliCommandSpec,
     CliOperationRuntime,
+    CliOperationSequence,
     CliOperationSpec,
+    CliOperationStage,
     CliProfileError,
     parse_args,
 )
@@ -120,3 +122,30 @@ def test_operation_runtime_dispatches_sync_and_async_product_handlers() -> None:
     result = asyncio.run(runtime.dispatch(invocation))
 
     assert result == {"positionals": ("deck",)}
+
+
+def test_operation_sequence_stops_after_first_handled_stage() -> None:
+    calls: list[str] = []
+
+    async def handled() -> int:
+        calls.append("handled")
+        return 4
+
+    result = asyncio.run(
+        CliOperationSequence(
+            (
+                CliOperationStage(
+                    "skipped",
+                    lambda: calls.append("skipped"),
+                ),
+                CliOperationStage("handled", handled),
+                CliOperationStage(
+                    "not_reached",
+                    lambda: calls.append("not_reached"),
+                ),
+            )
+        ).run()
+    )
+
+    assert result == 4
+    assert calls == ["skipped", "handled"]

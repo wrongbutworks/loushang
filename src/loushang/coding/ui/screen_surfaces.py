@@ -20,7 +20,6 @@ from loushang.coding.model_selection_tui import (
     available_model_choices,
     current_model_choice_value,
     format_available_models,
-    model_detail_descriptions_by_label,
     select_available_model,
 )
 from loushang.coding.ui.hotkeys import format_hotkeys
@@ -36,6 +35,7 @@ from loushang.harnesstui.commands.presentation import (
     format_commands,
 )
 from loushang.harnesstui.selection.catalog import (
+    model_choice_descriptions_by_label,
     model_choice_select_items,
     model_label_select_items,
 )
@@ -166,7 +166,7 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             for selection in scoped_selections
             if (label := model_label_from_selection(selection)) is not None
         ]
-        descriptions = await model_detail_descriptions_by_label(self.session)
+        descriptions = model_choice_descriptions_by_label(choices)
         return model_selector_surface_view(
             all_items=model_choice_select_items(
                 choices,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TypeAlias
 
@@ -11,6 +11,9 @@ from loushang.harness.cli.types import CliInvocation, CliProfileError
 
 CliOperationHandler: TypeAlias = Callable[
     [CliInvocation], object | Awaitable[object]
+]
+CliExitOperationHandler: TypeAlias = Callable[
+    [], int | None | Awaitable[int | None]
 ]
 
 
@@ -84,9 +87,53 @@ class CliOperationRuntime:
         return result
 
 
+@dataclass(frozen=True, slots=True)
+class CliOperationStage:
+    """One ordered, product-selected CLI operation."""
+
+    operation_id: str
+    handler: CliExitOperationHandler
+
+    def __post_init__(self) -> None:
+        if not self.operation_id.strip():
+            raise CliProfileError("CLI operation stage id must be non-empty")
+        if not callable(self.handler):
+            raise TypeError("CLI operation stage handler must be callable")
+
+
+class CliOperationSequence:
+    """Run ordered CLI operations until one handles the invocation.
+
+    Products own the stage list and therefore command availability and
+    precedence. Harness owns the reusable synchronous/asynchronous dispatch
+    contract.
+    """
+
+    def __init__(self, stages: Sequence[CliOperationStage]) -> None:
+        seen: set[str] = set()
+        for stage in stages:
+            if stage.operation_id in seen:
+                raise CliProfileError(
+                    f"duplicate CLI operation stage: {stage.operation_id!r}"
+                )
+            seen.add(stage.operation_id)
+        self._stages = tuple(stages)
+
+    async def run(self) -> int | None:
+        for stage in self._stages:
+            result = stage.handler()
+            if inspect.isawaitable(result):
+                result = await result
+            if result is not None:
+                return result
+        return None
+
+
 __all__ = [
     "CliOperationHandler",
     "CliOperationRuntime",
     "CliOperationSpec",
+    "CliOperationSequence",
+    "CliOperationStage",
     "CliOperationUnavailableError",
 ]

@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from loushang.ai.model import Model, ModelSelection
+from loushang.harnesstui.selection.binding import (
+    model_choices_from_details,
+    model_identity_from_value,
+)
 from loushang.harnesstui.selection.catalog import (
     ModelChoice,
     ModelChoiceIdentity,
@@ -25,6 +30,28 @@ from loushang.tui import (
     SearchableListItem,
     SelectItem,
 )
+
+
+def test_ai_model_projection_keeps_endpoint_identity_and_metadata() -> None:
+    detail = Model(
+        id="gpt-5",
+        provider="openai",
+        endpoint="responses",
+        api="responses",
+        region="us",
+        preferred_endpoint=True,
+        name="General model",
+    )
+
+    choices = model_choices_from_details([detail])
+
+    assert choices[0].value == "openai:responses:gpt-5"
+    assert choices[0].endpoint_id == "responses"
+    assert choices[0].preferred_endpoint is True
+    assert choices[0].description == "General model"
+    assert model_identity_from_value(
+        ModelSelection(provider="openai", endpoint_id="responses", model_id="gpt-5")
+    ).value == "openai:responses:gpt-5"
 
 
 def _choices() -> tuple[ModelChoice, ...]:

@@ -964,7 +964,10 @@ def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
     model_interaction = Path(
         "src/loushang/harnesstui/selection/interaction.py"
     ).read_text(encoding="utf-8")
-    shared = command_interaction + model_interaction
+    model_runtime = Path(
+        "src/loushang/harnesstui/selection/runtime.py"
+    ).read_text(encoding="utf-8")
+    shared = command_interaction + model_interaction + model_runtime
     command_adapter = "\n".join(
         Path(path).read_text(encoding="utf-8")
         for path in (
@@ -982,15 +985,11 @@ def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
     for token in (
         "loushang.coding",
         "CodingCommandCatalog",
-        "ModelSelection",
         "apply_model_selection",
         "persistence_warning_message",
         "settings_manager",
-        "set_model",
         "Command selected:",
         "Use /command <full command> to select one.",
-        "Model set:",
-        "Use /model <full model> to select one.",
     ):
         assert token not in shared
 
@@ -999,16 +998,16 @@ def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
         "apply_model_selection",
         "persistence_warning_message",
         "settings_manager",
-        "set_model",
         "Command selected:",
         "Use /command <full command> to select one.",
-        "Model set:",
-        "Use /model <full model> to select one.",
     ):
         assert token in coding
 
     assert "loushang.harnesstui.commands.interaction" in command_adapter
     assert "loushang.harnesstui.selection.interaction" in model_adapter
+    assert "ModelSelectionViewPort" in shared
+    assert 'message = f"Model set:' in shared
+    assert "Use /model <full model> to select one." in shared
     assert "present_command_interaction" in command_interaction
     assert "present_model_interaction" in model_interaction
     for removed in (
@@ -1059,8 +1058,11 @@ def test_shared_command_catalog_keeps_coding_definitions_and_raw_adaptation_outs
 
 
 def test_shared_model_choice_catalog_keeps_session_and_endpoint_acquisition_outside() -> None:
-    shared = Path("src/loushang/harnesstui/selection/catalog.py").read_text(
-        encoding="utf-8"
+    shared = "\n".join(
+        Path(f"src/loushang/harnesstui/selection/{module}.py").read_text(
+            encoding="utf-8"
+        )
+        for module in ("binding", "catalog", "runtime")
     )
     coding = Path("src/loushang/coding/model_selection_tui.py").read_text(
         encoding="utf-8"
@@ -1072,9 +1074,6 @@ def test_shared_model_choice_catalog_keeps_session_and_endpoint_acquisition_outs
         "get_model_selection",
         "apply_model_selection",
         "persistence_warning_message",
-        'message = f"Model set:',
-        "def _string_attr",
-        "def _bool_attr",
     ):
         assert token not in shared
         assert token in coding
@@ -1086,6 +1085,17 @@ def test_shared_model_choice_catalog_keeps_session_and_endpoint_acquisition_outs
     ):
         assert token in shared
         assert token in coding
+
+    for token in (
+        "def model_choices_from_details",
+        "def model_identity_from_value",
+    ):
+        assert token in shared
+        assert token not in coding
+
+    assert 'message = f"Model set:' in shared
+    assert "Use /model <full model> to select one." in shared
+    assert "getattr" not in coding
 
 
 def test_shared_completion_host_does_not_own_coding_catalog_or_path_policy() -> None:

@@ -16,14 +16,14 @@ from loushang.coding.bootstrap import (
     create_agent_session_services,
     create_services,
 )
-from loushang.coding.control import (
+from loushang.coding.control.model_registry import ModelRegistry
+from loushang.coding.event import AgentSessionEvent, JsonEventView, select_events
+from loushang.harness.config.agent import (
     ControlConfig,
     HeadlessApprovalMode,
-    ModelRegistry,
     SettingsManager,
     ToolSettings,
 )
-from loushang.coding.event import AgentSessionEvent, JsonEventView, select_events
 
 if TYPE_CHECKING:
     from loushang.coding.mode import (

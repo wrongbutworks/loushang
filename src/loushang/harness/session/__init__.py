@@ -166,8 +166,17 @@ from loushang.harness.session.model_preferences import (
     preferred_model_details,
     preferred_model_selection,
 )
+from loushang.harness.session.model_resolution import (
+    DefaultModelResolution,
+    classify_model_resolution_failure,
+    record_default_model_unavailable,
+    resolve_default_model,
+    scoped_models_from_patterns,
+)
 from loushang.harness.session.model_selection import (
     ModelCandidates,
+    ModelChoiceData,
+    ModelIdentityData,
     ModelSelectionApplyResult,
     PersistModelSelection,
     apply_session_model_selection,
@@ -175,6 +184,8 @@ from loushang.harness.session.model_selection import (
     get_session_model_selection,
     iter_available_model_selections,
     iter_scoped_model_selections,
+    model_choice_data_from_details,
+    model_identity_data,
 )
 from loushang.harness.session.operations import (
     SessionLifecycleOperationPorts,
@@ -286,8 +297,15 @@ __all__ = [
     "MissingCwdPolicy",
     "MissingSessionCwdError",
     "PreferredModel",
+    "DefaultModelResolution",
+    "classify_model_resolution_failure",
+    "record_default_model_unavailable",
+    "resolve_default_model",
+    "scoped_models_from_patterns",
     "available_model_details",
     "ModelCandidates",
+    "ModelChoiceData",
+    "ModelIdentityData",
     "ModelSelectionApplyResult",
     "PromptController",
     "ProductSessionRuntime",
@@ -401,6 +419,8 @@ __all__ = [
     "get_session_model_selection",
     "iter_available_model_selections",
     "iter_scoped_model_selections",
+    "model_choice_data_from_details",
+    "model_identity_data",
     "is_standard_session_command",
     "require_session_operation_session",
 ]

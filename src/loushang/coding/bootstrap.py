@@ -10,11 +10,6 @@ from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.ai.types import Message, TextPart
 from loushang.coding.capability_plan import resolve_coding_capability_profile
-from loushang.coding.control import (
-    ControlConfig,
-    ModelRegistry,
-    SettingsManager,
-)
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
@@ -45,9 +40,11 @@ from loushang.harness.capabilities import bind_capability_composition_runtime
 from loushang.harness.capabilities.packs import CapabilityPackComposer
 from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.config import ConfigActivationStep
+from loushang.harness.config.agent import ControlConfig, SettingsManager
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import StartupCheckResult
 from loushang.harness.extensions.context import SessionStartEvent
+from loushang.harness.model_catalog import ModelCatalog
 from loushang.harness.resources.activation import SkillActivationRuntime
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.layout import resolve_user_resource_roots
@@ -67,6 +64,9 @@ from loushang.harness.session import (
     BootstrapServices,
     CreateAgentSessionResult,
     CwdBoundServicesAudit,
+    record_default_model_unavailable,
+    resolve_default_model,
+    scoped_models_from_patterns,
 )
 from loushang.harness.session import (
     CwdBoundServicesAuditIssue as _CwdBoundServicesAuditIssue,
@@ -85,9 +85,6 @@ from loushang.harness.session import (
 )
 from loushang.harness.session import (
     normalize_no_tools as _normalize_no_tools,
-)
-from loushang.harness.session import (
-    split_model_thinking_pattern as _split_model_thinking_pattern,
 )
 from loushang.harness.tools.contribution import (
     resolve_tool_contributions,
@@ -129,7 +126,7 @@ def create_services(
     thinking_level: ThinkingLevel = "off",
     system_prompt: str = "",
 ) -> BootstrapServices:
-    model_registry = ModelRegistry(ai_registry=ai_model_registry)
+    model_registry = ModelCatalog(ai_registry=ai_model_registry)
     resolved_settings_manager = settings_manager or SettingsManager(
         ControlConfig(
             default_model=default_model,
@@ -316,12 +313,19 @@ def create_agent_session(
         resolved_model: Model | None
         if model is None:
             default_selection = settings.default_model
-            resolved_model = _resolve_default_model_candidate(
+            default_model_resolution = resolve_default_model(
                 default_selection,
-                model_registry=services.model_registry,
-                diagnostics_service=services.diagnostics_service,
-                session_id=session_id,
+                build_model=services.model_registry.build_model,
+                endpoint_lookup=services.model_registry.ai_registry.get_endpoint,
+                on_unavailable=lambda selection, error, reason: record_default_model_unavailable(
+                    selection,
+                    error=error,
+                    reason=reason,
+                    diagnostics_service=services.diagnostics_service,
+                    session_id=session_id,
+                ),
             )
+            resolved_model = default_model_resolution.model
         elif isinstance(model, ModelSelection):
             resolved_model = services.model_registry.build_model(model)
         else:
@@ -416,8 +420,9 @@ def create_agent_session(
             session_factory=_create_session,
         )
         session.cwd_bound_services_audit = cwd_bound_services_audit
-        scoped_models = _scoped_models_from_enabled_patterns(
-            settings.enabled_models, services.model_registry
+        scoped_models = scoped_models_from_patterns(
+            settings.enabled_models,
+            resolve_model=services.model_registry.get_model,
         )
         if scoped_models:
             session.set_scoped_models(scoped_models)
@@ -678,85 +683,6 @@ def _require_configured_extension_runner(
     return state.extension_runner
 
 
-def _resolve_default_model_candidate(
-    selection: ModelSelection | None,
-    *,
-    model_registry: ModelRegistry,
-    diagnostics_service: DiagnosticsService,
-    session_id: str,
-) -> Model | None:
-    if selection is None:
-        return None
-    try:
-        return model_registry.build_model(selection)
-    except (KeyError, ValueError) as error:
-        _record_default_model_unavailable(
-            selection,
-            error=error,
-            model_registry=model_registry,
-            diagnostics_service=diagnostics_service,
-            session_id=session_id,
-        )
-        return None
-
-
-def _record_default_model_unavailable(
-    selection: ModelSelection,
-    *,
-    error: Exception,
-    model_registry: ModelRegistry,
-    diagnostics_service: DiagnosticsService,
-    session_id: str,
-) -> None:
-    reason = _default_model_unavailable_reason(
-        selection,
-        error=error,
-        model_registry=model_registry,
-    )
-    selection_ref = (
-        f"{selection.provider}:{selection.endpoint_id}:{selection.model_id}"
-        if selection.endpoint_id
-        else f"{selection.provider}:{selection.model_id}"
-    )
-    message = f"Default model unavailable: {selection_ref}; using startup fallback."
-    diagnostics_service.record(
-        diagnostics_service.normalize_error(
-            code="default_model_unavailable",
-            error=message,
-            phase="startup",
-            source="model",
-            level="warning",
-            session_id=session_id,
-            details={
-                "provider": selection.provider,
-                "model_id": selection.model_id,
-                "endpoint_id": selection.endpoint_id,
-                "reason": reason,
-                "error": str(error),
-            },
-        )
-    )
-
-
-def _default_model_unavailable_reason(
-    selection: ModelSelection,
-    *,
-    error: Exception,
-    model_registry: ModelRegistry,
-) -> str:
-    if selection.endpoint_id:
-        endpoint = model_registry.ai_registry.get_endpoint(
-            selection.provider,
-            selection.endpoint_id,
-        )
-        if endpoint is None:
-            return "endpoint_unavailable"
-        return "missing"
-    if isinstance(error, ValueError):
-        return "ambiguous"
-    return "missing"
-
-
 def create_agent_session_from_services(
     *,
     agent_services: AgentSessionServices,
@@ -920,7 +846,7 @@ def _default_package_materializer(
 
 
 def _reload_model_registry_with_project_layer(
-    model_registry: ModelRegistry,
+    model_registry: ModelCatalog,
     *,
     resource_bundle: ResourceBundle,
     session_cwd: str,
@@ -962,31 +888,6 @@ def _settings_project_root(settings_manager: SettingsManager) -> Path | None:
         return None
     resolved = _resolve_for_audit(project_base_dir)
     return resolved.parent if resolved.name == ".loushang" else resolved
-
-
-def _scoped_models_from_enabled_patterns(
-    patterns: tuple[str, ...] | None,
-    model_registry: ModelRegistry,
-) -> list[dict[str, object]]:
-    if not patterns:
-        return []
-    scoped_models: list[dict[str, object]] = []
-    for pattern in patterns:
-        model_name, thinking_level = _split_model_thinking_pattern(pattern)
-        selection = model_registry.get_model(model_name)
-        if selection is None:
-            continue
-        model_payload: dict[str, object] = {
-            "provider": selection.provider,
-            "model_id": selection.model_id,
-        }
-        if selection.endpoint_id:
-            model_payload["endpoint_id"] = selection.endpoint_id
-        scoped: dict[str, object] = {"model": model_payload}
-        if thinking_level is not None:
-            scoped["thinkingLevel"] = thinking_level
-        scoped_models.append(scoped)
-    return scoped_models
 
 
 def _register_extension_tools(

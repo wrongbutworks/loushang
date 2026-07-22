@@ -8,7 +8,17 @@ from typing import Any, Literal, cast
 
 from loushang.agent import ThinkingLevel
 from loushang.ai.model import ModelSelection
-from loushang.coding.control.types import (
+from loushang.harness.config import (
+    ConfigFieldSpec,
+    ConfigLayer,
+    LayeredConfig,
+    SchemaConfigCodec,
+    ScopedConfigRuntime,
+    SettingsRuntime,
+    decode_dataclass_patch,
+    encode_dataclass_diff,
+)
+from loushang.harness.config.agent.types import (
     BranchSummarySettings,
     CompactionSettings,
     ControlConfig,
@@ -30,16 +40,6 @@ from loushang.coding.control.types import (
     ToolSettings,
     TreeFilterMode,
     WarningSettings,
-)
-from loushang.harness.config import (
-    ConfigFieldSpec,
-    ConfigLayer,
-    LayeredConfig,
-    SchemaConfigCodec,
-    ScopedConfigRuntime,
-    SettingsRuntime,
-    decode_dataclass_patch,
-    encode_dataclass_diff,
 )
 from loushang.harness.resources.packages.source import (
     PackageSourceConfig,
@@ -674,6 +674,7 @@ _CONTROL_CONFIG_CODEC = SchemaConfigCodec(
 
 
 class SettingsManager:
+    """Manage the standard settings shared by Agent-backed products."""
     def __init__(
         self,
         initial: ControlConfig | None = None,
