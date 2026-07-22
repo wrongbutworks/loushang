@@ -1,5 +1,13 @@
 """Composable, product-neutral CLI grammar and parsing."""
 
+from loushang.harness.cli.command_execution import (
+    CommandExecutionError,
+    CommandExecutionRequest,
+    CommandExecutionResult,
+    execute_command,
+    format_command_execution_result,
+    json_safe_command_result,
+)
 from loushang.harness.cli.command_listing import (
     CommandListingError,
     format_command_records,
@@ -124,6 +132,12 @@ __all__ = [
     "export_session",
     "format_export_result",
     "CommandListingError",
+    "CommandExecutionError",
+    "CommandExecutionRequest",
+    "CommandExecutionResult",
+    "execute_command",
+    "format_command_execution_result",
+    "json_safe_command_result",
     "format_command_records",
     "list_command_records",
     "CliProfile",

@@ -74,6 +74,8 @@ from loushang.coding.work_runtime import CodingWorkRuntime
 from loushang.coding.workflow import run_prompt_steps_workflow
 from loushang.harness.agent_transcript.catalog import project_session_record
 from loushang.harness.cli import (
+    CommandExecutionError,
+    CommandExecutionRequest,
     CommandListingError,
     DiagnosticsListingError,
     DiagnosticsListingRequest,
@@ -91,7 +93,9 @@ from loushang.harness.cli import (
     SkillListingError,
     apply_resource_toggles,
     build_session_query,
+    execute_command,
     export_session,
+    format_command_execution_result,
     format_command_records,
     format_diagnostic_records,
     format_export_result,
@@ -2505,63 +2509,22 @@ async def _run_command(
 ) -> int | None:
     if args.command is None:
         return None
-
-    executor = getattr(session, "execute_command_async", None)
-    if not callable(executor):
-        stderr.write("Error: command execution is not available.\n")
-        return 1
-
-    invocation_name = args.command.strip()
-    if invocation_name.startswith("/"):
-        invocation_name = invocation_name[1:].strip()
-    if not invocation_name:
-        stderr.write("Error: --command requires a non-empty command name.\n")
-        return 2
-
     try:
-        execution = await executor(invocation_name, args.command_args)
-    except Exception as error:
-        stderr.write(f"Error: {_format_cli_error(error)}\n")
-        return 1
-    if execution is None:
-        stderr.write(f"Error: command not found: {invocation_name}\n")
-        return 1
-
-    result = getattr(execution, "result", None)
-    if result is None and not hasattr(execution, "result"):
-        result = execution
-    if args.command_result_format == "json":
-        stdout.write(
-            json.dumps(
-                {
-                    "command": invocation_name,
-                    "args": args.command_args,
-                    "result": _json_safe_command_result(result),
-                },
-                ensure_ascii=False,
-            )
-            + "\n"
+        result = await execute_command(
+            session,
+            CommandExecutionRequest(
+                command=args.command,
+                args=args.command_args,
+                result_format=args.command_result_format,
+            ),
         )
-        return 0
-    if result is None:
-        return 0
-    if isinstance(result, (dict, list, tuple)):
-        try:
-            text = json.dumps(result, ensure_ascii=False)
-        except TypeError:
-            text = repr(result)
-    else:
-        text = str(result)
-    stdout.write(f"{text}\n")
+    except CommandExecutionError as error:
+        stderr.write(f"Error: {_format_cli_error(error)}\n")
+        return 2 if "requires a non-empty" in str(error) else 1
+    stdout.write(
+        format_command_execution_result(result, result_format=args.command_result_format)
+    )
     return 0
-
-
-def _json_safe_command_result(result: object) -> object:
-    try:
-        json.dumps(result, ensure_ascii=False)
-        return result
-    except TypeError:
-        return repr(result)
 
 
 def main(argv: list[str] | tuple[str, ...] | None = None) -> int:
