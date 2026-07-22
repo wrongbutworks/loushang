@@ -17,6 +17,10 @@ resource/package wording, Work/Method preparation, or output schemas.
 | Session catalog record projection | `harness.agent_transcript.project_session_record` | Coding supplies catalog query and output format | Coding keeps query grammar; Harness owns the portable record shape |
 | Diagnostic record/error/summary JSON projection | `harness.diagnostics.serialization` | Products may select output transport; existing field shape is retained | No Coding serializer implementation remains; camelCase is preserved to avoid an unapproved protocol change |
 | Package catalog/materialization record projection | `harness.resources.packages.projection` | Coding supplies discovery/materializer policy and output selection | Package records are projected without Coding imports; discovery and policy remain injectable |
+| Resource enable/disable and plugin-source mutation | `harness.cli.resource_toggles` | Coding supplies package-source security, remote-source labeling, and diagnostics | Shared runtime returns ordered messages and preserves prior messages on failure |
+| Package lifecycle operation ordering | `harness.cli.package_lifecycle` | Coding supplies install-source policy and JSONL serialization | Install, bulk update, and per-source operations preserve existing order and scope |
+| Session command invocation and result normalization | `harness.cli.command_execution` | Coding supplies CLI values and stream projection | Slash normalization, missing-capability errors, and raw/JSON result shapes are shared |
+| CLI new/restore/continue/fork selection | `harness.cli.session_resolution` | Coding supplies parsed arguments and runtime binding | Harness uses existing session lifecycle ports; no second session engine is introduced |
 
 ## Non-goals
 

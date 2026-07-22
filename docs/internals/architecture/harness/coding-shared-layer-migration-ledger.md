@@ -259,6 +259,30 @@ deletion/addition ratio is approximately 0.71. Tests and documentation are not
 counted. The lower ratio is intentional: this slice establishes reusable
 contracts and does not delete product handlers or CLI grammar.
 
+### Slice B implementation follow-up: standard operation leaves
+
+The following additional leaves are now shared without changing Coding's
+argument grammar, operation order, security policy, or output fields:
+
+| Coding source mechanism | Shared owner | Product injection or retained Coding owner | Status |
+| --- | --- | --- | --- |
+| resource enable/disable and plugin-source toggle mutation | `harness.cli.resource_toggles` | Coding supplies `PackageSecurityPolicy`, remote-source labeling, and diagnostic capture | Complete |
+| asynchronous package install/materialize/update/remove/uninstall orchestration | `harness.cli.package_lifecycle` | Coding supplies install-source policy and JSONL serialization | Complete |
+| session command invocation, slash normalization, result extraction, and raw/JSON formatting | `harness.cli.command_execution` | Coding supplies CLI argument values and stream/error projection | Complete |
+| new/restore/continue/fork session selection | `harness.cli.session_resolution` over `harness.session` lifecycle ports | Coding supplies parsed CLI values and product runtime | Complete |
+| `provider/model`, `provider:endpoint:model`, and explicit provider+model parsing | `loushang.ai.model.parse_model_selection_reference` | Coding retains preferred model candidates and persistence wording | Complete |
+
+After these leaves, the implementation-only `coding.cli.__main__` count is
+2,539 lines (2,941 at the start of this follow-up). The remaining CLI code is
+deliberately not counted as shared yet: Method/Work preparation, Coding
+resource discovery and package materialization policy, mode selection, prompt
+policy, approval/tool setup, and final product/TUI/RPC projection still carry
+product semantics or require an explicit owner decision.
+
+The shared operation modules have independent fake-capability probes under
+`tests/harness/cli`. They return typed results and leave wire formatting to the
+Product host; no second session, package, or transport engine is introduced.
+
 Closure probes:
 
 - CLI/model/prompt/channel regressions preserve existing output and lifecycle
