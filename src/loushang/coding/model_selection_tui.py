@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from collections.abc import Sequence
 from typing import Any
 
 from loushang.ai.model import model_label_from_selection
@@ -75,9 +76,7 @@ class _CodingModelSelectionPort(ModelSelectionViewPort):
     async def available_choices(self) -> list[ModelChoice]:
         return await available_model_choices(self._session)
 
-    async def current_value(
-        self, choices: list[ModelChoice]
-    ) -> str | None:
+    async def current_value(self, choices: Sequence[ModelChoice]) -> str | None:
         return await current_model_choice_value(self._session, choices=choices)
 
     async def apply_selection(self, selection: object) -> object:
@@ -104,7 +103,7 @@ async def available_model_choices(session: Any) -> list[ModelChoice]:
 
 
 async def current_model_choice_value(
-    session: Any, *, choices: list[ModelChoice] | None = None
+    session: Any, *, choices: Sequence[ModelChoice] | None = None
 ) -> str | None:
     model_choices = (
         choices if choices is not None else await available_model_choices(session)

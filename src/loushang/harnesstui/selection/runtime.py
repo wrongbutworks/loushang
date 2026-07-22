@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Awaitable, Callable, Sequence
-from typing import Protocol
+from typing import Protocol, TypeVar
 
 from loushang.harnesstui.selection.catalog import (
     ModelChoice,
@@ -31,6 +31,7 @@ ModelApplyResult = object
 ModelChoices = Sequence[ModelChoice] | Awaitable[Sequence[ModelChoice]]
 ModelCurrentValue = str | None | Awaitable[str | None]
 PersistenceWarning = Callable[[ModelApplyResult], str | None]
+T = TypeVar("T")
 
 
 class ModelSelectionViewPort(Protocol):
@@ -122,7 +123,7 @@ async def select_available_model(
     return message
 
 
-async def _maybe_await(value: object) -> object:
+async def _maybe_await(value: T | Awaitable[T]) -> T:
     return await value if inspect.isawaitable(value) else value
 
 
