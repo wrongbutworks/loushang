@@ -32,6 +32,12 @@ from loushang.harness.cli.extension_flags import (
     apply_extension_flag_values,
     collect_extension_flags,
 )
+from loushang.harness.cli.method_listing import (
+    MethodListingError,
+    MethodListingRequest,
+    MethodListingResult,
+    run_method_listing,
+)
 from loushang.harness.cli.model_listing import (
     ModelListingError,
     ModelListingRequest,
@@ -124,6 +130,10 @@ __all__ = [
     "ModelListingRequest",
     "ModelListingResult",
     "list_model_entries",
+    "MethodListingError",
+    "MethodListingRequest",
+    "MethodListingResult",
+    "run_method_listing",
     "PackageLifecycleError",
     "PackageLifecycleRequest",
     "PackageLifecycleResult",
