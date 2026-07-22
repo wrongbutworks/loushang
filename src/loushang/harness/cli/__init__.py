@@ -26,6 +26,13 @@ from loushang.harness.cli.model_listing import (
     ModelListingResult,
     list_model_entries,
 )
+from loushang.harness.cli.package_lifecycle import (
+    PackageLifecycleError,
+    PackageLifecycleRequest,
+    PackageLifecycleResult,
+    package_lifecycle_failure,
+    run_package_lifecycle,
+)
 from loushang.harness.cli.package_listing import format_package_records
 from loushang.harness.cli.parser import (
     build_parser,
@@ -100,6 +107,11 @@ __all__ = [
     "ModelListingRequest",
     "ModelListingResult",
     "list_model_entries",
+    "PackageLifecycleError",
+    "PackageLifecycleRequest",
+    "PackageLifecycleResult",
+    "package_lifecycle_failure",
+    "run_package_lifecycle",
     "DiagnosticsListingError",
     "DiagnosticsListingRequest",
     "format_diagnostic_records",

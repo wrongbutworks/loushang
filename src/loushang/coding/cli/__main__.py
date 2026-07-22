@@ -81,6 +81,8 @@ from loushang.harness.cli import (
     ExportRequest,
     ModelListingError,
     ModelListingRequest,
+    PackageLifecycleError,
+    PackageLifecycleRequest,
     PluginListingError,
     ResourceToggleError,
     ResourceToggleRequest,
@@ -103,6 +105,7 @@ from loushang.harness.cli import (
     list_plugin_records,
     list_session_records,
     list_skill_records,
+    run_package_lifecycle,
 )
 from loushang.harness.extensions.types import ResolvedFlag
 from loushang.harness.host.prompt_input import (
@@ -2352,115 +2355,47 @@ def _run_list_packages(
 async def _run_package_lifecycle(
     args: CliArgs, session: Any, services: Any, stdout: TextIO, stderr: TextIO
 ) -> int | None:
-    install_operations: list[tuple[str, str, str]] = [
-        ("install_package", "install_package", source)
-        for source in args.install_packages
-    ]
-    operations: list[tuple[str, str, str]] = []
-    operations.extend(
-        ("materialize_package", "materialize_package", source)
-        for source in args.materialize_packages
+    request = PackageLifecycleRequest(
+        install=tuple(args.install_packages),
+        materialize=tuple(args.materialize_packages),
+        update=tuple(args.update_packages),
+        remove=tuple(args.remove_packages),
+        uninstall=tuple(args.uninstall_packages),
+        check_updates=args.check_package_updates,
+        update_all=args.update_all_packages,
+        scope=args.package_scope,
     )
-    operations.extend(
-        ("update_package", "update_package", source) for source in args.update_packages
-    )
-    operations.extend(
-        ("remove_package", "remove_package", source) for source in args.remove_packages
-    )
-    operations.extend(
-        ("uninstall_package", "uninstall_package", source)
-        for source in args.uninstall_packages
-    )
-    bulk_operations: list[tuple[str, str]] = []
-    if args.check_package_updates:
-        bulk_operations.append(("check_package_updates", "check_package_updates"))
-    if args.update_all_packages:
-        bulk_operations.append(("update_packages", "update_packages"))
-    if not operations and not install_operations and not bulk_operations:
+    if not request.has_operations:
         return None
-    for command, method_name, source in install_operations:
-        decision = PackageSecurityPolicy().evaluate_package_source(source)
-        if decision.disposition == "deny":
-            _record_package_policy_diagnostic(
-                services, source=source, reason=decision.reason
-            )
-            stderr.write(f"Error: {decision.reason}\n")
-            return 1
-        method = getattr(session, method_name, None)
-        if not callable(method):
-            stderr.write(f"Error: {command} is not available.\n")
-            return 1
-        try:
-            record = method(source, scope=args.package_scope)
-            if inspect.isawaitable(record):
-                record = await record
-        except Exception as error:
-            stderr.write(f"Error: {_format_cli_error(error)}\n")
-            return 1
-        if failure := _package_lifecycle_failure(record):
-            stderr.write(f"Error: {failure}\n")
-            return 1
-        stdout.write(
-            json.dumps({"command": command, "record": record}, ensure_ascii=False)
-            + "\n"
+    try:
+        result = await run_package_lifecycle(
+            session,
+            request,
+            evaluate_install_source=lambda source: _package_source_policy_reason(
+                source
+            ),
+            on_policy_denied=lambda source, reason: _record_package_policy_diagnostic(
+                services, source=source, reason=reason
+            ),
         )
-    for command, method_name in bulk_operations:
-        method = getattr(session, method_name, None)
-        if not callable(method):
-            stderr.write(f"Error: {command} is not available.\n")
-            return 1
-        try:
-            records = method()
-            if inspect.isawaitable(records):
-                records = await records
-        except Exception as error:
-            stderr.write(f"Error: {_format_cli_error(error)}\n")
-            return 1
-        if command == "update_packages" and isinstance(records, list):
-            for record in records:
-                if failure := _package_lifecycle_failure(record):
-                    stderr.write(f"Error: {failure}\n")
-                    return 1
+    except PackageLifecycleError as error:
+        for output in error.outputs:
+            stdout.write(json.dumps(output, ensure_ascii=False) + "\n")
+        stderr.write(f"Error: {_format_cli_error(error)}\n")
+        return 1
+    for output in result.outputs:
         stdout.write(
-            json.dumps({"command": command, "records": records}, ensure_ascii=False)
-            + "\n"
-        )
-    for command, method_name, source in operations:
-        method = getattr(session, method_name, None)
-        if not callable(method):
-            stderr.write(f"Error: {command} is not available.\n")
-            return 1
-        try:
-            if command == "uninstall_package":
-                record = method(source, scope=args.package_scope)
-            else:
-                record = method(source)
-            if inspect.isawaitable(record):
-                record = await record
-        except Exception as error:
-            stderr.write(f"Error: {_format_cli_error(error)}\n")
-            return 1
-        if failure := _package_lifecycle_failure(record):
-            stderr.write(f"Error: {failure}\n")
-            return 1
-        stdout.write(
-            json.dumps({"command": command, "record": record}, ensure_ascii=False)
+            json.dumps(output, ensure_ascii=False)
             + "\n"
         )
     return 0
 
 
-def _package_lifecycle_failure(record: object) -> str | None:
-    if not isinstance(record, Mapping):
-        return None
-    if record.get("lifecycle") != "failed":
-        return None
-    message = record.get("errorMessage", record.get("error_message"))
-    return (
-        str(message)
-        if isinstance(message, str) and message
-        else "Package lifecycle failed."
-    )
+def _package_source_policy_reason(source: str) -> str | None:
+    decision = PackageSecurityPolicy().evaluate_package_source(source)
+    if decision.disposition == "deny":
+        return decision.reason or "Package source denied by policy."
+    return None
 
 
 def _safe_string(value: Any) -> str:
