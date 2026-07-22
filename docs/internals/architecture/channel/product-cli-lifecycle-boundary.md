@@ -21,6 +21,8 @@ resource/package wording, Work/Method preparation, or output schemas.
 | Package lifecycle operation ordering | `harness.cli.package_lifecycle` | Coding supplies install-source policy and JSONL serialization | Install, bulk update, and per-source operations preserve existing order and scope |
 | Session command invocation and result normalization | `harness.cli.command_execution` | Coding supplies CLI values and stream projection | Slash normalization, missing-capability errors, and raw/JSON result shapes are shared |
 | CLI new/restore/continue/fork selection | `harness.cli.session_resolution` | Coding supplies parsed arguments and runtime binding | Harness uses existing session lifecycle ports; no second session engine is introduced |
+| Extension flag discovery and application | `harness.cli.extension_flags` | Coding supplies second-pass argparse typing and help text | Runner inspection is best-effort and has no Coding dependency |
+| Method catalog and plan listing projection | `harness.cli.method_listing` | Coding supplies Method discovery and domain-specific compiler callback | Harness owns shape/formatting; Method domain is injected rather than hard-coded |
 
 ## Non-goals
 

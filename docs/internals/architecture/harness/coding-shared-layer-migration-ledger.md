@@ -271,9 +271,11 @@ argument grammar, operation order, security policy, or output fields:
 | session command invocation, slash normalization, result extraction, and raw/JSON formatting | `harness.cli.command_execution` | Coding supplies CLI argument values and stream/error projection | Complete |
 | new/restore/continue/fork session selection | `harness.cli.session_resolution` over `harness.session` lifecycle ports | Coding supplies parsed CLI values and product runtime | Complete |
 | `provider/model`, `provider:endpoint:model`, and explicit provider+model parsing | `loushang.ai.model.parse_model_selection_reference` | Coding retains preferred model candidates and persistence wording | Complete |
+| extension flag discovery and application | `harness.cli.extension_flags` | Coding retains second-pass argparse typing and help text | Complete |
+| Method catalog normalization, lookup, plan projection, and text/JSON formatting | `harness.cli.method_listing` | Coding supplies discovery and `MethodCompiler(domain="coding")` callbacks | Complete |
 
 After these leaves, the implementation-only `coding.cli.__main__` count is
-2,539 lines (2,941 at the start of this follow-up). The remaining CLI code is
+2,232 lines (2,941 at the start of this follow-up). The remaining CLI code is
 deliberately not counted as shared yet: Method/Work preparation, Coding
 resource discovery and package materialization policy, mode selection, prompt
 policy, approval/tool setup, and final product/TUI/RPC projection still carry
