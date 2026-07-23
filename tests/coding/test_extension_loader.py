@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def test_extension_loader_supports_register_api_modules(tmp_path) -> None:
-    from loushang.coding.extensions.loader import ExtensionLoader
+    from loushang.harness.extensions.agent.loader import ExtensionLoader
     from loushang.harness.resources.types import ExtensionDescriptor
 
     extension_file = tmp_path / "register_extension.py"
@@ -50,7 +50,7 @@ def register(api):
 
 
 def test_extension_loader_keeps_build_extension_compatibility(tmp_path) -> None:
-    from loushang.coding.extensions.loader import ExtensionLoader
+    from loushang.harness.extensions.agent.loader import ExtensionLoader
     from loushang.harness.resources.types import ExtensionDescriptor
 
     extension_file = tmp_path / "legacy_builder.py"
@@ -103,7 +103,7 @@ def build_extension():
 
 
 def test_extension_loader_keeps_extension_object_compatibility(tmp_path) -> None:
-    from loushang.coding.extensions.loader import ExtensionLoader
+    from loushang.harness.extensions.agent.loader import ExtensionLoader
     from loushang.harness.resources.types import ExtensionDescriptor
 
     extension_file = tmp_path / "legacy_object.py"
@@ -136,7 +136,7 @@ EXTENSION = LegacyObjectExtension()
 
 
 def test_extension_loader_records_invalid_export_diagnostics(tmp_path) -> None:
-    from loushang.coding.extensions.loader import ExtensionLoader
+    from loushang.harness.extensions.agent.loader import ExtensionLoader
     from loushang.harness.resources.types import ExtensionDescriptor
 
     extension_file = tmp_path / "invalid.py"

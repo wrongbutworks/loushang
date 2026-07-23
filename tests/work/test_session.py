@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from loushang.work import InMemoryEventLogBackend
@@ -9,7 +10,21 @@ from loushang.work.session import (
     SessionWorkProfile,
     SessionWorkRuntime,
     SessionWorkTurn,
+    project_prepared_session_work_turns,
 )
+
+
+@dataclass(frozen=True)
+class _DesignPreparedTurn:
+    prepared_prompt: str
+    method_id: str | None = "design-review"
+    plan_id: str | None = "plan-design"
+    step_id: str | None = "critique"
+    step_index: int | None = 0
+    step_title: str | None = "Critique layout"
+    metadata: Mapping[str, object] = field(
+        default_factory=lambda: {"audit_policy": {"record": ["evidence"]}}
+    )
 
 
 class _DesignSession:
@@ -59,3 +74,25 @@ def test_session_work_runtime_accepts_product_vocabulary_as_a_profile() -> None:
         }
 
     asyncio.run(scenario())
+
+
+def test_prepared_turn_projection_is_product_neutral() -> None:
+    turns = project_prepared_session_work_turns(
+        (_DesignPreparedTurn("Review the first slide"),),
+        images=("image",),
+        follow_up_messages=("Check contrast",),
+    )
+
+    assert turns == (
+        SessionWorkTurn(
+            text="Review the first slide",
+            images=("image",),
+            method_id="design-review",
+            plan_id="plan-design",
+            step_id="critique",
+            step_index=0,
+            step_title="Critique layout",
+            audit_policy={"record": ["evidence"]},
+            follow_up_messages=("Check contrast",),
+        ),
+    )

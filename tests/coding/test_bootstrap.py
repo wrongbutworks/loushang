@@ -1947,7 +1947,7 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
 
     class _Extension:
         def resources_discover(self, bundle):
-            from loushang.coding.extensions import ExtensionResourceContribution
+            from loushang.harness.extensions.agent import ExtensionResourceContribution
 
             return ExtensionResourceContribution(
                 prompt_descriptors=[
@@ -2047,7 +2047,7 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
             [
                 "from loushang.agent.types import AgentToolResult",
                 "from loushang.ai.types import TextPart",
-                "from loushang.coding.extensions import ToolCallDecision, ToolResultDecision",
+                "from loushang.harness.extensions.agent import ToolCallDecision, ToolResultDecision",
                 "from loushang.harness.tools.workspace import ToolDefinition",
                 "",
                 "async def _ext_execute(tool_name, arguments, context, signal):",
@@ -2278,8 +2278,8 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
 
 
 def test_extension_tool_contribution_projection_preserves_source_info(tmp_path) -> None:
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.harness.bootstrap import project_extension_tool_contributions
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.tools.workspace import ToolDefinition
 
     async def _execute_tool(

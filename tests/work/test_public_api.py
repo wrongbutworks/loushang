@@ -50,11 +50,15 @@ def test_work_public_api_exposes_current_work_surface_without_multi_agent_types(
         "WorkStepSpec",
         "WorkStepRun",
         "WorkStepStatus",
-        "project_agent_event_to_work_events",
+            "create_agent_session_work_runtime",
+            "create_work_event_log",
+            "project_agent_event_to_work_events",
         "project_agent_event_to_work_facts",
+        "project_agent_runtime_event_to_work_facts",
         "project_work_plan_runs",
         "project_work_runs",
         "inspect_work_log",
+        "run_work_log_inspection_operation",
         "resolve_work_log_path",
     }
 

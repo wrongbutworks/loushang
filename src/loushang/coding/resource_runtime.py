@@ -9,12 +9,17 @@ from loushang.harness.resources.loader import (
     ResourceLoader,
     ResourceLoaderProfile,
 )
+from loushang.harness.resources.packages.catalog import empty_package_summary
 from loushang.harness.resources.packages.materializer import (
     PackageMaterializer,
     PackageSourcePolicy,
 )
+from loushang.harness.resources.packages.projection import (
+    collect_projected_package_entries,
+)
+from loushang.harness.resources.packages.source import PackageSourceConfig
 from loushang.harness.resources.skills import SkillLoader
-from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.resources.types import PackageResourceSummary, ResourceBundle
 
 BUILT_IN_RESOURCE_PACKAGE = "loushang.coding.resources"
 CODING_CONTEXT_FILE_NAMES = (*DEFAULT_CONTEXT_FILE_NAMES, "CLAUDE.md", "CLAUDE.MD")
@@ -85,6 +90,33 @@ class CodingSkillLoader(SkillLoader):
         )
 
 
+def summarize_coding_package_root(
+    package_root: Path,
+    cwd: Path,
+    package_source: PackageSourceConfig | None,
+) -> PackageResourceSummary:
+    """Summarize package resources with Coding's loader profile."""
+
+    filters: dict[str | Path, PackageSourceConfig] | None = (
+        {package_root: package_source} if package_source is not None else None
+    )
+    loader = CodingResourceLoader(
+        package_roots=(package_root,), package_source_filters=filters
+    )
+    loader.discover_resources(cwd)
+    summaries = loader.get_package_resource_summaries()
+    return summaries[0] if summaries else empty_package_summary(package_root)
+
+
+def collect_coding_package_entries(**kwargs: Any) -> list[dict[str, object]]:
+    """Collect projected package entries with Coding's resource profile."""
+
+    return collect_projected_package_entries(
+        **kwargs,
+        summary_provider=summarize_coding_package_root,
+    )
+
+
 __all__ = [
     "BUILT_IN_RESOURCE_PACKAGE",
     "CODING_CONTEXT_FILE_NAMES",
@@ -92,4 +124,6 @@ __all__ = [
     "CodingPackageMaterializer",
     "CodingResourceLoader",
     "CodingSkillLoader",
+    "collect_coding_package_entries",
+    "summarize_coding_package_root",
 ]

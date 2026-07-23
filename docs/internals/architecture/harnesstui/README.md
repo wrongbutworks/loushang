@@ -354,13 +354,19 @@ composition, or terminal writes. Those hot-path responsibilities and the
 independent render-performance contract remain unchanged. The conversation
 package initializer intentionally does not re-export these entrypoints.
 
-Coding's `ui.mode` is the composition root for these ports. It explicitly
-constructs the screen app, surface manager, event projector, action host, and
-runner, and preserves their reverse cleanup order. Raw Session discovery for
-tool definitions, queues, keybindings, and full transcript branch records is
-now expressed as explicit composition-root ports in `loushang.coding.ui.mode`;
-the former `loushang.coding.presentation.tui.runtime` reflection facade is
-retired. Resume-hint discovery lives in `loushang.coding.presentation.resume`.
+`AgentScreenConversationApplicationBinding` and
+`AgentPlainConversationApplicationBinding` compose these existing ports for
+Agent Products. They bind shared history, event projection, status, queues,
+resume hints, trace events, transcript sources, and reverse cleanup without
+creating another screen/plain host. Coding's `ui.mode` remains the Product
+composition root for the screen app, surface manager, controller/action host,
+renderer, completion, copy, theme, and policy. The former
+`loushang.coding.presentation.tui.runtime` reflection facade is retired.
+Resume-hint discovery and standard Agent session history projection live in
+`loushang.harnesstui`; reusable footer state lives in
+`loushang.harness.session.footer` so non-UI session code never imports the UI
+layer. Coding supplies only Product command prefixes, persisted-session
+loading, final presentation, and copy.
 Approval presenter binding and Session transition cleanup remain Coding product policy in
 `loushang.coding.policy.tui`. They do not belong to Harnesstui merely because a
 shared surface displays the prepared approval facts.

@@ -1,3 +1,5 @@
+"""Reusable session footer state and workspace branch observation."""
+
 from __future__ import annotations
 
 import threading

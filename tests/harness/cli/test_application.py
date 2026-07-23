@@ -5,16 +5,22 @@ from argparse import ArgumentParser
 from contextlib import contextmanager
 from dataclasses import dataclass
 from io import StringIO
+from types import SimpleNamespace
 
 from loushang.harness.cli import (
+    AgentCliStatePreparationPorts,
     CliApplicationPorts,
     CliApplicationRuntime,
+    CliBootstrapContext,
     CliLaunchPlan,
     CliParseResult,
     CliPhaseResult,
     capture_cli_parse,
+    collect_agent_cli_help_extension_flags,
     format_cli_error,
+    invoke_agent_cli_runtime_builder,
     invoke_cli_builder,
+    prepare_agent_cli_application_state,
     report_agent_resource_settings_errors,
 )
 
@@ -23,6 +29,25 @@ from loushang.harness.cli import (
 class _Args:
     cwd: str | None = None
     invalid_launch: bool = False
+
+
+@dataclass(frozen=True)
+class _ApplicationArgs:
+    no_session: bool = False
+    session_dir: str | None = None
+    no_builtin_tools: bool = False
+    list_commands: bool = False
+    list_diagnostics: bool = False
+    list_skills: bool = False
+    list_plugins: bool = False
+    list_packages: bool = False
+    list_models: str | bool = False
+    enable_skills: tuple[str, ...] = ()
+    disable_skills: tuple[str, ...] = ()
+    add_plugin_sources: tuple[str, ...] = ()
+    remove_plugin_sources: tuple[str, ...] = ()
+    enable_plugins: tuple[str, ...] = ()
+    disable_plugins: tuple[str, ...] = ()
 
 
 def test_application_runtime_owns_two_pass_session_phase_order(tmp_path) -> None:
@@ -205,6 +230,50 @@ def test_application_helpers_preserve_parser_and_builder_boundaries() -> None:
     )
 
 
+def test_agent_runtime_builder_receives_standard_binding_values(tmp_path) -> None:
+    captured: dict[str, object] = {}
+
+    def builder(
+        *,
+        args: object,
+        cwd: object,
+        session_dir: object,
+        services: object,
+        tool_registry: object,
+        approval_resolver: object,
+    ) -> str:
+        captured.update(
+            args=args,
+            cwd=cwd,
+            session_dir=session_dir,
+            services=services,
+            tool_registry=tool_registry,
+            approval_resolver=approval_resolver,
+        )
+        return "runtime"
+
+    args = _ApplicationArgs()
+    result = invoke_agent_cli_runtime_builder(
+        builder,
+        args=args,
+        cwd=tmp_path,
+        session_dir=tmp_path / "sessions",
+        services="services",
+        tool_registry="tools",
+        approval_resolver="approval",
+    )
+
+    assert result == "runtime"
+    assert captured == {
+        "args": args,
+        "cwd": tmp_path,
+        "session_dir": tmp_path / "sessions",
+        "services": "services",
+        "tool_registry": "tools",
+        "approval_resolver": "approval",
+    }
+
+
 def test_resource_settings_errors_are_reported_for_standard_operations() -> None:
     stderr = StringIO()
     args = type(
@@ -237,6 +306,108 @@ def test_resource_settings_errors_are_reported_for_standard_operations() -> None
         stderr.getvalue()
         == "Warning (package command, project settings): invalid\n"
     )
+
+
+def test_agent_application_state_preparation_binds_product_tools_and_approval(
+    tmp_path,
+) -> None:
+    calls: list[object] = []
+    args = _ApplicationArgs()
+    manager = SimpleNamespace(
+        get_settings=lambda: SimpleNamespace(session_dir=None),
+        get_tool_settings=lambda: None,
+    )
+    services = SimpleNamespace(settings_manager=manager)
+    stdout = StringIO()
+    stderr = StringIO()
+    context = CliBootstrapContext(
+        raw_argv=(),
+        args=args,
+        launch_plan=CliLaunchPlan(),
+        project_root=tmp_path,
+        stdin=StringIO(),
+        stdout=stdout,
+        stderr=stderr,
+    )
+    ports = AgentCliStatePreparationPorts(
+        build_services=lambda _root: services,
+        product_catalog_operation=lambda _args: False,
+        pre_runtime_operation=lambda value: calls.append(
+            ("pre_runtime", value.session_dir)
+        ),
+        build_empty_tool_registry=lambda: "empty",
+        build_tool_registry=lambda _services, approval: (
+            calls.append(("tools", approval)) or "registry"
+        ),
+        policy_factory=lambda **_kwargs: object(),
+        build_interactive_approval_resolver=lambda: "interactive",
+        run_resource_toggle=lambda *_args, **_kwargs: None,
+    )
+
+    result = asyncio.run(
+        prepare_agent_cli_application_state(context, ports=ports)
+    )
+
+    assert result.exit_code is None
+    assert result.value is not None
+    assert result.value.session_dir == tmp_path / ".loushang" / "sessions"
+    assert result.value.tool_registry == "registry"
+    assert result.value.approval_resolver == "interactive"
+    assert calls == [
+        ("pre_runtime", tmp_path / ".loushang" / "sessions"),
+        ("tools", "interactive"),
+    ]
+    assert stdout.getvalue() == ""
+    assert stderr.getvalue() == ""
+
+
+@dataclass(frozen=True)
+class _HelpArgs:
+    fork: str | None = "source"
+    no_session: bool = False
+    no_builtin_tools: bool = False
+    session_dir: str | None = None
+
+
+def test_help_extension_discovery_reuses_agent_state_ports(tmp_path) -> None:
+    captured: list[_HelpArgs] = []
+    flag = SimpleNamespace(name="research-mode")
+    session = SimpleNamespace(
+        extension_runner=SimpleNamespace(get_flags=lambda: [flag])
+    )
+    manager = SimpleNamespace(
+        get_settings=lambda: SimpleNamespace(session_dir=None)
+    )
+    services = SimpleNamespace(settings_manager=manager)
+    state_ports = AgentCliStatePreparationPorts(
+        build_services=lambda _root: services,
+        product_catalog_operation=lambda _args: False,
+        pre_runtime_operation=lambda _context: None,
+        build_empty_tool_registry=lambda: "empty",
+        build_tool_registry=lambda _services, _approval: "registry",
+        policy_factory=lambda **_kwargs: object(),
+        build_interactive_approval_resolver=lambda: object(),
+        run_resource_toggle=lambda *_args, **_kwargs: None,
+    )
+
+    result = asyncio.run(
+        collect_agent_cli_help_extension_flags(
+            ("--help",),
+            project_root=tmp_path,
+            parse_args=lambda _argv: _HelpArgs(),
+            state_ports=state_ports,
+            build_runtime=lambda args, *_rest: captured.append(args) or "runtime",
+            resolve_session=lambda *_args: session,
+        )
+    )
+
+    assert result == {"research-mode": flag}
+    assert captured == [
+        _HelpArgs(
+            fork=None,
+            no_session=True,
+        )
+    ]
 
 
 @contextmanager

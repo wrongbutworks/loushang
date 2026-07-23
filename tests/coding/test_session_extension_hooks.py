@@ -13,8 +13,12 @@ from loushang.agent import (
 )
 from loushang.agent.types import AfterToolCallContext, AfterToolCallResult, AgentContext
 from loushang.ai.types import TextPart, UserMessage
-from loushang.coding.extensions import ContextResult, ExtensionRunner, LoadedExtension
-from loushang.harness.extensions.agent import ExtensionAgentHookRuntime
+from loushang.harness.extensions.agent import (
+    ContextResult,
+    ExtensionAgentHookRuntime,
+    ExtensionRunner,
+    LoadedExtension,
+)
 from loushang.harness.extensions.agent.hooks import compose_after_tool_call_hooks
 
 

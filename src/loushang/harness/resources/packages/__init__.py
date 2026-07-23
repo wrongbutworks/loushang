@@ -3,6 +3,8 @@ from loushang.harness.resources.packages.catalog import (
     PackageCatalogDiagnostic,
     PackageCatalogEntry,
     PackageCatalogSources,
+    PackageSummaryProvider,
+    collect_package_catalog,
     empty_package_summary,
     load_package_catalog,
     mark_package_conflicts,
@@ -38,6 +40,7 @@ from loushang.harness.resources.packages.operations import (
     PackageUpdatePreparation,
 )
 from loushang.harness.resources.packages.projection import (
+    collect_projected_package_entries,
     project_package_entries,
     project_package_entry,
     serialize_package_materialization_record,
@@ -81,6 +84,7 @@ __all__ = [
     "PackageCatalogDiagnosticsRecorder",
     "PackageCatalogEntry",
     "PackageCatalogSources",
+    "PackageSummaryProvider",
     "PackageManifestInfo",
     "PackageMaterializationLifecycle",
     "PackageMaterializationRecord",
@@ -103,6 +107,8 @@ __all__ = [
     "PythonPackageInstallerBackend",
     "ResolvedPackageResourceRoots",
     "clone_source_and_ref",
+    "collect_package_catalog",
+    "collect_projected_package_entries",
     "configure_resource_loader_roots",
     "configured_package_sources",
     "empty_package_summary",

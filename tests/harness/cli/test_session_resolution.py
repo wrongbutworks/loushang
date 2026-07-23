@@ -8,6 +8,7 @@ import pytest
 from loushang.harness.cli import (
     SessionResolutionRequest,
     agent_session_resolution_request,
+    resolve_agent_cli_session,
     resolve_session,
 )
 
@@ -68,6 +69,30 @@ def test_resolve_session_selects_new_restore_and_fork_operations() -> None:
     assert runtime.calls == [
         ("restore", "session.jsonl"),
         ("fork", ("entry-1", "at")),
+    ]
+
+
+def test_resolve_agent_cli_session_projects_standard_arguments() -> None:
+    from types import SimpleNamespace
+
+    runtime = _Runtime()
+    result = asyncio.run(
+        resolve_agent_cli_session(
+            SimpleNamespace(
+                session="session-1",
+                continue_=False,
+                resume=False,
+                fork="leaf-1",
+            ),
+            runtime,
+            Path("/tmp/project"),
+        )
+    )
+
+    assert result == "forked"
+    assert runtime.calls == [
+        ("restore", "session-1"),
+        ("fork", ("leaf-1", "at")),
     ]
 
 

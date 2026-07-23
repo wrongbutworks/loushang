@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import os
 from argparse import Namespace
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Literal, TypeVar
+from typing import Literal, TextIO, TypeVar
+
+from loushang.harness.host.prompt_input import PromptInputPlan, resolve_prompt_input
 
 AgentCliMode = Literal["text", "print", "json", "rpc", "channel"]
 CommandListFormat = Literal["tsv", "json"]
@@ -346,6 +349,71 @@ def agent_image_auto_resize(settings_manager: object | None) -> bool:
     return bool(getattr(images, "auto_resize", True))
 
 
+def agent_tool_selection(
+    args: AgentCliArgs,
+) -> tuple[list[str] | None, list[str] | None]:
+    """Project CLI tool selection into runtime allow/active lists."""
+
+    if args.no_tools:
+        return [], []
+    if args.tools:
+        selected = list(args.tools)
+        return selected, list(selected)
+    return None, None
+
+
+def agent_cli_output_mode(args: AgentCliArgs) -> str:
+    """Project structured JSON mode while keeping other hosts text-oriented."""
+
+    return "json" if args.mode == "json" else "text"
+
+
+def resolve_agent_prompt_input(
+    args: AgentCliArgs,
+    *,
+    stdin: TextIO,
+    cwd: str | Path,
+    auto_resize_images: bool = True,
+) -> PromptInputPlan:
+    """Resolve standard prompt, message, file, and stdin inputs."""
+
+    return resolve_prompt_input(
+        prompt=args.prompt,
+        messages=tuple(args.messages),
+        message_prompts=tuple(args.message_prompts),
+        file_args=tuple(args.file_args),
+        stdin=stdin,
+        cwd=Path(cwd),
+        auto_resize_images=auto_resize_images,
+    )
+
+
+def cwd_bound_services_factory(
+    services: object,
+    resource_loader_options: dict[str, object],
+    *,
+    create_services: Callable[..., object],
+) -> Callable[[str], object] | None:
+    """Build cwd-specific services when project-scoped settings are active."""
+
+    project_base_dir = getattr(
+        getattr(services, "settings_manager", None),
+        "project_base_dir",
+        None,
+    )
+    if project_base_dir is None:
+        return None
+
+    def build_for_cwd(cwd: str) -> object:
+        result = create_services(
+            cwd=cwd,
+            resource_loader_options=resource_loader_options,
+        )
+        return getattr(result, "services", result)
+
+    return build_for_cwd
+
+
 def _normalize_package_command(argv: list[str]) -> list[str]:
     if not argv:
         return argv
@@ -446,15 +514,19 @@ __all__ = [
     "SkillListFormat",
     "SourceInfoFormat",
     "agent_image_auto_resize",
+    "agent_cli_output_mode",
     "agent_cli_bootstrap_args",
     "agent_cli_argument_values",
     "agent_resource_loader_options",
+    "agent_tool_selection",
     "apply_agent_offline_mode",
     "configure_agent_resource_loader",
+    "cwd_bound_services_factory",
     "normalize_agent_cli_argv",
     "parse_csv_item_groups",
     "parse_csv_items",
     "parse_tool_flags",
     "resolve_agent_session_dir",
+    "resolve_agent_prompt_input",
     "split_file_args",
 ]

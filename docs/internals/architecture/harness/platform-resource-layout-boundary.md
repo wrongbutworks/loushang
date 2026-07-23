@@ -162,9 +162,10 @@ package materialization, package catalog construction, source resolution, or
 `AGENTS.md` discovery. `harness.resources.packages` owns the structured
 catalog, scoped source resolver, materialization lifecycle, manifest summary,
 and conflict diagnostics. `harness.resources.packages.projection` owns the
-structured catalog and materialization-record projection; `CodingPackageMaterializer`
-supplies Coding's settings object and package security policy, while
-`coding.package_projection` retains only discovery/materializer wiring.
+structured catalog and materialization-record projection;
+`harness.resources.packages.session` owns session package operations.
+`CodingPackageMaterializer` supplies Coding's settings object and package
+security policy; no Coding package projection or controller facade remains.
 
 ## Security Boundary
 

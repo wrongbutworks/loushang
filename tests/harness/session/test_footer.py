@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def test_footer_data_provider_caches_and_refreshes_git_branch(tmp_path) -> None:
-    from loushang.coding.platform.footer_data_provider import FooterDataProvider
+    from loushang.harness.session.footer import FooterDataProvider
 
     branch = {"value": "main"}
     resolver_calls: list[Path] = []
@@ -34,7 +34,7 @@ def test_footer_data_provider_caches_and_refreshes_git_branch(tmp_path) -> None:
 
 
 def test_footer_data_provider_set_cwd_invalidates_branch_and_notifies(tmp_path) -> None:
-    from loushang.coding.platform.footer_data_provider import FooterDataProvider
+    from loushang.harness.session.footer import FooterDataProvider
 
     cwd_a = tmp_path / "a"
     cwd_b = tmp_path / "b"
@@ -58,7 +58,7 @@ def test_footer_data_provider_set_cwd_invalidates_branch_and_notifies(tmp_path) 
 
 
 def test_footer_data_provider_snapshot_statuses_and_provider_count(tmp_path) -> None:
-    from loushang.coding.platform.footer_data_provider import FooterDataProvider
+    from loushang.harness.session.footer import FooterDataProvider
 
     provider = FooterDataProvider(tmp_path, branch_resolver=lambda cwd: "main")
 
@@ -81,7 +81,7 @@ def test_footer_data_provider_snapshot_statuses_and_provider_count(tmp_path) -> 
 
 
 def test_footer_data_provider_defaults_provider_count_to_zero(tmp_path) -> None:
-    from loushang.coding.platform.footer_data_provider import FooterDataProvider
+    from loushang.harness.session.footer import FooterDataProvider
 
     provider = FooterDataProvider(tmp_path, branch_resolver=lambda cwd: None)
 
@@ -90,7 +90,7 @@ def test_footer_data_provider_defaults_provider_count_to_zero(tmp_path) -> None:
 
 
 def test_footer_data_provider_git_watcher_refreshes_branch_on_head_change(tmp_path) -> None:
-    from loushang.coding.platform.footer_data_provider import FooterDataProvider
+    from loushang.harness.session.footer import FooterDataProvider
 
     repo = tmp_path / "repo"
     git_dir = repo / ".git"
@@ -114,7 +114,7 @@ def test_footer_data_provider_git_watcher_refreshes_branch_on_head_change(tmp_pa
 
 
 def test_footer_data_provider_git_watcher_restarts_when_cwd_changes(tmp_path) -> None:
-    from loushang.coding.platform.footer_data_provider import FooterDataProvider
+    from loushang.harness.session.footer import FooterDataProvider
 
     repo_a = tmp_path / "repo-a"
     repo_b = tmp_path / "repo-b"

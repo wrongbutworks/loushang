@@ -17,9 +17,9 @@ if str(SRC_ROOT) not in sys.path:
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import TextPart
-from loushang.coding.mode import PrintMode
 from loushang.harness.conversation import ConversationHeader
 from loushang.harness.tools.core import ToolDefinition
+from loushang.harnesstui.conversation.agent_binding import AgentPlainHost
 
 
 async def _execute(
@@ -154,7 +154,7 @@ class FakeSession:
 
 async def _render_jsonl(project_root: Path, artifact_path: Path) -> str:
     stdout = StringIO()
-    mode = PrintMode(
+    host = AgentPlainHost(
         runtime=FakeRuntime(),
         session=FakeSession(project_root, artifact_path),
         stdout=stdout,
@@ -162,9 +162,9 @@ async def _render_jsonl(project_root: Path, artifact_path: Path) -> str:
         event_view="tools",
         render_tool_events=True,
     )
-    exit_code = await mode.run_once("show rendered tool events")
+    exit_code = await host.run_once("show rendered tool events")
     if exit_code != 0:
-        raise RuntimeError(f"PrintMode exited with {exit_code}")
+        raise RuntimeError(f"AgentPlainHost exited with {exit_code}")
     return stdout.getvalue()
 
 

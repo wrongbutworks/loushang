@@ -5,9 +5,9 @@ from pathlib import Path
 
 from loushang.agent import Agent
 from loushang.agent.types import AgentToolResult
-from loushang.harness.session.tool_controller import ToolController
 from loushang.harness.diagnostics import DiagnosticsService
 from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.session.tool_controller import ToolController
 from loushang.harness.tools.core import tool
 from loushang.harness.tools.workspace import ToolContext, ToolDefinition
 from loushang.harness.tools.workspace.registry import (

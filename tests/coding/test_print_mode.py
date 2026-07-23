@@ -54,7 +54,9 @@ def serialize_session_header(header: ConversationHeader) -> dict[str, object]:
 
 
 def test_print_mode_run_once_prompts_session_and_waits_for_idle() -> None:
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -94,7 +96,9 @@ def test_print_mode_run_once_prompts_session_and_waits_for_idle() -> None:
 
 
 def test_print_mode_json_prefers_common_runtime_event_stream() -> None:
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -158,8 +162,12 @@ def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_beha
     None
 ):
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.mode import PrintMode
+    from loushang.coding.domain.work import create_coding_work_runtime
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
     from loushang.work import InMemoryEventLogBackend
+    from loushang.work.session import SessionWorkHostPort
 
     image = {"type": "image", "mime_type": "image/png", "data": "abc"}
     usage = Usage(
@@ -237,6 +245,13 @@ def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_beha
             session=session,
             stdout=stdout,
             work_event_log=event_log,
+            work_port=SessionWorkHostPort(
+                create_coding_work_runtime(
+                    session=session,
+                    event_log=event_log,
+                    session_id=lambda: session.session_id,
+                )
+            ),
             method_id="method:task:review",
         )
 
@@ -266,7 +281,9 @@ def test_print_mode_work_event_log_records_coding_turn_and_preserves_prompt_beha
 
 def test_print_mode_projects_assistant_text_and_tool_events() -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     usage = Usage(
         input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
@@ -339,7 +356,9 @@ def test_print_mode_projects_assistant_text_and_tool_events() -> None:
 
 
 def test_print_mode_text_distinguishes_multiple_same_tool_calls() -> None:
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -395,7 +414,9 @@ def test_print_mode_text_distinguishes_multiple_same_tool_calls() -> None:
 
 
 def test_print_mode_returns_nonzero_and_prints_error_on_failure() -> None:
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -430,7 +451,9 @@ def test_print_mode_returns_nonzero_and_prints_error_on_failure() -> None:
 
 @pytest.mark.parametrize("output_mode", ["text", "json"])
 def test_print_mode_run_once_disposes_runtime_after_exit(output_mode: str) -> None:
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         def __init__(self) -> None:
@@ -490,7 +513,9 @@ def test_print_mode_run_once_disposes_runtime_after_exit(output_mode: str) -> No
 
 
 def test_print_mode_run_once_disposes_runtime_after_prompt_error() -> None:
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         def __init__(self) -> None:
@@ -532,7 +557,9 @@ def test_print_mode_returns_nonzero_and_disposes_on_assistant_error_message() ->
     from types import SimpleNamespace
 
     from loushang.ai.types import AssistantMessage, Usage
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     assistant = AssistantMessage(
         role="assistant",
@@ -594,7 +621,9 @@ def test_print_mode_returns_nonzero_and_disposes_on_assistant_error_message() ->
 def test_print_mode_returns_nonzero_on_aborted_assistant_message() -> None:
     from types import SimpleNamespace
 
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     assistant = SimpleNamespace(
         role="assistant", stop_reason="aborted", error_message=None
@@ -640,7 +669,9 @@ def test_print_mode_returns_nonzero_on_aborted_assistant_message() -> None:
 
 
 def test_run_print_mode_wraps_print_mode() -> None:
-    from loushang.coding.mode import run_print_mode
+    from loushang.harnesstui.conversation.agent_binding import (
+        run_agent_plain_mode as run_print_mode,
+    )
 
     class FakeRuntime:
         pass
@@ -672,7 +703,9 @@ def test_run_print_mode_wraps_print_mode() -> None:
 
 
 def test_run_print_mode_passes_images_to_session_prompt() -> None:
-    from loushang.coding.mode import run_print_mode
+    from loushang.harnesstui.conversation.agent_binding import (
+        run_agent_plain_mode as run_print_mode,
+    )
 
     image = {"type": "image", "mime_type": "image/png", "data": "abc"}
 
@@ -713,7 +746,9 @@ def test_run_print_mode_passes_images_to_session_prompt() -> None:
 
 
 def test_run_print_mode_sends_follow_up_messages_after_initial_prompt() -> None:
-    from loushang.coding.mode import run_print_mode
+    from loushang.harnesstui.conversation.agent_binding import (
+        run_agent_plain_mode as run_print_mode,
+    )
 
     class FakeRuntime:
         pass
@@ -757,15 +792,9 @@ def test_run_print_mode_sends_follow_up_messages_after_initial_prompt() -> None:
     asyncio.run(scenario())
 
 
-def test_print_mode_is_exported_from_coding_package() -> None:
-    from loushang.coding import PrintMode, run_print_mode
-
-    assert PrintMode is not None
-    assert run_print_mode is not None
-
-
-def test_mode_config_factory_creates_print_and_rpc_adapters() -> None:
-    from loushang.coding.mode import ModeConfig, PrintMode, RpcMode, create_mode_adapter
+def test_shared_agent_hosts_create_print_and_rpc_adapters() -> None:
+    from loushang.harness.host.rpc import RpcHost
+    from loushang.harnesstui.conversation.agent_binding import AgentPlainHost
 
     class FakeRuntime:
         def __init__(self, session) -> None:
@@ -811,26 +840,27 @@ def test_mode_config_factory_creates_print_and_rpc_adapters() -> None:
     session = FakeSession()
     runtime = FakeRuntime(session)
 
-    print_mode = create_mode_adapter(
-        ModeConfig(mode="json"),
+    print_mode = AgentPlainHost(
         runtime=runtime,
         session=session,
-        stdin=StringIO(),
         stdout=StringIO(),
+        output_mode="json",
     )
-    rpc_mode = create_mode_adapter(
-        ModeConfig(mode="rpc"),
+    rpc_mode = RpcHost(
         runtime=runtime,
         stdin=StringIO(),
         stdout=StringIO(),
     )
 
-    assert isinstance(print_mode, PrintMode)
-    assert isinstance(rpc_mode, RpcMode)
+    assert isinstance(print_mode, AgentPlainHost)
+    assert isinstance(rpc_mode, RpcHost)
 
 
 def test_run_mode_routes_through_mode_adapter() -> None:
-    from loushang.coding.mode import ModeConfig, run_mode
+    from loushang.harness.host.mode import ModeConfig
+    from loushang.harnesstui.conversation.agent_binding import (
+        run_agent_mode as run_mode,
+    )
 
     class FakeRuntime:
         pass
@@ -870,8 +900,13 @@ def test_run_mode_routes_through_mode_adapter() -> None:
 
 
 def test_run_mode_passes_work_event_log_to_print_adapter() -> None:
-    from loushang.coding.mode import ModeConfig, run_mode
+    from loushang.coding.domain.work import create_coding_work_runtime
+    from loushang.harness.host.mode import ModeConfig
+    from loushang.harnesstui.conversation.agent_binding import (
+        run_agent_mode as run_mode,
+    )
     from loushang.work import InMemoryEventLogBackend
+    from loushang.work.session import SessionWorkHostPort
 
     class FakeRuntime:
         pass
@@ -920,14 +955,22 @@ def test_run_mode_passes_work_event_log_to_print_adapter() -> None:
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()
+        session = FakeSession()
         exit_code = await run_mode(
             ModeConfig(mode="text"),
             runtime=FakeRuntime(),
-            session=FakeSession(),
+            session=session,
             user_input="hello",
             stdin=StringIO(),
             stdout=StringIO(),
             work_event_log=event_log,
+            work_port=SessionWorkHostPort(
+                create_coding_work_runtime(
+                    session=session,
+                    event_log=event_log,
+                    session_id=lambda: session.session_id,
+                )
+            ),
         )
 
         assert exit_code == 0
@@ -944,7 +987,7 @@ def test_run_mode_passes_work_event_log_to_print_adapter() -> None:
 
 
 def test_dispatch_mode_action_routes_to_adapter_contract() -> None:
-    from loushang.coding.mode import ModeAction, dispatch_mode_action
+    from loushang.harness.host.mode import ModeAction, dispatch_mode_action
 
     class FakeAdapter:
         def __init__(self) -> None:
@@ -1024,7 +1067,7 @@ def test_dispatch_mode_action_routes_to_adapter_contract() -> None:
 
 
 def test_mode_action_normalization_accepts_wire_payload_and_rejects_invalid() -> None:
-    from loushang.coding.mode import ModeAction, normalize_mode_action
+    from loushang.harness.host.mode import ModeAction, normalize_mode_action
 
     assert normalize_mode_action(ModeAction("stop")) == ModeAction("stop")
     assert normalize_mode_action(
@@ -1043,7 +1086,7 @@ def test_mode_action_normalization_accepts_wire_payload_and_rejects_invalid() ->
 
 
 def test_dispatch_mode_action_accepts_wire_payload() -> None:
-    from loushang.coding.mode import dispatch_mode_action
+    from loushang.harness.host.mode import dispatch_mode_action
 
     class FakeAdapter:
         def __init__(self) -> None:
@@ -1090,7 +1133,10 @@ def test_dispatch_mode_action_accepts_wire_payload() -> None:
 
 
 def test_print_mode_lifecycle_actions_delegate_to_runtime_and_session() -> None:
-    from loushang.coding.mode import ModeAction, PrintMode, dispatch_mode_action
+    from loushang.harness.host.mode import ModeAction, dispatch_mode_action
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         def __init__(self, session) -> None:
@@ -1132,7 +1178,9 @@ def test_print_mode_json_output_writes_header_before_event_lines() -> None:
     from io import StringIO
 
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     usage = Usage(
         input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
@@ -1212,7 +1260,9 @@ def test_run_print_mode_supports_json_output_mode() -> None:
     import json
     from io import StringIO
 
-    from loushang.coding.mode import run_print_mode
+    from loushang.harnesstui.conversation.agent_binding import (
+        run_agent_plain_mode as run_print_mode,
+    )
 
     class FakeRuntime:
         pass
@@ -1267,7 +1317,9 @@ def test_run_print_mode_supports_json_output_mode() -> None:
 
 
 def test_print_mode_rejects_invalid_output_mode() -> None:
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -1295,7 +1347,9 @@ def test_print_mode_rejects_invalid_output_mode() -> None:
 
 
 def test_print_mode_rejects_rendered_tool_events_for_text_output() -> None:
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -1323,7 +1377,9 @@ def test_print_mode_json_compact_view_projects_assistant_stream_and_tool_lifecyc
 
     from loushang.agent import AgentToolResult
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     usage = Usage(
         input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
@@ -1437,8 +1493,10 @@ def test_print_mode_json_can_include_rendered_tool_event_payloads() -> None:
 
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.mode import PrintMode
     from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -1568,7 +1626,9 @@ def test_print_mode_json_event_select_filters_projected_events() -> None:
 
     from loushang.agent import AgentToolResult
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     usage = Usage(
         input=0, output=0, cache_read=0, cache_write=0, total_tokens=0, cost={}
@@ -1678,7 +1738,9 @@ def test_print_mode_json_full_view_event_select_supports_prefix_patterns() -> No
     from io import StringIO
 
     from loushang.agent import AgentToolResult
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -1761,7 +1823,9 @@ def test_print_mode_json_event_select_accepts_single_string_pattern() -> None:
     from io import StringIO
 
     from loushang.agent import AgentToolResult
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -1843,7 +1907,9 @@ def test_print_mode_json_default_stderr_routes_errors_off_stdout() -> None:
     import json
     from io import StringIO
 
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -1909,7 +1975,9 @@ def test_print_mode_json_failure_keeps_stdout_json_and_writes_error_to_stderr() 
     import json
     from io import StringIO
 
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -1976,7 +2044,9 @@ def test_print_mode_json_header_failure_returns_error_without_writing_stdout() -
     import asyncio
     from io import StringIO
 
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -2027,7 +2097,9 @@ def test_print_mode_json_writes_header_before_subscription() -> None:
     import json
     from io import StringIO
 
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -2112,8 +2184,10 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
 
     from loushang.agent import AgentToolResult
     from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, Usage
-    from loushang.coding.mode import PrintMode
     from loushang.harness.agent_transcript import ApplicationMessage
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     usage = Usage(
         input=1, output=2, cache_read=3, cache_write=4, total_tokens=5, cost={}
@@ -2395,7 +2469,9 @@ def test_print_mode_json_serializes_tool_results_and_preserves_utf8() -> None:
 
     from loushang.agent import AgentToolResult, FunctionalToolOutputProjector
     from loushang.ai.types import TextPart
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
 
     class FakeRuntime:
         pass
@@ -2471,7 +2547,9 @@ def test_print_mode_json_serializes_tool_results_and_preserves_utf8() -> None:
 def test_print_mode_json_event_sink_rejects_non_finite_values_without_output() -> None:
     from io import StringIO
 
-    from loushang.coding.mode import PrintMode
+    from loushang.harnesstui.conversation.agent_binding import (
+        AgentPlainHost as PrintMode,
+    )
     from loushang.protocol import JsonValueError
 
     stdout = StringIO()

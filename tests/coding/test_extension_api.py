@@ -7,7 +7,7 @@ import pytest
 
 
 def test_extension_api_register_tool_accepts_decorated_tool() -> None:
-    from loushang.coding.extensions.api import ExtensionAPI
+    from loushang.harness.extensions.agent.api import ExtensionAPI
     from loushang.harness.tools.core import tool
 
     @tool()
@@ -22,7 +22,7 @@ def test_extension_api_register_tool_accepts_decorated_tool() -> None:
 
 
 def test_extension_types_export_registered_command_flag_shortcut_and_input() -> None:
-    from loushang.coding.extensions import (
+    from loushang.harness.extensions.agent import (
         InputEvent,
         InputEventResult,
         RegisteredCommand,
@@ -44,8 +44,8 @@ def test_extension_types_export_registered_command_flag_shortcut_and_input() -> 
 def test_extension_command_registration_surface_matches_pi_style_signature() -> None:
     from dataclasses import fields
 
-    from loushang.coding.extensions import RegisteredCommand
-    from loushang.coding.extensions.api import ExtensionAPI
+    from loushang.harness.extensions.agent import RegisteredCommand
+    from loushang.harness.extensions.agent.api import ExtensionAPI
 
     api_signature = inspect.signature(ExtensionAPI.register_command)
 
@@ -63,7 +63,7 @@ def test_extension_command_context_is_distinct_from_extension_context() -> None:
 
 
 def test_extension_api_registers_command_flag_and_shortcut() -> None:
-    from loushang.coding.extensions.api import ExtensionAPI
+    from loushang.harness.extensions.agent.api import ExtensionAPI
     from loushang.harness.extensions.types import ResolvedCommand
     from loushang.harness.resources.source import SourceInfo
 
@@ -97,7 +97,7 @@ def test_extension_api_registers_command_flag_and_shortcut() -> None:
 
 
 def test_extension_api_registers_message_renderer() -> None:
-    from loushang.coding.extensions.api import ExtensionAPI
+    from loushang.harness.extensions.agent.api import ExtensionAPI
 
     def _renderer(message, options, theme):
         return (message, options, theme)
@@ -112,7 +112,7 @@ def test_extension_api_registers_message_renderer() -> None:
 
 
 def test_extension_api_runtime_reads_are_empty_before_binding() -> None:
-    from loushang.coding.extensions.api import ExtensionAPI
+    from loushang.harness.extensions.agent.api import ExtensionAPI
 
     api = ExtensionAPI(name="demo", source_path=Path("/tmp/demo.py"))
 
@@ -125,7 +125,7 @@ def test_extension_api_runtime_reads_are_empty_before_binding() -> None:
 def test_extension_api_runtime_actions_are_noop_before_binding() -> None:
     import asyncio
 
-    from loushang.coding.extensions.api import ExtensionAPI
+    from loushang.harness.extensions.agent.api import ExtensionAPI
 
     api = ExtensionAPI(name="demo", source_path=Path("/tmp/demo.py"))
 
@@ -145,7 +145,7 @@ def test_extension_api_runtime_actions_are_noop_before_binding() -> None:
 def test_extension_api_exec_command_requires_runtime_binding() -> None:
     import asyncio
 
-    from loushang.coding.extensions.api import ExtensionAPI
+    from loushang.harness.extensions.agent.api import ExtensionAPI
 
     api = ExtensionAPI(name="demo", source_path=Path("/tmp/demo.py"))
 
@@ -157,7 +157,7 @@ def test_extension_api_exec_command_delegates_to_runtime_binding() -> None:
     import asyncio
     from types import SimpleNamespace
 
-    from loushang.coding.extensions.api import ExtensionAPI
+    from loushang.harness.extensions.agent.api import ExtensionAPI
     from loushang.harness.workspace.exec import ExecOutputChunk, ExecResult
 
     calls: list[tuple[object, object, dict[str, object]]] = []
@@ -226,7 +226,7 @@ def test_registered_command_requires_async_handler() -> None:
 
 
 def test_extension_api_accepts_input_hook() -> None:
-    from loushang.coding.extensions.api import ExtensionAPI
+    from loushang.harness.extensions.agent.api import ExtensionAPI
 
     def _input(event, ctx):
         del event, ctx
@@ -242,7 +242,7 @@ def test_extension_api_accepts_input_hook() -> None:
 def test_extension_api_annotates_flag_type_as_literal() -> None:
     from typing import Literal, get_type_hints
 
-    from loushang.coding.extensions.api import ExtensionAPI
+    from loushang.harness.extensions.agent.api import ExtensionAPI
     from loushang.harness.extensions.types import RegisteredFlag
 
     register_flag_hints = get_type_hints(ExtensionAPI.register_flag)
@@ -253,7 +253,7 @@ def test_extension_api_annotates_flag_type_as_literal() -> None:
 
 
 def test_extension_api_rejects_invalid_flag_type() -> None:
-    from loushang.coding.extensions.api import ExtensionAPI
+    from loushang.harness.extensions.agent.api import ExtensionAPI
 
     api = ExtensionAPI(name="demo", source_path=Path("/tmp/demo.py"))
 
@@ -262,7 +262,7 @@ def test_extension_api_rejects_invalid_flag_type() -> None:
 
 
 def test_extension_api_rejects_invalid_flag_default_for_type() -> None:
-    from loushang.coding.extensions.api import ExtensionAPI
+    from loushang.harness.extensions.agent.api import ExtensionAPI
 
     api = ExtensionAPI(name="demo", source_path=Path("/tmp/demo.py"))
 
@@ -350,7 +350,7 @@ def test_extension_api_v1_core_types_are_available() -> None:
 
 
 def test_extension_api_registers_hooks_and_tools() -> None:
-    from loushang.coding.extensions.api import ExtensionAPI
+    from loushang.harness.extensions.agent.api import ExtensionAPI
     from loushang.harness.tools.workspace import ToolDefinition
 
     async def _execute_tool(
@@ -384,7 +384,7 @@ def test_extension_api_registers_hooks_and_tools() -> None:
 
 
 def test_extension_api_rejects_unknown_event_names() -> None:
-    from loushang.coding.extensions.api import ExtensionAPI
+    from loushang.harness.extensions.agent.api import ExtensionAPI
 
     api = ExtensionAPI(
         name="demo_extension", source_path=Path("/tmp/demo_extension.py")
@@ -405,7 +405,7 @@ def test_extension_api_v2_core_types_include_session_refresh() -> None:
 
 
 def test_extension_api_exports_runtime_binding_types() -> None:
-    from loushang.coding.extensions import (
+    from loushang.harness.extensions.agent import (
         ExtensionRuntimeBindings,
         SessionRefreshEvent,
         SessionShutdownEvent,
@@ -441,7 +441,7 @@ def test_extension_api_exports_runtime_binding_types() -> None:
 
 
 def test_extension_api_v2_core_types_include_session_control_hooks() -> None:
-    from loushang.coding.extensions import (
+    from loushang.harness.extensions.agent import (
         SessionActionDecision,
         SessionBeforeCompactEvent,
         SessionBeforeForkEvent,
@@ -585,7 +585,7 @@ def test_extension_api_uses_product_neutral_runtime_context_contract() -> None:
 def test_extension_loader_build_extension_adapts_context_and_session_refresh(
     tmp_path,
 ) -> None:
-    from loushang.coding.extensions.loader import ExtensionLoader
+    from loushang.harness.extensions.agent.loader import ExtensionLoader
     from loushang.harness.resources.types import ExtensionDescriptor
 
     extension_file = tmp_path / "legacy_builder_v2.py"

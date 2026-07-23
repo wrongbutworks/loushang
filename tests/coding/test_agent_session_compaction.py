@@ -82,10 +82,10 @@ def test_agent_session_compact_appends_compaction_and_rebuilds_context(
         ControlConfig,
         SettingsManager,
     )
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.agent_transcript import CompactionResult
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -387,14 +387,14 @@ def test_agent_session_compact_respects_extension_before_compact_cancellation(
         ControlConfig,
         SettingsManager,
     )
-    from loushang.coding.extensions import (
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.diagnostics import DiagnosticsService
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         SessionActionDecision,
     )
-    from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
-    from loushang.harness.diagnostics import DiagnosticsService
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -478,14 +478,14 @@ def test_agent_session_compact_respects_extension_before_compact_result_override
         ControlConfig,
         SettingsManager,
     )
-    from loushang.coding.extensions import (
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.agent_transcript import CompactionResult
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         SessionBeforeCompactResult,
     )
-    from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
-    from loushang.harness.agent_transcript import CompactionResult
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)

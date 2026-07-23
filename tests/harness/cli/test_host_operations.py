@@ -13,6 +13,7 @@ from loushang.harness.cli import (
     StandardCliOperationRequest,
     agent_session_listing_request,
     agent_standard_cli_operation_request,
+    run_agent_cli_session_listing,
     run_command_operation,
     run_session_listing_operation,
     run_standard_cli_operations,
@@ -118,6 +119,46 @@ def test_session_listing_operation_owns_query_validation_and_projection(
     result = run_session_listing_operation(
         _Runtime(),
         SessionListingOperationRequest(output_format="json"),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert result == 0
+    assert [item["session_id"] for item in json.loads(stdout.getvalue())] == [
+        "session-1"
+    ]
+    assert stderr.getvalue() == ""
+
+
+def test_agent_session_listing_runs_the_standard_projected_request(
+    monkeypatch,
+) -> None:
+    from loushang.harness.cli import host_operations
+
+    original = host_operations.try_project_session_record
+    monkeypatch.setattr(
+        host_operations,
+        "try_project_session_record",
+        lambda record: None if record == "invalid" else original(record),
+    )
+    stdout = StringIO()
+    stderr = StringIO()
+
+    result = run_agent_cli_session_listing(
+        SimpleNamespace(
+            list_sessions=True,
+            list_sessions_format="json",
+            session_cwd=None,
+            session_name_filter=None,
+            session_parent=None,
+            session_query=None,
+            session_has_diagnostics=None,
+            session_limit=None,
+            all_sessions=False,
+            session_index=False,
+            refresh_session_index=False,
+        ),
+        _Runtime(),
         stdout=stdout,
         stderr=stderr,
     )

@@ -72,10 +72,10 @@ the profile its queue and application-input capabilities through ports.
 | `coding.extensions.hooks.HookDispatcher` | Agent extension hook mechanism over an existing Harness route plan | Move its implementation to `harness.extensions.agent.hooks` as `ExtensionToolHookDispatcher`; delete the Coding module. |
 | `coding.extensions.runner.ExtensionRunner` prompt/context/tool/session-hook reducers | Shared Agent-session routing, with Product context and error ports | Extract to narrowly named helpers in `harness.extensions.agent.hooks` and `harness.extensions.session_runtime`; reduce `ExtensionRunner` to a Coding binding adapter. |
 | Existing `harness.session.extension_events.ExtensionAgentEventRuntime` | In-process extension lifecycle callback adapter | Move to `harness.extensions.agent.lifecycle`; inject its clock and map stable Agent lifecycle facts only. It must not publish `RuntimeEvent` or Coding event dictionaries. |
-| `coding.extensions.runner.ExtensionRunner` loader construction, Coding API binding, and error payload shape | Coding product adapter | Retain in Coding. Extension event objects use the shared snake_case fields. |
-| `coding.extensions.api.ExtensionAPI` | Coding session/model/provider extension API | Retain in Coding. Provider registration must not move into Harness. |
-| `coding.extensions.loader.ExtensionLoader` | Product loader configuration | Retain as the small API-factory, permission-policy, and Product event-registration adapter. |
-| `coding.extensions.policy` | Coding capability defaults | Retain in Coding. |
+| removed `coding.extensions.runner.ExtensionRunner` profile binding | Standard Agent loader/runtime composition | Move to `harness.extensions.agent.runner`; Product error projection remains injected. |
+| removed `coding.extensions.api.ExtensionAPI` | Standard Agent session/model/provider callback API | Move to `harness.extensions.agent.api`; provider execution and credentials remain outside Harness. |
+| removed `coding.extensions.loader.ExtensionLoader` | Standard Agent loader configuration | Move to `harness.extensions.agent.loader` over the existing neutral loader. |
+| removed `coding.extensions.policy` | Standard Agent permission defaults | Move to `harness.extensions.agent.policy`; other profiles may inject a different resolver. |
 
 The extracted runtime must accept explicit ports for extension context creation,
 diagnostic collection, and runtime-error reporting. It may not reach into a
@@ -290,15 +290,17 @@ This Wave does not:
   `harness.extensions`, not part of `harness.extensions.agent`;
 - combine skills, MCP tools, extension manifests, lifecycle callbacks, and
   client event delivery into one plugin or event runtime;
-- move provider registration, authentication, or model policy out of Coding/AI;
+- move provider execution, authentication, credentials, or Product preferred
+  model policy out of AI/Product owners;
 - redesign extension manifests, permission policy, or OEM activation;
 - move final TUI, print, RPC, or tool-render contracts.
 
 ## Measurement
 
-The cutover removes the 231-line `coding.extensions.hooks` implementation and
-the session-owned extension Agent profile facades. `ExtensionRunner` retains
-only its Product binding code after delegating tool, context,
-before-agent-start, and session-decision dispatch to the shared profile. The
-event portion has no standalone relocation target and is not counted as
-migrated merely because a consumer switches to an existing Harness event API.
+The initial cutover removed the 231-line `coding.extensions.hooks`
+implementation and the session-owned extension Agent profile facades. The
+follow-up owner switch moved the remaining standard Agent API, policy, loader,
+and runner profile into `harness.extensions.agent` and deleted the complete
+Coding extension package. The event portion has no standalone relocation
+target and is not counted as migrated merely because a consumer switches to an
+existing Harness event API.

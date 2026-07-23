@@ -278,13 +278,13 @@ def test_navigate_tree_raises_for_unknown_target(tmp_path) -> None:
 
 def test_navigate_tree_respects_extension_before_tree_cancellation(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.extensions import (
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         SessionActionDecision,
     )
-    from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -453,14 +453,14 @@ def test_navigate_tree_uses_extension_before_tree_summary_override(
     tmp_path, monkeypatch
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.extensions import (
+    from loushang.coding.session import AgentSession
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.agent_transcript import BranchSummaryOutput
+    from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         SessionBeforeTreeResult,
     )
-    from loushang.coding.session import AgentSession
-    from loushang.coding.session_manager import SessionManager
-    from loushang.harness.agent_transcript import BranchSummaryOutput
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)

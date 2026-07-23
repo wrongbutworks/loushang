@@ -1,10 +1,31 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 import pytest
 
-from loushang.harness.cli import CliPreparedTurn, run_keyword_cli_turns
+from loushang.harness.cli import (
+    CliPreparedTurn,
+    project_domain_turns_to_cli,
+    run_keyword_cli_turns,
+)
+
+
+@dataclass(frozen=True)
+class _ResearchPreparedTurn:
+    prepared_prompt: str
+    method_id: str | None = "research"
+    plan_id: str | None = "plan-1"
+    step_id: str | None = "collect"
+    step_index: int | None = 0
+    step_title: str | None = "Collect sources"
+    metadata: Mapping[str, object] = field(
+        default_factory=lambda: {
+            "planned_constraint": {"requires_sources": True},
+        }
+    )
 
 
 def test_keyword_turn_runtime_applies_first_and_last_values_once() -> None:
@@ -62,3 +83,26 @@ def test_keyword_turn_runtime_applies_first_and_last_values_once() -> None:
 def test_prepared_turn_rejects_lifecycle_argument_override() -> None:
     with pytest.raises(ValueError, match="lifecycle values"):
         CliPreparedTurn("input", {"dispose": False})
+
+
+def test_domain_turn_projection_is_product_neutral() -> None:
+    projected = project_domain_turns_to_cli(
+        (_ResearchPreparedTurn("Investigate the claim"),)
+    )
+
+    assert projected == (
+        CliPreparedTurn(
+            "Investigate the claim",
+            {
+                "method_id": "research",
+                "plan_id": "plan-1",
+                "step_id": "collect",
+                "step_index": 0,
+                "step_title": "Collect sources",
+                "planned_constraint": {"requires_sources": True},
+                "audit_policy": None,
+                "plan_facts": None,
+                "step_facts": None,
+            },
+        ),
+    )

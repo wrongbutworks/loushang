@@ -107,19 +107,21 @@ async def test_coding_performance_loader_adapts_persisted_session_history(
         def get_branch(self) -> list[str]:
             return ["branch record"]
 
-    def fake_session_history_records(
-        branch_items: object,
+    async def fake_load_agent_session_history_records(
+        session_file: str | Path,
         *,
+        load_session: object,
         tool_definition_resolver: object,
     ) -> tuple[UserPromptRecord, ...]:
-        projected.append((branch_items, tool_definition_resolver))
+        manager = await load_session(Path(session_file).expanduser().resolve())
+        projected.append((manager.get_branch(), tool_definition_resolver))
         return (UserPromptRecord("loaded"),)
 
     monkeypatch.setattr(history, "SessionManager", FakeManager)
     monkeypatch.setattr(
         history,
-        "session_history_records",
-        fake_session_history_records,
+        "load_agent_session_history_records",
+        fake_load_agent_session_history_records,
     )
     session_path = tmp_path / "nested" / "session.jsonl"
 

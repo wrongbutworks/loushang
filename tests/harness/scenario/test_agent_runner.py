@@ -17,8 +17,9 @@ class FakeWorkflowAdapter:
 
 
 def test_run_workflow_executes_steps_and_asserts_outputs(tmp_path) -> None:
-    from loushang.coding.workflow import (
+    from loushang.harness.scenario import (
         CommandExpectation,
+        CommandRunResult,
         PromptStep,
         StepExpectation,
         Workflow,
@@ -48,7 +49,18 @@ def test_run_workflow_executes_steps_and_asserts_outputs(tmp_path) -> None:
     )
     adapter = FakeWorkflowAdapter(["created tmp/bmi.py"])
 
-    result = asyncio.run(run_workflow(workflow, adapter=adapter, cwd=tmp_path))
+    result = asyncio.run(
+        run_workflow(
+            workflow,
+            adapter=adapter,
+            cwd=tmp_path,
+            command_runner=lambda _command, **_kwargs: CommandRunResult(
+                exit_code=0,
+                stdout="BMI ready\n",
+                stderr="",
+            ),
+        )
+    )
 
     assert result.ok is True
     assert adapter.prompts == ["create bmi"]
@@ -59,7 +71,7 @@ def test_run_workflow_executes_steps_and_asserts_outputs(tmp_path) -> None:
 def test_run_workflow_reports_failed_expectation_without_stopping_later_steps(
     tmp_path,
 ) -> None:
-    from loushang.coding.workflow import (
+    from loushang.harness.scenario import (
         PromptStep,
         StepExpectation,
         Workflow,
@@ -91,7 +103,7 @@ def test_run_workflow_reports_failed_expectation_without_stopping_later_steps(
 
 
 def test_run_workflow_times_out_prompt_and_aborts_adapter(tmp_path) -> None:
-    from loushang.coding.workflow import (
+    from loushang.harness.scenario import (
         PromptStep,
         StepExpectation,
         Workflow,
@@ -130,7 +142,7 @@ def test_run_workflow_times_out_prompt_and_aborts_adapter(tmp_path) -> None:
 
 
 def test_run_workflow_emits_step_start_progress(tmp_path) -> None:
-    from loushang.coding.workflow import PromptStep, Workflow, run_workflow
+    from loushang.harness.scenario import PromptStep, Workflow, run_workflow
 
     adapter = FakeWorkflowAdapter(["ok"])
     workflow = Workflow(name="progress", steps=(PromptStep(prompt="hello"),))
@@ -152,7 +164,7 @@ def test_run_workflow_emits_step_start_progress(tmp_path) -> None:
 
 
 def test_agent_session_adapter_supports_hold_actions_and_abort(tmp_path) -> None:
-    from loushang.coding.workflow import (
+    from loushang.harness.scenario import (
         AbortStep,
         AgentSessionWorkflowAdapter,
         ExpectStep,
@@ -244,7 +256,7 @@ def test_agent_session_adapter_supports_hold_actions_and_abort(tmp_path) -> None
 
 
 def test_agent_session_adapter_exposes_public_fact_snapshots(tmp_path) -> None:
-    from loushang.coding.workflow import (
+    from loushang.harness.scenario import (
         AgentSessionWorkflowAdapter,
         ExpectStep,
         Workflow,
@@ -317,7 +329,7 @@ def test_agent_session_adapter_exposes_public_fact_snapshots(tmp_path) -> None:
 def test_agent_session_adapter_does_not_duplicate_assistant_message_events(
     tmp_path,
 ) -> None:
-    from loushang.coding.workflow import (
+    from loushang.harness.scenario import (
         AgentSessionWorkflowAdapter,
         PromptStep,
         Workflow,

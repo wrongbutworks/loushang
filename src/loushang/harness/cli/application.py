@@ -5,21 +5,33 @@ from __future__ import annotations
 import inspect
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractContextManager, redirect_stderr
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Generic, TextIO, TypeAlias, TypeVar, cast
 
+from loushang.harness.cli.agent_args import (
+    AgentCliArgs,
+    agent_cli_bootstrap_args,
+    resolve_agent_session_dir,
+)
+from loushang.harness.cli.extension_flags import collect_extension_flags
 from loushang.harness.cli.launch import (
     CliLaunchPlan,
     cli_output_guard_enabled,
     cli_static_error,
 )
+from loushang.harness.cli.resource_toggles import (
+    agent_resource_toggle_request,
+    report_agent_resource_settings_errors,
+)
+from loushang.harness.tools.workspace import workspace_tool_runtime_settings
 
 ArgsT = TypeVar("ArgsT")
 StateT = TypeVar("StateT")
 RuntimeT = TypeVar("RuntimeT")
 SessionT = TypeVar("SessionT")
 ResultT = TypeVar("ResultT")
+AgentArgsT = TypeVar("AgentArgsT", bound=AgentCliArgs)
 
 CliMaybeAsync: TypeAlias = ResultT | Awaitable[ResultT]
 
@@ -79,6 +91,191 @@ class CliSessionContext(Generic[ArgsT, StateT, RuntimeT, SessionT]):
 
 
 CliOutputGuard: TypeAlias = Callable[[bool], AbstractContextManager[None]]
+
+
+@dataclass(frozen=True)
+class AgentCliApplicationState(Generic[AgentArgsT]):
+    """Standard state prepared before constructing an Agent Product runtime."""
+
+    args: AgentArgsT
+    services: object
+    session_dir: Path
+    settings_manager: object | None
+    tool_registry: object
+    approval_resolver: object | None
+
+
+@dataclass(frozen=True)
+class AgentCliStatePreparationContext(Generic[AgentArgsT]):
+    args: AgentArgsT
+    project_root: Path
+    session_dir: Path
+    services: object
+    stdout: TextIO
+    stderr: TextIO
+
+
+@dataclass(frozen=True)
+class AgentCliStatePreparationPorts(Generic[AgentArgsT]):
+    """Product ports for the standard Agent CLI bootstrap preparation."""
+
+    build_services: Callable[[Path], object]
+    product_catalog_operation: Callable[[AgentArgsT], bool]
+    pre_runtime_operation: Callable[
+        [AgentCliStatePreparationContext[AgentArgsT]],
+        CliMaybeAsync[int | None],
+    ]
+    build_empty_tool_registry: Callable[[], object]
+    build_tool_registry: Callable[[object, object], object]
+    policy_factory: Callable[..., object]
+    build_interactive_approval_resolver: Callable[[], object]
+    run_resource_toggle: Callable[..., int | None]
+    evaluate_plugin_source: Callable[[str], str | None] | None = None
+    is_remote_plugin_source: Callable[[str], bool] | None = None
+    on_policy_denied: Callable[[object, str, str | None], None] | None = None
+    format_error: Callable[[BaseException], str] = str
+
+
+async def prepare_agent_cli_application_state(
+    context: CliBootstrapContext[AgentArgsT],
+    *,
+    ports: AgentCliStatePreparationPorts[AgentArgsT],
+    services: object | None = None,
+) -> CliPhaseResult[AgentCliApplicationState[AgentArgsT]]:
+    """Prepare shared resource, session-path, approval, and tool state."""
+
+    args = context.args
+    resolved_services = services or ports.build_services(context.project_root)
+    settings_manager = getattr(resolved_services, "settings_manager", None)
+    report_agent_resource_settings_errors(
+        args,
+        settings_manager,
+        stderr=context.stderr,
+    )
+    toggle_result = ports.run_resource_toggle(
+        settings_manager,
+        agent_resource_toggle_request(args),
+        stdout=context.stdout,
+        stderr=context.stderr,
+        evaluate_plugin_source=ports.evaluate_plugin_source,
+        is_remote_plugin_source=ports.is_remote_plugin_source,
+        on_policy_denied=(
+            (
+                lambda source, reason: ports.on_policy_denied(
+                    resolved_services,
+                    source,
+                    reason,
+                )
+            )
+            if ports.on_policy_denied is not None
+            else None
+        ),
+        format_error=ports.format_error,
+    )
+    if toggle_result is not None:
+        return CliPhaseResult.exit(toggle_result)
+
+    runtime_args = agent_cli_bootstrap_args(
+        args,
+        product_catalog_operation=ports.product_catalog_operation(args),
+    )
+    session_dir = resolve_agent_session_dir(
+        runtime_args,
+        project_root=context.project_root,
+        settings_manager=settings_manager,
+    )
+    pre_runtime_result = await _resolve(
+        ports.pre_runtime_operation(
+            AgentCliStatePreparationContext(
+                args=runtime_args,
+                project_root=context.project_root,
+                session_dir=session_dir,
+                services=resolved_services,
+                stdout=context.stdout,
+                stderr=context.stderr,
+            )
+        )
+    )
+    if pre_runtime_result is not None:
+        return CliPhaseResult.exit(pre_runtime_result)
+
+    tool_settings = workspace_tool_runtime_settings(
+        settings_manager,
+        policy_factory=ports.policy_factory,
+    )
+    configured_resolver = tool_settings.approval_resolver
+    interactive_resolver = (
+        ports.build_interactive_approval_resolver()
+        if configured_resolver is None
+        else None
+    )
+    approval_resolver = configured_resolver or interactive_resolver
+    tool_registry = (
+        ports.build_empty_tool_registry()
+        if runtime_args.no_builtin_tools
+        else ports.build_tool_registry(
+            resolved_services,
+            approval_resolver,
+        )
+    )
+    return CliPhaseResult.continue_with(
+        AgentCliApplicationState(
+            args=runtime_args,
+            services=resolved_services,
+            session_dir=session_dir,
+            settings_manager=settings_manager,
+            tool_registry=tool_registry,
+            approval_resolver=interactive_resolver,
+        )
+    )
+
+
+async def collect_agent_cli_help_extension_flags(
+    raw_argv: Sequence[str],
+    *,
+    project_root: Path,
+    parse_args: Callable[[Sequence[str]], AgentArgsT],
+    state_ports: AgentCliStatePreparationPorts[AgentArgsT],
+    build_runtime: Callable[
+        [AgentArgsT, Path, Path, object, object],
+        object,
+    ],
+    resolve_session: Callable[
+        [AgentArgsT, object, Path],
+        CliMaybeAsync[object | None],
+    ],
+    services: object | None = None,
+) -> dict[str, object]:
+    """Discover extension flags using the Product's standard CLI bindings."""
+
+    args = replace(
+        parse_args(raw_argv),
+        fork=None,
+        no_session=True,
+    )
+    resolved_services = services or state_ports.build_services(project_root)
+    try:
+        session_dir = resolve_agent_session_dir(
+            args,
+            project_root=project_root,
+            settings_manager=getattr(resolved_services, "settings_manager"),
+        )
+        tool_registry = (
+            state_ports.build_empty_tool_registry()
+            if args.no_builtin_tools
+            else state_ports.build_tool_registry(resolved_services, None)
+        )
+        runtime = build_runtime(
+            args,
+            project_root,
+            session_dir,
+            resolved_services,
+            tool_registry,
+        )
+        session = await _resolve(resolve_session(args, runtime, project_root))
+        return collect_extension_flags(session) if session is not None else {}
+    except Exception:
+        return {}
 
 
 @dataclass(frozen=True)
@@ -302,6 +499,31 @@ def invoke_cli_builder(
     return builder(**kwargs)
 
 
+def invoke_agent_cli_runtime_builder(
+    builder: Callable[..., ResultT],
+    *,
+    args: AgentCliArgs,
+    cwd: Path,
+    session_dir: Path,
+    services: object,
+    tool_registry: object,
+    approval_resolver: object | None,
+) -> ResultT:
+    """Invoke an Agent runtime builder with the standard CLI arguments."""
+
+    return invoke_cli_builder(
+        builder,
+        required={
+            "args": args,
+            "cwd": cwd,
+            "session_dir": session_dir,
+            "services": services,
+            "tool_registry": tool_registry,
+        },
+        optional={"approval_resolver": approval_resolver},
+    )
+
+
 def format_cli_error(error: BaseException) -> str:
     filename = getattr(error, "filename", None)
     if isinstance(error, OSError):
@@ -335,6 +557,9 @@ async def _resolve(value: CliMaybeAsync[ResultT]) -> ResultT:
 
 
 __all__ = [
+    "AgentCliApplicationState",
+    "AgentCliStatePreparationContext",
+    "AgentCliStatePreparationPorts",
     "CliApplicationPorts",
     "CliApplicationRuntime",
     "CliBootstrapContext",
@@ -344,6 +569,9 @@ __all__ = [
     "CliRuntimeContext",
     "CliSessionContext",
     "capture_cli_parse",
+    "collect_agent_cli_help_extension_flags",
     "format_cli_error",
     "invoke_cli_builder",
+    "invoke_agent_cli_runtime_builder",
+    "prepare_agent_cli_application_state",
 ]
