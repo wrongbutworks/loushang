@@ -4,6 +4,7 @@ from loushang.ai.model import Model, ModelSelection
 from loushang.harness.session.model_resolution import (
     classify_model_resolution_failure,
     resolve_default_model,
+    resolve_session_model,
     scoped_models_from_patterns,
 )
 
@@ -42,6 +43,27 @@ def test_resolve_default_model_keeps_successful_model() -> None:
 
     assert result.model is model
     assert result.error is None
+
+
+def test_resolve_session_model_keeps_explicit_model() -> None:
+    model = _model()
+
+    assert resolve_session_model(
+        model,
+        default_selection=None,
+        build_model=lambda _selection: (_ for _ in ()).throw(AssertionError()),
+    ) is model
+
+
+def test_resolve_session_model_builds_explicit_selection() -> None:
+    model = _model()
+    selection = ModelSelection(provider="provider", model_id="chat")
+
+    assert resolve_session_model(
+        selection,
+        default_selection=None,
+        build_model=lambda selected: model if selected == selection else None,
+    ) is model
 
 
 def test_classify_explicit_endpoint_failure_is_stable() -> None:

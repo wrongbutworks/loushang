@@ -90,6 +90,58 @@ def test_extension_runtime_composes_standard_contributions(tmp_path: Path) -> No
     assert runtime.list_extensions()[0]["runtimeName"] == "shared"
 
 
+def test_extension_runtime_validates_and_applies_flag_values(tmp_path: Path) -> None:
+    extension = LoadedExtension(
+        name="shared",
+        source_path=tmp_path / "extension.py",
+        flags={
+            "plan": RegisteredFlag(name="plan", type="boolean", default=False),
+            "request-id": RegisteredFlag(name="request-id", type="string"),
+        },
+    )
+    runtime = ExtensionRuntime(
+        [extension],
+        context_factory=lambda cwd, loaded: {"cwd": cwd, "extension": loaded},
+    )
+
+    diagnostics = runtime.apply_flag_values(
+        {
+            "--plan": True,
+            "request-id": "request-1",
+            "unknown": True,
+        }
+    )
+
+    assert runtime.get_flag_values() == {
+        "plan": True,
+        "request-id": "request-1",
+    }
+    assert [diagnostic.code for diagnostic in diagnostics] == [
+        "unknown_extension_flag"
+    ]
+
+
+def test_extension_runtime_rejects_non_string_string_flag(tmp_path: Path) -> None:
+    extension = LoadedExtension(
+        name="shared",
+        source_path=tmp_path / "extension.py",
+        flags={
+            "request-id": RegisteredFlag(name="request-id", type="string"),
+        },
+    )
+    runtime = ExtensionRuntime(
+        [extension],
+        context_factory=lambda cwd, loaded: {"cwd": cwd, "extension": loaded},
+    )
+
+    diagnostics = runtime.apply_flag_values({"request-id": True})
+
+    assert runtime.get_flag_values() == {}
+    assert [diagnostic.code for diagnostic in diagnostics] == [
+        "extension_flag_value_required"
+    ]
+
+
 def test_extension_runtime_contains_completion_errors(tmp_path: Path) -> None:
     errors: list[tuple[str, str, str]] = []
 

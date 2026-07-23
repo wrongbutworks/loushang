@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import cast
 
@@ -431,6 +431,50 @@ def context_item_to_model_message(message: AgentMessage) -> Message | None:
     return None
 
 
+def context_items_to_model_messages(
+    messages: Sequence[AgentMessage],
+    *,
+    image_placeholder: str | None = None,
+) -> list[Message]:
+    """Project transcript context and optionally replace image parts."""
+
+    projected = [
+        model_message
+        for message in messages
+        if (model_message := context_item_to_model_message(message)) is not None
+    ]
+    if image_placeholder is None:
+        return projected
+    placeholder = TextPart(type="text", text=image_placeholder)
+    return [
+        _replace_message_images(message, placeholder=placeholder)
+        for message in projected
+    ]
+
+
+def _replace_message_images(message: Message, *, placeholder: TextPart) -> Message:
+    if not isinstance(message, UserMessage | ToolResultMessage):
+        return message
+    content = message.content
+    if not isinstance(content, list):
+        return message
+
+    filtered: list[TextPart | ImagePart] = []
+    for block in content:
+        if isinstance(block, ImagePart):
+            if not (
+                filtered
+                and isinstance(filtered[-1], TextPart)
+                and filtered[-1].text == placeholder.text
+            ):
+                filtered.append(placeholder)
+            continue
+        filtered.append(block)
+    if filtered == content:
+        return message
+    return replace(message, content=filtered)
+
+
 def _payload_as_agent_message(record: AgentTranscriptRecord) -> AgentMessage:
     return cast(AgentMessage, record.payload)
 
@@ -672,6 +716,7 @@ __all__ = [
     "application_message_to_user_message",
     "command_execution_to_text",
     "context_item_to_model_message",
+    "context_items_to_model_messages",
     "estimate_record_tokens",
     "record_is_visible",
     "record_role",

@@ -12,19 +12,32 @@ import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import Generic, Protocol, TypeVar
 
-from loushang.harness.agent_transcript import SessionSummary
-from loushang.harness.runtime import copy_file_exclusive
+from loushang.ai.types import UserMessage
+from loushang.harness.agent_transcript import (
+    AGENT_MESSAGE_KIND,
+    AgentTranscriptRecord,
+    SessionSummary,
+    user_message_text,
+)
+from loushang.harness.runtime import (
+    SessionOperationFailure,
+    SessionOperationPhase,
+    SessionOperationResult,
+    copy_file_exclusive,
+)
 from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
 from loushang.harness.session.lifecycle import (
     ForkProfile,
+    ForkSelection,
     ForkTargetResolver,
     MissingSessionCwdError,
     SessionLifecycleHooks,
     SessionLifecycleRuntime,
     SessionLifecycleStore,
     SessionLifecycleTransition,
+    resolve_fork_target,
 )
 from loushang.harness.session.lifecycle_adapter import (
     SessionLifecycleOperationAdapter,
@@ -33,6 +46,7 @@ from loushang.harness.session.transcript_lifecycle import (
     AgentTranscriptSessionRuntime,
     ProductTranscriptSessionLifecyclePorts,
     ProductTranscriptSessionLifecycleStore,
+    require_session_operation_session,
 )
 
 SessionT = TypeVar("SessionT")
@@ -52,6 +66,10 @@ OperationFailureRecorder = Callable[
     [str, Exception, dict[str, object]], None
 ]
 ReplacementFailureRecorder = Callable[..., None]
+
+
+class AgentForkTranscriptPort(Protocol):
+    def get_entry(self, entry_id: str) -> AgentTranscriptRecord | None: ...
 
 
 @dataclass(frozen=True)
@@ -123,6 +141,7 @@ class ProductSessionRuntime(
         session_index_flush_delay: float = 0.25,
     ) -> None:
         self._product_runtime_ports = ports
+        self._product_lifecycle_hooks = ports.hooks
         self.session_factory = ports.session_factory
         self.persist = ports.persist
         lifecycle_store: SessionLifecycleStore[SessionT] = (
@@ -147,7 +166,15 @@ class ProductSessionRuntime(
             fork_profile=ports.fork_profile,
             fork_target_resolver=ports.fork_target_resolver,
             copy_file=ports.copy_file,
-            hooks=ports.hooks,
+            hooks=SessionLifecycleHooks(
+                before_transition=ports.hooks.before_transition,
+                prepare_session=ports.hooks.prepare_session,
+                activate_session=ports.hooks.activate_session,
+                before_release=ports.hooks.before_release,
+                dispose_session=ports.hooks.dispose_session,
+                after_commit=self._after_lifecycle_commit,
+                on_failure=self._on_lifecycle_failure,
+            ),
         )
         diagnostics_runtime = ports.diagnostics_runtime
         if diagnostics_runtime is not None and not callable(diagnostics_runtime):
@@ -164,7 +191,7 @@ class ProductSessionRuntime(
             session_index_refresh_interval=session_index_refresh_interval,
             session_index_flush_delay=session_index_flush_delay,
             diagnostics_runtime=diagnostics_runtime,
-            record_index_refresh_failure=ports.record_index_refresh_failure,
+            record_index_refresh_failure=self._record_index_refresh_failure,
         )
 
     async def create_session(
@@ -249,6 +276,13 @@ class ProductSessionRuntime(
         recorder = self._product_runtime_ports.record_operation_failure
         if recorder is not None:
             recorder(code, exc, details)
+            return
+        self._record_failure_for_session(
+            self.current_session,
+            code=code,
+            exc=exc,
+            details=details,
+        )
 
     def _record_replacement_callback_failure(
         self,
@@ -260,6 +294,114 @@ class ProductSessionRuntime(
         recorder = self._product_runtime_ports.record_replacement_callback_failure
         if recorder is not None:
             recorder(session=session, callback_name=callback_name, exc=exc)
+            return
+        self._record_failure_for_session(
+            session,
+            code="session_replacement_callback_failed",
+            exc=exc,
+            details={"callback": callback_name},
+        )
+
+    async def _after_lifecycle_commit(
+        self,
+        result: SessionOperationResult[SessionT, PayloadT | None],
+        transition: SessionLifecycleTransition,
+    ) -> None:
+        session = require_session_operation_session(result)
+        if (
+            self.auto_refresh_session_index
+            and transition.metadata.get("schedule_index", True) is not False
+        ):
+            self.request_session_index_refresh()
+        options = transition.metadata.get("options")
+        if isinstance(options, dict):
+            await self._run_replacement_callbacks(
+                session,
+                options,
+                include_setup=transition.metadata.get("include_setup") is True,
+            )
+        callback = self._product_lifecycle_hooks.after_commit
+        if callback is not None:
+            value = callback(result, transition)
+            if inspect.isawaitable(value):
+                await value
+
+    async def _on_lifecycle_failure(
+        self,
+        failure: SessionOperationFailure[SessionT],
+        transition: SessionLifecycleTransition,
+    ) -> None:
+        if failure.phase is not SessionOperationPhase.AFTER_COMMIT:
+            operation = transition.metadata.get("operation")
+            if operation == "restore_session":
+                self._record_operation_failure(
+                    "session_restore_failed",
+                    failure.error,
+                    {
+                        "operation": operation,
+                        "session_ref": transition.metadata.get("session_ref"),
+                        "target_session_file": transition.target_session_ref,
+                        "fallback_cwd": transition.metadata.get("fallback_cwd"),
+                        "missing_cwd": transition.metadata.get("missing_cwd"),
+                    },
+                )
+            elif operation == "import_from_jsonl":
+                self._record_operation_failure(
+                    "session_import_failed",
+                    failure.error,
+                    {
+                        "operation": operation,
+                        "input_path": transition.metadata.get("input_path"),
+                        "source_path": transition.metadata.get("source_path"),
+                        "target_session_file": transition.target_session_ref,
+                        "cwd_override": transition.metadata.get("cwd_override"),
+                    },
+                )
+        callback = self._product_lifecycle_hooks.on_failure
+        if callback is not None:
+            value = callback(failure, transition)
+            if inspect.isawaitable(value):
+                await value
+
+    def _record_index_refresh_failure(
+        self,
+        exc: Exception,
+        all_sessions: bool,
+    ) -> None:
+        recorder = self._product_runtime_ports.record_index_refresh_failure
+        if recorder is not None:
+            recorder(exc, all_sessions)
+            return
+        self._record_failure_for_session(
+            self.current_session,
+            code="session_index_refresh_failed",
+            exc=exc,
+            details={
+                "all_sessions": all_sessions,
+                "session_dir": str(self.session_dir),
+            },
+        )
+
+    def _record_failure_for_session(
+        self,
+        session: SessionT | None,
+        *,
+        code: str,
+        exc: Exception,
+        details: dict[str, object],
+    ) -> None:
+        runtime = self._diagnostics_runtime_for(session)
+        if runtime is not None:
+            runtime.capture_failure(code=code, error=exc, details=details)
+
+    def _diagnostics_runtime_for(
+        self,
+        session: SessionT | None,
+    ) -> SessionDiagnosticsRuntime | None:
+        runtime = self._product_runtime_ports.diagnostics_runtime
+        if runtime is None:
+            return None
+        return runtime(session) if callable(runtime) else runtime
 
     def _resolve_import_cwd(self, cwd: str | Path) -> str:
         resolver = self._product_runtime_ports.resolve_import_cwd
@@ -384,12 +526,41 @@ def resolve_existing_cwd(cwd: str | Path) -> str:
     return str(resolved)
 
 
+def resolve_agent_transcript_fork_target(
+    transcript: AgentForkTranscriptPort,
+    entry_id: str,
+    position: str,
+) -> ForkSelection[str]:
+    """Resolve standard Agent message fork positions and selected user text."""
+
+    selection = resolve_fork_target(
+        transcript,
+        entry_id,
+        position=position,
+        get_entry=lambda current, target: current.get_entry(target),
+        is_before_target=lambda entry: (
+            entry.kind == AGENT_MESSAGE_KIND
+            and isinstance(entry.payload, UserMessage)
+        ),
+        get_parent_id=lambda entry: entry.parent_id,
+        project_payload=lambda entry: user_message_text(entry.payload),
+        invalid_before_message=(
+            "Fork position 'before' requires a user message entry."
+        ),
+    )
+    return ForkSelection(
+        target_entry_id=selection.target_entry_id,
+        payload=selection.payload,
+    )
+
+
 __all__ = [
     "ProductSessionRuntime",
     "ProductSessionRuntimePorts",
     "dispose_session_only",
     "emit_session_shutdown",
     "invoke_session_factory",
+    "resolve_agent_transcript_fork_target",
     "resolve_existing_cwd",
     "session_file_from_manager",
     "session_file_from_session",

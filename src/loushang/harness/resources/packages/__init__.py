@@ -11,6 +11,7 @@ from loushang.harness.resources.packages.catalog import (
 )
 from loushang.harness.resources.packages.catalog_diagnostics import (
     PackageCatalogDiagnosticsRecorder,
+    record_package_lockfile_diagnostics,
 )
 from loushang.harness.resources.packages.manifest import (
     PackageManifestInfo,
@@ -26,6 +27,7 @@ from loushang.harness.resources.packages.materializer import (
     PackageSourcePolicy,
     PythonPackageInstallerBackend,
     package_offline_enabled,
+    resolve_session_package_install_root,
 )
 from loushang.harness.resources.packages.operations import (
     PackageMaterializerPort,
@@ -42,6 +44,7 @@ from loushang.harness.resources.packages.projection import (
 )
 from loushang.harness.resources.packages.roots import (
     ResolvedPackageResourceRoots,
+    configure_resource_loader_roots,
     resolve_package_resource_roots,
 )
 from loushang.harness.resources.packages.security import (
@@ -100,6 +103,7 @@ __all__ = [
     "PythonPackageInstallerBackend",
     "ResolvedPackageResourceRoots",
     "clone_source_and_ref",
+    "configure_resource_loader_roots",
     "configured_package_sources",
     "empty_package_summary",
     "is_python_package_source",
@@ -116,8 +120,10 @@ __all__ = [
     "python_package_name",
     "python_package_requirement",
     "remote_package_name",
+    "record_package_lockfile_diagnostics",
     "resolve_package_manifest",
     "resolve_package_resource_roots",
+    "resolve_session_package_install_root",
     "serialize_package_materialization_record",
     "summarize_package_resources",
 ]

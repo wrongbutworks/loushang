@@ -2364,8 +2364,8 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
 
 
 def test_extension_tool_contribution_projection_preserves_source_info(tmp_path) -> None:
-    from loushang.coding.bootstrap import _extension_tool_contributions
     from loushang.coding.extensions import ExtensionRunner, LoadedExtension
+    from loushang.harness.bootstrap import project_extension_tool_contributions
     from loushang.harness.tools.workspace import ToolDefinition
 
     async def _execute_tool(
@@ -2389,7 +2389,11 @@ def test_extension_tool_contribution_projection_preserves_source_info(tmp_path) 
     )
     runner = ExtensionRunner([extension])
 
-    contributions = _extension_tool_contributions(runner)
+    contributions = project_extension_tool_contributions(
+        runner,
+        list_tool_definitions=lambda runtime: runtime.list_tool_definitions(),
+        get_tool_source_info=lambda runtime, name: runtime.get_tool_source_info(name),
+    )
 
     assert [contribution.definition.name for contribution in contributions] == [
         "ext_review"
@@ -2404,9 +2408,8 @@ def test_extension_tool_contribution_projection_preserves_source_info(tmp_path) 
 
 def test_register_extension_tools_uses_harness_resolver_for_dry_run_conflicts(
     tmp_path,
-    monkeypatch,
 ) -> None:
-    import loushang.coding.bootstrap as bootstrap
+    from loushang.harness.bootstrap import register_resource_extension_tools
     from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.contribution import resolve_tool_contributions
     from loushang.harness.tools.workspace import ToolDefinition
@@ -2453,12 +2456,14 @@ def test_register_extension_tools_uses_harness_resolver_for_dry_run_conflicts(
         )
         return resolve_tool_contributions(contribution_tuple, **kwargs)
 
-    monkeypatch.setattr(bootstrap, "resolve_tool_contributions", spy_resolver)
-
-    bundle, resolved_registry, diagnostics = bootstrap._register_extension_tools(
-        extension_runner=ExtensionRunner(),
+    runner = ExtensionRunner()
+    bundle, resolved_registry, diagnostics = register_resource_extension_tools(
+        extension_runtime=runner,
         resource_bundle=ResourceBundle(cwd=tmp_path),
         tool_registry=registry,
+        list_tool_definitions=lambda runtime: runtime.list_tool_definitions(),
+        get_tool_source_info=lambda runtime, name: runtime.get_tool_source_info(name),
+        resolve_contributions=spy_resolver,
     )
 
     assert calls == [("calc", "calc")]
@@ -2474,9 +2479,8 @@ def test_register_extension_tools_uses_harness_resolver_for_dry_run_conflicts(
 
 def test_register_extension_tools_registers_resolver_output_only(
     tmp_path,
-    monkeypatch,
 ) -> None:
-    import loushang.coding.bootstrap as bootstrap
+    from loushang.harness.bootstrap import register_resource_extension_tools
     from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.contribution import ToolResolutionResult
     from loushang.harness.tools.workspace import ToolDefinition
@@ -2510,12 +2514,14 @@ def test_register_extension_tools_registers_resolver_output_only(
         del contributions, kwargs
         return ToolResolutionResult(contributions=(), definitions=())
 
-    monkeypatch.setattr(bootstrap, "resolve_tool_contributions", empty_resolver)
-
-    _bundle, resolved_registry, diagnostics = bootstrap._register_extension_tools(
-        extension_runner=ExtensionRunner(),
+    runner = ExtensionRunner()
+    _bundle, resolved_registry, diagnostics = register_resource_extension_tools(
+        extension_runtime=runner,
         resource_bundle=ResourceBundle(cwd=tmp_path),
         tool_registry=registry,
+        list_tool_definitions=lambda runtime: runtime.list_tool_definitions(),
+        get_tool_source_info=lambda runtime, name: runtime.get_tool_source_info(name),
+        resolve_contributions=empty_resolver,
     )
 
     assert diagnostics == []
@@ -2524,7 +2530,7 @@ def test_register_extension_tools_registers_resolver_output_only(
 
 
 def test_register_extension_tools_preserves_resolver_source_info(tmp_path) -> None:
-    import loushang.coding.bootstrap as bootstrap
+    from loushang.harness.bootstrap import register_resource_extension_tools
     from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace import ToolDefinition
     from loushang.harness.tools.workspace.registry import (
@@ -2554,10 +2560,13 @@ def test_register_extension_tools_preserves_resolver_source_info(tmp_path) -> No
             del name
             return source_info
 
-    _bundle, registry, diagnostics = bootstrap._register_extension_tools(
-        extension_runner=ExtensionRunner(),
+    runner = ExtensionRunner()
+    _bundle, registry, diagnostics = register_resource_extension_tools(
+        extension_runtime=runner,
         resource_bundle=ResourceBundle(cwd=tmp_path),
         tool_registry=ToolRegistry(),
+        list_tool_definitions=lambda runtime: runtime.list_tool_definitions(),
+        get_tool_source_info=lambda runtime, name: runtime.get_tool_source_info(name),
     )
 
     assert diagnostics == []

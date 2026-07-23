@@ -5,9 +5,13 @@ from loushang.harness.bootstrap import (
     BootstrapActivationRuntime,
     ResourceBootstrapPorts,
     ResourceBootstrapRuntime,
+    create_standard_resource_bootstrap_runtime,
     register_extension_tools,
+    register_resource_extension_tools,
 )
 from loushang.harness.config.activation import ConfigActivationStep
+from loushang.harness.diagnostics import DiagnosticsService
+from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
@@ -62,6 +66,110 @@ def test_resource_bootstrap_orders_flags_before_extension_rediscovery() -> None:
         ("resource_loading", "loader", "loader"),
         ("resource_loading", "extensions", "extension-diagnostic"),
         ("resource_loading", "bootstrap", "flag-diagnostic"),
+    )
+
+
+def test_resource_bootstrap_exposes_discovery_and_extension_activation_phases() -> (
+    None
+):
+    transforms: list[str] = []
+
+    class Loader:
+        pass
+
+    class Extensions:
+        def get_diagnostics(self) -> list[str]:
+            return ["extension"]
+
+    runtime = ResourceBootstrapRuntime(
+        ResourceBootstrapPorts(
+            discover_resources=lambda _loader, cwd: {
+                "cwd": cwd,
+                "diagnostics": ["loader"],
+            },
+            create_extension_runtime=lambda _bundle: Extensions(),
+            apply_extension_flags=lambda _runtime, _flags: ["flag"],
+            rediscover_resources=lambda _runtime, bundle: {
+                **bundle,
+                "rediscovered": True,
+            },
+            bundle_diagnostics=lambda bundle: bundle["diagnostics"],
+            extension_diagnostics=lambda runtime: runtime.get_diagnostics(),
+            normalize_diagnostic=lambda diagnostic, phase, source: (
+                phase,
+                source,
+                diagnostic,
+            ),
+        )
+    )
+
+    def transform(bundle: dict[str, object]) -> dict[str, object]:
+        transforms.append("transform")
+        return {**bundle, "transformed": len(transforms)}
+
+    discovery = runtime.discover(
+        loader=Loader(),
+        cwd=Path("/tmp/project"),
+        transform_bundle=transform,
+    )
+    activation = runtime.activate_extensions(
+        resource_bundle=discovery.resource_bundle,
+        extension_flags={"plan": True},
+        transform_bundle=transform,
+    )
+
+    assert transforms == ["transform", "transform"]
+    assert discovery.resource_bundle["transformed"] == 1
+    assert discovery.diagnostics == (
+        ("resource_loading", "loader", "loader"),
+    )
+    assert activation.resource_bundle["transformed"] == 2
+    assert activation.resource_bundle["rediscovered"] is True
+    assert activation.flag_diagnostics == (
+        ("resource_loading", "bootstrap", "flag"),
+    )
+    assert activation.extension_diagnostics == (
+        ("resource_loading", "extensions", "extension"),
+    )
+
+
+def test_standard_resource_bootstrap_binds_shared_components(tmp_path) -> None:
+    class Loader:
+        def discover_resources(self, cwd: Path) -> ResourceBundle:
+            return ResourceBundle(
+                cwd=cwd,
+                diagnostics=[ResourceDiagnostic(code="loader", message="loaded")],
+            )
+
+    class Extensions:
+        def apply_flag_values(self, _values):
+            return [ResourceDiagnostic(code="flag", message="flagged")]
+
+        def discover_resources(self, bundle: ResourceBundle) -> ResourceBundle:
+            return bundle
+
+        def get_diagnostics(self):
+            return [ResourceDiagnostic(code="extension", message="activated")]
+
+    runtime = create_standard_resource_bootstrap_runtime(
+        create_extension_runtime=lambda _bundle: Extensions(),
+        diagnostics_service=DiagnosticsService(),
+        session_id="session-1",
+    )
+
+    result = runtime.prepare(
+        loader=Loader(),
+        cwd=tmp_path,
+        extension_flags={"flag": True},
+    )
+
+    assert [diagnostic.code for diagnostic in result.diagnostics] == [
+        "loader",
+        "extension",
+        "flag",
+    ]
+    assert all(
+        diagnostic.session_id == "session-1" for diagnostic in result.diagnostics
     )
 
 
@@ -169,5 +277,43 @@ def test_extension_tool_registration_is_product_neutral(tmp_path) -> None:
     assert result_registry is registry
     assert diagnostics == []
     assert [definition.name for definition in registry.list_definitions()] == [
+        "review"
+    ]
+
+
+def test_resource_extension_tool_registration_uses_shared_bundle_types(
+    tmp_path,
+) -> None:
+    async def execute(_name, _arguments, _context, _signal):
+        return {"ok": True}
+
+    tool = ToolDefinition(
+        name="review",
+        label="Review",
+        description="Review changes",
+        parameters={"type": "object", "properties": {}, "required": []},
+        execute=execute,
+    )
+
+    class ExtensionRuntime:
+        def list_tool_definitions(self):
+            return [tool]
+
+        def get_tool_source_info(self, name: str):
+            return {"source": "extension", "name": name}
+
+    bundle = ResourceBundle(cwd=tmp_path)
+    result_bundle, result_registry, diagnostics = register_resource_extension_tools(
+        extension_runtime=ExtensionRuntime(),
+        resource_bundle=bundle,
+        tool_registry=None,
+        list_tool_definitions=lambda runtime: runtime.list_tool_definitions(),
+        get_tool_source_info=lambda runtime, name: runtime.get_tool_source_info(name),
+    )
+
+    assert result_bundle is bundle
+    assert result_registry is not None
+    assert diagnostics == []
+    assert [definition.name for definition in result_registry.list_definitions()] == [
         "review"
     ]

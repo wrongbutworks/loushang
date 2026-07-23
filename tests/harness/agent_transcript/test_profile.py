@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loushang.ai.types import TextPart, UserMessage
+from loushang.ai.types import ImagePart, TextPart, UserMessage
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
     APPLICATION_MESSAGE_KIND,
@@ -22,6 +22,7 @@ from loushang.harness.agent_transcript import (
     ThinkingSelectionSnapshot,
     application_message_to_user_message,
     context_item_to_model_message,
+    context_items_to_model_messages,
 )
 from loushang.harness.conversation import (
     CommandExecutionRecord,
@@ -201,3 +202,32 @@ def test_application_message_remains_context_carrier_and_projects_to_model_input
     assert context_item_to_model_message(application) == user
     assert user.role == "user"
     assert _text(user) == "Review this"
+
+
+def test_context_projection_can_replace_adjacent_images() -> None:
+    message = UserMessage(
+        role="user",
+        content=[
+            ImagePart(type="image", data="one", mime_type="image/png"),
+            ImagePart(type="image", data="two", mime_type="image/png"),
+            TextPart(type="text", text="Review this"),
+        ],
+        timestamp=12.0,
+    )
+
+    projected = context_items_to_model_messages(
+        [message],
+        image_placeholder="Images are disabled.",
+    )
+
+    assert projected == [
+        UserMessage(
+            role="user",
+            content=[
+                TextPart(type="text", text="Images are disabled."),
+                TextPart(type="text", text="Review this"),
+            ],
+            timestamp=12.0,
+        )
+    ]
+    assert context_items_to_model_messages([message]) == [message]

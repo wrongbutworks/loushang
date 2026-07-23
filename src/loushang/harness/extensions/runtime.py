@@ -9,7 +9,7 @@ context implementation.
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from loushang.harness.extensions.dispatch import ExtensionDispatcher
@@ -186,6 +186,41 @@ class ExtensionRuntime:
 
     def set_flag_value(self, name: str, value: bool | str) -> None:
         self._flag_values[name] = value
+
+    def apply_flag_values(
+        self,
+        values: Mapping[str, bool | str] | None,
+    ) -> tuple[ResourceDiagnostic, ...]:
+        """Validate and apply Product-provided extension flag values."""
+
+        if not values:
+            return ()
+        flags_by_name = {flag.name: flag for flag in self._resolved_flags}
+        diagnostics: list[ResourceDiagnostic] = []
+        for raw_name, value in values.items():
+            name = raw_name[2:] if raw_name.startswith("--") else raw_name
+            flag = flags_by_name.get(name)
+            if flag is None:
+                diagnostics.append(
+                    ResourceDiagnostic(
+                        code="unknown_extension_flag",
+                        message=f"Unknown extension flag: --{name}",
+                        metadata={"flag": name},
+                    )
+                )
+                continue
+            if flag.type == "string" and not isinstance(value, str):
+                diagnostics.append(
+                    ResourceDiagnostic(
+                        code="extension_flag_value_required",
+                        message=f'Extension flag "--{name}" requires a value.',
+                        source_path=flag.source_info.path,
+                        metadata={"flag": name},
+                    )
+                )
+                continue
+            self.set_flag_value(name, value if flag.type == "string" else bool(value))
+        return tuple(diagnostics)
 
     def get_flag_value(self, name: str) -> bool | str | None:
         return self._flag_values.get(name)

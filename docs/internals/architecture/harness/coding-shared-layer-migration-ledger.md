@@ -561,3 +561,55 @@ gross deleted/shared-added ratio of 0.96. Coding Python fell from 15,737 to
 14,157 LOC. The behavior suite moved to the shared owner and the broader config,
 Coding control/package, and architecture regression completed with 211 passing
 tests.
+
+### Wave 7, Slice G: Agent Session Lifecycle Binding Collapse (Complete)
+
+The remaining Coding runtime still repeated standard Agent Product effects
+around the already shared `ProductSessionRuntime`. Those effects now extend
+their existing owners; no `AgentProductSessionRuntime` or second lifecycle
+engine was introduced.
+
+| Source region | Existing shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| after-commit index/replacement callbacks and restore/import failure routing | `ProductSessionRuntime` | none | Complete |
+| standard transcript create/open/fork/dispose/rename/delete binding | `ProductTranscriptSessionBinding` | `SessionManager` selection | Complete |
+| approval, runtime-host, extension switch/fork/start/shutdown, and disposal hooks | `AgentSessionAdapterMixin` lifecycle-hook builder | none | Complete |
+| session diagnostic capture with structured details | `SessionDiagnosticsRuntime` | diagnostic service injection | Complete |
+| Agent message `at`/`before` fork target and selected-text projection | `ProductSessionRuntime` Agent transcript helper | Coding default position | Complete |
+| missing cwd public exception | Harness validation plus Coding translator | Coding public error type | Retained |
+
+Slice G accounting (production implementation only):
+`coding/runtime/agent_session_runtime.py` shrank from 639 to 229 LOC (-410,
+64% source compression). Total Coding Python fell from 14,156 to 13,746 LOC.
+The shared changes extend existing session, transcript, diagnostics, and Agent
+adapter modules rather than adding a synonymous runtime. Independent Harness
+bindings and the complete Coding Agent-session characterization suite preserve
+fork, cwd, import, extension ordering, replacement, index, and diagnostic
+behavior.
+
+### Wave 7, Slice H: Bootstrap Activation Collapse (Complete)
+
+The remaining Coding bootstrap repeated the standard Agent activation graph
+and several leaf bindings. The graph now composes the existing Harness
+activation, resource, package, diagnostics, transcript, and model-catalog
+owners. No second bootstrap, session, resource, or lifecycle engine was added.
+The detailed boundary is
+[Bootstrap Activation Collapse Boundary](bootstrap-activation-collapse-boundary.md).
+
+| Source region | Existing shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| seven-stage Agent startup ordering and first-failure propagation | `BootstrapActivationRuntime` plus `standard_agent_session_activation_plan` | seven Product effect callbacks | Complete |
+| standard resource/extension/diagnostic port binding | `create_standard_resource_bootstrap_runtime` over `ResourceBootstrapRuntime` | Coding extension runtime factory | Complete |
+| extension flag application and tool registration | `harness.extensions.ExtensionRuntime` and `harness.bootstrap` | Coding loader/policy and legacy pack identifiers | Complete |
+| package sources, roots, install root, lock diagnostics | existing `harness.resources.packages` components | Coding package security policy | Complete |
+| startup checks and cwd audit recording | existing `harness.diagnostics` and `harness.session.cwd_audit` | Coding executable identity check | Complete |
+| prompt/model/context bootstrap leaves | existing `harness.session` and `harness.agent_transcript` | Coding default prompt, model preference, image message | Complete |
+| project model-catalog reload | `ModelCatalog.reload_if_project_layer` | `.loushang/models` path convention | Complete |
+
+Slice H accounting (production implementation only):
+`coding/bootstrap.py` shrank from 1,178 to 773 LOC and
+`coding/session/package_controller.py` from 232 to 205 LOC, a total Coding
+reduction of 432 LOC. The remaining bootstrap code is the public Product
+factory surface, Coding service/default construction, seven injected effects,
+and concrete `AgentSession`/runtime binding. Private helper tests were moved to
+the canonical Harness owner rather than preserving a Coding facade.

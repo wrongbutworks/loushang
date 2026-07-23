@@ -52,6 +52,28 @@ def resolve_default_model(
         return DefaultModelResolution(model=None, reason=reason, error=error)
 
 
+def resolve_session_model(
+    model: Model | ModelSelection | None,
+    *,
+    default_selection: ModelSelection | None,
+    build_model: ModelBuilder,
+    endpoint_lookup: EndpointLookup | None = None,
+    on_default_unavailable: UnavailableModelHandler | None = None,
+) -> Model | None:
+    """Resolve an explicit model or a fallback-safe configured default."""
+
+    if isinstance(model, Model):
+        return model
+    if isinstance(model, ModelSelection):
+        return build_model(model)
+    return resolve_default_model(
+        default_selection,
+        build_model=build_model,
+        endpoint_lookup=endpoint_lookup,
+        on_unavailable=on_default_unavailable,
+    ).model
+
+
 def record_default_model_unavailable(
     selection: ModelSelection,
     error: Exception,
@@ -141,5 +163,6 @@ __all__ = [
     "classify_model_resolution_failure",
     "record_default_model_unavailable",
     "resolve_default_model",
+    "resolve_session_model",
     "scoped_models_from_patterns",
 ]

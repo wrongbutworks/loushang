@@ -50,6 +50,15 @@ an inspection controller merely to adapt Coding policy.
   transcript directory runtime, and public lifecycle operation adapter through
   one neutral Product-port bundle. `AgentSessionRuntime` is a Coding binding
   of that composition boundary rather than a second lifecycle owner.
+- `ProductSessionRuntime` now also owns common after-commit index scheduling,
+  replacement callback execution, restore/import failure routing, and
+  session-scoped diagnostic fallback. The standard
+  `ProductTranscriptSessionBinding` removes repeated create/open/fork/dispose
+  adapters for Product transcript subclasses.
+- `AgentSessionAdapterMixin` supplies the standard lifecycle-hook binding for
+  approvals, runtime-host rebinding, extension start/switch/fork/shutdown, and
+  session-only disposal. Coding no longer implements those effects in its
+  runtime adapter.
 - `ExtensionInputRuntime`, `ExtensionAgentHookRuntime`, and
   `ExtensionAgentEventRuntime` own standard extension input delivery, Agent
   hook composition, and lifecycle-event mirroring in the optional
@@ -87,12 +96,10 @@ OEM adapters depend on Coding vocabulary.
 
 `ProductSessionRuntime` composes the common lifecycle transaction with the
 transcript directory/catalog runtime. `AgentSessionRuntime` binds that
-composition directly and retains only the Coding file-store, cwd acceptance,
-the selected transcript/store binding, `before` fork resolver, cwd/error
-adapter, extension event mapping, diagnostics codes, package APIs,
-session-index policy, and presentation ports. This wave does not move
-ModelRegistry, authentication, Coding extension APIs, code tools, or UI
-projection.
+composition directly and retains only the Coding transcript subclass,
+`before` fork default, cwd/error adapter, session factory event, diagnostic
+service, and copy callback. This wave does not move ModelRegistry,
+authentication, Coding extension APIs, code tools, or UI projection.
 
 ## Verification
 

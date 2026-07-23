@@ -5,13 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.diagnostics.types import DiagnosticLevel
+
 
 @dataclass(frozen=True)
 class CwdBoundServicesAuditIssue:
     code: str
     message: str
     details: dict[str, object]
-    level: str = "warning"
+    level: DiagnosticLevel = "warning"
 
 
 @dataclass(frozen=True)
@@ -69,6 +72,37 @@ def audit_cwd_bound_services(
     )
 
 
+def record_cwd_bound_services_audit(
+    audit: CwdBoundServicesAudit,
+    *,
+    diagnostics_service: DiagnosticsService,
+    session_id: str | None = None,
+) -> None:
+    """Record a cwd audit with the standard startup diagnostic scope."""
+
+    for issue in audit.issues:
+        diagnostics_service.capture_failure(
+            code=issue.code,
+            error=issue.message,
+            phase="startup",
+            source="bootstrap",
+            level=issue.level,
+            session_id=session_id,
+            details=issue.details,
+        )
+
+
+def project_root_from_settings_base(
+    project_base_dir: str | Path | None,
+) -> Path | None:
+    """Resolve a settings base directory to its bound project root."""
+
+    if project_base_dir is None:
+        return None
+    resolved = _resolve(project_base_dir)
+    return resolved.parent if resolved.name == ".loushang" else resolved
+
+
 def _resolve(path: str | Path) -> Path:
     return Path(path).expanduser().resolve(strict=False)
 
@@ -85,4 +119,6 @@ __all__ = [
     "CwdBoundServicesAudit",
     "CwdBoundServicesAuditIssue",
     "audit_cwd_bound_services",
+    "project_root_from_settings_base",
+    "record_cwd_bound_services_audit",
 ]

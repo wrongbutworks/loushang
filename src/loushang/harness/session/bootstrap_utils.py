@@ -53,6 +53,31 @@ def append_system_prompt_fragments(
     return "\n\n".join(parts)
 
 
+def resolve_base_system_prompt(
+    *,
+    explicit_prompt: str | None,
+    resource_loader: object,
+    configured_prompt: str,
+    default_prompt: str,
+    append_fragments: Sequence[str] = (),
+) -> str:
+    """Resolve Product, loader, config, and appended prompt precedence."""
+
+    loader_prompt = loader_system_prompt_override(resource_loader)
+    base_prompt = (
+        explicit_prompt
+        if explicit_prompt is not None
+        else loader_prompt
+        if loader_prompt is not None
+        else configured_prompt
+    )
+    resolved = append_system_prompt_fragments(
+        base_prompt,
+        (*loader_append_system_prompt(resource_loader), *append_fragments),
+    )
+    return resolved if resolved.strip() else default_prompt
+
+
 def resolve_initial_active_tool_names(
     *,
     active_tool_names: list[str] | None,
@@ -108,5 +133,6 @@ __all__ = [
     "non_builtin_tool_names",
     "normalize_no_tools",
     "resolve_initial_active_tool_names",
+    "resolve_base_system_prompt",
     "split_model_thinking_pattern",
 ]

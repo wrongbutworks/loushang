@@ -27,6 +27,10 @@ Harness owns the composition and delegation for:
   routing;
 - generic session rename/delete delegation when a Product exposes those
   transcript operations;
+- common after-commit index scheduling, replacement callbacks, and
+  restore/import failure routing;
+- the standard `ProductTranscriptSession` create/open/fork/dispose binding,
+  without selecting a concrete Product transcript subclass;
 - current-session, session-reference, cwd, and leaf-entry lookup through
   typed Product ports;
 - generic `resolve_fork_target` position grammar and parent-target selection,
@@ -53,12 +57,16 @@ lifecycle policy, diagnostics scope, or presentation adapter.
 
 Fork, transcript lifecycle, cwd handling, diagnostics, and extension
 lifecycle are all reusable capabilities. Harness owns their algorithms and
-contracts; Coding only supplies its current transcript/store binding,
-fork boundary predicate and payload projection, cwd acceptance/error adapter,
-diagnostic codes and
-scope, extension event mapping, index policy, model/auth policy, and product
-presentation. Those differences are callbacks or profile values rather than
-parallel implementations in Coding.
+contracts. `ProductTranscriptSessionBinding` adapts a Product-selected
+transcript subclass to the existing lifecycle store, while
+`build_agent_session_lifecycle_hooks` binds the existing Agent session adapter
+to approval, extension, shutdown, and disposal effects. Neither introduces a
+new runtime or transaction owner.
+
+Coding now supplies only its transcript subclass, fork default profile,
+public missing-cwd error adapter, session factory event, diagnostic service,
+model/auth policy, and Product presentation. Standard Agent message fork
+projection, lifecycle effects, and diagnostic routing are shared behavior.
 
 ## Dependency Rules
 

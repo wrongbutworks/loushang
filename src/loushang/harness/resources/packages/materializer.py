@@ -1185,3 +1185,20 @@ def package_offline_enabled() -> bool:
         if value and value.lower() in {"1", "true", "yes"}:
             return True
     return False
+
+
+def resolve_session_package_install_root(
+    *,
+    session_dir: str | Path,
+    cwd: str | Path,
+    session_container_name: str = "sessions",
+    platform_directory: str = ".loushang",
+) -> Path:
+    """Resolve the package cache associated with a Product session layout."""
+
+    resolved_session_dir = Path(session_dir)
+    if resolved_session_dir.name == session_container_name:
+        return resolved_session_dir.parent / "packages"
+    if str(resolved_session_dir):
+        return resolved_session_dir / "packages"
+    return Path(cwd) / platform_directory / "packages"
