@@ -2,8 +2,8 @@ from __future__ import annotations
 
 
 def test_coding_tool_record_projection_preserves_command_label_policy() -> None:
-    from loushang.coding.presentation.tui.tool_transcript import (
-        tool_block_to_record,
+    from loushang.harnesstui.conversation.agent_binding import (
+        agent_tool_block_to_record,
     )
     from loushang.harnesstui.conversation.tool_transcript import (
         ToolTranscriptBlock,
@@ -17,4 +17,4 @@ def test_coding_tool_record_projection_preserves_command_label_policy() -> None:
         title="pytest -q",
     )
 
-    assert tool_block_to_record(block).command == "pytest -q"
+    assert agent_tool_block_to_record(block).command == "pytest -q"

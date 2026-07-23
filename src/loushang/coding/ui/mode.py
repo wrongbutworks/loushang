@@ -1,16 +1,10 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Iterable
 from functools import partial
 from pathlib import Path
 from typing import Any, Protocol, TextIO, cast
 
-from loushang.coding.interaction.controller import CodingUiController
-from loushang.coding.interaction.intent import QuitIntent, parse_prompt_intent
-from loushang.coding.interaction.screen_host import (
-    ScreenCodingConversationActionHost,
-)
 from loushang.coding.policy.tui import (
     bind_screen_approval_presenter,
     bind_screen_session_transition,
@@ -18,29 +12,28 @@ from loushang.coding.policy.tui import (
     runtime_session,
 )
 from loushang.coding.presentation.resume import coding_resume_hint_for_session
-from loushang.coding.presentation.session import (
-    is_running,
-    session_label,
-    thinking_level,
-)
 from loushang.coding.presentation.tui.history import (
     session_history_records,
 )
 from loushang.coding.presentation.tui.plain import (
     PlainCodingUiRenderer,
-    build_plain_coding_event_projection,
-)
-from loushang.coding.presentation.tui.screen import (
-    build_screen_coding_event_projection,
 )
 from loushang.coding.ui.completion import coding_inline_completion_provider
 from loushang.coding.ui.plain_app import build_plain_coding_tui_app
+from loushang.coding.ui.product_binding import (
+    build_coding_ui_controller,
+    build_screen_coding_action_host,
+)
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_input import CODING_SCREEN_RUN_PROFILE
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.coding.ui.startup import load_coding_tui_startup_view
 from loushang.harness.diagnostics import observability_runtime
 from loushang.harness.presentation import RenderableToolDefinition
+from loushang.harnesstui.conversation.agent_binding import (
+    build_agent_plain_conversation_projection,
+    build_agent_screen_conversation_projection,
+)
 from loushang.harnesstui.conversation.application_host import (
     InstalledConversationHistory,
     PreparedPlainConversationRun,
@@ -51,9 +44,18 @@ from loushang.harnesstui.conversation.application_host import (
 from loushang.harnesstui.conversation.host import (
     run_action_host_conversation_screen,
 )
+from loushang.harnesstui.conversation.intents import (
+    QuitIntent,
+    parse_conversation_intent,
+)
 from loushang.harnesstui.conversation.resume import write_clean_exit_resume_hint
 from loushang.harnesstui.conversation.run_context import StableEmit
 from loushang.harnesstui.conversation.runtime_view import stable_string_queue_reader
+from loushang.harnesstui.conversation.session_view import (
+    is_running,
+    session_label,
+    thinking_level,
+)
 from loushang.harnesstui.conversation.source import MaterializedTranscriptSource
 from loushang.harnesstui.conversation.startup import ConversationStartupView
 from loushang.harnesstui.status.persistence import (
@@ -63,7 +65,6 @@ from loushang.harnesstui.status.persistence import (
 from loushang.harnesstui.status.provider import StatusProvider
 from loushang.observability import get_log, log_context
 from loushang.tui import CompletionProvider
-from loushang.tui.keybindings import KeybindingConfig
 from loushang.tui.launch import TuiLaunchProfile, run_tui_launch_shell
 from loushang.tui.prompt import run_non_interactive_prompt_loop
 from loushang.tui.transcript import DisplayRecord
@@ -71,19 +72,13 @@ from loushang.tui.transcript import DisplayRecord
 log = get_log(__name__).bind(component="CodingUiMode")
 
 
-class _TranscriptBranchPort(Protocol):
-    def get_branch(self) -> Iterable[object]: ...
-
-
-class _SettingsKeybindingsPort(Protocol):
-    def get_keybindings(self) -> KeybindingConfig: ...
-
-
 class _CodingTuiSessionPort(Protocol):
     @property
-    def session_manager(self) -> _TranscriptBranchPort: ...
+    def session_manager(self) -> Any: ...
+
     @property
-    def settings_manager(self) -> _SettingsKeybindingsPort | None: ...
+    def settings_manager(self) -> Any | None: ...
+
     def get_tool_definition(self, name: str) -> RenderableToolDefinition | None: ...
     def get_steering_messages(self) -> object: ...
     def get_follow_up_messages(self) -> object: ...
@@ -157,8 +152,12 @@ async def _run_screen_interactive_tui(
     completion_provider = await _load_completion_provider(
         session, base_path=Path(snapshot.cwd)
     )
-    controller = CodingUiController(runtime=runtime, session=session, verbose=verbose)
-    action_host = ScreenCodingConversationActionHost(
+    controller = build_coding_ui_controller(
+        runtime=runtime,
+        session=session,
+        verbose=verbose,
+    )
+    action_host = build_screen_coding_action_host(
         presenter=app,
         controller=controller,
         stderr=stderr,
@@ -191,7 +190,7 @@ async def _run_screen_interactive_tui(
         surface=surface_manager,
         event_source=session,
         event_listener_factory=lambda: (
-            build_screen_coding_event_projection(
+            build_agent_screen_conversation_projection(
                 app,
                 tool_definition_resolver=tool_resolver,
                 read_pending_steers=stable_string_queue_reader(
@@ -259,7 +258,7 @@ async def _run_plain_tui(
     session_port = cast(_CodingTuiSessionPort, session)
     renderer = PlainCodingUiRenderer(stdout=stdout, stderr=stderr, verbose=verbose)
     snapshot = await load_coding_tui_startup_view(runtime=runtime, session=session)
-    event_renderer = build_plain_coding_event_projection(
+    event_renderer = build_agent_plain_conversation_projection(
         renderer,
         tool_definition_resolver=session_port.get_tool_definition,
     )
@@ -308,7 +307,7 @@ async def _run_plain_tui(
 
 
 def _screen_should_exit(text: str) -> bool:
-    return isinstance(parse_prompt_intent(text), QuitIntent)
+    return isinstance(parse_conversation_intent(text), QuitIntent)
 
 
 def _trace_start(snapshot: ConversationStartupView, *, interactive: bool) -> None:

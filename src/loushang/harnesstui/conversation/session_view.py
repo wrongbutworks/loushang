@@ -1,3 +1,5 @@
+"""Structural session values consumed by conversation presentation."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -88,7 +90,12 @@ def is_running(session: Any) -> bool:
 
 
 def session_error_message(session: Any) -> str | None:
-    for target in (session, getattr(session, "agent", None), getattr(getattr(session, "agent", None), "state", None)):
+    targets = (
+        session,
+        getattr(session, "agent", None),
+        getattr(getattr(session, "agent", None), "state", None),
+    )
+    for target in targets:
         error_message = getattr(target, "error_message", None)
         if isinstance(error_message, str) and error_message:
             return error_message

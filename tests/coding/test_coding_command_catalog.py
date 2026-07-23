@@ -5,10 +5,9 @@ from types import SimpleNamespace
 
 def test_coding_command_catalog_classifies_local_and_session_commands() -> None:
     from loushang.coding.commands.catalog import CodingCommandCatalog
-    from loushang.coding.interaction.intent import PromptIntent, SettingsIntent
-    from loushang.coding.interaction.tui_profile import CodingLocalAction
     from loushang.harness.commands import CommandEffectKind, CommandKind
     from loushang.harnesstui.conversation.host import ConversationHostRoute
+    from loushang.harnesstui.conversation.intents import PromptIntent, SettingsIntent
 
     catalog = CodingCommandCatalog(
         session_commands=lambda: [
@@ -22,9 +21,7 @@ def test_coding_command_catalog_classifies_local_and_session_commands() -> None:
         ]
     )
 
-    settings_effect = catalog.effect_for_route(
-        CodingLocalAction.SETTINGS, SettingsIntent()
-    )
+    settings_effect = catalog.effect_for_route("settings", SettingsIntent())
     assert settings_effect is not None
     assert settings_effect.kind is CommandEffectKind.LOCAL_UI
     assert settings_effect.command.kind is CommandKind.LOCAL_UI
@@ -43,8 +40,8 @@ def test_coding_command_catalog_classifies_local_and_session_commands() -> None:
 
 def test_coding_command_catalog_leaves_plain_prompts_and_queue_routes_unowned() -> None:
     from loushang.coding.commands.catalog import CodingCommandCatalog
-    from loushang.coding.interaction.intent import FollowUpIntent, PromptIntent
     from loushang.harnesstui.conversation.host import ConversationHostRoute
+    from loushang.harnesstui.conversation.intents import FollowUpIntent, PromptIntent
 
     catalog = CodingCommandCatalog(session_commands=lambda: [])
 

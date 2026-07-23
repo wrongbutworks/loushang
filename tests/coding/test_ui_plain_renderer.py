@@ -85,13 +85,13 @@ def test_plain_renderer_prints_header_and_user_message() -> None:
 
 
 def test_event_renderer_buffers_assistant_deltas_until_final_block() -> None:
-    from loushang.coding.presentation.tui.plain import (
-        PlainCodingUiRenderer,
-        build_plain_coding_event_projection,
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_plain_conversation_projection,
     )
 
     stdout = StringIO()
-    event_renderer = build_plain_coding_event_projection(
+    event_renderer = build_agent_plain_conversation_projection(
         PlainCodingUiRenderer(stdout=stdout)
     )
 
@@ -126,13 +126,13 @@ def test_event_renderer_buffers_assistant_deltas_until_final_block() -> None:
 
 
 def test_event_renderer_accepts_legacy_delta_without_message() -> None:
-    from loushang.coding.presentation.tui.plain import (
-        PlainCodingUiRenderer,
-        build_plain_coding_event_projection,
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_plain_conversation_projection,
     )
 
     stdout = StringIO()
-    event_renderer = build_plain_coding_event_projection(
+    event_renderer = build_agent_plain_conversation_projection(
         PlainCodingUiRenderer(stdout=stdout)
     )
 
@@ -151,13 +151,13 @@ def test_event_renderer_accepts_legacy_delta_without_message() -> None:
 def test_plain_projection_builder_preserves_injected_state() -> None:
     from inspect import signature
 
-    from loushang.coding.presentation.tui.plain import (
-        PlainCodingUiRenderer,
-        build_plain_coding_event_projection,
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_plain_conversation_projection,
     )
     from loushang.harnesstui.conversation.tool_transcript import ToolCallSnapshot
 
-    assert tuple(signature(build_plain_coding_event_projection).parameters) == (
+    assert tuple(signature(build_agent_plain_conversation_projection).parameters) == (
         "renderer",
         "tool_definition_resolver",
         "max_tool_body_lines",
@@ -171,7 +171,7 @@ def test_plain_projection_builder_preserves_injected_state() -> None:
     tool_calls = {"tc-pending": ToolCallSnapshot(tool_name="read")}
     rendered_tool_results = {"tc-done"}
     rendered_assistant_errors = {123}
-    event_renderer = build_plain_coding_event_projection(
+    event_renderer = build_agent_plain_conversation_projection(
         PlainCodingUiRenderer(stdout=StringIO()),
         None,
         4,
@@ -201,13 +201,13 @@ def test_plain_projection_builder_preserves_injected_state() -> None:
 def test_event_renderer_renders_completed_assistant_markdown_without_raw_markers() -> (
     None
 ):
-    from loushang.coding.presentation.tui.plain import (
-        PlainCodingUiRenderer,
-        build_plain_coding_event_projection,
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_plain_conversation_projection,
     )
 
     stdout = StringIO()
-    event_renderer = build_plain_coding_event_projection(
+    event_renderer = build_agent_plain_conversation_projection(
         PlainCodingUiRenderer(stdout=stdout)
     )
 
@@ -246,13 +246,13 @@ def test_plain_renderer_can_render_generic_terminal_blocks() -> None:
 
 
 def test_event_renderer_prints_assistant_error_from_message_end() -> None:
-    from loushang.coding.presentation.tui.plain import (
-        PlainCodingUiRenderer,
-        build_plain_coding_event_projection,
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_plain_conversation_projection,
     )
 
     stdout = StringIO()
-    event_renderer = build_plain_coding_event_projection(
+    event_renderer = build_agent_plain_conversation_projection(
         PlainCodingUiRenderer(stdout=stdout)
     )
 
@@ -269,13 +269,13 @@ def test_event_renderer_prints_assistant_error_from_message_end() -> None:
 
 
 def test_event_renderer_prints_assistant_error_from_agent_end() -> None:
-    from loushang.coding.presentation.tui.plain import (
-        PlainCodingUiRenderer,
-        build_plain_coding_event_projection,
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_plain_conversation_projection,
     )
 
     stdout = StringIO()
-    event_renderer = build_plain_coding_event_projection(
+    event_renderer = build_agent_plain_conversation_projection(
         PlainCodingUiRenderer(stdout=stdout)
     )
 
@@ -292,13 +292,13 @@ def test_event_renderer_prints_assistant_error_from_agent_end() -> None:
 
 
 def test_event_renderer_deduplicates_assistant_error_and_keeps_last_error() -> None:
-    from loushang.coding.presentation.tui.plain import (
-        PlainCodingUiRenderer,
-        build_plain_coding_event_projection,
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_plain_conversation_projection,
     )
 
     stdout = StringIO()
-    event_renderer = build_plain_coding_event_projection(
+    event_renderer = build_agent_plain_conversation_projection(
         PlainCodingUiRenderer(stdout=stdout)
     )
     message = _assistant(
@@ -316,13 +316,13 @@ def test_event_renderer_deduplicates_assistant_error_and_keeps_last_error() -> N
 
 
 def test_event_renderer_suppresses_intentional_abort_without_committing_draft() -> None:
-    from loushang.coding.presentation.tui.plain import (
-        PlainCodingUiRenderer,
-        build_plain_coding_event_projection,
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_plain_conversation_projection,
     )
 
     stdout = StringIO()
-    event_renderer = build_plain_coding_event_projection(
+    event_renderer = build_agent_plain_conversation_projection(
         PlainCodingUiRenderer(stdout=stdout)
     )
     message = _assistant(
@@ -339,13 +339,13 @@ def test_event_renderer_suppresses_intentional_abort_without_committing_draft() 
 
 
 def test_event_renderer_prints_user_message_start() -> None:
-    from loushang.coding.presentation.tui.plain import (
-        PlainCodingUiRenderer,
-        build_plain_coding_event_projection,
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_plain_conversation_projection,
     )
 
     stdout = StringIO()
-    event_renderer = build_plain_coding_event_projection(
+    event_renderer = build_agent_plain_conversation_projection(
         PlainCodingUiRenderer(stdout=stdout)
     )
 
@@ -364,13 +364,13 @@ def test_event_renderer_prints_user_message_start() -> None:
 
 
 def test_event_renderer_can_suppress_user_messages() -> None:
-    from loushang.coding.presentation.tui.plain import (
-        PlainCodingUiRenderer,
-        build_plain_coding_event_projection,
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_plain_conversation_projection,
     )
 
     stdout = StringIO()
-    event_renderer = build_plain_coding_event_projection(
+    event_renderer = build_agent_plain_conversation_projection(
         PlainCodingUiRenderer(stdout=stdout),
         render_user_messages=False,
     )
@@ -390,13 +390,13 @@ def test_event_renderer_can_suppress_user_messages() -> None:
 
 
 def test_event_renderer_aggregates_tool_lifecycle() -> None:
-    from loushang.coding.presentation.tui.plain import (
-        PlainCodingUiRenderer,
-        build_plain_coding_event_projection,
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_plain_conversation_projection,
     )
 
     stdout = StringIO()
-    event_renderer = build_plain_coding_event_projection(
+    event_renderer = build_agent_plain_conversation_projection(
         PlainCodingUiRenderer(stdout=stdout)
     )
     result: AgentToolResult[dict[str, object]] = AgentToolResult(
@@ -435,13 +435,13 @@ def test_event_renderer_aggregates_tool_lifecycle() -> None:
 
 
 def test_event_renderer_does_not_duplicate_tool_result_message_after_tool_end() -> None:
-    from loushang.coding.presentation.tui.plain import (
-        PlainCodingUiRenderer,
-        build_plain_coding_event_projection,
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_plain_conversation_projection,
     )
 
     stdout = StringIO()
-    event_renderer = build_plain_coding_event_projection(
+    event_renderer = build_agent_plain_conversation_projection(
         PlainCodingUiRenderer(stdout=stdout)
     )
     result: AgentToolResult[dict[str, object]] = AgentToolResult(
@@ -480,15 +480,15 @@ def test_event_renderer_does_not_duplicate_tool_result_message_after_tool_end() 
 
 
 def test_event_renderer_renders_tool_block_with_bounded_result_preview() -> None:
-    from loushang.coding.presentation.tui.plain import (
-        PlainCodingUiRenderer,
-        build_plain_coding_event_projection,
-    )
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
     from loushang.harness.presentation import (
         ToolRenderContext,
         ToolRenderResultOptions,
     )
     from loushang.harness.tools.workspace import ToolDefinition
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_plain_conversation_projection,
+    )
 
     async def execute(*args, **kwargs):  # pragma: no cover - renderer-only test helper
         raise AssertionError("not used")
@@ -514,7 +514,7 @@ def test_event_renderer_renders_tool_block_with_bounded_result_preview() -> None
         render_result=render_result,
     )
     stdout = StringIO()
-    event_renderer = build_plain_coding_event_projection(
+    event_renderer = build_agent_plain_conversation_projection(
         PlainCodingUiRenderer(stdout=stdout),
         tool_definition_resolver=lambda name: definition if name == "bash" else None,
         max_tool_body_lines=3,
@@ -551,13 +551,13 @@ def test_event_renderer_renders_tool_block_with_bounded_result_preview() -> None
 
 
 def test_event_renderer_includes_failed_tool_error_summary() -> None:
-    from loushang.coding.presentation.tui.plain import (
-        PlainCodingUiRenderer,
-        build_plain_coding_event_projection,
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_plain_conversation_projection,
     )
 
     stdout = StringIO()
-    event_renderer = build_plain_coding_event_projection(
+    event_renderer = build_agent_plain_conversation_projection(
         PlainCodingUiRenderer(stdout=stdout)
     )
     result: AgentToolResult[dict[str, object]] = AgentToolResult(
@@ -632,13 +632,13 @@ def test_plain_renderer_prints_interruption_and_concise_error_without_traceback(
 
 
 def test_event_renderer_prints_retry_status() -> None:
-    from loushang.coding.presentation.tui.plain import (
-        PlainCodingUiRenderer,
-        build_plain_coding_event_projection,
+    from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_plain_conversation_projection,
     )
 
     stdout = StringIO()
-    event_renderer = build_plain_coding_event_projection(
+    event_renderer = build_agent_plain_conversation_projection(
         PlainCodingUiRenderer(stdout=stdout)
     )
 

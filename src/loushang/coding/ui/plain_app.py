@@ -7,22 +7,13 @@ from typing import Any, TextIO
 from loushang.coding.commands.catalog import CodingCommandCatalog
 from loushang.coding.diagnostics.debug_status import debug_status_text
 from loushang.coding.event.presentation_policy import is_cancelled_error_message
-from loushang.coding.interaction.controller import CodingUiController
-from loushang.coding.interaction.intent import AbortIntent, CodingUiIntent
-from loushang.coding.interaction.tui_profile import (
-    CodingLocalAction,
-    CodingTuiPorts,
-    build_coding_tui_host_profile,
-    is_coding_work_intent,
-    snapshot_coding_command_catalog,
-)
 from loushang.coding.model_selection_tui import select_available_model
-from loushang.coding.presentation.session import (
-    is_running,
-    session_error_message,
-)
 from loushang.coding.presentation.tui.plain import PlainCodingUiRenderer
 from loushang.coding.ui.hotkeys import format_hotkeys
+from loushang.coding.ui.product_binding import (
+    build_coding_ui_controller,
+    snapshot_coding_command_catalog,
+)
 from loushang.harness.commands import CommandDef
 from loushang.harnesstui.commands.interaction import (
     CommandInteractionPresentationCopy,
@@ -40,7 +31,28 @@ from loushang.harnesstui.conversation.debug_action import (
     DebugActionHandler,
     DebugActionPorts,
 )
-from loushang.harnesstui.conversation.info import InfoPanelPresenter
+from loushang.harnesstui.conversation.host import (
+    build_standard_conversation_host_profile,
+)
+from loushang.harnesstui.conversation.info import (
+    ConversationLocalActionBinding,
+    ConversationLocalActionRegistry,
+    ConversationLocalActionResult,
+    InfoPanelPresenter,
+)
+from loushang.harnesstui.conversation.intents import (
+    AbortIntent,
+    BashIntent,
+    CommandSelectIntent,
+    CommandsIntent,
+    ConversationIntent,
+    DebugIntent,
+    HotkeysIntent,
+    ModelSelectIntent,
+    ModelsIntent,
+    PromptIntent,
+    SettingsIntent,
+)
 from loushang.harnesstui.conversation.plain_app import (
     PlainConversationApp,
     PlainConversationAssembly,
@@ -54,6 +66,10 @@ from loushang.harnesstui.conversation.queue import (
     restore_queued_messages,
 )
 from loushang.harnesstui.conversation.run_context import StableEmit, TraceFn
+from loushang.harnesstui.conversation.session_view import (
+    is_running,
+    session_error_message,
+)
 from loushang.harnesstui.selection.binding import (
     format_available_session_models as format_available_models,
 )
@@ -84,8 +100,8 @@ def build_plain_coding_tui_app(
 
     def bind_product(
         assembly: PlainConversationAssembly,
-    ) -> PlainConversationProductBinding[CodingUiIntent, CodingLocalAction]:
-        controller = CodingUiController(
+    ) -> PlainConversationProductBinding[ConversationIntent, str]:
+        controller = build_coding_ui_controller(
             runtime=runtime,
             session=session,
             verbose=verbose,
@@ -135,32 +151,122 @@ def build_plain_coding_tui_app(
             snapshot = await snapshot_coding_command_catalog(session)
             return format_commands(snapshot.commands(), query=query)
 
+        async def debug(intent: ConversationIntent) -> ConversationLocalActionResult:
+            if not isinstance(intent, DebugIntent):
+                return ConversationLocalActionResult()
+            await debug_action.handle(
+                enabled=intent.enabled,
+                scopes=intent.scopes,
+            )
+            return ConversationLocalActionResult()
+
+        async def model_select(
+            intent: ConversationIntent,
+        ) -> ConversationLocalActionResult:
+            query = intent.query if isinstance(intent, ModelSelectIntent) else ""
+            return ConversationLocalActionResult(
+                text=await select_available_model(
+                    session,
+                    query=query,
+                    choose=model_palette_chooser,
+                )
+            )
+
+        async def models(intent: ConversationIntent) -> ConversationLocalActionResult:
+            query = intent.query if isinstance(intent, ModelsIntent) else ""
+            return ConversationLocalActionResult(
+                text=await format_available_models(session, query=query)
+            )
+
+        async def command_select(
+            intent: ConversationIntent,
+        ) -> ConversationLocalActionResult:
+            query = intent.query if isinstance(intent, CommandSelectIntent) else ""
+            return ConversationLocalActionResult(text=await select_command(query))
+
+        async def commands(intent: ConversationIntent) -> ConversationLocalActionResult:
+            query = intent.query if isinstance(intent, CommandsIntent) else ""
+            return ConversationLocalActionResult(text=await list_commands(query))
+
+        async def hotkeys(
+            _intent: ConversationIntent,
+        ) -> ConversationLocalActionResult:
+            return ConversationLocalActionResult(text=format_hotkeys())
+
+        async def settings(
+            _intent: ConversationIntent,
+        ) -> ConversationLocalActionResult:
+            return ConversationLocalActionResult(text=assembly.settings_text())
+
+        local_actions = ConversationLocalActionRegistry(
+            presenter=assembly.info,
+            bindings=(
+                ConversationLocalActionBinding(
+                    "debug",
+                    DebugIntent,
+                    debug,
+                    deferred=True,
+                ),
+                ConversationLocalActionBinding(
+                    "model_select",
+                    ModelSelectIntent,
+                    model_select,
+                    title="Model",
+                    label="model:select",
+                ),
+                ConversationLocalActionBinding(
+                    "models",
+                    ModelsIntent,
+                    models,
+                    title="Models",
+                    label="models:show",
+                    modal=True,
+                ),
+                ConversationLocalActionBinding(
+                    "command_select",
+                    CommandSelectIntent,
+                    command_select,
+                    title="Command",
+                    label="command:select",
+                ),
+                ConversationLocalActionBinding(
+                    "commands",
+                    CommandsIntent,
+                    commands,
+                    title="Commands",
+                    label="commands:show",
+                    modal=True,
+                ),
+                ConversationLocalActionBinding(
+                    "hotkeys",
+                    HotkeysIntent,
+                    hotkeys,
+                    title="Hotkeys",
+                    label="hotkeys:show",
+                    modal=True,
+                ),
+                ConversationLocalActionBinding(
+                    "settings",
+                    SettingsIntent,
+                    settings,
+                    title="Settings",
+                    label="settings:show",
+                ),
+            ),
+        )
         return PlainConversationProductBinding(
-            host_profile=build_coding_tui_host_profile(
+            host_profile=build_standard_conversation_host_profile(
                 lifecycle=assembly.lifecycle,
-                command_catalog=command_catalog,
+                local_actions=local_actions,
+                command_effect=command_catalog.effect_for_route,
                 session_running=lambda: is_running(session),
                 trace=trace,
                 now=now,
             ),
             controller=controller,
             abort_action=lambda: controller.dispatch(AbortIntent()),
-            is_work_intent=is_coding_work_intent,
-            local=CodingTuiPorts(
-                debug=lambda intent: debug_action.handle(
-                    enabled=intent.enabled,
-                    scopes=intent.scopes,
-                ),
-                model_select=lambda query: select_available_model(
-                    session, query=query, choose=model_palette_chooser
-                ),
-                models=lambda query: format_available_models(session, query=query),
-                command_select=select_command,
-                commands=list_commands,
-                hotkeys=format_hotkeys,
-                settings_text=assembly.settings_text,
-                info=assembly.info,
-            ).local,
+            is_work_intent=lambda intent: isinstance(intent, PromptIntent | BashIntent),
+            local=local_actions.handle,
             fallback_error_message=lambda: session_error_message(session),
             suppress_aborted_error=is_cancelled_error_message,
         )

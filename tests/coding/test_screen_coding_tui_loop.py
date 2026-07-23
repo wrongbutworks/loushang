@@ -819,16 +819,16 @@ def test_screen_loop_abort_uses_first_pending_steer_before_running_steer() -> No
 
 
 def test_screen_loop_waits_for_abort_settle_before_running_popped_pending_steer() -> None:
-    from loushang.coding.interaction.controller import CodingUiController
-    from loushang.coding.interaction.screen_host import (
-        ScreenCodingConversationActionHost,
+    from loushang.coding.ui.product_binding import (
+        build_coding_ui_controller,
+        build_screen_coding_action_host,
     )
     from tests.coding.tui_support.playback import ScreenTuiLoopPlayback
 
     playback = ScreenTuiLoopPlayback()
     session = _AbortSettlingSession()
-    controller = CodingUiController(session=session)
-    host = ScreenCodingConversationActionHost(
+    controller = build_coding_ui_controller(session=session)
+    host = build_screen_coding_action_host(
         presenter=playback.app,
         controller=controller,
         stderr=StringIO(),
@@ -857,16 +857,16 @@ def test_screen_loop_waits_for_abort_settle_before_running_popped_pending_steer(
 
 
 def test_screen_loop_dispatches_session_command_without_prompting_agent() -> None:
-    from loushang.coding.interaction.controller import CodingUiController
-    from loushang.coding.interaction.screen_host import (
-        ScreenCodingConversationActionHost,
+    from loushang.coding.ui.product_binding import (
+        build_coding_ui_controller,
+        build_screen_coding_action_host,
     )
     from tests.coding.tui_support.playback import ScreenTuiLoopPlayback
 
     playback = ScreenTuiLoopPlayback()
     session = _NameCommandSession()
-    controller = CodingUiController(session=session)
-    host = ScreenCodingConversationActionHost(
+    controller = build_coding_ui_controller(session=session)
+    host = build_screen_coding_action_host(
         presenter=playback.app,
         controller=controller,
         stderr=StringIO(),

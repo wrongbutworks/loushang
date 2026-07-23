@@ -15,6 +15,13 @@ from loushang.harnesstui.conversation.control import (
     ConversationRunControl,
     ConversationTextAction,
 )
+from loushang.harnesstui.conversation.info import ConversationLocalActionRegistry
+from loushang.harnesstui.conversation.intents import (
+    ConversationIntent,
+    FollowUpIntent,
+    QuitIntent,
+    parse_conversation_intent,
+)
 from loushang.harnesstui.conversation.run_context import TraceFn
 from loushang.harnesstui.conversation.screen_runner import (
     AbortHandler,
@@ -166,6 +173,35 @@ class ConversationRoutingProfile(Generic[IntentT, LocalT]):
                 effect=effect.kind.value,
             )
         return ConversationHostDecision(ConversationHostRoute.LOCAL, local=action)
+
+
+def build_standard_conversation_host_profile(
+    *,
+    lifecycle: ConversationRunControl,
+    local_actions: ConversationLocalActionRegistry[ConversationIntent],
+    command_effect: Callable[[str, ConversationIntent], CommandEffect | None],
+    session_running: Callable[[], bool],
+    trace: TraceFn,
+    now: Callable[[], float],
+) -> ConversationHostProfile[ConversationIntent, str]:
+    """Bind standard Agent Product intents to the existing routed host."""
+
+    routing: ConversationRoutingProfile[ConversationIntent, str] = (
+        ConversationRoutingProfile(
+            lifecycle=lifecycle,
+            parse_intent=parse_conversation_intent,
+            is_exit=lambda intent: isinstance(intent, QuitIntent),
+            local_action=local_actions.immediate_action,
+            deferred_local_action=local_actions.deferred_action,
+            follow_up_text=lambda intent: (
+                intent.text if isinstance(intent, FollowUpIntent) else None
+            ),
+            command_effect=command_effect,
+            session_running=session_running,
+            trace=trace,
+        )
+    )
+    return routing.host_profile(now=now)
 
 
 @dataclass(frozen=True, slots=True)
@@ -387,5 +423,6 @@ __all__ = [
     "ConversationScreenRunProfile",
     "RoutedConversationActionHost",
     "bind_action_host_to_screen_runner",
+    "build_standard_conversation_host_profile",
     "run_action_host_conversation_screen",
 ]

@@ -6,13 +6,13 @@ from loushang.ai.model import model_label_from_selection
 from loushang.coding.model_selection import (
     ensure_usable_session_model,
 )
-from loushang.coding.presentation.session import (
+from loushang.harness.session.model_selection import get_session_model_selection
+from loushang.harnesstui.conversation.session_view import (
     git_branch,
     session_cwd,
     session_label,
     session_observability_id,
 )
-from loushang.harness.session.model_selection import get_session_model_selection
 from loushang.harnesstui.conversation.startup import (
     ConversationStartupView,
     build_conversation_startup_view,

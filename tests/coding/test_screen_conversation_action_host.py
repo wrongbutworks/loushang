@@ -6,13 +6,17 @@ from io import StringIO
 from pathlib import Path
 
 from loushang.ai.types import ImagePart
-from loushang.coding.interaction.intent import AbortIntent, CodingUiIntent, PromptIntent
-from loushang.coding.interaction.screen_host import (
-    ScreenCodingConversationActionHost,
+from loushang.coding.ui.product_binding import (
+    build_screen_coding_action_host,
 )
 from loushang.harness.host.types import HostActionResult
 from loushang.harnesstui.conversation.attachments import PromptImageAttachment
 from loushang.harnesstui.conversation.control import ConversationTextAction
+from loushang.harnesstui.conversation.intents import (
+    AbortIntent,
+    ConversationIntent,
+    PromptIntent,
+)
 
 
 class _Presenter:
@@ -38,7 +42,7 @@ class _Controller:
         self.steer_result = HostActionResult()
         self.follow_up_result = HostActionResult()
 
-    async def dispatch(self, intent: CodingUiIntent) -> HostActionResult:
+    async def dispatch(self, intent: ConversationIntent) -> HostActionResult:
         self.calls.append(("dispatch", intent))
         return self.dispatch_result
 
@@ -78,8 +82,8 @@ def _host(
     *,
     stderr: StringIO | None = None,
     verbose: bool = False,
-) -> ScreenCodingConversationActionHost:
-    return ScreenCodingConversationActionHost(
+):
+    return build_screen_coding_action_host(
         presenter=presenter,
         controller=controller,
         stderr=stderr or StringIO(),

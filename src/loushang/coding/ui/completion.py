@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.interaction.tui_profile import snapshot_coding_command_catalog
+from loushang.coding.ui.product_binding import snapshot_coding_command_catalog
 from loushang.harnesstui.commands.presentation import command_completion_provider
 from loushang.harnesstui.completion.host import (
     CatalogCompletionProfile,
