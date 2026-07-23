@@ -44,13 +44,8 @@ CODING_TUI_PRODUCT_SOURCES := \
 	src/loushang/coding/diagnostics/debug_status.py \
 	src/loushang/coding/event/presentation_policy.py \
 	src/loushang/coding/policy/tui.py \
-	src/loushang/coding/interaction/controller.py \
-	src/loushang/coding/interaction/intent.py \
-	src/loushang/coding/interaction/screen_host.py \
 	src/loushang/coding/interaction/settings_profile.py \
-	src/loushang/coding/interaction/tui_profile.py \
 	src/loushang/coding/presentation/resume.py \
-	src/loushang/coding/presentation/session.py \
 	src/loushang/coding/presentation/tui
 HARNESSTUI_TEST_PATHS := \
 	tests/harness/commands/test_catalog.py \

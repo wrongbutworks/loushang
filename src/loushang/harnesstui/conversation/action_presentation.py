@@ -100,6 +100,7 @@ class ConversationActionResultPresenter:
 
 IntentT = TypeVar("IntentT")
 AttachmentsT = TypeVar("AttachmentsT")
+ControllerAttachmentsT = TypeVar("ControllerAttachmentsT", contravariant=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,7 +171,7 @@ class PresentedConversationActionHost(Generic[IntentT, AttachmentsT]):
         await self._ports.wait_for_idle()
 
 
-class StandardConversationControllerPort(Protocol[AttachmentsT]):
+class StandardConversationControllerPort(Protocol[ControllerAttachmentsT]):
     """Controller effects consumed by the standard presented action host."""
 
     async def dispatch(
@@ -181,13 +182,13 @@ class StandardConversationControllerPort(Protocol[AttachmentsT]):
     async def steer(
         self,
         text: str,
-        images: AttachmentsT,
+        images: ControllerAttachmentsT,
     ) -> ConversationActionResultPort: ...
 
     async def follow_up(
         self,
         text: str,
-        images: AttachmentsT,
+        images: ControllerAttachmentsT,
     ) -> ConversationActionResultPort: ...
 
     async def wait_for_idle(self) -> object: ...

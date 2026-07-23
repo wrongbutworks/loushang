@@ -154,12 +154,11 @@ def build_plain_coding_tui_app(
         async def debug(intent: ConversationIntent) -> ConversationLocalActionResult:
             if not isinstance(intent, DebugIntent):
                 return ConversationLocalActionResult()
-            return ConversationLocalActionResult(
-                exit_code=await debug_action.handle(
-                    enabled=intent.enabled,
-                    scopes=intent.scopes,
-                )
+            await debug_action.handle(
+                enabled=intent.enabled,
+                scopes=intent.scopes,
             )
+            return ConversationLocalActionResult()
 
         async def model_select(
             intent: ConversationIntent,

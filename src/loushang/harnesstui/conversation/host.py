@@ -186,19 +186,22 @@ def build_standard_conversation_host_profile(
 ) -> ConversationHostProfile[ConversationIntent, str]:
     """Bind standard Agent Product intents to the existing routed host."""
 
-    return ConversationRoutingProfile(
-        lifecycle=lifecycle,
-        parse_intent=parse_conversation_intent,
-        is_exit=lambda intent: isinstance(intent, QuitIntent),
-        local_action=local_actions.immediate_action,
-        deferred_local_action=local_actions.deferred_action,
-        follow_up_text=lambda intent: (
-            intent.text if isinstance(intent, FollowUpIntent) else None
-        ),
-        command_effect=command_effect,
-        session_running=session_running,
-        trace=trace,
-    ).host_profile(now=now)
+    routing: ConversationRoutingProfile[ConversationIntent, str] = (
+        ConversationRoutingProfile(
+            lifecycle=lifecycle,
+            parse_intent=parse_conversation_intent,
+            is_exit=lambda intent: isinstance(intent, QuitIntent),
+            local_action=local_actions.immediate_action,
+            deferred_local_action=local_actions.deferred_action,
+            follow_up_text=lambda intent: (
+                intent.text if isinstance(intent, FollowUpIntent) else None
+            ),
+            command_effect=command_effect,
+            session_running=session_running,
+            trace=trace,
+        )
+    )
+    return routing.host_profile(now=now)
 
 
 @dataclass(frozen=True, slots=True)
