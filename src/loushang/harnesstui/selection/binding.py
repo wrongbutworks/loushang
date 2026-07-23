@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Awaitable, Callable, Iterable, Sequence
+from dataclasses import dataclass
 
 from loushang.harness.session.model_selection import (
     ModelChoiceData,
     get_session_model_identity,
     iter_available_model_details,
     iter_available_model_selections,
+    iter_scoped_model_selections,
     model_choice_data_from_details,
     model_choice_data_from_selections,
     model_identity_data,
@@ -18,6 +20,9 @@ from loushang.harnesstui.selection.catalog import (
     ModelChoice,
     ModelChoiceIdentity,
     merge_model_choice_sources,
+    model_choice_descriptions_by_label,
+    model_choice_select_items,
+    model_label_select_items,
     resolve_current_model_choice_value,
 )
 from loushang.harnesstui.selection.interaction import ModelInteractionChooser
@@ -27,12 +32,28 @@ from loushang.harnesstui.selection.runtime import (
     format_available_models,
     select_available_model,
 )
+from loushang.harnesstui.surface.factory import model_selector_surface_view
+from loushang.harnesstui.surface.view import (
+    ScreenSurfacePresentation,
+    ScreenSurfaceView,
+)
 from loushang.tui import CompletionProvider
 
 ApplyModelSelection = Callable[
     [object],
     object | Awaitable[object],
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class SessionModelSelectorSurfaceProfile:
+    """Product copy and sizing for the shared session model selector."""
+
+    title: str = "Select Model"
+    subtitle: str = ""
+    footer: str = "Enter to select - Esc to close"
+    presentation: ScreenSurfacePresentation = "bottom"
+    max_visible: int = 10
 
 
 def model_identity_from_value(selection: object | None) -> ModelChoiceIdentity:
@@ -78,6 +99,43 @@ async def current_session_model_choice_value(
     return resolve_current_model_choice_value(
         model_choices,
         ModelChoiceIdentity(label=identity.label, value=identity.value),
+    )
+
+
+async def build_session_model_selector_surface(
+    session: object,
+    *,
+    profile: SessionModelSelectorSurfaceProfile = (
+        SessionModelSelectorSurfaceProfile()
+    ),
+) -> ScreenSurfaceView:
+    """Build the standard model selector for any compatible Product session."""
+
+    identity = await get_session_model_identity(session)
+    choices = await available_session_model_choices(session)
+    current_value = await current_session_model_choice_value(session, choices=choices)
+    scoped_labels = [
+        label
+        for selection in await iter_scoped_model_selections(session)
+        if (label := model_identity_from_value(selection).label)
+    ]
+    descriptions = model_choice_descriptions_by_label(choices)
+    return model_selector_surface_view(
+        all_items=model_choice_select_items(
+            choices,
+            current_value=current_value,
+        ),
+        scoped_items=model_label_select_items(
+            scoped_labels,
+            current_label=identity.label,
+            descriptions=descriptions,
+        ),
+        selected_value=current_value or identity.label,
+        title=profile.title,
+        subtitle=profile.subtitle,
+        footer=profile.footer,
+        presentation=profile.presentation,
+        max_visible=profile.max_visible,
     )
 
 
@@ -169,8 +227,10 @@ def _model_choices_from_data(
 __all__ = [
     "ApplyModelSelection",
     "SessionModelSelectionViewPort",
+    "SessionModelSelectorSurfaceProfile",
     "available_session_model_completion_provider",
     "available_session_model_choices",
+    "build_session_model_selector_surface",
     "current_session_model_choice_value",
     "format_available_session_models",
     "model_choices_from_details",

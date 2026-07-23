@@ -3,7 +3,7 @@ from __future__ import annotations
 from io import StringIO
 from types import SimpleNamespace
 
-from loushang.coding.interaction.controller import CodingUiController
+from loushang.coding.ui.product_binding import build_coding_ui_controller
 from loushang.harnesstui.testing.performance import (
     build_synthetic_long_transcript_records,
 )
@@ -73,7 +73,7 @@ def _run_transcript_reader_copy_command() -> object:
             "previous structured answer",
         )
     )
-    controller = CodingUiController(session=session)
+    controller = build_coding_ui_controller(session=session)
 
     result = playback.run(
         (0.00, "\x0f"),

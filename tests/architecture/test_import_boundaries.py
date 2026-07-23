@@ -281,7 +281,10 @@ def test_coding_runtime_plans_are_declarative_over_shared_bindings() -> (
     assert missing == []
 
 
-def test_harnesstui_does_not_import_product_or_model_layers() -> None:
+def test_harnesstui_neutral_modules_do_not_import_product_or_model_layers() -> None:
+    agent_binding = Path(
+        "src/loushang/harnesstui/conversation/agent_binding.py"
+    )
     offenders = _find_forbidden_imports(
         ImportBoundary(
             name="harnesstui",
@@ -293,15 +296,25 @@ def test_harnesstui_does_not_import_product_or_model_layers() -> None:
                 "loushang.ai.providers",
                 "loushang.coding",
             ),
+            allowed_paths=frozenset({agent_binding.as_posix()}),
         )
     )
 
     assert offenders == []
+    assert {
+        imported
+        for imported in _absolute_imports(agent_binding)
+        if imported.startswith(("loushang.agent", "loushang.ai"))
+    } == {
+        "loushang.agent.types",
+        "loushang.agent.types.AgentToolResult",
+    }
 
 
 def test_production_harnesstui_imports_only_approved_loushang_layers() -> None:
     root = Path("src/loushang/harnesstui")
     testing_root = root / "testing"
+    agent_binding = root / "conversation" / "agent_binding.py"
     allowed_prefixes = (
         "loushang.harnesstui",
         "loushang.tui",
@@ -314,7 +327,11 @@ def test_production_harnesstui_imports_only_approved_loushang_layers() -> None:
         if testing_root not in path.parents
         for imported in _absolute_imports(path)
         if imported.startswith("loushang.")
-        and not _matches_any(imported, allowed_prefixes)
+        and not _matches_any(
+            imported,
+            allowed_prefixes
+            + (("loushang.agent.types",) if path == agent_binding else ()),
+        )
     ]
 
     assert offenders == []
@@ -1086,7 +1103,7 @@ def test_workspace_git_and_clipboards_have_canonical_owners() -> None:
             "loushang.harness.workspace.git.find_git_paths",
             "loushang.harness.workspace.git.get_git_branch",
         },
-        Path("src/loushang/coding/presentation/session.py"): {
+        Path("src/loushang/harnesstui/conversation/session_view.py"): {
             "loushang.harness.workspace.git.get_git_branch",
         },
         Path("src/loushang/coding/session/agent_session.py"): {

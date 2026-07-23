@@ -1,15 +1,15 @@
+"""Standard conversation intents shared by Agent-style Product UIs."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from loushang.ai.types import ImagePart
-
 
 @dataclass(frozen=True)
 class PromptIntent:
     text: str
-    images: tuple[ImagePart, ...] | None = None
+    images: tuple[object, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -73,7 +73,7 @@ class QuitIntent:
     pass
 
 
-CodingUiIntent: TypeAlias = (
+ConversationIntent: TypeAlias = (
     PromptIntent
     | BashIntent
     | FollowUpIntent
@@ -90,7 +90,9 @@ CodingUiIntent: TypeAlias = (
 )
 
 
-def parse_prompt_intent(text: str) -> CodingUiIntent | None:
+def parse_conversation_intent(text: str) -> ConversationIntent | None:
+    """Parse the standard local commands understood by Agent Product UIs."""
+
     stripped = text.strip()
     if not stripped:
         return None
@@ -107,18 +109,16 @@ def parse_prompt_intent(text: str) -> CodingUiIntent | None:
     if stripped == "/model" or stripped.startswith("/model "):
         return ModelSelectIntent(query=stripped[len("/model") :].strip())
     if stripped == "/models" or stripped.startswith("/models "):
-        return ModelsIntent(query=stripped[len("/models"):].strip())
+        return ModelsIntent(query=stripped[len("/models") :].strip())
     if stripped == "/hotkeys":
         return HotkeysIntent()
     if stripped == "/command" or stripped.startswith("/command "):
-        return CommandSelectIntent(query=stripped[len("/command"):].strip())
+        return CommandSelectIntent(query=stripped[len("/command") :].strip())
     if stripped == "/commands" or stripped.startswith("/commands "):
-        return CommandsIntent(query=stripped[len("/commands"):].strip())
+        return CommandsIntent(query=stripped[len("/commands") :].strip())
     if stripped == "/follow" or stripped.startswith("/follow "):
-        follow_text = stripped[len("/follow"):].strip()
-        if follow_text:
-            return FollowUpIntent(text=follow_text)
-        return None
+        follow_text = stripped[len("/follow") :].strip()
+        return FollowUpIntent(text=follow_text) if follow_text else None
     if stripped.startswith("!!"):
         command = stripped[2:].strip()
         if command:
@@ -127,7 +127,7 @@ def parse_prompt_intent(text: str) -> CodingUiIntent | None:
 
 
 def _parse_debug_intent(stripped: str) -> DebugIntent:
-    args = stripped[len("/debug"):].strip()
+    args = stripped[len("/debug") :].strip()
     if not args:
         return DebugIntent()
 
@@ -139,8 +139,7 @@ def _parse_debug_intent(stripped: str) -> DebugIntent:
         return DebugIntent(enabled=False, scopes=())
     if first in {"on", "enable", "enabled"}:
         tokens = tokens[1:]
-    scopes = tuple(tokens) if tokens else ("all",)
-    return DebugIntent(scopes=scopes)
+    return DebugIntent(scopes=tuple(tokens) if tokens else ("all",))
 
 
 __all__ = [
@@ -148,7 +147,7 @@ __all__ = [
     "BashIntent",
     "CommandSelectIntent",
     "CommandsIntent",
-    "CodingUiIntent",
+    "ConversationIntent",
     "DebugIntent",
     "FollowUpIntent",
     "HotkeysIntent",
@@ -158,5 +157,5 @@ __all__ = [
     "QuitIntent",
     "SettingsIntent",
     "TerminalDiagnosticsIntent",
-    "parse_prompt_intent",
+    "parse_conversation_intent",
 ]

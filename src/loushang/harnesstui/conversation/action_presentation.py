@@ -8,6 +8,13 @@ from typing import Generic, Protocol, TextIO, TypeVar
 
 from loushang.harnesstui.conversation.attachments import PromptImageAttachment
 from loushang.harnesstui.conversation.control import ConversationTextAction
+from loushang.harnesstui.conversation.intents import (
+    AbortIntent,
+    ConversationIntent,
+    PromptIntent,
+    QuitIntent,
+    parse_conversation_intent,
+)
 
 
 class ConversationActionResultPort(Protocol):
@@ -163,6 +170,76 @@ class PresentedConversationActionHost(Generic[IntentT, AttachmentsT]):
         await self._ports.wait_for_idle()
 
 
+class StandardConversationControllerPort(Protocol[AttachmentsT]):
+    """Controller effects consumed by the standard presented action host."""
+
+    async def dispatch(
+        self,
+        intent: ConversationIntent,
+    ) -> ConversationActionResultPort: ...
+
+    async def steer(
+        self,
+        text: str,
+        images: AttachmentsT,
+    ) -> ConversationActionResultPort: ...
+
+    async def follow_up(
+        self,
+        text: str,
+        images: AttachmentsT,
+    ) -> ConversationActionResultPort: ...
+
+    async def wait_for_idle(self) -> object: ...
+
+
+STANDARD_CONVERSATION_ACTION_COPY = ConversationActionPresentationCopy(
+    dispatch_failure_status=lambda message: f"Request failed: {message}",
+    steer_failure_status=lambda message: f"Steering failed: {message}",
+    follow_up_failure_status=lambda message: f"Follow-up failed: {message}",
+)
+
+
+def build_standard_presented_conversation_action_host(
+    *,
+    presenter: ConversationActionPresentationPort,
+    controller: StandardConversationControllerPort[AttachmentsT],
+    stderr: TextIO,
+    verbose: bool,
+    attachments: Callable[[tuple[PromptImageAttachment, ...]], AttachmentsT],
+    copy: ConversationActionPresentationCopy = STANDARD_CONVERSATION_ACTION_COPY,
+) -> PresentedConversationActionHost[ConversationIntent, AttachmentsT]:
+    """Bind standard intents to the existing immediate-presentation host."""
+
+    def prepare(
+        intent: ConversationIntent,
+        values: AttachmentsT,
+    ) -> ConversationIntent:
+        if isinstance(intent, PromptIntent):
+            return PromptIntent(intent.text, images=values)  # type: ignore[arg-type]
+        return intent
+
+    return PresentedConversationActionHost(
+        ports=PresentedConversationActionPorts(
+            parse=parse_conversation_intent,
+            exit_code=lambda intent: 0 if isinstance(intent, QuitIntent) else None,
+            attachments=attachments,
+            prepare=prepare,
+            dispatch=controller.dispatch,
+            steer=controller.steer,
+            follow_up=controller.follow_up,
+            abort_intent=AbortIntent,
+            wait_for_idle=controller.wait_for_idle,
+        ),
+        presenter=ConversationActionResultPresenter(
+            target=presenter,
+            stderr=stderr,
+            traceback_policy=ConversationTracebackPolicy(enabled=verbose),
+        ),
+        copy=copy,
+    )
+
+
 __all__ = [
     "ConversationActionPresentationCopy",
     "ConversationActionPresentationPort",
@@ -171,4 +248,7 @@ __all__ = [
     "ConversationTracebackPolicy",
     "PresentedConversationActionHost",
     "PresentedConversationActionPorts",
+    "STANDARD_CONVERSATION_ACTION_COPY",
+    "StandardConversationControllerPort",
+    "build_standard_presented_conversation_action_host",
 ]

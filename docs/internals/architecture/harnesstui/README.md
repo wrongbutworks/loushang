@@ -176,8 +176,9 @@ yet expose a broader convenience API.
 
 ## Tool Transcript and Status Profile
 
-This migration slice adds reusable presentation capabilities without importing
-Agent, AI, or Product modules.
+This migration slice keeps the reusable presentation core independent from
+Agent, AI, and Product modules. Optional Agent composition lives in a separate
+binding module.
 
 `loushang.harnesstui.conversation.tool_transcript` owns the neutral tool-result
 view and the display contracts used to project tool activity into conversation
@@ -190,11 +191,21 @@ terminal products.
 `build_mapping_tool_transcript_projection` extend that existing owner for the
 standard mapping-shaped Session event contract. The adapter reuses
 `ToolTranscriptProjectionBinding` and `ToolTranscriptProjector`; it is not a
-second projector. `loushang.coding.presentation.tui.tool_transcript` only
-supplies `AgentToolResult` text/details conversion, an optional Product
-renderer, and the final Coding command-label policy. This keeps the dependency
-pointing from Coding into HarnessTUI and prevents Agent event types from
-becoming presentation contracts.
+second projector.
+
+`loushang.harnesstui.conversation.agent_binding` is the optional Agent profile.
+It composes the existing neutral history, tool-transcript, plain-target, and
+screen-target owners with stable Agent event and message contracts. It owns the
+standard Agent history dispositions and result conversion without duplicating
+their projection engines. Products import this module when they need an Agent
+conversation; the neutral modules do not import it eagerly.
+
+Coding no longer owns a parallel intent parser, conversation controller,
+action host, history disposition table, tool projector, or plain/screen event
+adapter. Its product binding supplies the command catalog, callbacks, Product
+copy, attachment-to-AI conversion, settings surfaces, approval presentation,
+and final renderer profile. This keeps the dependency pointing from Coding into
+HarnessTUI while preserving an Agent-free neutral conversation core.
 
 `loushang.harnesstui.status.line` owns a shared Harness status profile and its
 product-neutral presentation rules. A product shell supplies the profile's

@@ -118,7 +118,7 @@ def test_run_coding_tui_uses_screen_loop_for_interactive_terminal(monkeypatch) -
     assert exit_code == 0
     assert captured["app"].__class__.__name__ == "ScreenCodingTuiApp"
     assert captured["action_host"].__class__.__name__ == (
-        "ScreenCodingConversationActionHost"
+        "PresentedConversationActionHost"
     )
     assert captured["profile"].__class__.__name__ == "ConversationScreenRunProfile"
     assert callable(captured["handle_local"])

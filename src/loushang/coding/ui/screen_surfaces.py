@@ -3,59 +3,40 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from loushang.ai.model import model_label_from_selection
 from loushang.coding.commands.catalog import CodingCommandCatalog
-from loushang.coding.interaction.intent import (
-    CommandSelectIntent,
-    CommandsIntent,
-    HotkeysIntent,
-    ModelSelectIntent,
-    ModelsIntent,
-    SettingsIntent,
-    TerminalDiagnosticsIntent,
-    parse_prompt_intent,
-)
-from loushang.coding.interaction.tui_profile import snapshot_coding_command_catalog
 from loushang.coding.model_selection_tui import select_available_model
 from loushang.coding.ui.hotkeys import format_hotkeys
+from loushang.coding.ui.product_binding import snapshot_coding_command_catalog
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.settings_page import build_coding_settings_page
-from loushang.harness.commands import CommandDef
 from loushang.harness.session.model_selection import (
-    get_session_model_selection,
-    iter_scoped_model_selections,
+    get_session_model_identity,
 )
-from loushang.harnesstui.commands.presentation import (
-    command_palette,
-    format_commands,
-)
+from loushang.harnesstui.commands.presentation import format_commands
 from loushang.harnesstui.selection.binding import (
-    available_session_model_choices as available_model_choices,
-)
-from loushang.harnesstui.selection.binding import (
-    current_session_model_choice_value as current_model_choice_value,
+    SessionModelSelectorSurfaceProfile,
+    build_session_model_selector_surface,
 )
 from loushang.harnesstui.selection.binding import (
     format_available_session_models as format_available_models,
 )
-from loushang.harnesstui.selection.catalog import (
-    model_choice_descriptions_by_label,
-    model_choice_select_items,
-    model_label_select_items,
-)
 from loushang.harnesstui.status.provider import StatusProvider
 from loushang.harnesstui.surface.controller import ApprovalSurfaceDecision
-from loushang.harnesstui.surface.factory import (
-    command_palette_surface_view,
-    model_selector_surface_view,
-)
+from loushang.harnesstui.surface.factory import command_catalog_surface_view
 from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.harnesstui.surface.workflow import (
-    ScreenSurfaceCommand,
+    STANDARD_SCREEN_SURFACE_WORKFLOW_COPY,
     ScreenSurfaceCommandCatalog,
     ScreenSurfaceWorkflow,
-    ScreenSurfaceWorkflowCopy,
     ScreenSurfaceWorkflowPorts,
+    normalize_standard_conversation_surface_command,
+    strip_available_models_heading,
+)
+
+_CODING_MODEL_SELECTOR_PROFILE = SessionModelSelectorSurfaceProfile(
+    subtitle="Access legacy models by running loushang --model <provider/model>.",
+    footer="  Press number or enter to confirm or esc to go back",
+    presentation="bottom-exclusive",
 )
 
 
@@ -87,9 +68,9 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
                 ),
                 refresh_model_label=self._refresh_model_label,
                 command_catalog=self.command_catalog,
-                normalize_command=_normalize_coding_surface_command,
+                normalize_command=normalize_standard_conversation_surface_command,
                 format_models=self._format_models,
-                models_info_body=_models_info_body,
+                models_info_body=strip_available_models_heading,
                 format_commands=self._format_commands,
                 build_model_selector=self._build_model_selector,
                 build_command_selector=self._build_command_selector,
@@ -98,18 +79,7 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
                 hotkeys=format_hotkeys,
                 decide_approval=self._decide_approval,
             ),
-            copy=ScreenSurfaceWorkflowCopy(
-                recoverable_error=_recoverable_surface_error,
-                command_selected=lambda command: f"Command selected: {command}",
-                approval_stale="Approval request is no longer pending",
-                approval_confirmed=lambda action: f"Action confirmed: {action}",
-                approval_rejected="Action rejected",
-                models_title="Available Models",
-                commands_title="Commands",
-                terminal_title="Terminal",
-                hotkeys_title="Hotkeys",
-                settings_title="Settings",
-            ),
+            copy=STANDARD_SCREEN_SURFACE_WORKFLOW_COPY,
         )
 
     @property
@@ -143,15 +113,7 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
 
     async def _build_command_selector(self) -> ScreenSurfaceView:
         catalog = await self._presentation_command_catalog()
-        return command_palette_surface_view(
-            command_palette(
-                catalog.commands(),
-                title="Commands",
-            ),
-            title="Commands",
-            purpose="command",
-            max_visible=8,
-        )
+        return command_catalog_surface_view(catalog)
 
     async def _presentation_command_catalog(self) -> ScreenSurfaceCommandCatalog:
         if self._command_catalog_override is not None:
@@ -159,34 +121,9 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         return await snapshot_coding_command_catalog(self.session)
 
     async def _build_model_selector(self) -> ScreenSurfaceView:
-        current_label = model_label_from_selection(
-            await get_session_model_selection(self.session)
-        )
-        choices = await available_model_choices(self.session)
-        current_value = await current_model_choice_value(self.session, choices=choices)
-        scoped_selections = await iter_scoped_model_selections(self.session)
-        scoped_labels = [
-            label
-            for selection in scoped_selections
-            if (label := model_label_from_selection(selection)) is not None
-        ]
-        descriptions = model_choice_descriptions_by_label(choices)
-        return model_selector_surface_view(
-            all_items=model_choice_select_items(
-                choices,
-                current_value=current_value,
-            ),
-            scoped_items=model_label_select_items(
-                scoped_labels,
-                current_label=current_label,
-                descriptions=descriptions,
-            ),
-            selected_value=current_value or current_label,
-            title="Select Model",
-            subtitle="Access legacy models by running loushang --model <provider/model>.",
-            footer="  Press number or enter to confirm or esc to go back",
-            presentation="bottom-exclusive",
-            max_visible=10,
+        return await build_session_model_selector_surface(
+            self.session,
+            profile=_CODING_MODEL_SELECTOR_PROFILE,
         )
 
     def _terminal_diagnostics(self) -> str:
@@ -206,48 +143,9 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         )
 
     async def _refresh_model_label(self) -> None:
-        label = model_label_from_selection(
-            await get_session_model_selection(self.session)
-        )
+        label = (await get_session_model_identity(self.session)).label
         if label is not None:
             self.coding_app.state.model_label = label
-
-
-def _normalize_coding_surface_command(
-    text: str,
-    command: CommandDef,
-) -> ScreenSurfaceCommand | None:
-    intent = parse_prompt_intent(text)
-    if command.name == "model" and isinstance(intent, ModelSelectIntent):
-        return ScreenSurfaceCommand("select_model", intent.query)
-    if command.name == "models" and isinstance(intent, ModelsIntent):
-        return ScreenSurfaceCommand("list_models", intent.query)
-    if command.name == "command" and isinstance(intent, CommandSelectIntent):
-        query = intent.query
-        if query and not query.startswith("/"):
-            query = f"/{query}"
-        return ScreenSurfaceCommand("select_command", query)
-    if command.name == "commands" and isinstance(intent, CommandsIntent):
-        return ScreenSurfaceCommand("list_commands", intent.query)
-    if command.name == "terminal" and isinstance(intent, TerminalDiagnosticsIntent):
-        return ScreenSurfaceCommand("terminal_diagnostics")
-    if command.name == "hotkeys" and isinstance(intent, HotkeysIntent):
-        return ScreenSurfaceCommand("hotkeys")
-    if command.name in {"settings", "config"} and isinstance(intent, SettingsIntent):
-        return ScreenSurfaceCommand("settings")
-    return None
-
-
-def _recoverable_surface_error(error: Exception) -> str:
-    message = str(error).strip() or error.__class__.__name__
-    return f"Error: {message}"
-
-
-def _models_info_body(text: str) -> str:
-    prefix = "Available models:\n"
-    if text.startswith(prefix):
-        return text[len(prefix) :]
-    return text
 
 
 def _session_commands_provider(session: Any) -> Callable[[], Any] | None:

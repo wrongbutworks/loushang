@@ -5,6 +5,16 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from loushang.harness.commands import CommandDef, CommandKind
+from loushang.harnesstui.conversation.intents import (
+    CommandSelectIntent,
+    CommandsIntent,
+    HotkeysIntent,
+    ModelSelectIntent,
+    ModelsIntent,
+    SettingsIntent,
+    TerminalDiagnosticsIntent,
+    parse_conversation_intent,
+)
 from loushang.harnesstui.settings.workflow import SettingsApplyResult
 from loushang.harnesstui.status.line import StatusLineSettings
 from loushang.harnesstui.surface.controller import (
@@ -85,6 +95,22 @@ class ScreenSurfaceWorkflowCopy:
     terminal_title: str
     hotkeys_title: str
     settings_title: str
+
+
+STANDARD_SCREEN_SURFACE_WORKFLOW_COPY = ScreenSurfaceWorkflowCopy(
+    recoverable_error=lambda error: (
+        f"Error: {str(error).strip() or error.__class__.__name__}"
+    ),
+    command_selected=lambda command: f"Command selected: {command}",
+    approval_stale="Approval request is no longer pending",
+    approval_confirmed=lambda action: f"Action confirmed: {action}",
+    approval_rejected="Action rejected",
+    models_title="Available Models",
+    commands_title="Commands",
+    terminal_title="Terminal",
+    hotkeys_title="Hotkeys",
+    settings_title="Settings",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -328,6 +354,45 @@ class ScreenSurfaceWorkflow:
         return self.ports.normalize_command(text, command)
 
 
+def normalize_standard_conversation_surface_command(
+    text: str,
+    command: CommandDef,
+) -> ScreenSurfaceCommand | None:
+    """Map standard conversation commands onto the shared surface grammar."""
+
+    intent = parse_conversation_intent(text)
+    if command.name == "model" and isinstance(intent, ModelSelectIntent):
+        return ScreenSurfaceCommand("select_model", intent.query)
+    if command.name == "models" and isinstance(intent, ModelsIntent):
+        return ScreenSurfaceCommand("list_models", intent.query)
+    if command.name == "command" and isinstance(intent, CommandSelectIntent):
+        query = intent.query
+        return ScreenSurfaceCommand(
+            "select_command",
+            query if not query or query.startswith("/") else f"/{query}",
+        )
+    if command.name == "commands" and isinstance(intent, CommandsIntent):
+        return ScreenSurfaceCommand("list_commands", intent.query)
+    if command.name == "terminal" and isinstance(
+        intent,
+        TerminalDiagnosticsIntent,
+    ):
+        return ScreenSurfaceCommand("terminal_diagnostics")
+    if command.name == "hotkeys" and isinstance(intent, HotkeysIntent):
+        return ScreenSurfaceCommand("hotkeys")
+    if command.name in {"settings", "config"} and isinstance(
+        intent,
+        SettingsIntent,
+    ):
+        return ScreenSurfaceCommand("settings")
+    return None
+
+
+def strip_available_models_heading(text: str) -> str:
+    prefix = "Available models:\n"
+    return text[len(prefix) :] if text.startswith(prefix) else text
+
+
 __all__ = [
     "ApprovalDecisionHandler",
     "ModelLabelRefresher",
@@ -340,4 +405,7 @@ __all__ = [
     "ScreenSurfaceCommandKind",
     "ScreenSurfaceComposerPort",
     "ScreenSurfaceWorkflowAppPort",
+    "STANDARD_SCREEN_SURFACE_WORKFLOW_COPY",
+    "normalize_standard_conversation_surface_command",
+    "strip_available_models_heading",
 ]

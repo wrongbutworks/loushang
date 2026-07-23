@@ -107,6 +107,43 @@ Product-neutral probes bind `research`/`design` transcript, capability,
 resource, model-selection, and plain-prompt adapters without importing Coding.
 The old Coding implementations are deleted rather than retained as facades.
 
+## HarnessTUI Conversation Product Binding Collapse (Complete)
+
+This batch removes the remaining Coding-owned copies of the standard
+conversation interaction and Agent presentation bindings. It extends existing
+HarnessTUI owners rather than introducing a second controller, action host,
+history projector, tool projector, surface workflow, or model selector.
+
+| Removed or reduced Coding region | Existing or extended shared owner | Retained Product input |
+| --- | --- | --- |
+| removed `coding.interaction.intent` | `harnesstui.conversation.intents` | Coding adds no private grammar; future Product intents can be composed at the Product boundary. |
+| removed `coding.interaction.controller`, `screen_host`, and `tui_profile` | existing `harnesstui.conversation.controller`, `host`, `action_presentation`, and `info` | `coding.ui.product_binding` injects the command catalog, callbacks, logger, problem prefix, and Product copy. |
+| removed `coding.presentation.tui.screen` and `tool_transcript` | optional `harnesstui.conversation.agent_binding` over the existing neutral history, tool, plain, and screen projectors | Coding retains its renderer/glyph profile and attachment-to-AI conversion. |
+| reduced `coding.presentation.tui.history` and removed `coding.presentation.session` | `harnesstui.conversation.agent_binding` and `session_view` | Coding retains only persisted SessionManager history loading. |
+| standard command/model/settings surface construction | existing `harnesstui.surface` and `harnesstui.selection` profiles/factories | Coding retains settings fields, terminal diagnostics, approval UI, model-application callback, and Product subtitle. |
+
+Closure probes require:
+
+- the neutral conversation modules to remain free of Agent, AI, and Coding
+  imports while the optional Agent binding remains free of Coding imports;
+- Coding UI construction to use the shared controller, routing profile, local
+  action registry, action host, history/tool projectors, and surface factories;
+- deleted Coding modules to remain absent rather than returning as compatibility
+  re-exports;
+- prompt, command, model, queue, retry, compaction, history, tool transcript,
+  plain-mode, and screen-mode behavior tests to remain unchanged.
+
+Implementation accounting, excluding tests and documentation:
+
+- Coding Python: 10,363 to 9,520 LOC, a net reduction of 843 LOC.
+- Coding source changes delete 1,153 lines and add 310 lines, including the
+  96-line Product binding; nine duplicate implementation modules are removed.
+- HarnessTUI Python: 15,728 to 16,739 LOC, a net increase of 1,011 LOC.
+- Shared source changes add 1,014 lines and remove 3 lines. The additions are
+  contracts and compositions over existing owners, not replacement engines.
+- Across Coding and HarnessTUI production Python, the batch adds 168 net lines
+  while moving the reusable ownership out of Coding.
+
 ## Wave 2: Event And Extension Product Adapter Collapse (Complete)
 
 The detailed contract is

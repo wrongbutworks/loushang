@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from loushang.coding.interaction.screen_host import (
+from loushang.coding.ui.product_binding import (
     image_parts_from_prompt_attachments,
 )
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp

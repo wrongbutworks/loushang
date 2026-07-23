@@ -83,8 +83,8 @@ def _adapter(
     tool_projector: object | None = None,
     **kwargs: object,
 ):
-    from loushang.coding.presentation.tui.tool_transcript import (
-        build_coding_tool_transcript_projection,
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_tool_transcript_projection,
     )
     from loushang.harnesstui.conversation.projection import (
         SessionConversationEventAdapter,
@@ -96,7 +96,7 @@ def _adapter(
             Any,
             tool_projector
             if tool_projector is not None
-            else build_coding_tool_transcript_projection(),
+            else build_agent_tool_transcript_projection(),
         ),
         **kwargs,
     )
@@ -287,14 +287,14 @@ def test_coding_event_adapter_extracts_retry_and_compaction_values() -> None:
 
 
 def test_coding_tool_adapter_exposes_read_only_neutral_views_and_projector() -> None:
-    from loushang.coding.presentation.tui.tool_transcript import (
-        build_coding_tool_transcript_projection,
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_tool_transcript_projection,
     )
     from loushang.harnesstui.conversation.tool_transcript import (
         ToolTranscriptProjector as NeutralToolTranscriptProjector,
     )
 
-    projector = build_coding_tool_transcript_projection()
+    projector = build_agent_tool_transcript_projection()
     call = projector.call_view(
         {
             "type": "tool_execution_start",
@@ -330,11 +330,11 @@ class _CountingRenderRuntime:
 
 
 def _counting_tool_projector(runtime: _CountingRenderRuntime):
-    from loushang.coding.presentation.tui.tool_transcript import (
-        build_coding_tool_transcript_projection,
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_tool_transcript_projection,
     )
 
-    return build_coding_tool_transcript_projection(
+    return build_agent_tool_transcript_projection(
         tool_definition_resolver=lambda name: None,
         render_runtime=cast(Any, runtime),
     )
@@ -469,11 +469,11 @@ def test_delta_message_role_requirement_is_surface_configurable() -> None:
 
 
 def test_result_view_uses_started_tool_name_for_body_policy() -> None:
-    from loushang.coding.presentation.tui.tool_transcript import (
-        build_coding_tool_transcript_projection,
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_tool_transcript_projection,
     )
 
-    tool_projector = build_coding_tool_transcript_projection(max_body_lines=4)
+    tool_projector = build_agent_tool_transcript_projection(max_body_lines=4)
     snapshot = tool_projector.remember_call(
         {
             "type": "tool_execution_start",
@@ -700,8 +700,8 @@ def test_anonymous_tool_result_messages_are_not_deduplicated() -> None:
 
 @pytest.mark.tui_render_contract
 def test_delta_hot_path_preserves_identity_without_container_construction() -> None:
-    from loushang.coding.presentation.tui.tool_transcript import (
-        build_coding_tool_transcript_projection,
+    from loushang.harnesstui.conversation.agent_binding import (
+        build_agent_tool_transcript_projection,
     )
     from loushang.harnesstui.conversation.projection import (
         ConversationProjector,
@@ -717,7 +717,7 @@ def test_delta_hot_path_preserves_identity_without_container_construction() -> N
     target = DeltaTarget()
     adapter = SessionConversationEventAdapter(
         projector=ConversationProjector(target=cast(Any, target)),
-        tool_projection=build_coding_tool_transcript_projection(),
+        tool_projection=build_agent_tool_transcript_projection(),
         require_assistant_message_for_delta=False,
     )
     delta = "identity-sensitive delta"

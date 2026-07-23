@@ -1074,7 +1074,7 @@ def test_screen_tui_projector_failure_still_unbinds_presenter(
         del args, kwargs
         raise RuntimeError("projector failed")
 
-    monkeypatch.setattr(mode, "build_screen_coding_event_projection", fail_projector)
+    monkeypatch.setattr(mode, "build_agent_screen_conversation_projection", fail_projector)
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
