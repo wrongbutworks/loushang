@@ -472,11 +472,18 @@ def test_plain_prompt_host_owns_only_neutral_turn_lifecycle() -> None:
         "ensure_usable_session_model",
         "SessionWorkRuntime",
         "EventLogBackend",
-        "_last_assistant_failure_message",
         "method_id",
         "plan_id",
     ):
         assert token not in shared
+        assert token in coding
+
+    for token in (
+        "last_assistant_failure_message",
+        "session_identity",
+        "dispose_runtime_or_session",
+    ):
+        assert token in shared
         assert token in coding
 
     for token in (
@@ -1070,26 +1077,29 @@ def test_shared_command_catalog_keeps_coding_definitions_and_raw_adaptation_outs
         assert token in descriptors
 
 
-def test_shared_model_choice_catalog_keeps_session_and_endpoint_acquisition_outside() -> None:
+def test_shared_model_choice_binding_owns_standard_session_acquisition() -> None:
     shared = "\n".join(
         Path(f"src/loushang/harnesstui/selection/{module}.py").read_text(
             encoding="utf-8"
         )
         for module in ("binding", "catalog", "runtime")
     )
+    session_binding = Path("src/loushang/harness/session/model_selection.py").read_text(
+        encoding="utf-8"
+    )
     coding = Path("src/loushang/coding/model_selection_tui.py").read_text(
         encoding="utf-8"
     )
 
-    for token in (
-        "loushang.coding",
-        "get_available_model_details",
-        "get_model_selection",
-        "apply_model_selection",
-        "persistence_warning_message",
-    ):
-        assert token not in shared
-        assert token in coding
+    assert "loushang.coding" not in shared
+    assert "loushang.coding" not in session_binding
+    assert "get_available_model_details" in session_binding
+    assert "get_model_selection" in session_binding
+    assert "available_session_model_choices" in shared
+    assert "apply_model_selection" in coding
+    assert "persistence_warning_message" in coding
+    assert "get_available_model_details" not in coding
+    assert "get_model_selection" not in coding
 
     for token in (
         "ModelChoiceIdentity",
@@ -1097,7 +1107,7 @@ def test_shared_model_choice_catalog_keeps_session_and_endpoint_acquisition_outs
         "merge_model_choice_sources",
     ):
         assert token in shared
-        assert token in coding
+        assert token not in coding
 
     for token in (
         "def model_choices_from_details",

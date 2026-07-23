@@ -16,10 +16,7 @@ from loushang.coding.interaction.tui_profile import (
     is_coding_work_intent,
     snapshot_coding_command_catalog,
 )
-from loushang.coding.model_selection_tui import (
-    format_available_models,
-    select_available_model,
-)
+from loushang.coding.model_selection_tui import select_available_model
 from loushang.coding.presentation.session import (
     is_running,
     session_error_message,
@@ -57,6 +54,9 @@ from loushang.harnesstui.conversation.queue import (
     restore_queued_messages,
 )
 from loushang.harnesstui.conversation.run_context import StableEmit, TraceFn
+from loushang.harnesstui.selection.binding import (
+    format_available_session_models as format_available_models,
+)
 from loushang.harnesstui.selection.interaction import ModelInteractionChooser
 from loushang.tui import CompletionProvider
 

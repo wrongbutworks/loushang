@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import time
 import traceback
 from collections.abc import Mapping, Sequence
@@ -15,7 +14,10 @@ from loushang.coding.presentation.tui.plain import (
 from loushang.harnesstui.conversation.plain_prompt_host import (
     PlainPromptHostPorts,
     PreparedPlainPromptRun,
+    dispose_runtime_or_session,
+    last_assistant_failure_message,
     run_plain_prompt_host,
+    session_identity,
 )
 from loushang.work import EventLogBackend
 from loushang.work.session import SessionWorkRuntime, SessionWorkTurn
@@ -72,7 +74,7 @@ async def run_prompt_command(
         )
 
     def resolve_failure(previous_error: str | None) -> str | None:
-        assistant_failure = _last_assistant_failure_message(session)
+        assistant_failure = last_assistant_failure_message(session)
         if (
             assistant_failure is None
             and event_renderer.last_error_message != previous_error
@@ -93,7 +95,7 @@ async def run_prompt_command(
                 render_user=renderer.render_user,
                 render_worked=renderer.render_worked,
                 render_error=renderer.render_error,
-                dispose=lambda: _dispose_runtime_or_session(runtime, session),
+                dispose=lambda: dispose_runtime_or_session(runtime, session),
             ),
             stderr=stderr,
             verbose=verbose,
@@ -141,7 +143,7 @@ async def run_prompt_plan_command(
         turn: SessionWorkTurn, turn_index: int, turn_count: int
     ) -> None:
         del turn, turn_index, turn_count
-        assistant_failure = _last_assistant_failure_message(session)
+        assistant_failure = last_assistant_failure_message(session)
         if (
             assistant_failure is None
             and event_renderer.last_error_message != previous_error
@@ -161,11 +163,11 @@ async def run_prompt_plan_command(
         work_runtime = coding_work_runtime or create_coding_work_runtime(
             session=session,
             event_log=work_event_log,
-            session_id=lambda: _work_session_id(session),
+            session_id=lambda: session_identity(session),
         )
         await work_runtime.submit_plan(
             turns,
-            session_id=_work_session_id(session),
+            session_id=session_identity(session),
             before_turn=before_turn,
             after_turn=after_turn,
             wait_for_idle_after_prompt=True,
@@ -183,7 +185,7 @@ async def run_prompt_plan_command(
         unsubscribe()
         if dispose:
             try:
-                await _dispose_runtime_or_session(runtime, session)
+                await dispose_runtime_or_session(runtime, session)
             except Exception as error:
                 renderer.render_error(str(error) or type(error).__name__)
                 if verbose:
@@ -217,7 +219,7 @@ async def _run_prompt_session(
     work_runtime = coding_work_runtime or create_coding_work_runtime(
         session=session,
         event_log=work_event_log,
-        session_id=lambda: _work_session_id(session),
+        session_id=lambda: session_identity(session),
     )
     await work_runtime.submit_turn(
         SessionWorkTurn(
@@ -233,7 +235,7 @@ async def _run_prompt_session(
             plan_facts=plan_facts,
             step_facts=step_facts,
         ),
-        session_id=_work_session_id(session),
+        session_id=session_identity(session),
     )
 
 
@@ -244,81 +246,6 @@ async def _prompt_session(
         await session.prompt(user_input)
         return
     await session.prompt(user_input, images=images)
-
-
-def _last_assistant_failure_message(session: Any) -> str | None:
-    for message in reversed(_session_messages(session)):
-        if _safe_getattr(message, "role", None) != "assistant":
-            continue
-        stop_reason = _safe_getattr(
-            message, "stop_reason", _safe_getattr(message, "stopReason", None)
-        )
-        if stop_reason not in {"error", "aborted"}:
-            return None
-        error_message = _safe_getattr(
-            message, "error_message", _safe_getattr(message, "errorMessage", None)
-        )
-        return (
-            error_message
-            if isinstance(error_message, str) and error_message
-            else f"Request {stop_reason}"
-        )
-    return None
-
-
-def _session_messages(session: Any) -> list[object]:
-    context_getter = getattr(session, "get_session_context", None)
-    if callable(context_getter):
-        try:
-            context = context_getter()
-        except Exception:
-            context = None
-        messages = _safe_getattr(context, "messages", None)
-        if isinstance(messages, list):
-            return list(messages)
-    messages = _safe_getattr(session, "messages", None)
-    if isinstance(messages, list):
-        return list(messages)
-    agent_state = _safe_getattr(_safe_getattr(session, "agent", None), "state", None)
-    messages = _safe_getattr(agent_state, "messages", None)
-    if isinstance(messages, list):
-        return list(messages)
-    return []
-
-
-async def _dispose_runtime_or_session(runtime: Any, session: Any) -> None:
-    disposer = getattr(runtime, "dispose", None)
-    if not callable(disposer):
-        disposer = getattr(session, "dispose", None)
-    if not callable(disposer):
-        return
-    result = disposer()
-    if inspect.isawaitable(result):
-        await result
-
-
-def _safe_getattr(target: Any, name: str, default: object) -> object:
-    try:
-        return getattr(target, name, default)
-    except Exception:
-        return default
-
-
-def _work_session_id(session: Any) -> str:
-    session_id = _safe_getattr(session, "session_id", None)
-    if isinstance(session_id, str) and session_id:
-        return session_id
-    session_manager = getattr(session, "session_manager", None)
-    get_header = getattr(session_manager, "get_header", None)
-    if callable(get_header):
-        try:
-            header = get_header()
-        except Exception:
-            header = None
-        header_id = _safe_getattr(header, "conversation_id", None)
-        if isinstance(header_id, str) and header_id:
-            return header_id
-    return "session"
 
 
 __all__ = ["run_prompt_command", "run_prompt_plan_command"]

@@ -4,8 +4,10 @@
 
 Implemented and first adopted by Coding. `loushang.harness.runtime.profile`
 provides the product-neutral profile contract, resolver, snapshot, registry,
-and binding lifecycle. `loushang.coding.runtime_profile` now declares Coding's
-current session selections and binds them through the same contract.
+and binding lifecycle. The optional
+`loushang.harness.agent_transcript.runtime_profile` composes those primitives
+with existing transcript/store/compaction owners. `loushang.coding.product_plan`
+now only declares Coding's current selections.
 
 ## Purpose And Requirement Traceability
 
@@ -126,24 +128,26 @@ add a process-global cache or automatic cross-tenant reuse.
 
 ## Coding Adoption
 
-`loushang.coding.runtime_profile` is the first Product composition adapter. It
-declares the existing Coding choices as one `ProductRuntimePlan` and registers
-exact factories for:
+`loushang.harness.agent_transcript.AgentTranscriptProfileRuntime` is the
+reusable optional Agent-profile adapter. A Product supplies stable identities
+and defaults through `AgentTranscriptRuntimeSpec`; the shared runtime declares
+the `ProductRuntimePlan` and registers exact factories for:
 
-1. `coding.file` or `coding.memory` conversation storage, selected by the
-   existing `persist` decision;
-2. the current `coding.agent_transcript` profile; and
-3. `agent_transcript.turn_aware_summary/v1`, the Harness-owned transcript
-   compaction mechanism. Coding binds only its prompt/model summary executor
-   and extension hook translation.
+1. the Product's file or memory conversation store identity, selected by the
+   caller's existing `persist` decision;
+2. the Product's current Agent transcript profile identity; and
+3. `agent_transcript.turn_aware_summary/v1`, the existing Harness-owned
+   transcript compaction mechanism.
 
-`SessionManager` creates, loads, and forks these bindings. New session headers
-persist the pure JSON `runtimeProfile` snapshot. Persistent resume validates
-the snapshot and rejects an unsupported profile instead of silently choosing a
-different durable-store or transcript schema. A non-persistent open may use a
-memory runtime binding while preserving the source file's durable snapshot.
-`AgentSession` supplies the selected Harness capability and Coding executor to
-its Product controller, and disposes the binding with the session.
+`loushang.coding.product_plan` instantiates that adapter with the established
+Coding identities and declares its standard capability-composition plan.
+`SessionManager` creates, loads, and forks the resulting bindings. New session
+headers persist the pure JSON `runtimeProfile` snapshot. Persistent resume
+validates the snapshot and rejects an unsupported profile instead of silently
+choosing a different durable-store or transcript schema. A non-persistent open
+may use a memory runtime binding while preserving the source file's durable
+snapshot. `AgentSession` supplies the selected Harness capability and Coding
+executor to its Product controller, and disposes the binding with the session.
 
 This adoption does not move `coding.settings_manager`, `coding.bootstrap`,
 extension discovery, model registry, auth resolution, Coding file naming, or
@@ -162,8 +166,14 @@ channel-local presentation slots only in their own component design
 source rejection diagnostics, ordered versus append-only semantics, strict
 snapshot round-trip, turn-boundary rebind lease invalidation, sealed store
 rejection, and factory rollback. Existing runtime binding tests retain the
-generation-lease contract. The module has no imports from Coding, Agent, AI,
-extensions, or concrete store implementations.
+generation-lease contract. Neutral Harness core has no imports from Coding,
+Agent, AI, extensions, or concrete store implementations.
+
+`tests/harness/agent_transcript/test_runtime_profile.py` binds a fake Research
+Product through the optional Agent/AI-aware profile, validates its snapshot,
+and proves that cross-Product resume is rejected. This optional integration
+package may depend on stable Agent/AI value and codec contracts; it does not
+own providers, credentials, model preference, or Product policy.
 
 `tests/coding/test_runtime_profile.py` verifies the first Product adoption:
 new memory/file sessions select the correct factory, headers retain the

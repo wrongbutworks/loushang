@@ -243,25 +243,32 @@ def test_capability_composition_runtime_has_no_product_dependency() -> None:
     assert offenders == []
 
 
-def test_coding_capability_binding_uses_harness_runtime_without_a_private_facade() -> (
+def test_coding_runtime_plans_are_declarative_over_shared_bindings() -> (
     None
 ):
     assert not Path("src/loushang/coding/capability_profile.py").exists()
+    assert not Path("src/loushang/coding/capability_plan.py").exists()
+    assert not Path("src/loushang/coding/runtime_profile.py").exists()
 
     expected_imports = {
+        Path("src/loushang/coding/product_plan.py"): {
+            "loushang.harness.agent_transcript.AgentTranscriptProfileRuntime",
+            "loushang.harness.agent_transcript.AgentTranscriptRuntimeSpec",
+            "loushang.harness.capabilities.standard_capability_composition_plan",
+            "loushang.harness.runtime.RuntimeProfileResolver",
+        },
         Path("src/loushang/coding/bootstrap.py"): {
-            "loushang.coding.capability_plan.resolve_coding_capability_profile",
+            "loushang.coding.product_plan.CODING_CAPABILITY_PROFILE",
             "loushang.harness.capabilities.bind_capability_composition_runtime",
         },
         Path("src/loushang/coding/session/agent_session.py"): {
-            "loushang.coding.capability_plan.resolve_coding_capability_profile",
+            "loushang.coding.product_plan.CODING_CAPABILITY_PROFILE",
             "loushang.harness.capabilities.CapabilityCompositionRuntime",
             "loushang.harness.capabilities.bind_capability_composition_runtime",
         },
         Path("src/loushang/coding/session_manager.py"): {
-            "loushang.coding.capability_plan.coding_capability_snapshot_metadata",
-            "loushang.coding.capability_plan.resolve_coding_capability_profile",
-            "loushang.coding.capability_plan.validate_coding_capability_snapshot",
+            "loushang.coding.product_plan.CODING_CAPABILITY_PROFILE",
+            "loushang.coding.product_plan.CODING_TRANSCRIPT_RUNTIME",
         },
     }
     missing: list[str] = []
@@ -587,7 +594,10 @@ def test_transcript_compaction_capability_is_neutral_and_adopted() -> None:
     capability_source = Path(
         "src/loushang/harness/agent_transcript/compaction.py"
     ).read_text(encoding="utf-8")
-    runtime_profile_source = Path("src/loushang/coding/runtime_profile.py").read_text(
+    runtime_profile_source = Path(
+        "src/loushang/harness/agent_transcript/runtime_profile.py"
+    ).read_text(encoding="utf-8")
+    product_plan_source = Path("src/loushang/coding/product_plan.py").read_text(
         encoding="utf-8"
     )
     composition_source = Path(
@@ -609,8 +619,10 @@ def test_transcript_compaction_capability_is_neutral_and_adopted() -> None:
 
     assert "loushang.coding" not in capability_source
     assert "ConversationCompactionPlanner" in capability_source
+    assert "loushang.coding" not in runtime_profile_source
     assert "TURN_AWARE_SUMMARY_IMPLEMENTATION" in runtime_profile_source
     assert "create_agent_transcript_compaction_capability" in runtime_profile_source
+    assert "AgentTranscriptRuntimeSpec" in product_plan_source
     assert "AgentTranscriptCompactionCapability" in composition_source
     assert "loushang.coding" not in summary_executor_source
     assert "execute_transcript_compaction" in summary_executor_source
@@ -3656,6 +3668,7 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
         "CapabilityPackTraceEntry",
         "bind_capability_composition_runtime",
         "compose_capability_packs",
+        "standard_capability_composition_plan",
         "standard_capability_composition_implementations",
     }
 

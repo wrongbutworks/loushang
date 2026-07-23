@@ -4,13 +4,13 @@ from pathlib import Path
 from typing import Any
 
 from loushang.coding.interaction.tui_profile import snapshot_coding_command_catalog
-from loushang.coding.model_selection_tui import available_model_completion_provider
 from loushang.harnesstui.commands.presentation import command_completion_provider
 from loushang.harnesstui.completion.host import (
     CatalogCompletionProfile,
     CatalogSlashAlias,
     PreparedCatalogCompletionHost,
 )
+from loushang.harnesstui.selection import binding as model_selection_binding
 from loushang.tui import (
     CombinedCompletionProvider,
     CompletionProvider,
@@ -29,11 +29,11 @@ async def coding_inline_completion_provider(
 
 
 def coding_completion_host(session: Any) -> PreparedCatalogCompletionHost:
-    """Bind Coding catalog sources to the shared completion host."""
-
     return PreparedCatalogCompletionHost(
         command_provider_source=lambda: _coding_command_provider(session),
-        model_provider_source=lambda: available_model_completion_provider(session),
+        model_provider_source=lambda: (
+            model_selection_binding.available_session_model_completion_provider(session)
+        ),
         profile=_CODING_COMPLETION_PROFILE,
     )
 

@@ -12,6 +12,9 @@ from loushang.harness.capabilities.composition_runtime import (
 from loushang.harness.capabilities.composition_runtime import (
     standard_capability_composition_implementations as standard_capability_composition_implementations,
 )
+from loushang.harness.capabilities.composition_runtime import (
+    standard_capability_composition_plan as standard_capability_composition_plan,
+)
 from loushang.harness.capabilities.packs import CapabilityPack as CapabilityPack
 from loushang.harness.capabilities.packs import (
     CapabilityPackComposer as CapabilityPackComposer,
@@ -39,5 +42,6 @@ __all__ = [
     "CapabilityPackTraceEntry",
     "bind_capability_composition_runtime",
     "compose_capability_packs",
+    "standard_capability_composition_plan",
     "standard_capability_composition_implementations",
 ]

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import inspect
 import time
 import traceback
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Generic, TextIO, TypeVar
+from typing import Any, Generic, TextIO, TypeVar
 
 FailureStateT = TypeVar("FailureStateT")
 Cleanup = Callable[[], None]
@@ -87,6 +88,86 @@ async def run_plain_prompt_host(
     return exit_code
 
 
+def last_assistant_failure_message(session: object) -> str | None:
+    """Return the latest terminal assistant failure, if one exists."""
+
+    for message in reversed(session_messages(session)):
+        if _safe_getattr(message, "role", None) != "assistant":
+            continue
+        stop_reason = _safe_getattr(
+            message,
+            "stop_reason",
+            _safe_getattr(message, "stopReason", None),
+        )
+        if stop_reason not in {"error", "aborted"}:
+            return None
+        error_message = _safe_getattr(
+            message,
+            "error_message",
+            _safe_getattr(message, "errorMessage", None),
+        )
+        return (
+            error_message
+            if isinstance(error_message, str) and error_message
+            else f"Request {stop_reason}"
+        )
+    return None
+
+
+def session_messages(session: object) -> list[object]:
+    """Read messages through the standard session, facade, or Agent shapes."""
+
+    context_getter = getattr(session, "get_session_context", None)
+    if callable(context_getter):
+        try:
+            context = context_getter()
+        except Exception:
+            context = None
+        messages = _safe_getattr(context, "messages", None)
+        if isinstance(messages, list | tuple):
+            return list(messages)
+    messages = _safe_getattr(session, "messages", None)
+    if isinstance(messages, list | tuple):
+        return list(messages)
+    agent_state = _safe_getattr(_safe_getattr(session, "agent", None), "state", None)
+    messages = _safe_getattr(agent_state, "messages", None)
+    if isinstance(messages, list | tuple):
+        return list(messages)
+    return []
+
+
+def session_identity(session: object) -> str:
+    """Resolve a stable session id from standard Product session shapes."""
+
+    session_id = _safe_getattr(session, "session_id", None)
+    if isinstance(session_id, str) and session_id:
+        return session_id
+    session_manager = getattr(session, "session_manager", None)
+    get_header = getattr(session_manager, "get_header", None)
+    if callable(get_header):
+        try:
+            header = get_header()
+        except Exception:
+            header = None
+        conversation_id = _safe_getattr(header, "conversation_id", None)
+        if isinstance(conversation_id, str) and conversation_id:
+            return conversation_id
+    return "session"
+
+
+async def dispose_runtime_or_session(runtime: object, session: object) -> None:
+    """Dispose a Product runtime, falling back to its session."""
+
+    disposer = getattr(runtime, "dispose", None)
+    if not callable(disposer):
+        disposer = getattr(session, "dispose", None)
+    if not callable(disposer):
+        return
+    result = disposer()
+    if inspect.isawaitable(result):
+        await result
+
+
 async def _run_plain_prompt_turn(
     run: PreparedPlainPromptRun[FailureStateT],
     prompt: str,
@@ -119,8 +200,19 @@ def _present_exception(
         )
 
 
+def _safe_getattr(target: Any, name: str, default: object) -> object:
+    try:
+        return getattr(target, name, default)
+    except Exception:
+        return default
+
+
 __all__ = [
     "PlainPromptHostPorts",
     "PreparedPlainPromptRun",
+    "dispose_runtime_or_session",
+    "last_assistant_failure_message",
     "run_plain_prompt_host",
+    "session_identity",
+    "session_messages",
 ]

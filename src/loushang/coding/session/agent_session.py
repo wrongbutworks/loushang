@@ -10,7 +10,6 @@ from loushang.ai.api_registry import (
     ApiProviderRegistry,
     get_default_api_provider_registry,
 )
-from loushang.coding.capability_plan import resolve_coding_capability_profile
 from loushang.coding.compaction.adapter import (
     execute_coding_branch_summary,
     execute_coding_compaction,
@@ -20,6 +19,7 @@ from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.platform.changelog import read_changelog_for_cwd
 from loushang.coding.platform.footer_data_provider import FooterDataProvider
 from loushang.coding.policy import InteractiveApprovalResolver
+from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
 from loushang.coding.resource_runtime import (
     CodingPackageMaterializer as PackageMaterializer,
 )
@@ -171,7 +171,7 @@ class AgentSession(AgentSessionAdapterMixin, SessionFacade):
         self._package_materializer = package_materializer
         self._exec_service = exec_service or ExecService()
         capability_runtime = capability_runtime or bind_capability_composition_runtime(
-            resolve_coding_capability_profile()
+            CODING_CAPABILITY_PROFILE
         )
         self._capability_runtime = capability_runtime
         self.footer_data_provider = footer_data_provider or FooterDataProvider(

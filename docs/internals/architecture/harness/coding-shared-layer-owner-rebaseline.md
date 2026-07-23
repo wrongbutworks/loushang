@@ -31,7 +31,8 @@ the identified Coding implementation and records the actual delta here.
 | `coding.session.command_controller` | 239 | `SessionCommandRuntime`, command sources | `shared adopted` | Retain Product source/result binding |
 | `coding.mode.rpc_mode` | 2,687 -> thin adapter | `harness.host.rpc` owns JSONL host/router/task tracker, standard operation handlers, state/model/diagnostic dispatch; Channel owns framing | `product adapter` | Complete: Coding injects event and diagnostics projections |
 | `coding.mode.print_mode`, `channel_mode`, `base` | 1,201 -> thin adapters | `harnesstui.conversation.plain_mode` owns plain/JSON host lifecycle and state observation; `harness.host.mode` owns lifecycle contracts; Channel owns operation framing | `product adapter` + `shared adopted` | Print/base cutover complete; Channel operation binding retains Work/domain policy |
-| `coding.prompt_command` plus removed `coding.work_*` | 867 -> 392 | `work.session.SessionWorkRuntime` over canonical `WorkRuntime`; existing HarnessTUI plain hosts | `product adapter` | Retain Coding renderer, failure wording, Method turn preparation, domain/kind, and event projection binding |
+| `coding.prompt_command` plus removed `coding.work_*` | 867 -> 319 | `work.session.SessionWorkRuntime` over canonical `WorkRuntime`; existing HarnessTUI plain-prompt host and session helpers | `product adapter` | Retain Coding renderer, failure wording, Method turn preparation, domain/kind, and event projection binding |
+| removed `coding.runtime_profile` and `coding.capability_plan`; `coding.product_plan` | 404 -> 38 | existing runtime resolver/binder, Agent transcript store/profile/compaction owners, and capability composition runtime | `shared adopted` | Coding declares stable Product identities, metadata keys, and current defaults only |
 
 Coding remains responsible in this group for service factories, the Coding
 transcript store, CWD/session-file acceptance, model/provider decisions,
@@ -47,7 +48,7 @@ extension API, prompts, resource package, final RPC schema, and output wording.
 | removed `coding.control.settings_manager` | 0 | `harness.config.agent.SettingsManager` composed over `SettingsRuntime`, `ScopedConfigRuntime`, schema codec, and JSON store | `shared adopted` | Standard Agent field codecs, accessors, and mutations moved without adding a second engine |
 | removed `coding.control.types` | 0 | `harness.config.agent.types` | `shared adopted` | Standard Agent settings records are shared; Products retain only true domain additions and overlays |
 | `coding.policy.*` | 515 | Harness rule, approval, and resource-policy mechanisms | `product adapter` + `product kernel` | Extract profiles, not rules mechanically |
-| `coding.tool_pack`, `resource_runtime` | 346 | Workspace tool composition and resource/package engines | `product adapter` | Retain Coding membership, order, descriptions, context-file conventions |
+| `coding.tool_pack`, `resource_runtime` | 346 -> 287 | Workspace tool composition and resource/package engines, plus `ResourceLoaderProfile`/`ProfiledResourceLoader` | `product adapter` | Retain Coding membership, order, descriptions, built-in package and context-file conventions, prompt assembler, and security/default bindings |
 | `coding.compaction.adapter`, `profiles` | 359 | Transcript capability and summary-profile mechanism | `product adapter` + `product kernel` | Retain Coding executor and prompt text |
 
 ## Leaf And Interaction Regions
@@ -56,7 +57,7 @@ extension API, prompts, resource package, final RPC schema, and output wording.
 | --- | ---: | --- | --- | --- |
 | removed `coding.source_info`; `coding.model_selection` | 187 -> 137 | `harness.resources.source`, profiled `observability.runtime_identity`, `ai.model`, session model selection | `shared adopted` | Runtime identity Product labels live in `coding.diagnostics.profile`; no source-info facade remains |
 | `coding.interaction.*` | 777 | TUI and HarnessTUI primitives | `product adapter` + `product kernel` | Wave 5/6 only after neutral screen-host probe |
-| `coding.model_selection_tui` | 279 | AI model values and TUI primitives | `product adapter` | Require a second Product workflow before extraction |
+| `coding.model_selection_tui` | 279 -> 38 | `harness.session.model_selection` plus the existing `harnesstui.selection` catalog/runtime | `product adapter` | Retain only Coding settings persistence and warning wording; fake Product probes cover shared acquisition and selection |
 | `coding.diagnostics.*`; removed `diag_export` and `observability` | 472 -> 138 | Harness diagnostics/export and observability runtime | `shared adopted` | Retain Coding debug-status presentation and its source/identity profile only |
 | `coding.sdk_surface` | 138 -> 61 | `harness.sdk_surface` owns generic export/signature inspection | `product adapter` | Retain the Coding entry-name contract and default-module binding |
 
