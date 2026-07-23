@@ -125,6 +125,8 @@ def workspace_tool_runtime_settings(
             tool_settings, "ask_path_substrings"
         ),
     }
+    # TODO: always create PolicyEngine so default rules (e.g. rm -rf)
+    # take effect even when no user settings are configured.
     policy_engine = policy_factory(**policy_kwargs) if any(policy_kwargs.values()) else None
     approval_mode = getattr(tool_settings, "approval_mode", None)
     approval_resolver = (
