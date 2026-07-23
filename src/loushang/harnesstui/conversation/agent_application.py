@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TextIO
+from typing import Generic, Protocol, TextIO, TypeVar
 
 from loushang.harnesstui.conversation.agent_binding import (
     agent_session_history_records,
@@ -26,6 +26,9 @@ from loushang.harnesstui.conversation.intents import (
 from loushang.harnesstui.conversation.plain_app import (
     PlainConversationApp,
     PlainConversationRenderer,
+)
+from loushang.harnesstui.conversation.plain_target import (
+    PlainConversationProjectionPort,
 )
 from loushang.harnesstui.conversation.resume import (
     resume_hint_for_session,
@@ -55,26 +58,25 @@ from loushang.harnesstui.status.provider import StatusProvider
 from loushang.tui.transcript import DisplayRecord
 
 Cleanup = Callable[[], None]
-SurfaceFactory = Callable[[StatusProvider], PreparedScreenSurfacePort]
-SurfaceBinder = Callable[[PreparedScreenSurfacePort], Cleanup]
+SurfaceT = TypeVar("SurfaceT", bound=PreparedScreenSurfacePort)
 
 
 def _no_cleanup() -> None:
     return None
 
 
-def _ignore_surface(_surface: PreparedScreenSurfacePort) -> Cleanup:
+def _ignore_surface(_surface: SurfaceT) -> Cleanup:
     return _no_cleanup
 
 
 @dataclass(frozen=True, slots=True)
-class AgentScreenConversationApplicationBinding:
+class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
     """Prepare shared Agent screen state around Product UI components."""
 
     session: object
     app: ScreenConversationApp
     action_host: ConversationActionHost
-    build_surface: SurfaceFactory
+    build_surface: Callable[[StatusProvider], SurfaceT]
     startup: ConversationStartupView
     interaction_context: InteractionContext
     profile: ConversationScreenRunProfile
@@ -82,8 +84,8 @@ class AgentScreenConversationApplicationBinding:
     stdout: TextIO
     now: Callable[[], float]
     completion_provider: object | None = None
-    bind_presenter: SurfaceBinder = _ignore_surface
-    bind_transition: SurfaceBinder = _ignore_surface
+    bind_presenter: Callable[[SurfaceT], Cleanup] = _ignore_surface
+    bind_transition: Callable[[SurfaceT], Cleanup] = _ignore_surface
     resume_command_prefix: tuple[str, ...] = ()
 
     def prepare(self) -> PreparedScreenConversationRun:
@@ -174,12 +176,28 @@ PlainAppFactory = Callable[
 ]
 
 
+class AgentPlainConversationRenderer(
+    PlainConversationRenderer,
+    PlainConversationProjectionPort,
+    Protocol,
+):
+    def render_header(
+        self,
+        *,
+        project_label: str,
+        cwd: str,
+        branch: str | None,
+        session_label: str | None,
+        model_label: str | None,
+    ) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class AgentPlainConversationApplicationBinding:
     """Prepare shared Agent plain state around a Product renderer and app."""
 
     session: object
-    renderer: PlainConversationRenderer
+    renderer: AgentPlainConversationRenderer
     startup: ConversationStartupView
     interaction_context: InteractionContext
     build_app: PlainAppFactory

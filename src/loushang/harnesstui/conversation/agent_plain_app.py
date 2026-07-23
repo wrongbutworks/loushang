@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TextIO
+from typing import Protocol, TextIO
 
-from loushang.harness.commands import CommandDef
+from loushang.harness.commands import CommandDef, CommandEffect
 from loushang.harnesstui.commands.interaction import (
     CommandInteractionPresentationCopy,
     CommandInteractionSnapshot,
@@ -49,6 +49,7 @@ from loushang.harnesstui.conversation.intents import (
 from loushang.harnesstui.conversation.plain_app import (
     PlainConversationApp,
     PlainConversationAssembly,
+    PlainConversationController,
     PlainConversationPorts,
     PlainConversationProductBinding,
     PlainConversationProfile,
@@ -66,6 +67,11 @@ from loushang.harnesstui.conversation.session_view import (
 )
 from loushang.harnesstui.selection.interaction import ModelInteractionChooser
 from loushang.tui import CompletionProvider
+
+
+class AgentPlainEventRenderer(Protocol):
+    @property
+    def last_error_message(self) -> str | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,15 +98,18 @@ class AgentPlainConversationCopy:
 class AgentPlainConversationPorts:
     session: object
     renderer: PlainConversationRenderer
-    event_renderer: object
+    event_renderer: AgentPlainEventRenderer
     stderr: TextIO
     verbose: bool
     cwd: str
     emit: StableEmit
     trace: TraceFn
     now: Callable[[], float]
-    controller: object
-    command_effect: Callable[[str], object | None]
+    controller: PlainConversationController[ConversationIntent]
+    command_effect: Callable[
+        [str, ConversationIntent],
+        CommandEffect | None,
+    ]
     snapshot_commands: Callable[[], Awaitable[Sequence[CommandDef]]]
     select_model: Callable[[str, ModelInteractionChooser | None], Awaitable[str]]
     format_models: Callable[[str], Awaitable[str]]

@@ -19,6 +19,7 @@ from loushang.harnesstui.conversation.agent_plain_app import (
     AgentPlainConversationPorts,
     build_agent_plain_conversation_app,
 )
+from loushang.harnesstui.conversation.info import InfoPanelPresenter
 from loushang.harnesstui.conversation.plain_app import PlainConversationApp
 from loushang.harnesstui.conversation.run_context import StableEmit, TraceFn
 from loushang.harnesstui.selection.binding import (
@@ -45,7 +46,7 @@ def build_plain_coding_tui_app(
     completion_provider: CompletionProvider | None = None,
     model_palette_chooser: ModelInteractionChooser | None = None,
     command_palette_chooser: CommandPaletteChooser | None = None,
-    info_panel_presenter: object | None = None,
+    info_panel_presenter: InfoPanelPresenter | None = None,
 ) -> PlainConversationApp:
     """Bind Coding content to the standard Agent plain conversation app."""
 

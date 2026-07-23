@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
-from typing import Any, Protocol, TextIO, TypeAlias
+from typing import Any, Literal, Protocol, TextIO, TypeAlias
 
 from loushang.agent.types import AgentToolResult
 from loushang.harness.agent_transcript import (
@@ -294,7 +294,7 @@ class AgentPlainHost(PlainHost):
         session: object,
         stdout: TextIO,
         stderr: TextIO | None = None,
-        output_mode: str = "text",
+        output_mode: Literal["text", "json"] = "text",
         event_view: str = "full",
         event_select: Sequence[str] | str | None = None,
         render_tool_events: bool = False,
@@ -343,7 +343,7 @@ async def run_agent_plain_mode(
     stderr: TextIO | None = None,
     images: list[object] | None = None,
     follow_up_messages: Sequence[str] = (),
-    output_mode: str = "text",
+    output_mode: Literal["text", "json"] = "text",
     event_view: str = "full",
     event_select: Sequence[str] | str | None = None,
     render_tool_events: bool = False,
@@ -400,7 +400,7 @@ async def run_agent_plain_plan_mode(
     work_event_log: object,
     work_port: PlainWorkPort,
     stderr: TextIO | None = None,
-    output_mode: str = "text",
+    output_mode: Literal["text", "json"] = "text",
     event_view: str = "full",
     event_select: Sequence[str] | str | None = None,
     render_tool_events: bool = False,
@@ -436,8 +436,16 @@ async def run_agent_mode(
     follow_up_messages: Sequence[str] = (),
     work_event_log: object | None = None,
     work_port: PlainWorkPort | None = None,
+    method_id: str | None = None,
+    plan_id: str | None = None,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    step_title: str | None = None,
+    planned_constraint: Mapping[str, object] | None = None,
+    audit_policy: Mapping[str, object] | None = None,
+    plan_facts: Mapping[str, object] | None = None,
+    step_facts: Mapping[str, object] | None = None,
     dispose: bool = True,
-    **work_metadata: object,
 ) -> int:
     """Dispatch the standard Agent RPC or plain host without Product facades."""
 
@@ -469,8 +477,16 @@ async def run_agent_mode(
         render_tool_events=config.render_tool_events,
         work_event_log=work_event_log,
         work_port=work_port,
+        method_id=method_id,
+        plan_id=plan_id,
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
+        planned_constraint=planned_constraint,
+        audit_policy=audit_policy,
+        plan_facts=plan_facts,
+        step_facts=step_facts,
         dispose=dispose,
-        **work_metadata,
     )
 
 
