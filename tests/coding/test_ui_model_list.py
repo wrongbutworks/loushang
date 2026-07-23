@@ -121,14 +121,16 @@ class _AmbiguousDuplicateEndpointSession(_DuplicateEndpointSession):
 
 
 def test_model_choice_is_the_shared_harnesstui_view_model() -> None:
-    from loushang.coding.model_selection_tui import ModelChoice as CodingModelChoice
     from loushang.harnesstui.selection.catalog import ModelChoice
+    from loushang.harnesstui.selection.catalog import ModelChoice as CodingModelChoice
 
     assert CodingModelChoice is ModelChoice
 
 
 def test_format_available_models_marks_current_model() -> None:
-    from loushang.coding.model_selection_tui import format_available_models
+    from loushang.harnesstui.selection.binding import (
+        format_available_session_models as format_available_models,
+    )
 
     text = asyncio.run(format_available_models(_Session()))
 
@@ -138,7 +140,9 @@ def test_format_available_models_marks_current_model() -> None:
 
 
 def test_format_available_models_filters_by_query() -> None:
-    from loushang.coding.model_selection_tui import format_available_models
+    from loushang.harnesstui.selection.binding import (
+        format_available_session_models as format_available_models,
+    )
 
     text = asyncio.run(format_available_models(_Session(), query="gpt"))
 
@@ -146,7 +150,9 @@ def test_format_available_models_filters_by_query() -> None:
 
 
 def test_format_available_models_lists_current_model_first() -> None:
-    from loushang.coding.model_selection_tui import format_available_models
+    from loushang.harnesstui.selection.binding import (
+        format_available_session_models as format_available_models,
+    )
 
     text = asyncio.run(format_available_models(_CurrentSecondSession()))
 
@@ -156,7 +162,9 @@ def test_format_available_models_lists_current_model_first() -> None:
 
 
 def test_format_available_models_reports_empty_matches() -> None:
-    from loushang.coding.model_selection_tui import format_available_models
+    from loushang.harnesstui.selection.binding import (
+        format_available_session_models as format_available_models,
+    )
 
     text = asyncio.run(format_available_models(_Session(), query="missing"))
 
@@ -164,7 +172,9 @@ def test_format_available_models_reports_empty_matches() -> None:
 
 
 def test_format_available_models_keeps_longer_substring_with_exact_label() -> None:
-    from loushang.coding.model_selection_tui import format_available_models
+    from loushang.harnesstui.selection.binding import (
+        format_available_session_models as format_available_models,
+    )
 
     class _FormattingSession(_Session):
         def get_available_models(self) -> list[object]:
@@ -181,7 +191,9 @@ def test_format_available_models_keeps_longer_substring_with_exact_label() -> No
 
 
 def test_available_model_completion_provider_exposes_structured_items() -> None:
-    from loushang.coding.model_selection_tui import available_model_completion_provider
+    from loushang.harnesstui.selection.binding import (
+        available_session_model_completion_provider as available_model_completion_provider,
+    )
     from loushang.tui import CompletionItem, CompletionProvider
 
     provider = asyncio.run(available_model_completion_provider(_Session()))
@@ -199,7 +211,9 @@ def test_available_model_completion_provider_exposes_structured_items() -> None:
 
 
 def test_available_model_completion_provider_uses_model_detail_descriptions() -> None:
-    from loushang.coding.model_selection_tui import available_model_completion_provider
+    from loushang.harnesstui.selection.binding import (
+        available_session_model_completion_provider as available_model_completion_provider,
+    )
     from loushang.tui import CompletionItem, CompletionProvider
 
     provider = asyncio.run(
@@ -223,7 +237,9 @@ def test_available_model_completion_provider_uses_model_detail_descriptions() ->
 
 
 def test_available_model_completion_provider_lists_current_model_first() -> None:
-    from loushang.coding.model_selection_tui import available_model_completion_provider
+    from loushang.harnesstui.selection.binding import (
+        available_session_model_completion_provider as available_model_completion_provider,
+    )
 
     provider = asyncio.run(available_model_completion_provider(_CurrentSecondSession()))
 
@@ -385,7 +401,9 @@ def test_select_available_model_reports_duplicate_endpoint_label_as_ambiguous_wi
 
 
 def test_available_model_completion_provider_marks_only_current_endpoint() -> None:
-    from loushang.coding.model_selection_tui import available_model_completion_provider
+    from loushang.harnesstui.selection.binding import (
+        available_session_model_completion_provider as available_model_completion_provider,
+    )
 
     provider = asyncio.run(
         available_model_completion_provider(_DuplicateEndpointCurrentSession())
@@ -408,7 +426,9 @@ def test_available_model_completion_provider_marks_only_current_endpoint() -> No
 def test_available_model_completion_provider_uses_agent_model_endpoint_for_current() -> (
     None
 ):
-    from loushang.coding.model_selection_tui import available_model_completion_provider
+    from loushang.harnesstui.selection.binding import (
+        available_session_model_completion_provider as available_model_completion_provider,
+    )
 
     provider = asyncio.run(
         available_model_completion_provider(_DuplicateEndpointAgentModelSession())
@@ -429,7 +449,9 @@ def test_available_model_completion_provider_uses_agent_model_endpoint_for_curre
 
 
 def test_available_model_completion_provider_dedupes_to_preferred_endpoint() -> None:
-    from loushang.coding.model_selection_tui import available_model_completion_provider
+    from loushang.harnesstui.selection.binding import (
+        available_session_model_completion_provider as available_model_completion_provider,
+    )
 
     provider = asyncio.run(
         available_model_completion_provider(_DuplicateEndpointSession())

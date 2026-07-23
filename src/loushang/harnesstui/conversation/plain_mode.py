@@ -11,6 +11,10 @@ from loushang.harness.events import RuntimeEvent
 from loushang.harness.events.projection import RuntimeEventView
 from loushang.harness.host.mode import ModeAdapter, ModeState, dispose_host
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.harnesstui.conversation.plain_prompt_host import (
+    last_assistant_failure_message,
+    session_identity,
+)
 from loushang.protocol import require_json_value
 
 _HEADER_CODEC = NativeConversationHeaderCodec()
@@ -209,7 +213,7 @@ class PlainHost(ModeAdapter):
                     include_work_metadata=False,
                 )
                 await self.session.wait_for_idle()
-            assistant_failure = _last_assistant_failure_message(self.session)
+            assistant_failure = last_assistant_failure_message(self.session)
             if assistant_failure is not None:
                 self.stderr.write(assistant_failure + "\n")
                 exit_code = 1
@@ -244,7 +248,7 @@ class PlainHost(ModeAdapter):
             turn: object, turn_index: int, turn_count: int
         ) -> None:
             del turn, turn_index, turn_count
-            assistant_failure = _last_assistant_failure_message(self.session)
+            assistant_failure = last_assistant_failure_message(self.session)
             if assistant_failure is not None:
                 raise PlainHostFailure(assistant_failure)
 
@@ -258,7 +262,7 @@ class PlainHost(ModeAdapter):
                 raise ValueError("planned execution requires a Work binding")
             await self.work_port.submit_plan(
                 turns,
-                session_id=_work_session_id(self.session),
+                session_id=session_identity(self.session),
                 after_turn=after_turn,
             )
         except PlainHostFailure as error:
@@ -407,7 +411,7 @@ class PlainHost(ModeAdapter):
             raise ValueError("work execution requires a Work binding")
         await self.work_port.submit_turn(
             user_input,
-            session_id=_work_session_id(self.session),
+            session_id=session_identity(self.session),
             images=images,
             include_work_metadata=include_work_metadata,
             method_id=self.method_id,
@@ -456,46 +460,6 @@ def _serialize_print_mode_state(session: Any) -> ModeState:
     if isinstance(session_file, str) and session_file:
         payload["sessionFile"] = session_file
     return payload
-
-
-def _last_assistant_failure_message(session: Any) -> str | None:
-    for message in reversed(_session_messages(session)):
-        if _safe_getattr(message, "role", None) != "assistant":
-            continue
-        stop_reason = _safe_getattr(
-            message, "stop_reason", _safe_getattr(message, "stopReason", None)
-        )
-        if stop_reason not in {"error", "aborted"}:
-            return None
-        error_message = _safe_getattr(
-            message, "error_message", _safe_getattr(message, "errorMessage", None)
-        )
-        return (
-            error_message
-            if isinstance(error_message, str) and error_message
-            else f"Request {stop_reason}"
-        )
-    return None
-
-
-def _session_messages(session: Any) -> list[object]:
-    context_getter = getattr(session, "get_session_context", None)
-    if callable(context_getter):
-        try:
-            context = context_getter()
-        except Exception:
-            context = None
-        messages = _safe_getattr(context, "messages", None)
-        if isinstance(messages, list | tuple):
-            return list(messages)
-    messages = _safe_getattr(session, "messages", None)
-    if isinstance(messages, list | tuple):
-        return list(messages)
-    agent_state = _safe_getattr(_safe_getattr(session, "agent", None), "state", None)
-    messages = _safe_getattr(agent_state, "messages", None)
-    if isinstance(messages, list | tuple):
-        return list(messages)
-    return []
 
 
 def _serialize_model_snapshot(session: Any, state: Any) -> dict[str, object] | None:
@@ -581,23 +545,6 @@ def _safe_getattr(target: Any, name: str, default: object) -> object:
         return getattr(target, name, default)
     except Exception:
         return default
-
-
-def _work_session_id(session: Any) -> str:
-    session_id = _safe_getattr(session, "session_id", None)
-    if isinstance(session_id, str) and session_id:
-        return session_id
-    session_manager = getattr(session, "session_manager", None)
-    get_header = getattr(session_manager, "get_header", None)
-    if callable(get_header):
-        try:
-            header = get_header()
-        except Exception:
-            header = None
-        header_id = _safe_getattr(header, "conversation_id", None)
-        if isinstance(header_id, str) and header_id:
-            return header_id
-    return "session"
 
 
 async def run_plain_mode(

@@ -10,7 +10,11 @@ import pytest
 from loushang.harnesstui.conversation.plain_prompt_host import (
     PlainPromptHostPorts,
     PreparedPlainPromptRun,
+    dispose_runtime_or_session,
+    last_assistant_failure_message,
     run_plain_prompt_host,
+    session_identity,
+    session_messages,
 )
 
 
@@ -314,3 +318,55 @@ def test_plain_prompt_host_preserves_unsubscribe_failure_boundary() -> None:
         asyncio.run(run_plain_prompt_host(run))
 
     assert dispose_calls == 0
+
+
+def test_plain_prompt_session_helpers_support_standard_product_shapes() -> None:
+    class Session:
+        session_id = "research-session"
+
+        def get_session_context(self):
+            return type(
+                "Context",
+                (),
+                {
+                    "messages": (
+                        type("User", (), {"role": "user"})(),
+                        type(
+                            "Assistant",
+                            (),
+                            {
+                                "role": "assistant",
+                                "stop_reason": "error",
+                                "error_message": "provider unavailable",
+                            },
+                        )(),
+                    )
+                },
+            )()
+
+    session = Session()
+
+    assert len(session_messages(session)) == 2
+    assert last_assistant_failure_message(session) == "provider unavailable"
+    assert session_identity(session) == "research-session"
+
+
+def test_plain_prompt_disposal_prefers_runtime_then_session() -> None:
+    async def scenario() -> None:
+        calls: list[str] = []
+
+        class Runtime:
+            async def dispose(self) -> None:
+                calls.append("runtime")
+
+        class Session:
+            async def dispose(self) -> None:
+                calls.append("session")
+
+        session = Session()
+        await dispose_runtime_or_session(Runtime(), session)
+        await dispose_runtime_or_session(object(), session)
+
+        assert calls == ["runtime", "session"]
+
+    asyncio.run(scenario())

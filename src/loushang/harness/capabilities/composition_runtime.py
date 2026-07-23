@@ -9,7 +9,7 @@ owns only the neutral factories and their configuration contracts.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TypeVar
 
 from loushang.harness.capabilities.packs import (
@@ -30,12 +30,15 @@ from loushang.harness.runtime import (
     RESOURCE_RUNTIME_SLOT,
     SKILL_ACTIVATION_SLOT,
     TOOL_PACKS_SLOT,
+    ProductRuntimePlan,
     ResolvedRuntimeProfile,
     RuntimeCapabilityImplementation,
     RuntimeCapabilityRegistry,
     RuntimeCapabilitySelection,
     RuntimeProfileBinder,
     RuntimeProfileBinding,
+    RuntimeProfileSource,
+    standard_capability_composition_slots,
 )
 
 RESOURCE_ACTIVATION_IMPLEMENTATION = "harness.resource_activation"
@@ -46,6 +49,56 @@ CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION = 1
 
 T = TypeVar("T")
 TValue = TypeVar("TValue")
+
+
+def standard_capability_composition_plan(
+    *,
+    product_id: str,
+    allowed_sources: frozenset[RuntimeProfileSource] = frozenset({"product"}),
+    prompt_separator: str = "\n\n",
+    strip_prompt_sections: bool = True,
+) -> ProductRuntimePlan:
+    """Declare the standard composition mechanisms for one Product."""
+
+    slots = tuple(
+        replace(slot, allowed_sources=allowed_sources)
+        for slot in standard_capability_composition_slots()
+    )
+    return ProductRuntimePlan(
+        product_id=product_id,
+        slots=slots,
+        defaults=(
+            RuntimeCapabilitySelection(
+                slot=RESOURCE_RUNTIME_SLOT.key,
+                implementation=RESOURCE_ACTIVATION_IMPLEMENTATION,
+                implementation_version=CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION,
+            ),
+            RuntimeCapabilitySelection(
+                slot=PROMPT_SECTIONS_SLOT.key,
+                implementation=PROMPT_SECTIONS_IMPLEMENTATION,
+                implementation_version=CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION,
+                config={
+                    "separator": prompt_separator,
+                    "stripSections": strip_prompt_sections,
+                },
+            ),
+            RuntimeCapabilitySelection(
+                slot=SKILL_ACTIVATION_SLOT.key,
+                implementation=DISABLED_SKILL_ACTIVATION_IMPLEMENTATION,
+                implementation_version=CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION,
+            ),
+            RuntimeCapabilitySelection(
+                slot=TOOL_PACKS_SLOT.key,
+                implementation=ORDERED_CAPABILITY_PACKS_IMPLEMENTATION,
+                implementation_version=CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION,
+            ),
+            RuntimeCapabilitySelection(
+                slot=COMMAND_PACKS_SLOT.key,
+                implementation=ORDERED_CAPABILITY_PACKS_IMPLEMENTATION,
+                implementation_version=CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION,
+            ),
+        ),
+    )
 
 
 @dataclass
@@ -281,5 +334,6 @@ __all__ = [
     "PROMPT_SECTIONS_IMPLEMENTATION",
     "RESOURCE_ACTIVATION_IMPLEMENTATION",
     "bind_capability_composition_runtime",
+    "standard_capability_composition_plan",
     "standard_capability_composition_implementations",
 ]

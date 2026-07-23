@@ -1,67 +1,37 @@
 from __future__ import annotations
 
-from loushang.coding.capability_plan import (
-    coding_capability_snapshot_metadata,
-    resolve_coding_capability_profile,
-    validate_coding_capability_snapshot,
-)
-from loushang.coding.runtime_profile import (
-    CodingRuntimeSessionBinding,
-    CodingRuntimeSessionContext,
-    bind_coding_runtime,
-    coding_runtime_snapshot_metadata,
-    resolve_coding_runtime_profile,
-    selected_store,
-    selected_transcript_profile,
-    validate_coding_runtime_snapshot,
+from loushang.coding.product_plan import (
+    CODING_CAPABILITY_PROFILE,
+    CODING_CAPABILITY_PROFILE_METADATA_KEY,
+    CODING_PRODUCT_ID,
+    CODING_TRANSCRIPT_RUNTIME,
 )
 from loushang.harness.agent_transcript import (
     AgentTranscriptLifecycle,
-    AgentTranscriptLifecycleContext,
-    AgentTranscriptRuntimeBinding,
     AgentTranscriptSessionFactory,
     ProductTranscriptSession,
 )
 from loushang.harness.conversation import ConversationHeader
-from loushang.harness.runtime import ResolvedRuntimeProfile
+from loushang.harness.runtime import (
+    ResolvedRuntimeProfile,
+    RuntimeProfileBinding,
+    RuntimeProfileSnapshot,
+)
 from loushang.protocol import JSONValue
 
-
-async def _bind_coding_agent_transcript_runtime(
-    context: AgentTranscriptLifecycleContext,
-    runtime_profile: ResolvedRuntimeProfile,
-) -> AgentTranscriptRuntimeBinding[CodingRuntimeSessionBinding]:
-    coding_context = CodingRuntimeSessionContext(
-        session_dir=context.session_dir,
-        header=context.header,
-        persist=context.persist,
-        session_file=context.session_file,
-    )
-    binding = await bind_coding_runtime(
-        profile=runtime_profile,
-        context=coding_context,
-    )
-    return AgentTranscriptRuntimeBinding(
-        store=selected_store(binding),
-        key=coding_context.conversation_key,
-        profile=selected_transcript_profile(binding),
-        product_binding=binding,
-        dispose=binding.dispose,
-    )
-
-
 _LIFECYCLE = AgentTranscriptLifecycle(
-    bind_runtime=_bind_coding_agent_transcript_runtime
+    bind_runtime=CODING_TRANSCRIPT_RUNTIME.bind_lifecycle
 )
 
 
 def _coding_header_metadata(
     runtime_profile: ResolvedRuntimeProfile,
 ) -> dict[str, JSONValue]:
-    capability_profile = resolve_coding_capability_profile()
     return {
-        **coding_runtime_snapshot_metadata(runtime_profile),
-        **coding_capability_snapshot_metadata(capability_profile),
+        **CODING_TRANSCRIPT_RUNTIME.snapshot_metadata(runtime_profile),
+        CODING_CAPABILITY_PROFILE_METADATA_KEY: (
+            CODING_CAPABILITY_PROFILE.snapshot().to_json()
+        ),
     }
 
 
@@ -70,18 +40,23 @@ def _validate_coding_restored_header(
     runtime_profile: ResolvedRuntimeProfile,
     persist: bool,
 ) -> None:
-    snapshot = validate_coding_runtime_snapshot(header)
-    capability_snapshot = validate_coding_capability_snapshot(header)
-    capability_profile = resolve_coding_capability_profile()
-    if persist and snapshot is not None and snapshot != runtime_profile.snapshot():
+    CODING_TRANSCRIPT_RUNTIME.validate_snapshot(
+        header.metadata,
+        runtime_profile,
+        require_current=persist,
+    )
+    raw_capability_snapshot = header.metadata.get(
+        CODING_CAPABILITY_PROFILE_METADATA_KEY
+    )
+    if raw_capability_snapshot is None:
+        return
+    capability_snapshot = RuntimeProfileSnapshot.from_json(raw_capability_snapshot)
+    if capability_snapshot.product_id != CODING_PRODUCT_ID:
         raise ValueError(
-            "Coding cannot resume a session with an unsupported runtime profile"
+            "Coding cannot resume a session with a capability profile for Product "
+            f"{capability_snapshot.product_id!r}"
         )
-    if (
-        persist
-        and capability_snapshot is not None
-        and capability_snapshot != capability_profile.snapshot()
-    ):
+    if persist and capability_snapshot != CODING_CAPABILITY_PROFILE.snapshot():
         raise ValueError(
             "Coding cannot resume a session with an unsupported capability profile"
         )
@@ -89,7 +64,7 @@ def _validate_coding_restored_header(
 
 _FACTORY = AgentTranscriptSessionFactory(
     lifecycle=_LIFECYCLE,
-    resolve_binding_input=resolve_coding_runtime_profile,
+    resolve_binding_input=CODING_TRANSCRIPT_RUNTIME.resolve,
     header_metadata=_coding_header_metadata,
     validate_restored_header=_validate_coding_restored_header,
     session_file_factory=_LIFECYCLE.default_native_session_file,
@@ -97,7 +72,7 @@ _FACTORY = AgentTranscriptSessionFactory(
 
 
 class SessionManager(
-    ProductTranscriptSession[ResolvedRuntimeProfile, CodingRuntimeSessionBinding]
+    ProductTranscriptSession[ResolvedRuntimeProfile, RuntimeProfileBinding]
 ):
     """Coding binding over the Harness-owned Agent transcript session API."""
 
@@ -106,7 +81,7 @@ class SessionManager(
         cls,
     ) -> AgentTranscriptSessionFactory[
         ResolvedRuntimeProfile,
-        CodingRuntimeSessionBinding,
+        RuntimeProfileBinding,
     ]:
         return _FACTORY
 

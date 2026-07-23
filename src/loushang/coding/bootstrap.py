@@ -7,7 +7,6 @@ from typing import Any, Literal, cast
 from loushang.agent import Agent, AgentTool, StreamFn, ThinkingLevel
 from loushang.ai.model import Model, ModelSelection
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-from loushang.coding.capability_plan import resolve_coding_capability_profile
 from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
@@ -15,6 +14,7 @@ from loushang.coding.control.settings_store import (
 from loushang.coding.diagnostics.profile import coding_runtime_identity
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.policy import InteractiveApprovalResolver
+from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
 from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
 from loushang.coding.resource_runtime import (
     CodingPackageMaterializer as PackageMaterializer,
@@ -214,7 +214,7 @@ def create_agent_session(
     services = services or create_services()
     settings = services.settings_manager.get_settings()
     capability_runtime = bind_capability_composition_runtime(
-        resolve_coding_capability_profile()
+        CODING_CAPABILITY_PROFILE
     )
     resolved_package_materializer = (
         package_materializer or _default_package_materializer(session_manager)

@@ -161,6 +161,10 @@ from loushang.harness.agent_transcript.profile import (
     record_role,
     record_to_context_item,
 )
+from loushang.harness.agent_transcript.runtime_profile import (
+    AgentTranscriptProfileRuntime,
+    AgentTranscriptRuntimeSpec,
+)
 from loushang.harness.agent_transcript.session import (
     AgentTranscriptSession,
     ApplicationMessageIdFactory,
@@ -255,10 +259,12 @@ __all__ = [
     "AgentTranscriptNavigationRuntime",
     "AgentTranscriptPayload",
     "AgentTranscriptProfile",
+    "AgentTranscriptProfileRuntime",
     "AgentTranscriptRecord",
     "AgentTranscriptRecordFactory",
     "AgentTranscriptRetryRuntime",
     "AgentTranscriptRuntimeBinding",
+    "AgentTranscriptRuntimeSpec",
     "AgentTranscriptSelectionRuntime",
     "AgentTranscriptSessionStore",
     "AgentTranscriptSession",

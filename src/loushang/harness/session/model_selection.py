@@ -97,6 +97,31 @@ def model_choice_data_from_details(
     return choices
 
 
+def model_choice_data_from_selections(
+    selections: Iterable[object],
+) -> list[ModelChoiceData]:
+    """Project normalized fallback selections without endpoint presentation data."""
+
+    choices: list[ModelChoiceData] = []
+    seen: set[str] = set()
+    for selection in selections:
+        normalized = normalize_model_selection(selection)
+        if normalized is None:
+            continue
+        label = f"{normalized.provider}/{normalized.model_id}"
+        if label in seen:
+            continue
+        seen.add(label)
+        choices.append(
+            ModelChoiceData(
+                label=label,
+                value=label,
+                selection=selection,
+            )
+        )
+    return choices
+
+
 def _detail_string(value: object, *names: str) -> str:
     for name in names:
         field = _detail_field(value, name)
@@ -158,6 +183,26 @@ async def get_session_model_selection(session: object) -> ModelSelection | None:
     if not callable(getter):
         return None
     return normalize_model_selection(await _maybe_await(getter()))
+
+
+async def get_session_model_identity(session: object) -> ModelIdentityData:
+    """Resolve the live Agent model first, then the persisted session selection."""
+
+    agent = getattr(session, "agent", None)
+    identity = model_identity_data(getattr(agent, "model", None))
+    if identity.value is not None:
+        return identity
+    return model_identity_data(await get_session_model_selection(session))
+
+
+async def iter_available_model_details(session: object) -> list[object]:
+    getter = getattr(session, "get_available_model_details", None)
+    if not callable(getter):
+        return []
+    details = await _maybe_await(getter())
+    if not isinstance(details, list | tuple):
+        return []
+    return list(details)
 
 
 async def iter_available_model_selections(session: object) -> list[ModelSelection]:

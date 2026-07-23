@@ -5,6 +5,7 @@ import pytest
 from loushang.harness.capabilities import (
     CapabilityPack,
     bind_capability_composition_runtime,
+    standard_capability_composition_plan,
 )
 from loushang.harness.capabilities.composition_runtime import (
     DISABLED_SKILL_ACTIVATION_IMPLEMENTATION,
@@ -90,6 +91,29 @@ def test_standard_composition_runtime_binds_neutral_product_values(tmp_path) -> 
     assert runtime.compose_command_packs(
         (CapabilityPack("commands", "product", ("command",)),)
     ).items == ("command",)
+    runtime.dispose()
+
+
+def test_standard_composition_plan_is_reusable_by_another_product() -> None:
+    plan = standard_capability_composition_plan(
+        product_id="design",
+        allowed_sources=frozenset({"product", "oem"}),
+        prompt_separator="\n",
+        strip_prompt_sections=False,
+    )
+    profile = RuntimeProfileResolver().resolve(plan)
+    runtime = bind_capability_composition_runtime(profile)
+
+    assert profile.product_id == "design"
+    assert (
+        runtime.compose_prompt_sections()
+        .compose((PromptSection("base", " Base "), PromptSection("tail", " Tail ")))
+        .text
+        == " Base \n Tail "
+    )
+    assert all(
+        slot.allowed_sources == frozenset({"product", "oem"}) for slot in plan.slots
+    )
     runtime.dispose()
 
 

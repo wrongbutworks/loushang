@@ -16,12 +16,7 @@ from loushang.coding.interaction.intent import (
     parse_prompt_intent,
 )
 from loushang.coding.interaction.tui_profile import snapshot_coding_command_catalog
-from loushang.coding.model_selection_tui import (
-    available_model_choices,
-    current_model_choice_value,
-    format_available_models,
-    select_available_model,
-)
+from loushang.coding.model_selection_tui import select_available_model
 from loushang.coding.ui.hotkeys import format_hotkeys
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.settings_page import build_coding_settings_page
@@ -33,6 +28,15 @@ from loushang.harness.session.model_selection import (
 from loushang.harnesstui.commands.presentation import (
     command_palette,
     format_commands,
+)
+from loushang.harnesstui.selection.binding import (
+    available_session_model_choices as available_model_choices,
+)
+from loushang.harnesstui.selection.binding import (
+    current_session_model_choice_value as current_model_choice_value,
+)
+from loushang.harnesstui.selection.binding import (
+    format_available_session_models as format_available_models,
 )
 from loushang.harnesstui.selection.catalog import (
     model_choice_descriptions_by_label,

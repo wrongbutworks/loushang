@@ -6,10 +6,12 @@ from loushang.coding.interaction.settings_profile import (
     CODING_SETTING_BINDINGS,
     CODING_SETTING_COPY,
 )
-from loushang.coding.model_selection_tui import (
-    available_model_choices,
-    current_model_choice_value,
-    select_available_model,
+from loushang.coding.model_selection_tui import select_available_model
+from loushang.harnesstui.selection.binding import (
+    available_session_model_choices as available_model_choices,
+)
+from loushang.harnesstui.selection.binding import (
+    current_session_model_choice_value as current_model_choice_value,
 )
 from loushang.harnesstui.settings.workflow import (
     BooleanSettingsWorkflowAdapter,

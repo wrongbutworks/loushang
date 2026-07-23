@@ -74,6 +74,39 @@ The old Coding files are deleted rather than retained as aliases. Architecture
 probes require `work.session`, `harness.sdk_surface`, Harness diagnostics, and
 the standard session bootstrap runtime to remain free of Coding imports.
 
+## Root Product Plan And Shared Adapters (Complete)
+
+This batch removes the remaining root-level runtime/capability implementations
+without introducing a second resolver, transcript lifecycle, resource loader,
+selection runtime, or plain-prompt host.
+
+| Removed or reduced Coding region | Existing or extended shared owner | Retained Product input |
+| --- | --- | --- |
+| removed `coding.runtime_profile` | `harness.agent_transcript.AgentTranscriptProfileRuntime` composed over the existing runtime resolver/binder, transcript stores/profile, and compaction capability | `coding.product_plan` declares Product IDs, metadata key, store/profile implementation identities, and current defaults. |
+| removed `coding.capability_plan` | existing `harness.capabilities.composition_runtime` via `standard_capability_composition_plan` | `coding.product_plan` selects the standard composition profile; future Coding deltas remain declared Product data. |
+| `coding.session_manager` runtime binding | the shared Agent transcript profile runtime | Coding retains session-root and persistence decisions plus restored-header Product validation. |
+| `coding.model_selection_tui` | existing `harness.session.model_selection` and `harnesstui.selection` catalog/runtime | Coding retains preferred-model policy, settings persistence, and its persistence-warning wording. |
+| `coding.resource_runtime` | existing `ResourceLoader` through `ResourceLoaderProfile` and `ProfiledResourceLoader` | Coding retains built-in package identity, context-file compatibility names, prompt assembly, package security policy, and default loader choice. |
+| duplicated helpers in `coding.prompt_command` and HarnessTUI plain mode | existing `harnesstui.conversation.plain_prompt_host` | Coding retains Work/Method preparation, renderer, Product diagnostics, and final wording. |
+| `coding.tool_pack` audit | existing Harness workspace tool factories and contribution/activation runtimes | Retained in Coding: the file is Product membership/order, descriptions, prompt snippets, downloader default, policy, approval, diagnostics, and execution-service binding. No duplicate shared tool engine was added. |
+
+Implementation accounting, excluding tests and documentation:
+
+- Coding Python: 11,007 to 10,363 LOC, a net reduction of 644 LOC.
+- root-level `coding/*.py`: 2,358 to 1,708 LOC, a reduction of 650 LOC.
+- removed runtime/capability implementations: 404 LOC, replaced by the
+  38-line declarative `coding.product_plan`.
+- `coding.model_selection_tui`: 165 to 38 LOC.
+- `coding.resource_runtime`: 154 to 95 LOC.
+- `coding.prompt_command`: 324 to 251 LOC.
+- shared implementation added or expanded: 761 lines and 69 lines removed,
+  including the reusable Agent transcript binding, for a Coding-deletion/shared-
+  addition ratio of approximately 0.85.
+
+Product-neutral probes bind `research`/`design` transcript, capability,
+resource, model-selection, and plain-prompt adapters without importing Coding.
+The old Coding implementations are deleted rather than retained as facades.
+
 ## Wave 2: Event And Extension Product Adapter Collapse (Complete)
 
 The detailed contract is
@@ -503,30 +536,26 @@ presentation, and the final apply-result message. Those operations now live in
 `ModelChoice` values, the current value, and an apply callback; it does not
 expose a Coding session or discover capabilities dynamically.
 
-Coding retains the AI/model-value projection, endpoint/detail normalization,
-preferred-model policy, settings persistence, and the public
-`coding.model_selection_tui` import surface. Its module now contains only the
-Coding acquisition adapter and these product bindings; no generic interaction
-copy or selection runtime is duplicated there.
+Harness owns the AI/model-value projection and standard session acquisition;
+HarnessTUI owns endpoint/detail view projection over its existing selection
+catalog and interaction runtime. Coding retains preferred-model policy,
+settings persistence, and persistence-warning wording. Its module contains
+only those Product bindings; no generic interaction, acquisition, or selection
+runtime is duplicated there.
 
 | Source region | Shared owner | Coding retained | Status |
 | --- | --- | --- | --- |
-| model list filtering, completion, palette resolution and result presentation | `harnesstui.selection.runtime` | normalized choice acquisition | Complete |
+| model list filtering, completion, palette resolution and result presentation | `harnesstui.selection.runtime` | Product persistence warning | Complete |
 | model-selection apply/persistence boundary | `ModelSelectionViewPort` | `apply_model_selection` and warning policy | Complete |
-| Coding model details, endpoint identity and current-session projection | Coding adapter | AI value mapping and Product data | Retained |
+| model details, endpoint identity and current-session projection | `harness.session.model_selection` and `harnesstui.selection.binding` | preferred-model policy | Complete |
 
-Slice D accounting: `coding/model_selection_tui.py` shrank from 279 to 164
-LOC (-115). `harnesstui.selection.runtime` adds 135 LOC for interaction
-mechanics; the Harness session model-selection contract adds 109 LOC for AI
-value normalization; and the explicit HarnessTUI binding converts those
-neutral records into view models without making the lightweight catalog import
-Harness. The total removed interaction/projection code is 175
-LOC against 289 shared LOC (0.61 deletion/addition). The interaction sub-slice
-alone is 100/135 (0.74); the lower aggregate reflects making the AI endpoint
-projection explicit rather than retaining dynamic attribute probing in Coding.
-`harnesstui` remains free of AI imports, Harness owns the AI-aware value
-contract, and no shared module imports Coding. Independent HarnessTUI probes,
-endpoint identity regressions, and the Coding model-list suite remain green.
+Slice D final accounting: `coding/model_selection_tui.py` shrank from 279 to
+38 LOC (-241), including 127 LOC in this follow-on. Harness owns the AI-aware
+session data contract; HarnessTUI converts those records into view models by
+extending the existing selection binding rather than creating another runtime.
+HarnessTUI has no direct AI import, no shared module imports Coding, and
+independent fake-Product probes cover acquisition, endpoint identity,
+completion, and application.
 
 ### Wave 7, Slice E: CLI Standard Operation Host (Complete)
 
