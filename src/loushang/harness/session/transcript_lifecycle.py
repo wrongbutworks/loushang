@@ -15,8 +15,12 @@ from inspect import isawaitable
 from pathlib import Path
 from typing import Generic, TypeVar
 
+from loushang.harness.agent_transcript.catalog import SessionSummary
 from loushang.harness.agent_transcript.directory import (
     AgentTranscriptDirectoryRuntime,
+)
+from loushang.harness.agent_transcript.product_session import (
+    ProductTranscriptSession,
 )
 from loushang.harness.diagnostics.types import (
     DiagnosticRecord,
@@ -28,6 +32,8 @@ from loushang.harness.runtime import SessionOperationResult
 from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
 from loushang.harness.session.lifecycle import (
     MissingCwdPolicy,
+    MissingSessionCwdError,
+    SessionCwdIssue,
     SessionLifecycleRuntime,
     SessionLifecycleTransition,
 )
@@ -72,6 +78,92 @@ class ProductTranscriptSessionLifecyclePorts(Generic[TranscriptSessionT, Session
     transcript_cwd: Callable[[TranscriptSessionT], str]
     transcript_session_ref: Callable[[TranscriptSessionT], str | None]
     transcript_leaf_entry_id: Callable[[TranscriptSessionT], str | None]
+
+
+@dataclass(frozen=True)
+class ProductTranscriptSessionBinding:
+    """Bind the standard Product transcript session API to lifecycle ports."""
+
+    session_type: type[ProductTranscriptSession]
+    session_dir: Path
+    persist: bool
+    resolve_cwd_override: Callable[[str | Path], str]
+
+    async def create(
+        self,
+        cwd: str,
+        parent_session_ref: str | None,
+    ) -> ProductTranscriptSession:
+        return await self.session_type.new(
+            session_dir=self.session_dir,
+            cwd=cwd,
+            persist=self.persist,
+            parent_session=parent_session_ref,
+        )
+
+    async def restore(
+        self,
+        session_ref: str | Path,
+        cwd_override: str | None,
+    ) -> ProductTranscriptSession:
+        return await self.session_type.open(
+            session_ref,
+            session_dir=self.session_dir,
+            cwd_override=(
+                self.resolve_cwd_override(cwd_override)
+                if cwd_override is not None
+                else None
+            ),
+            persist=self.persist,
+        )
+
+    async def fork(
+        self,
+        transcript: ProductTranscriptSession,
+        target_entry_id: str | None,
+    ) -> ProductTranscriptSession:
+        if target_entry_id is not None:
+            return await transcript.fork(target_entry_id)
+        session_ref = transcript.get_session_file()
+        return await self.create(
+            transcript.get_cwd(),
+            str(session_ref) if session_ref is not None else None,
+        )
+
+    @staticmethod
+    async def dispose(transcript: ProductTranscriptSession) -> None:
+        await transcript.dispose_runtime_profile()
+
+    async def rename(
+        self,
+        path: Path,
+        name: str | None,
+    ) -> SessionSummary:
+        return await self.session_type.rename_session(path, name)
+
+    async def delete(
+        self,
+        path: Path,
+        current_session_file: str | None,
+    ) -> bool:
+        return await self.session_type.delete_session(
+            path,
+            current_session_file=current_session_file,
+        )
+
+    @staticmethod
+    def validate_available_cwd(transcript: ProductTranscriptSession) -> None:
+        session_cwd = transcript.get_cwd()
+        candidate = Path(session_cwd).expanduser()
+        if candidate.exists() and candidate.is_dir():
+            return
+        session_file = transcript.get_session_file()
+        raise MissingSessionCwdError(
+            SessionCwdIssue(
+                session_cwd=session_cwd,
+                session_ref=str(session_file) if session_file is not None else None,
+            )
+        )
 
 
 class ProductTranscriptSessionLifecycleStore(Generic[TranscriptSessionT, SessionT]):
@@ -414,6 +506,7 @@ async def _maybe_await(value: ValueT | Awaitable[ValueT]) -> ValueT:
 
 __all__ = [
     "AgentTranscriptSessionRuntime",
+    "ProductTranscriptSessionBinding",
     "ProductTranscriptSessionLifecyclePorts",
     "ProductTranscriptSessionLifecycleStore",
     "require_session_operation_session",

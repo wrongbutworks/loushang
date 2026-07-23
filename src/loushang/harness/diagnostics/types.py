@@ -83,6 +83,36 @@ class StartupCheckResult:
 
 StartupCheck = Callable[[], StartupCheckResult | DiagnosticRecord | None]
 
+
+def directory_available_startup_check(
+    *,
+    name: str,
+    path: str | Path,
+    code: str,
+    message: str,
+    detail_key: str,
+    level: DiagnosticLevel = "warning",
+    source: DiagnosticSource = "bootstrap",
+) -> StartupCheck:
+    """Build a standard startup check for one required directory."""
+
+    candidate = Path(path).expanduser()
+
+    def check() -> StartupCheckResult | None:
+        if candidate.is_dir():
+            return None
+        return StartupCheckResult(
+            name=name,
+            ok=False,
+            code=code,
+            level=level,
+            source=source,
+            message=message,
+            details={detail_key: str(candidate)},
+        )
+
+    return check
+
 __all__ = [
     "DiagnosticLevel",
     "DiagnosticPhase",
@@ -93,4 +123,5 @@ __all__ = [
     "ErrorReport",
     "StartupCheck",
     "StartupCheckResult",
+    "directory_available_startup_check",
 ]

@@ -110,4 +110,39 @@ class PackageCatalogDiagnosticsRecorder:
         )
 
 
-__all__ = ["PackageCatalogDiagnosticsRecorder"]
+def record_package_lockfile_diagnostics(
+    diagnostics: Iterable[Mapping[str, object]],
+    *,
+    diagnostics_service: DiagnosticsService,
+    session_id: str | None = None,
+) -> tuple[DiagnosticRecord, ...]:
+    """Record structured lockfile failures exposed by a materializer."""
+
+    return tuple(
+        diagnostics_service.capture_failure(
+            code=str(diagnostic.get("code") or "package_lockfile_unreadable"),
+            error=str(
+                diagnostic.get("message")
+                or "Package lockfile could not be read."
+            ),
+            phase="startup",
+            source="bootstrap",
+            level="warning",
+            session_id=session_id,
+            source_path=(
+                Path(path) if isinstance((path := diagnostic.get("path")), str) else None
+            ),
+            details={
+                key: value
+                for key, value in diagnostic.items()
+                if key not in {"code", "message", "path"}
+            },
+        )
+        for diagnostic in diagnostics
+    )
+
+
+__all__ = [
+    "PackageCatalogDiagnosticsRecorder",
+    "record_package_lockfile_diagnostics",
+]

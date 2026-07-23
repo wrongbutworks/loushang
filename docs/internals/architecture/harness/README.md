@@ -159,6 +159,9 @@ planning, work event persistence, or AI provider behavior.
 - [Bootstrap Tool Contribution Boundary](bootstrap-tool-contribution-boundary.md)
   defines shared extension-tool contribution projection, pack composition,
   conflict filtering, and registry registration through Product callbacks.
+- [Bootstrap Activation Collapse Boundary](bootstrap-activation-collapse-boundary.md)
+  defines the standard Agent startup stage graph and its composition over the
+  existing activation, resource, diagnostics, session, and catalog owners.
 - [Session Inspection Boundary](session-inspection-boundary.md) defines
   Product-neutral Agent/transcript state, context usage, and statistics while
   Products retain display and wire-format projection.

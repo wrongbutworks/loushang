@@ -1626,10 +1626,12 @@ def test_harness_diagnostics_symbols_are_subpackage_exports_only() -> None:
         "DiagnosticSummary",
         "DiagnosticsQuery",
         "DiagnosticsService",
+        "directory_available_startup_check",
         "collect_diagnostics",
         "ErrorReport",
         "path_exists",
         "resolve_export_output_path",
+        "run_standard_startup_checks",
         "StartupCheck",
         "StartupCheckResult",
         "serialize_diagnostic",
@@ -2075,8 +2077,15 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
     assert "class AgentSessionRuntime(" in runtime_source
     assert "ProductSessionRuntime[AgentSession, SessionManager, str]" in runtime_source
     assert "ProductSessionRuntimePorts(" in runtime_source
+    assert "ProductTranscriptSessionBinding(" in runtime_source
+    assert "build_agent_session_lifecycle_hooks(" in runtime_source
     assert "SessionManager.list_summaries" not in runtime_source
     assert "SessionManager.refresh_index" not in runtime_source
+    assert "def _create_transcript_session(" not in runtime_source
+    assert "def _restore_transcript_session(" not in runtime_source
+    assert "def _fork_transcript_session(" not in runtime_source
+    assert "def _before_lifecycle_transition(" not in runtime_source
+    assert "def _after_lifecycle_commit(" not in runtime_source
 
 
 def test_harness_agent_transcript_lifecycle_is_documented_and_adopted() -> None:
@@ -2301,7 +2310,7 @@ def test_product_configuration_runtime_boundary_is_documented_and_adopted() -> N
             "loushang.harness.config.values.ConfigValueResolver",
         },
             Path("src/loushang/coding/bootstrap.py"): {
-                "loushang.harness.bootstrap.BootstrapActivationRuntime",
+                "loushang.harness.session.activate_standard_agent_session_configuration",
             },
     }
     missing: list[str] = []

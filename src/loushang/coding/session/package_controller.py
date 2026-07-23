@@ -23,12 +23,9 @@ from loushang.harness.resources.packages.projection import (
     project_package_entries,
     serialize_package_materialization_record,
 )
-from loushang.harness.resources.packages.roots import resolve_package_resource_roots
-from loushang.harness.resources.packages.source import PackageSourceConfig
+from loushang.harness.resources.packages.roots import configure_resource_loader_roots
 from loushang.harness.resources.packages.source_resolver import (
     PackageSourceResolver,
-    configured_package_sources,
-    package_source_scopes,
 )
 
 SettingsManagerProvider = Callable[[], SettingsManager | None]
@@ -199,34 +196,10 @@ class PackageController:
         if resource_loader is None or settings_manager is None:
             return
         if materializer is not None:
-            settings = settings_manager.get_settings()
-            resolved = resolve_package_resource_roots(
-                package_roots=settings.package_roots,
-                plugin_sources=settings.plugin_sources,
-                package_sources=configured_package_sources(settings_manager),
+            configure_resource_loader_roots(
+                resource_loader=resource_loader,
+                settings_manager=settings_manager,
                 materializer=materializer,
-                package_source_scopes=package_source_scopes(settings_manager),
-                global_base_dir=settings_manager.global_base_dir,
-                project_base_dir=settings_manager.project_base_dir,
-                disabled_plugins=settings.disabled_plugins,
                 diagnostics_service=self.get_diagnostics_service(),
                 session_id=self.session_id,
             )
-            resource_loader.set_package_roots(
-                resolved.roots,
-                cast(dict[str | Path, PackageSourceConfig], resolved.filters),
-            )
-        set_user_resource_roots = getattr(
-            resource_loader, "set_user_resource_roots", None
-        )
-        if callable(set_user_resource_roots):
-            from loushang.coding.bootstrap import _resolve_user_resource_roots
-
-            global_resource_roots = tuple(
-                settings_manager.get_global_settings().get("resource_roots", ())
-            )
-            user_roots, explicit_roots = _resolve_user_resource_roots(
-                global_resource_roots,
-                global_base_dir=settings_manager.global_base_dir,
-            )
-            set_user_resource_roots(user_roots, explicit_roots=explicit_roots)

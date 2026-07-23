@@ -28,6 +28,7 @@ from loushang.harness.agent_transcript.session_export import (
     export_session_to_html,
     export_session_to_jsonl,
 )
+from loushang.harness.diagnostics.types import DiagnosticPhase
 from loushang.harness.events import (
     AgentSessionEvent,
     CompactionReason,
@@ -36,6 +37,8 @@ from loushang.harness.events import (
 )
 from loushang.harness.extensions.agent import ExtensionAgentHookRuntime
 from loushang.harness.extensions.context import (
+    SessionBeforeForkEvent,
+    SessionBeforeSwitchEvent,
     SessionBeforeTreeEvent,
     SessionShutdownEvent,
 )
@@ -47,9 +50,20 @@ from loushang.harness.session.capabilities import (
 )
 from loushang.harness.session.composition import SessionComposition
 from loushang.harness.session.facade import SessionFacade
+from loushang.harness.session.lifecycle import (
+    SessionLifecycleDecision,
+    SessionLifecycleHooks,
+    SessionLifecycleTransition,
+)
 from loushang.harness.session.operations_runtime import (
     SessionOperations,
     SessionOperationsPorts,
+)
+from loushang.harness.session.product_runtime import (
+    dispose_session_only,
+    emit_session_shutdown,
+    session_file_from_session,
+    session_id_from_session,
 )
 from loushang.harness.tools.workspace.protocol import (
     normalize_bash_result_from_protocol,
@@ -758,6 +772,170 @@ def initialize_composed_session(
     sync_footer()
 
 
+def build_agent_session_lifecycle_hooks(
+    *,
+    runtime_host: object,
+    record_shutdown_failure: Callable[
+        [object, SessionShutdownEvent, Exception], None
+    ],
+) -> SessionLifecycleHooks[object, str]:
+    """Bind standard Agent-session effects to the shared lifecycle runtime."""
+
+    async def before_transition(
+        current: object | None,
+        transition: SessionLifecycleTransition,
+    ) -> SessionLifecycleDecision | None:
+        if (
+            current is None
+            or transition.metadata.get("emit_before_transition", True) is False
+        ):
+            return None
+        runner = _session_extension_runner(current)
+        if runner is None:
+            return None
+        manager = getattr(current, "session_manager")
+        if transition.reason == "fork":
+            entry_id = transition.fork_entry_id
+            position = transition.fork_position
+            if entry_id is None or position is None:
+                raise ValueError("Fork transitions require entry_id and position")
+            decision = await runner.before_session_fork(
+                SessionBeforeForkEvent(
+                    entry_id=entry_id,
+                    cwd=manager.get_cwd(),
+                    position=position,
+                )
+            )
+        else:
+            decision = await runner.before_session_switch(
+                SessionBeforeSwitchEvent(
+                    reason=transition.reason,
+                    cwd=transition.cwd or manager.get_cwd(),
+                    target_session_file=transition.target_session_ref,
+                )
+            )
+        _sync_session_extension_diagnostics(current)
+        return SessionLifecycleDecision(
+            cancelled=decision is not None and decision.cancel
+        )
+
+    def prepare_session(
+        session: object,
+        _previous: object | None,
+        _transition: SessionLifecycleTransition,
+    ) -> None:
+        stage_approvals = getattr(session, "_stage_session_approvals", None)
+        if callable(stage_approvals):
+            stage_approvals()
+        _bind_session_runtime_host(session, runtime_host)
+
+    async def activate_session(
+        session: object,
+        previous: object | None,
+        transition: SessionLifecycleTransition,
+    ) -> None:
+        _open_session_approvals(session)
+        if transition.metadata.get("activate_extensions", True) is False:
+            return
+        starter = getattr(session, "start_extension_runtime", None)
+        if callable(starter):
+            reason = (
+                "startup"
+                if previous is None and transition.reason == "new"
+                else transition.reason
+            )
+            await starter(reason=reason)
+
+    async def before_release(
+        session: object,
+        target_session: object | None,
+        transition: SessionLifecycleTransition,
+    ) -> None:
+        event = SessionShutdownEvent(
+            reason=transition.reason,
+            target_session_file=session_file_from_session(target_session),
+        )
+        try:
+            await emit_session_shutdown(session, event)
+        except Exception as exc:
+            record_shutdown_failure(session, event, exc)
+        finally:
+            _sync_session_extension_diagnostics(session)
+
+    return SessionLifecycleHooks(
+        before_transition=before_transition,
+        prepare_session=prepare_session,
+        activate_session=activate_session,
+        before_release=before_release,
+        dispose_session=dispose_session_only,
+    )
+
+
+def prepare_current_agent_session(session: object, runtime_host: object) -> None:
+    """Activate approval and runtime-host bindings for an injected session."""
+
+    _open_session_approvals(session)
+    _bind_session_runtime_host(session, runtime_host)
+
+
+def _bind_session_runtime_host(session: object, runtime_host: object) -> None:
+    setter = getattr(session, "set_extension_runtime_host", None)
+    if callable(setter):
+        setter(runtime_host)
+
+
+def _open_session_approvals(session: object) -> None:
+    callback = getattr(session, "_open_session_approvals", None)
+    if callable(callback):
+        callback()
+
+
+def _session_extension_runner(session: object) -> object | None:
+    return getattr(
+        session,
+        "extension_runner",
+        getattr(session, "_extension_runner", None),
+    )
+
+
+def _sync_session_extension_diagnostics(
+    session: object,
+    *,
+    phase: DiagnosticPhase = "runtime",
+) -> None:
+    sync = getattr(session, "_sync_extension_diagnostics", None)
+    if callable(sync):
+        sync(phase=phase)
+        return
+    diagnostics_service = getattr(session, "diagnostics_service", None)
+    runner = _session_extension_runner(session)
+    get_diagnostics = (
+        getattr(runner, "get_diagnostics", None) if runner is not None else None
+    )
+    if diagnostics_service is None or not callable(get_diagnostics):
+        return
+    diagnostics = get_diagnostics()
+    recorded_attr = "_runtime_synced_extension_diagnostics_count"
+    recorded = getattr(session, recorded_attr, 0)
+    if not isinstance(recorded, int) or recorded < 0:
+        recorded = 0
+    if recorded >= len(diagnostics):
+        return
+    diagnostics_service.record_many(
+        diagnostics_service.normalize_resource_diagnostic(
+            diagnostic,
+            phase=phase,
+            source="extensions",
+            session_id=session_id_from_session(session),
+        )
+        for diagnostic in diagnostics[recorded:]
+    )
+    try:
+        setattr(session, recorded_attr, len(diagnostics))
+    except Exception:
+        return
+
+
 def _optional_string(value: object) -> str | None:
     return value if isinstance(value, str) else None
 
@@ -816,4 +994,8 @@ def _bash_operations_from_extension_result(event_result: object | None) -> objec
     return getattr(event_result, "operations", None)
 
 
-__all__ = ["AgentSessionAdapterMixin"]
+__all__ = [
+    "AgentSessionAdapterMixin",
+    "build_agent_session_lifecycle_hooks",
+    "prepare_current_agent_session",
+]

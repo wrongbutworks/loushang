@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+from loushang.harness.bootstrap import BootstrapActivationRuntime
+from loushang.harness.config.agent import ControlConfig
 from loushang.harness.session.bootstrap import (
     AgentBootstrapRequest,
     AgentBootstrapRuntime,
     AgentSessionConstructionRequest,
     AgentSessionConstructionRuntime,
+    StandardAgentSessionActivationEffects,
+    activate_standard_agent_session_configuration,
+    standard_agent_session_activation_plan,
 )
 
 
@@ -90,3 +95,67 @@ def test_agent_session_construction_runtime_uses_product_callbacks() -> None:
 
     assert result == ("session-2", {"resources": []}, None, "base", None)
     assert diagnostics == ["extension-diagnostic"]
+
+
+def test_standard_agent_session_activation_plan_preserves_capability_order() -> None:
+    calls: list[str] = []
+
+    def effect(name: str):
+        return lambda _selection, _context: calls.append(name)
+
+    runtime = BootstrapActivationRuntime(
+        standard_agent_session_activation_plan(
+            StandardAgentSessionActivationEffects(
+                startup_checks=effect("startup_checks"),
+                package_sources=effect("package_sources"),
+                resource_roots=effect("resource_roots"),
+                resources=effect("resources"),
+                extensions=effect("extensions"),
+                cwd_audit=effect("cwd_audit"),
+                model_registry=effect("model_registry"),
+            )
+        )
+    )
+
+    result = runtime.activate(ControlConfig(), object())
+
+    assert result.report.ok
+    assert calls == [
+        "startup_checks",
+        "package_sources",
+        "resource_roots",
+        "resources",
+        "extensions",
+        "cwd_audit",
+        "model_registry",
+    ]
+
+
+def test_standard_agent_session_activation_propagates_first_failure() -> None:
+    def effect(name: str):
+        def apply(_selection, _context):
+            if name == "resources":
+                raise RuntimeError("resource failure")
+
+        return apply
+
+    effects = StandardAgentSessionActivationEffects(
+        startup_checks=effect("startup_checks"),
+        package_sources=effect("package_sources"),
+        resource_roots=effect("resource_roots"),
+        resources=effect("resources"),
+        extensions=effect("extensions"),
+        cwd_audit=effect("cwd_audit"),
+        model_registry=effect("model_registry"),
+    )
+
+    try:
+        activate_standard_agent_session_configuration(
+            ControlConfig(),
+            object(),
+            effects=effects,
+        )
+    except RuntimeError as error:
+        assert str(error) == "resource failure"
+    else:
+        raise AssertionError("activation failure was not propagated")

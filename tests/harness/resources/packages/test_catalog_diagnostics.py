@@ -7,6 +7,7 @@ from loushang.harness.resources.packages.catalog import (
 )
 from loushang.harness.resources.packages.catalog_diagnostics import (
     PackageCatalogDiagnosticsRecorder,
+    record_package_lockfile_diagnostics,
 )
 from loushang.harness.resources.types import PackageResourceSummary
 
@@ -58,3 +59,26 @@ def test_catalog_diagnostics_recorder_keeps_typed_catalog_details(tmp_path) -> N
     assert conflict.details["conflict_versions"] == ["1.0.0", "2.0.0"]
     assert conflict.details["package_name"] == "review-pack"
     assert conflict.session_id == "session-1"
+
+
+def test_lockfile_diagnostics_recorder_preserves_structured_details(tmp_path) -> None:
+    service = DiagnosticsService()
+    lockfile = tmp_path / "package-lock.json"
+
+    records = record_package_lockfile_diagnostics(
+        [
+            {
+                "code": "package_lockfile_unreadable",
+                "message": "Lockfile is invalid.",
+                "path": str(lockfile),
+                "line": 4,
+            }
+        ],
+        diagnostics_service=service,
+        session_id="session-1",
+    )
+
+    assert records == tuple(service.get_last_diagnostics())
+    assert records[0].source_path == lockfile
+    assert records[0].details == {"line": 4}
+    assert records[0].session_id == "session-1"

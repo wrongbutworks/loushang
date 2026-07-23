@@ -3,12 +3,15 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import pytest
 
+from loushang.harness.agent_transcript import ProductTranscriptSession
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.session import (
     AgentTranscriptSessionRuntime,
+    ProductTranscriptSessionBinding,
     ProductTranscriptSessionLifecyclePorts,
     ProductTranscriptSessionLifecycleStore,
     SessionDiagnosticScope,
@@ -276,6 +279,95 @@ def test_product_transcript_store_disposes_restore_when_runtime_build_fails() ->
             await lifecycle.restore("saved.jsonl")
 
         assert ports.disposed == ["saved.jsonl"]
+
+    asyncio.run(scenario())
+
+
+def test_product_transcript_binding_adapts_standard_session_api(tmp_path: Path) -> None:
+    class BoundTranscript:
+        actions: list[tuple[object, ...]] = []
+
+        def __init__(self, cwd: str, session_file: Path | None) -> None:
+            self.cwd = cwd
+            self.session_file = session_file
+
+        @classmethod
+        async def new(
+            cls,
+            *,
+            session_dir: Path,
+            cwd: str,
+            persist: bool,
+            parent_session: str | None,
+        ) -> BoundTranscript:
+            cls.actions.append(
+                ("new", session_dir, cwd, persist, parent_session)
+            )
+            return cls(cwd, session_dir / "new.jsonl")
+
+        @classmethod
+        async def open(
+            cls,
+            session_ref: str | Path,
+            *,
+            session_dir: Path,
+            cwd_override: str | None,
+            persist: bool,
+        ) -> BoundTranscript:
+            cls.actions.append(
+                ("open", Path(session_ref), session_dir, cwd_override, persist)
+            )
+            return cls(cwd_override or "/restored", Path(session_ref))
+
+        async def fork(self, leaf_id: str) -> BoundTranscript:
+            self.actions.append(("fork", leaf_id))
+            return type(self)(self.cwd, tmp_path / "fork.jsonl")
+
+        async def dispose_runtime_profile(self) -> None:
+            self.actions.append(("dispose", self.session_file))
+
+        def get_cwd(self) -> str:
+            return self.cwd
+
+        def get_session_file(self) -> Path | None:
+            return self.session_file
+
+    async def scenario() -> None:
+        BoundTranscript.actions.clear()
+        binding = ProductTranscriptSessionBinding(
+            session_type=cast(type[ProductTranscriptSession], BoundTranscript),
+            session_dir=tmp_path,
+            persist=True,
+            resolve_cwd_override=lambda value: str(Path(value).resolve()),
+        )
+
+        created = await binding.create(str(tmp_path), "parent.jsonl")
+        restored = await binding.restore(tmp_path / "saved.jsonl", str(tmp_path))
+        forked = await binding.fork(created, "leaf")
+        cloned = await binding.fork(created, None)
+        await binding.dispose(restored)
+
+        assert forked.get_session_file() == tmp_path / "fork.jsonl"
+        assert cloned.get_session_file() == tmp_path / "new.jsonl"
+        assert BoundTranscript.actions == [
+            ("new", tmp_path, str(tmp_path), True, "parent.jsonl"),
+            (
+                "open",
+                tmp_path / "saved.jsonl",
+                tmp_path,
+                str(tmp_path.resolve()),
+                True,
+            ),
+            ("fork", "leaf"),
+            (
+                "new",
+                tmp_path,
+                str(tmp_path),
+                True,
+                str(tmp_path / "new.jsonl"),
+            ),
+            ("dispose", tmp_path / "saved.jsonl"),
+        ]
 
     asyncio.run(scenario())
 

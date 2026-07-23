@@ -68,6 +68,28 @@ class ModelCatalog:
                 )
         self._replace_ai_registry(_combine_model_registries(sources))
 
+    def reload_if_project_layer(
+        self,
+        *,
+        project_dir: str | Path,
+        user_dir: str | Path | None = None,
+    ) -> bool:
+        """Reload layered models only when a project layer exists."""
+
+        resolved_project_dir = Path(project_dir).expanduser()
+        if not resolved_project_dir.is_dir():
+            return False
+        resolved_user_dir = Path(user_dir).expanduser() if user_dir is not None else None
+        self.reload(
+            user_dir=(
+                resolved_user_dir
+                if resolved_user_dir is not None and resolved_user_dir.is_dir()
+                else None
+            ),
+            project_dir=resolved_project_dir,
+        )
+        return True
+
     def register_model(self, model: Model) -> None:
         providers = _registry_provider_snapshot(self._ai_registry)
         provider = providers.get(model.provider_id) or Provider(id=model.provider_id)

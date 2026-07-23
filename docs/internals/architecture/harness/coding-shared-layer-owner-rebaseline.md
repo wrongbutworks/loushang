@@ -24,7 +24,7 @@ the identified Coding implementation and records the actual delta here.
 
 | Source region | LOC | Current shared owner or adopted mechanism | Classification | Next action |
 | --- | ---: | --- | --- | --- |
-| `coding.bootstrap` | 1,491 | Product activation callbacks and factories over Harness `BootstrapActivationRuntime`, capability composition, resources, diagnostics, `SessionRuntime` | `product adapter` | Activation ordering, failure report, and rollback are Harness-owned; retain only Coding step semantics and Product defaults |
+| `coding.bootstrap` | 773 | Product activation effects and factories over Harness activation, resource, diagnostics, construction, and model-resolution owners | `product adapter` | Complete activation collapse; retain Coding services, defaults, paths, and concrete session/runtime factories |
 | `coding.runtime.agent_session_runtime` | 1,187 | `SessionLifecycleRuntime`, `AgentTranscriptSessionRuntime`, transcript catalog | `product adapter` | First transcript-store cutover complete; retain Product ports and continue facade audit |
 | `coding.session.agent_session` | 1,890 | `SessionRuntime`, `SessionFacade`, transcript maintenance, queue, retry, compaction | `product adapter` | Facade deletion only after the factory contract |
 | `coding.session.builtin_commands` | 547 -> deleted | `harness.session.command_pack` | `shared adopted` | Standard descriptors and result projection now live in Harness |

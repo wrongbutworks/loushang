@@ -6,7 +6,9 @@ contracts. Products supply their own policies and integration callbacks.
 
 from loushang.harness.session.agent_adapter import (
     AgentSessionAdapterMixin,
+    build_agent_session_lifecycle_hooks,
     initialize_composed_session,
+    prepare_current_agent_session,
 )
 from loushang.harness.session.agent_event_router import AgentEventRouter
 from loushang.harness.session.application_input import (
@@ -28,6 +30,9 @@ from loushang.harness.session.bootstrap import (
     AgentSessionServices,
     BootstrapServices,
     CreateAgentSessionResult,
+    StandardAgentSessionActivationEffects,
+    activate_standard_agent_session_configuration,
+    standard_agent_session_activation_plan,
 )
 from loushang.harness.session.bootstrap_utils import (
     NoToolsMode,
@@ -36,6 +41,7 @@ from loushang.harness.session.bootstrap_utils import (
     loader_system_prompt_override,
     non_builtin_tool_names,
     normalize_no_tools,
+    resolve_base_system_prompt,
     resolve_initial_active_tool_names,
     split_model_thinking_pattern,
 )
@@ -92,6 +98,8 @@ from loushang.harness.session.cwd_audit import (
     CwdBoundServicesAudit,
     CwdBoundServicesAuditIssue,
     audit_cwd_bound_services,
+    project_root_from_settings_base,
+    record_cwd_bound_services_audit,
 )
 from loushang.harness.session.diagnostics import (
     ExtensionDiagnosticsPort,
@@ -171,6 +179,7 @@ from loushang.harness.session.model_resolution import (
     classify_model_resolution_failure,
     record_default_model_unavailable,
     resolve_default_model,
+    resolve_session_model,
     scoped_models_from_patterns,
 )
 from loushang.harness.session.model_selection import (
@@ -201,6 +210,7 @@ from loushang.harness.session.product_runtime import (
     dispose_session_only,
     emit_session_shutdown,
     invoke_session_factory,
+    resolve_agent_transcript_fork_target,
     resolve_existing_cwd,
     session_file_from_manager,
     session_file_from_session,
@@ -232,6 +242,7 @@ from loushang.harness.session.tool_controller import (
 )
 from loushang.harness.session.transcript_lifecycle import (
     AgentTranscriptSessionRuntime,
+    ProductTranscriptSessionBinding,
     ProductTranscriptSessionLifecyclePorts,
     ProductTranscriptSessionLifecycleStore,
     SessionDiagnosticsProvider,
@@ -241,6 +252,8 @@ from loushang.harness.session.transcript_lifecycle import (
 __all__ = [
     "AgentEventRouter",
     "AgentSessionAdapterMixin",
+    "build_agent_session_lifecycle_hooks",
+    "prepare_current_agent_session",
     "initialize_composed_session",
     "AgentBootstrapRequest",
     "AgentBootstrapRuntime",
@@ -249,6 +262,8 @@ __all__ = [
     "AgentSessionServices",
     "BootstrapServices",
     "CreateAgentSessionResult",
+    "StandardAgentSessionActivationEffects",
+    "activate_standard_agent_session_configuration",
     "AgentInspectionPort",
     "AfterTurnPolicyPort",
     "AgentToolPort",
@@ -263,6 +278,8 @@ __all__ = [
     "CwdBoundServicesAudit",
     "CwdBoundServicesAuditIssue",
     "audit_cwd_bound_services",
+    "project_root_from_settings_base",
+    "record_cwd_bound_services_audit",
     "NoToolsMode",
     "append_system_prompt_fragments",
     "loader_append_system_prompt",
@@ -270,6 +287,8 @@ __all__ = [
     "non_builtin_tool_names",
     "normalize_no_tools",
     "resolve_initial_active_tool_names",
+    "resolve_base_system_prompt",
+    "standard_agent_session_activation_plan",
     "split_model_thinking_pattern",
     "CommandRuntimeSource",
     "SessionCommandController",
@@ -301,6 +320,7 @@ __all__ = [
     "classify_model_resolution_failure",
     "record_default_model_unavailable",
     "resolve_default_model",
+    "resolve_session_model",
     "scoped_models_from_patterns",
     "available_model_details",
     "ModelCandidates",
@@ -312,6 +332,7 @@ __all__ = [
     "ProductSessionRuntimePorts",
     "ProductTranscriptSessionLifecyclePorts",
     "ProductTranscriptSessionLifecycleStore",
+    "ProductTranscriptSessionBinding",
     "PersistModelSelection",
     "persistence_warning_message",
     "preferred_model_candidates",
@@ -385,6 +406,7 @@ __all__ = [
     "dispose_session_only",
     "emit_session_shutdown",
     "invoke_session_factory",
+    "resolve_agent_transcript_fork_target",
     "resolve_existing_cwd",
     "session_file_from_manager",
     "session_file_from_session",

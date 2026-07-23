@@ -5,6 +5,7 @@ import pytest
 from loushang.harness.session.bootstrap_utils import (
     append_system_prompt_fragments,
     normalize_no_tools,
+    resolve_base_system_prompt,
     split_model_thinking_pattern,
 )
 
@@ -13,6 +14,33 @@ def test_bootstrap_utils_append_non_empty_prompt_fragments() -> None:
     assert append_system_prompt_fragments(" base ", ["", " extra "]) == (
         "base\n\nextra"
     )
+
+
+class _PromptLoader:
+    def get_system_prompt_override(self) -> str:
+        return "resource prompt"
+
+    def get_append_system_prompt_overrides(self) -> list[str]:
+        return ["resource suffix"]
+
+
+def test_resolve_base_system_prompt_preserves_product_precedence() -> None:
+    assert resolve_base_system_prompt(
+        explicit_prompt=None,
+        resource_loader=_PromptLoader(),
+        configured_prompt="configured prompt",
+        default_prompt="default prompt",
+        append_fragments=("product suffix",),
+    ) == "resource prompt\n\nresource suffix\n\nproduct suffix"
+
+
+def test_resolve_base_system_prompt_uses_default_for_empty_resolution() -> None:
+    assert resolve_base_system_prompt(
+        explicit_prompt=None,
+        resource_loader=object(),
+        configured_prompt="",
+        default_prompt="default prompt",
+    ) == "default prompt"
 
 
 @pytest.mark.parametrize(

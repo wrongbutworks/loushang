@@ -18,6 +18,7 @@ from loushang.harness.diagnostics.types import (
     DiagnosticLevel,
     DiagnosticPhase,
     DiagnosticRecord,
+    DiagnosticSource,
     DiagnosticsQuery,
     DiagnosticSummary,
     ErrorReport,
@@ -105,16 +106,30 @@ class SessionDiagnosticsRuntime:
         return self.diagnostics_service.get_last_error_report()
 
     def record_runtime_exception(self, *, code: str, exc: Exception | str) -> None:
+        self.capture_failure(code=code, error=exc)
+
+    def capture_failure(
+        self,
+        *,
+        code: str,
+        error: Exception | str,
+        details: Mapping[str, object] | None = None,
+        phase: DiagnosticPhase = "runtime",
+        source: DiagnosticSource = "session",
+    ) -> None:
+        """Capture a session-scoped failure with optional structured details."""
+
         if self.diagnostics_service is None:
             return
         scope = self.get_scope()
         self.diagnostics_service.capture_failure(
             code=code,
-            error=exc,
-            phase="runtime",
-            source="session",
+            error=error,
+            phase=phase,
+            source=source,
             session_id=scope.session_id,
             entry_id=scope.entry_id,
+            details=dict(details) if details is not None else None,
         )
 
     def record_extension_runtime_diagnostic(
