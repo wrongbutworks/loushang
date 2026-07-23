@@ -445,11 +445,11 @@ def test_agent_session_extension_context_register_tool_refreshes_active_tools_an
 
     from loushang.agent import Agent
     from loushang.coding import SessionManager
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.session import AgentSession
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.resources.types import ResourceBundle
     from loushang.harness.tools.workspace import ToolDefinition
     from loushang.harness.tools.workspace.registry import (
@@ -536,8 +536,8 @@ def test_agent_session_extension_api_register_tool_after_runtime_bind_updates_se
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding import SessionManager
-    from loushang.coding.extensions import ExtensionAPI, ExtensionRunner
     from loushang.coding.session import AgentSession
+    from loushang.harness.extensions.agent import ExtensionAPI, ExtensionRunner
     from loushang.harness.tools.workspace import ToolDefinition
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
@@ -596,11 +596,11 @@ def test_agent_session_dynamic_extension_tools_respect_allowed_tool_names(
 ) -> None:
     from loushang.agent import Agent
     from loushang.coding import SessionManager
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.coding.session import AgentSession
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.tools.workspace import ToolDefinition
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,

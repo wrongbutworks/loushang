@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from loushang.coding.extensions.api import ExtensionAPI
-from loushang.coding.extensions.policy import policy_from_manifest
+from loushang.harness.extensions.agent.api import ExtensionAPI
+from loushang.harness.extensions.agent.policy import policy_from_manifest
 from loushang.harness.extensions.loader import ExtensionLoader as HarnessExtensionLoader
 from loushang.harness.extensions.manifest import ExtensionManifest
 from loushang.harness.extensions.types import ExtensionPolicyDecision
@@ -26,7 +26,7 @@ def _coding_policy(
 
 
 class ExtensionLoader(HarnessExtensionLoader):
-    """Coding adapter over the product-neutral Harness extension loader."""
+    """Agent profile over the product-neutral Harness extension loader."""
 
     def __init__(self) -> None:
         super().__init__(

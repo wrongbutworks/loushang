@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import Any, cast
+
+import loushang.harness.session.bootstrap as bootstrap_module
 from loushang.harness.bootstrap import BootstrapActivationRuntime
 from loushang.harness.config.agent import ControlConfig
 from loushang.harness.session.bootstrap import (
     AgentBootstrapRequest,
     AgentBootstrapRuntime,
+    AgentProductConstructionPorts,
+    AgentProductConstructionRequest,
+    AgentProductConstructionRuntime,
     AgentSessionConstructionRequest,
     AgentSessionConstructionRuntime,
     StandardAgentSessionActivationEffects,
+    StandardAgentSessionConfigurationResult,
     activate_standard_agent_session_configuration,
     standard_agent_session_activation_plan,
 )
@@ -95,6 +103,148 @@ def test_agent_session_construction_runtime_uses_product_callbacks() -> None:
 
     assert result == ("session-2", {"resources": []}, None, "base", None)
     assert diagnostics == ["extension-diagnostic"]
+
+
+def test_agent_product_construction_runtime_composes_existing_owners(
+    monkeypatch,
+) -> None:
+    actions: list[tuple[object, ...]] = []
+    settings = SimpleNamespace(
+        system_prompt="configured",
+        default_model=None,
+        steering_mode="one-at-a-time",
+        follow_up_mode="all",
+        thinking_budgets={},
+        retry=SimpleNamespace(provider_max_retry_delay_ms=25),
+        enabled_models=("research/*",),
+    )
+    diagnostics = SimpleNamespace(
+        record_resource_diagnostics=lambda values, **kwargs: actions.append(
+            ("diagnostics", tuple(values), kwargs)
+        )
+    )
+    extension_runtime = object()
+    configuration = cast(
+        Any,
+        SimpleNamespace(
+            settings=settings,
+            session_id="research-session",
+            resource_loader=object(),
+            model_registry=SimpleNamespace(
+                build_model=lambda selection: selection,
+                ai_registry=SimpleNamespace(get_endpoint=lambda _selection: None),
+                get_model=lambda pattern: f"model:{pattern}",
+            ),
+            diagnostics_service=diagnostics,
+        ),
+    )
+    monkeypatch.setattr(
+        bootstrap_module.StandardAgentSessionConfigurationRuntime,
+        "configure",
+        lambda _self, _request: StandardAgentSessionConfigurationResult(
+            resource_bundle={"resources": []},
+            extension_runtime=extension_runtime,
+            cwd_bound_services_audit=cast(Any, "audit"),
+        ),
+    )
+    monkeypatch.setattr(
+        bootstrap_module,
+        "resolve_base_system_prompt",
+        lambda **_kwargs: "base prompt",
+    )
+    monkeypatch.setattr(
+        bootstrap_module,
+        "assemble_prompt",
+        lambda **_kwargs: SimpleNamespace(system_prompt="assembled prompt"),
+    )
+    monkeypatch.setattr(
+        bootstrap_module,
+        "resolve_session_model",
+        lambda *_args, **_kwargs: "resolved-model",
+    )
+    monkeypatch.setattr(
+        bootstrap_module,
+        "register_resource_extension_tools",
+        lambda **kwargs: (
+            kwargs["resource_bundle"],
+            kwargs["tool_registry"],
+            ("extension-diagnostic",),
+        ),
+    )
+    monkeypatch.setattr(
+        bootstrap_module,
+        "scoped_models_from_patterns",
+        lambda patterns, **_kwargs: tuple(patterns),
+    )
+
+    class FakeAgent:
+        session_id = None
+
+    disposed: list[bool] = []
+    result = AgentProductConstructionRuntime[
+        FakeAgent,
+        tuple[object, ...],
+        dict[str, object],
+        object,
+        object,
+    ]().construct(
+        AgentProductConstructionRequest(
+            configuration=configuration,
+            ports=AgentProductConstructionPorts(
+                activate_resources=lambda bundle: bundle,
+                prompt_section_composer=object(),
+                tool_pack_composer=object(),
+                list_tool_definitions=lambda _runtime: (),
+                get_tool_source_info=lambda _runtime, _name: None,
+                dispose_capabilities=lambda: disposed.append(True),
+            ),
+            default_system_prompt="research default",
+            explicit_system_prompt=None,
+            append_system_prompt=(),
+            model=None,
+            thinking_level="off",
+            tools=None,
+            tool_registry=None,
+            allowed_tool_names=None,
+            active_tool_names=None,
+            no_tools=None,
+            stream_fn=None,
+            convert_to_llm=lambda value: value,
+            agent_factory=lambda **kwargs: (
+                actions.append(("agent", kwargs)) or FakeAgent()
+            ),
+            session_factory=lambda agent, bundle, extensions, registry, active, prompt, mode: (
+                agent.session_id,
+                bundle,
+                extensions,
+                registry,
+                active,
+                prompt,
+                mode,
+            ),
+            on_default_model_unavailable=lambda *_args: None,
+            set_scoped_models=lambda session, models: actions.append(
+                ("scoped-models", session, tuple(models))
+            ),
+        )
+    )
+
+    assert result.session == (
+        "research-session",
+        {"resources": []},
+        extension_runtime,
+        None,
+        None,
+        "base prompt",
+        None,
+    )
+    assert result.configuration.cwd_bound_services_audit == "audit"
+    assert actions[0][0] == "diagnostics"
+    assert actions[1][0] == "agent"
+    assert actions[1][1]["initial_state"]["system_prompt"] == "assembled prompt"
+    assert actions[1][1]["initial_state"]["model"] == "resolved-model"
+    assert actions[2][0] == "scoped-models"
+    assert disposed == []
 
 
 def test_standard_agent_session_activation_plan_preserves_capability_order() -> None:

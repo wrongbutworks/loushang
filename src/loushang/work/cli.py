@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from pathlib import Path
+from typing import TextIO
 
 from loushang.work.event_log import JsonlEventLogBackend
 from loushang.work.plan_projection import project_work_plan_runs
@@ -53,9 +54,50 @@ def inspect_work_log(
         raise WorkLogInspectionError(str(error)) from error
 
 
+def run_work_log_inspection_operation(
+    *,
+    path: str | None,
+    project_root: Path,
+    run_id: str | None,
+    output_format: str,
+    limit: int,
+    stdout: TextIO,
+    stderr: TextIO,
+    format_error: Callable[[BaseException], str] = str,
+) -> int | None:
+    """Run the shared Work log inspection CLI operation."""
+
+    if path is None:
+        return None
+    try:
+        output = inspect_work_log(
+            path,
+            project_root=project_root,
+            run_id=run_id,
+            output_format=output_format,
+            limit=limit,
+        )
+    except WorkLogInspectionError as error:
+        stderr.write(f"Error: {format_error(error)}\n")
+        return 1
+    stdout.write(output)
+    return 0
+
+
 def resolve_work_log_path(raw_path: str | Path, project_root: Path) -> Path:
     path = Path(raw_path).expanduser()
     return path if path.is_absolute() else project_root / path
+
+
+def create_work_event_log(
+    raw_path: str | Path | None,
+    project_root: Path,
+) -> JsonlEventLogBackend | None:
+    """Create the standard JSONL Work event log for an optional CLI path."""
+
+    if raw_path is None:
+        return None
+    return JsonlEventLogBackend(resolve_work_log_path(raw_path, project_root))
 
 
 def _work_log_text(entries: list[object]) -> str:
@@ -264,5 +306,7 @@ def _work_log_entry_payload_value(entry: object, key: str) -> object | None:
 __all__ = [
     "WorkLogInspectionError",
     "inspect_work_log",
+    "create_work_event_log",
+    "run_work_log_inspection_operation",
     "resolve_work_log_path",
 ]

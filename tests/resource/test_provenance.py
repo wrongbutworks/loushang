@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 def test_coding_source_info_paths_preserve_harness_owner_identity() -> None:
-    from loushang.coding.extensions import SourceInfo as ExtensionSourceInfo
+    from loushang.harness.extensions.agent import SourceInfo as ExtensionSourceInfo
     from loushang.harness.resources.source import SourceInfo as HarnessSourceInfo
     from loushang.harness.resources.source import create_source_info
 

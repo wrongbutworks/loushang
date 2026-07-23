@@ -1,14 +1,23 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import cast
 
 from loushang.agent.json_codec import serialize_tool_result
 from loushang.agent.types import AgentToolResult
 from loushang.ai.json_codec import serialize_assistant_message_event, serialize_message
 from loushang.ai.types import AssistantMessageEvent, Message
+from loushang.harness.agent_transcript import create_agent_transcript_message_codec
+from loushang.harness.events import RuntimeEvent, project_session_runtime_event
 from loushang.protocol import JsonValueError, require_json_mapping, require_json_value
+from loushang.work.event_log import EventLogBackend
+from loushang.work.session import (
+    SessionPromptPort,
+    SessionWorkProfile,
+    SessionWorkRuntime,
+)
 from loushang.work.types import DeliveryHint, WorkEventFact
 
 AgentMessageSerializer = Callable[[object], Mapping[str, object]]
@@ -18,6 +27,50 @@ AgentMessageSerializer = Callable[[object], Mapping[str, object]]
 class AgentWorkFactProjectionContext:
     source_event_ref: str | None = None
     message_serializer: AgentMessageSerializer | None = None
+
+
+_TRANSCRIPT_MESSAGE_CODEC = create_agent_transcript_message_codec()
+
+
+def project_agent_runtime_event_to_work_facts(
+    event: object,
+) -> Sequence[WorkEventFact]:
+    """Project a shared Agent session runtime event into canonical Work facts."""
+
+    if not isinstance(event, RuntimeEvent):
+        return ()
+    projected = project_session_runtime_event(event)
+    if projected is None:
+        return ()
+    return project_agent_event_to_work_facts(
+        projected,
+        context=AgentWorkFactProjectionContext(
+            source_event_ref=event.event_id,
+            message_serializer=_TRANSCRIPT_MESSAGE_CODEC.serialize,
+        ),
+    )
+
+
+def create_agent_session_work_runtime(
+    *,
+    session: SessionPromptPort,
+    event_log: EventLogBackend,
+    profile: SessionWorkProfile,
+    session_id: Callable[[], str] = lambda: "",
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    cancellation_timeout: float | None = 30.0,
+) -> SessionWorkRuntime:
+    """Bind a Product profile to the existing session Work runtime."""
+
+    return SessionWorkRuntime(
+        session=session,
+        event_log=event_log,
+        profile=profile,
+        project_event_facts=project_agent_runtime_event_to_work_facts,
+        session_id=session_id,
+        clock=clock,
+        cancellation_timeout=cancellation_timeout,
+    )
 
 
 def project_agent_event_to_work_facts(
@@ -370,5 +423,7 @@ def _serialize_agent_tool_result(value: object, *, name: str) -> dict[str, objec
 
 __all__ = [
     "AgentWorkFactProjectionContext",
+    "create_agent_session_work_runtime",
     "project_agent_event_to_work_facts",
+    "project_agent_runtime_event_to_work_facts",
 ]

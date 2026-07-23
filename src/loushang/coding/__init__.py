@@ -1,6 +1,3 @@
-from importlib import import_module
-from typing import TYPE_CHECKING, Any
-
 from loushang.ai.model import ModelSelection
 from loushang.coding.bootstrap import (
     AgentSessionServices,
@@ -18,30 +15,6 @@ from loushang.coding.bootstrap import (
 )
 from loushang.coding.control.model_registry import ModelRegistry
 from loushang.coding.event import AgentSessionEvent, JsonEventView, select_events
-from loushang.harness.config.agent import (
-    ControlConfig,
-    HeadlessApprovalMode,
-    SettingsManager,
-    ToolSettings,
-)
-
-if TYPE_CHECKING:
-    from loushang.coding.mode import (
-        ModeAction,
-        ModeActionType,
-        ModeAdapter,
-        ModeConfig,
-        ModeName,
-        ModeState,
-        PrintMode,
-        RpcMode,
-        create_mode_adapter,
-        dispatch_mode_action,
-        normalize_mode_action,
-        run_mode,
-        run_print_mode,
-        run_rpc_mode,
-    )
 from loushang.coding.policy import (
     ApprovalDecision,
     ApprovalRequest,
@@ -83,37 +56,12 @@ from loushang.coding.tool_pack import (
     create_coding_tools,
     register_coding_builtin_tools,
 )
-
-_MODE_EXPORTS = frozenset(
-    {
-        "ModeAction",
-        "ModeActionType",
-        "ModeAdapter",
-        "ModeConfig",
-        "ModeName",
-        "ModeState",
-        "PrintMode",
-        "RpcMode",
-        "create_mode_adapter",
-        "dispatch_mode_action",
-        "normalize_mode_action",
-        "run_mode",
-        "run_print_mode",
-        "run_rpc_mode",
-    }
+from loushang.harness.config.agent import (
+    ControlConfig,
+    HeadlessApprovalMode,
+    SettingsManager,
+    ToolSettings,
 )
-
-
-def __getattr__(name: str) -> Any:
-    if name not in _MODE_EXPORTS:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    value = getattr(import_module("loushang.coding.mode"), name)
-    globals()[name] = value
-    return value
-
-
-def __dir__() -> list[str]:
-    return sorted({*globals(), *_MODE_EXPORTS})
 
 __all__ = [
     "AgentSession",
@@ -144,15 +92,7 @@ __all__ = [
     "PackageSourceSecurityReport",
     "PolicyDecision",
     "PolicyEnforcementError",
-    "PrintMode",
-    "RpcMode",
     "JsonEventView",
-    "ModeAdapter",
-    "ModeAction",
-    "ModeActionType",
-    "ModeConfig",
-    "ModeName",
-    "ModeState",
     "ToolSettings",
     "TreeNavigationResult",
     "SessionManager",
@@ -172,14 +112,8 @@ __all__ = [
     "create_coding_tools",
     "create_agent_session_runtime",
     "create_services",
-    "create_mode_adapter",
-    "dispatch_mode_action",
-    "normalize_mode_action",
     "check_sdk_surface_compatibility",
     "get_sdk_surface_snapshot",
-    "run_mode",
-    "run_print_mode",
-    "run_rpc_mode",
     "register_coding_builtin_tools",
     "select_events",
 ]

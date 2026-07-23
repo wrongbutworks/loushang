@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import TypeAlias
+from typing import Protocol, TypeAlias
 
 CliKeywordRunner: TypeAlias = Callable[..., int | Awaitable[int]]
 CliTurnBatchRunner: TypeAlias = Callable[..., Awaitable[int]]
@@ -28,6 +28,45 @@ class CliPreparedTurn:
                 "prepared turn arguments cannot replace lifecycle values: "
                 f"{sorted(conflicts)!r}"
             )
+
+
+class CliDomainPreparedTurn(Protocol):
+    """Prepared domain turn fields understood by standard Agent CLI hosts."""
+
+    prepared_prompt: str
+    method_id: str | None
+    plan_id: str | None
+    step_id: str | None
+    step_index: int | None
+    step_title: str | None
+    metadata: Mapping[str, object]
+
+
+def project_domain_turns_to_cli(
+    turns: Sequence[CliDomainPreparedTurn],
+) -> tuple[CliPreparedTurn, ...]:
+    """Project Product-neutral prepared turns into standard CLI arguments."""
+
+    return tuple(
+        CliPreparedTurn(
+            input_text=turn.prepared_prompt,
+            arguments={
+                "method_id": turn.method_id,
+                "plan_id": turn.plan_id,
+                "step_id": turn.step_id,
+                "step_index": turn.step_index,
+                "step_title": turn.step_title,
+                "planned_constraint": _policy_metadata(
+                    turn,
+                    "planned_constraint",
+                ),
+                "audit_policy": _policy_metadata(turn, "audit_policy"),
+                "plan_facts": _policy_metadata(turn, "plan_facts"),
+                "step_facts": _policy_metadata(turn, "step_facts"),
+            },
+        )
+        for turn in turns
+    )
 
 
 async def run_keyword_cli_turns(
@@ -81,9 +120,21 @@ async def run_keyword_cli_turns(
     )
 
 
+def _policy_metadata(
+    turn: CliDomainPreparedTurn,
+    key: str,
+) -> Mapping[str, object] | None:
+    value = turn.metadata.get(key)
+    if isinstance(value, Mapping) and value:
+        return dict(value)
+    return None
+
+
 __all__ = [
+    "CliDomainPreparedTurn",
     "CliKeywordRunner",
     "CliPreparedTurn",
     "CliTurnBatchRunner",
+    "project_domain_turns_to_cli",
     "run_keyword_cli_turns",
 ]

@@ -665,8 +665,8 @@ def test_export_session_to_html_embeds_system_prompt_and_tool_definitions(
 
 
 def test_export_session_to_html_uses_custom_renderer_and_theme(tmp_path) -> None:
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.harness.agent_transcript.session_export import export_session_to_html
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     def _renderer(message, options, theme):
         assert options == {"format": "html_export"}

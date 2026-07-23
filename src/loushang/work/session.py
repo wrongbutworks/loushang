@@ -48,6 +48,18 @@ class SessionPromptPort(Protocol):
     def wait_for_idle(self) -> Awaitable[None]: ...
 
 
+class PreparedSessionWorkTurn(Protocol):
+    """Domain turn fields projected into a shared session Work turn."""
+
+    prepared_prompt: str
+    method_id: str | None
+    plan_id: str | None
+    step_id: str | None
+    step_index: int | None
+    step_title: str | None
+    metadata: Mapping[str, object]
+
+
 @dataclass(frozen=True, slots=True)
 class SessionWorkProfile:
     """Product vocabulary injected into the shared session Work binding."""
@@ -483,6 +495,119 @@ class SessionWorkRuntime:
         )
 
 
+class SessionWorkHostPort:
+    """Bind generic host turn arguments to a session Work runtime."""
+
+    def __init__(
+        self,
+        runtime: SessionWorkRuntime | Callable[[], SessionWorkRuntime],
+    ) -> None:
+        self._runtime_or_factory = runtime
+
+    def _runtime(self) -> SessionWorkRuntime:
+        runtime = self._runtime_or_factory
+        return runtime() if callable(runtime) else runtime
+
+    async def submit_turn(
+        self,
+        text: str,
+        *,
+        session_id: str,
+        images: list[object] | None,
+        include_work_metadata: bool,
+        method_id: str | None,
+        plan_id: str | None,
+        step_id: str | None,
+        step_index: int | None,
+        step_title: str | None,
+        planned_constraint: Mapping[str, object] | None,
+        audit_policy: Mapping[str, object] | None,
+        plan_facts: Mapping[str, object] | None,
+        step_facts: Mapping[str, object] | None,
+    ) -> None:
+        await self._runtime().submit_turn(
+            SessionWorkTurn(
+                text=text,
+                images=images,
+                method_id=method_id if include_work_metadata else None,
+                plan_id=plan_id if include_work_metadata else None,
+                step_id=step_id if include_work_metadata else None,
+                step_index=step_index if include_work_metadata else None,
+                step_title=step_title if include_work_metadata else None,
+                planned_constraint=(
+                    planned_constraint if include_work_metadata else None
+                ),
+                audit_policy=audit_policy if include_work_metadata else None,
+                plan_facts=plan_facts if include_work_metadata else None,
+                step_facts=step_facts if include_work_metadata else None,
+            ),
+            session_id=session_id,
+        )
+
+    async def submit_plan(
+        self,
+        turns: Sequence[object],
+        *,
+        session_id: str,
+        after_turn: Callable[[object, int, int], Awaitable[None]],
+    ) -> None:
+        await self._runtime().submit_plan(
+            tuple(_require_session_work_turn(turn) for turn in turns),
+            session_id=session_id,
+            after_turn=after_turn,
+            wait_for_idle_after_prompt=True,
+        )
+
+
+def project_prepared_session_work_turns(
+    prepared_turns: Sequence[PreparedSessionWorkTurn],
+    *,
+    images: Sequence[object] | None,
+    follow_up_messages: tuple[str, ...],
+) -> tuple[SessionWorkTurn, ...]:
+    """Project prepared domain turns into the canonical session Work shape."""
+
+    resolved_turns = tuple(prepared_turns)
+    return tuple(
+        SessionWorkTurn(
+            text=turn.prepared_prompt,
+            images=images if index == 0 else None,
+            method_id=turn.method_id,
+            plan_id=turn.plan_id,
+            step_id=turn.step_id,
+            step_index=turn.step_index,
+            step_title=turn.step_title,
+            planned_constraint=_prepared_turn_metadata(
+                turn,
+                "planned_constraint",
+            ),
+            audit_policy=_prepared_turn_metadata(turn, "audit_policy"),
+            plan_facts=_prepared_turn_metadata(turn, "plan_facts"),
+            step_facts=_prepared_turn_metadata(turn, "step_facts"),
+            follow_up_messages=(
+                follow_up_messages if index == len(resolved_turns) - 1 else ()
+            ),
+        )
+        for index, turn in enumerate(resolved_turns)
+    )
+
+
+def _require_session_work_turn(value: object) -> SessionWorkTurn:
+    if not isinstance(value, SessionWorkTurn):
+        raise TypeError("planned execution requires SessionWorkTurn values")
+    return value
+
+
+def _prepared_turn_metadata(
+    turn: PreparedSessionWorkTurn,
+    key: str,
+) -> Mapping[str, object] | None:
+    value = turn.metadata.get(key)
+    if isinstance(value, Mapping) and value:
+        return dict(value)
+    return None
+
+
 async def _prompt_turn(
     session: SessionPromptPort,
     turn: SessionWorkTurn,
@@ -521,6 +646,7 @@ async def _call_turn_hook(
 
 
 __all__ = [
+    "PreparedSessionWorkTurn",
     "RuntimeEventListener",
     "SessionEventFactProjector",
     "SessionIdReader",
@@ -528,7 +654,9 @@ __all__ = [
     "SessionPromptPort",
     "SessionTurnExecutor",
     "SessionTurnHook",
+    "SessionWorkHostPort",
     "SessionWorkProfile",
     "SessionWorkRuntime",
     "SessionWorkTurn",
+    "project_prepared_session_work_turns",
 ]

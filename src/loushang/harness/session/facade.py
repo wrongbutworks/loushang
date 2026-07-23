@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Generic, Protocol, TypeVar
+from typing import Generic, Protocol, TypeVar, cast
 
 from loushang.ai.types import ImagePart
 from loushang.harness.diagnostics.types import (
@@ -379,6 +379,21 @@ class SessionControlPort(Protocol):
     async def refresh_resources(self) -> None: ...
 
     def request_resource_refresh(self) -> None: ...
+
+
+def require_active_session_control(runtime: object) -> SessionControlPort:
+    """Resolve the standard control port from an active Product runtime."""
+
+    getter = getattr(runtime, "get_current_session", None)
+    if not callable(getter):
+        raise TypeError("Session runtime must provide get_current_session()")
+    session = getter()
+    if session is None:
+        raise RuntimeError("Session runtime requires an active session")
+    control = getattr(session, "session_control", None)
+    if control is None:
+        raise TypeError("Active session must expose session_control")
+    return cast(SessionControlPort, control)
 
 
 @dataclass(frozen=True)
@@ -1013,4 +1028,5 @@ __all__ = [
     "SessionToolsPort",
     "SessionTranscriptPort",
     "SessionViewPort",
+    "require_active_session_control",
 ]

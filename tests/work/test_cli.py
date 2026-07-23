@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from loushang.work import EventLogEntry, JsonlEventLogBackend, inspect_work_log
+from loushang.work import (
+    EventLogEntry,
+    JsonlEventLogBackend,
+    create_work_event_log,
+    inspect_work_log,
+)
 
 
 def test_inspect_work_log_projects_shared_text_and_json_shapes(tmp_path) -> None:
@@ -27,3 +32,11 @@ def test_inspect_work_log_projects_shared_text_and_json_shapes(tmp_path) -> None
 
     assert "method_id" in text
     assert '"method_id": "review"' in payload
+
+
+def test_create_work_event_log_handles_optional_cli_path(tmp_path) -> None:
+    assert create_work_event_log(None, tmp_path) is None
+
+    backend = create_work_event_log("logs/work.jsonl", tmp_path)
+
+    assert isinstance(backend, JsonlEventLogBackend)

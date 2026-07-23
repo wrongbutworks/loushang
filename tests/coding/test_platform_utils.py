@@ -21,13 +21,7 @@ def test_coding_platform_does_not_export_retired_shared_capabilities() -> None:
 def test_version_check_compares_package_versions_and_skips_offline(monkeypatch) -> None:
     from loushang.coding.platform.version_check import (
         check_for_new_loushang_version,
-        compare_package_versions,
-        is_newer_package_version,
     )
-
-    assert compare_package_versions("v1.2.3", "1.2.2") > 0
-    assert compare_package_versions("1.2.3-beta", "1.2.3") < 0
-    assert is_newer_package_version("not-semver", "1.2.3") is True
 
     calls: list[object] = []
 
@@ -35,7 +29,9 @@ def test_version_check_compares_package_versions_and_skips_offline(monkeypatch) 
         calls.append((args, kwargs))
         return {"version": "1.2.4"}
 
-    assert asyncio.run(check_for_new_loushang_version("1.2.3", fetcher=fetcher)) == "1.2.4"
+    assert (
+        asyncio.run(check_for_new_loushang_version("1.2.3", fetcher=fetcher)) == "1.2.4"
+    )
     assert calls[0][0][0] == "https://loushang.ai/api/latest-version"
 
     monkeypatch.setenv("LOUSHANG_SKIP_VERSION_CHECK", "1")

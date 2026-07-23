@@ -11,11 +11,11 @@ from loushang.coding.resource_runtime import (
 from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
 )
-from loushang.coding.session.package_controller import PackageController
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.resources.packages.materializer import (
     PythonPackageInstallerBackend,
 )
+from loushang.harness.resources.packages.session import SessionPackageController
 
 
 def test_package_controller_installs_local_package_updates_settings_and_refreshes_once(
@@ -28,10 +28,12 @@ def test_package_controller_installs_local_package_updates_settings_and_refreshe
     resource_loader = DefaultResourceLoader()
     refreshes: list[str] = []
 
-    controller = PackageController(
-        session_manager=asyncio.run(
-            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
-        ),
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
+    )
+    controller = SessionPackageController(
+        get_session_id=lambda: manager.get_session_record().session_id,
+        get_cwd=manager.get_cwd,
         get_settings_manager=lambda: settings,
         get_package_materializer=lambda: materializer,
         get_resource_loader=lambda: resource_loader,
@@ -75,10 +77,12 @@ def test_package_controller_installs_python_package_updates_settings_and_refresh
         install_root=tmp_path / "packages",
         python_backend=PythonPackageInstallerBackend(runner=runner),
     )
-    controller = PackageController(
-        session_manager=asyncio.run(
-            SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
-        ),
+    manager = asyncio.run(
+        SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
+    )
+    controller = SessionPackageController(
+        get_session_id=lambda: manager.get_session_record().session_id,
+        get_cwd=manager.get_cwd,
         get_settings_manager=lambda: settings,
         get_package_materializer=lambda: materializer,
         get_resource_loader=lambda: resource_loader,

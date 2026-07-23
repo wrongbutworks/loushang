@@ -12,7 +12,9 @@ from loushang.harness.bootstrap import (
     BootstrapActivationRuntime,
     StandardExtensionRuntime,
     create_standard_resource_bootstrap_runtime,
+    register_resource_extension_tools,
 )
+from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.config.activation import ConfigActivationStep
 from loushang.harness.config.agent import ControlConfig, SettingsManager
 from loushang.harness.diagnostics.service import (
@@ -36,6 +38,8 @@ from loushang.harness.resources.packages.source_resolver import (
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.session.bootstrap_utils import (
     NoToolsMode,
+    normalize_no_tools,
+    resolve_base_system_prompt,
     resolve_initial_active_tool_names,
 )
 from loushang.harness.session.cwd_audit import (
@@ -43,6 +47,10 @@ from loushang.harness.session.cwd_audit import (
     audit_cwd_bound_services,
     project_root_from_settings_base,
     record_cwd_bound_services_audit,
+)
+from loushang.harness.session.model_resolution import (
+    resolve_session_model,
+    scoped_models_from_patterns,
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 
@@ -148,9 +156,7 @@ class StandardAgentSessionConfigurationRuntime:
             request.diagnostics_service,
             cwd=request.cwd,
             package_roots=request.settings.package_roots,
-            additional_checks=(
-                lambda: request.source_identity_check(request.cwd),
-            ),
+            additional_checks=(lambda: request.source_identity_check(request.cwd),),
             session_id=request.session_id,
         )
 
@@ -381,9 +387,7 @@ class BootstrapServices(
 
 
 @dataclass(frozen=True)
-class AgentSessionServices(
-    Generic[ServicesT, BundleT, ExtensionT, DiagnosticRecordT]
-):
+class AgentSessionServices(Generic[ServicesT, BundleT, ExtensionT, DiagnosticRecordT]):
     """Cwd-bound services and results of the shared resource bootstrap."""
 
     cwd: str
@@ -506,11 +510,19 @@ class AgentSessionConstructionRuntime(Generic[AgentT, SessionT, BundleT, Registr
         *,
         agent_factory: Callable[..., AgentT],
         register_extension_tools: Callable[
-            [BundleT, RegistryT | None], tuple[BundleT, RegistryT | None, Sequence[object]]
+            [BundleT, RegistryT | None],
+            tuple[BundleT, RegistryT | None, Sequence[object]],
         ],
         record_extension_diagnostics: Callable[[Sequence[object]], None],
         session_factory: Callable[
-            [AgentT, BundleT, RegistryT | None, list[str] | None, str, NoToolsMode | None],
+            [
+                AgentT,
+                BundleT,
+                RegistryT | None,
+                list[str] | None,
+                str,
+                NoToolsMode | None,
+            ],
             SessionT,
         ],
     ) -> SessionT:
@@ -569,11 +581,192 @@ class AgentSessionConstructionRuntime(Generic[AgentT, SessionT, BundleT, Registr
         )
 
 
+@dataclass(frozen=True)
+class AgentProductConstructionPorts(Generic[BundleT, ExtensionT, RegistryT]):
+    """Product callbacks around the standard configured Agent construction."""
+
+    activate_resources: Callable[[BundleT], object]
+    prompt_section_composer: object
+    tool_pack_composer: object
+    list_tool_definitions: Callable[[ExtensionT], Sequence[object]]
+    get_tool_source_info: Callable[[ExtensionT, str], object | None]
+    dispose_capabilities: Callable[[], None]
+
+
+@dataclass(frozen=True)
+class AgentProductConstructionRequest(
+    Generic[AgentT, SessionT, BundleT, ExtensionT, RegistryT]
+):
+    configuration: StandardAgentSessionConfigurationRequest
+    ports: AgentProductConstructionPorts[BundleT, ExtensionT, RegistryT]
+    default_system_prompt: str
+    explicit_system_prompt: str | None
+    append_system_prompt: Sequence[str]
+    model: object | None
+    thinking_level: object
+    tools: Sequence[object] | None
+    tool_registry: RegistryT | None
+    allowed_tool_names: Sequence[str] | None
+    active_tool_names: Sequence[str] | None
+    no_tools: NoToolsMode | bool | None
+    stream_fn: Callable[..., object] | None
+    convert_to_llm: Callable[..., object]
+    agent_factory: Callable[..., AgentT]
+    session_factory: Callable[
+        [
+            AgentT,
+            BundleT,
+            ExtensionT,
+            RegistryT | None,
+            list[str] | None,
+            str,
+            NoToolsMode | None,
+        ],
+        SessionT,
+    ]
+    on_default_model_unavailable: Callable[[object, Exception, str], None]
+    set_scoped_models: Callable[[SessionT, Sequence[object]], None]
+    product_tool_pack_id: str = "product.registry"
+    extension_tool_pack_id: str = "product.extensions"
+
+
+@dataclass(frozen=True)
+class AgentProductConstructionResult(Generic[SessionT]):
+    session: SessionT
+    configuration: StandardAgentSessionConfigurationResult
+
+
+class AgentProductConstructionRuntime(
+    Generic[AgentT, SessionT, BundleT, ExtensionT, RegistryT]
+):
+    """Compose existing configuration, prompt, model, tool, and Agent owners."""
+
+    def construct(
+        self,
+        request: AgentProductConstructionRequest[
+            AgentT,
+            SessionT,
+            BundleT,
+            ExtensionT,
+            RegistryT,
+        ],
+    ) -> AgentProductConstructionResult[SessionT]:
+        try:
+            configuration = StandardAgentSessionConfigurationRuntime().configure(
+                request.configuration
+            )
+            resource_bundle = configuration.resource_bundle
+            extension_runtime = configuration.extension_runtime
+            settings = request.configuration.settings
+            base_prompt = resolve_base_system_prompt(
+                explicit_prompt=request.explicit_system_prompt,
+                resource_loader=request.configuration.resource_loader,
+                configured_prompt=settings.system_prompt,
+                default_prompt=request.default_system_prompt,
+                append_fragments=request.append_system_prompt,
+            )
+            resolved_prompt = assemble_prompt(
+                base_prompt=base_prompt,
+                resource_bundle=resource_bundle,
+                resource_activation=request.ports.activate_resources(resource_bundle),
+                prompt_section_composer=request.ports.prompt_section_composer,
+            ).system_prompt
+            resolved_model = resolve_session_model(
+                request.model,
+                default_selection=settings.default_model,
+                build_model=request.configuration.model_registry.build_model,
+                endpoint_lookup=(
+                    request.configuration.model_registry.ai_registry.get_endpoint
+                ),
+                on_default_unavailable=request.on_default_model_unavailable,
+            )
+
+            def register_extension_tools(
+                bundle: BundleT,
+                registry: RegistryT | None,
+            ) -> tuple[BundleT, RegistryT | None, Sequence[object]]:
+                return register_resource_extension_tools(
+                    extension_runtime=extension_runtime,
+                    resource_bundle=bundle,
+                    tool_registry=registry,
+                    pack_composer=request.ports.tool_pack_composer,
+                    list_tool_definitions=request.ports.list_tool_definitions,
+                    get_tool_source_info=request.ports.get_tool_source_info,
+                    product_pack_id=request.product_tool_pack_id,
+                    extension_pack_id=request.extension_tool_pack_id,
+                )
+
+            session = AgentSessionConstructionRuntime[
+                AgentT,
+                SessionT,
+                BundleT,
+                RegistryT,
+            ]().construct(
+                AgentSessionConstructionRequest(
+                    session_id=request.configuration.session_id,
+                    base_prompt=base_prompt,
+                    resolved_prompt=resolved_prompt,
+                    thinking_level=request.thinking_level,
+                    model=resolved_model,
+                    convert_to_llm=request.convert_to_llm,
+                    steering_mode=settings.steering_mode,
+                    follow_up_mode=settings.follow_up_mode,
+                    thinking_budgets=settings.thinking_budgets,
+                    max_retry_delay_ms=settings.retry.provider_max_retry_delay_ms,
+                    stream_fn=request.stream_fn,
+                    resource_bundle=resource_bundle,
+                    tools=request.tools,
+                    tool_registry=request.tool_registry,
+                    allowed_tool_names=request.allowed_tool_names,
+                    active_tool_names=request.active_tool_names,
+                    no_tools_mode=normalize_no_tools(request.no_tools),
+                ),
+                agent_factory=request.agent_factory,
+                register_extension_tools=register_extension_tools,
+                record_extension_diagnostics=lambda diagnostics: (
+                    request.configuration.diagnostics_service.record_resource_diagnostics(
+                        diagnostics,
+                        phase="resource_loading",
+                        source="bootstrap",
+                        session_id=request.configuration.session_id,
+                    )
+                ),
+                session_factory=lambda agent, bundle, registry, active, prompt, mode: (
+                    request.session_factory(
+                        agent,
+                        bundle,
+                        extension_runtime,
+                        registry,
+                        active,
+                        prompt,
+                        mode,
+                    )
+                ),
+            )
+            scoped_models = scoped_models_from_patterns(
+                settings.enabled_models,
+                resolve_model=request.configuration.model_registry.get_model,
+            )
+            if scoped_models:
+                request.set_scoped_models(session, scoped_models)
+            return AgentProductConstructionResult(
+                session=session,
+                configuration=configuration,
+            )
+        except Exception:
+            request.ports.dispose_capabilities()
+            raise
+
+
 __all__ = [
     "AgentBootstrapRequest",
     "AgentBootstrapRuntime",
     "AgentSessionConstructionRequest",
     "AgentSessionConstructionRuntime",
+    "AgentProductConstructionPorts",
+    "AgentProductConstructionRequest",
+    "AgentProductConstructionResult",
+    "AgentProductConstructionRuntime",
     "AgentSessionServices",
     "BootstrapServices",
     "CreateAgentSessionResult",

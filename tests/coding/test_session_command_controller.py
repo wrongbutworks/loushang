@@ -5,18 +5,20 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.extensions import (
+from loushang.coding.session_manager import SessionManager
+from loushang.harness.diagnostics import DiagnosticsService
+from loushang.harness.extensions.agent import (
     ExtensionRunner,
     LoadedExtension,
     RegisteredCommand,
 )
-from loushang.coding.session.command_controller import CommandController
-from loushang.coding.session_manager import SessionManager
-from loushang.harness.diagnostics import DiagnosticsService
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
     SkillDescriptor,
+)
+from loushang.harness.session import (
+    StandardSessionCommandController as CommandController,
 )
 from loushang.harness.session import StandardSessionCommandPorts
 from loushang.tui.clipboard import ClipboardCopyResult

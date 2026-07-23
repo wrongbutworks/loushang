@@ -1061,6 +1061,7 @@ def test_screen_tui_projector_failure_still_unbinds_presenter(
         InteractiveApprovalResolver,
     )
     from loushang.coding.ui import mode
+    from loushang.harnesstui.conversation import agent_application
 
     resolver = InteractiveApprovalResolver(
         fallback=HeadlessApprovalResolver(mode="deny")
@@ -1074,7 +1075,11 @@ def test_screen_tui_projector_failure_still_unbinds_presenter(
         del args, kwargs
         raise RuntimeError("projector failed")
 
-    monkeypatch.setattr(mode, "build_agent_screen_conversation_projection", fail_projector)
+    monkeypatch.setattr(
+        agent_application,
+        "build_agent_screen_conversation_projection",
+        fail_projector,
+    )
 
     exit_code = asyncio.run(
         mode.run_coding_tui(

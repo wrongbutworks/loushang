@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.presentation.tui.history import session_history_records
+from loushang.harnesstui.conversation.agent_binding import (
+    agent_session_history_records,
+)
 from loushang.harnesstui.conversation.screen_state import ScreenConversationState
 from loushang.harnesstui.conversation.source import (
     ActiveWindowTranscriptSource,
@@ -29,7 +31,7 @@ def _session_transcript_source(
     active_window_state: ScreenConversationState | None = None,
 ) -> MaterializedTranscriptSource:
     return MaterializedTranscriptSource(
-        materialize_records=lambda: session_history_records(session.messages),
+        materialize_records=lambda: agent_session_history_records(session.messages),
         source_label=source_label,
         active_window_state=active_window_state,
     )

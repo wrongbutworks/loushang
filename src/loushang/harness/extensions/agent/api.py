@@ -7,7 +7,7 @@ from loushang.harness.extensions.api import ExtensionContributionAPI
 
 
 class ExtensionAPI(ExtensionContributionAPI):
-    """Coding additions to the product-neutral extension contribution API."""
+    """Agent session additions to the product-neutral contribution API."""
 
     def __init__(
         self,

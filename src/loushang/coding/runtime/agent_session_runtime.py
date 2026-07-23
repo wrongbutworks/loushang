@@ -8,36 +8,23 @@ from typing import cast
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.extensions.context import SessionShutdownEvent, SessionStartEvent
+from loushang.harness.extensions.context import SessionShutdownEvent
 from loushang.harness.runtime import copy_file_exclusive
 from loushang.harness.session import (
-    ForkProfile,
-    ForkSelection,
-    ProductSessionRuntime,
-    ProductSessionRuntimePorts,
-    ProductTranscriptSessionBinding,
-    SessionDiagnosticScope,
-    SessionDiagnosticsRuntime,
-    SessionLifecycleHooks,
-    SessionLifecycleTransition,
-    build_agent_session_lifecycle_hooks,
-    invoke_session_factory,
-    prepare_current_agent_session,
-    resolve_agent_transcript_fork_target,
-    resolve_existing_cwd,
-    session_file_from_session,
-    session_id_from_session,
+    MissingSessionCwdError as HarnessMissingSessionCwdError,
 )
 from loushang.harness.session import (
-    MissingSessionCwdError as HarnessMissingSessionCwdError,
+    ProductSessionRuntime,
+    SessionDiagnosticScope,
+    SessionDiagnosticsRuntime,
+    build_agent_product_session_runtime_ports,
+    prepare_current_agent_session,
+    session_file_from_session,
+    session_id_from_session,
 )
 
 SessionFactory = Callable[..., AgentSession]
 _copy_import_file = copy_file_exclusive
-_CODING_FORK_PROFILE = ForkProfile(
-    default_position="before",
-    supported_positions=frozenset({"at", "before"}),
-)
 
 
 @dataclass(frozen=True)
@@ -89,54 +76,19 @@ class AgentSessionRuntime(
         session_index_flush_delay: float = 0.25,
     ) -> None:
         self._diagnostics_service = diagnostics_service
-        transcript = ProductTranscriptSessionBinding(
-            session_type=SessionManager,
-            session_dir=session_dir,
-            persist=persist,
-            resolve_cwd_override=resolve_existing_cwd,
-        )
         super().__init__(
             session_dir=session_dir,
-            ports=ProductSessionRuntimePorts(
+            ports=build_agent_product_session_runtime_ports(
+                runtime_host=self,
+                transcript_session_type=SessionManager,
+                session_dir=session_dir,
                 session_factory=session_factory,
                 persist=persist,
-                create_transcript=transcript.create,
-                restore_transcript=transcript.restore,
-                fork_transcript=transcript.fork,
-                dispose_transcript=transcript.dispose,
-                transcript_for_session=lambda session: session.session_manager,
-                transcript_cwd=lambda manager: manager.get_cwd(),
-                transcript_session_ref=lambda manager: (
-                    str(manager.get_session_file())
-                    if manager.get_session_file() is not None
-                    else None
-                ),
-                transcript_leaf_entry_id=lambda manager: manager.get_leaf_id(),
-                build_session=lambda manager, current, transition: (
-                    self._build_session(
-                        cast(SessionManager, manager),
-                        current=current,
-                        transition=transition,
-                    )
-                ),
-                validate_restored_transcript=transcript.validate_available_cwd,
-                fork_profile=_CODING_FORK_PROFILE,
-                fork_target_resolver=_resolve_coding_fork_target,
                 copy_file=lambda source, destination: _copy_import_file(
                     source, destination
                 ),
-                hooks=cast(
-                    SessionLifecycleHooks[AgentSession, str],
-                    build_agent_session_lifecycle_hooks(
-                        runtime_host=self,
-                        record_shutdown_failure=self._record_shutdown_failure,
-                    ),
-                ),
                 diagnostics_runtime=self._session_diagnostics_runtime,
-                rename_transcript=transcript.rename,
-                delete_transcript=transcript.delete,
-                current_session_file=session_file_from_session,
-                resolve_import_cwd=resolve_existing_cwd,
+                record_shutdown_failure=self._record_shutdown_failure,
                 translate_missing_cwd_error=_coding_missing_cwd_error,
             ),
             current_session=current_session,
@@ -146,27 +98,6 @@ class AgentSessionRuntime(
         )
         if current_session is not None:
             prepare_current_agent_session(current_session, self)
-
-    def _build_session(
-        self,
-        manager: SessionManager,
-        *,
-        current: AgentSession | None,
-        transition: SessionLifecycleTransition,
-    ) -> AgentSession:
-        reason = (
-            "startup"
-            if current is None and transition.reason == "new"
-            else transition.reason
-        )
-        return invoke_session_factory(
-            self.session_factory,
-            manager,
-            session_start_event=SessionStartEvent(
-                reason=reason,
-                previous_session_file=session_file_from_session(current),
-            ),
-        )
 
     def _session_diagnostics_runtime(
         self,
@@ -202,18 +133,6 @@ class AgentSessionRuntime(
                 "target_session_file": event.target_session_file,
             },
         )
-
-
-def _resolve_coding_fork_target(
-    session: AgentSession,
-    entry_id: str,
-    position: str,
-) -> ForkSelection[str]:
-    return resolve_agent_transcript_fork_target(
-        session.session_manager,
-        entry_id,
-        position,
-    )
 
 
 def _coding_missing_cwd_error(

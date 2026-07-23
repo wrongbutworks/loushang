@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import inspect
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 from typing import TextIO
 
 from loushang.harness.agent_transcript.catalog import try_project_session_record
@@ -32,6 +36,11 @@ from loushang.harness.cli.export import (
     ExportResultFormat,
     export_session,
     format_export_result,
+)
+from loushang.harness.cli.launch import (
+    CliLaunchPlan,
+    cli_help_belongs_on_stderr,
+    cli_output_guard_enabled,
 )
 from loushang.harness.cli.model_listing import (
     ModelListingError,
@@ -72,12 +81,108 @@ from loushang.harness.cli.skill_listing import (
     format_skill_records,
     list_skill_records,
 )
+from loushang.harness.diagnostics import export_diagnostics_bundle
 from loushang.harness.session.model_selection import format_model_metadata_table
 
 CliErrorFormatter = Callable[[BaseException], str]
 PolicyEvaluator = Callable[[str], str | None]
 PolicyDeniedHandler = Callable[[str, str | None], None]
 RemoteSourcePredicate = Callable[[str], bool]
+
+
+def distribution_version(
+    distribution: str,
+    *,
+    fallback: str = "0.1.0",
+) -> str:
+    """Resolve an installed distribution version with a source-tree fallback."""
+
+    try:
+        return version(distribution)
+    except PackageNotFoundError:
+        return fallback
+
+
+@dataclass(frozen=True)
+class AgentCliEarlyOperationPorts:
+    """Product bindings for standard help, version, and source-info exits."""
+
+    collect_help_flags: Callable[
+        [Sequence[str], Path],
+        Mapping[str, object] | Awaitable[Mapping[str, object]],
+    ]
+    format_help: Callable[[Mapping[str, object]], str]
+    package_version: Callable[[], str]
+    runtime_identity: Callable[[Path], Mapping[str, object]]
+    format_runtime_identity: Callable[[Mapping[str, object]], str]
+    output_guard: Callable[[bool], AbstractContextManager[None]]
+
+
+async def run_agent_cli_early_operation(
+    args: AgentCliArgs,
+    *,
+    raw_argv: Sequence[str],
+    launch_plan: CliLaunchPlan,
+    project_root: Path,
+    stdout: TextIO,
+    stderr: TextIO,
+    ports: AgentCliEarlyOperationPorts,
+) -> int | None:
+    """Run standard pre-bootstrap informational operations."""
+
+    if args.help:
+        with ports.output_guard(cli_output_guard_enabled(launch_plan)):
+            extension_flags = ports.collect_help_flags(raw_argv, project_root)
+            if inspect.isawaitable(extension_flags):
+                extension_flags = await extension_flags
+        output = stderr if cli_help_belongs_on_stderr(launch_plan) else stdout
+        output.write(ports.format_help(extension_flags))
+        return 0
+    if args.version:
+        stdout.write(f"{ports.package_version()}\n")
+        return 0
+    if args.source_info:
+        source_identity = ports.runtime_identity(project_root)
+        if args.source_info_format == "json":
+            stdout.write(json.dumps(source_identity, ensure_ascii=False) + "\n")
+        else:
+            stdout.write(ports.format_runtime_identity(source_identity) + "\n")
+        return 0
+    return None
+
+
+def run_diagnostics_export_operation(
+    *,
+    requested: bool,
+    project_root: Path,
+    session_dir: Path,
+    output: str | None,
+    diagnostics_service: object | None,
+    debug_latest_path: str | None,
+    trace_latest_path: str | None,
+    stdout: TextIO,
+    stderr: TextIO,
+    format_error: CliErrorFormatter = str,
+    success_prefix: str = "Exported diagnostics to:",
+) -> int | None:
+    """Export diagnostics through the shared archive engine."""
+
+    if not requested:
+        return None
+    try:
+        output_path = export_diagnostics_bundle(
+            project_root=project_root,
+            session_dir=session_dir,
+            output=output,
+            diagnostics_service=diagnostics_service,
+            debug_latest_path=debug_latest_path,
+            trace_latest_path=trace_latest_path,
+        )
+    except Exception as error:
+        stderr.write(f"Error: {format_error(error)}\n")
+        return 1
+    stdout.write(f"{success_prefix} {output_path}\n")
+    return 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,6 +234,25 @@ def agent_session_listing_request(
         all_sessions=args.all_sessions,
         indexed=args.session_index or args.refresh_session_index,
         refresh_index=args.refresh_session_index,
+    )
+
+
+def run_agent_cli_session_listing(
+    args: AgentCliArgs,
+    runtime: object,
+    *,
+    stdout: TextIO,
+    stderr: TextIO,
+    format_error: CliErrorFormatter = str,
+) -> int | None:
+    """Run the session listing selected by standard Agent CLI arguments."""
+
+    return run_session_listing_operation(
+        runtime,
+        agent_session_listing_request(args),
+        stdout=stdout,
+        stderr=stderr,
+        format_error=format_error,
     )
 
 
@@ -549,14 +673,19 @@ def _write_json_records(
 
 
 __all__ = [
+    "AgentCliEarlyOperationPorts",
     "CliErrorFormatter",
     "SessionListingOperationRequest",
     "StandardCliOperationRequest",
     "agent_session_listing_request",
     "agent_standard_cli_operation_request",
+    "distribution_version",
+    "run_agent_cli_early_operation",
+    "run_agent_cli_session_listing",
     "run_command_listing_operation",
     "run_command_operation",
     "run_diagnostics_listing_operation",
+    "run_diagnostics_export_operation",
     "run_export_operation",
     "run_model_listing_operation",
     "run_package_lifecycle_operation",

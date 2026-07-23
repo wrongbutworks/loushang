@@ -3,14 +3,48 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 
 from loushang.harness.resources.packages.catalog import (
     PackageCatalogDiagnostic,
     PackageCatalogEntry,
+    PackageSummaryProvider,
+    collect_package_catalog,
 )
 from loushang.harness.resources.packages.materializer import (
     PackageMaterializationRecord,
+    PackageMaterializer,
 )
+from loushang.harness.resources.packages.source import PackageSourceConfig
+
+
+def collect_projected_package_entries(
+    *,
+    package_roots: tuple[str, ...],
+    plugin_sources: tuple[str, ...],
+    disabled_plugins: tuple[str, ...],
+    cwd: Path,
+    package_sources: tuple[PackageSourceConfig, ...] = (),
+    settings_manager: object | None = None,
+    catalog_path: Path | None = None,
+    materializer: PackageMaterializer | None = None,
+    summary_provider: PackageSummaryProvider | None = None,
+) -> list[dict[str, object]]:
+    """Collect and project package records with Product policy injected."""
+
+    return project_package_entries(
+        collect_package_catalog(
+            package_roots=package_roots,
+            plugin_sources=plugin_sources,
+            disabled_plugins=disabled_plugins,
+            cwd=cwd,
+            package_sources=package_sources,
+            settings_manager=settings_manager,
+            catalog_path=catalog_path,
+            materializer=materializer,
+            summary_provider=summary_provider,
+        )
+    )
 
 
 def project_package_entries(
@@ -146,6 +180,7 @@ def _project_catalog_diagnostic(
 
 
 __all__ = [
+    "collect_projected_package_entries",
     "project_package_entries",
     "project_package_entry",
     "serialize_package_materialization_record",

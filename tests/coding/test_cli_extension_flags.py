@@ -97,7 +97,7 @@ def test_parse_args_preserves_unknown_extension_flags_for_second_pass() -> None:
 
 def test_parse_args_applies_extension_flags_on_second_pass() -> None:
     from loushang.coding.cli.args import parse_args
-    from loushang.coding.extensions import ResolvedFlag, SourceInfo
+    from loushang.harness.extensions.agent import ResolvedFlag, SourceInfo
 
     args = parse_args(
         ["--mode", "rpc", "--plan", "--request-id", "abc"],
@@ -125,7 +125,7 @@ def test_run_cli_applies_extension_flag_values_after_extension_discovery(
     tmp_path,
 ) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.extensions import ResolvedFlag, SourceInfo
+    from loushang.harness.extensions.agent import ResolvedFlag, SourceInfo
 
     extension_runner = FakeExtensionRunner(
         [
@@ -164,7 +164,7 @@ def test_run_cli_applies_extension_flag_values_after_extension_discovery(
 
 def test_run_cli_prints_discovered_extension_flags_in_help(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.coding.extensions import ResolvedFlag, SourceInfo
+    from loushang.harness.extensions.agent import ResolvedFlag, SourceInfo
 
     extension_runner = FakeExtensionRunner(
         [

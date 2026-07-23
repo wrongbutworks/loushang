@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from typing import TextIO
+
+PackageRecord = Mapping[str, object]
+PackageRecordLoader = Callable[[], list[PackageRecord]]
 
 
 def format_package_records(
-    packages: list[Mapping[str, object]],
+    packages: list[PackageRecord],
     output_format: str,
 ) -> str:
     """Render package records without choosing how Products discover them."""
@@ -54,6 +58,34 @@ def format_package_records(
     return "\n\n".join(groups) + "\n"
 
 
+def run_package_listing_operation(
+    *,
+    requested: bool,
+    output_format: str,
+    list_records: PackageRecordLoader | None,
+    fallback_records: PackageRecordLoader | None,
+    stdout: TextIO,
+    stderr: TextIO,
+    format_error: Callable[[BaseException], str] = str,
+) -> int | None:
+    """Run a standard package listing with an optional Product fallback."""
+
+    if not requested:
+        return None
+    if list_records is None:
+        stderr.write("Error: package listing is not available.\n")
+        return 1
+    try:
+        packages = list_records()
+        if not packages and fallback_records is not None:
+            packages = fallback_records()
+    except Exception as error:
+        stderr.write(f"Error: {format_error(error)}\n")
+        return 1
+    stdout.write(format_package_records(packages, output_format))
+    return 0
+
+
 def _package_scope_title(scope: str) -> str:
     labels = {
         "user": "User packages",
@@ -97,4 +129,9 @@ def _format_package_resources(package: Mapping[str, object]) -> str:
     return " ".join(parts)
 
 
-__all__ = ["format_package_records"]
+__all__ = [
+    "PackageRecord",
+    "PackageRecordLoader",
+    "format_package_records",
+    "run_package_listing_operation",
+]

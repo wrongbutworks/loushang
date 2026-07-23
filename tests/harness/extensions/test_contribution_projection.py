@@ -4,9 +4,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 
-def test_coding_extension_package_exports_harness_contribution_types() -> None:
-    from loushang.coding import extensions
+def test_agent_extension_profile_exports_harness_contribution_types() -> None:
     from loushang.harness import contributions as owner
+    from loushang.harness.extensions import agent
 
     package_names = (
         "ContributionDescriptor",
@@ -18,7 +18,7 @@ def test_coding_extension_package_exports_harness_contribution_types() -> None:
         "ExtensionSurfaceType",
     )
     for name in package_names:
-        assert getattr(extensions, name) is getattr(owner, name)
+        assert getattr(agent, name) is getattr(owner, name)
 
     assert owner.ContributionDescriptor.__module__ == "loushang.harness.contributions"
     assert owner.ContributionRegistry.__module__ == "loushang.harness.contributions"

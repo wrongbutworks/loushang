@@ -1,15 +1,23 @@
-"""Coding vocabulary bound to the shared session Work adapter."""
+"""Coding vocabulary bound to the shared Agent session Work adapter."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from typing import TextIO, cast
 
-from loushang.harness.agent_transcript import create_agent_transcript_message_codec
-from loushang.harness.events import RuntimeEvent, project_session_runtime_event
+from loushang.harness.events import JsonEventView
+from loushang.harness.host.channel_events import AgentRuntimeChannelProjection
+from loushang.harness.session import require_active_session_control
+from loushang.work import InMemoryEventLogBackend
 from loushang.work.agent_projection import (
-    AgentWorkFactProjectionContext,
-    project_agent_event_to_work_facts,
+    create_agent_session_work_runtime,
+    project_agent_runtime_event_to_work_facts,
+)
+from loushang.work.channel import (
+    SessionWorkChannelProfile,
+    SessionWorkChannelSession,
+    run_session_work_channel_host,
 )
 from loushang.work.event_log import EventLogBackend
 from loushang.work.session import (
@@ -17,14 +25,18 @@ from loushang.work.session import (
     SessionWorkProfile,
     SessionWorkRuntime,
 )
-from loushang.work.types import WorkEventFact
 
 CODING_WORK_PROFILE = SessionWorkProfile(
     domain="coding",
     operation_kind="SubmitCodingTurn",
 )
+CODING_WORK_CHANNEL_PROFILE = SessionWorkChannelProfile(
+    product_name="Coding",
+    domain=CODING_WORK_PROFILE.domain,
+    operation_kind=CODING_WORK_PROFILE.operation_kind,
+)
 
-_MESSAGE_CODEC = create_agent_transcript_message_codec()
+project_coding_runtime_event = project_agent_runtime_event_to_work_facts
 
 
 def create_coding_work_runtime(
@@ -35,34 +47,54 @@ def create_coding_work_runtime(
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     cancellation_timeout: float | None = 30.0,
 ) -> SessionWorkRuntime:
-    return SessionWorkRuntime(
+    return create_agent_session_work_runtime(
         session=session,
         event_log=event_log,
         profile=CODING_WORK_PROFILE,
-        project_event_facts=project_coding_runtime_event,
         session_id=session_id,
         clock=clock,
         cancellation_timeout=cancellation_timeout,
     )
 
 
-def project_coding_runtime_event(event: object) -> Sequence[WorkEventFact]:
-    if not isinstance(event, RuntimeEvent):
-        return ()
-    projected = project_session_runtime_event(event)
-    if projected is None:
-        return ()
-    return project_agent_event_to_work_facts(
-        projected,
-        context=AgentWorkFactProjectionContext(
-            source_event_ref=event.event_id,
-            message_serializer=_MESSAGE_CODEC.serialize,
+async def run_coding_work_channel(
+    *,
+    runtime: object,
+    stdin: TextIO,
+    stdout: TextIO,
+    stderr: TextIO | None = None,
+    event_view: JsonEventView = "full",
+    event_select: Sequence[str] | str | None = None,
+    work_event_log: EventLogBackend | None = None,
+    work_runtime: SessionWorkRuntime | None = None,
+) -> int:
+    """Bind Coding's Work vocabulary to the shared Agent Channel host."""
+
+    session = require_active_session_control(runtime)
+    event_log = work_event_log or InMemoryEventLogBackend()
+    resolved_work_runtime = work_runtime or create_coding_work_runtime(
+        session=cast(SessionPromptPort, session),
+        event_log=event_log,
+        session_id=lambda: session.session_id,
+    )
+    return await run_session_work_channel_host(
+        session=cast(SessionWorkChannelSession, session),
+        runtime=resolved_work_runtime,
+        profile=CODING_WORK_CHANNEL_PROFILE,
+        project_runtime_envelopes=AgentRuntimeChannelProjection(
+            event_view=event_view,
+            event_select=event_select,
         ),
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
     )
 
 
 __all__ = [
+    "CODING_WORK_CHANNEL_PROFILE",
     "CODING_WORK_PROFILE",
     "create_coding_work_runtime",
     "project_coding_runtime_event",
+    "run_coding_work_channel",
 ]

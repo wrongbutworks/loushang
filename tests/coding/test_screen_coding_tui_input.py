@@ -603,9 +603,11 @@ def test_screen_input_router_ctrl_o_session_reader_includes_running_tool_record(
     from dataclasses import dataclass
 
     from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-    from loushang.coding.presentation.tui.history import session_history_records
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import build_screen_input_router
+    from loushang.harnesstui.conversation.agent_binding import (
+        agent_session_history_records,
+    )
     from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
     from loushang.harnesstui.conversation.source import MaterializedTranscriptSource
     from loushang.tui import RenderConstraints, SurfaceHost, strip_control_sequences
@@ -648,7 +650,7 @@ def test_screen_input_router_ctrl_o_session_reader_includes_running_tool_record(
     )
     app.begin_run(started_at=3.0)
     app.transcript_source_factory = lambda: MaterializedTranscriptSource(
-        materialize_records=lambda: session_history_records(session.messages),
+        materialize_records=lambda: agent_session_history_records(session.messages),
         active_window_state=app.state,
     )
 
@@ -669,9 +671,11 @@ def test_screen_input_router_ctrl_o_session_reader_includes_streaming_assistant_
     from dataclasses import dataclass
 
     from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-    from loushang.coding.presentation.tui.history import session_history_records
     from loushang.coding.ui.screen_app import ScreenCodingTuiApp
     from loushang.coding.ui.screen_input import build_screen_input_router
+    from loushang.harnesstui.conversation.agent_binding import (
+        agent_session_history_records,
+    )
     from loushang.harnesstui.conversation.reader import TranscriptReaderSurface
     from loushang.harnesstui.conversation.source import MaterializedTranscriptSource
     from loushang.tui import RenderConstraints, SurfaceHost, strip_control_sequences
@@ -710,7 +714,7 @@ def test_screen_input_router_ctrl_o_session_reader_includes_streaming_assistant_
     app.begin_run(started_at=3.0)
     app.append_assistant_chunk("streaming draft")
     app.transcript_source_factory = lambda: MaterializedTranscriptSource(
-        materialize_records=lambda: session_history_records(session.messages),
+        materialize_records=lambda: agent_session_history_records(session.messages),
         active_window_state=app.state,
     )
 

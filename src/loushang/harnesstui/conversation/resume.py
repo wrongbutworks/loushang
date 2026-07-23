@@ -35,8 +35,49 @@ def write_clean_exit_resume_hint(
     stdout.flush()
 
 
+def resume_hint_for_session(
+    session: object,
+    *,
+    command_prefix: tuple[str, ...],
+    heading: str = "Resume this session with:",
+) -> ConversationResumeHint | None:
+    """Resolve the stable resume reference from standard Product session shapes."""
+
+    session_file = _session_file_for_resume(session)
+    if session_file is None:
+        return None
+    session_id = getattr(session, "session_id", None)
+    if not isinstance(session_id, str) or not session_id:
+        manager = getattr(session, "session_manager", None)
+        get_header = getattr(manager, "get_header", None)
+        if callable(get_header):
+            try:
+                session_id = getattr(get_header(), "conversation_id", None)
+            except Exception:
+                session_id = None
+    resume_ref = (
+        session_id if isinstance(session_id, str) and session_id else str(session_file)
+    )
+    return ConversationResumeHint(
+        heading=heading,
+        command=(*command_prefix, resume_ref),
+    )
+
+
+def _session_file_for_resume(session: object) -> object | None:
+    manager = getattr(session, "session_manager", None)
+    get_session_file = getattr(manager, "get_session_file", None)
+    if callable(get_session_file):
+        try:
+            return get_session_file()
+        except Exception:
+            return None
+    return getattr(session, "session_file", None)
+
+
 __all__ = [
     "ConversationResumeHint",
     "render_conversation_resume_hint",
+    "resume_hint_for_session",
     "write_clean_exit_resume_hint",
 ]

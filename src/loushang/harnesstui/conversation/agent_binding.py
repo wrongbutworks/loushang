@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import replace
 from functools import partial
-from typing import Any, TypeAlias
+from pathlib import Path
+from typing import Any, Literal, Protocol, TextIO, TypeAlias
 
 from loushang.agent.types import AgentToolResult
 from loushang.harness.agent_transcript import (
@@ -22,6 +23,16 @@ from loushang.harness.agent_transcript import (
     STANDARD_AGENT_TRANSCRIPT_KINDS,
     THINKING_SELECTION_KIND,
 )
+from loushang.harness.events import (
+    SUPPORTED_JSON_EVENT_VIEWS,
+    normalize_event_select,
+    project_runtime_event_to_json_views,
+    project_session_event,
+    should_emit_projected_event,
+    should_emit_runtime_event_view,
+)
+from loushang.harness.host.mode import ModeConfig
+from loushang.harness.host.rpc import run_rpc_host
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.harness.tools.workspace.presentation import (
     render_tool_result_presentation,
@@ -34,6 +45,22 @@ from loushang.harnesstui.conversation.history import (
     project_command_execution_payload,
     project_context_branch_summary_payload,
     project_context_compaction_payload,
+)
+from loushang.harnesstui.conversation.plain_mode import (
+    PlainEventProjection,
+    PlainHost,
+    PlainWorkPort,
+)
+from loushang.harnesstui.conversation.plain_prompt_host import (
+    PlainPlanTurnHook,
+    PlainPromptHostPorts,
+    PlainPromptPlanHostPorts,
+    PreparedPlainPromptPlanRun,
+    PreparedPlainPromptRun,
+    dispose_runtime_or_session,
+    last_assistant_failure_message,
+    run_plain_prompt_host,
+    run_plain_prompt_plan_host,
 )
 from loushang.harnesstui.conversation.plain_target import (
     PlainConversationProjectionPort,
@@ -62,6 +89,24 @@ from loushang.tui.transcript import DisplayRecord, ToolExecutionRecord
 AgentToolTranscriptProjection: TypeAlias = ToolTranscriptProjectionBinding[
     Mapping[str, Any], object
 ]
+
+
+class AgentPlainPromptRenderer(PlainConversationProjectionPort, Protocol):
+    """Renderer effects required by the standard Agent prompt binding."""
+
+    def render_worked(self, elapsed_seconds: float) -> None: ...
+
+
+class AgentPlainPromptSession(Protocol):
+    """Session effects required by the standard Agent prompt binding."""
+
+    def subscribe(
+        self,
+        listener: Callable[[dict[str, Any]], None],
+    ) -> Callable[[], None]: ...
+
+    def wait_for_idle(self) -> Awaitable[None]: ...
+
 
 STANDARD_AGENT_HISTORY_DISPOSITIONS: dict[str, HistoryRecordDisposition] = {
     AGENT_MESSAGE_KIND: "render",
@@ -146,6 +191,47 @@ def project_agent_conversation_history(
     ).project_items(items)
 
 
+def agent_session_history_records(
+    branch_items: Iterable[object],
+    *,
+    tool_definition_resolver: ToolDefinitionResolver | None = None,
+    max_tool_body_lines: int = 8,
+) -> tuple[DisplayRecord, ...]:
+    """Project a materialized Agent transcript branch for terminal history."""
+
+    transcript_items = tuple(branch_items)
+    if not transcript_items:
+        return ()
+    tool_projector = build_agent_tool_transcript_projection(
+        tool_definition_resolver=tool_definition_resolver,
+        max_body_lines=max_tool_body_lines,
+    )
+    return project_agent_conversation_history(
+        transcript_items,
+        tool_result_projector=lambda message: agent_tool_block_to_record(
+            tool_projector.project_tool_result_message(message)
+        ),
+    )
+
+
+async def load_agent_session_history_records(
+    session_file: str | Path,
+    *,
+    load_session: Callable[[Path], Awaitable[object]],
+    tool_definition_resolver: ToolDefinitionResolver | None = None,
+) -> tuple[DisplayRecord, ...]:
+    """Load a Product transcript session and project its active Agent branch."""
+
+    session = await load_session(Path(session_file).expanduser().resolve())
+    get_branch = getattr(session, "get_branch", None)
+    if not callable(get_branch):
+        raise TypeError("loaded Agent transcript session must expose get_branch()")
+    return agent_session_history_records(
+        get_branch(),
+        tool_definition_resolver=tool_definition_resolver,
+    )
+
+
 def build_agent_plain_conversation_projection(
     renderer: PlainConversationProjectionPort,
     tool_definition_resolver: ToolDefinitionResolver | None = None,
@@ -182,6 +268,333 @@ def build_agent_plain_conversation_projection(
         rendered_tool_results=rendered_tool_results,
         rendered_assistant_errors=rendered_assistant_errors,
         last_error_message=last_error_message,
+    )
+
+
+def build_agent_plain_event_projection() -> PlainEventProjection:
+    """Bind the standard Agent JSON views to the shared plain host."""
+
+    return PlainEventProjection(
+        supported_views=SUPPORTED_JSON_EVENT_VIEWS,
+        normalize_select=normalize_event_select,
+        project_session_event=project_session_event,
+        should_emit_projected_event=should_emit_projected_event,
+        project_runtime_event_to_json_views=project_runtime_event_to_json_views,
+        should_emit_runtime_event_view=should_emit_runtime_event_view,
+    )
+
+
+class AgentPlainHost(PlainHost):
+    """Standard Agent event profile over the shared plain conversation host."""
+
+    def __init__(
+        self,
+        *,
+        runtime: object,
+        session: object,
+        stdout: TextIO,
+        stderr: TextIO | None = None,
+        output_mode: Literal["text", "json"] = "text",
+        event_view: str = "full",
+        event_select: Sequence[str] | str | None = None,
+        render_tool_events: bool = False,
+        work_event_log: object | None = None,
+        work_port: PlainWorkPort | None = None,
+        method_id: str | None = None,
+        plan_id: str | None = None,
+        step_id: str | None = None,
+        step_index: int | None = None,
+        step_title: str | None = None,
+        planned_constraint: Mapping[str, object] | None = None,
+        audit_policy: Mapping[str, object] | None = None,
+        plan_facts: Mapping[str, object] | None = None,
+        step_facts: Mapping[str, object] | None = None,
+    ) -> None:
+        super().__init__(
+            runtime=runtime,
+            session=session,
+            stdout=stdout,
+            stderr=stderr,
+            output_mode=output_mode,
+            event_view=event_view,
+            event_select=event_select,
+            render_tool_events=render_tool_events,
+            work_event_log=work_event_log,
+            work_port=work_port,
+            event_projection=build_agent_plain_event_projection(),
+            method_id=method_id,
+            plan_id=plan_id,
+            step_id=step_id,
+            step_index=step_index,
+            step_title=step_title,
+            planned_constraint=planned_constraint,
+            audit_policy=audit_policy,
+            plan_facts=plan_facts,
+            step_facts=step_facts,
+        )
+
+
+async def run_agent_plain_mode(
+    *,
+    runtime: object,
+    session: object,
+    user_input: str,
+    stdout: TextIO,
+    stderr: TextIO | None = None,
+    images: list[object] | None = None,
+    follow_up_messages: Sequence[str] = (),
+    output_mode: Literal["text", "json"] = "text",
+    event_view: str = "full",
+    event_select: Sequence[str] | str | None = None,
+    render_tool_events: bool = False,
+    work_event_log: object | None = None,
+    work_port: PlainWorkPort | None = None,
+    method_id: str | None = None,
+    plan_id: str | None = None,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    step_title: str | None = None,
+    planned_constraint: Mapping[str, object] | None = None,
+    audit_policy: Mapping[str, object] | None = None,
+    plan_facts: Mapping[str, object] | None = None,
+    step_facts: Mapping[str, object] | None = None,
+    dispose: bool = True,
+) -> int:
+    """Run one standard Agent turn through the existing plain host."""
+
+    host = AgentPlainHost(
+        runtime=runtime,
+        session=session,
+        stdout=stdout,
+        stderr=stderr,
+        output_mode=output_mode,
+        event_view=event_view,
+        event_select=event_select,
+        render_tool_events=render_tool_events,
+        work_event_log=work_event_log,
+        work_port=work_port,
+        method_id=method_id,
+        plan_id=plan_id,
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
+        planned_constraint=planned_constraint,
+        audit_policy=audit_policy,
+        plan_facts=plan_facts,
+        step_facts=step_facts,
+    )
+    return await host.run_once(
+        user_input,
+        images=images,
+        follow_up_messages=follow_up_messages,
+        dispose=dispose,
+    )
+
+
+async def run_agent_plain_plan_mode(
+    *,
+    runtime: object,
+    session: object,
+    turns: Sequence[object],
+    stdout: TextIO,
+    work_event_log: object,
+    work_port: PlainWorkPort,
+    stderr: TextIO | None = None,
+    output_mode: Literal["text", "json"] = "text",
+    event_view: str = "full",
+    event_select: Sequence[str] | str | None = None,
+    render_tool_events: bool = False,
+    dispose: bool = True,
+) -> int:
+    """Run one standard Agent plan through the existing plain host."""
+
+    host = AgentPlainHost(
+        runtime=runtime,
+        session=session,
+        stdout=stdout,
+        stderr=stderr,
+        output_mode=output_mode,
+        event_view=event_view,
+        event_select=event_select,
+        render_tool_events=render_tool_events,
+        work_event_log=work_event_log,
+        work_port=work_port,
+    )
+    return await host.run_plan(turns, dispose=dispose)
+
+
+async def run_agent_mode(
+    config: ModeConfig,
+    *,
+    runtime: object,
+    stdin: TextIO,
+    stdout: TextIO,
+    stderr: TextIO | None = None,
+    session: object | None = None,
+    user_input: str | None = None,
+    images: list[object] | None = None,
+    follow_up_messages: Sequence[str] = (),
+    work_event_log: object | None = None,
+    work_port: PlainWorkPort | None = None,
+    method_id: str | None = None,
+    plan_id: str | None = None,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    step_title: str | None = None,
+    planned_constraint: Mapping[str, object] | None = None,
+    audit_policy: Mapping[str, object] | None = None,
+    plan_facts: Mapping[str, object] | None = None,
+    step_facts: Mapping[str, object] | None = None,
+    dispose: bool = True,
+) -> int:
+    """Dispatch the standard Agent RPC or plain host without Product facades."""
+
+    if config.mode == "rpc":
+        return await run_rpc_host(
+            runtime=runtime,
+            stdin=stdin,
+            stdout=stdout,
+            stderr=stderr,
+            event_view=config.event_view,
+            event_select=config.event_select,
+            render_tool_events=config.render_tool_events,
+        )
+    if session is None:
+        raise ValueError(f"{config.mode} mode requires a session")
+    if user_input is None:
+        raise ValueError("Print mode requires a user input")
+    return await run_agent_plain_mode(
+        runtime=runtime,
+        session=session,
+        user_input=user_input,
+        stdout=stdout,
+        stderr=stderr,
+        images=images,
+        follow_up_messages=follow_up_messages,
+        output_mode="text" if config.mode == "print" else config.mode,
+        event_view=config.event_view,
+        event_select=config.event_select,
+        render_tool_events=config.render_tool_events,
+        work_event_log=work_event_log,
+        work_port=work_port,
+        method_id=method_id,
+        plan_id=plan_id,
+        step_id=step_id,
+        step_index=step_index,
+        step_title=step_title,
+        planned_constraint=planned_constraint,
+        audit_policy=audit_policy,
+        plan_facts=plan_facts,
+        step_facts=step_facts,
+        dispose=dispose,
+    )
+
+
+async def run_agent_plain_prompt(
+    *,
+    runtime: object,
+    session: AgentPlainPromptSession,
+    prompts: Sequence[str],
+    renderer: AgentPlainPromptRenderer,
+    prepare: Callable[[], Awaitable[object]],
+    submit: Callable[[str, int, int], Awaitable[None]],
+    stderr: TextIO,
+    verbose: bool = False,
+    dispose: bool = True,
+) -> int:
+    """Run standard Agent prompt turns through the shared plain host."""
+
+    event_projection = build_agent_plain_conversation_projection(
+        renderer,
+        render_user_messages=False,
+    )
+
+    def resolve_failure(previous_error: str | None) -> str | None:
+        assistant_failure = last_assistant_failure_message(session)
+        if (
+            assistant_failure is None
+            and event_projection.last_error_message != previous_error
+        ):
+            return event_projection.last_error_message
+        return assistant_failure
+
+    return await run_plain_prompt_host(
+        PreparedPlainPromptRun(
+            prompts=tuple(prompts),
+            ports=PlainPromptHostPorts[str | None](
+                prepare=prepare,
+                subscribe=lambda: session.subscribe(event_projection.handle),
+                submit=submit,
+                wait_for_idle=session.wait_for_idle,
+                capture_failure_state=lambda: event_projection.last_error_message,
+                resolve_failure=resolve_failure,
+                render_user=renderer.render_user,
+                render_worked=renderer.render_worked,
+                render_error=renderer.render_error,
+                dispose=lambda: dispose_runtime_or_session(runtime, session),
+            ),
+            stderr=stderr,
+            verbose=verbose,
+            dispose=dispose,
+        )
+    )
+
+
+async def run_agent_plain_prompt_plan(
+    *,
+    runtime: object,
+    session: AgentPlainPromptSession,
+    turns: Sequence[object],
+    renderer: AgentPlainPromptRenderer,
+    prepare: Callable[[], Awaitable[object]],
+    submit_plan: Callable[
+        [
+            Sequence[object],
+            PlainPlanTurnHook[object],
+            PlainPlanTurnHook[object],
+        ],
+        Awaitable[None],
+    ],
+    turn_text: Callable[[object], str],
+    stderr: TextIO,
+    verbose: bool = False,
+    dispose: bool = True,
+) -> int:
+    """Run one Work-owned Agent prompt plan through the shared plain host."""
+
+    event_projection = build_agent_plain_conversation_projection(
+        renderer,
+        render_user_messages=False,
+    )
+
+    def resolve_failure(previous_error: str | None) -> str | None:
+        assistant_failure = last_assistant_failure_message(session)
+        if (
+            assistant_failure is None
+            and event_projection.last_error_message != previous_error
+        ):
+            return event_projection.last_error_message
+        return assistant_failure
+
+    return await run_plain_prompt_plan_host(
+        PreparedPlainPromptPlanRun(
+            turns=tuple(turns),
+            ports=PlainPromptPlanHostPorts[object, str | None](
+                prepare=prepare,
+                subscribe=lambda: session.subscribe(event_projection.handle),
+                submit_plan=submit_plan,
+                turn_text=turn_text,
+                capture_failure_state=lambda: event_projection.last_error_message,
+                resolve_failure=resolve_failure,
+                render_user=renderer.render_user,
+                render_worked=renderer.render_worked,
+                render_error=renderer.render_error,
+                dispose=lambda: dispose_runtime_or_session(runtime, session),
+            ),
+            stderr=stderr,
+            verbose=verbose,
+            dispose=dispose,
+        )
     )
 
 
@@ -308,11 +721,20 @@ def _standard_tool_title(snapshot: ToolCallSnapshot) -> str:
 
 
 __all__ = [
+    "AgentPlainHost",
     "AgentToolTranscriptProjection",
+    "AgentPlainPromptRenderer",
+    "AgentPlainPromptSession",
     "STANDARD_AGENT_HISTORY_DISPOSITIONS",
     "agent_tool_block_to_record",
     "build_agent_plain_conversation_projection",
+    "build_agent_plain_event_projection",
     "build_agent_screen_conversation_projection",
     "build_agent_tool_transcript_projection",
     "project_agent_conversation_history",
+    "run_agent_plain_prompt",
+    "run_agent_plain_prompt_plan",
+    "run_agent_plain_mode",
+    "run_agent_plain_plan_mode",
+    "run_agent_mode",
 ]

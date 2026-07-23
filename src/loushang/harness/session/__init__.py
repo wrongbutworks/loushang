@@ -6,11 +6,13 @@ contracts. Products supply their own policies and integration callbacks.
 
 from loushang.harness.session.agent_adapter import (
     AgentSessionAdapterMixin,
+    build_agent_product_session_runtime_ports,
     build_agent_session_lifecycle_hooks,
     initialize_composed_session,
     prepare_current_agent_session,
 )
 from loushang.harness.session.agent_event_router import AgentEventRouter
+from loushang.harness.session.agent_product import AgentProductSession
 from loushang.harness.session.application_input import (
     ApplicationInputDelivery,
     ApplicationInputRuntime,
@@ -25,6 +27,10 @@ from loushang.harness.session.bindings import (
 from loushang.harness.session.bootstrap import (
     AgentBootstrapRequest,
     AgentBootstrapRuntime,
+    AgentProductConstructionPorts,
+    AgentProductConstructionRequest,
+    AgentProductConstructionResult,
+    AgentProductConstructionRuntime,
     AgentSessionConstructionRequest,
     AgentSessionConstructionRuntime,
     AgentSessionServices,
@@ -68,6 +74,7 @@ from loushang.harness.session.command_controller import (
     CommandExecutionResult,
     SessionCommandController,
     SessionCommandStorePort,
+    StandardSessionCommandController,
 )
 from loushang.harness.session.command_pack import (
     STANDARD_SESSION_COMMAND_PROFILE,
@@ -134,6 +141,7 @@ from loushang.harness.session.facade import (
     SessionToolsPort,
     SessionTranscriptPort,
     SessionViewPort,
+    require_active_session_control,
 )
 from loushang.harness.session.inspection import (
     AgentInspectionPort,
@@ -257,12 +265,18 @@ from loushang.harness.session.transcript_lifecycle import (
 
 __all__ = [
     "AgentEventRouter",
+    "AgentProductSession",
     "AgentSessionAdapterMixin",
+    "build_agent_product_session_runtime_ports",
     "build_agent_session_lifecycle_hooks",
     "prepare_current_agent_session",
     "initialize_composed_session",
     "AgentBootstrapRequest",
     "AgentBootstrapRuntime",
+    "AgentProductConstructionPorts",
+    "AgentProductConstructionRequest",
+    "AgentProductConstructionResult",
+    "AgentProductConstructionRuntime",
     "AgentSessionConstructionRequest",
     "AgentSessionConstructionRuntime",
     "AgentSessionServices",
@@ -301,6 +315,7 @@ __all__ = [
     "split_model_thinking_pattern",
     "CommandRuntimeSource",
     "SessionCommandController",
+    "StandardSessionCommandController",
     "CommandExecutionResult",
     "SessionCommandStorePort",
     "BuiltinCommandExecutor",
@@ -363,6 +378,7 @@ __all__ = [
     "OutputCallback",
     "RuntimeEventListener",
     "SessionControlPort",
+    "require_active_session_control",
     "SessionCommandExecutionPort",
     "SessionApplicationInputPort",
     "SessionCommandExecutionRuntime",

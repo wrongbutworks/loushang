@@ -5,11 +5,12 @@ from __future__ import annotations
 import inspect
 import time
 import traceback
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Generic, TextIO, TypeVar
 
 FailureStateT = TypeVar("FailureStateT")
+TurnT = TypeVar("TurnT")
 Cleanup = Callable[[], None]
 
 
@@ -49,6 +50,48 @@ class PreparedPlainPromptRun(Generic[FailureStateT]):
     now: Callable[[], float] = time.monotonic
 
 
+PlainPlanTurnHook = Callable[[TurnT, int, int], Awaitable[None] | None]
+
+
+@dataclass(frozen=True, slots=True)
+class PlainPromptPlanHostPorts(Generic[TurnT, FailureStateT]):
+    """Prepared effects for a Work-owned fixed prompt plan."""
+
+    prepare: Callable[[], Awaitable[object]]
+    subscribe: Callable[[], Cleanup]
+    submit_plan: Callable[
+        [
+            Sequence[TurnT],
+            PlainPlanTurnHook[TurnT],
+            PlainPlanTurnHook[TurnT],
+        ],
+        Awaitable[None],
+    ]
+    turn_text: Callable[[TurnT], str]
+    capture_failure_state: Callable[[], FailureStateT]
+    resolve_failure: Callable[[FailureStateT], str | None]
+    render_user: Callable[[str], None]
+    render_worked: Callable[[float], None]
+    render_error: Callable[[str], None]
+    dispose: Callable[[], Awaitable[None]]
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedPlainPromptPlanRun(Generic[TurnT, FailureStateT]):
+    """Prepared fixed plan and product ports for one terminal run."""
+
+    turns: tuple[TurnT, ...]
+    ports: PlainPromptPlanHostPorts[TurnT, FailureStateT]
+    stderr: TextIO
+    verbose: bool = False
+    dispose: bool = True
+    now: Callable[[], float] = time.monotonic
+
+
+class PlainPromptTurnFailure(RuntimeError):
+    """Signal an already-rendered assistant failure from a plan hook."""
+
+
 async def run_plain_prompt_host(
     run: PreparedPlainPromptRun[FailureStateT],
 ) -> int:
@@ -84,6 +127,51 @@ async def run_plain_prompt_host(
                 await run.ports.dispose()
             except Exception as error:
                 _present_exception(run, error)
+                exit_code = 1
+    return exit_code
+
+
+async def run_plain_prompt_plan_host(
+    run: PreparedPlainPromptPlanRun[TurnT, FailureStateT],
+) -> int:
+    """Run one Work-owned fixed plan through the plain prompt lifecycle."""
+
+    started_at = 0.0
+    failure_state: list[FailureStateT] = []
+
+    async def before_turn(turn: TurnT, turn_index: int, turn_count: int) -> None:
+        del turn_index, turn_count
+        nonlocal started_at
+        started_at = run.now()
+        failure_state[:] = [run.ports.capture_failure_state()]
+        run.ports.render_user(run.ports.turn_text(turn))
+
+    async def after_turn(turn: TurnT, turn_index: int, turn_count: int) -> None:
+        del turn, turn_index, turn_count
+        if not failure_state:
+            raise RuntimeError("plain prompt plan did not start the active turn")
+        if run.ports.resolve_failure(failure_state[0]) is not None:
+            raise PlainPromptTurnFailure
+        run.ports.render_worked(run.now() - started_at)
+
+    unsubscribe = _no_cleanup
+    exit_code = 0
+    try:
+        await run.ports.prepare()
+        unsubscribe = run.ports.subscribe()
+        await run.ports.submit_plan(run.turns, before_turn, after_turn)
+    except PlainPromptTurnFailure:
+        exit_code = 1
+    except Exception as error:
+        _present_plan_exception(run, error)
+        exit_code = 1
+    finally:
+        unsubscribe()
+        if run.dispose:
+            try:
+                await run.ports.dispose()
+            except Exception as error:
+                _present_plan_exception(run, error)
                 exit_code = 1
     return exit_code
 
@@ -200,6 +288,20 @@ def _present_exception(
         )
 
 
+def _present_plan_exception(
+    run: PreparedPlainPromptPlanRun[TurnT, FailureStateT],
+    error: Exception,
+) -> None:
+    run.ports.render_error(str(error) or error.__class__.__name__)
+    if run.verbose:
+        traceback.print_exception(
+            type(error),
+            error,
+            error.__traceback__,
+            file=run.stderr,
+        )
+
+
 def _safe_getattr(target: Any, name: str, default: object) -> object:
     try:
         return getattr(target, name, default)
@@ -209,10 +311,14 @@ def _safe_getattr(target: Any, name: str, default: object) -> object:
 
 __all__ = [
     "PlainPromptHostPorts",
+    "PlainPromptPlanHostPorts",
+    "PlainPromptTurnFailure",
     "PreparedPlainPromptRun",
+    "PreparedPlainPromptPlanRun",
     "dispose_runtime_or_session",
     "last_assistant_failure_message",
     "run_plain_prompt_host",
+    "run_plain_prompt_plan_host",
     "session_identity",
     "session_messages",
 ]

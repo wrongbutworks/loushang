@@ -54,7 +54,7 @@ def _agent_context():
 
 def test_hook_dispatcher_pipelines_tool_call_decisions() -> None:
     from loushang.agent.types import BeforeToolCallContext
-    from loushang.coding.extensions import LoadedExtension, ToolCallDecision
+    from loushang.harness.extensions.agent import LoadedExtension, ToolCallDecision
     from loushang.harness.extensions.agent.hooks import ExtensionToolHookDispatcher
 
     seen: list[tuple[str, object]] = []
@@ -113,7 +113,7 @@ def test_hook_dispatcher_pipelines_tool_call_decisions() -> None:
 
 def test_hook_dispatcher_pipelines_tool_result_decisions() -> None:
     from loushang.agent.types import AfterToolCallContext, AgentToolResult
-    from loushang.coding.extensions import LoadedExtension, ToolResultDecision
+    from loushang.harness.extensions.agent import LoadedExtension, ToolResultDecision
     from loushang.harness.extensions.agent.hooks import ExtensionToolHookDispatcher
 
     seen: list[tuple[object, object]] = []
@@ -184,7 +184,7 @@ def test_hook_dispatcher_pipelines_tool_result_decisions() -> None:
 
 def test_hook_dispatcher_pipelines_explicit_null_tool_result_details() -> None:
     from loushang.agent.types import AfterToolCallContext, AgentToolResult
-    from loushang.coding.extensions import LoadedExtension, ToolResultDecision
+    from loushang.harness.extensions.agent import LoadedExtension, ToolResultDecision
     from loushang.harness.extensions.agent.hooks import ExtensionToolHookDispatcher
 
     seen: list[tuple[object, object]] = []
@@ -249,7 +249,7 @@ def test_hook_dispatcher_pipelines_explicit_null_tool_result_details() -> None:
 
 def test_hook_dispatcher_records_tool_hook_errors_and_continues() -> None:
     from loushang.agent.types import BeforeToolCallContext
-    from loushang.coding.extensions import LoadedExtension, ToolCallDecision
+    from loushang.harness.extensions.agent import LoadedExtension, ToolCallDecision
     from loushang.harness.extensions.agent.hooks import ExtensionToolHookDispatcher
 
     runtime_errors: list[tuple[str, str, str]] = []

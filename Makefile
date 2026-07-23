@@ -20,6 +20,8 @@ AI_OFFLINE_ENV := env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_
 HARNESSTUI_SHARED_SOURCES := \
 	src/loushang/harness/commands \
 	src/loushang/harness/host/types.py \
+	src/loushang/harness/session/command_controller.py \
+	src/loushang/harness/session/footer.py \
 	src/loushang/harness/workspace/git.py \
 	src/loushang/tui/clipboard.py \
 	src/loushang/tui/clipboard_image.py \
@@ -32,8 +34,6 @@ HARNESSTUI_SHARED_SOURCES := \
 	src/loushang/harnesstui
 HARNESSTUI_CODING_ADAPTERS := \
 	src/loushang/coding/platform/__init__.py \
-	src/loushang/coding/platform/footer_data_provider.py \
-	src/loushang/coding/session/command_controller.py \
 	src/loushang/coding/ui
 HARNESSTUI_TEST_SUPPORT := \
 	tests/coding/tui_support
@@ -45,7 +45,6 @@ CODING_TUI_PRODUCT_SOURCES := \
 	src/loushang/coding/event/presentation_policy.py \
 	src/loushang/coding/policy/tui.py \
 	src/loushang/coding/interaction/settings_profile.py \
-	src/loushang/coding/presentation/resume.py \
 	src/loushang/coding/presentation/tui
 HARNESSTUI_TEST_PATHS := \
 	tests/harness/commands/test_catalog.py \
@@ -61,7 +60,7 @@ HARNESSTUI_TEST_PATHS := \
 	tests/tui/test_transcript_region.py \
 	tests/architecture/test_coding_wave_a_budget.py \
 	tests/architecture/test_import_boundaries.py \
-	tests/coding/test_footer_data_provider.py \
+	tests/harness/session/test_footer.py \
 	tests/coding/test_platform_text_utilities.py \
 	tests/coding/test_platform_utils.py \
 	tests/coding/test_prompt_command.py \

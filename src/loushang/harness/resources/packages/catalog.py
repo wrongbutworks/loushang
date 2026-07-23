@@ -299,6 +299,34 @@ def package_catalog_sources(
     )
 
 
+def collect_package_catalog(
+    *,
+    package_roots: tuple[str, ...],
+    plugin_sources: tuple[str, ...],
+    disabled_plugins: tuple[str, ...],
+    cwd: Path,
+    package_sources: tuple[PackageSourceConfig, ...] = (),
+    settings_manager: object | None = None,
+    catalog_path: Path | None = None,
+    materializer: PackageMaterializer | None = None,
+    summary_provider: PackageSummaryProvider | None = None,
+) -> tuple[PackageCatalogEntry, ...]:
+    """Collect a package catalog with Product resource semantics injected."""
+
+    return PackageCatalogBuilder(summary_provider=summary_provider).collect(
+        sources=package_catalog_sources(
+            settings_manager,
+            package_roots=package_roots,
+            plugin_sources=plugin_sources,
+            package_sources=package_sources,
+        ),
+        disabled_plugins=disabled_plugins,
+        cwd=cwd,
+        catalog_path=catalog_path,
+        materializer=materializer,
+    )
+
+
 def summarize_package_resources(
     package_root: Path,
     cwd: Path,

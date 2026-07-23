@@ -882,7 +882,7 @@ def _diagnostics_summary(records: list[DiagnosticRecord]) -> DiagnosticSummary:
 
 
 def test_rpc_mode_runs_prompt_command_and_streams_events() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(
         session_id="session-a",
@@ -920,7 +920,7 @@ def test_rpc_mode_runs_prompt_command_and_streams_events() -> None:
 def test_rpc_mode_projects_stream_event_shape_and_tool_correlation() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
@@ -955,7 +955,7 @@ def test_rpc_mode_projects_stream_event_shape_and_tool_correlation() -> None:
 
 
 def test_rpc_mode_prefers_common_runtime_event_stream() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime_listeners = []
@@ -997,7 +997,7 @@ def test_rpc_mode_prefers_common_runtime_event_stream() -> None:
 def test_rpc_mode_can_include_rendered_tool_event_payloads() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
     from loushang.harness.tools.workspace import ToolDefinition
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
@@ -1083,7 +1083,7 @@ def test_rpc_mode_can_include_rendered_tool_event_payloads() -> None:
 
 
 def test_rpc_mode_get_state_and_messages_serialize_current_session() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     assistant = _assistant_message("ready")
     session = FakeSession(
@@ -1179,7 +1179,7 @@ def test_rpc_mode_get_state_and_messages_serialize_current_session() -> None:
 
 
 def test_rpc_mode_list_sessions_uses_runtime_summaries() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(
@@ -1238,7 +1238,7 @@ def test_rpc_mode_list_sessions_uses_runtime_summaries() -> None:
 
 
 def test_rpc_mode_list_sessions_supports_query_filters() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(
@@ -1312,7 +1312,7 @@ def test_rpc_mode_list_sessions_supports_query_filters() -> None:
 
 
 def test_rpc_mode_list_sessions_supports_all_sessions() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(
@@ -1362,7 +1362,7 @@ def test_rpc_mode_list_sessions_supports_all_sessions() -> None:
 
 
 def test_rpc_mode_list_sessions_can_use_indexed_summaries() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(
@@ -1412,7 +1412,7 @@ def test_rpc_mode_list_sessions_can_use_indexed_summaries() -> None:
 
 
 def test_rpc_mode_list_sessions_refresh_index_uses_indexed_all_session_query() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
@@ -1444,7 +1444,7 @@ def test_rpc_mode_list_sessions_refresh_index_uses_indexed_all_session_query() -
 
 
 def test_rpc_mode_list_sessions_rejects_invalid_limit() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
@@ -1470,7 +1470,7 @@ def test_rpc_mode_list_sessions_rejects_invalid_limit() -> None:
 
 
 def test_rpc_mode_get_state_omits_optional_fields_when_unset() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session.session_file = None
@@ -1492,7 +1492,7 @@ def test_rpc_mode_get_state_omits_optional_fields_when_unset() -> None:
 
 
 def test_rpc_mode_get_state_fills_stable_defaults_for_partial_state() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     class PartialStateSession(FakeSession):
         def __init__(self) -> None:
@@ -1530,7 +1530,7 @@ def test_rpc_mode_get_state_fills_stable_defaults_for_partial_state() -> None:
 
 
 def test_rpc_mode_get_state_tolerates_invalid_state_attributes() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     class _Unprintable:
         def __init__(self, label: str) -> None:
@@ -1609,7 +1609,7 @@ def test_rpc_mode_get_state_tolerates_invalid_state_attributes() -> None:
 
 
 def test_rpc_mode_get_state_tolerates_broken_model_selection() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     class BrokenSelectionSession(FakeSession):
         def get_state(self):
@@ -1633,7 +1633,7 @@ def test_rpc_mode_get_state_tolerates_broken_model_selection() -> None:
 
 
 def test_rpc_mode_get_state_tolerates_broken_model_projection() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     class BrokenModel:
         @property
@@ -1681,7 +1681,7 @@ def test_rpc_mode_get_state_tolerates_broken_model_projection() -> None:
 
 
 def test_rpc_mode_get_state_model_uses_id_as_name_and_omits_unknown_cost() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session.model_registry = FakeModelRegistry(
@@ -1733,7 +1733,7 @@ def test_rpc_mode_get_state_model_uses_id_as_name_and_omits_unknown_cost() -> No
 
 
 def test_rpc_mode_get_state_model_omits_partial_unknown_cost() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session.model_registry = FakeModelRegistry(
@@ -1773,7 +1773,7 @@ def test_rpc_mode_get_state_model_omits_partial_unknown_cost() -> None:
 
 @pytest.mark.parametrize("value", [-1.0, float("nan"), float("inf")])
 def test_rpc_mode_model_cost_omits_invalid_numeric_values(value: float) -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     mode = RpcMode(runtime=FakeRuntime(session), stdin=StringIO(), stdout=StringIO())
@@ -1800,7 +1800,7 @@ def test_rpc_mode_model_cost_omits_invalid_numeric_values(value: float) -> None:
 def test_rpc_mode_rebinds_runtime_sessions(
     command: str, payload: dict[str, object], runtime_attr: str
 ) -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     current = FakeSession(session_id="session-a", cwd="/tmp/project-a")
     next_session = FakeSession(
@@ -1849,7 +1849,7 @@ def test_rpc_mode_rebinds_runtime_sessions(
 
 
 def test_rpc_mode_switch_session_accepts_session_path_alias() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     current = FakeSession(session_id="session-a", cwd="/tmp/project-a")
     next_session = FakeSession(session_id="session-b", cwd="/tmp/project-b")
@@ -1874,7 +1874,7 @@ def test_rpc_mode_switch_session_accepts_session_path_alias() -> None:
 
 
 def test_rpc_mode_fork_response_includes_selected_user_text() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     current = FakeSession(session_id="session-a", cwd="/tmp/project-a")
     current.session_manager.set_entry(
@@ -1903,7 +1903,7 @@ def test_rpc_mode_fork_response_includes_selected_user_text() -> None:
 
 
 def test_rpc_mode_fork_accepts_at_position() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     current = FakeSession(session_id="session-a", cwd="/tmp/project-a")
     current.session_manager.set_entry(
@@ -1949,7 +1949,7 @@ def test_rpc_mode_lifecycle_commands_do_not_wait_for_active_prompt(
     payload: dict[str, object],
     runtime_attr: str,
 ) -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     current = FakeSession(session_id="session-a", cwd="/tmp/project-a")
     current._prompt_started = asyncio.Event()
@@ -1992,7 +1992,7 @@ def test_rpc_mode_lifecycle_commands_do_not_wait_for_active_prompt(
 
 
 def test_rpc_mode_compact_command_does_not_wait_for_active_prompt() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session._prompt_started = asyncio.Event()
@@ -2022,7 +2022,7 @@ def test_rpc_mode_compact_command_does_not_wait_for_active_prompt() -> None:
 
 
 def test_rpc_mode_prompt_streaming_behavior_uses_prompt_pipeline_while_active() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     image = {"type": "image", "data": "abc123", "mimeType": "image/png"}
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
@@ -2067,7 +2067,7 @@ def test_rpc_mode_prompt_streaming_behavior_uses_prompt_pipeline_while_active() 
 
 
 def test_rpc_mode_prompt_returns_after_preflight_before_prompt_finishes() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session._prompt_started = asyncio.Event()
@@ -2095,7 +2095,7 @@ def test_rpc_mode_prompt_returns_after_preflight_before_prompt_finishes() -> Non
 
 
 def test_rpc_mode_applies_control_commands_to_active_session() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session.model_registry = FakeModelRegistry(
@@ -2196,7 +2196,7 @@ def test_rpc_mode_applies_control_commands_to_active_session() -> None:
 
 
 def test_rpc_mode_set_model_rejects_models_outside_available_list() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session.model_registry = FakeModelRegistry(
@@ -2236,7 +2236,7 @@ def test_rpc_mode_set_model_rejects_models_outside_available_list() -> None:
 
 
 def test_rpc_mode_passes_images_to_steer_and_follow_up_commands() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     image = {"type": "image", "data": "abc123", "mimeType": "image/png"}
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
@@ -2282,7 +2282,7 @@ def test_rpc_mode_passes_images_to_steer_and_follow_up_commands() -> None:
 
 
 def test_rpc_mode_supports_thinking_stats_retry_compact_and_export_commands() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(
         session_id="session-a", session_name="Alpha", cwd="/tmp/project"
@@ -2376,7 +2376,7 @@ def test_rpc_mode_supports_thinking_stats_retry_compact_and_export_commands() ->
 
 
 def test_rpc_mode_passes_custom_instructions_to_compact_command() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
@@ -2415,7 +2415,7 @@ def test_rpc_mode_passes_custom_instructions_to_compact_command() -> None:
 
 
 def test_rpc_mode_supports_queue_model_name_and_command_queries() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     assistant = _assistant_message("latest answer")
     session = FakeSession(
@@ -2632,7 +2632,7 @@ def test_rpc_mode_supports_queue_model_name_and_command_queries() -> None:
 
 
 def test_rpc_mode_set_session_name_trims_and_rejects_blank_names() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
@@ -2675,7 +2675,7 @@ def test_rpc_mode_set_session_name_trims_and_rejects_blank_names() -> None:
 
 
 def test_rpc_mode_get_commands_includes_extension_prompt_and_skill_entries() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session.command_entries = [
@@ -2761,7 +2761,7 @@ def test_rpc_mode_get_commands_includes_extension_prompt_and_skill_entries() -> 
 
 
 def test_rpc_mode_get_diagnostics_and_last_error_report() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     warning = DiagnosticRecord(
         type="warning",
@@ -2845,7 +2845,7 @@ def test_rpc_mode_get_diagnostics_and_last_error_report() -> None:
 
 
 def test_rpc_mode_get_packages_projects_remote_lifecycle_state() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session.packages = [
@@ -2890,7 +2890,7 @@ def test_rpc_mode_get_packages_projects_remote_lifecycle_state() -> None:
 
 
 def test_rpc_mode_materialize_package_uses_runtime_facade() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     source = "https://packages.example.invalid/review-pack.git"
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
@@ -2930,7 +2930,7 @@ def test_rpc_mode_materialize_package_uses_runtime_facade() -> None:
 
 
 def test_rpc_mode_update_package_uses_runtime_facade() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     source = "https://packages.example.invalid/review-pack.git"
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
@@ -2967,7 +2967,7 @@ def test_rpc_mode_update_package_uses_runtime_facade() -> None:
 
 
 def test_rpc_mode_remove_package_uses_runtime_facade() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     source = "https://packages.example.invalid/review-pack.git"
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
@@ -3004,7 +3004,7 @@ def test_rpc_mode_remove_package_uses_runtime_facade() -> None:
 
 
 def test_rpc_mode_package_lifecycle_failed_record_returns_error() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     source = "https://packages.example.invalid/review-pack.git"
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
@@ -3054,7 +3054,7 @@ def test_rpc_mode_package_lifecycle_failed_record_returns_error() -> None:
 
 
 def test_rpc_mode_high_level_package_manager_commands_use_runtime_facade() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     source = "https://packages.example.invalid/review-pack.git"
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
@@ -3099,7 +3099,7 @@ def test_rpc_mode_high_level_package_manager_commands_use_runtime_facade() -> No
 
 
 def test_rpc_mode_get_diagnostics_supports_query_filters() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     provider_error = DiagnosticRecord(
         type="error",
@@ -3169,7 +3169,7 @@ def test_rpc_mode_get_diagnostics_supports_query_filters() -> None:
 
 
 def test_rpc_mode_get_session_diagnostics_uses_session_scoped_runtime_query() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     current_session_error = DiagnosticRecord(
         type="error",
@@ -3237,7 +3237,7 @@ def test_rpc_mode_get_session_diagnostics_uses_session_scoped_runtime_query() ->
 
 
 def test_rpc_mode_get_diagnostics_summary_projects_counts() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     provider_error = DiagnosticRecord(
         type="error",
@@ -3307,7 +3307,7 @@ def test_rpc_mode_get_diagnostics_summary_projects_counts() -> None:
 
 
 def test_rpc_mode_get_diagnostics_rejects_invalid_limit() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
@@ -3335,7 +3335,7 @@ def test_rpc_mode_get_diagnostics_rejects_invalid_limit() -> None:
 
 
 def test_rpc_mode_get_commands_prefers_session_command_descriptors() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class DescriptorSession(FakeSession):
         def list_commands(self):
@@ -3390,7 +3390,7 @@ def test_rpc_mode_get_commands_prefers_session_command_descriptors() -> None:
 
 
 def test_rpc_mode_get_commands_projects_session_command_descriptors() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session.command_entries = [
@@ -3501,7 +3501,7 @@ def test_rpc_mode_get_commands_projects_session_command_descriptors() -> None:
 def test_rpc_mode_get_command_completions_returns_command_and_argument_suggestions() -> (
     None
 ):
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class CompletionSession(FakeSession):
         async def get_command_argument_completions(
@@ -3566,7 +3566,7 @@ def test_rpc_mode_get_command_completions_returns_command_and_argument_suggestio
 
 
 def test_rpc_mode_query_command_errors_stay_in_response_envelopes() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class BrokenQuerySession(FakeSession):
         def get_available_models(self) -> list[ModelSelection]:
@@ -3614,7 +3614,7 @@ def test_rpc_mode_query_command_errors_stay_in_response_envelopes() -> None:
 
 
 def test_rpc_mode_get_available_models_returns_error_on_invalid_payload() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class InvalidModelSession(FakeSession):
         def get_available_models(self) -> object:
@@ -3646,7 +3646,7 @@ def test_rpc_mode_get_available_models_returns_error_on_invalid_payload() -> Non
 
 
 def test_rpc_mode_get_available_models_skips_invalid_model_entries() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class BrokenModelSession(FakeSession):
         def get_available_models(self):
@@ -3725,7 +3725,7 @@ def test_rpc_mode_get_available_models_skips_invalid_model_entries() -> None:
 
 
 def test_rpc_mode_get_commands_returns_error_on_invalid_payload() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class InvalidCommandSession(FakeSession):
         def list_commands(self) -> object:
@@ -3755,7 +3755,7 @@ def test_rpc_mode_get_commands_returns_error_on_invalid_payload() -> None:
 
 
 def test_rpc_mode_get_commands_skips_entries_without_valid_names() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session.command_entries = [
@@ -3816,7 +3816,7 @@ def test_rpc_mode_get_commands_skips_entries_without_valid_names() -> None:
 
 
 def test_rpc_mode_get_messages_skips_invalid_entries_when_serialization_fails() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class BrokenMessageSession(FakeSession):
         def get_session_context(self):
@@ -3850,7 +3850,7 @@ def test_rpc_mode_get_messages_skips_invalid_entries_when_serialization_fails() 
 
 
 def test_rpc_mode_get_messages_returns_error_when_session_context_is_invalid() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class BrokenMessageGetterSession(FakeSession):
         def get_session_context(
@@ -3884,7 +3884,7 @@ def test_rpc_mode_get_messages_returns_error_when_session_context_is_invalid() -
 
 
 def test_rpc_mode_get_state_returns_error_when_state_serialization_fails() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class BrokenStateSession(FakeSession):
         def get_state(self):  # type: ignore[override]
@@ -3914,7 +3914,7 @@ def test_rpc_mode_get_state_returns_error_when_state_serialization_fails() -> No
 
 
 def test_rpc_mode_get_state_uses_standard_session_state() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
@@ -3952,7 +3952,7 @@ def test_rpc_mode_get_state_uses_standard_session_state() -> None:
 
 
 def test_rpc_mode_get_session_stats_handles_query_errors() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class BrokenStatsSession(FakeSession):
         def get_session_stats(self) -> object:
@@ -3982,7 +3982,7 @@ def test_rpc_mode_get_session_stats_handles_query_errors() -> None:
 
 
 def test_rpc_mode_get_session_stats_prefers_public_snake_case_payload() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class SnakeCaseStatsSession(FakeSession):
         def get_session_stats(self) -> dict[str, object]:
@@ -4012,7 +4012,7 @@ def test_rpc_mode_get_session_stats_prefers_public_snake_case_payload() -> None:
 
 
 def test_rpc_mode_get_session_stats_returns_error_when_payload_invalid() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class InvalidStatsSession(FakeSession):
         def get_session_stats(self) -> object:
@@ -4042,7 +4042,7 @@ def test_rpc_mode_get_session_stats_returns_error_when_payload_invalid() -> None
 
 
 def test_rpc_mode_set_model_reports_model_registry_errors() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class BrokenModelSession(FakeSession):
         def get_available_models(self):
@@ -4077,7 +4077,7 @@ def test_rpc_mode_set_model_reports_model_registry_errors() -> None:
 
 
 def test_rpc_mode_set_model_reports_invalid_model_registry_response_type() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class InvalidTypeSession(FakeSession):
         def get_available_models(self):
@@ -4113,7 +4113,7 @@ def test_rpc_mode_set_model_reports_invalid_model_registry_response_type() -> No
 
 
 def test_rpc_mode_set_active_tools_reports_setter_errors() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class BrokenToolsSession(FakeSession):
         async def set_active_tools(self, tool_names: list[str]) -> None:
@@ -4146,7 +4146,7 @@ def test_rpc_mode_set_active_tools_reports_setter_errors() -> None:
 
 
 def test_rpc_mode_compact_reports_execution_errors() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class BrokenCompactSession(FakeSession):
         async def compact(self, custom_instructions: str | None = None):
@@ -4177,7 +4177,7 @@ def test_rpc_mode_compact_reports_execution_errors() -> None:
 
 
 def test_rpc_mode_get_fork_messages_returns_error_when_payload_invalid() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class InvalidForkMessagesSession(FakeSession):
         def get_user_messages_for_forking(self) -> object:
@@ -4209,7 +4209,7 @@ def test_rpc_mode_get_fork_messages_returns_error_when_payload_invalid() -> None
 
 
 def test_rpc_mode_get_last_assistant_text_handles_extraction_errors() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class BrokenLastAssistantTextSession(FakeSession):
         def get_last_assistant_text(self) -> str | None:
@@ -4241,7 +4241,7 @@ def test_rpc_mode_get_last_assistant_text_handles_extraction_errors() -> None:
 
 
 def test_rpc_mode_get_last_assistant_text_uses_standard_session_method() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class StandardLastAssistantSession(FakeSession):
         def get_last_assistant_text(self):
@@ -4265,7 +4265,7 @@ def test_rpc_mode_get_last_assistant_text_uses_standard_session_method() -> None
 
 
 def test_rpc_mode_supports_cycle_thinking_and_auto_compaction_commands() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session.set_thinking_level("low")
@@ -4314,7 +4314,7 @@ def test_rpc_mode_supports_cycle_thinking_and_auto_compaction_commands() -> None
 
 
 def test_rpc_mode_supports_cycle_model_command() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session.model_registry = FakeModelRegistry(
@@ -4415,7 +4415,7 @@ def test_rpc_mode_supports_cycle_model_command() -> None:
 
 
 def test_rpc_mode_cycle_model_returns_explicit_null_data_when_no_models_exist() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
@@ -4441,7 +4441,7 @@ def test_rpc_mode_cycle_model_returns_explicit_null_data_when_no_models_exist() 
 
 
 def test_rpc_mode_cycle_model_reports_invalid_model_registry_response_type() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class InvalidTypeSession(FakeSession):
         def get_available_models(self):
@@ -4471,7 +4471,7 @@ def test_rpc_mode_cycle_model_reports_invalid_model_registry_response_type() -> 
 
 
 def test_rpc_mode_supports_bash_command() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
@@ -4514,7 +4514,7 @@ def test_rpc_mode_supports_bash_command() -> None:
 
 
 def test_rpc_mode_allows_aborting_active_bash_command() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     session._bash_started = asyncio.Event()
@@ -4562,7 +4562,7 @@ def test_rpc_mode_allows_aborting_active_bash_command() -> None:
 
 
 def test_rpc_mode_supports_clone_and_get_fork_messages() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     current = FakeSession(session_id="session-a", cwd="/tmp/project-a")
     current.user_messages_for_forking = [
@@ -4614,7 +4614,7 @@ def test_rpc_mode_supports_clone_and_get_fork_messages() -> None:
 
 
 def test_rpc_mode_get_fork_messages_uses_standard_session_method() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class StandardForkSession(FakeSession):
         def get_user_messages_for_forking(self):
@@ -4640,7 +4640,7 @@ def test_rpc_mode_get_fork_messages_uses_standard_session_method() -> None:
 
 
 def test_rpc_mode_reports_invalid_json_and_unsupported_commands() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     runtime = FakeRuntime(FakeSession(session_id="session-a", cwd="/tmp/project"))
     stdin = StringIO(
@@ -4670,7 +4670,7 @@ def test_rpc_mode_reports_invalid_json_and_unsupported_commands() -> None:
 
 
 def test_rpc_mode_rejects_non_finite_input_numbers() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
@@ -4730,7 +4730,7 @@ def test_rpc_mode_rejects_non_finite_input_numbers() -> None:
 
 
 def test_rpc_mode_jsonl_framing_preserves_unicode_line_separators() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
@@ -4762,7 +4762,7 @@ def test_rpc_mode_jsonl_framing_preserves_unicode_line_separators() -> None:
 
 
 def test_rpc_mode_jsonl_framing_accepts_crlf_and_final_line_without_lf() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     session = FakeSession(session_id="session-a", cwd="/tmp/project")
     runtime = FakeRuntime(session)
@@ -4797,7 +4797,7 @@ def test_rpc_mode_jsonl_framing_accepts_crlf_and_final_line_without_lf() -> None
 
 
 def test_rpc_mode_ignores_unmatched_extension_ui_responses() -> None:
-    from loushang.coding.mode import run_rpc_mode
+    from loushang.harness.host.rpc import run_rpc_host as run_rpc_mode
 
     runtime = FakeRuntime(FakeSession(session_id="session-a", cwd="/tmp/project"))
     stdin = StringIO(
@@ -4826,7 +4826,7 @@ def test_rpc_mode_ignores_unmatched_extension_ui_responses() -> None:
 
 
 def test_rpc_mode_extension_ui_context_emits_side_effect_requests() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     runtime = FakeRuntime(FakeSession(session_id="session-a", cwd="/tmp/project"))
     stdout = StringIO()
@@ -4860,7 +4860,7 @@ def test_rpc_mode_extension_ui_context_emits_side_effect_requests() -> None:
 
 
 def test_rpc_mode_exposes_extension_ui_state_snapshot() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     runtime = FakeRuntime(FakeSession(session_id="session-a", cwd="/tmp/project"))
     stdout = StringIO()
@@ -4890,7 +4890,7 @@ def test_rpc_mode_exposes_extension_ui_state_snapshot() -> None:
 
 
 def test_rpc_mode_extension_ui_context_resolves_dialog_responses() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     runtime = FakeRuntime(FakeSession(session_id="session-a", cwd="/tmp/project"))
     stdout = StringIO()
@@ -4919,7 +4919,7 @@ def test_rpc_mode_extension_ui_context_resolves_dialog_responses() -> None:
 def test_rpc_mode_extension_ui_context_resolves_confirm_input_and_editor_responses() -> (
     None
 ):
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     runtime = FakeRuntime(FakeSession(session_id="session-a", cwd="/tmp/project"))
     stdout = StringIO()
@@ -4981,10 +4981,10 @@ def test_rpc_mode_extension_ui_context_resolves_confirm_input_and_editor_respons
 
 def test_rpc_mode_binds_extension_context_ui_methods_to_rpc_requests(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     extension_runner = ExtensionRunner(
         [
@@ -5035,10 +5035,10 @@ def test_rpc_mode_extension_context_excludes_pi_style_camel_case_ui_methods(
     tmp_path,
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     extension_runner = ExtensionRunner(
         [LoadedExtension(name="rpc-ui", source_path=Path("/tmp/rpc_ui.py"))]
@@ -5075,10 +5075,10 @@ def test_rpc_mode_extension_context_excludes_pi_style_camel_case_ui_methods(
 
 def test_rpc_mode_extension_context_ui_namespace_is_snake_case_only(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     extension_runner = ExtensionRunner(
         [LoadedExtension(name="rpc-ui", source_path=Path("/tmp/rpc_ui.py"))]
@@ -5127,10 +5127,10 @@ def test_rpc_mode_extension_context_excludes_pi_style_headless_ui_methods(
     tmp_path,
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     extension_runner = ExtensionRunner(
         [LoadedExtension(name="rpc-ui", source_path=Path("/tmp/rpc_ui.py"))]
@@ -5181,7 +5181,7 @@ def test_rpc_mode_extension_context_excludes_pi_style_headless_ui_methods(
 
 
 def test_rpc_mode_extension_ui_dialog_timeout_returns_default_values() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     runtime = FakeRuntime(FakeSession(session_id="session-a", cwd="/tmp/project"))
     stdout = StringIO()
@@ -5212,7 +5212,7 @@ def test_rpc_mode_extension_ui_dialog_timeout_returns_default_values() -> None:
 
 
 def test_rpc_mode_extension_ui_late_response_after_timeout_is_ignored() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     runtime = FakeRuntime(FakeSession(session_id="session-a", cwd="/tmp/project"))
     stdout = StringIO()
@@ -5251,7 +5251,7 @@ def test_rpc_mode_extension_ui_late_response_after_timeout_is_ignored() -> None:
 
 
 def test_rpc_mode_extension_ui_dialog_cancelled_responses_return_defaults() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     runtime = FakeRuntime(FakeSession(session_id="session-a", cwd="/tmp/project"))
     stdout = StringIO()
@@ -5283,7 +5283,7 @@ def test_rpc_mode_extension_ui_dialog_cancelled_responses_return_defaults() -> N
 
 
 def test_rpc_mode_write_json_line_rejects_circular_payloads() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     runtime = FakeRuntime(FakeSession(session_id="session-a", cwd="/tmp/project"))
     stdout = StringIO()
@@ -5308,7 +5308,7 @@ def test_rpc_mode_write_json_line_rejects_circular_payloads() -> None:
 
 
 def test_rpc_mode_write_json_line_preserves_command_on_fallback() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class BadSlots:
         __slots__ = ()
@@ -5335,7 +5335,7 @@ def test_rpc_mode_write_json_line_preserves_command_on_fallback() -> None:
 
 
 def test_rpc_mode_write_json_line_drops_invalid_fallback_fields() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class Unsupported:
         pass
@@ -5366,7 +5366,7 @@ def test_rpc_mode_write_json_line_drops_invalid_fallback_fields() -> None:
 
 
 def test_rpc_mode_write_json_line_flushes_output() -> None:
-    from loushang.coding.mode import RpcMode
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     class FlushingStringIO(StringIO):
         def __init__(self) -> None:
@@ -5391,10 +5391,10 @@ def test_rpc_mode_write_json_line_flushes_output() -> None:
 
 def test_rpc_mode_rebinds_extension_ui_context_after_session_switch(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     def _session(session_id: str, extension_runner: ExtensionRunner) -> AgentSession:
         return AgentSession(
@@ -5455,10 +5455,10 @@ def test_rpc_mode_rebinds_extension_ui_context_after_session_switch(tmp_path) ->
 
 def test_rpc_mode_emits_extension_error_for_hook_failures(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
-    from loushang.coding.mode import RpcMode
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
+    from loushang.harness.host.rpc import RpcHost as RpcMode
 
     def _broken_hook(session, ctx):
         del session, ctx
@@ -5510,15 +5510,9 @@ def test_rpc_mode_emits_extension_error_for_hook_failures(tmp_path) -> None:
     ]
 
 
-def test_rpc_mode_is_exported_from_mode_package() -> None:
-    from loushang.coding.mode import RpcMode, run_rpc_mode
+def test_rpc_mode_is_exported_from_shared_host_package() -> None:
+    from loushang.harness.host.rpc import RpcHost as RpcMode
+    from loushang.harness.host.rpc import run_rpc_host
 
     assert RpcMode is not None
-    assert run_rpc_mode is not None
-
-
-def test_rpc_mode_is_exported_from_coding_package() -> None:
-    from loushang.coding import RpcMode, run_rpc_mode
-
-    assert RpcMode is not None
-    assert run_rpc_mode is not None
+    assert run_rpc_host is not None

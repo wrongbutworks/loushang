@@ -35,15 +35,16 @@ the identified Coding implementation and records the actual delta here.
 | removed `coding.runtime_profile` and `coding.capability_plan`; `coding.product_plan` | 404 -> 38 | existing runtime resolver/binder, Agent transcript store/profile/compaction owners, and capability composition runtime | `shared adopted` | Coding declares stable Product identities, metadata keys, and current defaults only |
 
 Coding remains responsible in this group for service factories, the Coding
-transcript store, CWD/session-file acceptance, model/provider decisions,
-extension API, prompts, resource package, final RPC schema, and output wording.
+transcript store, CWD/session-file acceptance, preferred-model decisions,
+prompts, resource package, final RPC schema, and output wording. The standard
+Agent extension API/profile is shared; provider implementations and credentials
+remain behind injected AI/Product ports.
 
 ## Extensions, Events, And Configuration
 
 | Source region | LOC | Current shared owner or adopted mechanism | Classification | Next action |
 | --- | ---: | --- | --- | --- |
-| `coding.extensions.runner` | 495 | `harness.extensions.agent.*`, `harness.extensions.session_runtime` | `product adapter` | Shrink-only adapter audit |
-| `coding.extensions.api/loader/policy` | 210 | Harness extension contracts and loader | `product adapter` | Retain Coding API and permission delta |
+| removed `coding.extensions` | 0 | `harness.extensions.agent` over the existing neutral extension loader/runtime | `shared adopted` | Standard Agent API, policy, loader, and runner profile moved without retaining a Product facade |
 | `coding.event.*` | 1,045 -> ~35 canonical facade | `harness.events.session_types`, `harness.events.session_projection`, `harness.events.runtime_views`, and `harness.events.recording_policy` own shared contracts, standard views, render enrichment, stream shaping, snake_case serialization, runtime-view selection, delivery hints, transcript-write decisions, and cancellation classification | `product adapter` | Keep only the established event facade, Product/Work mapping, and final presentation; the moved runtime-view and recording-policy modules must not grow Coding logic |
 | removed `coding.control.settings_manager` | 0 | `harness.config.agent.SettingsManager` composed over `SettingsRuntime`, `ScopedConfigRuntime`, schema codec, and JSON store | `shared adopted` | Standard Agent field codecs, accessors, and mutations moved without adding a second engine |
 | removed `coding.control.types` | 0 | `harness.config.agent.types` | `shared adopted` | Standard Agent settings records are shared; Products retain only true domain additions and overlays |

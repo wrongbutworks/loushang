@@ -23,7 +23,9 @@ from loushang.work.types import (
 if TYPE_CHECKING:
     from loushang.work.agent_projection import (
         AgentWorkFactProjectionContext,
+        create_agent_session_work_runtime,
         project_agent_event_to_work_facts,
+        project_agent_runtime_event_to_work_facts,
     )
     from loushang.work.event_log import (
         EventLogBackend,
@@ -70,6 +72,14 @@ _LAZY_EXPORTS = {
         "loushang.work.agent_projection",
         "project_agent_event_to_work_facts",
     ),
+    "project_agent_runtime_event_to_work_facts": (
+        "loushang.work.agent_projection",
+        "project_agent_runtime_event_to_work_facts",
+    ),
+    "create_agent_session_work_runtime": (
+        "loushang.work.agent_projection",
+        "create_agent_session_work_runtime",
+    ),
     "EventLogBackend": ("loushang.work.event_log", "EventLogBackend"),
     "EventLogEntry": ("loushang.work.event_log", "EventLogEntry"),
     "EventPosition": ("loushang.work.event_log", "EventPosition"),
@@ -98,6 +108,11 @@ _LAZY_EXPORTS = {
         "WorkLogInspectionError",
     ),
     "inspect_work_log": ("loushang.work.cli", "inspect_work_log"),
+    "run_work_log_inspection_operation": (
+        "loushang.work.cli",
+        "run_work_log_inspection_operation",
+    ),
+    "create_work_event_log": ("loushang.work.cli", "create_work_event_log"),
     "resolve_work_log_path": ("loushang.work.cli", "resolve_work_log_path"),
     "project_work_runs": ("loushang.work.run_projection", "project_work_runs"),
     "WorkRunReplayError": (
@@ -164,6 +179,7 @@ __all__ = [
     "EventPosition",
     "InMemoryEventLogBackend",
     "JsonlEventLogBackend",
+    "create_work_event_log",
     "WorkEventProjectionContext",
     "WorkEvent",
     "WorkEventFact",
@@ -198,9 +214,12 @@ __all__ = [
     "WorkStepStatus",
     "project_agent_event_to_work_events",
     "project_agent_event_to_work_facts",
+    "project_agent_runtime_event_to_work_facts",
+    "create_agent_session_work_runtime",
     "project_work_plan_runs",
     "project_work_runs",
     "WorkLogInspectionError",
     "inspect_work_log",
+    "run_work_log_inspection_operation",
     "resolve_work_log_path",
 ]

@@ -34,7 +34,9 @@ Harness owns:
 - an optional Agent-session adapter that observes `RuntimeEvent` when exposed,
   with a legacy product-event subscription fallback;
 - read-only file assertions relative to the Product-selected working root;
-- the `CommandRunner` protocol and command-result value.
+- the `CommandRunner` protocol and command-result value;
+- scenario discovery, text/JSON reporting, progress reporting, CLI error
+  containment, and adapter disposal over injected Product ports.
 
 Harness does not import a Product or execute an assertion command. A command
 expectation without a supplied `CommandRunner` becomes a failed check with a
@@ -45,13 +47,10 @@ cross-product default.
 
 Coding keeps:
 
-- CLI orchestration, text/JSON reporting, scenario discovery policy, and
-  Product fixture selection;
-- the Product decision to run a local shell command for legacy workflow
-  assertions;
-- its default `run_local_shell_command` adapter, including `shell=True`;
+- the Product decision to admit shell-backed command assertions;
+- its `ExecService`-backed command-runner adapter and workspace policy;
 - Product prompt semantics, model readiness checks, and session/runtime
-  creation and disposal.
+  creation.
 
 Other Products may supply an `ExecService`-backed runner, an approval-aware
 runner, a remote runner, or no command runner at all. They need not depend on
@@ -59,10 +58,11 @@ Coding to reuse the scenario engine.
 
 ## Compatibility
 
-`loushang.coding.workflow` remains an accepted compatibility namespace. Its
-schema, loader, event, assertion, fake-runtime, and runner imports re-export
-Harness-owned implementations. Its runner injects Coding's legacy local
-command-runner default; it does not duplicate execution or assertion logic.
+`loushang.coding.workflow` is a thin Product command adapter, not a
+compatibility namespace. Consumers import schema, loader, event, assertion,
+runner, report, and fake-runtime contracts directly from Harness. The Product
+adapter injects model readiness and an `ExecService` command runner; it does
+not duplicate discovery, reporting, lifecycle, execution, or assertion logic.
 
 ## Non-Goals
 
@@ -78,7 +78,7 @@ This migration does not add:
 
 - `harness.scenario` imports no Coding, Work, Method, TUI, AI, or Agent code;
 - Harness scenario command assertions require an injected `CommandRunner`;
-- Coding compatibility imports preserve schema and event object identity;
+- Coding imports canonical Harness schema and event owners directly;
 - a minimal OEM-style adapter validates that the core runner needs only the
   `ScenarioAdapter` prompt contract, without a Coding test double;
 - an Agent session that exposes `subscribe_runtime_events()` is observed via
