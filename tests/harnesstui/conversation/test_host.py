@@ -8,13 +8,23 @@ from pathlib import Path
 
 import pytest
 
+from loushang.harness.commands import (
+    CommandDef,
+    CommandEffect,
+    CommandEffectKind,
+    CommandKind,
+)
 from loushang.harnesstui.conversation.attachments import PromptImageAttachment
-from loushang.harnesstui.conversation.control import ConversationTextAction
+from loushang.harnesstui.conversation.control import (
+    ConversationRunControl,
+    ConversationTextAction,
+)
 from loushang.harnesstui.conversation.host import (
     ConversationHostDecision,
     ConversationHostPorts,
     ConversationHostProfile,
     ConversationHostRoute,
+    ConversationRoutingProfile,
     RoutedConversationActionHost,
     bind_action_host_to_screen_runner,
 )
@@ -29,6 +39,79 @@ class _Intent:
 @dataclass(frozen=True)
 class _Outcome:
     value: str
+
+
+def test_routing_profile_owns_standard_conversation_state_machine() -> None:
+    lifecycle = ConversationRunControl()
+    traces: list[tuple[str, dict[str, object]]] = []
+    command = CommandDef(
+        id="product.settings",
+        name="settings",
+        kind=CommandKind.LOCAL_UI,
+        source="product",
+    )
+    profile = ConversationRoutingProfile(
+        lifecycle=lifecycle,
+        parse_intent=lambda text: _Intent(text) if text.strip() else None,
+        is_exit=lambda intent: intent.value == "quit",
+        local_action=lambda intent: (
+            "settings" if intent.value == "settings" else None
+        ),
+        deferred_local_action=lambda intent: (
+            "debug" if intent.value == "debug" else None
+        ),
+        follow_up_text=lambda intent: (
+            "later" if intent.value == "follow" else None
+        ),
+        command_effect=lambda action, _intent: (
+            CommandEffect(CommandEffectKind.LOCAL_UI, command)
+            if action == "settings"
+            else None
+        ),
+        session_running=lambda: False,
+        trace=lambda name, **data: traces.append((name, data)),
+    ).host_profile(now=lambda: 1.0)
+
+    assert profile.parse(ConversationTextAction(" ")) is None
+    assert profile.decide(
+        _Intent("debug"),
+        ConversationTextAction("debug"),
+    ) == ConversationHostDecision(ConversationHostRoute.LOCAL, local="debug")
+    lifecycle.begin_work()
+    assert profile.decide(
+        _Intent("follow"),
+        ConversationTextAction("follow"),
+    ) == ConversationHostDecision(
+        ConversationHostRoute.FOLLOW_UP,
+        text="later",
+        source="command",
+    )
+    assert profile.decide(
+        _Intent("prompt"),
+        ConversationTextAction("prompt"),
+    ).route is ConversationHostRoute.STEER
+    assert profile.decide(
+        _Intent("settings"),
+        ConversationTextAction("settings"),
+    ) == ConversationHostDecision(
+        ConversationHostRoute.LOCAL,
+        local="settings",
+    )
+    lifecycle.mark_abort_requested()
+    assert profile.decide(
+        _Intent("prompt"),
+        ConversationTextAction("prompt"),
+    ).route is ConversationHostRoute.ABORT_SETTLING
+    assert profile.decide(
+        _Intent("quit"),
+        ConversationTextAction("quit"),
+    ).route is ConversationHostRoute.DISPATCH
+    assert [name for name, _data in traces] == [
+        "prompt.start",
+        "prompt.ignored",
+        "prompt.command",
+        "prompt.ignored",
+    ]
 
 
 def _attachment() -> PromptImageAttachment:

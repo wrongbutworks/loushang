@@ -83,16 +83,16 @@ def _adapter(
     tool_projector: object | None = None,
     **kwargs: object,
 ):
-    from loushang.coding.presentation.tui.events import (
-        CodingConversationEventAdapter,
-    )
     from loushang.coding.presentation.tui.tool_transcript import (
         build_coding_tool_transcript_projection,
     )
+    from loushang.harnesstui.conversation.projection import (
+        SessionConversationEventAdapter,
+    )
 
-    return CodingConversationEventAdapter(
+    return SessionConversationEventAdapter(
         projector=cast(Any, projector),
-        tool_projector=cast(
+        tool_projection=cast(
             Any,
             tool_projector
             if tool_projector is not None
@@ -700,13 +700,13 @@ def test_anonymous_tool_result_messages_are_not_deduplicated() -> None:
 
 @pytest.mark.tui_render_contract
 def test_delta_hot_path_preserves_identity_without_container_construction() -> None:
-    from loushang.coding.presentation.tui.events import (
-        CodingConversationEventAdapter,
-    )
     from loushang.coding.presentation.tui.tool_transcript import (
         build_coding_tool_transcript_projection,
     )
-    from loushang.harnesstui.conversation.projection import ConversationProjector
+    from loushang.harnesstui.conversation.projection import (
+        ConversationProjector,
+        SessionConversationEventAdapter,
+    )
 
     class DeltaTarget:
         delta: str | None = None
@@ -715,9 +715,9 @@ def test_delta_hot_path_preserves_identity_without_container_construction() -> N
             self.delta = delta
 
     target = DeltaTarget()
-    adapter = CodingConversationEventAdapter(
+    adapter = SessionConversationEventAdapter(
         projector=ConversationProjector(target=cast(Any, target)),
-        tool_projector=build_coding_tool_transcript_projection(),
+        tool_projection=build_coding_tool_transcript_projection(),
         require_assistant_message_for_delta=False,
     )
     delta = "identity-sensitive delta"
@@ -741,7 +741,7 @@ def test_delta_hot_path_preserves_identity_without_container_construction() -> N
         "SET_ADD",
     }
     for hot_method in (
-        CodingConversationEventAdapter._handle_message_update,
+        SessionConversationEventAdapter._handle_message_update,
         ConversationProjector.assistant_delta,
     ):
         opnames = {

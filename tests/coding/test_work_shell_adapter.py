@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+from pathlib import Path
 
-def test_work_coding_compat_module_exposes_coding_owned_entrypoint() -> None:
-    from loushang.coding.work_shell import CodingWorkShell
-    from loushang.work.coding import CodingWorkShell as CompatCodingWorkShell
 
-    assert CodingWorkShell is CompatCodingWorkShell
-    assert CodingWorkShell.__module__ == "loushang.coding.work_shell"
+def test_coding_binds_product_vocabulary_to_shared_session_work_runtime() -> None:
+    from loushang.coding.domain.work import (
+        CODING_WORK_PROFILE,
+        create_coding_work_runtime,
+    )
+    from loushang.work.session import SessionWorkRuntime
+
+    assert CODING_WORK_PROFILE.domain == "coding"
+    assert CODING_WORK_PROFILE.operation_kind == "SubmitCodingTurn"
+    assert create_coding_work_runtime.__module__ == "loushang.coding.domain.work"
+    assert SessionWorkRuntime.__module__ == "loushang.work.session"
+    assert not Path("src/loushang/coding/work_shell.py").exists()
+    assert not Path("src/loushang/work/coding.py").exists()

@@ -108,8 +108,8 @@ def test_prompt_command_renders_stable_transcript_and_worked() -> None:
 
 def test_prompt_plan_command_preserves_transcript_and_uses_one_work_run() -> None:
     from loushang.coding.prompt_command import run_prompt_plan_command
-    from loushang.coding.work_executor import SubmitCodingTurn
     from loushang.work import InMemoryEventLogBackend
+    from loushang.work.session import SessionWorkTurn
 
     class FakeRuntime:
         def __init__(self) -> None:
@@ -150,10 +150,10 @@ def test_prompt_plan_command_preserves_transcript_and_uses_one_work_run() -> Non
         session = FakeSession()
         event_log = InMemoryEventLogBackend()
         turns = (
-            SubmitCodingTurn(
+            SessionWorkTurn(
                 "inspect", plan_id="plan-1", step_id="step-1", step_index=0
             ),
-            SubmitCodingTurn(
+            SessionWorkTurn(
                 "verify", plan_id="plan-1", step_id="step-2", step_index=1
             ),
         )

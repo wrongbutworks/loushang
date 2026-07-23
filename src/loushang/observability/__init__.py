@@ -22,7 +22,13 @@ from .runtime import (
     session_log_label,
     value_from_args_or_env,
 )
-from .runtime_identity import collect_runtime_identity, format_runtime_identity_text
+from .runtime_identity import (
+    RuntimeIdentityProfile,
+    collect_profiled_runtime_identity,
+    collect_runtime_identity,
+    format_profiled_runtime_identity_text,
+    format_runtime_identity_text,
+)
 from .sinks import (
     DebugEventRecord,
     InMemoryProblemStore,
@@ -46,16 +52,19 @@ __all__ = [
     "ProblemRecord",
     "ProblemRecordReader",
     "ProblemSeverity",
+    "RuntimeIdentityProfile",
     "TraceJSONLSink",
     "capture_observability",
     "configure_debug_logging",
     "configure_observability",
     "collect_runtime_identity",
+    "collect_profiled_runtime_identity",
     "current_context",
     "disable_debug_file",
     "enable_debug_file",
     "format_problem_summary",
     "format_runtime_identity_text",
+    "format_profiled_runtime_identity_text",
     "get_log",
     "is_debug_event_enabled",
     "is_problem_log_line",

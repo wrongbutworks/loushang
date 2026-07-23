@@ -31,21 +31,21 @@ remediation text, or display policy.
 
 ## Compatibility
 
-`ResourceDiagnostic` is imported from its Harness owner. The remaining Coding
-source-information adapters are product projections, not resource-type shims:
+`ResourceDiagnostic` and source records are imported from their Harness owners:
 
 ```python
-from loushang.coding.source_info import SourceInfo
-from loushang.coding.extensions import SourceInfo
+from loushang.harness.resources.source import SourceInfo
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 ```
 
 `ResourceDiagnostic` keeps its Harness `__module__`; deleted Coding resource
 facades do not preserve an alternate import path.
 
-`loushang.coding.source_info` remains a product adapter. It keeps string path
-projection for command/RPC surfaces, descriptor-to-source mapping, executable
-installation identity, Git discovery, and user-facing formatting.
+The former `loushang.coding.source_info` adapter is removed. Descriptor
+projection remains in `harness.resources.source`; executable, package,
+environment, and Git identity live in `loushang.observability.runtime_identity`.
+Coding supplies only package/module aliases and a display title through
+`coding.diagnostics.profile`.
 
 ## Outside This Focused Migration
 
@@ -55,8 +55,7 @@ This provenance migration does not move or redesign:
 - prompt, skill, theme, or extension descriptors;
 - search roots, source precedence, merge decisions, or conflict policy in this
   change;
-- executable entrypoint, package installation, virtual environment, or Git
-  identity discovery;
+- product-specific runtime-identity labels;
 - resource check selection, phase/source assignment, or emission timing;
 - product remediation messages, UI projection, or session recording policy.
 

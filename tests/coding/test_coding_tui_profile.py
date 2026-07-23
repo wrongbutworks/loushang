@@ -4,25 +4,29 @@ from loushang.coding.commands.catalog import CodingCommandCatalog
 from loushang.coding.interaction.intent import CodingUiIntent
 from loushang.coding.interaction.tui_profile import (
     CodingLocalAction,
-    CodingTuiProfile,
+    build_coding_tui_host_profile,
 )
 from loushang.harnesstui.conversation.control import (
     ConversationRunControl,
     ConversationTextAction,
 )
-from loushang.harnesstui.conversation.host import ConversationHostRoute
+from loushang.harnesstui.conversation.host import (
+    ConversationHostProfile,
+    ConversationHostRoute,
+)
 
 
 def _profile(
     lifecycle: ConversationRunControl,
     traces: list[tuple[str, dict[str, object]]] | None = None,
-) -> CodingTuiProfile:
+) -> ConversationHostProfile[CodingUiIntent, CodingLocalAction]:
     sink = traces if traces is not None else []
-    return CodingTuiProfile(
+    return build_coding_tui_host_profile(
         lifecycle=lifecycle,
         command_catalog=CodingCommandCatalog(session_commands=lambda: []),
         session_running=lambda: False,
         trace=lambda name, **data: sink.append((name, data)),
+        now=lambda: 0.0,
     )
 
 

@@ -6,20 +6,19 @@ import traceback
 from collections.abc import Mapping, Sequence
 from typing import Any, TextIO
 
+from loushang.coding.domain.work import create_coding_work_runtime
 from loushang.coding.model_selection import ensure_usable_session_model
 from loushang.coding.presentation.tui.plain import (
     PlainCodingUiRenderer,
     build_plain_coding_event_projection,
 )
-from loushang.coding.work_executor import SubmitCodingTurn
-from loushang.coding.work_runtime import CodingWorkRuntime
-from loushang.coding.work_shell import CodingWorkShell
 from loushang.harnesstui.conversation.plain_prompt_host import (
     PlainPromptHostPorts,
     PreparedPlainPromptRun,
     run_plain_prompt_host,
 )
 from loushang.work import EventLogBackend
+from loushang.work.session import SessionWorkRuntime, SessionWorkTurn
 
 
 async def run_prompt_command(
@@ -33,7 +32,7 @@ async def run_prompt_command(
     follow_up_messages: Sequence[str] = (),
     verbose: bool = False,
     work_event_log: EventLogBackend | None = None,
-    coding_work_runtime: CodingWorkRuntime | None = None,
+    coding_work_runtime: SessionWorkRuntime | None = None,
     method_id: str | None = None,
     plan_id: str | None = None,
     step_id: str | None = None,
@@ -111,11 +110,11 @@ async def run_prompt_plan_command(
     *,
     runtime: Any,
     session: Any,
-    turns: Sequence[SubmitCodingTurn],
+    turns: Sequence[SessionWorkTurn],
     stdout: TextIO,
     stderr: TextIO,
     work_event_log: EventLogBackend,
-    coding_work_runtime: CodingWorkRuntime | None = None,
+    coding_work_runtime: SessionWorkRuntime | None = None,
     verbose: bool = False,
     dispose: bool = True,
 ) -> int:
@@ -130,7 +129,7 @@ async def run_prompt_plan_command(
     previous_error: str | None = None
 
     def before_turn(
-        turn: SubmitCodingTurn, turn_index: int, turn_count: int
+        turn: SessionWorkTurn, turn_index: int, turn_count: int
     ) -> None:
         del turn_index, turn_count
         nonlocal started_at, previous_error
@@ -139,7 +138,7 @@ async def run_prompt_plan_command(
         renderer.render_user(turn.text)
 
     def after_turn(
-        turn: SubmitCodingTurn, turn_index: int, turn_count: int
+        turn: SessionWorkTurn, turn_index: int, turn_count: int
     ) -> None:
         del turn, turn_index, turn_count
         assistant_failure = _last_assistant_failure_message(session)
@@ -159,12 +158,12 @@ async def run_prompt_plan_command(
     try:
         await ensure_usable_session_model(session)
         unsubscribe = session.subscribe(event_renderer.handle)
-        shell = CodingWorkShell(
+        work_runtime = coding_work_runtime or create_coding_work_runtime(
             session=session,
             event_log=work_event_log,
-            coding_runtime=coding_work_runtime,
+            session_id=lambda: _work_session_id(session),
         )
-        await shell.submit_coding_plan(
+        await work_runtime.submit_plan(
             turns,
             session_id=_work_session_id(session),
             before_turn=before_turn,
@@ -201,7 +200,7 @@ async def _run_prompt_session(
     *,
     images: list[object] | None = None,
     work_event_log: EventLogBackend | None = None,
-    coding_work_runtime: CodingWorkRuntime | None = None,
+    coding_work_runtime: SessionWorkRuntime | None = None,
     method_id: str | None = None,
     plan_id: str | None = None,
     step_id: str | None = None,
@@ -215,24 +214,26 @@ async def _run_prompt_session(
     if work_event_log is None:
         await _prompt_session(session, user_input, images=images)
         return
-    shell = CodingWorkShell(
+    work_runtime = coding_work_runtime or create_coding_work_runtime(
         session=session,
         event_log=work_event_log,
-        coding_runtime=coding_work_runtime,
+        session_id=lambda: _work_session_id(session),
     )
-    await shell.submit_coding_turn(
-        user_input,
+    await work_runtime.submit_turn(
+        SessionWorkTurn(
+            text=user_input,
+            images=images,
+            method_id=method_id,
+            plan_id=plan_id,
+            step_id=step_id,
+            step_index=step_index,
+            step_title=step_title,
+            planned_constraint=planned_constraint,
+            audit_policy=audit_policy,
+            plan_facts=plan_facts,
+            step_facts=step_facts,
+        ),
         session_id=_work_session_id(session),
-        images=images,
-        method_id=method_id,
-        plan_id=plan_id,
-        step_id=step_id,
-        step_index=step_index,
-        step_title=step_title,
-        planned_constraint=planned_constraint,
-        audit_policy=audit_policy,
-        plan_facts=plan_facts,
-        step_facts=step_facts,
     )
 
 

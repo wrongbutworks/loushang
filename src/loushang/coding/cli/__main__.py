@@ -27,13 +27,18 @@ from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
-from loushang.coding.diag_export import export_diagnostics_bundle
+from loushang.coding.diagnostics.profile import (
+    coding_diagnostic_source,
+    coding_runtime_identity,
+    format_coding_runtime_identity_text,
+)
 from loushang.coding.domain import (
     CodingDomainApp,
     CodingDomainPreparedTurn,
     CodingDomainRequest,
     MethodPolicy,
 )
+from loushang.coding.domain.work import create_coding_work_runtime
 from loushang.coding.mode import (
     ModeConfig,
     run_channel_mode,
@@ -45,10 +50,6 @@ from loushang.coding.mode.print_mode import run_print_plan_mode
 from loushang.coding.model_selection import (
     apply_model_selection,
     persistence_warning_message,
-)
-from loushang.coding.observability import (
-    coding_observability_context,
-    coding_startup_observability_context,
 )
 from loushang.coding.package_projection import collect_package_entries
 from loushang.coding.policy import (
@@ -62,14 +63,8 @@ from loushang.coding.prompt_command import (
     run_prompt_command,
     run_prompt_plan_command,
 )
-from loushang.coding.source_info import (
-    executable_source_identity,
-    format_source_identity_text,
-)
 from loushang.coding.tool_pack import register_coding_builtin_tools
 from loushang.coding.ui.mode import run_coding_tui
-from loushang.coding.work_executor import SubmitCodingTurn
-from loushang.coding.work_runtime import CodingWorkRuntime
 from loushang.coding.workflow import run_prompt_steps_workflow
 from loushang.harness.cli import (
     AgentCliLaunchOverlay,
@@ -121,6 +116,11 @@ from loushang.harness.cli import (
     format_cli_error as _format_cli_error,
 )
 from loushang.harness.config.agent import SettingsManager
+from loushang.harness.diagnostics import export_diagnostics_bundle
+from loushang.harness.diagnostics.observability_runtime import (
+    session_observability_context,
+    startup_observability_context,
+)
 from loushang.harness.extensions.types import ResolvedFlag
 from loushang.harness.host.prompt_input import (
     PromptInputPlan,
@@ -137,6 +137,7 @@ from loushang.work import (
     inspect_work_log,
     resolve_work_log_path,
 )
+from loushang.work.session import SessionWorkTurn
 
 _WORK_LOG_INSPECT_LIMIT = 20
 
@@ -306,10 +307,11 @@ async def run_cli(
                 workflow_runner=workflow_runner,
             ),
             startup_context=lambda context, state: (
-                coding_startup_observability_context(
+                startup_observability_context(
                     args=context.args,
                     services=state.services,
                     cwd=context.project_root,
+                    source_resolver=coding_diagnostic_source,
                 )
             ),
             build_runtime=lambda context, state: _invoke_runtime_builder(
@@ -403,13 +405,15 @@ async def _run_coding_early_operation(
         context.stdout.write(f"{_package_version()}\n")
         return 0
     if args.source_info:
-        source_identity = executable_source_identity(cwd=context.project_root)
+        source_identity = coding_runtime_identity(cwd=context.project_root)
         if args.source_info_format == "json":
             context.stdout.write(
                 json.dumps(source_identity, ensure_ascii=False) + "\n"
             )
         else:
-            context.stdout.write(format_source_identity_text(source_identity) + "\n")
+            context.stdout.write(
+                format_coding_runtime_identity_text(source_identity) + "\n"
+            )
         return 0
     return None
 
@@ -632,17 +636,22 @@ async def _run_coding_cli_host(
         return 2
     work_event_log = _resolve_work_event_log(args.work_log, project_root)
     coding_work_runtime = (
-        CodingWorkRuntime(session=session, event_log=work_event_log)
+        create_coding_work_runtime(
+            session=session,
+            event_log=work_event_log,
+            session_id=lambda: session.session_id,
+        )
         if work_event_log is not None
         else None
     )
-    with coding_observability_context(
+    with session_observability_context(
         args=args,
         session=session,
         cwd=project_root,
         mode=cli_observability_mode(
             context.launch_plan, effective_tui=effective_tui
         ),
+        source_resolver=coding_diagnostic_source,
     ):
         if effective_tui:
             return await tui_runner(
@@ -871,11 +880,11 @@ def _prepared_turns_to_work_turns(
     *,
     images: Sequence[object] | None,
     follow_up_messages: tuple[str, ...],
-) -> tuple[SubmitCodingTurn, ...]:
-    turns: list[SubmitCodingTurn] = []
+) -> tuple[SessionWorkTurn, ...]:
+    turns: list[SessionWorkTurn] = []
     for index, prepared_turn in enumerate(prepared_turns):
         turns.append(
-            SubmitCodingTurn(
+            SessionWorkTurn(
                 text=prepared_turn.prepared_prompt,
                 images=images if index == 0 else None,
                 method_id=prepared_turn.method_id,

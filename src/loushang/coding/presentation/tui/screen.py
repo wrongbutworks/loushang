@@ -4,9 +4,6 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from loushang.coding.presentation.tui.events import (
-    CodingConversationEventAdapter,
-)
 from loushang.coding.presentation.tui.tool_transcript import (
     CodingToolTranscriptProjection,
     build_coding_tool_transcript_projection,
@@ -14,7 +11,9 @@ from loushang.coding.presentation.tui.tool_transcript import (
 )
 from loushang.harnesstui.conversation.projection import (
     ConversationProjectionBinding,
+    SessionConversationEventAdapter,
 )
+from loushang.harnesstui.conversation.runtime_view import StringQueueReader
 from loushang.harnesstui.conversation.screen_target import (
     ScreenConversationProjectionPort,
     build_screen_conversation_projection,
@@ -24,15 +23,13 @@ from loushang.harnesstui.conversation.tool_transcript import (
     ToolTranscriptBlock,
 )
 
-QueueReader = Callable[[], tuple[str, ...] | list[str]]
-
 
 def build_screen_coding_event_projection(
     app: ScreenConversationProjectionPort,
     tool_definition_resolver: Any | None = None,
     max_tool_body_lines: int = 8,
-    read_pending_steers: QueueReader = tuple,
-    read_pending_followups: QueueReader = tuple,
+    read_pending_steers: StringQueueReader = tuple,
+    read_pending_followups: StringQueueReader = tuple,
     now: Callable[[], float] = time.monotonic,
 ) -> ConversationProjectionBinding[dict[str, Any]]:
     """Build the Coding event adapter over a shared screen projection."""
@@ -50,7 +47,7 @@ def build_screen_coding_event_projection(
         tool_record_projector=tool_block_to_record,
         status_copy=_CodingScreenProjectionStatusCopy(),
         event_handler_factory=lambda projection: (
-            CodingConversationEventAdapter(
+            SessionConversationEventAdapter(
                 projection,
                 tool_projection,
                 read_pending_steers=read_pending_steers,

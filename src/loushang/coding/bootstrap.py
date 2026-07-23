@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -13,6 +12,7 @@ from loushang.coding.control.settings_store import (
     default_global_settings_path,
     default_project_settings_path,
 )
+from loushang.coding.diagnostics.profile import coding_runtime_identity
 from loushang.coding.extensions import ExtensionRunner
 from loushang.coding.policy import InteractiveApprovalResolver
 from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
@@ -25,7 +25,6 @@ from loushang.coding.resource_runtime import (
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
-from loushang.coding.source_info import executable_source_identity
 from loushang.harness.agent_transcript import context_items_to_model_messages
 from loushang.harness.bootstrap import (
     create_standard_resource_bootstrap_runtime,
@@ -34,25 +33,14 @@ from loushang.harness.bootstrap import (
 from loushang.harness.capabilities import bind_capability_composition_runtime
 from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.config.agent import ControlConfig, SettingsManager
-from loushang.harness.diagnostics.service import (
-    DiagnosticsService,
-    run_standard_startup_checks,
-)
+from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import StartupCheckResult
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.model_catalog import ModelCatalog
-from loushang.harness.resources.activation import SkillActivationRuntime
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
-from loushang.harness.resources.packages.catalog_diagnostics import (
-    record_package_lockfile_diagnostics,
-)
 from loushang.harness.resources.packages.materializer import (
     GitPackageMaterializerBackend,
     resolve_session_package_install_root,
-)
-from loushang.harness.resources.packages.roots import configure_resource_loader_roots
-from loushang.harness.resources.packages.source_resolver import (
-    PackageSourceResolver,
 )
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.session import (
@@ -62,10 +50,9 @@ from loushang.harness.session import (
     BootstrapServices,
     CreateAgentSessionResult,
     CwdBoundServicesAudit,
-    StandardAgentSessionActivationEffects,
-    activate_standard_agent_session_configuration,
+    StandardAgentSessionConfigurationRequest,
+    StandardAgentSessionConfigurationRuntime,
     project_root_from_settings_base,
-    record_cwd_bound_services_audit,
     record_default_model_unavailable,
     resolve_base_system_prompt,
     resolve_session_model,
@@ -88,23 +75,6 @@ ServicesFactory = Callable[[str], "BootstrapServices"]
 NoToolsMode = Literal["all", "builtin"]
 ExtensionFlagValues = Mapping[str, bool | str]
 CwdBoundServicesAuditIssue = _CwdBoundServicesAuditIssue
-
-
-@dataclass
-class _SessionConfigurationState:
-    services: BootstrapServices
-    settings: ControlConfig
-    session_manager: SessionManager
-    package_materializer: PackageMaterializer
-    extension_flag_values: ExtensionFlagValues | None
-    skill_activation_runtime: SkillActivationRuntime
-    resource_bundle: ResourceBundle | None = None
-    extension_runner: ExtensionRunner | None = None
-    cwd_bound_services_audit: CwdBoundServicesAudit | None = None
-
-    @property
-    def session_id(self) -> str:
-        return self.session_manager.get_header().conversation_id
 
 
 def create_services(
@@ -254,16 +224,26 @@ def create_agent_session(
     )
     session_id = session_manager.get_header().conversation_id
     try:
-        configuration = _activate_session_configuration(
-            settings=settings,
-            services=services,
-            session_manager=session_manager,
-            package_materializer=resolved_package_materializer,
-            extension_flag_values=extension_flag_values,
-            skill_activation_runtime=capability_runtime.skill_activation,
+        configuration = StandardAgentSessionConfigurationRuntime().configure(
+            StandardAgentSessionConfigurationRequest(
+                settings=settings,
+                settings_manager=services.settings_manager,
+                model_registry=services.model_registry,
+                resource_loader=services.resource_loader,
+                diagnostics_service=services.diagnostics_service,
+                package_materializer=resolved_package_materializer,
+                skill_activation_runtime=capability_runtime.skill_activation,
+                session_id=session_id,
+                cwd=session_manager.get_cwd(),
+                create_extension_runtime=lambda bundle: ExtensionRunner(
+                    bundle.extensions
+                ),
+                source_identity_check=_source_identity_startup_check,
+                extension_flag_values=extension_flag_values,
+            )
         )
-        resource_bundle = _require_configured_resource_bundle(configuration)
-        extension_runner = _require_configured_extension_runner(configuration)
+        resource_bundle = configuration.resource_bundle
+        extension_runner = cast(ExtensionRunner, configuration.extension_runtime)
         cwd_bound_services_audit = configuration.cwd_bound_services_audit
         base_prompt = resolve_base_system_prompt(
             explicit_prompt=system_prompt,
@@ -405,175 +385,6 @@ def create_agent_session(
         raise
 
 
-def _activate_session_configuration(
-    *,
-    settings: ControlConfig,
-    services: BootstrapServices,
-    session_manager: SessionManager,
-    package_materializer: PackageMaterializer,
-    extension_flag_values: ExtensionFlagValues | None,
-    skill_activation_runtime: SkillActivationRuntime | None = None,
-) -> _SessionConfigurationState:
-    state = _SessionConfigurationState(
-        services=services,
-        settings=settings,
-        session_manager=session_manager,
-        package_materializer=package_materializer,
-        extension_flag_values=extension_flag_values,
-        skill_activation_runtime=skill_activation_runtime or SkillActivationRuntime(),
-    )
-    return activate_standard_agent_session_configuration(
-        settings,
-        state,
-        effects=StandardAgentSessionActivationEffects(
-            startup_checks=_activate_startup_checks,
-            package_sources=_activate_package_sources,
-            resource_roots=_activate_resource_roots,
-            resources=_activate_resources,
-            extensions=_activate_extensions,
-            cwd_audit=_activate_cwd_audit,
-            model_registry=_activate_model_registry,
-        ),
-    )
-
-
-def _activate_startup_checks(
-    selection: object,
-    state: _SessionConfigurationState,
-) -> None:
-    del selection
-    record_package_lockfile_diagnostics(
-        state.package_materializer.get_lockfile_diagnostics(),
-        diagnostics_service=state.services.diagnostics_service,
-        session_id=state.session_id,
-    )
-    cwd = state.session_manager.get_cwd()
-    run_standard_startup_checks(
-        state.services.diagnostics_service,
-        cwd=cwd,
-        package_roots=state.settings.package_roots,
-        additional_checks=(lambda: _source_identity_startup_check(cwd),),
-        session_id=state.session_id,
-    )
-
-
-def _activate_package_sources(
-    selection: object,
-    state: _SessionConfigurationState,
-) -> None:
-    del selection
-    PackageSourceResolver(
-        settings_manager=state.services.settings_manager,
-        materializer=state.package_materializer,
-        diagnostics_service=state.services.diagnostics_service,
-        session_id=state.session_id,
-    ).resolve_configured_sources_sync(missing_source_action="install", phase="startup")
-
-
-def _activate_resource_roots(
-    selection: object,
-    state: _SessionConfigurationState,
-) -> None:
-    del selection
-    configure_resource_loader_roots(
-        resource_loader=state.services.resource_loader,
-        settings_manager=state.services.settings_manager,
-        materializer=state.package_materializer,
-        diagnostics_service=state.services.diagnostics_service,
-        session_id=state.session_id,
-    )
-
-
-def _activate_resources(
-    selection: object,
-    state: _SessionConfigurationState,
-) -> None:
-    del selection
-    result = create_standard_resource_bootstrap_runtime(
-        create_extension_runtime=lambda bundle: ExtensionRunner(bundle.extensions),
-        diagnostics_service=state.services.diagnostics_service,
-        session_id=state.session_id,
-    ).discover(
-        loader=state.services.resource_loader,
-        cwd=state.session_manager.get_cwd(),
-        transform_bundle=lambda bundle: state.skill_activation_runtime.apply(
-            bundle,
-            state.settings.disabled_skills,
-        ),
-    )
-    state.services.diagnostics_service.record_many(result.diagnostics)
-    state.resource_bundle = result.resource_bundle
-
-
-def _activate_extensions(
-    selection: object,
-    state: _SessionConfigurationState,
-) -> None:
-    del selection
-    result = create_standard_resource_bootstrap_runtime(
-        create_extension_runtime=lambda bundle: ExtensionRunner(bundle.extensions),
-        diagnostics_service=state.services.diagnostics_service,
-        session_id=state.session_id,
-    ).activate_extensions(
-        resource_bundle=_require_configured_resource_bundle(state),
-        extension_flags=state.extension_flag_values,
-        transform_bundle=lambda bundle: state.skill_activation_runtime.apply(
-            bundle,
-            state.settings.disabled_skills,
-        ),
-    )
-    state.services.diagnostics_service.record_many(result.flag_diagnostics)
-    state.services.diagnostics_service.record_many(result.extension_diagnostics)
-    state.resource_bundle = result.resource_bundle
-    state.extension_runner = result.extension_runtime
-
-
-def _activate_cwd_audit(
-    selection: object,
-    state: _SessionConfigurationState,
-) -> None:
-    del selection
-    audit = audit_cwd_bound_services(
-        session_manager=state.session_manager,
-        services=state.services,
-        resource_bundle=_require_configured_resource_bundle(state),
-    )
-    record_cwd_bound_services_audit(
-        audit=audit,
-        diagnostics_service=state.services.diagnostics_service,
-        session_id=state.session_id,
-    )
-    state.cwd_bound_services_audit = audit
-
-
-def _activate_model_registry(
-    selection: object,
-    state: _SessionConfigurationState,
-) -> None:
-    del selection
-    _reload_model_registry_with_project_layer(
-        state.services.model_registry,
-        resource_bundle=_require_configured_resource_bundle(state),
-        session_cwd=state.session_manager.get_cwd(),
-    )
-
-
-def _require_configured_resource_bundle(
-    state: _SessionConfigurationState,
-) -> ResourceBundle:
-    if state.resource_bundle is None:
-        raise RuntimeError("Session resources have not been configured.")
-    return state.resource_bundle
-
-
-def _require_configured_extension_runner(
-    state: _SessionConfigurationState,
-) -> ExtensionRunner:
-    if state.extension_runner is None:
-        raise RuntimeError("Session extensions have not been configured.")
-    return state.extension_runner
-
-
 def create_agent_session_from_services(
     *,
     agent_services: AgentSessionServices,
@@ -683,23 +494,6 @@ def _default_package_materializer(
     )
 
 
-def _reload_model_registry_with_project_layer(
-    model_registry: ModelCatalog,
-    *,
-    resource_bundle: ResourceBundle,
-    session_cwd: str,
-) -> None:
-    project_root = (
-        resource_bundle.agents_path.parent
-        if resource_bundle.agents_path is not None
-        else Path(session_cwd)
-    )
-    model_registry.reload_if_project_layer(
-        user_dir=Path.home() / ".loushang" / "models",
-        project_dir=project_root / ".loushang" / "models",
-    )
-
-
 def _source_identity_startup_check(cwd: str) -> StartupCheckResult:
     return StartupCheckResult(
         name="executable_source_identity",
@@ -708,7 +502,7 @@ def _source_identity_startup_check(cwd: str) -> StartupCheckResult:
         level="info",
         message="Executable and import source identity captured.",
         source_path=Path(__file__).resolve(strict=False),
-        details=executable_source_identity(cwd=cwd),
+        details=coding_runtime_identity(cwd=cwd),
     )
 
 

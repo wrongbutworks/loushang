@@ -12,7 +12,7 @@ from loushang.coding.interaction.intent import AbortIntent, CodingUiIntent
 from loushang.coding.interaction.tui_profile import (
     CodingLocalAction,
     CodingTuiPorts,
-    CodingTuiProfile,
+    build_coding_tui_host_profile,
     is_coding_work_intent,
     snapshot_coding_command_catalog,
 )
@@ -136,12 +136,13 @@ def build_plain_coding_tui_app(
             return format_commands(snapshot.commands(), query=query)
 
         return PlainConversationProductBinding(
-            host_profile=CodingTuiProfile(
+            host_profile=build_coding_tui_host_profile(
                 lifecycle=assembly.lifecycle,
                 command_catalog=command_catalog,
                 session_running=lambda: is_running(session),
                 trace=trace,
-            ).host_profile(now=now),
+                now=now,
+            ),
             controller=controller,
             abort_action=lambda: controller.dispatch(AbortIntent()),
             is_work_intent=is_coding_work_intent,

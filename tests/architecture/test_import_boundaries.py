@@ -436,16 +436,18 @@ def test_scenario_runtime_is_product_neutral_and_never_executes_shell() -> None:
     )
 
 
-def test_coding_work_projection_subscribes_to_runtime_events() -> None:
-    shell_source = Path("src/loushang/coding/work_shell.py").read_text(encoding="utf-8")
-    executor_source = Path("src/loushang/coding/work_executor.py").read_text(
+def test_shared_session_work_projection_subscribes_to_runtime_events() -> None:
+    session_work_source = Path("src/loushang/work/session.py").read_text(
+        encoding="utf-8"
+    )
+    coding_binding = Path("src/loushang/coding/domain/work.py").read_text(
         encoding="utf-8"
     )
 
-    assert "subscribe_runtime_events" in executor_source
-    assert "self.session.subscribe(listener)" not in executor_source
-    assert "WorkRuntime" in shell_source
-    assert "subscribe_runtime_events" not in shell_source
+    assert "subscribe_runtime_events" in session_work_source
+    assert "self.session.subscribe(listener)" not in session_work_source
+    assert "WorkRuntime" in session_work_source
+    assert "subscribe_runtime_events" not in coding_binding
 
 
 def test_agent_work_projection_is_work_owned() -> None:
@@ -455,14 +457,14 @@ def test_agent_work_projection_is_work_owned() -> None:
     work_event_projection = Path("src/loushang/work/projection.py").read_text(
         encoding="utf-8"
     )
-    coding_executor = Path("src/loushang/coding/work_executor.py").read_text(
+    coding_binding = Path("src/loushang/coding/domain/work.py").read_text(
         encoding="utf-8"
     )
 
     assert "def project_agent_event_to_work_facts" in work_projection
     assert "loushang.coding" not in work_projection
     assert "loushang.coding" not in work_event_projection
-    assert "loushang.work.agent_projection" in coding_executor
+    assert "loushang.work.agent_projection" in coding_binding
     assert not Path("src/loushang/coding/work_projection.py").exists()
 
     completed = subprocess.run(
@@ -817,7 +819,7 @@ def test_mode_host_implementation_is_shared_and_coding_is_thin() -> None:
     assert "class PlainHost" in plain_host
     assert "JsonlCommandRouter" not in coding_rpc
     assert "class RpcMode" in coding_rpc
-    assert "CodingWorkShell" in coding_print
+    assert "SessionWorkRuntime" in coding_print
     assert "Mode Host Boundary" in boundary
 
 
@@ -1645,6 +1647,7 @@ def test_harness_diagnostics_symbols_are_subpackage_exports_only() -> None:
 
     diagnostic_symbols = {
         "DiagnosticLevel",
+        "DiagnosticBundleProfile",
         "DiagnosticPhase",
         "DiagnosticRecord",
         "DiagnosticSource",
@@ -1653,7 +1656,10 @@ def test_harness_diagnostics_symbols_are_subpackage_exports_only() -> None:
         "DiagnosticsService",
         "directory_available_startup_check",
         "collect_diagnostics",
+        "DEFAULT_DIAGNOSTIC_BUNDLE_PROFILE",
+        "DEFAULT_DIAGNOSTICS_LIMIT",
         "ErrorReport",
+        "export_diagnostics_bundle",
         "path_exists",
         "resolve_export_output_path",
         "run_standard_startup_checks",
@@ -2335,7 +2341,7 @@ def test_product_configuration_runtime_boundary_is_documented_and_adopted() -> N
             "loushang.harness.config.values.ConfigValueResolver",
         },
             Path("src/loushang/coding/bootstrap.py"): {
-                "loushang.harness.session.activate_standard_agent_session_configuration",
+                "loushang.harness.session.StandardAgentSessionConfigurationRuntime",
             },
     }
     missing: list[str] = []

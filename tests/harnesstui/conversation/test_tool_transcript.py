@@ -11,6 +11,7 @@ from loushang.harnesstui.conversation.tool_transcript import (
     ToolTranscriptBlock,
     ToolTranscriptProjectionBinding,
     ToolTranscriptProjector,
+    build_mapping_tool_transcript_projection,
     tool_block_to_record,
 )
 from loushang.tui.transcript import ToolExecutionRecord
@@ -73,6 +74,41 @@ def test_projection_binding_composes_raw_view_ports_with_neutral_projector() -> 
     )
     assert binding.project_tool_result_message(object()).tool_call_id == "message-1"
     assert [name for name, _event in calls] == ["call_view", "result_view"]
+
+
+def test_mapping_projection_reuses_workspace_policy_with_injected_results() -> None:
+    binding = build_mapping_tool_transcript_projection(
+        result_text=lambda result, _max_lines: str(result),
+        result_details=lambda _result: {},
+        result_terminated=lambda _result: False,
+        error_summary=lambda _result: None,
+        message_event=lambda _message: {
+            "type": "tool_execution_end",
+            "tool_call_id": "message-1",
+            "tool_name": "read",
+            "result": "done",
+        },
+    )
+    event = {
+        "type": "tool_execution_start",
+        "tool_call_id": "call-1",
+        "tool_name": "bash",
+        "args": {"command": "pytest -q"},
+    }
+    snapshot = binding.remember_call(event)
+    block = binding.project_result(
+        {
+            "type": "tool_execution_end",
+            "tool_call_id": "call-1",
+            "tool_name": "bash",
+            "result": "passed",
+        },
+        snapshot,
+    )
+
+    assert block.verb == "Tested"
+    assert block.command == "bash pytest -q"
+    assert block.body == "passed"
 
 
 def test_neutral_projector_combines_call_snapshot_and_result_view() -> None:

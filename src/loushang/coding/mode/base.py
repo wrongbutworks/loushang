@@ -5,12 +5,12 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, TextIO
 
-from loushang.coding.work_runtime import CodingWorkRuntime
 from loushang.harness.host.mode import (
     ModeAdapter,
     ModeConfig,
 )
 from loushang.work import EventLogBackend
+from loushang.work.session import SessionWorkRuntime
 
 JsonEventView = str
 
@@ -24,7 +24,7 @@ def create_mode_adapter(
     stderr: TextIO | None = None,
     session: Any | None = None,
     work_event_log: EventLogBackend | None = None,
-    coding_work_runtime: CodingWorkRuntime | None = None,
+    coding_work_runtime: SessionWorkRuntime | None = None,
     method_id: str | None = None,
     plan_id: str | None = None,
     step_id: str | None = None,
@@ -90,7 +90,7 @@ async def run_mode(
     images: list[object] | None = None,
     follow_up_messages: Sequence[str] = (),
     work_event_log: EventLogBackend | None = None,
-    coding_work_runtime: CodingWorkRuntime | None = None,
+    coding_work_runtime: SessionWorkRuntime | None = None,
     method_id: str | None = None,
     plan_id: str | None = None,
     step_id: str | None = None,

@@ -29,12 +29,12 @@ they must not own provider registration, credentials, or product model policy.
 | --- | --- | --- | --- |
 | `coding.diagnostics.problem_bridge` | `harness.diagnostics.observability_bridge` | Products may supply phase/source resolvers. Coding supplies its `config -> model` source override. | Complete: the Coding bridge was deleted. |
 | `coding.diagnostics.debug_status` problem-store formatting | `observability.problem_text` | Coding keeps CLI text and default diagnostic export command. | Complete: reusable formatting has no Coding import. |
-| `coding.diag_export` archive writer and redaction | `harness.diagnostics.export` | Coding supplies archive path, README, manifest projection, artifact list, and diagnostic JSON projection. | Complete: Coding is a thin product adapter. |
+| removed `coding.diag_export` archive writer and redaction | `harness.diagnostics.export` | Products may replace the shared `DiagnosticBundleProfile`; Loushang products use the standard archive, manifest, README, artifact set, and diagnostic projection. | Complete: Coding imports the shared bundle operation directly. |
 | `coding.source_info` descriptor conversion | `harness.resources.source` | Coding only supplies its resource descriptor values. | Complete: production resource consumers import Harness directly. |
-| `coding.source_info` executable, package, and Git inspection | `observability.runtime_identity` | Coding supplies package/module identity, executable name, and display title. | Complete: Coding has no subprocess, package metadata, or PATH logic. |
+| removed `coding.source_info` executable, package, and Git inspection | `observability.runtime_identity` | `coding.diagnostics.profile` supplies package/module aliases, executable name, and display title through `RuntimeIdentityProfile`. | Complete: Coding has no source-info facade, subprocess, package metadata, or PATH logic. |
 | `coding.model_selection` normalization and presentation-neutral ordering | `ai.model` | Coding retains preferred models and Coding persistence wording. | Complete: non-policy consumers import `ai.model`. |
 | `coding.model_selection` session model application and discovery | `harness.session.model_selection` | Products inject preferred candidate selection and persistence callbacks. | Complete: Coding is the preferred-candidate adapter. |
-| `coding.observability` configuration lifecycle | `observability.runtime` | Coding supplies CLI/environment names, `.loushang` default paths, and diagnostic source mapping. | Complete: Coding is a path/profile adapter. |
+| removed `coding.observability` configuration lifecycle | `harness.diagnostics.observability_runtime` over `observability.runtime` | Coding supplies only its `config -> model` diagnostic-source policy. Shared defaults own `.loushang` paths and stable session labels. | Complete: CLI and TUI bind the shared contexts directly. |
 
 Wave 1 contract probes:
 
@@ -46,6 +46,33 @@ Wave 1 contract probes:
   candidate chooser; it has no Coding import.
 - Observability lifecycle configuration restores a pre-existing sink after the
   product context exits.
+
+## Top-Level Work, Diagnostics, And Bootstrap Collapse (Complete)
+
+This batch applies the same ownership test to root-level `coding/*.py` files;
+placement at the Product package root does not imply Product ownership.
+
+| Removed or reduced Coding region | Canonical owner | Retained Product input |
+| --- | --- | --- |
+| removed `work_executor.py`, `work_runtime.py`, `work_shell.py`, and `work.coding` | `work.session.SessionWorkRuntime` composed over the existing `work.WorkRuntime` | `coding.domain.work` supplies `domain="coding"`, `SubmitCodingTurn`, and the Agent-event fact projector. |
+| `prompt_command.py` and print/channel/CLI Work bindings | existing `harnesstui.conversation` hosts plus `work.session` | Coding retains its renderer, failure wording, Method metadata preparation, and Product binding names. |
+| removed `diag_export.py`, `observability.py`, and `source_info.py` | existing Harness diagnostics and Observability packages | `coding.diagnostics.profile` supplies only source aliases and runtime-identity labels. |
+| `sdk_surface.py` | `harness.sdk_surface` inspection algorithm | Coding retains the required public entry-name tuple and default module binding. |
+| `bootstrap.py` standard activation effects | existing `harness.session.bootstrap` activation graph and `StandardAgentSessionConfigurationRuntime` | Coding supplies Extension construction, source-identity check, prompt/model/tool/session factories, and Product defaults. |
+
+Implementation accounting, excluding tests and documentation:
+
+- Coding Python: 11,969 to 11,010 LOC, a net reduction of 959 LOC.
+- root-level `coding/*.py`: 3,473 to 2,358 LOC, a reduction of 1,115 LOC.
+- Work/Prompt Coding region: 867 to 392 LOC, a reduction of 475 LOC.
+- diagnostics/source/SDK Coding region: 427 to 127 LOC, a reduction of 300 LOC.
+- `coding.bootstrap`: 773 to 567 LOC, a reduction of 206 LOC.
+- shared mechanisms added or expanded: approximately 1,110 LOC, giving a
+  Coding-deletion/shared-addition ratio of approximately 0.86.
+
+The old Coding files are deleted rather than retained as aliases. Architecture
+probes require `work.session`, `harness.sdk_surface`, Harness diagnostics, and
+the standard session bootstrap runtime to remain free of Coding imports.
 
 ## Wave 2: Event And Extension Product Adapter Collapse (Complete)
 
@@ -342,16 +369,17 @@ The repeated CLI/session observability binding now lives in
 `harness.diagnostics.observability_runtime`. It owns scope parsing, explicit or
 environment-derived output paths, startup/session labels, sink binding, and
 debug enable/disable lifecycle. Coding keeps only its source classification
-(`config` problems are presented as `model`) and the historic wrapper names.
+(`config` problems are presented as `model`); the historic wrapper module has
+now been deleted.
 
 | Source region | Shared owner | Coding retained | Status |
 | --- | --- | --- | --- |
-| `coding.observability` session/startup context and debug file lifecycle | `harness.diagnostics.observability_runtime` | Coding diagnostic source mapping and wrapper names | Complete |
+| removed `coding.observability` session/startup context and debug file lifecycle | `harness.diagnostics.observability_runtime` | Coding diagnostic source mapping | Complete |
 
-Slice D accounting: Coding shrank from 157 to 109 LOC (-48); Harness gained
-187 LOC of parameterized binding. Existing Coding observability bridge tests
-and an independent Harness directory-injection probe pass. No debug/trace
-environment variables or file naming behavior changed.
+Slice D initially reduced the adapter from 157 to 109 LOC; the top-level
+collapse later deleted the remaining 109 LOC and bound CLI/TUI directly to the
+shared context. No debug/trace environment variables or file naming behavior
+changed.
 
 ### Wave 6, Slice E: Top-Level Session Bootstrap Leaves (Complete)
 
@@ -644,3 +672,30 @@ deletion/shared-addition ratio of 0.86. The larger shared addition establishes
 typed, independently tested contracts rather than moving the old function
 intact. Channel remains the owner of streams, output protection, turn ordering,
 and disposal.
+
+### Wave 7, Slice J: HarnessTUI Conversation Adapter Extinction (Complete)
+
+Reusable conversation presentation and routing mechanics no longer have a
+second implementation under Coding. This slice extends four existing
+HarnessTUI owners and deletes the Coding event facade; it does not add a new
+projector, controller, runtime, application, queue adapter, or package.
+The detailed boundary is
+[Coding Conversation Adapter Extinction](coding-conversation-adapter-extinction.md).
+
+| Source mechanism | Existing shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| normalized Session event routing and message/tool lifecycle | `harnesstui.conversation.projection` | visibility flags and Agent tool-result binding | Complete |
+| queue-source normalization | `harnesstui.conversation.runtime_view` | explicit Session queue sources | Reused |
+| mapping-shaped tool event/result projection and standard workspace presentation policy | `harnesstui.conversation.tool_transcript` | `AgentToolResult` conversion, optional Product renderer and final command-label policy | Complete |
+| structural Agent message and command-history projection | `harnesstui.conversation.history` | persisted-session acquisition, kind dispositions and tool binding | Complete |
+| abort-settling/follow-up/steer/local/dispatch decision order | `harnesstui.conversation.host` | Coding intents, local-action declarations, command catalog and copy | Complete |
+| Plain/Screen effects and rendering | existing `plain_target`, `screen_target`, `screen_app` and TUI transcript engine | Product title, glyphs, status copy and theme | Reused |
+
+Production accounting: Coding Python changed from 12,475 to 11,969 physical
+LOC (-506 net). The affected Coding implementation changed from 1,369 to 863
+LOC. The four existing HarnessTUI owner files changed from 1,106 to 1,715 LOC
+(+609), giving a net Coding-reduction/shared-addition ratio of 0.83. No
+compatibility facade replaces `coding.presentation.tui.events`, and
+`CodingTuiProfile` is removed rather than re-exported. Independent HarnessTUI
+tests cover structural event, history, tool and routing behavior; architecture
+gates keep HarnessTUI free of Coding, Agent and AI imports.

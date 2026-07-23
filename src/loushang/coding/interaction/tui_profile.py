@@ -29,9 +29,8 @@ from loushang.harnesstui.conversation.control import (
     ConversationTextAction,
 )
 from loushang.harnesstui.conversation.host import (
-    ConversationHostDecision,
     ConversationHostProfile,
-    ConversationHostRoute,
+    ConversationRoutingProfile,
 )
 from loushang.harnesstui.conversation.info import ConversationInfoPresenter
 from loushang.harnesstui.conversation.run_context import TraceFn
@@ -64,87 +63,38 @@ CODING_SCREEN_ACTION_COPY = ConversationActionPresentationCopy(
 )
 
 
-@dataclass(frozen=True, slots=True)
-class CodingTuiProfile:
-    """Coding policy projected onto the product-neutral conversation host."""
+def build_coding_tui_host_profile(
+    *,
+    lifecycle: ConversationRunControl,
+    command_catalog: CodingCommandCatalog,
+    session_running: Callable[[], bool],
+    trace: TraceFn,
+    now: Callable[[], float],
+) -> ConversationHostProfile[CodingUiIntent, CodingLocalAction]:
+    """Bind Coding intent types to the shared routing profile."""
 
-    lifecycle: ConversationRunControl
-    command_catalog: CodingCommandCatalog
-    session_running: Callable[[], bool]
-    trace: TraceFn
+    return ConversationRoutingProfile(
+        lifecycle=lifecycle,
+        parse_intent=parse_prompt_intent,
+        is_exit=lambda intent: isinstance(intent, QuitIntent),
+        local_action=_coding_local_action,
+        deferred_local_action=lambda intent: (
+            CodingLocalAction.DEBUG if isinstance(intent, DebugIntent) else None
+        ),
+        follow_up_text=lambda intent: (
+            intent.text if isinstance(intent, FollowUpIntent) else None
+        ),
+        command_effect=command_catalog.effect_for_route,
+        session_running=session_running,
+        trace=trace,
+    ).host_profile(now=now)
 
-    def host_profile(
-        self,
-        *,
-        now: Callable[[], float],
-    ) -> ConversationHostProfile[CodingUiIntent, CodingLocalAction]:
-        return ConversationHostProfile(
-            parse=self.parse,
-            decide=self.decide,
-            is_exit=lambda intent: isinstance(intent, QuitIntent),
-            now=now,
-        )
 
-    def parse(self, action: ConversationTextAction) -> CodingUiIntent | None:
-        self.trace(
-            "prompt.start",
-            active_run=self.lifecycle.active,
-            active_run_id=self.lifecycle.active_id,
-            aborted_run_id=self.lifecycle.aborted_id,
-            session_running=self.session_running(),
-            text_len=len(action.text),
-        )
-        intent = parse_prompt_intent(action.text)
-        if intent is None:
-            self.trace("prompt.ignored", reason="empty")
-        return intent
-
-    def decide(
-        self,
-        intent: CodingUiIntent,
-        _action: ConversationTextAction,
-    ) -> ConversationHostDecision[CodingLocalAction]:
-        if self.lifecycle.abort_is_settling() and not isinstance(intent, QuitIntent):
-            self.trace(
-                "prompt.ignored",
-                reason="abort_in_progress",
-                active_run_id=self.lifecycle.active_id,
-            )
-            return ConversationHostDecision(ConversationHostRoute.ABORT_SETTLING)
-        local_action = None
-        for intent_type, action in _LOCAL_INTENTS.items():
-            if isinstance(intent, intent_type):
-                local_action = action
-                break
-        if local_action is not None:
-            return self._local_decision(local_action, intent)
-        if isinstance(intent, FollowUpIntent):
-            return ConversationHostDecision(
-                ConversationHostRoute.FOLLOW_UP,
-                text=intent.text,
-                source="command",
-            )
-        if self.lifecycle.active and not isinstance(intent, QuitIntent):
-            return ConversationHostDecision(ConversationHostRoute.STEER)
-        if isinstance(intent, DebugIntent):
-            return self._local_decision(CodingLocalAction.DEBUG, intent)
-        return ConversationHostDecision(ConversationHostRoute.DISPATCH)
-
-    def _local_decision(
-        self,
-        action: CodingLocalAction,
-        intent: CodingUiIntent,
-    ) -> ConversationHostDecision[CodingLocalAction]:
-        effect = self.command_catalog.effect_for_route(action, intent)
-        if effect is not None:
-            self.trace(
-                "prompt.command",
-                route=action.value,
-                command_id=effect.command.id,
-                command_name=effect.command.name,
-                effect=effect.kind.value,
-            )
-        return ConversationHostDecision(ConversationHostRoute.LOCAL, local=action)
+def _coding_local_action(intent: CodingUiIntent) -> CodingLocalAction | None:
+    for intent_type, action in _LOCAL_INTENTS.items():
+        if isinstance(intent, intent_type):
+            return action
+    return None
 
 
 async def snapshot_coding_command_catalog(session: object) -> CodingCommandCatalog:
