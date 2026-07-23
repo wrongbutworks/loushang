@@ -7,12 +7,15 @@ from types import SimpleNamespace
 from loushang.harness.conversation.types import ConversationRecord
 from loushang.harnesstui.conversation.history import (
     ConversationHistoryProjector,
+    project_agent_message_payload,
+    project_command_execution_payload,
     project_context_branch_summary_payload,
     project_context_compaction_payload,
 )
 from loushang.tui.transcript import (
     AssistantMessageRecord,
     ContextCompactionRecord,
+    ToolExecutionRecord,
     UserPromptRecord,
 )
 
@@ -103,6 +106,69 @@ def test_context_section_projectors_validate_neutral_payload_shapes() -> None:
         SimpleNamespace(summary="bad", tokens_before="many")
     ) is None
     assert project_context_branch_summary_payload(SimpleNamespace()) is None
+
+
+def test_agent_message_projector_uses_structural_roles_without_agent_imports() -> None:
+    tool_record = ToolExecutionRecord(
+        name="tool",
+        state="completed",
+        elapsed_seconds=0.0,
+    )
+
+    def project_tool(_message: object) -> ToolExecutionRecord:
+        return tool_record
+
+    assert project_agent_message_payload(
+        SimpleNamespace(role="user", content=[SimpleNamespace(text="hello")]),
+        tool_result_projector=project_tool,
+    ) == UserPromptRecord("hello")
+    assert project_agent_message_payload(
+        SimpleNamespace(role="assistant", content="answer"),
+        tool_result_projector=project_tool,
+    ) == AssistantMessageRecord("answer", stable=True)
+    assert (
+        project_agent_message_payload(
+            SimpleNamespace(role="toolResult"),
+            tool_result_projector=project_tool,
+        )
+        is tool_record
+    )
+    assert project_agent_message_payload(
+        SimpleNamespace(role="application", content="status", display=True),
+        tool_result_projector=project_tool,
+    ) == AssistantMessageRecord("status", stable=True)
+    assert (
+        project_agent_message_payload(
+            SimpleNamespace(role="application", content="hidden", display=False),
+            tool_result_projector=project_tool,
+        )
+        is None
+    )
+
+
+def test_command_execution_projector_uses_standard_payload_shape() -> None:
+    assert project_command_execution_payload(
+        SimpleNamespace(
+            command="pytest -q",
+            output="passed",
+            cancelled=False,
+            exit_code=0,
+        )
+    ) == ToolExecutionRecord(
+        name="bash pytest -q",
+        state="completed",
+        elapsed_seconds=0.0,
+        output="passed",
+        command="pytest -q",
+        exit_code=0,
+        stderr="",
+    )
+    assert (
+        project_command_execution_payload(
+            SimpleNamespace(command="pytest -q", output="passed")
+        )
+        is None
+    )
 
 
 def test_importing_history_dispatch_does_not_load_product_or_ai_layers() -> None:

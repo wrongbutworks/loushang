@@ -644,3 +644,30 @@ deletion/shared-addition ratio of 0.86. The larger shared addition establishes
 typed, independently tested contracts rather than moving the old function
 intact. Channel remains the owner of streams, output protection, turn ordering,
 and disposal.
+
+### Wave 7, Slice J: HarnessTUI Conversation Adapter Extinction (Complete)
+
+Reusable conversation presentation and routing mechanics no longer have a
+second implementation under Coding. This slice extends four existing
+HarnessTUI owners and deletes the Coding event facade; it does not add a new
+projector, controller, runtime, application, queue adapter, or package.
+The detailed boundary is
+[Coding Conversation Adapter Extinction](coding-conversation-adapter-extinction.md).
+
+| Source mechanism | Existing shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| normalized Session event routing and message/tool lifecycle | `harnesstui.conversation.projection` | visibility flags and Agent tool-result binding | Complete |
+| queue-source normalization | `harnesstui.conversation.runtime_view` | explicit Session queue sources | Reused |
+| mapping-shaped tool event/result projection and standard workspace presentation policy | `harnesstui.conversation.tool_transcript` | `AgentToolResult` conversion, optional Product renderer and final command-label policy | Complete |
+| structural Agent message and command-history projection | `harnesstui.conversation.history` | persisted-session acquisition, kind dispositions and tool binding | Complete |
+| abort-settling/follow-up/steer/local/dispatch decision order | `harnesstui.conversation.host` | Coding intents, local-action declarations, command catalog and copy | Complete |
+| Plain/Screen effects and rendering | existing `plain_target`, `screen_target`, `screen_app` and TUI transcript engine | Product title, glyphs, status copy and theme | Reused |
+
+Production accounting: Coding Python changed from 12,475 to 11,969 physical
+LOC (-506 net). The affected Coding implementation changed from 1,369 to 863
+LOC. The four existing HarnessTUI owner files changed from 1,106 to 1,715 LOC
+(+609), giving a net Coding-reduction/shared-addition ratio of 0.83. No
+compatibility facade replaces `coding.presentation.tui.events`, and
+`CodingTuiProfile` is removed rather than re-exported. Independent HarnessTUI
+tests cover structural event, history, tool and routing behavior; architecture
+gates keep HarnessTUI free of Coding, Agent and AI imports.

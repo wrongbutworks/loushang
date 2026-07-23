@@ -115,7 +115,7 @@ MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
         "loushang.harnesstui.commands.source",
     ),
     "loushang.coding.ui.conversation_event_adapter": (
-        "loushang.coding.presentation.tui.events",
+        "loushang.harnesstui.conversation.projection",
     ),
     "loushang.coding.ui.controller": ("loushang.coding.interaction.controller",),
     "loushang.coding.ui.debug_status": ("loushang.coding.diagnostics.debug_status",),
@@ -206,7 +206,6 @@ CODING_TUI_FEATURE_OWNERS = (
     "loushang.coding.model_selection_tui",
     "loushang.coding.policy.tui",
     "loushang.coding.presentation.resume",
-    "loushang.coding.presentation.tui.events",
     "loushang.coding.presentation.tui.history",
     "loushang.coding.presentation.tui.plain",
     "loushang.coding.presentation.tui.screen",
@@ -584,11 +583,13 @@ else:
     assert result.returncode == 0, result.stderr
 
 
-def test_conversation_raw_event_dispatch_stays_in_coding_adapter() -> None:
-    adapter = Path("src/loushang/coding/presentation/tui/events.py").read_text(
+def test_conversation_event_dispatch_uses_shared_projection_owner() -> None:
+    adapter = Path("src/loushang/harnesstui/conversation/projection.py").read_text(
         encoding="utf-8"
     )
     assert 'event.get("type")' in adapter
+    assert "SessionConversationEventAdapter" in adapter
+    assert not Path("src/loushang/coding/presentation/tui/events.py").exists()
 
     for path in (
         Path("src/loushang/coding/presentation/tui/plain.py"),
@@ -658,7 +659,7 @@ def test_shared_performance_probe_does_not_load_coding_sessions() -> None:
     assert "load_persisted_session_history_records" in coding
 
 
-def test_shared_history_dispatch_keeps_raw_coding_projection_outside() -> None:
+def test_shared_history_dispatch_uses_structural_agent_message_projection() -> None:
     shared = Path("src/loushang/harnesstui/conversation/history.py").read_text(
         encoding="utf-8"
     )
@@ -676,10 +677,19 @@ def test_shared_history_dispatch_keeps_raw_coding_projection_outside() -> None:
         "TUI_TRANSCRIPT_DISPOSITIONS",
     ):
         assert token not in shared
-        assert token in coding
+
+    assert "SessionManager" in coding
+    assert "TUI_TRANSCRIPT_DISPOSITIONS" in coding
+    assert "build_coding_tool_transcript_projection" in coding
+    assert "loushang.ai" not in coding
+    assert "UserMessage" not in coding
+    assert "ToolResultMessage" not in coding
+    assert "CodingToolTranscriptProjection" not in coding
 
     for token in (
         "ConversationHistoryProjector",
+        "project_agent_message_payload",
+        "project_command_execution_payload",
         "project_context_compaction_payload",
         "project_context_branch_summary_payload",
     ):
@@ -840,6 +850,9 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
     assert "bind_clipboard_image_input_router(" in screen_input
     assert "PromptIntent" in profile
     assert "BashIntent" in profile
+    assert "ConversationRoutingProfile" in shared
+    assert "build_coding_tui_host_profile" in profile
+    assert "class CodingTuiProfile" not in profile
     assert "build_plain_conversation_app" in plain_app
 
 
@@ -1172,19 +1185,17 @@ def test_tool_transcript_projection_keeps_raw_coding_policy_at_product_edge() ->
     for token in (
         "AgentToolResult",
         "ToolDefinitionResolver",
-        'event.get("tool_call_id")',
-        'event.get("tool_name")',
         "render_tool_result_presentation",
     ):
         assert token not in shared
         assert token in coding
 
-    coding_tree = ast.parse(coding)
-    coding_class_names = {
-        node.name for node in ast.walk(coding_tree) if isinstance(node, ast.ClassDef)
-    }
-    assert "ToolTranscriptProjector" not in coding_class_names
-    assert "CodingToolTranscriptViewAdapter" in coding_class_names
+    assert 'event.get("tool_call_id")' in shared
+    assert 'event.get("tool_name")' in shared
+    assert "MappingToolTranscriptViewAdapter" in shared
+    assert "workspace_tool_verb" in shared
+    assert "workspace_tool_body_visibility" in shared
+    assert "CodingToolTranscriptViewAdapter" not in coding
     assert "build_coding_tool_transcript_projection" in coding
     assert "ToolTranscriptProjectionBinding" in shared
     assert "ToolTranscriptProjectionBinding" in coding

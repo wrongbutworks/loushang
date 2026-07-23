@@ -4,9 +4,7 @@ from collections.abc import Iterable
 from functools import partial
 from pathlib import Path
 
-from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
 from loushang.coding.presentation.tui.tool_transcript import (
-    CodingToolTranscriptProjection,
     build_coding_tool_transcript_projection,
     tool_block_to_record,
 )
@@ -23,22 +21,17 @@ from loushang.harness.agent_transcript import (
     RECORD_ANNOTATION_PATCH_KIND,
     STANDARD_AGENT_TRANSCRIPT_KINDS,
     THINKING_SELECTION_KIND,
-    ApplicationMessage,
 )
-from loushang.harness.conversation import CommandExecutionRecord
 from loushang.harness.presentation import ToolDefinitionResolver
 from loushang.harnesstui.conversation.history import (
     ConversationHistoryProjector,
     HistoryRecordDisposition,
+    project_agent_message_payload,
+    project_command_execution_payload,
     project_context_branch_summary_payload,
     project_context_compaction_payload,
 )
-from loushang.tui.transcript import (
-    AssistantMessageRecord,
-    DisplayRecord,
-    ToolExecutionRecord,
-    UserPromptRecord,
-)
+from loushang.tui.transcript import DisplayRecord
 
 TUI_TRANSCRIPT_DISPOSITIONS: dict[str, HistoryRecordDisposition] = {
     AGENT_MESSAGE_KIND: "render",
@@ -69,12 +62,17 @@ def session_history_records(
         tool_definition_resolver=tool_definition_resolver,
         max_body_lines=max_tool_body_lines,
     )
-    message_projector = partial(_message_record, tool_projector=tool_projector)
+    message_projector = partial(
+        project_agent_message_payload,
+        tool_result_projector=lambda message: tool_block_to_record(
+            tool_projector.project_tool_result_message(message)
+        ),
+    )
     return ConversationHistoryProjector(
         dispositions=TUI_TRANSCRIPT_DISPOSITIONS,
         payload_projectors={
             AGENT_MESSAGE_KIND: message_projector,
-            COMMAND_EXECUTION_KIND: _command_record,
+            COMMAND_EXECUTION_KIND: project_command_execution_payload,
             CONTEXT_COMPACTION_CHECKPOINT_KIND: project_context_compaction_payload,
             CONTEXT_BRANCH_SUMMARY_KIND: project_context_branch_summary_payload,
             APPLICATION_MESSAGE_KIND: message_projector,
@@ -95,60 +93,6 @@ async def load_persisted_session_history_records(
         manager.get_branch(),
         tool_definition_resolver=tool_definition_resolver,
     )
-
-
-def _message_record(
-    message: object,
-    *,
-    tool_projector: CodingToolTranscriptProjection,
-) -> DisplayRecord | None:
-    if isinstance(message, UserMessage):
-        text = _text_from_content(message.content).strip()
-        return UserPromptRecord(text) if text else None
-    if isinstance(message, AssistantMessage):
-        text = _text_from_content(message.content).strip()
-        return AssistantMessageRecord(text, stable=True) if text else None
-    if isinstance(message, ToolResultMessage):
-        return tool_block_to_record(tool_projector.project_tool_result_message(message))
-    if isinstance(message, ApplicationMessage) and message.display:
-        text = _text_from_content(message.content).strip()
-        return AssistantMessageRecord(text, stable=True) if text else None
-    return None
-
-
-def _text_from_content(content: object) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for part in content:
-            if isinstance(part, TextPart):
-                parts.append(part.text)
-        return "".join(parts)
-    return ""
-
-
-def _command_record(payload: object) -> ToolExecutionRecord | None:
-    if not isinstance(payload, CommandExecutionRecord):
-        return None
-    command = payload
-    return ToolExecutionRecord(
-        name=f"bash {command.command}".strip(),
-        state=_bash_state(command),
-        elapsed_seconds=0.0,
-        output=command.output,
-        command=command.command,
-        exit_code=command.exit_code,
-        stderr="cancelled" if command.cancelled else "",
-    )
-
-
-def _bash_state(command: CommandExecutionRecord):
-    if command.cancelled:
-        return "cancelled"
-    if command.exit_code not in (None, 0):
-        return "failed"
-    return "completed"
 
 
 __all__ = [

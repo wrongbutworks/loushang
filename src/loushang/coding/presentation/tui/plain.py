@@ -4,7 +4,6 @@ import shutil
 from dataclasses import dataclass, field
 from typing import Any
 
-from loushang.coding.presentation.tui.events import CodingConversationEventAdapter
 from loushang.coding.presentation.tui.tool_transcript import (
     CodingToolTranscriptProjection,
     build_coding_tool_transcript_projection,
@@ -16,10 +15,9 @@ from loushang.harnesstui.conversation.plain_target import (
 )
 from loushang.harnesstui.conversation.projection import (
     ConversationProjectionBinding,
+    SessionConversationEventAdapter,
 )
-from loushang.harnesstui.conversation.tool_transcript import (
-    ToolCallSnapshot,
-)
+from loushang.harnesstui.conversation.tool_transcript import ToolCallSnapshot
 from loushang.harnesstui.plain.renderer import (
     PlainConversationGlyphs,
     PlainConversationProfile,
@@ -114,7 +112,7 @@ def build_plain_coding_event_projection(
         renderer,
         tool_projector=tool_projection.neutral_projector,
         event_handler_factory=lambda projection: (
-            CodingConversationEventAdapter(
+            SessionConversationEventAdapter(
                 projection,
                 tool_projection,
                 recover_tool_updates=False,
