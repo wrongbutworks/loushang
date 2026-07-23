@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from loushang.harness.cli import SessionResolutionRequest, resolve_session
+from loushang.harness.cli import (
+    SessionResolutionRequest,
+    agent_session_resolution_request,
+    resolve_session,
+)
 
 
 class _Runtime:
@@ -26,6 +30,26 @@ class _Runtime:
 
     def list_sessions(self):
         return [type("Record", (), {"session_file": Path("/tmp/latest.jsonl")})()]
+
+
+def test_agent_session_flags_project_resolution_request() -> None:
+    from types import SimpleNamespace
+
+    request = agent_session_resolution_request(
+        SimpleNamespace(
+            session="session-1",
+            continue_=False,
+            resume=False,
+            fork="leaf-1",
+        ),
+        cwd="/workspace",
+    )
+
+    assert request == SessionResolutionRequest(
+        session="session-1",
+        fork="leaf-1",
+        cwd="/workspace",
+    )
 
 
 def test_resolve_session_selects_new_restore_and_fork_operations() -> None:

@@ -6,10 +6,16 @@ from io import StringIO
 from types import SimpleNamespace
 
 from loushang.harness.cli import (
+    CliOperationInsertion,
+    CliOperationStage,
     CommandExecutionRequest,
     SessionListingOperationRequest,
+    StandardCliOperationRequest,
+    agent_session_listing_request,
+    agent_standard_cli_operation_request,
     run_command_operation,
     run_session_listing_operation,
+    run_standard_cli_operations,
 )
 
 
@@ -35,6 +41,64 @@ class _Runtime:
 class _Session:
     async def execute_command_async(self, name: str, args: str) -> object:
         return SimpleNamespace(result={"name": name, "args": args})
+
+
+def test_standard_agent_arguments_project_operation_requests() -> None:
+    args = SimpleNamespace(
+        list_sessions=True,
+        list_sessions_format="json",
+        session_cwd="/workspace",
+        session_name_filter=None,
+        session_parent=None,
+        session_query="notes",
+        session_has_diagnostics=None,
+        session_limit=5,
+        all_sessions=True,
+        session_index=False,
+        refresh_session_index=True,
+        install_packages=("example",),
+        materialize_packages=(),
+        update_packages=(),
+        remove_packages=(),
+        uninstall_packages=(),
+        check_package_updates=False,
+        update_all_packages=False,
+        package_scope="global",
+        list_models="alpha",
+        export=None,
+        export_format="html",
+        export_result_format="text",
+        list_commands=False,
+        list_commands_format="tsv",
+        list_diagnostics=False,
+        diagnostics_limit=20,
+        list_diagnostics_format="tsv",
+        list_skills=False,
+        list_skills_format="tsv",
+        list_plugins=False,
+        list_plugins_format="tsv",
+        command=None,
+        command_args="",
+        command_result_format="raw",
+        list_models_format="json",
+    )
+
+    listing = agent_session_listing_request(args)
+    operations = agent_standard_cli_operation_request(args)
+
+    assert listing == SessionListingOperationRequest(
+        output_format="json",
+        cwd="/workspace",
+        text="notes",
+        limit=5,
+        all_sessions=True,
+        indexed=True,
+        refresh_index=True,
+    )
+    assert operations.package_lifecycle is not None
+    assert operations.package_lifecycle.install == ("example",)
+    assert operations.model_listing is not None
+    assert operations.model_listing.query == "alpha"
 
 
 def test_session_listing_operation_owns_query_validation_and_projection(
@@ -105,3 +169,29 @@ def test_command_operation_writes_standard_result_envelope() -> None:
         "result": {"name": "deploy", "args": "now"},
     }
     assert stderr.getvalue() == ""
+
+
+def test_standard_operation_pack_accepts_product_stage_insertions() -> None:
+    calls: list[str] = []
+
+    result = asyncio.run(
+        run_standard_cli_operations(
+            object(),
+            None,
+            StandardCliOperationRequest(),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            insertions=(
+                CliOperationInsertion(
+                    CliOperationStage(
+                        "product_catalog",
+                        lambda: calls.append("product_catalog") or 0,
+                    ),
+                    target_operation_id="list_skills",
+                ),
+            ),
+        )
+    )
+
+    assert result == 0
+    assert calls == ["product_catalog"]

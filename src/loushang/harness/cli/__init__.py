@@ -1,5 +1,30 @@
 """Composable, product-neutral CLI grammar and parsing."""
 
+from loushang.harness.cli.agent_args import (
+    AgentCliArgs,
+    AgentCliMode,
+    agent_cli_argument_values,
+    agent_cli_bootstrap_args,
+    agent_image_auto_resize,
+    agent_resource_loader_options,
+    apply_agent_offline_mode,
+    configure_agent_resource_loader,
+    normalize_agent_cli_argv,
+    resolve_agent_session_dir,
+)
+from loushang.harness.cli.application import (
+    CliApplicationPorts,
+    CliApplicationRuntime,
+    CliBootstrapContext,
+    CliOutputGuard,
+    CliParseResult,
+    CliPhaseResult,
+    CliRuntimeContext,
+    CliSessionContext,
+    capture_cli_parse,
+    format_cli_error,
+    invoke_cli_builder,
+)
 from loushang.harness.cli.command_execution import (
     CommandExecutionError,
     CommandExecutionRequest,
@@ -31,10 +56,17 @@ from loushang.harness.cli.export import (
 from loushang.harness.cli.extension_flags import (
     apply_extension_flag_values,
     collect_extension_flags,
+    extension_flag_dest,
+    extract_unknown_long_options,
+    project_extension_flag_values,
+    register_extension_flag_arguments,
 )
 from loushang.harness.cli.host_operations import (
     CliErrorFormatter,
     SessionListingOperationRequest,
+    StandardCliOperationRequest,
+    agent_session_listing_request,
+    agent_standard_cli_operation_request,
     run_command_listing_operation,
     run_command_operation,
     run_diagnostics_listing_operation,
@@ -45,9 +77,12 @@ from loushang.harness.cli.host_operations import (
     run_resource_toggle_operation,
     run_session_listing_operation,
     run_skill_listing_operation,
+    run_standard_cli_operations,
 )
 from loushang.harness.cli.launch import (
+    AgentCliLaunchOverlay,
     CliLaunchPlan,
+    agent_cli_launch_plan,
     cli_help_belongs_on_stderr,
     cli_observability_mode,
     cli_output_guard_enabled,
@@ -77,6 +112,7 @@ from loushang.harness.cli.package_lifecycle import (
 from loushang.harness.cli.package_listing import format_package_records
 from loushang.harness.cli.parser import (
     build_parser,
+    format_agent_cli_help,
     parse_args,
     register_profile_arguments,
 )
@@ -90,15 +126,25 @@ from loushang.harness.cli.resource_toggles import (
     ResourceToggleError,
     ResourceToggleRequest,
     ResourceToggleResult,
+    agent_resource_toggle_request,
     apply_resource_toggles,
+    report_agent_resource_settings_errors,
 )
 from loushang.harness.cli.runtime import (
     CliOperationHandler,
+    CliOperationInsertion,
     CliOperationRuntime,
     CliOperationSequence,
     CliOperationSpec,
     CliOperationStage,
     CliOperationUnavailableError,
+    compose_cli_operation_stages,
+)
+from loushang.harness.cli.session_configuration import (
+    ModelResultWarning,
+    ModelSelectionApplier,
+    ModelSelectionResolver,
+    configure_agent_cli_session,
 )
 from loushang.harness.cli.session_listing import (
     SessionListingError,
@@ -110,6 +156,7 @@ from loushang.harness.cli.session_listing import (
 )
 from loushang.harness.cli.session_resolution import (
     SessionResolutionRequest,
+    agent_session_resolution_request,
     resolve_latest_session_file,
     resolve_session,
 )
@@ -117,6 +164,12 @@ from loushang.harness.cli.skill_listing import (
     SkillListingError,
     format_skill_records,
     list_skill_records,
+)
+from loushang.harness.cli.turns import (
+    CliKeywordRunner,
+    CliPreparedTurn,
+    CliTurnBatchRunner,
+    run_keyword_cli_turns,
 )
 from loushang.harness.cli.types import (
     CliArgumentSpec,
@@ -127,18 +180,38 @@ from loushang.harness.cli.types import (
 )
 
 __all__ = [
+    "AgentCliArgs",
+    "AgentCliLaunchOverlay",
+    "AgentCliMode",
+    "ModelResultWarning",
+    "ModelSelectionApplier",
+    "ModelSelectionResolver",
+    "CliApplicationPorts",
+    "CliApplicationRuntime",
     "CliArgumentSpec",
+    "CliBootstrapContext",
     "CliCommandSpec",
     "CliInvocation",
+    "CliKeywordRunner",
     "CliLaunchPlan",
     "CliErrorFormatter",
     "SessionListingOperationRequest",
+    "StandardCliOperationRequest",
     "CliOperationHandler",
+    "CliOperationInsertion",
     "CliOperationRuntime",
     "CliOperationSequence",
     "CliOperationSpec",
     "CliOperationStage",
     "CliOperationUnavailableError",
+    "CliOutputGuard",
+    "CliParseResult",
+    "CliPhaseResult",
+    "CliPreparedTurn",
+    "CliRuntimeContext",
+    "CliSessionContext",
+    "CliTurnBatchRunner",
+    "compose_cli_operation_stages",
     "SessionListingError",
     "SessionListingFormat",
     "SessionListingRequest",
@@ -164,6 +237,8 @@ __all__ = [
     "run_resource_toggle_operation",
     "run_session_listing_operation",
     "run_skill_listing_operation",
+    "run_standard_cli_operations",
+    "run_keyword_cli_turns",
     "PluginListingError",
     "format_plugin_records",
     "list_plugin_records",
@@ -191,7 +266,20 @@ __all__ = [
     "DiagnosticsListingError",
     "DiagnosticsListingRequest",
     "apply_extension_flag_values",
+    "agent_image_auto_resize",
+    "agent_cli_bootstrap_args",
+    "agent_cli_argument_values",
+    "agent_resource_loader_options",
+    "agent_resource_toggle_request",
+    "agent_session_listing_request",
+    "agent_session_resolution_request",
+    "agent_standard_cli_operation_request",
+    "apply_agent_offline_mode",
+    "capture_cli_parse",
+    "agent_cli_launch_plan",
     "collect_extension_flags",
+    "extension_flag_dest",
+    "extract_unknown_long_options",
     "format_diagnostic_records",
     "list_diagnostic_records",
     "ExportFormat",
@@ -206,6 +294,8 @@ __all__ = [
     "CommandExecutionRequest",
     "CommandExecutionResult",
     "execute_command",
+    "format_agent_cli_help",
+    "format_cli_error",
     "format_command_execution_result",
     "json_safe_command_result",
     "format_command_records",
@@ -215,6 +305,14 @@ __all__ = [
     "STANDARD_CLI_PROFILE",
     "build_parser",
     "parse_args",
+    "project_extension_flag_values",
     "register_profile_arguments",
+    "register_extension_flag_arguments",
+    "normalize_agent_cli_argv",
+    "resolve_agent_session_dir",
+    "configure_agent_cli_session",
+    "configure_agent_resource_loader",
+    "invoke_cli_builder",
+    "report_agent_resource_settings_errors",
     "validate_arguments",
 ]

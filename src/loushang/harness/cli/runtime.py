@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TypeAlias
+from typing import Literal, TypeAlias
 
 from loushang.harness.cli.types import CliInvocation, CliProfileError
 
@@ -101,6 +101,44 @@ class CliOperationStage:
             raise TypeError("CLI operation stage handler must be callable")
 
 
+@dataclass(frozen=True, slots=True)
+class CliOperationInsertion:
+    """Insert one Product-selected stage relative to a shared stage."""
+
+    stage: CliOperationStage
+    target_operation_id: str
+    position: Literal["before", "after"] = "after"
+
+    def __post_init__(self) -> None:
+        if not self.target_operation_id.strip():
+            raise CliProfileError("CLI insertion target must be non-empty")
+
+
+def compose_cli_operation_stages(
+    stages: Sequence[CliOperationStage],
+    insertions: Sequence[CliOperationInsertion] = (),
+) -> tuple[CliOperationStage, ...]:
+    """Compose shared stages with explicit Product insertions."""
+
+    composed = list(stages)
+    for insertion in insertions:
+        matching_indexes = [
+            index
+            for index, stage in enumerate(composed)
+            if stage.operation_id == insertion.target_operation_id
+        ]
+        if not matching_indexes:
+            raise CliProfileError(
+                "CLI insertion target is not present: "
+                f"{insertion.target_operation_id!r}"
+            )
+        index = matching_indexes[0]
+        if insertion.position == "after":
+            index += 1
+        composed.insert(index, insertion.stage)
+    return tuple(composed)
+
+
 class CliOperationSequence:
     """Run ordered CLI operations until one handles the invocation.
 
@@ -132,8 +170,10 @@ class CliOperationSequence:
 __all__ = [
     "CliOperationHandler",
     "CliOperationRuntime",
+    "CliOperationInsertion",
     "CliOperationSpec",
     "CliOperationSequence",
     "CliOperationStage",
     "CliOperationUnavailableError",
+    "compose_cli_operation_stages",
 ]

@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 from loushang.agent.types import AgentTool
-from loushang.harness.approval import ApprovalResolver
+from loushang.harness.approval import (
+    ApprovalResolver,
+    HeadlessApprovalResolver,
+)
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.policy_engine import PolicyEngine
 from loushang.harness.workspace.exec import ExecService
 from loushang.harness.workspace.operations import (
     EditOperations,
@@ -90,6 +95,67 @@ class ToolsOptions:
     external_tool_policy: ExternalToolPolicy | None = None
     allow_external_tool_downloads: bool = False
     require_external_tools: bool = False
+
+
+@dataclass(frozen=True)
+class WorkspaceToolRuntimeSettings:
+    policy_engine: object | None = None
+    approval_resolver: ApprovalResolver | None = None
+
+
+def workspace_tool_runtime_settings(
+    settings_manager: object | None,
+    *,
+    policy_factory: Callable[..., object] = PolicyEngine,
+) -> WorkspaceToolRuntimeSettings:
+    """Resolve standard tool policy and headless approval settings."""
+
+    tool_settings = _tool_settings(settings_manager)
+    if tool_settings is None:
+        return WorkspaceToolRuntimeSettings()
+    policy_kwargs = {
+        "blocked_tools": _string_tuple(tool_settings, "blocked_tools"),
+        "ask_tools": _string_tuple(tool_settings, "ask_tools"),
+        "blocked_substrings": _string_tuple(tool_settings, "blocked_substrings"),
+        "ask_substrings": _string_tuple(tool_settings, "ask_substrings"),
+        "blocked_path_substrings": _string_tuple(
+            tool_settings, "blocked_path_substrings"
+        ),
+        "ask_path_substrings": _string_tuple(
+            tool_settings, "ask_path_substrings"
+        ),
+    }
+    policy_engine = policy_factory(**policy_kwargs) if any(policy_kwargs.values()) else None
+    approval_mode = getattr(tool_settings, "approval_mode", None)
+    approval_resolver = (
+        HeadlessApprovalResolver(
+            mode=approval_mode,
+            reason=getattr(tool_settings, "approval_reason", None),
+        )
+        if approval_mode is not None
+        else None
+    )
+    return WorkspaceToolRuntimeSettings(
+        policy_engine=policy_engine,
+        approval_resolver=approval_resolver,
+    )
+
+
+def _tool_settings(settings_manager: object | None) -> object | None:
+    get_tool_settings = getattr(settings_manager, "get_tool_settings", None)
+    if callable(get_tool_settings):
+        return get_tool_settings()
+    get_settings = getattr(settings_manager, "get_settings", None)
+    if callable(get_settings):
+        return getattr(get_settings(), "tools", None)
+    return None
+
+
+def _string_tuple(value: object, name: str) -> tuple[str, ...]:
+    items = getattr(value, name, ())
+    if not isinstance(items, list | tuple):
+        return ()
+    return tuple(item for item in items if isinstance(item, str))
 
 
 def create_tool_definition(

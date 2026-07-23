@@ -613,3 +613,34 @@ reduction of 432 LOC. The remaining bootstrap code is the public Product
 factory surface, Coding service/default construction, seven injected effects,
 and concrete `AgentSession`/runtime binding. Private helper tests were moved to
 the canonical Harness owner rather than preserving a Coding facade.
+
+### Wave 7, Slice I: CLI Application Composition (Complete)
+
+The remaining Coding CLI still copied the standard Agent argument value object,
+extension bootstrap parser, two-pass application phase order, standard
+operation queue, and repeated prepared-turn lifecycle arguments. These
+mechanisms now extend the existing `harness.cli` package; no parser, session
+runtime, or transport was duplicated.
+
+| Source mechanism | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| standard Agent CLI dataclass and argparse namespace projection | `harness.cli.AgentCliArgs` | Method/Work additive fields | Complete |
+| standard package/diagnostics/observability argv normalization and extension flag bootstrap parsing | `harness.cli.agent_args` and `harness.cli.extension_flags` | Method subcommand aliases | Complete |
+| bootstrap parse, validation, guarded runtime/session creation, final parse, operations, and host phase order | `harness.cli.CliApplicationRuntime` | Product services, tool policy, observability context, and runner bindings | Complete |
+| standard export/catalog/package/command/model precedence | `harness.cli.run_standard_cli_operations` | Method and package-catalog stage insertions | Complete |
+| first/last prepared-turn images, follow-ups, and disposal flags | `harness.cli.run_keyword_cli_turns` | Method/Work prepared-turn metadata and Product runners | Complete |
+| standard launch intent projection | `harness.cli.agent_cli_launch_plan` | Method/Work launch overlay | Complete |
+| standard resource/session/catalog request projection and ephemeral bootstrap policy | existing `harness.cli` capability modules | Method catalog insertion and package security callbacks | Complete |
+| resource-loader flags, session path, image policy, and offline activation | `harness.cli.agent_args` | Coding service factory and resource package content | Complete |
+| tool settings to policy/approval projection | `harness.tools.workspace.factory` | Coding rule-id policy factory and interactive approval presentation | Complete |
+| post-resolution extension/name/model/thinking configuration | `harness.cli.session_configuration` | model persistence policy and warning wording | Complete |
+| fake workflow pre-runtime exit | `harness.scenario.cli` | Coding workflow runner and CLI flag | Complete |
+
+Production accounting: `coding/cli` changed from 2,441 to 1,602 physical
+Python LOC (-839 net). The cumulative patch deletes 1,525 Coding
+implementation lines and adds 686 Coding binding lines. Shared production
+additions are approximately 1,779 lines, for a gross
+deletion/shared-addition ratio of 0.86. The larger shared addition establishes
+typed, independently tested contracts rather than moving the old function
+intact. Channel remains the owner of streams, output protection, turn ordering,
+and disposal.

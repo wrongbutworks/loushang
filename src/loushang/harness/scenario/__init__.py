@@ -1,5 +1,6 @@
 """Reusable scripted interaction scenarios for Product-owned adapters."""
 
+from loushang.harness.scenario.cli import WorkflowCliRunner, run_fake_workflow_cli
 from loushang.harness.scenario.events import (
     EventPattern,
     WorkflowEvent,
@@ -50,6 +51,7 @@ __all__ = [
     "WaitStep",
     "Workflow",
     "WorkflowAdapter",
+    "WorkflowCliRunner",
     "WorkflowEvent",
     "WorkflowExpectation",
     "WorkflowResult",
@@ -60,4 +62,5 @@ __all__ = [
     "load_workflow",
     "resolve_workflow_files",
     "run_workflow",
+    "run_fake_workflow_cli",
 ]

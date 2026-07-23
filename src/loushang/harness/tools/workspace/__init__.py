@@ -40,6 +40,7 @@ from .factory import (
     READ_ONLY_TOOL_NAMES,
     ToolName,
     ToolsOptions,
+    WorkspaceToolRuntimeSettings,
     create_all_tool_definitions,
     create_all_tools,
     create_bash_tool,
@@ -55,6 +56,7 @@ from .factory import (
     create_tool,
     create_tool_definition,
     create_write_tool,
+    workspace_tool_runtime_settings,
 )
 from .find import (
     FindToolDetails,
@@ -182,6 +184,7 @@ __all__ = [
     "WriteToolInput",
     "WriteToolOptions",
     "WorkspaceToolRegistry",
+    "WorkspaceToolRuntimeSettings",
     "WriteOperations",
     "EditOperations",
     "FindOperations",
@@ -229,4 +232,5 @@ __all__ = [
     "resolve_operation",
     "wrap_tool_definition",
     "wrap_tool_definitions",
+    "workspace_tool_runtime_settings",
 ]

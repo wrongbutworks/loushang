@@ -116,6 +116,21 @@ class CliProfile:
                 return command
         return None
 
+    @property
+    def option_names(self) -> frozenset[str]:
+        """Return normalized option names reserved by this profile."""
+
+        arguments = (
+            *self.root_arguments,
+            *(argument for command in self.commands for argument in command.arguments),
+        )
+        return frozenset(
+            flag.lstrip("-")
+            for argument in arguments
+            for flag in argument.flags
+            if flag.startswith("--")
+        )
+
 
 def _argument(
     argument_id: str,

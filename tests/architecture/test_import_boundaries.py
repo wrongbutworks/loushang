@@ -875,6 +875,21 @@ def test_cli_product_host_operations_are_shared_and_product_neutral() -> None:
     launch_source = Path("src/loushang/harness/cli/launch.py").read_text(
         encoding="utf-8"
     )
+    application_source = Path(
+        "src/loushang/harness/cli/application.py"
+    ).read_text(encoding="utf-8")
+    turns_source = Path("src/loushang/harness/cli/turns.py").read_text(
+        encoding="utf-8"
+    )
+    agent_args_source = Path(
+        "src/loushang/harness/cli/agent_args.py"
+    ).read_text(encoding="utf-8")
+    session_configuration_source = Path(
+        "src/loushang/harness/cli/session_configuration.py"
+    ).read_text(encoding="utf-8")
+    scenario_cli_source = Path(
+        "src/loushang/harness/scenario/cli.py"
+    ).read_text(encoding="utf-8")
     coding_source = Path("src/loushang/coding/cli/__main__.py").read_text(
         encoding="utf-8"
     )
@@ -890,12 +905,22 @@ def test_cli_product_host_operations_are_shared_and_product_neutral() -> None:
     ):
         assert forbidden not in operations_source
         assert forbidden not in launch_source
-    assert "CliOperationSequence" in coding_source
-    assert "CliLaunchPlan" in coding_source
+        assert forbidden not in application_source
+        assert forbidden not in turns_source
+        assert forbidden not in agent_args_source
+        assert forbidden not in session_configuration_source
+        assert forbidden not in scenario_cli_source
+    assert "CliApplicationRuntime" in coding_source
+    assert "run_standard_cli_operations" in coding_source
+    assert "run_keyword_cli_turns" in coding_source
+    assert "CliOperationSequence" not in coding_source
     assert "run_session_listing_operation" in coding_source
     assert "def _run_list_sessions(" not in coding_source
     assert "def _run_list_models(" not in coding_source
     assert "def _run_command(" not in coding_source
+    assert "def _runtime_args_for_bootstrap(" not in coding_source
+    assert "def _resource_loader_options_from_args(" not in coding_source
+    assert "def _report_settings_errors(" not in coding_source
     assert "Shared Contracts" in boundary
     assert "Dependency Rule" in boundary
 
