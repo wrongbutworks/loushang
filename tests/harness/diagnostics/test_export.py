@@ -6,9 +6,30 @@ import zipfile
 import pytest
 
 from loushang.harness.diagnostics.export import (
+    DiagnosticBundleProfile,
     DiagnosticExportArtifact,
     export_diagnostics_archive,
+    export_diagnostics_bundle,
 )
+
+
+def test_standard_bundle_accepts_product_archive_profile(tmp_path) -> None:
+    project_root = tmp_path / "design"
+    project_root.mkdir()
+    profile = DiagnosticBundleProfile(
+        archive_directory=".product/diagnostics",
+        archive_prefix="design-diag",
+        readme="Design diagnostics\n",
+    )
+
+    output = export_diagnostics_bundle(
+        project_root=project_root,
+        session_dir=project_root / ".product" / "sessions",
+        profile=profile,
+    )
+
+    assert output.parent == project_root / ".product" / "diagnostics"
+    assert output.name.startswith("design-diag-")
 
 
 def test_export_diagnostics_archive_redacts_text_and_structured_values(

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 
+from loushang.coding.domain.work import create_coding_work_runtime
 from loushang.harness.events import RuntimeEvent
+from loushang.work.event_log import EventLogBackend
+from loushang.work.session import SessionWorkRuntime, SessionWorkTurn
 
 
 class FakePromptSession:
@@ -49,10 +52,60 @@ class FakePromptSession:
                     await result
 
 
-def test_coding_work_shell_wraps_prompt_and_logs_operation_run_and_projected_events() -> (
+def _create_work_runtime(
+    *,
+    session: object,
+    event_log: EventLogBackend,
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+) -> SessionWorkRuntime:
+    return create_coding_work_runtime(
+        session=session,
+        event_log=event_log,
+        clock=clock,
+    )
+
+
+async def _submit_turn(
+    runtime: SessionWorkRuntime,
+    text: str,
+    *,
+    session_id: str,
+    operation_id: str,
+    run_id: str,
+    images: Sequence[object] | None = None,
+    method_id: str | None = None,
+    plan_id: str | None = None,
+    step_id: str | None = None,
+    step_index: int | None = None,
+    step_title: str | None = None,
+    planned_constraint: Mapping[str, object] | None = None,
+    audit_policy: Mapping[str, object] | None = None,
+    plan_facts: Mapping[str, object] | None = None,
+    step_facts: Mapping[str, object] | None = None,
+):
+    return await runtime.submit_turn(
+        SessionWorkTurn(
+            text=text,
+            images=images,
+            method_id=method_id,
+            plan_id=plan_id,
+            step_id=step_id,
+            step_index=step_index,
+            step_title=step_title,
+            planned_constraint=planned_constraint,
+            audit_policy=audit_policy,
+            plan_facts=plan_facts,
+            step_facts=step_facts,
+        ),
+        session_id=session_id,
+        operation_id=operation_id,
+        run_id=run_id,
+    )
+
+
+def test_session_work_runtime_logs_coding_operation_and_projected_events() -> (
     None
 ):
-    from loushang.coding.work_shell import CodingWorkShell
     from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
@@ -73,13 +126,14 @@ def test_coding_work_shell_wraps_prompt_and_logs_operation_run_and_projected_eve
                 },
             ],
         )
-        shell = CodingWorkShell(
+        work_runtime = _create_work_runtime(
             session=session,
             event_log=event_log,
             clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
         )
 
-        run = await shell.submit_coding_turn(
+        run = await _submit_turn(
+            work_runtime,
             "fix this bug",
             session_id="session-1",
             operation_id="op-1",
@@ -118,8 +172,7 @@ def test_coding_work_shell_wraps_prompt_and_logs_operation_run_and_projected_eve
     asyncio.run(scenario())
 
 
-def test_coding_work_shell_projects_custom_messages_with_product_codec() -> None:
-    from loushang.coding.work_shell import CodingWorkShell
+def test_session_work_runtime_projects_custom_messages_with_product_codec() -> None:
     from loushang.harness.agent_transcript import ApplicationMessage
     from loushang.work import InMemoryEventLogBackend
 
@@ -133,7 +186,7 @@ def test_coding_work_shell_projects_custom_messages_with_product_codec() -> None
             timestamp=1_780_309_800.0,
         )
         event_log = InMemoryEventLogBackend()
-        shell = CodingWorkShell(
+        work_runtime = _create_work_runtime(
             session=FakePromptSession(
                 events=[{"type": "message_end", "message": message}]
             ),
@@ -141,7 +194,8 @@ def test_coding_work_shell_projects_custom_messages_with_product_codec() -> None
             clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
         )
 
-        await shell.submit_coding_turn(
+        await _submit_turn(
+            work_runtime,
             "review",
             session_id="session-1",
             operation_id="op-1",
@@ -164,8 +218,7 @@ def test_coding_work_shell_projects_custom_messages_with_product_codec() -> None
     asyncio.run(scenario())
 
 
-def test_coding_work_shell_logs_tool_policy_and_approval_audit_events() -> None:
-    from loushang.coding.work_shell import CodingWorkShell
+def test_session_work_runtime_logs_tool_policy_and_approval_audit_events() -> None:
     from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
@@ -204,13 +257,14 @@ def test_coding_work_shell_logs_tool_policy_and_approval_audit_events() -> None:
                 },
             ],
         )
-        shell = CodingWorkShell(
+        work_runtime = _create_work_runtime(
             session=session,
             event_log=event_log,
             clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
         )
 
-        await shell.submit_coding_turn(
+        await _submit_turn(
+            work_runtime,
             "write approved file",
             session_id="session-1",
             operation_id="op-1",
@@ -237,9 +291,8 @@ def test_coding_work_shell_logs_tool_policy_and_approval_audit_events() -> None:
     asyncio.run(scenario())
 
 
-def test_coding_work_shell_jsonl_log_can_replay_persisted_turn(tmp_path) -> None:
+def test_session_work_runtime_jsonl_log_can_replay_persisted_turn(tmp_path) -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.work_shell import CodingWorkShell
     from loushang.work import JsonlEventLogBackend
 
     usage = Usage(
@@ -270,13 +323,14 @@ def test_coding_work_shell_jsonl_log_can_replay_persisted_turn(tmp_path) -> None
                 {"type": "message_end", "message": assistant},
             ],
         )
-        shell = CodingWorkShell(
+        work_runtime = _create_work_runtime(
             session=session,
             event_log=JsonlEventLogBackend(log_path),
             clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
         )
 
-        run = await shell.submit_coding_turn(
+        run = await _submit_turn(
+            work_runtime,
             "persist this turn",
             session_id="session-1",
             operation_id="op-1",
@@ -298,20 +352,20 @@ def test_coding_work_shell_jsonl_log_can_replay_persisted_turn(tmp_path) -> None
     asyncio.run(scenario())
 
 
-def test_coding_work_shell_records_method_id_as_metadata_only() -> None:
-    from loushang.coding.work_shell import CodingWorkShell
+def test_session_work_runtime_records_method_id_as_metadata_only() -> None:
     from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()
         session = FakePromptSession(events=[])
-        shell = CodingWorkShell(
+        work_runtime = _create_work_runtime(
             session=session,
             event_log=event_log,
             clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
         )
 
-        run = await shell.submit_coding_turn(
+        run = await _submit_turn(
+            work_runtime,
             "fix this bug",
             session_id="session-1",
             operation_id="op-1",
@@ -330,14 +384,13 @@ def test_coding_work_shell_records_method_id_as_metadata_only() -> None:
     asyncio.run(scenario())
 
 
-def test_coding_work_shell_records_plan_and_step_lifecycle_events() -> None:
-    from loushang.coding.work_shell import CodingWorkShell
+def test_session_work_runtime_records_plan_and_step_lifecycle_events() -> None:
     from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()
         session = FakePromptSession(events=[])
-        shell = CodingWorkShell(
+        work_runtime = _create_work_runtime(
             session=session,
             event_log=event_log,
             clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
@@ -354,7 +407,8 @@ def test_coding_work_shell_records_plan_and_step_lifecycle_events() -> None:
             "step_count": 2,
         }
 
-        run = await shell.submit_coding_turn(
+        run = await _submit_turn(
+            work_runtime,
             "inspect current changes",
             session_id="session-1",
             operation_id="op-1",
@@ -423,20 +477,20 @@ def test_coding_work_shell_records_plan_and_step_lifecycle_events() -> None:
     asyncio.run(scenario())
 
 
-def test_coding_work_shell_always_emits_plan_boundaries_for_a_planned_run() -> None:
-    from loushang.coding.work_shell import CodingWorkShell
+def test_session_work_runtime_always_emits_plan_boundaries_for_a_planned_run() -> None:
     from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()
         session = FakePromptSession(events=[])
-        shell = CodingWorkShell(
+        work_runtime = _create_work_runtime(
             session=session,
             event_log=event_log,
             clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
         )
 
-        run = await shell.submit_coding_turn(
+        run = await _submit_turn(
+            work_runtime,
             "verify current changes",
             session_id="session-1",
             operation_id="op-1",
@@ -463,23 +517,23 @@ def test_coding_work_shell_always_emits_plan_boundaries_for_a_planned_run() -> N
     asyncio.run(scenario())
 
 
-def test_coding_work_shell_records_complete_plan_failure_lifecycle() -> (
+def test_session_work_runtime_records_complete_plan_failure_lifecycle() -> (
     None
 ):
-    from loushang.coding.work_shell import CodingWorkShell
     from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()
         session = FakePromptSession(events=[], error=RuntimeError("middle step failed"))
-        shell = CodingWorkShell(
+        work_runtime = _create_work_runtime(
             session=session,
             event_log=event_log,
             clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
         )
 
         try:
-            await shell.submit_coding_turn(
+            await _submit_turn(
+                work_runtime,
                 "verify current changes",
                 session_id="session-1",
                 operation_id="op-1",
@@ -509,14 +563,13 @@ def test_coding_work_shell_records_complete_plan_failure_lifecycle() -> (
     asyncio.run(scenario())
 
 
-def test_coding_work_shell_records_step_and_plan_failures_before_run_failure() -> None:
-    from loushang.coding.work_shell import CodingWorkShell
+def test_session_work_runtime_records_step_and_plan_failures_before_run_failure() -> None:
     from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()
         session = FakePromptSession(events=[], error=RuntimeError("agent failed"))
-        shell = CodingWorkShell(
+        work_runtime = _create_work_runtime(
             session=session,
             event_log=event_log,
             clock=lambda: datetime(2026, 6, 1, 10, 30, tzinfo=UTC),
@@ -528,7 +581,8 @@ def test_coding_work_shell_records_step_and_plan_failures_before_run_failure() -
         step_facts = {"step_id": "inspect", "step_index": 0}
 
         try:
-            await shell.submit_coding_turn(
+            await _submit_turn(
+                work_runtime,
                 "inspect current changes",
                 session_id="session-1",
                 operation_id="op-1",
@@ -571,10 +625,9 @@ def test_coding_work_shell_records_step_and_plan_failures_before_run_failure() -
     asyncio.run(scenario())
 
 
-def test_coding_work_shell_unsubscribes_once_on_success_failure_and_cancellation() -> (
+def test_session_work_runtime_unsubscribes_on_success_failure_and_cancellation() -> (
     None
 ):
-    from loushang.coding.work_shell import CodingWorkShell
     from loushang.work import InMemoryEventLogBackend
 
     class TrackingSession:
@@ -605,9 +658,13 @@ def test_coding_work_shell_unsubscribes_once_on_success_failure_and_cancellation
         for outcome in ("success", "failure", "cancellation"):
             event_log = InMemoryEventLogBackend()
             session = TrackingSession(outcome)
-            shell = CodingWorkShell(session=session, event_log=event_log)
+            work_runtime = _create_work_runtime(
+                session=session,
+                event_log=event_log,
+            )
             task = asyncio.create_task(
-                shell.submit_coding_turn(
+                _submit_turn(
+                    work_runtime,
                     outcome,
                     session_id="session-1",
                     operation_id=f"op-{outcome}",
@@ -640,17 +697,18 @@ def test_coding_work_shell_unsubscribes_once_on_success_failure_and_cancellation
     asyncio.run(scenario())
 
 
-def test_coding_work_shell_runs_method_plan_as_one_sequential_work_run() -> None:
-    from loushang.coding.work_executor import SubmitCodingTurn
-    from loushang.coding.work_shell import CodingWorkShell
+def test_session_work_runtime_runs_method_plan_as_one_sequential_run() -> None:
     from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()
         session = FakePromptSession(events=[])
-        shell = CodingWorkShell(session=session, event_log=event_log)
+        work_runtime = _create_work_runtime(
+            session=session,
+            event_log=event_log,
+        )
         turns = (
-            SubmitCodingTurn(
+            SessionWorkTurn(
                 text="inspect",
                 method_id="method-1",
                 plan_id="plan-1",
@@ -658,7 +716,7 @@ def test_coding_work_shell_runs_method_plan_as_one_sequential_work_run() -> None
                 step_index=0,
                 step_title="Inspect",
             ),
-            SubmitCodingTurn(
+            SessionWorkTurn(
                 text="verify",
                 method_id="method-1",
                 plan_id="plan-1",
@@ -668,7 +726,7 @@ def test_coding_work_shell_runs_method_plan_as_one_sequential_work_run() -> None
             ),
         )
 
-        run = await shell.submit_coding_plan(
+        run = await work_runtime.submit_plan(
             turns,
             session_id="session-1",
             operation_id="op-1",
@@ -694,33 +752,26 @@ def test_coding_work_shell_runs_method_plan_as_one_sequential_work_run() -> None
     asyncio.run(scenario())
 
 
-def test_coding_work_shell_facades_share_one_session_scoped_work_runtime() -> None:
-    from loushang.coding.work_runtime import CodingWorkRuntime
-    from loushang.coding.work_shell import CodingWorkShell
+def test_session_work_runtime_reuses_one_session_scoped_work_runtime() -> None:
     from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()
         session = FakePromptSession(events=[])
-        coding_runtime = CodingWorkRuntime(session=session, event_log=event_log)
-        first_shell = CodingWorkShell(
+        work_runtime = _create_work_runtime(
             session=session,
             event_log=event_log,
-            coding_runtime=coding_runtime,
-        )
-        second_shell = CodingWorkShell(
-            session=session,
-            event_log=event_log,
-            coding_runtime=coding_runtime,
         )
 
-        first = await first_shell.submit_coding_turn(
+        first = await _submit_turn(
+            work_runtime,
             "first",
             session_id="session-1",
             operation_id="op-first",
             run_id="run-first",
         )
-        second = await second_shell.submit_coding_turn(
+        second = await _submit_turn(
+            work_runtime,
             "second",
             session_id="session-1",
             operation_id="op-second",
@@ -728,21 +779,19 @@ def test_coding_work_shell_facades_share_one_session_scoped_work_runtime() -> No
         )
 
         assert first.status == second.status == "completed"
-        assert first_shell.coding_runtime is second_shell.coding_runtime
-        assert coding_runtime.work_runtime.get_run_for_operation("op-first") == first
-        assert coding_runtime.work_runtime.get_run_for_operation("op-second") == second
+        assert work_runtime.work_runtime.get_run_for_operation("op-first") == first
+        assert work_runtime.work_runtime.get_run_for_operation("op-second") == second
         assert event_log.checkpoint().offset == 6
 
     asyncio.run(scenario())
 
 
 def test_agent_start_and_end_are_non_terminal_invocation_facts() -> None:
-    from loushang.coding.work_shell import CodingWorkShell
     from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:
         event_log = InMemoryEventLogBackend()
-        shell = CodingWorkShell(
+        work_runtime = _create_work_runtime(
             session=FakePromptSession(
                 events=[
                     {"type": "agent_start"},
@@ -752,7 +801,8 @@ def test_agent_start_and_end_are_non_terminal_invocation_facts() -> None:
             event_log=event_log,
         )
 
-        await shell.submit_coding_turn(
+        await _submit_turn(
+            work_runtime,
             "run",
             session_id="session-1",
             operation_id="op-1",

@@ -20,10 +20,7 @@ from loushang.channel import (
     ChannelOperationRequest,
 )
 from loushang.channel.types import ChannelEnvelope
-from loushang.coding.work_runtime import (
-    CodingOperationInProgressError,
-    CodingWorkRuntime,
-)
+from loushang.coding.domain.work import create_coding_work_runtime
 from loushang.harness.events import (
     SUPPORTED_JSON_EVENT_VIEWS,
     JsonEventView,
@@ -35,6 +32,10 @@ from loushang.harness.events import (
 from loushang.harness.session import SessionControlPort
 from loushang.work import InMemoryEventLogBackend, WorkEvent
 from loushang.work.event_log import EventLogBackend
+from loushang.work.session import (
+    SessionOperationInProgressError,
+    SessionWorkRuntime,
+)
 
 Unsubscribe = Callable[[], None]
 
@@ -52,7 +53,7 @@ class CodingChannelOperationPort:
         event_view: JsonEventView = "full",
         event_select: Sequence[str] | str | None = None,
         work_event_log: EventLogBackend | None = None,
-        coding_work_runtime: CodingWorkRuntime | None = None,
+        coding_work_runtime: SessionWorkRuntime | None = None,
     ) -> None:
         if event_view not in SUPPORTED_JSON_EVENT_VIEWS:
             raise ValueError(f"unsupported json event view: {event_view}")
@@ -61,9 +62,10 @@ class CodingChannelOperationPort:
         self._event_select = normalize_event_select(event_select)
         self._listeners: list[ChannelDeliveryListener] = []
         self._runtime_unsubscribe: Unsubscribe | None = None
-        self._coding_runtime = coding_work_runtime or CodingWorkRuntime(
+        self._coding_runtime = coding_work_runtime or create_coding_work_runtime(
             session=session,
             event_log=work_event_log or InMemoryEventLogBackend(),
+            session_id=lambda: session.session_id,
         )
         self._work_runtime = self._coding_runtime.work_runtime
         self._work_unsubscribe = self._work_runtime.subscribe_events(
@@ -112,7 +114,7 @@ class CodingChannelOperationPort:
 
         try:
             accepted = await self._coding_runtime.accept_operation(operation)
-        except CodingOperationInProgressError:
+        except SessionOperationInProgressError:
             return _operation_error(
                 request,
                 code="operation_in_progress",
@@ -269,7 +271,7 @@ async def run_channel_mode(
     event_view: JsonEventView = "full",
     event_select: Sequence[str] | str | None = None,
     work_event_log: EventLogBackend | None = None,
-    coding_work_runtime: CodingWorkRuntime | None = None,
+    coding_work_runtime: SessionWorkRuntime | None = None,
 ) -> int:
     """Run the standard Channel JSONL host against the active Coding session."""
 

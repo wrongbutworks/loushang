@@ -470,7 +470,7 @@ def test_plain_prompt_host_owns_only_neutral_turn_lifecycle() -> None:
     for token in (
         "loushang.coding",
         "ensure_usable_session_model",
-        "CodingWorkShell",
+        "SessionWorkRuntime",
         "EventLogBackend",
         "_last_assistant_failure_message",
         "method_id",

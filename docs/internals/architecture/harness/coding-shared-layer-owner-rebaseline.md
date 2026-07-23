@@ -24,14 +24,14 @@ the identified Coding implementation and records the actual delta here.
 
 | Source region | LOC | Current shared owner or adopted mechanism | Classification | Next action |
 | --- | ---: | --- | --- | --- |
-| `coding.bootstrap` | 773 | Product activation effects and factories over Harness activation, resource, diagnostics, construction, and model-resolution owners | `product adapter` | Complete activation collapse; retain Coding services, defaults, paths, and concrete session/runtime factories |
+| `coding.bootstrap` | 773 -> 567 | Standard activation effects now run in `harness.session.StandardAgentSessionConfigurationRuntime` over the existing activation/resource runtimes | `product adapter` | Retain Coding services, Extension/source-identity callbacks, defaults, paths, and concrete session/runtime factories |
 | `coding.runtime.agent_session_runtime` | 1,187 | `SessionLifecycleRuntime`, `AgentTranscriptSessionRuntime`, transcript catalog | `product adapter` | First transcript-store cutover complete; retain Product ports and continue facade audit |
 | `coding.session.agent_session` | 1,890 | `SessionRuntime`, `SessionFacade`, transcript maintenance, queue, retry, compaction | `product adapter` | Facade deletion only after the factory contract |
 | `coding.session.builtin_commands` | 547 -> deleted | `harness.session.command_pack` | `shared adopted` | Standard descriptors and result projection now live in Harness |
 | `coding.session.command_controller` | 239 | `SessionCommandRuntime`, command sources | `shared adopted` | Retain Product source/result binding |
 | `coding.mode.rpc_mode` | 2,687 -> thin adapter | `harness.host.rpc` owns JSONL host/router/task tracker, standard operation handlers, state/model/diagnostic dispatch; Channel owns framing | `product adapter` | Complete: Coding injects event and diagnostics projections |
 | `coding.mode.print_mode`, `channel_mode`, `base` | 1,201 -> thin adapters | `harnesstui.conversation.plain_mode` owns plain/JSON host lifecycle and state observation; `harness.host.mode` owns lifecycle contracts; Channel owns operation framing | `product adapter` + `shared adopted` | Print/base cutover complete; Channel operation binding retains Work/domain policy |
-| `coding.prompt_command` | 323 | Prompt assembly and command parsing | `product kernel` | Retain Coding Work semantics |
+| `coding.prompt_command` plus removed `coding.work_*` | 867 -> 392 | `work.session.SessionWorkRuntime` over canonical `WorkRuntime`; existing HarnessTUI plain hosts | `product adapter` | Retain Coding renderer, failure wording, Method turn preparation, domain/kind, and event projection binding |
 
 Coding remains responsible in this group for service factories, the Coding
 transcript store, CWD/session-file acceptance, model/provider decisions,
@@ -54,11 +54,11 @@ extension API, prompts, resource package, final RPC schema, and output wording.
 
 | Source region | LOC | Current shared owner or adopted mechanism | Classification | Next action |
 | --- | ---: | --- | --- | --- |
-| `coding.source_info`, `model_selection` | 187 | `harness.resources.source`, `observability.runtime_identity`, `ai.model`, session model selection | `shared adopted` | Remove residual facade imports only |
+| removed `coding.source_info`; `coding.model_selection` | 187 -> 137 | `harness.resources.source`, profiled `observability.runtime_identity`, `ai.model`, session model selection | `shared adopted` | Runtime identity Product labels live in `coding.diagnostics.profile`; no source-info facade remains |
 | `coding.interaction.*` | 777 | TUI and HarnessTUI primitives | `product adapter` + `product kernel` | Wave 5/6 only after neutral screen-host probe |
 | `coding.model_selection_tui` | 279 | AI model values and TUI primitives | `product adapter` | Require a second Product workflow before extraction |
-| `coding.diagnostics.*`, `diag_export`, `observability` | 472 | Harness diagnostics/export and observability runtime | `shared adopted` | Retain Coding JSON/CLI/path adapters |
-| `coding.sdk_surface` | 138 | No universal SDK contract | `product kernel` | Retain; only a generic verifier may enter test support |
+| `coding.diagnostics.*`; removed `diag_export` and `observability` | 472 -> 138 | Harness diagnostics/export and observability runtime | `shared adopted` | Retain Coding debug-status presentation and its source/identity profile only |
+| `coding.sdk_surface` | 138 -> 61 | `harness.sdk_surface` owns generic export/signature inspection | `product adapter` | Retain the Coding entry-name contract and default-module binding |
 
 ## Non-Duplicates
 

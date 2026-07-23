@@ -5,9 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any, Literal, TextIO
 
-from loushang.coding.work_executor import SubmitCodingTurn
-from loushang.coding.work_runtime import CodingWorkRuntime
-from loushang.coding.work_shell import CodingWorkShell
+from loushang.coding.domain.work import create_coding_work_runtime
 from loushang.harness.events import (
     SUPPORTED_JSON_EVENT_VIEWS,
     normalize_event_select,
@@ -22,6 +20,7 @@ from loushang.harnesstui.conversation.plain_mode import (
     PlainWorkPort,
 )
 from loushang.work import EventLogBackend
+from loushang.work.session import SessionWorkRuntime, SessionWorkTurn
 
 _EVENT_PROJECTION = PlainEventProjection(
     supported_views=SUPPORTED_JSON_EVENT_VIEWS,
@@ -39,17 +38,16 @@ class _CodingWorkPort(PlainWorkPort):
         *,
         session: Any,
         event_log: EventLogBackend,
-        coding_runtime: CodingWorkRuntime | None,
+        coding_runtime: SessionWorkRuntime | None,
     ) -> None:
         self._session = session
         self._event_log = event_log
         self._coding_runtime = coding_runtime
 
-    def _shell(self) -> CodingWorkShell:
-        return CodingWorkShell(
+    def _runtime(self) -> SessionWorkRuntime:
+        return self._coding_runtime or create_coding_work_runtime(
             session=self._session,
             event_log=self._event_log,
-            coding_runtime=self._coding_runtime,
         )
 
     async def submit_turn(
@@ -69,19 +67,23 @@ class _CodingWorkPort(PlainWorkPort):
         plan_facts: Mapping[str, object] | None,
         step_facts: Mapping[str, object] | None,
     ) -> None:
-        await self._shell().submit_coding_turn(
-            text,
+        await self._runtime().submit_turn(
+            SessionWorkTurn(
+                text=text,
+                images=images,
+                method_id=method_id if include_work_metadata else None,
+                plan_id=plan_id if include_work_metadata else None,
+                step_id=step_id if include_work_metadata else None,
+                step_index=step_index if include_work_metadata else None,
+                step_title=step_title if include_work_metadata else None,
+                planned_constraint=(
+                    planned_constraint if include_work_metadata else None
+                ),
+                audit_policy=audit_policy if include_work_metadata else None,
+                plan_facts=plan_facts if include_work_metadata else None,
+                step_facts=step_facts if include_work_metadata else None,
+            ),
             session_id=session_id,
-            images=images,
-            method_id=method_id if include_work_metadata else None,
-            plan_id=plan_id if include_work_metadata else None,
-            step_id=step_id if include_work_metadata else None,
-            step_index=step_index if include_work_metadata else None,
-            step_title=step_title if include_work_metadata else None,
-            planned_constraint=planned_constraint if include_work_metadata else None,
-            audit_policy=audit_policy if include_work_metadata else None,
-            plan_facts=plan_facts if include_work_metadata else None,
-            step_facts=step_facts if include_work_metadata else None,
         )
 
     async def submit_plan(
@@ -91,8 +93,8 @@ class _CodingWorkPort(PlainWorkPort):
         session_id: str,
         after_turn: Callable[[object, int, int], Awaitable[None]],
     ) -> None:
-        await self._shell().submit_coding_plan(
-            turns,
+        await self._runtime().submit_plan(
+            tuple(_require_session_work_turn(turn) for turn in turns),
             session_id=session_id,
             after_turn=after_turn,
             wait_for_idle_after_prompt=True,
@@ -114,7 +116,7 @@ class PrintMode(PlainHost):
         event_select: Sequence[str] | str | None = None,
         render_tool_events: bool = False,
         work_event_log: EventLogBackend | None = None,
-        coding_work_runtime: CodingWorkRuntime | None = None,
+        coding_work_runtime: SessionWorkRuntime | None = None,
         method_id: str | None = None,
         plan_id: str | None = None,
         step_id: str | None = None,
@@ -172,7 +174,7 @@ async def run_print_mode(
     event_select: Sequence[str] | str | None = None,
     render_tool_events: bool = False,
     work_event_log: EventLogBackend | None = None,
-    coding_work_runtime: CodingWorkRuntime | None = None,
+    coding_work_runtime: SessionWorkRuntime | None = None,
     method_id: str | None = None,
     plan_id: str | None = None,
     step_id: str | None = None,
@@ -217,7 +219,7 @@ async def run_print_plan_mode(
     *,
     runtime: Any,
     session: Any,
-    turns: Sequence[SubmitCodingTurn],
+    turns: Sequence[SessionWorkTurn],
     stdout: TextIO,
     stderr: TextIO | None = None,
     output_mode: Literal["text", "json"] = "text",
@@ -225,7 +227,7 @@ async def run_print_plan_mode(
     event_select: Sequence[str] | str | None = None,
     render_tool_events: bool = False,
     work_event_log: EventLogBackend,
-    coding_work_runtime: CodingWorkRuntime | None = None,
+    coding_work_runtime: SessionWorkRuntime | None = None,
     dispose: bool = True,
 ) -> int:
     mode = PrintMode(
@@ -241,6 +243,12 @@ async def run_print_plan_mode(
         coding_work_runtime=coding_work_runtime,
     )
     return await mode.run_plan(turns, dispose=dispose)
+
+
+def _require_session_work_turn(value: object) -> SessionWorkTurn:
+    if not isinstance(value, SessionWorkTurn):
+        raise TypeError("planned execution requires SessionWorkTurn values")
+    return value
 
 
 __all__ = ["PrintMode", "run_print_mode", "run_print_plan_mode"]

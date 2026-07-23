@@ -11,7 +11,6 @@ from loushang.coding.interaction.intent import QuitIntent, parse_prompt_intent
 from loushang.coding.interaction.screen_host import (
     ScreenCodingConversationActionHost,
 )
-from loushang.coding.observability import disable_session_debug, enable_session_debug
 from loushang.coding.policy.tui import (
     bind_screen_approval_presenter,
     bind_screen_session_transition,
@@ -40,6 +39,7 @@ from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_input import CODING_SCREEN_RUN_PROFILE
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.coding.ui.startup import load_coding_tui_startup_view
+from loushang.harness.diagnostics import observability_runtime
 from loushang.harness.presentation import RenderableToolDefinition
 from loushang.harnesstui.conversation.application_host import (
     InstalledConversationHistory,
@@ -276,8 +276,8 @@ async def _run_plain_tui(
             emit=emit,
             trace=_trace,
             now=time.monotonic,
-            enable_debug=enable_session_debug,
-            disable_debug=disable_session_debug,
+            enable_debug=observability_runtime.enable_session_debug,
+            disable_debug=observability_runtime.disable_session_debug,
         )
 
     prepared = PreparedPlainConversationRun(
