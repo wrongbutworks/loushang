@@ -33,7 +33,10 @@ from loushang.harness.cli.resource_toggles import (
     report_agent_resource_settings_errors,
 )
 from loushang.harness.cli.session_resolution import resolve_agent_cli_session
-from loushang.harness.tools.workspace import workspace_tool_runtime_settings
+from loushang.harness.tools.workspace import (
+    WorkspaceToolRuntimeSettings,
+    workspace_tool_runtime_settings,
+)
 
 ArgsT = TypeVar("ArgsT")
 StateT = TypeVar("StateT")
@@ -144,7 +147,10 @@ class AgentCliStatePreparationPorts(Generic[AgentArgsT]):
         CliMaybeAsync[int | None],
     ]
     build_empty_tool_registry: Callable[[], object]
-    build_tool_registry: Callable[[object, object], object]
+    build_tool_registry: Callable[
+        [object, WorkspaceToolRuntimeSettings, object],
+        object,
+    ]
     policy_factory: Callable[..., object]
     build_interactive_approval_resolver: Callable[[], object]
     run_resource_toggle: Callable[..., int | None]
@@ -233,6 +239,7 @@ async def prepare_agent_cli_application_state(
         if runtime_args.no_builtin_tools
         else ports.build_tool_registry(
             resolved_services,
+            tool_settings,
             approval_resolver,
         )
     )
@@ -278,10 +285,18 @@ async def collect_agent_cli_help_extension_flags(
             project_root=project_root,
             settings_manager=getattr(resolved_services, "settings_manager"),
         )
+        tool_settings = workspace_tool_runtime_settings(
+            getattr(resolved_services, "settings_manager"),
+            policy_factory=state_ports.policy_factory,
+        )
         tool_registry = (
             state_ports.build_empty_tool_registry()
             if args.no_builtin_tools
-            else state_ports.build_tool_registry(resolved_services, None)
+            else state_ports.build_tool_registry(
+                resolved_services,
+                tool_settings,
+                tool_settings.approval_resolver,
+            )
         )
         runtime = build_runtime(
             args,

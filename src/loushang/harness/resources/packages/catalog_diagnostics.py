@@ -142,7 +142,33 @@ def record_package_lockfile_diagnostics(
     )
 
 
+def record_package_source_policy_denial(
+    diagnostics_service: DiagnosticsService | None,
+    *,
+    package_source: str,
+    reason: str | None,
+    session_id: str | None = None,
+) -> DiagnosticRecord | None:
+    """Record one standard package-source policy rejection."""
+
+    if diagnostics_service is None:
+        return None
+    return diagnostics_service.capture_failure(
+        code="package_source_policy_denied",
+        error=reason or "Package source denied by policy.",
+        phase="runtime",
+        source="policy",
+        session_id=session_id,
+        details={
+            "plugin_source": package_source,
+            "policy": "package_security",
+            "disposition": "deny",
+        },
+    )
+
+
 __all__ = [
     "PackageCatalogDiagnosticsRecorder",
     "record_package_lockfile_diagnostics",
+    "record_package_source_policy_denial",
 ]

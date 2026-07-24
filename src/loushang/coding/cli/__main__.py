@@ -104,9 +104,15 @@ from loushang.harness.diagnostics.observability_runtime import (
     startup_observability_context,
 )
 from loushang.harness.host.rpc import run_rpc_host
+from loushang.harness.resources.packages import (
+    record_package_source_policy_denial,
+)
 from loushang.harness.resources.plugins import is_remote_plugin_source
 from loushang.harness.scenario import run_fake_workflow_cli
-from loushang.harness.tools.workspace import workspace_tool_runtime_settings
+from loushang.harness.tools.workspace import (
+    WorkspaceToolRuntimeSettings,
+    workspace_tool_runtime_settings,
+)
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harnesstui.conversation.agent_binding import (
     run_agent_mode,
@@ -147,16 +153,16 @@ def build_builtin_tool_registry(
     diagnostics_service: object | None = None,
     settings_manager: object | None = None,
     approval_resolver: ApprovalResolver | None = None,
+    runtime_settings: WorkspaceToolRuntimeSettings | None = None,
 ) -> WorkspaceToolRegistry:
     registry = WorkspaceToolRegistry()
-    runtime_settings = workspace_tool_runtime_settings(
-        settings_manager,
-        policy_factory=PolicyEngine,
+    resolved_runtime_settings = runtime_settings or workspace_tool_runtime_settings(
+        settings_manager, policy_factory=PolicyEngine
     )
     resolved_approval_resolver = (
         approval_resolver
         if approval_resolver is not None
-        else runtime_settings.approval_resolver
+        else resolved_runtime_settings.approval_resolver
     )
     get_external_tool_policy = getattr(
         settings_manager, "get_external_tool_policy", None
@@ -167,7 +173,7 @@ def build_builtin_tool_registry(
         external_tool_policy=get_external_tool_policy()
         if callable(get_external_tool_policy)
         else None,
-        policy_engine=runtime_settings.policy_engine,
+        policy_engine=resolved_runtime_settings.policy_engine,
         approval_resolver=resolved_approval_resolver,
     )
     return registry
@@ -336,7 +342,7 @@ def _coding_state_preparation_ports(
             workflow_runner=workflow_runner,
         ),
         build_empty_tool_registry=WorkspaceToolRegistry,
-        build_tool_registry=lambda services, approval_resolver: (
+        build_tool_registry=lambda services, runtime_settings, approval_resolver: (
             build_builtin_tool_registry(
                 diagnostics_service=getattr(
                     services,
@@ -344,7 +350,8 @@ def _coding_state_preparation_ports(
                     None,
                 ),
                 settings_manager=getattr(services, "settings_manager", None),
-                approval_resolver=cast(ApprovalResolver, approval_resolver),
+                approval_resolver=cast(ApprovalResolver | None, approval_resolver),
+                runtime_settings=runtime_settings,
             )
         ),
         policy_factory=PolicyEngine,
@@ -354,10 +361,10 @@ def _coding_state_preparation_ports(
         run_resource_toggle=run_resource_toggle_operation,
         evaluate_plugin_source=_package_source_policy_reason,
         is_remote_plugin_source=is_remote_plugin_source,
-        on_policy_denied=lambda services, source, reason: (
-            _record_package_policy_diagnostic(
-                services,
-                source=source,
+        on_policy_denied=lambda services, package_source, reason: (
+            record_package_source_policy_denial(
+                getattr(services, "diagnostics_service", None),
+                package_source=package_source,
                 reason=reason,
             )
         ),
@@ -477,8 +484,12 @@ async def _run_coding_cli_operations(
             ),
         ),
         evaluate_install_source=_package_source_policy_reason,
-        on_policy_denied=lambda source, reason: _record_package_policy_diagnostic(
-            context.state.services, source=source, reason=reason
+        on_policy_denied=lambda package_source, reason: (
+            record_package_source_policy_denial(
+                getattr(context.state.services, "diagnostics_service", None),
+                package_source=package_source,
+                reason=reason,
+            )
         ),
         format_error=_format_cli_error,
     )
@@ -580,26 +591,6 @@ def _format_method_cli_error(error: ValueError) -> str:
     if message.startswith("method not found:"):
         return f"{message}\nRun 'loushang method list' to inspect available methods."
     return message
-
-
-def _record_package_policy_diagnostic(
-    services: Any, *, source: str, reason: str | None
-) -> None:
-    diagnostics = getattr(services, "diagnostics_service", None)
-    capture_failure = getattr(diagnostics, "capture_failure", None)
-    if not callable(capture_failure):
-        return
-    capture_failure(
-        code="package_source_policy_denied",
-        error=reason or "Package source denied by policy.",
-        phase="runtime",
-        source="policy",
-        details={
-            "plugin_source": source,
-            "policy": "package_security",
-            "disposition": "deny",
-        },
-    )
 
 
 def _model_result_warning(result: object) -> str | None:

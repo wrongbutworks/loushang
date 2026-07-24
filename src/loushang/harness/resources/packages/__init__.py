@@ -15,6 +15,7 @@ from loushang.harness.resources.packages.catalog import (
 from loushang.harness.resources.packages.catalog_diagnostics import (
     PackageCatalogDiagnosticsRecorder,
     record_package_lockfile_diagnostics,
+    record_package_source_policy_denial,
 )
 from loushang.harness.resources.packages.manifest import (
     PackageManifestInfo,
@@ -128,6 +129,7 @@ __all__ = [
     "python_package_requirement",
     "remote_package_name",
     "record_package_lockfile_diagnostics",
+    "record_package_source_policy_denial",
     "resolve_package_manifest",
     "resolve_package_resource_roots",
     "resolve_session_package_install_root",

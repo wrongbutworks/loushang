@@ -1217,6 +1217,8 @@ def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
 
     def build_registry(**kwargs):
         captured["tool_resolver"] = kwargs["approval_resolver"]
+        captured["tool_runtime_settings"] = kwargs["runtime_settings"]
+        captured["settings_manager"] = kwargs["settings_manager"]
         return ToolRegistry()
 
     def runtime_builder(**kwargs):
@@ -1224,6 +1226,7 @@ def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
         return runtime
 
     monkeypatch.setattr(cli_main, "build_builtin_tool_registry", build_registry)
+    services = _fake_services()
 
     exit_code = asyncio.run(
         cli_main.run_cli(
@@ -1232,7 +1235,7 @@ def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
             stdout=StringIO(),
             stderr=StringIO(),
             cwd=tmp_path,
-            services=_fake_services(),
+            services=services,
             runtime_builder=runtime_builder,
         )
     )
@@ -1240,6 +1243,8 @@ def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
     assert exit_code == 0
     assert isinstance(captured["tool_resolver"], InteractiveApprovalResolver)
     assert captured["runtime_resolver"] is captured["tool_resolver"]
+    assert captured["tool_runtime_settings"] is not None
+    assert captured["settings_manager"] is services.settings_manager
 
 
 def test_run_cli_keeps_legacy_fixed_runtime_builder_signature(tmp_path) -> None:

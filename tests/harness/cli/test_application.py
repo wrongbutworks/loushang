@@ -27,6 +27,7 @@ from loushang.harness.cli import (
     run_agent_cli_application,
 )
 from loushang.harness.runtime import SessionOperationResult
+from loushang.harness.tools.workspace import WorkspaceToolRuntimeSettings
 
 
 @dataclass(frozen=True)
@@ -359,8 +360,8 @@ def test_agent_application_state_preparation_binds_product_tools_and_approval(
             ("pre_runtime", value.session_dir)
         ),
         build_empty_tool_registry=lambda: "empty",
-        build_tool_registry=lambda _services, approval: (
-            calls.append(("tools", approval)) or "registry"
+        build_tool_registry=lambda _services, runtime_settings, approval: (
+            calls.append(("tools", runtime_settings, approval)) or "registry"
         ),
         policy_factory=lambda **_kwargs: object(),
         build_interactive_approval_resolver=lambda: "interactive",
@@ -376,10 +377,75 @@ def test_agent_application_state_preparation_binds_product_tools_and_approval(
     assert result.value.approval_resolver == "interactive"
     assert calls == [
         ("pre_runtime", tmp_path / ".loushang" / "sessions"),
-        ("tools", "interactive"),
+        ("tools", WorkspaceToolRuntimeSettings(), "interactive"),
     ]
     assert stdout.getvalue() == ""
     assert stderr.getvalue() == ""
+
+
+def test_agent_application_state_preparation_resolves_tool_settings_once(
+    tmp_path,
+) -> None:
+    policy_engine = object()
+    policy_calls: list[dict[str, object]] = []
+    captured: dict[str, object] = {}
+    manager = SimpleNamespace(
+        get_settings=lambda: SimpleNamespace(session_dir=None),
+        get_tool_settings=lambda: SimpleNamespace(blocked_tools=("bash",)),
+    )
+    services = SimpleNamespace(settings_manager=manager)
+    context = CliBootstrapContext(
+        raw_argv=(),
+        args=_ApplicationArgs(),
+        launch_plan=CliLaunchPlan(),
+        project_root=tmp_path,
+        stdin=StringIO(),
+        stdout=StringIO(),
+        stderr=StringIO(),
+    )
+
+    def policy_factory(**kwargs: object) -> object:
+        policy_calls.append(kwargs)
+        return policy_engine
+
+    def build_tool_registry(
+        _services: object,
+        runtime_settings: WorkspaceToolRuntimeSettings,
+        approval_resolver: object,
+    ) -> str:
+        captured["runtime_settings"] = runtime_settings
+        captured["approval_resolver"] = approval_resolver
+        return "registry"
+
+    ports = AgentCliStatePreparationPorts(
+        build_services=lambda _root: services,
+        product_catalog_operation=lambda _args: False,
+        pre_runtime_operation=lambda _context: None,
+        build_empty_tool_registry=lambda: "empty",
+        build_tool_registry=build_tool_registry,
+        policy_factory=policy_factory,
+        build_interactive_approval_resolver=lambda: "interactive",
+        run_resource_toggle=lambda *_args, **_kwargs: None,
+    )
+
+    result = asyncio.run(prepare_agent_cli_application_state(context, ports=ports))
+
+    assert result.value is not None
+    assert result.value.tool_registry == "registry"
+    assert policy_calls == [
+        {
+            "blocked_tools": ("bash",),
+            "ask_tools": (),
+            "blocked_substrings": (),
+            "ask_substrings": (),
+            "blocked_path_substrings": (),
+            "ask_path_substrings": (),
+        }
+    ]
+    runtime_settings = captured["runtime_settings"]
+    assert isinstance(runtime_settings, WorkspaceToolRuntimeSettings)
+    assert runtime_settings.policy_engine is policy_engine
+    assert captured["approval_resolver"] == "interactive"
 
 
 @dataclass(frozen=True)
@@ -403,7 +469,7 @@ def test_help_extension_discovery_reuses_agent_state_ports(tmp_path) -> None:
         product_catalog_operation=lambda _args: False,
         pre_runtime_operation=lambda _context: None,
         build_empty_tool_registry=lambda: "empty",
-        build_tool_registry=lambda _services, _approval: "registry",
+        build_tool_registry=lambda _services, _runtime_settings, _approval: "registry",
         policy_factory=lambda **_kwargs: object(),
         build_interactive_approval_resolver=lambda: object(),
         run_resource_toggle=lambda *_args, **_kwargs: None,
@@ -450,7 +516,7 @@ def test_agent_application_binding_runs_non_coding_product(tmp_path) -> None:
         product_catalog_operation=lambda _args: False,
         pre_runtime_operation=lambda _context: calls.append("pre_runtime"),
         build_empty_tool_registry=lambda: "empty",
-        build_tool_registry=lambda _services, approval: (
+        build_tool_registry=lambda _services, _runtime_settings, approval: (
             calls.append(("tools", approval)) or "research-tools"
         ),
         policy_factory=lambda **_kwargs: object(),

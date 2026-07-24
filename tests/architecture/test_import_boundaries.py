@@ -1015,6 +1015,9 @@ def test_cli_product_host_operations_are_shared_and_product_neutral() -> None:
     application_source = Path("src/loushang/harness/cli/application.py").read_text(
         encoding="utf-8"
     )
+    package_diagnostics_source = Path(
+        "src/loushang/harness/resources/packages/catalog_diagnostics.py"
+    ).read_text(encoding="utf-8")
     turns_source = Path("src/loushang/harness/cli/turns.py").read_text(encoding="utf-8")
     agent_host_source = Path("src/loushang/harness/cli/agent_host.py").read_text(
         encoding="utf-8"
@@ -1044,6 +1047,7 @@ def test_cli_product_host_operations_are_shared_and_product_neutral() -> None:
         assert forbidden not in operations_source
         assert forbidden not in launch_source
         assert forbidden not in application_source
+        assert forbidden not in package_diagnostics_source
         assert forbidden not in turns_source
         assert forbidden not in agent_host_source
         assert forbidden not in agent_args_source
@@ -1053,6 +1057,11 @@ def test_cli_product_host_operations_are_shared_and_product_neutral() -> None:
     assert "run_agent_cli_application" in coding_source
     assert "run_standard_cli_operations" in coding_source
     assert "AgentCliSessionHostBinding" in coding_source
+    assert "WorkspaceToolRuntimeSettings" in application_source
+    assert "runtime_settings=runtime_settings" in coding_source
+    assert "record_package_source_policy_denial" in package_diagnostics_source
+    assert "record_package_source_policy_denial" in coding_source
+    assert "_record_package_policy_diagnostic" not in coding_source
     assert "run_keyword_cli_turns" in agent_host_source
     assert "CliOperationSequence" not in coding_source
     assert "CliApplicationRuntime" not in coding_source

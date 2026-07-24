@@ -1171,3 +1171,27 @@ Production accounting: `src/loushang/coding` changes from 4,737 to 4,641
 physical Python LOC (-96). Harness production adds zero lines. Architecture
 gates require all four retired prefixes to remain unimportable and reject
 imports from source, tests, and examples.
+
+### Wave 7, Slice X: CLI Leaf Binding Convergence (Complete)
+
+This slice removes two repeated CLI leaf mechanisms by extending their existing
+owners. It adds no CLI runtime, tool registry, policy engine, approval resolver,
+or diagnostics service.
+
+| Repeated leaf | Existing owner reused | Product retained |
+| --- | --- | --- |
+| tool settings parsed once by Harness and then parsed again while Coding built its registry | `harness.cli.AgentCliStatePreparationPorts` now passes the existing `WorkspaceToolRuntimeSettings` value produced by `workspace_tool_runtime_settings` | Coding workspace-tool profile, membership, descriptions, and service injection |
+| package-source policy rejection mapped to a diagnostic in Coding | existing `harness.resources.packages.catalog_diagnostics` exports `record_package_source_policy_denial` | Coding security policy selection, allow/deny decision, CLI command selection, and final error text |
+
+Normal application preparation and extension-aware help discovery both resolve
+tool runtime settings once per path and pass the same policy/resolver facts to
+the Product registry builder. The help path does not create an interactive
+resolver, preserving its non-interactive behavior. Coding's model persistence
+warning, Method/Work operations, help copy, and completion failure wording stay
+Product-owned.
+
+Production accounting: `src/loushang/coding` changes from 4,641 to 4,632
+physical Python LOC (-9), all in `coding.cli.__main__`. Shared production
+owners grow by 43 net lines including exports. The small LOC delta is intentional:
+the change removes duplicate settings interpretation and centralizes one
+standard diagnostic contract without relocating Product callbacks.
