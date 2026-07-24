@@ -6,15 +6,23 @@ import inspect
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractContextManager, redirect_stderr
 from dataclasses import dataclass, replace
+from io import StringIO
 from pathlib import Path
 from typing import Generic, TextIO, TypeAlias, TypeVar, cast
 
+from loushang.channel import ProductHostLifecycle
 from loushang.harness.cli.agent_args import (
     AgentCliArgs,
     agent_cli_bootstrap_args,
+    apply_agent_offline_mode,
     resolve_agent_session_dir,
 )
 from loushang.harness.cli.extension_flags import collect_extension_flags
+from loushang.harness.cli.host_operations import (
+    AgentCliEarlyOperationPorts,
+    run_agent_cli_early_operation,
+    run_agent_cli_session_listing,
+)
 from loushang.harness.cli.launch import (
     CliLaunchPlan,
     cli_output_guard_enabled,
@@ -24,6 +32,7 @@ from loushang.harness.cli.resource_toggles import (
     agent_resource_toggle_request,
     report_agent_resource_settings_errors,
 )
+from loushang.harness.cli.session_resolution import resolve_agent_cli_session
 from loushang.harness.tools.workspace import workspace_tool_runtime_settings
 
 ArgsT = TypeVar("ArgsT")
@@ -91,6 +100,15 @@ class CliSessionContext(Generic[ArgsT, StateT, RuntimeT, SessionT]):
 
 
 CliOutputGuard: TypeAlias = Callable[[bool], AbstractContextManager[None]]
+
+
+def format_cli_error(error: BaseException) -> str:
+    filename = getattr(error, "filename", None)
+    if isinstance(error, OSError):
+        strerror = getattr(error, "strerror", None)
+        if filename is not None and strerror:
+            return f"{strerror}: {filename}"
+    return str(error)
 
 
 @dataclass(frozen=True)
@@ -289,9 +307,7 @@ class CliApplicationPorts(Generic[ArgsT, StateT, RuntimeT, SessionT]):
     initialize_args: Callable[[ArgsT], None]
     launch_plan: Callable[[ArgsT], CliLaunchPlan]
     args_cwd: Callable[[ArgsT], str | None]
-    early_operation: Callable[
-        [CliBootstrapContext[ArgsT]], CliMaybeAsync[int | None]
-    ]
+    early_operation: Callable[[CliBootstrapContext[ArgsT]], CliMaybeAsync[int | None]]
     validated_operation: Callable[
         [CliBootstrapContext[ArgsT]], CliMaybeAsync[int | None]
     ]
@@ -327,6 +343,184 @@ class CliApplicationPorts(Generic[ArgsT, StateT, RuntimeT, SessionT]):
     ]
     output_guard: CliOutputGuard
     format_error: Callable[[BaseException], str] = str
+
+
+@dataclass(frozen=True)
+class AgentCliApplicationBinding(Generic[AgentArgsT]):
+    """Product callbacks compiled onto the standard Agent CLI phase runtime."""
+
+    parse_args: Callable[
+        [Sequence[str], TextIO, Mapping[str, object] | None, bool],
+        CliParseResult[AgentArgsT],
+    ]
+    launch_plan: Callable[[AgentArgsT], CliLaunchPlan]
+    state_ports: AgentCliStatePreparationPorts[AgentArgsT]
+    runtime_builder: Callable[..., object]
+    format_help: Callable[[Mapping[str, object]], str]
+    package_version: Callable[[], str]
+    runtime_identity: Callable[[Path], Mapping[str, object]]
+    format_runtime_identity: Callable[[Mapping[str, object]], str]
+    validated_operation: Callable[
+        [CliBootstrapContext[AgentArgsT]], CliMaybeAsync[int | None]
+    ]
+    startup_context: Callable[
+        [
+            CliBootstrapContext[AgentArgsT],
+            AgentCliApplicationState[AgentArgsT],
+        ],
+        AbstractContextManager[None],
+    ]
+    configure_session: Callable[
+        [
+            CliSessionContext[
+                AgentArgsT,
+                AgentCliApplicationState[AgentArgsT],
+                object,
+                object,
+            ]
+        ],
+        CliMaybeAsync[int | None],
+    ]
+    session_operations: Callable[
+        [
+            CliSessionContext[
+                AgentArgsT,
+                AgentCliApplicationState[AgentArgsT],
+                object,
+                object,
+            ]
+        ],
+        CliMaybeAsync[int | None],
+    ]
+    run_host: Callable[
+        [
+            CliSessionContext[
+                AgentArgsT,
+                AgentCliApplicationState[AgentArgsT],
+                object,
+                object,
+            ]
+        ],
+        CliMaybeAsync[int],
+    ]
+    host_lifecycle: ProductHostLifecycle
+    services: object | None = None
+    format_error: Callable[[BaseException], str] = format_cli_error
+
+
+def build_agent_cli_application_ports(
+    binding: AgentCliApplicationBinding[AgentArgsT],
+) -> CliApplicationPorts[
+    AgentArgsT,
+    AgentCliApplicationState[AgentArgsT],
+    object,
+    object,
+]:
+    """Compile Product callbacks without duplicating the CLI phase sequence."""
+
+    early_ports = AgentCliEarlyOperationPorts(
+        collect_help_flags=lambda raw_argv, project_root: (
+            collect_agent_cli_help_extension_flags(
+                raw_argv,
+                project_root=project_root,
+                parse_args=lambda values: cast(
+                    AgentArgsT,
+                    binding.parse_args(values, StringIO(), None, True).args,
+                ),
+                state_ports=binding.state_ports,
+                build_runtime=lambda args, cwd, session_dir, services, registry: (
+                    invoke_agent_cli_runtime_builder(
+                        binding.runtime_builder,
+                        args=args,
+                        cwd=cwd,
+                        session_dir=session_dir,
+                        services=services,
+                        tool_registry=registry,
+                        approval_resolver=None,
+                    )
+                ),
+                resolve_session=resolve_agent_cli_session,
+                services=binding.services,
+            )
+        ),
+        format_help=binding.format_help,
+        package_version=binding.package_version,
+        runtime_identity=binding.runtime_identity,
+        format_runtime_identity=binding.format_runtime_identity,
+        output_guard=lambda enabled: binding.host_lifecycle.output_guard(
+            enabled=enabled
+        ),
+    )
+    return CliApplicationPorts(
+        parse_args=binding.parse_args,
+        initialize_args=apply_agent_offline_mode,
+        launch_plan=binding.launch_plan,
+        args_cwd=lambda args: args.cwd,
+        early_operation=lambda context: run_agent_cli_early_operation(
+            context.args,
+            raw_argv=context.raw_argv,
+            launch_plan=context.launch_plan,
+            project_root=context.project_root,
+            stdout=context.stdout,
+            stderr=context.stderr,
+            ports=early_ports,
+        ),
+        validated_operation=binding.validated_operation,
+        prepare_state=lambda context: prepare_agent_cli_application_state(
+            context,
+            ports=binding.state_ports,
+            services=binding.services,
+        ),
+        startup_context=binding.startup_context,
+        build_runtime=lambda context, state: invoke_agent_cli_runtime_builder(
+            binding.runtime_builder,
+            args=state.args,
+            cwd=context.project_root,
+            session_dir=state.session_dir,
+            services=state.services,
+            tool_registry=state.tool_registry,
+            approval_resolver=state.approval_resolver,
+        ),
+        runtime_operation=lambda context: run_agent_cli_session_listing(
+            context.state.args,
+            context.runtime,
+            stdout=context.bootstrap.stdout,
+            stderr=context.bootstrap.stderr,
+            format_error=binding.format_error,
+        ),
+        resolve_session=lambda context: resolve_agent_cli_session(
+            context.state.args,
+            context.runtime,
+            context.bootstrap.project_root,
+        ),
+        collect_extension_flags=collect_extension_flags,
+        configure_session=binding.configure_session,
+        session_operations=binding.session_operations,
+        run_host=binding.run_host,
+        output_guard=lambda enabled: binding.host_lifecycle.output_guard(
+            enabled=enabled
+        ),
+        format_error=binding.format_error,
+    )
+
+
+async def run_agent_cli_application(
+    argv: Sequence[str],
+    *,
+    binding: AgentCliApplicationBinding[AgentArgsT],
+    cwd: str | Path | None = None,
+) -> int:
+    """Run one Product binding through the canonical Agent CLI application."""
+
+    application = CliApplicationRuntime(build_agent_cli_application_ports(binding))
+    streams = binding.host_lifecycle.streams
+    return await application.run(
+        argv,
+        stdin=streams.stdin,
+        stdout=streams.stdout,
+        stderr=streams.stderr,
+        cwd=cwd,
+    )
 
 
 class CliApplicationRuntime(Generic[ArgsT, StateT, RuntimeT, SessionT]):
@@ -373,15 +567,11 @@ class CliApplicationRuntime(Generic[ArgsT, StateT, RuntimeT, SessionT]):
         if static_error is not None:
             stderr.write(f"Error: {static_error}.\n")
             return 2
-        validated_result = await _resolve(
-            self._ports.validated_operation(bootstrap)
-        )
+        validated_result = await _resolve(self._ports.validated_operation(bootstrap))
         if validated_result is not None:
             return validated_result
 
-        with self._ports.output_guard(
-            cli_output_guard_enabled(bootstrap.launch_plan)
-        ):
+        with self._ports.output_guard(cli_output_guard_enabled(bootstrap.launch_plan)):
             prepared = await _resolve(self._ports.prepare_state(bootstrap))
         if prepared.exit_code is not None:
             return prepared.exit_code
@@ -391,18 +581,14 @@ class CliApplicationRuntime(Generic[ArgsT, StateT, RuntimeT, SessionT]):
             with self._ports.output_guard(
                 cli_output_guard_enabled(bootstrap.launch_plan)
             ):
-                runtime = await _resolve(
-                    self._ports.build_runtime(bootstrap, state)
-                )
+                runtime = await _resolve(self._ports.build_runtime(bootstrap, state))
             runtime_context = CliRuntimeContext(
                 bootstrap=bootstrap,
                 state=state,
                 runtime=runtime,
             )
             with self._ports.output_guard(
-                cli_output_guard_enabled(
-                    self._ports.launch_plan(bootstrap_args)
-                )
+                cli_output_guard_enabled(self._ports.launch_plan(bootstrap_args))
             ):
                 runtime_result = await _resolve(
                     self._ports.runtime_operation(runtime_context)
@@ -524,15 +710,6 @@ def invoke_agent_cli_runtime_builder(
     )
 
 
-def format_cli_error(error: BaseException) -> str:
-    filename = getattr(error, "filename", None)
-    if isinstance(error, OSError):
-        strerror = getattr(error, "strerror", None)
-        if filename is not None and strerror:
-            return f"{strerror}: {filename}"
-    return str(error)
-
-
 def _accepts_keyword(callback: Callable[..., object], name: str) -> bool:
     try:
         parameters = inspect.signature(callback).parameters
@@ -557,6 +734,7 @@ async def _resolve(value: CliMaybeAsync[ResultT]) -> ResultT:
 
 
 __all__ = [
+    "AgentCliApplicationBinding",
     "AgentCliApplicationState",
     "AgentCliStatePreparationContext",
     "AgentCliStatePreparationPorts",
@@ -568,10 +746,12 @@ __all__ = [
     "CliPhaseResult",
     "CliRuntimeContext",
     "CliSessionContext",
+    "build_agent_cli_application_ports",
     "capture_cli_parse",
     "collect_agent_cli_help_extension_flags",
     "format_cli_error",
     "invoke_cli_builder",
     "invoke_agent_cli_runtime_builder",
     "prepare_agent_cli_application_state",
+    "run_agent_cli_application",
 ]

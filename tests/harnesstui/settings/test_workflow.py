@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, replace
 
+from loushang.ai.model import ModelSelection
 from loushang.harnesstui.selection.catalog import ModelChoice
 from loushang.harnesstui.settings.dashboard import StaticLinesPage
 from loushang.harnesstui.settings.model import ModelPage
@@ -17,6 +18,8 @@ from loushang.harnesstui.settings.workflow import (
     SettingsModelSnapshot,
     SettingsPageView,
     SettingsWorkflowPorts,
+    build_session_settings_workflow_ports,
+    session_model_settings_snapshot,
 )
 from loushang.harnesstui.status.line import StatusLineSettings
 from loushang.harnesstui.status.settings import StatusLineSettingsPage
@@ -62,6 +65,61 @@ def test_boolean_workflow_adapter_projects_rows_and_only_claims_bound_ids() -> N
         "applied:feature.enabled:True"
     )
     assert manager.enabled is True
+
+
+def test_session_settings_binding_loads_models_and_reuses_product_config() -> None:
+    class Session:
+        async def get_model_selection(self) -> ModelSelection:
+            return ModelSelection("provider", "research")
+
+        async def get_available_models(self) -> list[ModelSelection]:
+            return [
+                ModelSelection("provider", "research"),
+                ModelSelection("provider", "analysis"),
+            ]
+
+    manager = _BooleanManager()
+    config = BooleanSettingsWorkflowAdapter(
+        manager,
+        (
+            BooleanSettingBinding(
+                "feature.enabled",
+                "Feature",
+                "get_enabled",
+                "set_enabled",
+                "Feature",
+            ),
+        ),
+        BooleanSettingCopy(
+            unknown=lambda item_id: f"unknown:{item_id}",
+            invalid=lambda binding: f"invalid:{binding.id}",
+            unavailable=lambda binding: f"unavailable:{binding.id}",
+            applied=lambda binding, enabled: f"applied:{binding.id}:{enabled}",
+        ),
+    )
+
+    async def apply_model(value: str) -> str:
+        return f"selected:{value}"
+
+    ports = build_session_settings_workflow_ports(
+        session=Session(),
+        config=config,
+        apply_model=apply_model,
+    )
+    snapshot = asyncio.run(ports.load_models())
+
+    assert snapshot == asyncio.run(session_model_settings_snapshot(Session()))
+    assert tuple(choice.value for choice in snapshot.choices) == (
+        "provider/research",
+        "provider/analysis",
+    )
+    assert snapshot.current_value == "provider/research"
+    assert ports.config_rows() == (
+        ConfigRow("feature.enabled", "Feature", "false"),
+    )
+    assert asyncio.run(ports.apply_model("provider/analysis")) == (
+        "selected:provider/analysis"
+    )
 
 
 @dataclass(frozen=True, slots=True)

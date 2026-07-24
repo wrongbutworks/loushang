@@ -57,15 +57,14 @@ from loushang.coding.tool_pack import register_coding_builtin_tools
 from loushang.coding.ui.mode import run_coding_tui
 from loushang.coding.workflow import run_prompt_steps_workflow
 from loushang.harness.cli import (
+    AgentCliApplicationBinding,
     AgentCliApplicationState,
-    AgentCliEarlyOperationPorts,
     AgentCliHostRunners,
     AgentCliLaunchOverlay,
     AgentCliSessionHostBinding,
     AgentCliStatePreparationContext,
     AgentCliStatePreparationPorts,
-    CliApplicationPorts,
-    CliApplicationRuntime,
+    CliBootstrapContext,
     CliLaunchPlan,
     CliOperationInsertion,
     CliOperationStage,
@@ -80,24 +79,16 @@ from loushang.harness.cli import (
     agent_image_auto_resize,
     agent_standard_cli_operation_request,
     agent_tool_selection,
-    apply_agent_offline_mode,
     capture_cli_parse,
-    collect_agent_cli_help_extension_flags,
-    collect_extension_flags,
     configure_agent_cli_session,
     configure_agent_resource_loader,
     cwd_bound_services_factory,
     distribution_version,
     format_agent_cli_help,
-    invoke_agent_cli_runtime_builder,
-    prepare_agent_cli_application_state,
     prepare_agent_cli_host_input,
     project_domain_turns_to_cli,
-    resolve_agent_cli_session,
     resolve_agent_prompt_input,
-    run_agent_cli_early_operation,
-    run_agent_cli_session_host,
-    run_agent_cli_session_listing,
+    run_agent_cli_application,
     run_diagnostics_export_operation,
     run_method_listing,
     run_package_listing_operation,
@@ -235,45 +226,14 @@ async def run_cli(
         stdout=stdout,
         stderr=stderr,
     )
-    streams = host_lifecycle.streams
     state_preparation_ports = _coding_state_preparation_ports(workflow_runner)
-    early_operation_ports = AgentCliEarlyOperationPorts(
-        collect_help_flags=lambda raw_argv, project_root: (
-            collect_agent_cli_help_extension_flags(
-                raw_argv,
-                project_root=project_root,
-                parse_args=lambda values: parse_args(values, allow_unknown=True),
-                state_ports=state_preparation_ports,
-                build_runtime=lambda args, cwd, session_dir, current, registry: (
-                    invoke_agent_cli_runtime_builder(
-                        runtime_builder,
-                        args=args,
-                        cwd=cwd,
-                        session_dir=session_dir,
-                        services=current,
-                        tool_registry=cast(WorkspaceToolRegistry, registry),
-                        approval_resolver=None,
-                    )
-                ),
-                resolve_session=resolve_agent_cli_session,
-                services=services,
-            )
-        ),
-        format_help=_help_text,
-        package_version=lambda: distribution_version("loushang"),
-        runtime_identity=lambda project_root: coding_runtime_identity(
-            cwd=project_root
-        ),
-        format_runtime_identity=format_coding_runtime_identity_text,
-        output_guard=lambda enabled: host_lifecycle.output_guard(enabled=enabled),
-    )
     host_binding = AgentCliSessionHostBinding[
         CliArgs,
         AgentCliApplicationState[CliArgs],
     ](
         stream_is_tty=stream_is_tty,
-        resolve_work_event_log=lambda args, project_root: (
-            create_work_event_log(args.work_log, project_root)
+        resolve_work_event_log=lambda args, project_root: create_work_event_log(
+            args.work_log, project_root
         ),
         build_work_runtime=lambda session, event_log: create_coding_work_runtime(
             session=session,
@@ -312,85 +272,31 @@ async def run_cli(
         default_plain=run_agent_plain_mode,
         default_rpc=run_rpc_host,
     )
-    application = CliApplicationRuntime(
-        CliApplicationPorts[
-            CliArgs,
-            AgentCliApplicationState[CliArgs],
-            object,
-            object,
-        ](
-            parse_args=_parse_application_args,
-            initialize_args=apply_agent_offline_mode,
-            launch_plan=_cli_launch_plan,
-            args_cwd=lambda args: args.cwd,
-            early_operation=lambda context: run_agent_cli_early_operation(
-                context.args,
-                raw_argv=context.raw_argv,
-                launch_plan=context.launch_plan,
-                project_root=context.project_root,
-                stdout=context.stdout,
-                stderr=context.stderr,
-                ports=early_operation_ports,
-            ),
-            validated_operation=lambda context: _run_work_log_inspect(
-                context.args,
-                context.project_root,
-                context.stdout,
-                context.stderr,
-            ),
-            prepare_state=lambda context: prepare_agent_cli_application_state(
-                context,
-                ports=state_preparation_ports,
-                services=services,
-            ),
-            startup_context=lambda context, state: (
-                startup_observability_context(
-                    args=context.args,
-                    services=state.services,
-                    cwd=context.project_root,
-                    source_resolver=coding_diagnostic_source,
-                )
-            ),
-            build_runtime=lambda context, state: invoke_agent_cli_runtime_builder(
-                runtime_builder,
-                args=state.args,
-                cwd=context.project_root,
-                session_dir=state.session_dir,
-                services=state.services,
-                tool_registry=state.tool_registry,
-                approval_resolver=state.approval_resolver,
-            ),
-            runtime_operation=lambda context: run_agent_cli_session_listing(
-                context.state.args,
-                context.runtime,
-                stdout=context.bootstrap.stdout,
-                stderr=context.bootstrap.stderr,
-                format_error=_format_cli_error,
-            ),
-            resolve_session=lambda context: resolve_agent_cli_session(
-                context.state.args,
-                context.runtime,
-                context.bootstrap.project_root,
-            ),
-            collect_extension_flags=collect_extension_flags,
-            configure_session=_configure_coding_cli_session,
-            session_operations=_run_coding_cli_operations,
-            run_host=lambda context: run_agent_cli_session_host(
-                context,
-                binding=host_binding,
-                runners=host_runners,
-            ),
-            output_guard=lambda enabled: host_lifecycle.output_guard(
-                enabled=enabled
-            ),
-            format_error=_format_cli_error,
-        )
+    binding = AgentCliApplicationBinding(
+        parse_args=_parse_application_args,
+        launch_plan=_cli_launch_plan,
+        state_ports=state_preparation_ports,
+        runtime_builder=runtime_builder,
+        format_help=_help_text,
+        package_version=lambda: distribution_version("loushang"),
+        runtime_identity=lambda project_root: coding_runtime_identity(cwd=project_root),
+        format_runtime_identity=format_coding_runtime_identity_text,
+        validated_operation=_run_work_log_inspect,
+        startup_context=lambda context, state: startup_observability_context(
+            args=context.args,
+            services=state.services,
+            cwd=context.project_root,
+            source_resolver=coding_diagnostic_source,
+        ),
+        configure_session=_configure_coding_cli_session,
+        session_operations=_run_coding_cli_operations,
+        run_host=host_binding.bind(host_runners),
+        host_lifecycle=host_lifecycle,
+        services=services,
     )
-    return await application.run(
+    return await run_agent_cli_application(
         tuple(argv or ()),
-        stdin=streams.stdin,
-        stdout=streams.stdout,
-        stderr=streams.stderr,
+        binding=binding,
         cwd=cwd,
     )
 
@@ -594,9 +500,7 @@ def _prepare_coding_host_input(
             args,
             stdin=bootstrap.stdin,
             cwd=bootstrap.project_root,
-            auto_resize_images=agent_image_auto_resize(
-                context.state.settings_manager
-            ),
+            auto_resize_images=agent_image_auto_resize(context.state.settings_manager),
         ),
         prepare_turns=lambda user_input: domain_app.prepare_turns(
             CodingDomainRequest(
@@ -656,16 +560,17 @@ def _cli_launch_plan(args: CliArgs) -> CliLaunchPlan:
 
 
 def _run_work_log_inspect(
-    args: CliArgs, project_root: Path, stdout: TextIO, stderr: TextIO
+    context: CliBootstrapContext[CliArgs],
 ) -> int | None:
+    args = context.args
     return run_work_log_inspection_operation(
         path=args.work_log_inspect,
-        project_root=project_root,
+        project_root=context.project_root,
         run_id=args.work_log_run,
         output_format=args.work_log_inspect_format,
         limit=_WORK_LOG_INSPECT_LIMIT,
-        stdout=stdout,
-        stderr=stderr,
+        stdout=context.stdout,
+        stderr=context.stderr,
         format_error=_format_cli_error,
     )
 
@@ -776,9 +681,11 @@ def _run_list_packages(
         requested=args.list_packages,
         output_format=args.list_packages_format,
         list_records=(
-            lambda: get_packages(catalog_path=args.package_catalog)
-            if callable(get_packages)
-            else []
+            lambda: (
+                get_packages(catalog_path=args.package_catalog)
+                if callable(get_packages)
+                else []
+            )
         )
         if callable(get_packages)
         else None,

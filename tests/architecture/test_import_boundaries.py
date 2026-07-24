@@ -990,6 +990,9 @@ def test_channel_product_host_stdio_and_shutdown_helpers_are_neutral() -> None:
         encoding="utf-8"
     )
     cli_source = Path("src/loushang/coding/cli/__main__.py").read_text(encoding="utf-8")
+    application_source = Path("src/loushang/harness/cli/application.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "from loushang." not in product_host_source
     assert "import loushang." not in product_host_source
@@ -997,7 +1000,8 @@ def test_channel_product_host_stdio_and_shutdown_helpers_are_neutral() -> None:
     assert "import loushang." not in stdout_guard_source
     assert "ProductHostLifecycle.resolve" in cli_source
     assert "host_lifecycle.run_turns" in cli_source
-    assert "host_lifecycle.output_guard" in cli_source
+    assert "host_lifecycle=host_lifecycle" in cli_source
+    assert "binding.host_lifecycle.output_guard" in application_source
     assert not Path("src/loushang/coding/platform/output_guard.py").exists()
 
 
@@ -1045,12 +1049,16 @@ def test_cli_product_host_operations_are_shared_and_product_neutral() -> None:
         assert forbidden not in agent_args_source
         assert forbidden not in session_configuration_source
         assert forbidden not in scenario_cli_source
-    assert "CliApplicationRuntime" in coding_source
+    assert "AgentCliApplicationBinding" in coding_source
+    assert "run_agent_cli_application" in coding_source
     assert "run_standard_cli_operations" in coding_source
-    assert "run_agent_cli_session_host" in coding_source
+    assert "AgentCliSessionHostBinding" in coding_source
     assert "run_keyword_cli_turns" in agent_host_source
     assert "CliOperationSequence" not in coding_source
-    assert "run_agent_cli_session_listing" in coding_source
+    assert "CliApplicationRuntime" not in coding_source
+    assert "run_agent_cli_session_listing" not in coding_source
+    assert "resolve_agent_cli_session" not in coding_source
+    assert "collect_agent_cli_help_extension_flags" not in coding_source
     assert "def _run_list_sessions(" not in coding_source
     assert "def _run_list_models(" not in coding_source
     assert "def _run_command(" not in coding_source
@@ -1881,7 +1889,8 @@ def test_agent_product_host_bindings_use_existing_shared_owners() -> None:
     coding_work_source = Path("src/loushang/coding/domain/work.py").read_text(
         encoding="utf-8"
     )
-    assert "run_agent_cli_session_host(" in cli_source
+    assert "host_binding.bind(host_runners)" in cli_source
+    assert "run_agent_cli_session_host(" not in cli_source
     assert "run_keyword_cli_turns(" not in cli_source
     assert "run_coding_work_channel" in coding_work_source
     assert "SessionWorkHostPort" in cli_source
@@ -2283,8 +2292,8 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
         "src/loushang/coding/runtime/agent_session_runtime.py"
     ).read_text(encoding="utf-8")
     assert "class AgentSessionRuntime(" in runtime_source
-    assert "ProductSessionRuntime[AgentSession, SessionManager, str]" in runtime_source
-    assert "build_agent_product_session_runtime_ports(" in runtime_source
+    assert "AgentProductSessionRuntime[AgentSession, SessionManager]" in runtime_source
+    assert "build_agent_product_session_runtime_ports(" not in runtime_source
     assert "ProductSessionRuntimePorts(" not in runtime_source
     assert "ProductTranscriptSessionBinding(" not in runtime_source
     assert "build_agent_session_lifecycle_hooks(" not in runtime_source
@@ -2516,7 +2525,7 @@ def test_product_configuration_runtime_boundary_is_documented_and_adopted() -> N
             "loushang.harness.config.ScopedConfigRuntime",
         },
         Path("src/loushang/coding/bootstrap.py"): {
-            "loushang.harness.session.AgentProductConstructionRuntime",
+            "loushang.harness.session.AgentProductConstructionBinding",
         },
     }
     missing: list[str] = []
@@ -3602,8 +3611,7 @@ def test_harness_product_runtime_core_is_documented_and_adopted() -> None:
             "loushang.harness.runtime.RuntimeBindingState",
         },
         Path("src/loushang/coding/runtime/agent_session_runtime.py"): {
-            "loushang.harness.session.ProductSessionRuntime",
-            "loushang.harness.session.build_agent_product_session_runtime_ports",
+            "loushang.harness.session.AgentProductSessionRuntime",
         },
     }
     missing: list[str] = []
@@ -3661,8 +3669,7 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
             "loushang.harness.session.lifecycle.SessionLifecycleRuntime",
         },
         Path("src/loushang/coding/runtime/agent_session_runtime.py"): {
-            "loushang.harness.session.ProductSessionRuntime",
-            "loushang.harness.session.build_agent_product_session_runtime_ports",
+            "loushang.harness.session.AgentProductSessionRuntime",
         },
         Path("src/loushang/harness/extensions/session_runtime.py"): {
             "loushang.harness.extensions.lifecycle.ExtensionRuntimeCoordinator",
@@ -3773,10 +3780,7 @@ def test_session_lifecycle_runtime_is_documented_neutral_and_adopted() -> None:
     imports = set(
         _absolute_imports(Path("src/loushang/coding/runtime/agent_session_runtime.py"))
     )
-    assert "loushang.harness.session.ProductSessionRuntime" in imports
-    assert (
-        "loushang.harness.session.build_agent_product_session_runtime_ports" in imports
-    )
+    assert "loushang.harness.session.AgentProductSessionRuntime" in imports
     assert "loushang.harness.runtime.SessionOperationCoordinator" not in imports
 
 
@@ -3885,7 +3889,7 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
             "loushang.harness.commands.MixedCommandCatalog",
         },
         Path("src/loushang/coding/bootstrap.py"): {
-            "loushang.harness.session.AgentProductConstructionRuntime",
+            "loushang.harness.session.AgentProductConstructionBinding",
         },
         Path("src/loushang/coding/prompt/assembler.py"): {
             "loushang.harness.capabilities.prompt_assembly.PromptAssembly",
@@ -4356,6 +4360,26 @@ def test_harness_workspace_execution_boundary_is_documented() -> None:
     ).read_text(encoding="utf-8")
     assert "`loushang.harness.workspace.exec`" in coding_exec_text
     assert "compatibility" in coding_exec_text
+
+
+def test_coding_agent_product_construction_uses_shared_binding() -> None:
+    coding_path = Path("src/loushang/coding/bootstrap.py")
+    imports = set(_absolute_imports(coding_path))
+
+    assert "loushang.harness.session.AgentProductConstructionBinding" in imports
+    for direct_owner in (
+        "loushang.harness.session.AgentProductConstructionPorts",
+        "loushang.harness.session.AgentProductConstructionRequest",
+        "loushang.harness.session.AgentProductConstructionRuntime",
+        "loushang.harness.session.StandardAgentSessionConfigurationRequest",
+    ):
+        assert direct_owner not in imports
+
+    harness_source = Path("src/loushang/harness/session/bootstrap.py").read_text(
+        encoding="utf-8"
+    )
+    for forbidden in ("loushang.coding", "loushang.method", "loushang.work"):
+        assert forbidden not in harness_source
 
 
 def test_absolute_imports_include_child_aliases_from_package_import(

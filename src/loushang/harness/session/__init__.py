@@ -5,6 +5,7 @@ contracts. Products supply their own policies and integration callbacks.
 """
 
 from loushang.harness.session.agent_adapter import (
+    AgentProductSessionRuntime,
     AgentSessionAdapterMixin,
     build_agent_product_session_runtime_ports,
     build_agent_session_lifecycle_hooks,
@@ -27,6 +28,7 @@ from loushang.harness.session.bindings import (
 from loushang.harness.session.bootstrap import (
     AgentBootstrapRequest,
     AgentBootstrapRuntime,
+    AgentProductConstructionBinding,
     AgentProductConstructionPorts,
     AgentProductConstructionRequest,
     AgentProductConstructionResult,
@@ -41,6 +43,7 @@ from loushang.harness.session.bootstrap import (
     StandardAgentSessionConfigurationResult,
     StandardAgentSessionConfigurationRuntime,
     activate_standard_agent_session_configuration,
+    build_agent_product_session_runtime,
     prepare_agent_session_services,
     standard_agent_session_activation_plan,
 )
@@ -276,6 +279,7 @@ from loushang.harness.session.transcript_lifecycle import (
 __all__ = [
     "AgentEventRouter",
     "AgentProductSession",
+    "AgentProductSessionRuntime",
     "AgentSessionAdapterMixin",
     "build_agent_product_session_runtime_ports",
     "build_agent_session_lifecycle_hooks",
@@ -283,6 +287,7 @@ __all__ = [
     "initialize_composed_session",
     "AgentBootstrapRequest",
     "AgentBootstrapRuntime",
+    "AgentProductConstructionBinding",
     "AgentProductConstructionPorts",
     "AgentProductConstructionRequest",
     "AgentProductConstructionResult",
@@ -290,6 +295,7 @@ __all__ = [
     "AgentSessionConstructionRequest",
     "AgentSessionConstructionRuntime",
     "AgentSessionServices",
+    "build_agent_product_session_runtime",
     "prepare_agent_session_services",
     "BootstrapServices",
     "CreateAgentSessionResult",

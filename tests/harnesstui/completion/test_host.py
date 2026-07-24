@@ -3,10 +3,13 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from loushang.ai.model import ModelSelection
+from loushang.harness.commands import CommandDescriptor
 from loushang.harnesstui.completion.host import (
     CatalogCompletionProfile,
     CatalogSlashAlias,
     PreparedCatalogCompletionHost,
+    build_session_catalog_completion_host,
 )
 from loushang.tui import CompletionItem, CompletionProvider
 
@@ -88,3 +91,32 @@ def test_prepared_completion_host_optionally_composes_recursive_path_source(
     suggestions = combined.get_suggestions(("@example",), 0, len("@example"))
     assert suggestions is not None
     assert [item.value for item in suggestions.items] == ["@src/example.py"]
+
+
+def test_session_completion_host_binds_structural_product_catalogs() -> None:
+    class Session:
+        async def list_commands(self) -> list[CommandDescriptor[object]]:
+            return [
+                CommandDescriptor(
+                    name="choose-model",
+                    invocation_name="choose-model",
+                    description="Choose a model",
+                    source="research",
+                ),
+                CommandDescriptor(
+                    name="inspect",
+                    invocation_name="inspect",
+                    description="Inspect a source",
+                    source="research",
+                ),
+            ]
+
+        async def get_available_models(self) -> list[ModelSelection]:
+            return [ModelSelection("provider", "research")]
+
+    host = build_session_catalog_completion_host(Session(), profile=_profile())
+
+    assert [item.value for item in asyncio.run(host.complete("/insp"))] == ["/inspect"]
+    assert [
+        item.value for item in asyncio.run(host.complete("/choose-model res"))
+    ] == ["/choose-model provider/research"]

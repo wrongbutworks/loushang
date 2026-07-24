@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from io import StringIO
 from types import SimpleNamespace
 
+from loushang.channel import ProductHostLifecycle
 from loushang.harness.cli import (
+    AgentCliApplicationBinding,
     AgentCliStatePreparationPorts,
     CliApplicationPorts,
     CliApplicationRuntime,
@@ -22,7 +24,9 @@ from loushang.harness.cli import (
     invoke_cli_builder,
     prepare_agent_cli_application_state,
     report_agent_resource_settings_errors,
+    run_agent_cli_application,
 )
+from loushang.harness.runtime import SessionOperationResult
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,31 @@ class _ApplicationArgs:
     remove_plugin_sources: tuple[str, ...] = ()
     enable_plugins: tuple[str, ...] = ()
     disable_plugins: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _ResearchArgs(_ApplicationArgs):
+    offline: bool = False
+    help: bool = False
+    version: bool = False
+    source_info: bool = False
+    source_info_format: str = "text"
+    cwd: str | None = None
+    list_sessions: bool = False
+    list_sessions_format: str = "tsv"
+    all_sessions: bool = False
+    session_index: bool = False
+    refresh_session_index: bool = False
+    session_cwd: str | None = None
+    session_name_filter: str | None = None
+    session_parent: str | None = None
+    session_query: str | None = None
+    session_has_diagnostics: bool | None = None
+    session_limit: int | None = None
+    session: str | None = None
+    continue_: bool = False
+    resume: bool | str = False
+    fork: str | None = None
 
 
 def test_application_runtime_owns_two_pass_session_phase_order(tmp_path) -> None:
@@ -93,12 +122,9 @@ def test_application_runtime_owns_two_pass_session_phase_order(tmp_path) -> None
                 calls.append("build_runtime") or runtime
             ),
             runtime_operation=lambda _context: calls.append("runtime_operation"),
-            resolve_session=lambda _context: (
-                calls.append("resolve_session") or session
-            ),
+            resolve_session=lambda _context: calls.append("resolve_session") or session,
             collect_extension_flags=lambda value: (
-                calls.append(("collect_flags", value))
-                or {"example": extension_flag}
+                calls.append(("collect_flags", value)) or {"example": extension_flag}
             ),
             configure_session=lambda _context: calls.append("configure"),
             session_operations=lambda _context: calls.append("operations"),
@@ -302,10 +328,7 @@ def test_resource_settings_errors_are_reported_for_standard_operations() -> None
 
     report_agent_resource_settings_errors(args, manager, stderr=stderr)
 
-    assert (
-        stderr.getvalue()
-        == "Warning (package command, project settings): invalid\n"
-    )
+    assert stderr.getvalue() == "Warning (package command, project settings): invalid\n"
 
 
 def test_agent_application_state_preparation_binds_product_tools_and_approval(
@@ -344,9 +367,7 @@ def test_agent_application_state_preparation_binds_product_tools_and_approval(
         run_resource_toggle=lambda *_args, **_kwargs: None,
     )
 
-    result = asyncio.run(
-        prepare_agent_cli_application_state(context, ports=ports)
-    )
+    result = asyncio.run(prepare_agent_cli_application_state(context, ports=ports))
 
     assert result.exit_code is None
     assert result.value is not None
@@ -375,9 +396,7 @@ def test_help_extension_discovery_reuses_agent_state_ports(tmp_path) -> None:
     session = SimpleNamespace(
         extension_runner=SimpleNamespace(get_flags=lambda: [flag])
     )
-    manager = SimpleNamespace(
-        get_settings=lambda: SimpleNamespace(session_dir=None)
-    )
+    manager = SimpleNamespace(get_settings=lambda: SimpleNamespace(session_dir=None))
     services = SimpleNamespace(settings_manager=manager)
     state_ports = AgentCliStatePreparationPorts(
         build_services=lambda _root: services,
@@ -407,6 +426,101 @@ def test_help_extension_discovery_reuses_agent_state_ports(tmp_path) -> None:
             fork=None,
             no_session=True,
         )
+    ]
+
+
+def test_agent_application_binding_runs_non_coding_product(tmp_path) -> None:
+    calls: list[object] = []
+    args = _ResearchArgs()
+    session = SimpleNamespace(extension_runner=None)
+    manager = SimpleNamespace(
+        get_settings=lambda: SimpleNamespace(session_dir=None),
+        get_tool_settings=lambda: None,
+    )
+    services = SimpleNamespace(settings_manager=manager)
+
+    class _Runtime:
+        async def new_session_operation(self, *, cwd):
+            calls.append(("new_session", cwd))
+            return SessionOperationResult(None, session, None, False)
+
+    runtime = _Runtime()
+    state_ports = AgentCliStatePreparationPorts(
+        build_services=lambda _root: services,
+        product_catalog_operation=lambda _args: False,
+        pre_runtime_operation=lambda _context: calls.append("pre_runtime"),
+        build_empty_tool_registry=lambda: "empty",
+        build_tool_registry=lambda _services, approval: (
+            calls.append(("tools", approval)) or "research-tools"
+        ),
+        policy_factory=lambda **_kwargs: object(),
+        build_interactive_approval_resolver=lambda: "research-approval",
+        run_resource_toggle=lambda *_args, **_kwargs: None,
+    )
+
+    @contextmanager
+    def startup_context(_context, _state):
+        calls.append("startup_enter")
+        try:
+            yield
+        finally:
+            calls.append("startup_exit")
+
+    binding = AgentCliApplicationBinding(
+        parse_args=lambda _argv, _stderr, flags, allow_unknown: (
+            calls.append(("parse", flags, allow_unknown)) or CliParseResult(args)
+        ),
+        launch_plan=lambda _args: CliLaunchPlan(),
+        state_ports=state_ports,
+        runtime_builder=lambda **kwargs: (
+            calls.append(
+                (
+                    "runtime",
+                    kwargs["tool_registry"],
+                    kwargs["approval_resolver"],
+                )
+            )
+            or runtime
+        ),
+        format_help=lambda _flags: "research help\n",
+        package_version=lambda: "1.0",
+        runtime_identity=lambda _root: {"product": "research"},
+        format_runtime_identity=lambda value: str(value),
+        validated_operation=lambda _context: calls.append("validated"),
+        startup_context=startup_context,
+        configure_session=lambda _context: calls.append("configure"),
+        session_operations=lambda _context: calls.append("operations"),
+        run_host=lambda _context: calls.append("host") or 9,
+        host_lifecycle=ProductHostLifecycle.resolve(
+            stdin=StringIO(),
+            stdout=StringIO(),
+            stderr=StringIO(),
+        ),
+        services=services,
+    )
+
+    result = asyncio.run(
+        run_agent_cli_application(
+            (),
+            binding=binding,
+            cwd=tmp_path,
+        )
+    )
+
+    assert result == 9
+    assert calls == [
+        ("parse", None, True),
+        "validated",
+        "pre_runtime",
+        ("tools", "research-approval"),
+        "startup_enter",
+        ("runtime", "research-tools", "research-approval"),
+        ("new_session", str(tmp_path)),
+        "startup_exit",
+        ("parse", {}, False),
+        "configure",
+        "operations",
+        "host",
     ]
 
 

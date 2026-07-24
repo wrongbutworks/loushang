@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from loushang.agent import Agent, AgentTool, StreamFn, ThinkingLevel
 from loushang.ai.model import Model, ModelSelection
@@ -28,7 +28,10 @@ from loushang.harness.agent_transcript import context_items_to_model_messages
 from loushang.harness.bootstrap import (
     create_standard_resource_bootstrap_runtime,
 )
-from loushang.harness.capabilities import bind_capability_composition_runtime
+from loushang.harness.capabilities import (
+    CapabilityCompositionRuntime,
+    bind_capability_composition_runtime,
+)
 from loushang.harness.config.agent import ControlConfig, SettingsManager
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import StartupCheckResult
@@ -41,14 +44,12 @@ from loushang.harness.resources.packages.materializer import (
 )
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.session import (
-    AgentProductConstructionPorts,
-    AgentProductConstructionRequest,
-    AgentProductConstructionRuntime,
+    AgentProductConstructionBinding,
     AgentSessionServices,
     BootstrapServices,
     CreateAgentSessionResult,
     CwdBoundServicesAudit,
-    StandardAgentSessionConfigurationRequest,
+    build_agent_product_session_runtime,
     project_root_from_settings_base,
     record_default_model_unavailable,
 )
@@ -197,17 +198,13 @@ def create_agent_session(
     approval_resolver: InteractiveApprovalResolver | None = None,
 ) -> AgentSession:
     services = services or create_services()
-    settings = services.settings_manager.get_settings()
-    capability_runtime = bind_capability_composition_runtime(CODING_CAPABILITY_PROFILE)
     resolved_package_materializer = (
         package_materializer or _default_package_materializer(session_manager)
-    )
-    resolved_thinking = (
-        settings.thinking_level if thinking_level is None else thinking_level
     )
     session_id = session_manager.get_header().conversation_id
 
     def _create_session(
+        capability_runtime: CapabilityCompositionRuntime,
         agent: Agent,
         bundle: ResourceBundle,
         extension_runner: ExtensionRunner,
@@ -242,76 +239,44 @@ def create_agent_session(
             capability_runtime=capability_runtime,
         )
 
-    result = AgentProductConstructionRuntime[
-        Agent,
-        AgentSession,
-        ResourceBundle,
-        ExtensionRunner,
-        WorkspaceToolRegistry,
-    ]().construct(
-        AgentProductConstructionRequest(
-            configuration=StandardAgentSessionConfigurationRequest(
-                settings=settings,
-                settings_manager=services.settings_manager,
-                model_registry=services.model_registry,
-                resource_loader=services.resource_loader,
+    result = _CODING_AGENT_PRODUCT_CONSTRUCTION.construct(
+        services=services,
+        package_materializer=resolved_package_materializer,
+        session_id=session_id,
+        cwd=session_manager.get_cwd(),
+        extension_flag_values=extension_flag_values,
+        explicit_system_prompt=system_prompt,
+        append_system_prompt=append_system_prompt or (),
+        model=model,
+        thinking_level=thinking_level,
+        tools=tools,
+        tool_registry=tool_registry,
+        allowed_tool_names=allowed_tool_names,
+        active_tool_names=active_tool_names,
+        no_tools=no_tools,
+        stream_fn=stream_fn,
+        convert_to_llm=lambda messages: context_items_to_model_messages(
+            messages,
+            image_placeholder=(
+                "Image reading is disabled."
+                if services.settings_manager.get_block_images()
+                else None
+            ),
+        ),
+        agent_factory=agent_factory,
+        session_factory=_create_session,
+        on_default_model_unavailable=lambda selection, error, reason: (
+            record_default_model_unavailable(
+                cast(ModelSelection, selection),
+                error=error,
+                reason=reason,
                 diagnostics_service=services.diagnostics_service,
-                package_materializer=resolved_package_materializer,
-                skill_activation_runtime=capability_runtime.skill_activation,
                 session_id=session_id,
-                cwd=session_manager.get_cwd(),
-                create_extension_runtime=lambda bundle: ExtensionRunner(
-                    bundle.extensions
-                ),
-                source_identity_check=_source_identity_startup_check,
-                extension_flag_values=extension_flag_values,
-            ),
-            ports=AgentProductConstructionPorts(
-                activate_resources=capability_runtime.activate_resources,
-                prompt_section_composer=capability_runtime.prompt_section_composer,
-                tool_pack_composer=capability_runtime.tool_pack_composer,
-                list_tool_definitions=lambda runner: runner.list_tool_definitions(),
-                get_tool_source_info=lambda runner, name: runner.get_tool_source_info(
-                    name
-                ),
-                dispose_capabilities=capability_runtime.dispose,
-            ),
-            default_system_prompt=DEFAULT_CODING_SYSTEM_PROMPT,
-            explicit_system_prompt=system_prompt,
-            append_system_prompt=append_system_prompt or (),
-            model=model,
-            thinking_level=resolved_thinking,
-            tools=tools,
-            tool_registry=tool_registry,
-            allowed_tool_names=allowed_tool_names,
-            active_tool_names=active_tool_names,
-            no_tools=no_tools,
-            stream_fn=stream_fn,
-            convert_to_llm=lambda messages: context_items_to_model_messages(
-                messages,
-                image_placeholder=(
-                    "Image reading is disabled."
-                    if services.settings_manager.get_block_images()
-                    else None
-                ),
-            ),
-            agent_factory=agent_factory,
-            session_factory=_create_session,
-            on_default_model_unavailable=lambda selection, error, reason: (
-                record_default_model_unavailable(
-                    selection,
-                    error=error,
-                    reason=reason,
-                    diagnostics_service=services.diagnostics_service,
-                    session_id=session_id,
-                )
-            ),
-            set_scoped_models=lambda session, scoped_models: session.set_scoped_models(
-                scoped_models
-            ),
-            product_tool_pack_id="coding.registry",
-            extension_tool_pack_id="coding.extensions",
-        )
+            )
+        ),
+        set_scoped_models=lambda session, scoped_models: session.set_scoped_models(
+            cast(list[dict[str, object]], scoped_models)
+        ),
     )
     result.session.cwd_bound_services_audit = (
         result.configuration.cwd_bound_services_audit
@@ -440,6 +405,28 @@ def _source_identity_startup_check(cwd: str) -> StartupCheckResult:
     )
 
 
+_CODING_AGENT_PRODUCT_CONSTRUCTION = AgentProductConstructionBinding[
+    Agent,
+    AgentSession,
+    ResourceBundle,
+    ExtensionRunner,
+    WorkspaceToolRegistry,
+](
+    default_system_prompt=DEFAULT_CODING_SYSTEM_PROMPT,
+    bind_capabilities=lambda: bind_capability_composition_runtime(
+        CODING_CAPABILITY_PROFILE
+    ),
+    create_extension_runtime=lambda bundle: ExtensionRunner(
+        cast(Any, bundle.extensions)
+    ),
+    source_identity_check=_source_identity_startup_check,
+    list_tool_definitions=lambda runner: runner.list_tool_definitions(),
+    get_tool_source_info=lambda runner, name: runner.get_tool_source_info(name),
+    product_tool_pack_id="coding.registry",
+    extension_tool_pack_id="coding.extensions",
+)
+
+
 def create_agent_session_runtime(
     *,
     session_dir: Path,
@@ -460,42 +447,36 @@ def create_agent_session_runtime(
     approval_resolver: InteractiveApprovalResolver | None = None,
 ) -> AgentSessionRuntime:
     fixed_services = services if services is not None else create_services()
-    runtime_diagnostics_service = fixed_services.diagnostics_service
-
-    def _session_factory(
-        session_manager: SessionManager,
-        *,
-        session_start_event: SessionStartEvent | None = None,
-    ) -> AgentSession:
-        session_services = (
-            services_factory(session_manager.get_cwd())
-            if services_factory is not None
-            else fixed_services
-        )
-        session = create_agent_session(
-            session_manager=session_manager,
-            model=model,
-            stream_fn=stream_fn,
-            system_prompt=system_prompt,
-            thinking_level=thinking_level,
-            tools=tools,
-            tool_registry=tool_registry,
-            allowed_tool_names=allowed_tool_names,
-            active_tool_names=active_tool_names,
-            no_tools=no_tools,
-            services=session_services,
-            agent_factory=agent_factory,
-            session_start_event=session_start_event,
-            append_system_prompt=append_system_prompt,
-            approval_resolver=approval_resolver,
-        )
-        if not persist:
-            session.agent.session_id = None
-        return session
-
-    return AgentSessionRuntime(
+    return build_agent_product_session_runtime(
         session_dir=Path(session_dir),
-        session_factory=_session_factory,
+        runtime_factory=AgentSessionRuntime,
+        fixed_services=fixed_services,
+        build_session=lambda session_manager, session_services, start_event: (
+            create_agent_session(
+                session_manager=cast(SessionManager, session_manager),
+                model=model,
+                stream_fn=stream_fn,
+                system_prompt=system_prompt,
+                thinking_level=thinking_level,
+                tools=tools,
+                tool_registry=tool_registry,
+                allowed_tool_names=allowed_tool_names,
+                active_tool_names=active_tool_names,
+                no_tools=no_tools,
+                services=session_services,
+                agent_factory=agent_factory,
+                session_start_event=cast(SessionStartEvent | None, start_event),
+                append_system_prompt=append_system_prompt,
+                approval_resolver=approval_resolver,
+            )
+        ),
+        session_cwd=lambda manager: cast(SessionManager, manager).get_cwd(),
+        services_factory=services_factory,
         persist=persist,
-        diagnostics_service=runtime_diagnostics_service,
+        diagnostics_service=fixed_services.diagnostics_service,
+        on_non_persistent_session=lambda session: setattr(
+            session.agent,
+            "session_id",
+            None,
+        ),
     )

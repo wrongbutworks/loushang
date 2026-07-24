@@ -531,14 +531,13 @@ def test_shared_resume_runtime_and_startup_keep_product_policy_outside() -> None
     assert not Path("src/loushang/coding/presentation/resume.py").exists()
     assert not Path("src/loushang/coding/presentation/tui/runtime.py").exists()
 
-    for token in (
-        "loushang.coding",
-        "ensure_usable_session_model",
-        "get_session_model_selection",
-    ):
+    for token in ("loushang.coding", "ensure_usable_session_model"):
         assert token not in shared
         assert token not in agent_binding
         assert token in coding
+    assert "get_session_model_selection" not in shared
+    assert "get_session_model_selection" in agent_binding
+    assert "get_session_model_selection" not in coding
 
     for token in ("get_steering_messages", "get_follow_up_messages"):
         assert token not in shared
@@ -555,6 +554,7 @@ def test_shared_resume_runtime_and_startup_keep_product_policy_outside() -> None
         assert token in shared
     assert "resume_hint_for_session" in agent_binding
     assert "stable_string_queue_reader" in agent_binding
+    assert "load_agent_conversation_startup_view" in agent_binding
     assert "load_coding_tui_startup_view" in coding
 
 

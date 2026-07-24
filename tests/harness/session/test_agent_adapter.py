@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from loushang.harness.session import (
+    AgentProductSessionRuntime,
     SessionLifecycleTransition,
     build_agent_product_session_runtime_ports,
     build_agent_session_lifecycle_hooks,
@@ -171,3 +172,26 @@ def test_agent_product_runtime_ports_bind_standard_session_conventions(
     assert ports.transcript_leaf_entry_id(transcript) == "leaf-1"
     assert ports.fork_profile.default_position == "before"
     assert ports.fork_profile.supported_positions == frozenset({"at", "before"})
+
+
+def test_agent_product_session_runtime_binds_current_session_without_product_code(
+    tmp_path: Path,
+) -> None:
+    actions: list[tuple[object, ...]] = []
+    current = _Session(actions, "research")
+
+    runtime = AgentProductSessionRuntime[
+        _Session,
+        _Manager,
+    ](
+        transcript_session_type=_Manager,
+        session_dir=tmp_path,
+        session_factory=lambda manager: _Session(actions, manager.get_cwd()),
+        current_session=current,
+    )
+
+    assert runtime.current_session is current
+    assert actions == [
+        ("open-approvals",),
+        ("bind-host", runtime),
+    ]

@@ -7,7 +7,11 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Generic, Protocol, TextIO, TypeVar
 
-from loushang.harness.session.model_selection import get_session_model_identity
+from loushang.harness.session.model_selection import (
+    get_session_model_identity,
+    get_session_model_selection,
+    model_identity_data,
+)
 from loushang.harnesstui.commands.catalog import (
     ConversationCommandCatalog,
     snapshot_conversation_command_catalog,
@@ -51,12 +55,18 @@ from loushang.harnesstui.conversation.runtime_view import (
 )
 from loushang.harnesstui.conversation.screen_app import ScreenConversationApp
 from loushang.harnesstui.conversation.session_view import (
+    git_branch,
     is_running,
+    session_cwd,
     session_label,
+    session_observability_id,
     thinking_level,
 )
 from loushang.harnesstui.conversation.source import MaterializedTranscriptSource
-from loushang.harnesstui.conversation.startup import ConversationStartupView
+from loushang.harnesstui.conversation.startup import (
+    ConversationStartupView,
+    build_conversation_startup_view,
+)
 from loushang.harnesstui.selection.binding import (
     SessionModelSelectorSurfaceProfile,
     build_session_model_selector_surface,
@@ -80,6 +90,7 @@ from loushang.tui.transcript import DisplayRecord
 Cleanup = Callable[[], None]
 SurfaceT = TypeVar("SurfaceT", bound=PreparedScreenSurfacePort)
 AgentScreenApprovalHandler = Callable[[dict[str, object]], Awaitable[bool | None]]
+PrepareAgentSession = Callable[[object], object | Awaitable[object]]
 
 
 def _no_cleanup() -> None:
@@ -88,6 +99,30 @@ def _no_cleanup() -> None:
 
 def _ignore_surface(_surface: SurfaceT) -> Cleanup:
     return _no_cleanup
+
+
+async def load_agent_conversation_startup_view(
+    *,
+    runtime: object,
+    session: object,
+    prepare_session: PrepareAgentSession | None = None,
+) -> ConversationStartupView:
+    """Load standard startup facts from a structurally compatible Agent session."""
+
+    if prepare_session is not None:
+        prepared = prepare_session(session)
+        if inspect.isawaitable(prepared):
+            await prepared
+    cwd = session_cwd(session=session, runtime=runtime)
+    return build_conversation_startup_view(
+        model_label=model_identity_data(
+            await get_session_model_selection(session)
+        ).label,
+        cwd=cwd,
+        branch=git_branch(cwd),
+        session_label=session_label(session),
+        session_observability_id=session_observability_id(session),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -467,9 +502,11 @@ __all__ = [
     "AgentScreenApprovalHandler",
     "AgentScreenApprovalSurface",
     "AgentScreenConversationApplicationBinding",
+    "PrepareAgentSession",
     "bind_agent_screen_approval_presenter",
     "bind_agent_screen_session_transition",
     "build_agent_screen_surface_workflow_ports",
     "current_agent_runtime_session",
     "handle_agent_screen_approval",
+    "load_agent_conversation_startup_view",
 ]
