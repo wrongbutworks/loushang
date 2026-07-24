@@ -157,7 +157,7 @@ into Harness.
 | Agent prompt/context/session-decision reducers formerly in `coding.extensions.runner.ExtensionRunner` | `harness.extensions.agent.hooks` and `harness.extensions.session_runtime` | Coding supplies bound context, CWD, API binding, `before_agent_start` factory/result coercer, and session-decision coercer. | Complete: shared dispatchers own the reducer mechanics; Coding retains provider behavior and Product coercers. |
 | removed `harness.session.extension_{hooks,events,input}` modules | `harness.extensions.agent.{hooks,lifecycle,input}` | Session only consumes the profile during Agent-session composition. Input receives normalized typed requests plus queue/delivery ports; lifecycle is an observation-only extension callback adapter with injected clock/correlation values; Coding retains wire parsing/defaults. | Complete: consumers import the profile directly, input has no Session import, and Session no longer re-exports the profile. |
 | `coding.extensions.runner.ExtensionRunner` loader/API portions | Coding adapter over `harness.extensions.runner.ExtensionRunner` | `ExtensionAPI`, policy resolver, loader configuration, provider actions, and Coding error dictionary remain Product-owned. | Complete: the Coding runner is a thin loader/policy binding; shared reducer and dispatch mechanics live in Harness with snake_case-only extension events. |
-| `coding.event` runtime projection, views, serializer, and presentation policy | `harness.events.session_types`, `session_projection`, `runtime_views`, `recording_policy`, and `session_serialization` | Coding retains `AgentSessionEvent`, Product/Work mapping, rendering, and final wording. Harness owns runtime-view selection/stream shaping, delivery hints, transcript-write decisions, and cancellation classification. The shared wire schema is snake_case-only; no duplicate neutral event engine exists. | Complete: production consumers use the Harness implementations; Coding keeps only established thin import facades and no Pi/camelCase aliases. |
+| removed `coding.event` runtime projection, views, serializer, presentation policy, and final import facade | `harness.events.session_types`, `session_projection`, `runtime_views`, `recording_policy`, and `session_serialization` | Product/Work mapping, rendering, and final wording remain in their existing owners. Harness owns runtime-view selection/stream shaping, delivery hints, transcript-write decisions, and cancellation classification. The shared wire schema is snake_case-only; no duplicate neutral event engine exists. | Complete: all consumers and tests import the canonical Harness implementations directly; no Coding event facade or Pi/camelCase alias remains. |
 
 Wave 2 contract probes:
 
@@ -527,15 +527,16 @@ diagnostics ports explicitly.
 
 | Source region | Shared owner | Coding retained | Status |
 | --- | --- | --- | --- |
-| `coding.control.model_registry` registry/reload/resolve/build implementation | `harness.model_catalog` | public zero-logic import alias | Complete |
+| removed `coding.control.model_registry` registry/reload/resolve/build implementation and import alias | `harness.model_catalog` | no Coding implementation or submodule facade | Complete |
 | bootstrap default-model fallback and failure diagnostics | `harness.session.model_resolution` | model preference/default selection | Complete |
 | enabled model/thinking pattern parsing and scoped payload assembly | `harness.session.model_resolution` | Product settings wiring | Complete |
 
-Slice B accounting: `coding/control/model_registry.py` shrank from 176 to 5
-LOC and `coding/bootstrap.py` from approximately 1,277 to 1,178 LOC. Harness
-gained the shared catalog and resolution helpers, with no changes to
-`loushang.ai.model` and no external wire behavior changes. Focused Coding
-regressions and independent Harness model-resolution probes pass.
+Slice B originally reduced `coding/control/model_registry.py` from 176 to 5
+LOC; Wave 7 Slice W removes the remaining alias. `coding/bootstrap.py` moved
+from approximately 1,277 to 1,178 LOC during this slice. Harness gained the
+shared catalog and resolution helpers, with no changes to `loushang.ai.model`
+and no external wire behavior changes. Focused Coding regressions and
+independent Harness model-resolution probes pass.
 
 ### Wave 7, Slice C: Session Public Adapter Audit (Already Complete)
 
@@ -1145,3 +1146,28 @@ package, approval, and diagnostic choices into a long callback list. An
 architecture gate requires Coding to use the shared service/result helpers and
 forbids it from directly constructing `ControlConfig`, `DiagnosticsService`, or
 `ModelCatalog`.
+
+### Wave 7, Slice W: Coding Public Facade Cull (Complete)
+
+This slice removes only zero-logic Coding import facades after checking their
+production, test, example, and SDK consumers. It adds no shared implementation
+and changes no runtime behavior.
+
+| Removed facade | Canonical owner | Product surface retained |
+| --- | --- | --- |
+| `coding.event` | `harness.events` | Product/Work projections and final presentation remain in their existing owners |
+| `coding.control.model_registry` | `harness.model_catalog.ModelCatalog` | Coding model preferences and selection persistence remain in `coding.model_selection` |
+| `coding.prompt.types` | `harness.capabilities.prompt` and `prompt_assembly` | Coding prompt default and assembler remain in `coding.prompt` |
+| `coding.prompt.preflight` and package-level preflight/template re-exports | `harness.capabilities.prompt_preflight` and `prompt` | no duplicate Product preflight mechanism |
+
+The top-level Coding SDK retains its Product constructors, sessions, resource
+bindings, workspace-tool profile helpers, policy defaults, and prompt
+assembler. Shared event and model-catalog symbols that were not part of the
+declared SDK entry contract are no longer re-exported. Event and model-catalog
+tests move to the Harness suite, while Coding prompt tests import canonical
+preflight/template owners for the shared portions.
+
+Production accounting: `src/loushang/coding` changes from 4,737 to 4,641
+physical Python LOC (-96). Harness production adds zero lines. Architecture
+gates require all four retired prefixes to remain unimportable and reject
+imports from source, tests, and examples.

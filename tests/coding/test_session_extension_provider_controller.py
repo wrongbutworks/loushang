@@ -7,11 +7,11 @@ import pytest
 from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.model import Endpoint, Model, Provider
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-from loushang.coding.control import ModelRegistry
 from loushang.harness.extensions import ExtensionProviderRuntime
 from loushang.harness.extensions.provider_config import (
     provider_from_extension_config,
 )
+from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
 
 class _ApiProvider:

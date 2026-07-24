@@ -6,14 +6,14 @@ from loushang.agent import AgentEvent
 
 
 def test_agent_session_event_accepts_core_agent_event() -> None:
-    from loushang.coding.event import AgentSessionEvent
+    from loushang.harness.events import AgentSessionEvent
 
     event: AgentSessionEvent = {"type": "agent_start"}
     assert event["type"] == "agent_start"
 
 
 def test_agent_session_event_accepts_compaction_extension_event() -> None:
-    from loushang.coding.event import AgentSessionEvent
+    from loushang.harness.events import AgentSessionEvent
 
     event: AgentSessionEvent = {
         "type": "compaction_start",
@@ -23,7 +23,7 @@ def test_agent_session_event_accepts_compaction_extension_event() -> None:
 
 
 def test_agent_session_event_accepts_branch_summary_events() -> None:
-    from loushang.coding.event import AgentSessionEvent
+    from loushang.harness.events import AgentSessionEvent
 
     start: AgentSessionEvent = {
         "type": "branch_summary_start",
@@ -46,7 +46,7 @@ def test_agent_session_event_accepts_branch_summary_events() -> None:
 
 
 def test_agent_session_event_accepts_auto_retry_events() -> None:
-    from loushang.coding.event import AgentSessionEvent
+    from loushang.harness.events import AgentSessionEvent
 
     start: AgentSessionEvent = {
         "type": "auto_retry_start",
@@ -67,7 +67,7 @@ def test_agent_session_event_accepts_auto_retry_events() -> None:
 
 
 def test_agent_session_event_accepts_queue_update() -> None:
-    from loushang.coding.event import AgentSessionEvent
+    from loushang.harness.events import AgentSessionEvent
 
     event: AgentSessionEvent = {
         "type": "queue_update",
@@ -78,7 +78,7 @@ def test_agent_session_event_accepts_queue_update() -> None:
 
 
 def test_agent_session_event_accepts_session_info_changed() -> None:
-    from loushang.coding.event import AgentSessionEvent
+    from loushang.harness.events import AgentSessionEvent
 
     event: AgentSessionEvent = {
         "type": "session_info_changed",
@@ -88,13 +88,13 @@ def test_agent_session_event_accepts_session_info_changed() -> None:
 
 
 def test_agent_session_event_extends_base_agent_event_union() -> None:
-    from loushang.coding.event import AgentSessionEvent
+    from loushang.harness.events import AgentSessionEvent
 
     assert len(get_args(AgentSessionEvent)) > len(get_args(AgentEvent))
 
 
 def test_serialize_session_event_uses_snake_case_json_keys() -> None:
-    from loushang.coding.event import serialize_session_event
+    from loushang.harness.events import serialize_session_event
 
     payload = serialize_session_event(
         {
@@ -119,7 +119,7 @@ def test_serialize_session_event_uses_snake_case_json_keys() -> None:
 
 
 def test_serialize_session_event_uses_snake_case_for_branch_summary_events() -> None:
-    from loushang.coding.event import serialize_session_event
+    from loushang.harness.events import serialize_session_event
 
     start_payload = serialize_session_event(
         {
@@ -161,8 +161,8 @@ def test_serialize_session_event_uses_snake_case_for_branch_summary_events() -> 
 
 
 def test_serialize_session_event_uses_snake_case_for_compaction_usage() -> None:
-    from loushang.coding.event import serialize_session_event
     from loushang.harness.agent_transcript import ContextUsageSnapshot
+    from loushang.harness.events import serialize_session_event
 
     usage = ContextUsageSnapshot(
         tokens=85,
@@ -217,7 +217,7 @@ def test_serialize_session_event_uses_snake_case_for_compaction_usage() -> None:
 
 
 def test_serialize_session_event_uses_snake_case_for_auto_retry_events() -> None:
-    from loushang.coding.event import serialize_session_event
+    from loushang.harness.events import serialize_session_event
 
     start_payload = serialize_session_event(
         {
@@ -255,7 +255,7 @@ def test_serialize_session_event_uses_snake_case_for_auto_retry_events() -> None
 def test_serialize_session_event_uses_snake_case_for_package_progress_events() -> (
     None
 ):
-    from loushang.coding.event import serialize_session_event
+    from loushang.harness.events import serialize_session_event
 
     payload = serialize_session_event(
         {
@@ -280,7 +280,7 @@ def test_serialize_session_event_uses_snake_case_for_package_progress_events() -
 
 def test_serialize_session_event_uses_snake_case_for_base_agent_events() -> None:
     from loushang.ai.types import AssistantMessage, TextPart, Usage
-    from loushang.coding.event import serialize_session_event
+    from loushang.harness.events import serialize_session_event
 
     payload = serialize_session_event(
         {
@@ -351,7 +351,7 @@ def test_serialize_session_event_uses_snake_case_for_base_agent_events() -> None
 def test_project_session_event_can_attach_rendered_tool_payloads() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.event import project_session_event
+    from loushang.harness.events import project_session_event
     from loushang.harness.presentation import ToolRenderRuntime
     from loushang.harness.tools.workspace import ToolDefinition
 
@@ -472,7 +472,7 @@ def test_project_session_event_can_attach_rendered_tool_payloads() -> None:
 def test_project_session_event_marks_rendered_tool_error_status() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.event import project_session_event
+    from loushang.harness.events import project_session_event
     from loushang.harness.presentation import ToolRenderRuntime
     from loushang.harness.tools.workspace import ToolDefinition
 
@@ -514,7 +514,7 @@ def test_project_session_event_marks_rendered_tool_error_status() -> None:
 def test_project_session_event_structures_tool_ui_state_and_bash_artifacts() -> None:
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.event import project_session_event
+    from loushang.harness.events import project_session_event
     from loushang.harness.presentation import ToolRenderRuntime
     from loushang.harness.tools.workspace import ToolDefinition
 
@@ -587,7 +587,7 @@ def test_project_session_event_uses_distinct_event_and_presentation_views() -> N
     from loushang.agent import FunctionalToolOutputProjector
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.event import project_session_event
+    from loushang.harness.events import project_session_event
     from loushang.harness.presentation import ToolRenderRuntime
     from loushang.harness.tools.workspace import ToolDefinition
 
@@ -662,7 +662,7 @@ def test_project_session_event_omits_rendered_tool_payload_when_renderer_fails()
 ):
     from loushang.agent.types import AgentToolResult
     from loushang.ai.types import TextPart
-    from loushang.coding.event import project_session_event
+    from loushang.harness.events import project_session_event
     from loushang.harness.presentation import ToolRenderRuntime
     from loushang.harness.tools.workspace import ToolDefinition
 

@@ -8,7 +8,6 @@ from loushang.coding.compaction.adapter import (
     execute_coding_branch_summary,
     execute_coding_compaction,
 )
-from loushang.coding.control.model_registry import ModelRegistry
 from loushang.coding.policy import InteractiveApprovalResolver
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
 from loushang.coding.resource_runtime import (
@@ -29,6 +28,7 @@ from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.events import AgentSessionEvent, RuntimeEvent
 from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
+from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.session import AgentProductSession
 from loushang.harness.session.changelog import read_changelog_for_cwd

@@ -13,8 +13,6 @@ from loushang.coding.bootstrap import (
     create_agent_session_services,
     create_services,
 )
-from loushang.coding.control.model_registry import ModelRegistry
-from loushang.coding.event import AgentSessionEvent, JsonEventView, select_events
 from loushang.coding.policy import (
     ApprovalDecision,
     ApprovalRequest,
@@ -67,7 +65,6 @@ __all__ = [
     "AgentSession",
     "AgentSessionServices",
     "AgentSessionRuntime",
-    "AgentSessionEvent",
     "ApprovalDecision",
     "ApprovalRequest",
     "ApprovalResolver",
@@ -86,13 +83,11 @@ __all__ = [
     "ExtensionFlagValues",
     "HeadlessApprovalResolver",
     "HeadlessApprovalMode",
-    "ModelRegistry",
     "ModelSelection",
     "PackageSecurityPolicy",
     "PackageSourceSecurityReport",
     "PolicyDecision",
     "PolicyEnforcementError",
-    "JsonEventView",
     "ToolSettings",
     "TreeNavigationResult",
     "SessionManager",
@@ -115,5 +110,4 @@ __all__ = [
     "check_sdk_surface_compatibility",
     "get_sdk_surface_snapshot",
     "register_coding_builtin_tools",
-    "select_events",
 ]
