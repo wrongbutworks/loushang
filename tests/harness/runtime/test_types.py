@@ -4,13 +4,12 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from loushang.harness.host.types import (
-    HostLifecycleEvent,
-    HostSnapshot,
+from loushang.harness.events.host import HostLifecycleEvent
+from loushang.harness.events.session import (
     QueuedMessageSnapshot,
     QueueSnapshot,
-    RunState,
 )
+from loushang.harness.runtime.types import HostSnapshot, RunState
 
 
 def test_host_records_are_frozen_and_preserve_neutral_values() -> None:

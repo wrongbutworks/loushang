@@ -4,19 +4,46 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, TypeAlias
 
-from loushang.harness.host.retry import RetryAttempt, RetryOutcome
-from loushang.harness.host.types import QueueSnapshot
-
 CompactionReason: TypeAlias = Literal["manual", "threshold", "overflow"]
 PackageProgressType: TypeAlias = Literal["start", "progress", "complete", "error"]
 PackageProgressAction: TypeAlias = Literal[
     "install", "update", "remove", "check", "resolve"
 ]
+QueueKind: TypeAlias = Literal["steering", "follow_up"]
 ToolPolicyAuditEventType: TypeAlias = Literal[
     "tool_policy_evaluated",
     "tool_approval_requested",
     "tool_approval_resolved",
 ]
+
+
+@dataclass(frozen=True)
+class QueuedMessageSnapshot:
+    id: str
+    kind: QueueKind
+    text: str
+
+
+@dataclass(frozen=True)
+class QueueSnapshot:
+    steering: tuple[QueuedMessageSnapshot, ...] = ()
+    follow_up: tuple[QueuedMessageSnapshot, ...] = ()
+
+
+@dataclass(frozen=True)
+class RetryAttempt:
+    attempt: int
+    max_attempts: int
+    delay_ms: int
+    error: str
+
+
+@dataclass(frozen=True)
+class RetryOutcome:
+    success: bool
+    attempt: int
+    error: str | None = None
+    cancelled: bool = False
 
 
 @dataclass(frozen=True)
@@ -139,7 +166,12 @@ __all__ = [
     "PackageProgressChanged",
     "PackageProgressType",
     "QueueChanged",
+    "QueuedMessageSnapshot",
+    "QueueKind",
+    "QueueSnapshot",
+    "RetryAttempt",
     "RetryCompleted",
+    "RetryOutcome",
     "RetryStarted",
     "SessionRuntimeEventPayload",
     "ToolPolicyAuditEvent",

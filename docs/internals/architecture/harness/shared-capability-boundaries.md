@@ -326,13 +326,13 @@ Product adapters own:
 Do not move `AgentSession`, product controllers, or store code wholesale into
 harness.
 
-`loushang.harness.host.types` now owns neutral host status, lifecycle events,
-run state, and queue snapshots. `loushang.harness.host.queue` owns the generic
-input-queue ledger; `loushang.harness.events` owns the common runtime envelope,
-Session payloads, scoped publisher, and ordered dispatch. `loushang.harness.host.events` is the
-accepted Host compatibility re-export. `loushang.harness.host.runtime` owns
-driver-delegating run/abort/idle/dispose coordination. Harness
-host/resource/extension modules also own turn, retry, watch/refresh, and
+`loushang.harness.events` owns host/session event facts, queue and retry result
+records, the common runtime envelope, scoped publisher, and ordered dispatch.
+`loushang.harness.runtime.types` owns host/run snapshots and queue modes;
+`runtime.input_queue`, `runtime.turn`, `runtime.retry`, and
+`runtime.execution` own reusable behavior. `loushang.harness.host` is the outer
+RPC/channel/mode adapter and `host.types` owns only its adapter result.
+Resource and extension modules continue to own watch/refresh and
 bind/refresh/invalidate state machines.
 `loushang.harness.runtime` owns generic bindings/contexts, session transitions,
 operation phases, rollback, import staging, replacement callback order,

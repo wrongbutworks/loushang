@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from loushang.harness.host.turn import TurnInput, TurnInputQueue, TurnOrchestrator
+from loushang.harness.runtime.turn import TurnInput, TurnInputQueue, TurnOrchestrator
 
 
 def test_turn_orchestrator_runs_neutral_pipeline_in_order() -> None:

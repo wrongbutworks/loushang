@@ -106,10 +106,9 @@ normalized delivery instruction through injected ports.
 
 ### Event projection
 
-`harness.events.session_types.AgentSessionEvent` is the shared typed session
-mapping contract, with a Coding import surface retained during cutover. The
-standard serialized event projection is Harness-owned. The following remain
-Coding-owned in this Wave:
+`harness.session.event_types.AgentSessionEvent` is the shared typed session
+mapping contract. The standard serialized event projection is
+Session-owned. The following remain Product-owned:
 
 - RuntimeEvent-to-session mapping, Product view selection/overrides, and
   Coding presentation wording;
@@ -120,8 +119,7 @@ Harness serializes resulting event payloads with one recursive snake_case
 normalizer. It does not accept or emit Pi/camelCase aliases, and selector
 matching accepts only exact names and trailing-wildcard prefixes.
 
-The Coding import surface for `AgentSessionEvent` remains only during this
-Wave. Production consumers use common facts from `subscribe_runtime_events()` or
+Production consumers use common facts from `subscribe_runtime_events()` or
 `RuntimeEventView` wherever the shared API already provides them. Coding still
 binds Product/work mapping and any final presentation override at its
 UI/RPC/print/extension boundary, while Harness owns the canonical view,
@@ -240,9 +238,9 @@ no compatibility promise beyond the current branch.
 3. **Coding adapter and event facade reduction**
    - Completed: made `ExtensionRunner` a Coding loader/API/context adapter over
      the shared dispatchers; delete `coding.extensions.hooks`.
-   - Keep the Coding import surface only while consumers move; the shared
-     `harness.events.session_types.AgentSessionEvent` contract and
-     `harness.events.session_projection` views own serialized event fields,
+   - The shared
+     `harness.session.event_types.AgentSessionEvent` contract and
+     `harness.session.event_projection` views own serialized event fields,
      snake_case shaping, and standard render enrichment. Lock the canonical
      output with golden tests and add an import gate that prevents a second
      neutral event engine; the existing `AgentSession.subscribe()` and Work

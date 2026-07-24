@@ -4,7 +4,7 @@ from loushang.harness.agent_transcript import CompactionDecision, ContextUsageSn
 from loushang.harness.agent_transcript import (
     TranscriptNavigationResult as TreeNavigationResult,
 )
-from loushang.harness.host.types import RunState
+from loushang.harness.runtime.types import RunState
 from loushang.harness.session.inspection import (
     AgentSessionState,
     ContextUsage,

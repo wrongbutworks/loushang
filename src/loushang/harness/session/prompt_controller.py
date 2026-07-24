@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from loushang.ai.types import ImagePart, TextPart, UserMessage
 from loushang.harness.agent_transcript import ApplicationMessage
-from loushang.harness.host.turn import TurnInput, TurnOrchestrator
+from loushang.harness.runtime.turn import TurnInput, TurnOrchestrator
 
 CommandExtractor = Callable[[str], tuple[str, str] | None]
 CommandExecutor = Callable[[str, str], Awaitable[object | None]]

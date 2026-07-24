@@ -4,13 +4,13 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import Generic, Literal, TypeVar
 
-from loushang.harness.host.queue import HostInputQueue
-from loushang.harness.host.types import (
+from loushang.harness.events.session import (
     QueuedMessageSnapshot,
     QueueKind,
-    QueueMode,
     QueueSnapshot,
 )
+from loushang.harness.runtime.input_queue import HostInputQueue
+from loushang.harness.runtime.types import QueueMode
 
 A = TypeVar("A")
 M = TypeVar("M")

@@ -23,17 +23,17 @@ from loushang.harness.agent_transcript import (
     STANDARD_AGENT_TRANSCRIPT_KINDS,
     THINKING_SELECTION_KIND,
 )
-from loushang.harness.events import (
+from loushang.harness.events import normalize_event_select
+from loushang.harness.host.mode import ModeConfig
+from loushang.harness.host.rpc import run_rpc_host
+from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.harness.session import (
     SUPPORTED_JSON_EVENT_VIEWS,
-    normalize_event_select,
     project_runtime_event_to_json_views,
     project_session_event,
     should_emit_projected_event,
     should_emit_runtime_event_view,
 )
-from loushang.harness.host.mode import ModeConfig
-from loushang.harness.host.rpc import run_rpc_host
-from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.harness.tools.workspace.presentation import (
     render_tool_result_presentation,
 )

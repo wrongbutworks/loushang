@@ -34,23 +34,23 @@ from loushang.harness.diagnostics.serialization import (
 )
 from loushang.harness.diagnostics.types import DiagnosticsQuery
 from loushang.harness.events import (
-    SUPPORTED_JSON_EVENT_VIEWS,
     RuntimeEvent,
     normalize_event_select,
+)
+from loushang.harness.host.mode import ModeAdapter, ModeState
+from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.harness.session import (
+    SUPPORTED_JSON_EVENT_VIEWS,
+    SessionLifecycleOperationPorts,
+    SessionOperationRuntime,
+    SessionPromptRequest,
+    SessionRpcOperationBinding,
     project_runtime_event_to_json_views,
     project_session_event,
     shape_runtime_event_view,
     shape_stream_event,
     should_emit_projected_event,
     should_emit_runtime_event_view,
-)
-from loushang.harness.host.mode import ModeAdapter, ModeState
-from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
-from loushang.harness.session import (
-    SessionLifecycleOperationPorts,
-    SessionOperationRuntime,
-    SessionPromptRequest,
-    SessionRpcOperationBinding,
 )
 
 _THINKING_LEVEL_ORDER: tuple[str, ...] = (

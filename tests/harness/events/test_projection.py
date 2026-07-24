@@ -11,9 +11,9 @@ from loushang.harness.events import (
     normalize_event_select,
     project_runtime_event,
     select_runtime_event_views,
-    serialize_session_event,
     snake_case_json_keys,
 )
+from loushang.harness.session import serialize_session_event
 from loushang.protocol import JsonValueError
 
 

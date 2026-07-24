@@ -5,6 +5,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
+from loushang.harness.events.session import RetryAttempt, RetryOutcome
+
 C = TypeVar("C")
 
 
@@ -14,22 +16,6 @@ class RetryPolicy:
     max_attempts: int
     base_delay_ms: int
     backoff_factor: float = 2.0
-
-
-@dataclass(frozen=True)
-class RetryAttempt:
-    attempt: int
-    max_attempts: int
-    delay_ms: int
-    error: str
-
-
-@dataclass(frozen=True)
-class RetryOutcome:
-    success: bool
-    attempt: int
-    error: str | None = None
-    cancelled: bool = False
 
 
 Delay = Callable[[int, C], Awaitable[None]]
@@ -245,8 +231,6 @@ def _backoff_delay(policy: RetryPolicy, attempt: int) -> int:
 
 
 __all__ = [
-    "RetryAttempt",
     "RetryCoordinator",
-    "RetryOutcome",
     "RetryPolicy",
 ]

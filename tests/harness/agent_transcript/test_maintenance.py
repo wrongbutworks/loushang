@@ -21,7 +21,7 @@ from loushang.harness.conversation import (
     MemoryConversationStore,
 )
 from loushang.harness.events import ContextCompactionCompleted, RetryCompleted
-from loushang.harness.host.retry import RetryPolicy
+from loushang.harness.runtime.retry import RetryPolicy
 
 
 def _model(*, context_window: int = 100) -> Model:

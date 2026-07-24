@@ -33,13 +33,13 @@ from loushang.harness.diagnostics import (
     ErrorReport,
 )
 from loushang.harness.events import RuntimeEvent
-from loushang.harness.host.types import RunState
 from loushang.harness.resources.types import (
     PromptFragmentDescriptor,
     ResourceBundle,
     SkillDescriptor,
 )
 from loushang.harness.runtime import SessionOperationResult
+from loushang.harness.runtime.types import RunState
 from loushang.harness.session.inspection import AgentSessionState
 
 

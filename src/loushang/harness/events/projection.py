@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, TypeAlias
 
-from loushang.harness.events.session_serialization import snake_case_json_keys
+from loushang.harness.events.json import snake_case_json_keys
 from loushang.harness.events.types import (
     RuntimeEvent,
     _require_optional_text,

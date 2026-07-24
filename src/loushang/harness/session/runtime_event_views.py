@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from loushang.harness.events.json import snake_case_json_keys
 from loushang.harness.events.projection import (
     RuntimeEventDeliveryHint,
     RuntimeEventView,
@@ -12,15 +13,14 @@ from loushang.harness.events.projection import (
     project_runtime_event,
 )
 from loushang.harness.events.runtime_projection import project_session_runtime_event
-from loushang.harness.events.session_projection import (
+from loushang.harness.events.types import RuntimeEvent
+from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.harness.session.event_projection import (
     JsonEventView,
     _event_correlation_id,
     _expand_patterns,
     project_session_event,
 )
-from loushang.harness.events.session_serialization import snake_case_json_keys
-from loushang.harness.events.types import RuntimeEvent
-from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 
 
 def project_runtime_event_to_json_views(

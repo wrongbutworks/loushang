@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Generic, TypeVar
 
-from loushang.harness.host.types import (
+from loushang.harness.events.session import (
     QueuedMessageSnapshot,
     QueueKind,
-    QueueMode,
     QueueSnapshot,
 )
+from loushang.harness.runtime.types import QueueMode
 
 T = TypeVar("T")
 

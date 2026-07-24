@@ -24,7 +24,7 @@ from loushang.harness.agent_transcript import (
     calculate_context_tokens,
     estimate_context_tokens,
 )
-from loushang.harness.host.types import RunState
+from loushang.harness.runtime.types import RunState
 
 
 class AgentStateInspectionPort(Protocol):

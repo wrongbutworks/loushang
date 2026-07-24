@@ -5,10 +5,9 @@ from dataclasses import dataclass
 
 import pytest
 
-from loushang.harness.host.retry import (
-    RetryAttempt,
+from loushang.harness.events.session import RetryAttempt, RetryOutcome
+from loushang.harness.runtime.retry import (
     RetryCoordinator,
-    RetryOutcome,
     RetryPolicy,
 )
 

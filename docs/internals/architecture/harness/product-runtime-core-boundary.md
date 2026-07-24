@@ -14,10 +14,12 @@ The runtime dependency direction is:
 
 ```text
 Product adapter
-  -> loushang.harness.runtime       # bindings, contexts, transitions, scheduling
-  -> loushang.harness.host          # active run lifecycle and input/event control
-  -> loushang.agent                 # message loop and tool feedback
-  -> loushang.ai                    # model/message/auth data and provider execution
+  -> loushang.harness.host          # optional RPC/channel/mode adapter
+  -> loushang.harness.session       # Agent-session composition
+  -> loushang.harness.runtime       # lifecycle, queue, retry, transitions
+  -> loushang.harness.events        # immutable facts and ordered delivery
+
+loushang.harness.session -> loushang.agent -> loushang.ai
 ```
 
 Related data contracts live with their actual lower-layer owner rather than in

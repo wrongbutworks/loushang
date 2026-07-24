@@ -17,13 +17,14 @@
 
 ## Uses Harness Core
 
-- `loushang.harness.host.runtime.HostRuntime` 协调 prompt / continue / abort /
+- `loushang.harness.runtime.execution.HostRuntime` 协调 prompt / continue / abort /
   wait-for-idle / dispose 生命周期，并委托现有 `Agent` driver。
-- `loushang.harness.host.queue.HostInputQueue` 持有中立队列账本和快照；
+- `loushang.harness.runtime.input_queue.HostInputQueue` 持有中立队列账本和快照；
   Coding 继续负责 preflight、消息构造、Agent queue 和产品事件。
-- `loushang.harness.host.events.OrderedEventBus` 提供有序异步分发；
-  `AgentSessionEvent` 仍由 Coding 定义。
-- `loushang.harness.host.types.RunState` 是 Coding 公共路径复用的记录所有者。
+- `loushang.harness.events.OrderedEventBus` 提供有序异步分发；
+  `loushang.harness.session.event_types.AgentSessionEvent` 定义标准 Agent
+  会话投影。
+- `loushang.harness.runtime.types.RunState` 是 Coding 公共路径复用的记录所有者。
 
 ## Depends On
 
@@ -33,7 +34,9 @@
 - `tools`
 - `loader`
 - `loushang-agent`
-- `loushang.harness.host`
+- `loushang.harness.events`
+- `loushang.harness.runtime`
+- `loushang.harness.session`
 
 ## Commands
 

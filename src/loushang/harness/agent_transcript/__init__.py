@@ -170,10 +170,6 @@ from loushang.harness.agent_transcript.session_catalog import (
     refresh_all_agent_transcript_session_indexes,
     same_agent_transcript_session_path,
 )
-from loushang.harness.agent_transcript.session_export import (
-    export_session_to_html,
-    export_session_to_jsonl,
-)
 from loushang.harness.agent_transcript.session_factory import (
     AgentTranscriptSessionFactory,
     BindingInputResolver,
@@ -372,8 +368,6 @@ __all__ = [
     "estimate_record_tokens",
     "export_agent_transcript_to_html",
     "export_agent_transcript_to_jsonl",
-    "export_session_to_html",
-    "export_session_to_jsonl",
     "execute_branch_summary",
     "execute_transcript_compaction",
     "decorate_summary_resource_operations",

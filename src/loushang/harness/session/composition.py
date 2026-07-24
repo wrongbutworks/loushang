@@ -35,7 +35,6 @@ from loushang.harness.agent_transcript import (
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.events import (
-    AgentSessionEvent,
     ConversationMetadataChanged,
     RuntimeEvent,
 )
@@ -50,9 +49,9 @@ from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.extensions.provider_config import provider_from_extension_config
 from loushang.harness.extensions.runtime_bindings import ExtensionRuntimeBindingFactory
 from loushang.harness.extensions.session_runtime import ExtensionSessionRuntime
-from loushang.harness.host.retry import RetryPolicy
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.resources.watcher import ResourceChangeWatcher
+from loushang.harness.runtime.retry import RetryPolicy
 from loushang.harness.session.bash import BashExecutionPorts, BashExecutionRuntime
 from loushang.harness.session.bindings import (
     SessionExtensionBinding,
@@ -65,6 +64,7 @@ from loushang.harness.session.diagnostics import (
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
 )
+from loushang.harness.session.event_types import AgentSessionEvent
 from loushang.harness.session.inspection import AgentSessionInspector
 from loushang.harness.session.resource_refresh import SessionResourceRefreshRuntime
 from loushang.harness.session.runtime import (
