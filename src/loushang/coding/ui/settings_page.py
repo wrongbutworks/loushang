@@ -7,17 +7,10 @@ from loushang.coding.interaction.settings_profile import (
     CODING_SETTING_COPY,
 )
 from loushang.coding.model_selection_tui import select_available_model
-from loushang.harnesstui.selection.binding import (
-    available_session_model_choices as available_model_choices,
-)
-from loushang.harnesstui.selection.binding import (
-    current_session_model_choice_value as current_model_choice_value,
-)
 from loushang.harnesstui.settings.workflow import (
     BooleanSettingsWorkflowAdapter,
-    SettingsModelSnapshot,
     SettingsPageView,
-    SettingsWorkflowPorts,
+    build_session_settings_workflow_ports,
 )
 from loushang.harnesstui.status.line import StatusLinePreviewSnapshot
 from loushang.harnesstui.status.provider import StatusProvider
@@ -39,11 +32,6 @@ async def build_coding_settings_page(
         CODING_SETTING_COPY,
     )
 
-    async def _load_models() -> SettingsModelSnapshot:
-        choices = await available_model_choices(session)
-        current_value = await current_model_choice_value(session, choices=choices)
-        return SettingsModelSnapshot(tuple(choices), current_value=current_value)
-
     async def _apply_model(value: str) -> str:
         return await select_available_model(
             session,
@@ -53,10 +41,9 @@ async def build_coding_settings_page(
 
     return await SettingsPageView.create(
         status_provider=status_provider,
-        ports=SettingsWorkflowPorts(
-            config_rows=config.config_rows,
-            apply_config=config.apply_config,
-            load_models=_load_models,
+        ports=build_session_settings_workflow_ports(
+            session=session,
+            config=config,
             apply_model=_apply_model,
         ),
         usage_provider=usage_provider,

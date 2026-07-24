@@ -4,6 +4,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from loushang.harnesstui.selection.binding import (
+    available_session_model_choices,
+    current_session_model_choice_value,
+)
 from loushang.harnesstui.selection.catalog import ModelChoice
 from loushang.harnesstui.settings.dashboard import (
     SettingsDashboard,
@@ -109,6 +113,33 @@ class BooleanSettingsWorkflowAdapter:
         if not outcome.matched:
             return None
         return SettingsConfigUpdate(outcome.message)
+
+
+async def session_model_settings_snapshot(session: object) -> SettingsModelSnapshot:
+    """Load presentation-ready model settings from a standard Agent session."""
+
+    choices = await available_session_model_choices(session)
+    current_value = await current_session_model_choice_value(
+        session,
+        choices=choices,
+    )
+    return SettingsModelSnapshot(tuple(choices), current_value=current_value)
+
+
+def build_session_settings_workflow_ports(
+    *,
+    session: object,
+    config: BooleanSettingsWorkflowAdapter,
+    apply_model: ModelApplyHandler,
+) -> SettingsWorkflowPorts:
+    """Bind standard session model data and a Product configuration adapter."""
+
+    return SettingsWorkflowPorts(
+        config_rows=config.config_rows,
+        apply_config=config.apply_config,
+        load_models=lambda: session_model_settings_snapshot(session),
+        apply_model=apply_model,
+    )
 
 
 @dataclass(slots=True)
@@ -279,4 +310,6 @@ __all__ = [
     "SettingsPageView",
     "SettingsStatusProvider",
     "SettingsWorkflowPorts",
+    "build_session_settings_workflow_ports",
+    "session_model_settings_snapshot",
 ]

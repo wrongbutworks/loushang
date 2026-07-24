@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, cast
 
 from loushang.harness.bootstrap import (
     BootstrapActivationPlan,
@@ -15,6 +15,7 @@ from loushang.harness.bootstrap import (
     create_standard_resource_bootstrap_runtime,
     register_resource_extension_tools,
 )
+from loushang.harness.capabilities import CapabilityCompositionRuntime
 from loushang.harness.capabilities.prompt_assembly import assemble_prompt
 from loushang.harness.config.activation import ConfigActivationStep
 from loushang.harness.config.agent import ControlConfig, SettingsManager
@@ -69,6 +70,8 @@ AuditT = TypeVar("AuditT")
 AgentT = TypeVar("AgentT")
 RegistryT = TypeVar("RegistryT")
 ActivationContextT = TypeVar("ActivationContextT")
+SessionManagerT = TypeVar("SessionManagerT")
+RuntimeT = TypeVar("RuntimeT")
 
 ExtensionFlagValues = Mapping[str, bool | str]
 ExtensionRuntimeFactory = Callable[[ResourceBundle], StandardExtensionRuntime]
@@ -475,6 +478,50 @@ def prepare_agent_session_services(
     )
 
 
+def build_agent_product_session_runtime(
+    *,
+    session_dir: str | Path,
+    runtime_factory: Callable[..., RuntimeT],
+    fixed_services: ServicesT,
+    build_session: Callable[
+        [SessionManagerT, ServicesT, object | None],
+        SessionT,
+    ],
+    session_cwd: Callable[[SessionManagerT], str],
+    services_factory: Callable[[str], ServicesT] | None = None,
+    persist: bool = True,
+    diagnostics_service: object | None = None,
+    on_non_persistent_session: Callable[[SessionT], None] | None = None,
+) -> RuntimeT:
+    """Bind cwd-aware services and a Product session builder to one runtime."""
+
+    def session_factory(
+        session_manager: SessionManagerT,
+        *,
+        session_start_event: object | None = None,
+    ) -> SessionT:
+        session_services = (
+            services_factory(session_cwd(session_manager))
+            if services_factory is not None
+            else fixed_services
+        )
+        session = build_session(
+            session_manager,
+            session_services,
+            session_start_event,
+        )
+        if not persist and on_non_persistent_session is not None:
+            on_non_persistent_session(session)
+        return session
+
+    return runtime_factory(
+        session_dir=Path(session_dir),
+        session_factory=session_factory,
+        persist=persist,
+        diagnostics_service=diagnostics_service,
+    )
+
+
 @dataclass(frozen=True)
 class CreateAgentSessionResult(Generic[SessionT, BundleT, DiagnosticRecordT, AuditT]):
     """Product session plus the shared bootstrap outputs."""
@@ -816,16 +863,147 @@ class AgentProductConstructionRuntime(
             raise
 
 
+@dataclass(frozen=True)
+class AgentProductConstructionBinding(
+    Generic[AgentT, SessionT, BundleT, ExtensionT, RegistryT]
+):
+    """Compile Product policy onto the existing construction runtime."""
+
+    default_system_prompt: str
+    bind_capabilities: Callable[[], CapabilityCompositionRuntime]
+    create_extension_runtime: Callable[[ResourceBundle], ExtensionT]
+    source_identity_check: SourceIdentityCheck
+    list_tool_definitions: Callable[[ExtensionT], Sequence[object]]
+    get_tool_source_info: Callable[[ExtensionT, str], object | None]
+    product_tool_pack_id: str = "product.registry"
+    extension_tool_pack_id: str = "product.extensions"
+
+    def construct(
+        self,
+        *,
+        services: BootstrapServices,
+        package_materializer: PackageMaterializer,
+        session_id: str,
+        cwd: str,
+        extension_flag_values: ExtensionFlagValues | None,
+        explicit_system_prompt: str | None,
+        append_system_prompt: Sequence[str],
+        model: object | None,
+        thinking_level: object | None,
+        tools: Sequence[object] | None,
+        tool_registry: RegistryT | None,
+        allowed_tool_names: Sequence[str] | None,
+        active_tool_names: Sequence[str] | None,
+        no_tools: NoToolsMode | bool | None,
+        stream_fn: Callable[..., object] | None,
+        convert_to_llm: Callable[..., object],
+        agent_factory: Callable[..., AgentT],
+        session_factory: Callable[
+            [
+                CapabilityCompositionRuntime,
+                AgentT,
+                BundleT,
+                ExtensionT,
+                RegistryT | None,
+                list[str] | None,
+                str,
+                NoToolsMode | None,
+            ],
+            SessionT,
+        ],
+        on_default_model_unavailable: Callable[[object, Exception, str], None],
+        set_scoped_models: Callable[[SessionT, Sequence[object]], None],
+    ) -> AgentProductConstructionResult[SessionT]:
+        """Build the canonical request and delegate all execution to its owner."""
+
+        settings = services.settings_manager.get_settings()
+        capability_runtime = self.bind_capabilities()
+        return AgentProductConstructionRuntime[
+            AgentT,
+            SessionT,
+            BundleT,
+            ExtensionT,
+            RegistryT,
+        ]().construct(
+            AgentProductConstructionRequest(
+                configuration=StandardAgentSessionConfigurationRequest(
+                    settings=settings,
+                    settings_manager=services.settings_manager,
+                    model_registry=services.model_registry,
+                    resource_loader=services.resource_loader,
+                    diagnostics_service=services.diagnostics_service,
+                    package_materializer=package_materializer,
+                    skill_activation_runtime=capability_runtime.skill_activation,
+                    session_id=session_id,
+                    cwd=cwd,
+                    create_extension_runtime=cast(
+                        ExtensionRuntimeFactory,
+                        self.create_extension_runtime,
+                    ),
+                    source_identity_check=self.source_identity_check,
+                    extension_flag_values=extension_flag_values,
+                ),
+                ports=AgentProductConstructionPorts(
+                    activate_resources=lambda bundle: (
+                        capability_runtime.activate_resources(
+                            cast(ResourceBundle, bundle)
+                        )
+                    ),
+                    prompt_section_composer=capability_runtime.prompt_section_composer,
+                    tool_pack_composer=capability_runtime.tool_pack_composer,
+                    list_tool_definitions=self.list_tool_definitions,
+                    get_tool_source_info=self.get_tool_source_info,
+                    dispose_capabilities=capability_runtime.dispose,
+                ),
+                default_system_prompt=self.default_system_prompt,
+                explicit_system_prompt=explicit_system_prompt,
+                append_system_prompt=append_system_prompt,
+                model=model,
+                thinking_level=(
+                    settings.thinking_level
+                    if thinking_level is None
+                    else thinking_level
+                ),
+                tools=tools,
+                tool_registry=tool_registry,
+                allowed_tool_names=allowed_tool_names,
+                active_tool_names=active_tool_names,
+                no_tools=no_tools,
+                stream_fn=stream_fn,
+                convert_to_llm=convert_to_llm,
+                agent_factory=agent_factory,
+                session_factory=lambda agent, bundle, extensions, registry, active, prompt, mode: (
+                    session_factory(
+                        capability_runtime,
+                        agent,
+                        bundle,
+                        extensions,
+                        registry,
+                        active,
+                        prompt,
+                        mode,
+                    )
+                ),
+                on_default_model_unavailable=on_default_model_unavailable,
+                set_scoped_models=set_scoped_models,
+                product_tool_pack_id=self.product_tool_pack_id,
+                extension_tool_pack_id=self.extension_tool_pack_id,
+            )
+        )
+
+
 __all__ = [
     "AgentBootstrapRequest",
     "AgentBootstrapRuntime",
     "AgentSessionConstructionRequest",
     "AgentSessionConstructionRuntime",
+    "AgentProductConstructionBinding",
     "AgentProductConstructionPorts",
     "AgentProductConstructionRequest",
     "AgentProductConstructionResult",
     "AgentProductConstructionRuntime",
     "AgentSessionServices",
+    "build_agent_product_session_runtime",
     "prepare_agent_session_services",
     "BootstrapServices",
     "CreateAgentSessionResult",

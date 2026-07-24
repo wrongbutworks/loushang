@@ -103,14 +103,28 @@ class AgentCliSessionHostBinding(Generic[ArgsT, StateT]):
         PreparedAgentCliHostInput
         | CliPhaseResult[PreparedAgentCliHostInput]
         | Awaitable[
-            PreparedAgentCliHostInput
-            | CliPhaseResult[PreparedAgentCliHostInput]
+            PreparedAgentCliHostInput | CliPhaseResult[PreparedAgentCliHostInput]
         ],
     ]
     observability_context: Callable[
         [ArgsT, object, Path, str],
         AbstractContextManager[None],
     ]
+
+    def bind(
+        self,
+        runners: AgentCliHostRunners,
+    ) -> Callable[
+        [CliSessionContext[ArgsT, StateT, object, object]],
+        Awaitable[int],
+    ]:
+        """Bind Product callbacks to the shared Agent session host."""
+
+        return lambda context: run_agent_cli_session_host(
+            context,
+            binding=self,
+            runners=runners,
+        )
 
 
 async def run_agent_cli_session_host(
@@ -138,9 +152,7 @@ async def run_agent_cli_session_host(
         else None
     )
     plain_work_port = (
-        binding.bind_plain_work_port(work_runtime)
-        if work_runtime is not None
-        else None
+        binding.bind_plain_work_port(work_runtime) if work_runtime is not None else None
     )
     mode = cli_observability_mode(
         context.launch_plan,

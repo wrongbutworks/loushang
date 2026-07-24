@@ -27,6 +27,7 @@ from loushang.harness.cli.agent_host import (
     run_agent_cli_session_host,
 )
 from loushang.harness.cli.application import (
+    AgentCliApplicationBinding,
     AgentCliApplicationState,
     AgentCliStatePreparationContext,
     AgentCliStatePreparationPorts,
@@ -38,12 +39,14 @@ from loushang.harness.cli.application import (
     CliPhaseResult,
     CliRuntimeContext,
     CliSessionContext,
+    build_agent_cli_application_ports,
     capture_cli_parse,
     collect_agent_cli_help_extension_flags,
     format_cli_error,
     invoke_agent_cli_runtime_builder,
     invoke_cli_builder,
     prepare_agent_cli_application_state,
+    run_agent_cli_application,
 )
 from loushang.harness.cli.command_execution import (
     CommandExecutionError,
@@ -221,6 +224,7 @@ from loushang.harness.cli.version_check import (
 )
 
 __all__ = [
+    "AgentCliApplicationBinding",
     "AgentCliApplicationState",
     "AgentCliArgs",
     "AgentCliEarlyOperationPorts",
@@ -238,6 +242,7 @@ __all__ = [
     "PrepareHostInput",
     "prepare_agent_cli_host_input",
     "prepare_agent_cli_application_state",
+    "run_agent_cli_application",
     "CliApplicationPorts",
     "CliApplicationRuntime",
     "CliArgumentSpec",
@@ -263,6 +268,7 @@ __all__ = [
     "CliPreparedTurn",
     "CliRuntimeContext",
     "CliSessionContext",
+    "build_agent_cli_application_ports",
     "CliTurnBatchRunner",
     "compose_cli_operation_stages",
     "SessionListingError",

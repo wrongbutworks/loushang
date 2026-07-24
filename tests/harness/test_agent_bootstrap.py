@@ -9,11 +9,13 @@ from loushang.harness.config.agent import ControlConfig
 from loushang.harness.session.bootstrap import (
     AgentBootstrapRequest,
     AgentBootstrapRuntime,
+    AgentProductConstructionBinding,
     AgentProductConstructionPorts,
     AgentProductConstructionRequest,
     AgentProductConstructionRuntime,
     AgentSessionConstructionRequest,
     AgentSessionConstructionRuntime,
+    BootstrapServices,
     StandardAgentSessionActivationEffects,
     StandardAgentSessionConfigurationResult,
     activate_standard_agent_session_configuration,
@@ -245,6 +247,100 @@ def test_agent_product_construction_runtime_composes_existing_owners(
     assert actions[1][1]["initial_state"]["model"] == "resolved-model"
     assert actions[2][0] == "scoped-models"
     assert disposed == []
+
+
+def test_agent_product_construction_binding_compiles_research_policy(
+    monkeypatch,
+) -> None:
+    captured: list[AgentProductConstructionRequest] = []
+    expected_result = SimpleNamespace(session="research-session")
+    monkeypatch.setattr(
+        bootstrap_module.AgentProductConstructionRuntime,
+        "construct",
+        lambda _self, request: captured.append(request) or expected_result,
+    )
+    settings = SimpleNamespace(thinking_level="medium")
+    services = BootstrapServices(
+        settings_manager=SimpleNamespace(get_settings=lambda: settings),
+        model_registry=object(),
+        resource_loader=object(),
+        diagnostics_service=object(),
+    )
+    capability_runtime = cast(
+        Any,
+        SimpleNamespace(
+            skill_activation="research-skills",
+            activate_resources=lambda bundle: bundle,
+            prompt_section_composer="research-prompts",
+            tool_pack_composer="research-tools",
+            dispose=lambda: None,
+        ),
+    )
+    binding = AgentProductConstructionBinding[
+        object,
+        object,
+        object,
+        object,
+        object,
+    ](
+        default_system_prompt="research default",
+        bind_capabilities=lambda: capability_runtime,
+        create_extension_runtime=lambda bundle: bundle,
+        source_identity_check=lambda _cwd: cast(Any, None),
+        list_tool_definitions=lambda _runtime: (),
+        get_tool_source_info=lambda _runtime, _name: None,
+        product_tool_pack_id="research.registry",
+        extension_tool_pack_id="research.extensions",
+    )
+    session_capabilities: list[object] = []
+
+    result = binding.construct(
+        services=services,
+        package_materializer=cast(Any, "materializer"),
+        session_id="research-session",
+        cwd="/research",
+        extension_flag_values={"citations": True},
+        explicit_system_prompt=None,
+        append_system_prompt=("Use primary sources.",),
+        model=None,
+        thinking_level=None,
+        tools=None,
+        tool_registry=None,
+        allowed_tool_names=None,
+        active_tool_names=None,
+        no_tools=None,
+        stream_fn=None,
+        convert_to_llm=lambda value: value,
+        agent_factory=lambda **_kwargs: object(),
+        session_factory=lambda capabilities, *_args: (
+            session_capabilities.append(capabilities) or object()
+        ),
+        on_default_model_unavailable=lambda *_args: None,
+        set_scoped_models=lambda *_args: None,
+    )
+
+    assert result is expected_result
+    request = captured[0]
+    assert request.configuration.settings is settings
+    assert request.configuration.skill_activation_runtime == "research-skills"
+    assert request.configuration.session_id == "research-session"
+    assert request.configuration.cwd == "/research"
+    assert request.default_system_prompt == "research default"
+    assert request.thinking_level == "medium"
+    assert request.product_tool_pack_id == "research.registry"
+    assert request.extension_tool_pack_id == "research.extensions"
+    assert request.ports.prompt_section_composer == "research-prompts"
+    assert request.ports.tool_pack_composer == "research-tools"
+    request.session_factory(
+        object(),
+        object(),
+        object(),
+        None,
+        None,
+        "research prompt",
+        None,
+    )
+    assert session_capabilities == [capability_runtime]
 
 
 def test_standard_agent_session_activation_plan_preserves_capability_order() -> None:
