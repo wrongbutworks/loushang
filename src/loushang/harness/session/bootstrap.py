@@ -585,9 +585,7 @@ def build_standard_agent_session_result(
     return CreateAgentSessionResult(
         session=session,
         resource_bundle=resource_bundle,
-        diagnostics=tuple(
-            diagnostics_service.get_diagnostics(session_id=session_id)
-        ),
+        diagnostics=tuple(diagnostics_service.get_diagnostics(session_id=session_id)),
         cwd_bound_services_audit=cwd_bound_services_audit,
     )
 
@@ -889,7 +887,7 @@ class AgentProductConstructionRuntime(
                 agent_factory=request.agent_factory,
                 register_extension_tools=register_extension_tools,
                 record_extension_diagnostics=lambda diagnostics: (
-                    request.configuration.diagnostics_service.record_resource_diagnostics(
+                    request.configuration.diagnostics_service.record_drafts(
                         diagnostics,
                         phase="resource_loading",
                         source="bootstrap",

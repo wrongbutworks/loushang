@@ -11,7 +11,7 @@ from loushang.harness.bootstrap import (
 )
 from loushang.harness.config.activation import ConfigActivationStep
 from loushang.harness.diagnostics import DiagnosticsService
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
@@ -138,18 +138,18 @@ def test_standard_resource_bootstrap_binds_shared_components(tmp_path) -> None:
         def discover_resources(self, cwd: Path) -> ResourceBundle:
             return ResourceBundle(
                 cwd=cwd,
-                diagnostics=[ResourceDiagnostic(code="loader", message="loaded")],
+                diagnostics=[DiagnosticDraft(code="loader", message="loaded")],
             )
 
     class Extensions:
         def apply_flag_values(self, _values):
-            return [ResourceDiagnostic(code="flag", message="flagged")]
+            return [DiagnosticDraft(code="flag", message="flagged")]
 
         def discover_resources(self, bundle: ResourceBundle) -> ResourceBundle:
             return bundle
 
         def get_diagnostics(self):
-            return [ResourceDiagnostic(code="extension", message="activated")]
+            return [DiagnosticDraft(code="extension", message="activated")]
 
     runtime = create_standard_resource_bootstrap_runtime(
         create_extension_runtime=lambda _bundle: Extensions(),

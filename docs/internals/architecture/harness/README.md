@@ -48,8 +48,8 @@ planning, work event persistence, or AI provider behavior.
   shared parser owner, legacy compatibility paths, and product-owned resource
   semantics that remain outside harness.
 - [Resource Provenance Boundary](resource-provenance-boundary.md) defines
-  shared source metadata and resource diagnostic ownership while preserving
-  coding path representations and public compatibility imports.
+  shared source metadata and the resource-to-diagnostic-draft factory while
+  preserving coding path representations.
 - [Platform Resource Layout Boundary](platform-resource-layout-boundary.md)
   records the implemented Harness-owned platform roots, resource/package
   runtime, standard resource scopes, `AGENTS.md` conventions, and built-in
@@ -212,8 +212,8 @@ planning, work event persistence, or AI provider behavior.
   strict JSON ownership, Agent raw-result projection targets, failure timing,
   Harness journal/presentation adoption, and Product wire-schema ownership.
 - [Diagnostics Core Boundary](diagnostics-core-boundary.md) defines shared
-  diagnostic records, queries, summaries, startup checks, and in-memory engine
-  ownership while keeping checks and presentation in product adapters.
+  diagnostic drafts, records, queries, summaries, startup checks, and in-memory
+  engine ownership while keeping checks and presentation in product adapters.
 - [Host Runtime Boundary](host-runtime-boundary.md) defines product-neutral host
   lifecycle, input-queue ledger, and ordered event ownership while preserving
   Agent loop and product session responsibilities.

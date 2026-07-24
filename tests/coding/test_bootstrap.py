@@ -2631,7 +2631,7 @@ def test_create_agent_session_records_resource_loading_diagnostics(tmp_path) -> 
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session_manager import SessionManager
-    from loushang.harness.resources.diagnostics import ResourceDiagnostic
+    from loushang.harness.diagnostics.types import DiagnosticDraft
     from loushang.harness.resources.types import ResourceBundle
 
     class _Loader(DefaultResourceLoader):
@@ -2639,7 +2639,7 @@ def test_create_agent_session_records_resource_loading_diagnostics(tmp_path) -> 
             bundle = ResourceBundle(
                 cwd=Path(cwd),
                 diagnostics=[
-                    ResourceDiagnostic(
+                    DiagnosticDraft(
                         code="duplicate_prompt",
                         message="Duplicate prompt ignored.",
                         source_path=Path("/tmp/project/prompts/review.md"),

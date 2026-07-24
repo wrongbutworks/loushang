@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Protocol
 
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.runtime.bindings import ProductRuntimeBindings
 from loushang.harness.runtime.context import (
     BoundProductRuntimeContext,
@@ -192,7 +192,7 @@ class ExtensionContext(ExtensionUiContext, Protocol):
 
     def shutdown(self) -> None: ...
 
-    def record_diagnostic(self, diagnostic: ResourceDiagnostic) -> None: ...
+    def record_diagnostic(self, diagnostic: DiagnosticDraft) -> None: ...
 
 
 class ExtensionCommandContext(ExtensionContext, Protocol):
@@ -257,7 +257,7 @@ class SessionBeforeTreeEvent:
 @dataclass(frozen=True)
 class SessionActionDecision:
     cancel: bool = False
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

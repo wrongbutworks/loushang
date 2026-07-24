@@ -31,7 +31,7 @@ from loushang.harness.agent_transcript.session_export import (
     export_session_to_jsonl,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.diagnostics.types import DiagnosticPhase
+from loushang.harness.diagnostics.types import DiagnosticDraft, DiagnosticPhase
 from loushang.harness.events import (
     AgentSessionEvent,
     CompactionReason,
@@ -46,7 +46,6 @@ from loushang.harness.extensions.context import (
     SessionShutdownEvent,
     SessionStartEvent,
 )
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.packages.materializer import PackageProgressEvent
 from loushang.harness.runtime import copy_file_exclusive
 from loushang.harness.session.capabilities import (
@@ -719,7 +718,7 @@ class AgentSessionAdapterMixin:
         self._command_controller.raise_if_queued_extension_command(user_input)
 
     def _record_preflight_diagnostics(
-        self, diagnostics: tuple[ResourceDiagnostic, ...]
+        self, diagnostics: tuple[DiagnosticDraft, ...]
     ) -> None:
         self._command_controller.record_preflight_diagnostics(diagnostics)
 
@@ -737,9 +736,7 @@ class AgentSessionAdapterMixin:
     def _record_tool_execution_error(self, event: AgentEvent) -> None:
         self._diagnostics_bridge.record_tool_execution_error(event)
 
-    def _record_extension_runtime_diagnostic(
-        self, diagnostic: ResourceDiagnostic
-    ) -> None:
+    def _record_extension_runtime_diagnostic(self, diagnostic: DiagnosticDraft) -> None:
         self._diagnostics_bridge.record_extension_runtime_diagnostic(diagnostic)
 
     def _wire_extension_hooks(self) -> None:
@@ -1155,7 +1152,7 @@ def _sync_session_extension_diagnostics(
     if recorded >= len(diagnostics):
         return
     diagnostics_service.record_many(
-        diagnostics_service.normalize_resource_diagnostic(
+        diagnostics_service.normalize_diagnostic(
             diagnostic,
             phase=phase,
             source="extensions",

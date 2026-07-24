@@ -431,7 +431,7 @@ def test_default_resource_loader_reports_invalid_prompt_frontmatter(tmp_path) ->
     assert bundle.prompts == []
     assert [diagnostic.code for diagnostic in bundle.diagnostics] == ["invalid_prompt_frontmatter"]
     diagnostic = bundle.diagnostics[0]
-    assert diagnostic.resource_type == "prompt"
+    assert diagnostic.details["resource_type"] == "prompt"
     assert diagnostic.source_path == prompts_dir / "broken.md"
     assert "line 1" in diagnostic.message
 
@@ -460,8 +460,8 @@ def test_default_resource_loader_reports_invalid_skill_frontmatter_without_loadi
     assert snapshot.candidate_skill_descriptors == ()
     assert [diagnostic.code for diagnostic in bundle.diagnostics] == ["invalid_skill_frontmatter"]
     diagnostic = bundle.diagnostics[0]
-    assert diagnostic.resource_type == "skill"
-    assert diagnostic.source_kind == "project_local"
+    assert diagnostic.details["resource_type"] == "skill"
+    assert diagnostic.details["source_kind"] == "project_local"
     assert diagnostic.source_path == skill_dir / "SKILL.md"
     assert "line 1" in diagnostic.message
 
@@ -490,8 +490,14 @@ def test_default_resource_loader_reports_skill_frontmatter_validation_diagnostic
         "invalid_skill_name",
         "invalid_skill_name",
     ]
-    assert [diagnostic.resource_type for diagnostic in bundle.diagnostics] == ["skill", "skill", "skill"]
-    assert {diagnostic.metadata["field"] for diagnostic in bundle.diagnostics} == {"description", "name"}
+    assert [diagnostic.details["resource_type"] for diagnostic in bundle.diagnostics] == [
+        "skill",
+        "skill",
+        "skill",
+    ]
+    assert {
+        diagnostic.details["metadata"]["field"] for diagnostic in bundle.diagnostics
+    } == {"description", "name"}
 
 
 def test_default_resource_loader_recursively_discovers_skills_and_skips_ignored_directories(tmp_path) -> None:
@@ -626,12 +632,13 @@ def test_default_resource_loader_prefers_project_local_prompt_when_built_in_cand
         "project_local",
     ]
     assert [diagnostic.code for diagnostic in snapshot.diagnostics] == ["resource_collision"]
-    assert snapshot.diagnostics[0].metadata["winner_path"] == str(prompts_dir / "repo.md")
-    assert snapshot.diagnostics[0].metadata["candidate_paths"] == (
+    metadata = snapshot.diagnostics[0].details["metadata"]
+    assert metadata["winner_path"] == str(prompts_dir / "repo.md")
+    assert metadata["candidate_paths"] == (
         str(prompts_dir / "repo.md"),
         "/tmp/package/prompts/repo.md",
     )
-    assert snapshot.diagnostics[0].metadata["loser_paths"] == ("/tmp/package/prompts/repo.md",)
+    assert metadata["loser_paths"] == ("/tmp/package/prompts/repo.md",)
     assert any(
         decision.logical_id == "repo.md"
         and decision.winner_id == "repo.md"
@@ -686,7 +693,9 @@ def test_default_resource_loader_reports_missing_invalid_and_empty_package_roots
         "empty_package_root",
     ]
     assert [diagnostic.source_path for diagnostic in diagnostics] == [missing_root.resolve(), file_root.resolve(), empty_root.resolve()]
-    assert diagnostics[0].metadata["package_root"] == str(missing_root.resolve())
+    assert diagnostics[0].details["metadata"]["package_root"] == str(
+        missing_root.resolve()
+    )
 
 
 def test_default_resource_loader_exposes_package_resource_summaries_and_filtered_diagnostics(tmp_path) -> None:
@@ -891,7 +900,10 @@ def test_theme_same_precedence_collision_keeps_first_winner_and_records_loser(tm
 
     assert [descriptor.source_path.name for descriptor in snapshot.active_theme_descriptors] == ["a.json"]
     assert [descriptor.source_path.name for descriptor in snapshot.candidate_theme_descriptors] == ["a.json", "b.json"]
-    assert any(diagnostic.resource_type == "theme" for diagnostic in snapshot.diagnostics)
+    assert any(
+        diagnostic.details["resource_type"] == "theme"
+        for diagnostic in snapshot.diagnostics
+    )
 
 
 def test_theme_discovery_skips_non_json_entries_and_records_diagnostic(tmp_path, monkeypatch) -> None:
@@ -914,7 +926,7 @@ def test_theme_discovery_skips_non_json_entries_and_records_diagnostic(tmp_path,
 
     assert [descriptor.canonical_name for descriptor in snapshot.candidate_theme_descriptors] == ["clean.json"]
     assert [diagnostic.code for diagnostic in snapshot.diagnostics] == ["unsupported_theme_entry"]
-    assert snapshot.diagnostics[0].resource_type == "theme"
+    assert snapshot.diagnostics[0].details["resource_type"] == "theme"
     assert snapshot.diagnostics[0].source_path == themes_dir / "README.md"
 
 
@@ -938,7 +950,7 @@ def test_theme_discovery_reports_invalid_json_theme_diagnostic(tmp_path, monkeyp
 
     assert [descriptor.canonical_name for descriptor in snapshot.candidate_theme_descriptors] == ["clean.json"]
     assert [diagnostic.code for diagnostic in snapshot.diagnostics] == ["invalid_theme_json"]
-    assert snapshot.diagnostics[0].resource_type == "theme"
+    assert snapshot.diagnostics[0].details["resource_type"] == "theme"
     assert snapshot.diagnostics[0].source_path == themes_dir / "broken.json"
 
 
@@ -962,7 +974,7 @@ def test_theme_discovery_reports_non_object_theme_schema_diagnostic(tmp_path, mo
 
     assert [descriptor.canonical_name for descriptor in snapshot.candidate_theme_descriptors] == ["clean.json"]
     assert [diagnostic.code for diagnostic in snapshot.diagnostics] == ["invalid_theme_schema"]
-    assert snapshot.diagnostics[0].resource_type == "theme"
+    assert snapshot.diagnostics[0].details["resource_type"] == "theme"
     assert snapshot.diagnostics[0].source_path == themes_dir / "array.json"
 
 

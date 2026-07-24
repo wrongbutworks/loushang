@@ -18,6 +18,7 @@ from loushang.agent.types import (
     BeforeToolCallResult,
 )
 from loushang.ai.types import ToolCall
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.context import ExtensionContext, SessionActionDecision
 from loushang.harness.extensions.routing import (
     ExtensionRoutePlan,
@@ -32,7 +33,6 @@ from loushang.harness.extensions.types import (
     ToolCallDecision,
     ToolResultDecision,
 )
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 CwdProvider = Callable[[], str]
 BeforeToolCallHook = Callable[
@@ -164,7 +164,7 @@ class ExtensionToolHookDispatcher:
         extensions: Sequence[LoadedExtension],
         *,
         context_factory: ContextFactory,
-        diagnostics: list[ResourceDiagnostic],
+        diagnostics: list[DiagnosticDraft],
         runtime_error_handler: RuntimeErrorHandler | None = None,
         route_plan: ExtensionRoutePlan | None = None,
     ) -> None:
@@ -195,7 +195,7 @@ class ExtensionToolHookDispatcher:
         ) -> RouteStep[_BeforeToolState]:
             if not isinstance(decision, ToolCallDecision):
                 self._diagnostics.append(
-                    ResourceDiagnostic(
+                    DiagnosticDraft(
                         code="invalid_extension_tool_call_decision",
                         message="tool_call hooks must return ToolCallDecision or None.",
                         source_path=route.extension.source_path,
@@ -275,7 +275,7 @@ class ExtensionToolHookDispatcher:
         ) -> RouteStep[_AfterToolState]:
             if not isinstance(decision, ToolResultDecision):
                 self._diagnostics.append(
-                    ResourceDiagnostic(
+                    DiagnosticDraft(
                         code="invalid_extension_tool_result_decision",
                         message="tool_result hooks must return ToolResultDecision or None.",
                         source_path=route.extension.source_path,
@@ -288,7 +288,7 @@ class ExtensionToolHookDispatcher:
                 return RouteStep(state)
             if not isinstance(decision.result, AgentToolResult):
                 self._diagnostics.append(
-                    ResourceDiagnostic(
+                    DiagnosticDraft(
                         code="invalid_extension_tool_result_decision",
                         message=(
                             "tool_result decisions must return AgentToolResult "
@@ -334,7 +334,7 @@ class BeforeAgentStartState:
 
     system_prompt: str
     extra_messages: tuple[object, ...] = ()
-    diagnostics: tuple[ResourceDiagnostic, ...] = ()
+    diagnostics: tuple[DiagnosticDraft, ...] = ()
     system_prompt_changed: bool = False
 
 
@@ -352,7 +352,7 @@ class ExtensionPromptHookDispatcher:
         self,
         router: ExtensionRouter,
         *,
-        diagnostics: list[ResourceDiagnostic],
+        diagnostics: list[DiagnosticDraft],
     ) -> None:
         self._router = router
         self._diagnostics = diagnostics
@@ -370,7 +370,7 @@ class ExtensionPromptHookDispatcher:
         ) -> RouteStep[list[AgentMessage]]:
             if not isinstance(result, ContextResult):
                 self._diagnostics.append(
-                    ResourceDiagnostic(
+                    DiagnosticDraft(
                         code="invalid_extension_context_result",
                         message="context hooks must return ContextResult or None.",
                         source_path=route.extension.source_path,
@@ -457,7 +457,7 @@ class ExtensionSessionHookDispatcher:
         self,
         router: ExtensionRouter,
         *,
-        diagnostics: list[ResourceDiagnostic],
+        diagnostics: list[DiagnosticDraft],
     ) -> None:
         self._router = router
         self._diagnostics = diagnostics
@@ -491,7 +491,7 @@ class ExtensionSessionHookDispatcher:
         ) -> RouteStep[T | None]:
             if not isinstance(result, SessionActionDecision):
                 self._diagnostics.append(
-                    ResourceDiagnostic(
+                    DiagnosticDraft(
                         code=f"invalid_extension_{event_name}_decision",
                         message=(
                             f"{event_name} hooks must return "
@@ -507,7 +507,7 @@ class ExtensionSessionHookDispatcher:
                 return RouteStep(result)
             if decision_coercer is None:
                 self._diagnostics.append(
-                    ResourceDiagnostic(
+                    DiagnosticDraft(
                         code=f"invalid_extension_{event_name}_decision",
                         message=(
                             f"{event_name} hooks must return "

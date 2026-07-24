@@ -6,12 +6,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.context import SessionRefreshEvent, SessionStartEvent
 from loushang.harness.extensions.lifecycle import (
     ExtensionRuntimeCoordinator,
     ExtensionRuntimeOperation,
 )
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 
 class SessionExtensionRuntimePort(Protocol):
@@ -30,7 +30,7 @@ class SessionExtensionRuntimePort(Protocol):
 
 BuildBindings = Callable[[], object]
 RefreshResources = Callable[[], object | None]
-RecordRuntimeDiagnostic = Callable[[ResourceDiagnostic], None]
+RecordRuntimeDiagnostic = Callable[[DiagnosticDraft], None]
 SyncExtensionDiagnostics = Callable[..., None]
 
 
@@ -103,7 +103,7 @@ class ExtensionSessionRuntime:
     ) -> None:
         code, prefix = _FAILURE_DIAGNOSTICS[operation]
         self.record_runtime_diagnostic(
-            ResourceDiagnostic(code=code, message=f"{prefix}: {error}")
+            DiagnosticDraft(code=code, message=f"{prefix}: {error}")
         )
 
     def _start_event_for_reason(self, reason: str) -> SessionStartEvent:

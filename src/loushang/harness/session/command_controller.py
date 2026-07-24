@@ -15,8 +15,8 @@ from loushang.harness.commands import (
     split_slash_command,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.types import ResolvedCommand
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.session.capabilities import (
     CommandRuntimeSource,
@@ -253,7 +253,7 @@ class SessionCommandController(Generic[ResultT]):
         return self._resource_source.preflight_user_input(user_input)
 
     def record_preflight_diagnostics(
-        self, diagnostics: tuple[ResourceDiagnostic, ...]
+        self, diagnostics: tuple[DiagnosticDraft, ...]
     ) -> None:
         self._diagnostics_runtime.record_preflight_diagnostics(diagnostics)
 

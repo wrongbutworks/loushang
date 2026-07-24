@@ -1169,7 +1169,7 @@ def test_extension_runner_does_not_expose_or_bind_inactive_surfaces() -> None:
 
 def test_extension_runner_exposes_headless_renderer_and_diagnostic_snapshots() -> None:
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
-    from loushang.harness.resources.diagnostics import ResourceDiagnostic
+    from loushang.harness.resources.diagnostics import resource_diagnostic
 
     def _renderer(message, options, theme):
         return (message, options, theme)
@@ -1181,7 +1181,7 @@ def test_extension_runner_exposes_headless_renderer_and_diagnostic_snapshots() -
                 source_path=Path("/tmp/extensions/cards.py"),
                 message_renderers={"demo.card": _renderer},
                 diagnostics=[
-                    ResourceDiagnostic(
+                    resource_diagnostic(
                         code="demo_warning", message="demo", resource_id="demo.card"
                     )
                 ],
@@ -1396,7 +1396,7 @@ def test_extension_hook_failures_include_provenance_metadata() -> None:
     diagnostic = runner.get_diagnostics()[-1]
     assert diagnostic.code == "extension_input_failed"
     assert diagnostic.source_path == Path("/tmp/demo-ext.py")
-    assert diagnostic.metadata == {
+    assert diagnostic.details["metadata"] == {
         "extension_name": "demo",
         "hook": "input",
         "source": "filesystem",
@@ -2129,11 +2129,11 @@ def test_extension_runner_context_queries_are_live_after_refresh() -> None:
 def test_extension_runner_context_mutators_delegate_through_live_runtime_bindings() -> (
     None
 ):
+    from loushang.harness.diagnostics.types import DiagnosticDraft
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
-    from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
     tracker: dict[str, object] = {}
-    emitted_diagnostic = ResourceDiagnostic(code="demo", message="from extension")
+    emitted_diagnostic = DiagnosticDraft(code="demo", message="from extension")
 
     async def _before(event, ctx):
         del event
