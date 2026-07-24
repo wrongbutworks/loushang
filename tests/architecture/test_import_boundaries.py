@@ -3527,7 +3527,12 @@ def test_coding_legacy_shared_utility_facades_are_extinct() -> None:
         "loushang.coding.workflow.loader",
         "loushang.coding.workflow.schema",
     )
-    assert all(find_spec(prefix) is None for prefix in retired_prefixes)
+    for prefix in retired_prefixes:
+        try:
+            spec = find_spec(prefix)
+        except ModuleNotFoundError:
+            spec = None
+        assert spec is None, prefix
     assert {
         "AgentSessionEvent",
         "JsonEventView",
