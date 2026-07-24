@@ -5,13 +5,13 @@ from dataclasses import dataclass, field
 from typing import Protocol, cast
 
 from loushang.ai.types import ImagePart, TextPart, UserMessage
-from loushang.harness.host.turn import TurnInputQueue
-from loushang.harness.host.types import (
+from loushang.harness.events.session import (
     QueuedMessageSnapshot,
     QueueKind,
-    QueueMode,
     QueueSnapshot,
 )
+from loushang.harness.runtime.turn import TurnInputQueue
+from loushang.harness.runtime.types import QueueMode
 from loushang.observability import get_log
 
 PreflightUserInput = Callable[[str], object]

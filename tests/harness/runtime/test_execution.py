@@ -4,8 +4,8 @@ import asyncio
 
 import pytest
 
-from loushang.harness.host.runtime import HostRuntime, HostStateError
-from loushang.harness.host.types import HostLifecycleEvent
+from loushang.harness.events.host import HostLifecycleEvent
+from loushang.harness.runtime.execution import HostRuntime, HostStateError
 
 
 class ReferenceDriver:

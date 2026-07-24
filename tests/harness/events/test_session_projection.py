@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from loushang.harness.events.recording_policy import event_writes_transcript
-from loushang.harness.events.runtime_views import shape_runtime_event_view
-from loushang.harness.events.session_projection import (
+from loushang.harness.session.event_projection import (
     project_session_event,
     shape_stream_event,
 )
+from loushang.harness.session.runtime_event_views import shape_runtime_event_view
 
 
 def test_shared_projection_accepts_neutral_session_event_mapping() -> None:

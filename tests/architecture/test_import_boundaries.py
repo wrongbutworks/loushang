@@ -148,6 +148,7 @@ def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None
         ),
         harness_root / "session": (
             "loushang.ai.api_registry",
+            "loushang.ai.json_codec",
             "loushang.ai.model",
             "loushang.ai.types",
             "loushang.ai.utils",
@@ -231,6 +232,50 @@ def test_extension_agent_profile_has_no_session_or_product_dependency() -> None:
     assert not Path("src/loushang/harness/session/extension_hooks.py").exists()
     assert not Path("src/loushang/harness/session/extension_events.py").exists()
     assert not Path("src/loushang/harness/session/extension_input.py").exists()
+
+
+def test_harness_internal_dependency_graph_is_acyclic() -> None:
+    graph = _harness_internal_dependency_graph(Path("src/loushang/harness"))
+
+    cycles = [
+        component
+        for component in _strongly_connected_components(graph)
+        if len(component) > 1
+    ]
+
+    assert cycles == []
+
+
+def test_runtime_event_layers_follow_declared_dependency_direction() -> None:
+    graph = _harness_internal_dependency_graph(Path("src/loushang/harness"))
+    forbidden_edges = {
+        "agent_transcript": {"host", "session"},
+        "events": {"agent_transcript", "host", "runtime", "session"},
+        "session": {"host"},
+    }
+    offenders = sorted(
+        f"{source} -> {target}"
+        for source, forbidden_targets in forbidden_edges.items()
+        for target in graph.get(source, set()) & forbidden_targets
+    )
+
+    assert offenders == []
+
+
+def test_runtime_event_legacy_owner_modules_are_extinct() -> None:
+    legacy_paths = (
+        "src/loushang/harness/agent_transcript/session_export.py",
+        "src/loushang/harness/events/runtime_views.py",
+        "src/loushang/harness/events/session_projection.py",
+        "src/loushang/harness/events/session_serialization.py",
+        "src/loushang/harness/events/session_types.py",
+        "src/loushang/harness/host/queue.py",
+        "src/loushang/harness/host/retry.py",
+        "src/loushang/harness/host/runtime.py",
+        "src/loushang/harness/host/turn.py",
+    )
+
+    assert [path for path in legacy_paths if Path(path).exists()] == []
 
 
 def test_capability_composition_runtime_has_no_product_dependency() -> None:
@@ -584,7 +629,7 @@ def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
 
 def test_agent_transcript_export_runtime_is_neutral_and_adopted() -> None:
     export_root = Path("src/loushang/harness/agent_transcript/export")
-    coding_adapter = Path("src/loushang/harness/agent_transcript/session_export.py")
+    session_adapter = Path("src/loushang/harness/session/export.py")
     boundary = Path(
         "docs/internals/architecture/harness/agent-transcript-export-boundary.md"
     )
@@ -595,8 +640,8 @@ def test_agent_transcript_export_runtime_is_neutral_and_adopted() -> None:
         for path in export_root.rglob("*.py")
         for imported in _absolute_imports(path)
     )
-    assert "TranscriptExportRequest" in coding_adapter.read_text(encoding="utf-8")
-    assert "TranscriptHtmlExportProfile" in coding_adapter.read_text(encoding="utf-8")
+    assert "TranscriptExportRequest" in session_adapter.read_text(encoding="utf-8")
+    assert "TranscriptHtmlExportProfile" in session_adapter.read_text(encoding="utf-8")
     assert not Path("src/loushang/coding/session/export_html/index.py").exists()
     assert not Path("src/loushang/coding/session/export_html/tool_renderer.py").exists()
     assert not Path("src/loushang/coding/session/export_jsonl.py").exists()
@@ -3634,8 +3679,8 @@ def test_harness_host_runtime_boundary_is_documented() -> None:
     required_phrases = {
         "Harness Host Runtime Boundary",
         "implementation complete for integration into `lane/harness`",
-        "`loushang.harness.host.runtime.HostRuntime`",
-        "`loushang.harness.host.queue.HostInputQueue`",
+        "`loushang.harness.runtime.execution.HostRuntime`",
+        "`loushang.harness.runtime.input_queue.HostInputQueue`",
         "`loushang.harness.events.OrderedEventBus`",
         "must not implement a second agent loop",
         "Coding maps running, aborting, and disposing",
@@ -3777,10 +3822,10 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
             "loushang.harness.extensions.lifecycle.ExtensionRuntimeCoordinator",
         },
         Path("src/loushang/harness/session/prompt_controller.py"): {
-            "loushang.harness.host.turn.TurnOrchestrator",
+            "loushang.harness.runtime.turn.TurnOrchestrator",
         },
         Path("src/loushang/harness/session/queue_controller.py"): {
-            "loushang.harness.host.turn.TurnInputQueue",
+            "loushang.harness.runtime.turn.TurnInputQueue",
         },
         Path("src/loushang/harness/session/resource_refresh.py"): {
             "loushang.harness.resources.refresh.ResourceRefreshCoordinator",
@@ -4557,6 +4602,99 @@ def _absolute_imports(path: Path) -> list[str]:
         elif isinstance(node, ast.ImportFrom):
             imports.extend(_import_from_targets(path, node))
     return imports
+
+
+def _harness_internal_dependency_graph(root: Path) -> dict[str, set[str]]:
+    graph: dict[str, set[str]] = {}
+    for path in sorted(root.rglob("*.py")):
+        relative = path.relative_to(root)
+        source = relative.parts[0]
+        if len(relative.parts) == 1:
+            source = path.stem
+        graph.setdefault(source, set())
+        imported_modules = [
+            *_absolute_imports(path),
+            *_lazy_export_modules(path),
+        ]
+        for imported in imported_modules:
+            prefix = "loushang.harness."
+            if not imported.startswith(prefix):
+                continue
+            target = imported.removeprefix(prefix).split(".", 1)[0]
+            if target != source:
+                graph[source].add(target)
+                graph.setdefault(target, set())
+    return graph
+
+
+def _lazy_export_modules(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=path.as_posix())
+    modules: list[str] = []
+    for node in tree.body:
+        value: ast.expr | None = None
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "_EXPORT_MODULES"
+            for target in node.targets
+        ):
+            value = node.value
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "_EXPORT_MODULES"
+        ):
+            value = node.value
+        if not isinstance(value, ast.Dict):
+            continue
+        modules.extend(
+            item.value
+            for item in value.values
+            if isinstance(item, ast.Constant)
+            and isinstance(item.value, str)
+            and item.value.startswith("loushang.harness.")
+        )
+    return modules
+
+
+def _strongly_connected_components(
+    graph: dict[str, set[str]],
+) -> list[tuple[str, ...]]:
+    next_index = 0
+    indices: dict[str, int] = {}
+    lowlinks: dict[str, int] = {}
+    stack: list[str] = []
+    on_stack: set[str] = set()
+    components: list[tuple[str, ...]] = []
+
+    def visit(node: str) -> None:
+        nonlocal next_index
+        indices[node] = next_index
+        lowlinks[node] = next_index
+        next_index += 1
+        stack.append(node)
+        on_stack.add(node)
+
+        for target in sorted(graph.get(node, set())):
+            if target not in indices:
+                visit(target)
+                lowlinks[node] = min(lowlinks[node], lowlinks[target])
+            elif target in on_stack:
+                lowlinks[node] = min(lowlinks[node], indices[target])
+
+        if lowlinks[node] != indices[node]:
+            return
+        component: list[str] = []
+        while stack:
+            target = stack.pop()
+            on_stack.remove(target)
+            component.append(target)
+            if target == node:
+                break
+        components.append(tuple(sorted(component)))
+
+    for node in sorted(graph):
+        if node not in indices:
+            visit(node)
+    return sorted(components)
 
 
 def _import_from_targets(path: Path, node: ast.ImportFrom) -> list[str]:

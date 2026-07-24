@@ -25,7 +25,7 @@ from loushang.harness.capabilities import (
 )
 from loushang.harness.config.agent import SettingsManager
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.events import AgentSessionEvent, RuntimeEvent
+from loushang.harness.events import RuntimeEvent
 from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
@@ -33,6 +33,7 @@ from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.session import AgentProductSession
 from loushang.harness.session.changelog import read_changelog_for_cwd
 from loushang.harness.session.composition import sleep_for_retry
+from loushang.harness.session.event_types import AgentSessionEvent
 from loushang.harness.session.footer import FooterDataProvider
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import ExecService

@@ -192,7 +192,10 @@ planning, work event persistence, or AI provider behavior.
   projection ownership.
 - [Runtime Event Projection And Channel Boundary](runtime-event-projection-channel-boundary.md)
   defines strict transport-ready RuntimeEvent views, the narrow Channel value
-  dependency, Coding's Pi projection ownership, and the separate Work path.
+  dependency, Session projection ownership, and the separate Work path.
+- [Runtime And Event Dependency Direction](runtime-event-dependency-direction.md)
+  defines the acyclic Events/Runtime/AgentTranscript/Session/Host ownership
+  order and the executable strongly-connected-component guard.
 - [Session Lifecycle Runtime Boundary](session-lifecycle-runtime-boundary.md)
   defines active Product-session replacement, Product-selected store/hooks,
   staged import, configurable fork profiles, and Harness's conservative

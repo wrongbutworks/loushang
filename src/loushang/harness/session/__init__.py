@@ -133,6 +133,33 @@ from loushang.harness.session.diagnostics import (
     SessionDiagnosticScopeProvider,
     SessionDiagnosticsRuntime,
 )
+from loushang.harness.session.event_projection import (
+    SUPPORTED_JSON_EVENT_VIEWS,
+    JsonEventView,
+    SessionEvent,
+    project_session_event,
+    select_events,
+    shape_stream_event,
+    should_emit_projected_event,
+)
+from loushang.harness.session.event_serialization import serialize_session_event
+from loushang.harness.session.event_types import (
+    AgentSessionEvent,
+    AutoRetryEndEvent,
+    AutoRetryStartEvent,
+    BranchSummaryEndEvent,
+    BranchSummaryStartEvent,
+    CompactionEndEvent,
+    CompactionStartEvent,
+    PackageProgressSessionEvent,
+    QueueUpdateEvent,
+    SessionInfoChangedEvent,
+    ToolPolicyAuditSessionEvent,
+)
+from loushang.harness.session.export import (
+    export_session_to_html,
+    export_session_to_jsonl,
+)
 from loushang.harness.session.facade import (
     OutputCallback,
     RuntimeEventListener,
@@ -263,6 +290,11 @@ from loushang.harness.session.runtime import (
     SessionRuntime,
     TranscriptRuntimePort,
     TurnPolicyPort,
+)
+from loushang.harness.session.runtime_event_views import (
+    project_runtime_event_to_json_views,
+    shape_runtime_event_view,
+    should_emit_runtime_event_view,
 )
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.session.tool_controller import (
@@ -501,4 +533,28 @@ __all__ = [
     "model_identity_data",
     "is_standard_session_command",
     "require_session_operation_session",
+    "AgentSessionEvent",
+    "AutoRetryEndEvent",
+    "AutoRetryStartEvent",
+    "BranchSummaryEndEvent",
+    "BranchSummaryStartEvent",
+    "CompactionEndEvent",
+    "CompactionStartEvent",
+    "JsonEventView",
+    "PackageProgressSessionEvent",
+    "QueueUpdateEvent",
+    "SUPPORTED_JSON_EVENT_VIEWS",
+    "SessionEvent",
+    "SessionInfoChangedEvent",
+    "ToolPolicyAuditSessionEvent",
+    "project_runtime_event_to_json_views",
+    "project_session_event",
+    "select_events",
+    "serialize_session_event",
+    "shape_runtime_event_view",
+    "shape_stream_event",
+    "should_emit_projected_event",
+    "should_emit_runtime_event_view",
+    "export_session_to_html",
+    "export_session_to_jsonl",
 ]

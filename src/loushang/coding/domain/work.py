@@ -6,9 +6,8 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import TextIO, cast
 
-from loushang.harness.events import JsonEventView
 from loushang.harness.host.channel_events import AgentRuntimeChannelProjection
-from loushang.harness.session import require_active_session_control
+from loushang.harness.session import JsonEventView, require_active_session_control
 from loushang.work import InMemoryEventLogBackend
 from loushang.work.agent_projection import (
     create_agent_session_work_runtime,

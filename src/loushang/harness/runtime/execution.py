@@ -6,12 +6,12 @@ from collections.abc import Awaitable, Callable
 from typing import Generic, TypeVar, cast
 
 from loushang.harness.events import EventListener, OrderedEventBus
-from loushang.harness.host.types import (
+from loushang.harness.events.host import (
     HostLifecycleEvent,
     HostLifecycleEventKind,
-    HostSnapshot,
     HostStatus,
 )
+from loushang.harness.runtime.types import HostSnapshot
 
 T = TypeVar("T")
 RunOperation = Callable[[], Awaitable[T]]

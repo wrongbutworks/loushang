@@ -6,12 +6,10 @@ from typing import Any, Literal, TypeAlias
 from loushang.agent.types import AgentToolResult
 from loushang.ai.json_codec import serialize_assistant_message_event
 from loushang.harness.agent_transcript import create_agent_transcript_message_codec
+from loushang.harness.events.json import snake_case_json_keys
 from loushang.harness.events.projection import matches_event_select
-from loushang.harness.events.session_serialization import (
-    serialize_session_event,
-    snake_case_json_keys,
-)
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.harness.session.event_serialization import serialize_session_event
 from loushang.harness.tools.core import ToolRenderOutput
 from loushang.protocol import JsonValueError, require_json_mapping
 

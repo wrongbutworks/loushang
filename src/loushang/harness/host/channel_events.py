@@ -7,10 +7,12 @@ from dataclasses import dataclass, replace
 
 from loushang.channel.types import ChannelEnvelope
 from loushang.harness.events import (
-    SUPPORTED_JSON_EVENT_VIEWS,
-    JsonEventView,
     RuntimeEvent,
     normalize_event_select,
+)
+from loushang.harness.session import (
+    SUPPORTED_JSON_EVENT_VIEWS,
+    JsonEventView,
     project_runtime_event_to_json_views,
     should_emit_runtime_event_view,
 )

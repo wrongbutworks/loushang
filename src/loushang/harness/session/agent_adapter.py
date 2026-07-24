@@ -26,14 +26,9 @@ from loushang.harness.agent_transcript import (
     TranscriptNavigationResult,
     normalize_branch_summary_output,
 )
-from loushang.harness.agent_transcript.session_export import (
-    export_session_to_html,
-    export_session_to_jsonl,
-)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft, DiagnosticPhase
 from loushang.harness.events import (
-    AgentSessionEvent,
     CompactionReason,
     PackageProgressChanged,
     project_session_runtime_event,
@@ -56,6 +51,11 @@ from loushang.harness.session.composition import SessionComposition
 from loushang.harness.session.diagnostics import (
     SessionDiagnosticScope,
     SessionDiagnosticsRuntime,
+)
+from loushang.harness.session.event_types import AgentSessionEvent
+from loushang.harness.session.export import (
+    export_session_to_html,
+    export_session_to_jsonl,
 )
 from loushang.harness.session.facade import SessionFacade
 from loushang.harness.session.lifecycle import (

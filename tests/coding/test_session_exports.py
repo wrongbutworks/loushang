@@ -88,7 +88,7 @@ def _build_export_session(
 
 
 def test_export_session_to_jsonl_writes_branch_entries_and_header(tmp_path) -> None:
-    from loushang.harness.agent_transcript.session_export import export_session_to_jsonl
+    from loushang.harness.session.export import export_session_to_jsonl
 
     session = _build_export_session(tmp_path)
 
@@ -113,7 +113,7 @@ def test_agent_session_exposes_standard_export_methods(tmp_path) -> None:
 
 
 def test_export_session_to_jsonl_defaults_to_generated_filename(tmp_path) -> None:
-    from loushang.harness.agent_transcript.session_export import export_session_to_jsonl
+    from loushang.harness.session.export import export_session_to_jsonl
 
     cwd = tmp_path / "project"
     cwd.mkdir()
@@ -135,7 +135,7 @@ def test_export_session_to_jsonl_defaults_to_generated_filename(tmp_path) -> Non
 def test_export_session_to_jsonl_rechains_current_branch_parent_ids(tmp_path) -> None:
     import json
 
-    from loushang.harness.agent_transcript.session_export import export_session_to_jsonl
+    from loushang.harness.session.export import export_session_to_jsonl
 
     manager = asyncio.run(
         SessionManager.new(
@@ -250,7 +250,7 @@ def test_render_transcript_renders_markdown_code_fences_with_syntax_highlighting
 
 
 def test_export_session_to_html_writes_template_based_document(tmp_path) -> None:
-    from loushang.harness.agent_transcript.session_export import export_session_to_html
+    from loushang.harness.session.export import export_session_to_html
 
     session = _build_export_session(tmp_path)
 
@@ -263,7 +263,7 @@ def test_export_session_to_html_writes_template_based_document(tmp_path) -> None
 
 
 def test_export_session_to_html_includes_tool_and_stats_sections(tmp_path) -> None:
-    from loushang.harness.agent_transcript.session_export import export_session_to_html
+    from loushang.harness.session.export import export_session_to_html
 
     session = _build_export_session(tmp_path)
 
@@ -275,7 +275,7 @@ def test_export_session_to_html_includes_tool_and_stats_sections(tmp_path) -> No
 
 
 def test_export_session_to_html_script_loads_embedded_session_data(tmp_path) -> None:
-    from loushang.harness.agent_transcript.session_export import export_session_to_html
+    from loushang.harness.session.export import export_session_to_html
 
     session = _build_export_session(tmp_path)
 
@@ -343,7 +343,7 @@ def test_export_session_to_html_tool_results_convert_ansi_to_html() -> None:
 
 
 def test_export_session_to_html_uses_tool_renderers(tmp_path) -> None:
-    from loushang.harness.agent_transcript.session_export import export_session_to_html
+    from loushang.harness.session.export import export_session_to_html
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -513,7 +513,7 @@ def test_export_session_to_html_embeds_entry_tree_and_summary_entries(tmp_path) 
     import json
     import re
 
-    from loushang.harness.agent_transcript.session_export import export_session_to_html
+    from loushang.harness.session.export import export_session_to_html
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -609,7 +609,7 @@ def test_export_session_to_html_embeds_system_prompt_and_tool_definitions(
     import json
     import re
 
-    from loushang.harness.agent_transcript.session_export import export_session_to_html
+    from loushang.harness.session.export import export_session_to_html
 
     async def execute_probe(tool_call_id, params, signal, on_update):
         return AgentToolResult(content=[TextPart(type="text", text="ok")])
@@ -665,8 +665,8 @@ def test_export_session_to_html_embeds_system_prompt_and_tool_definitions(
 
 
 def test_export_session_to_html_uses_custom_renderer_and_theme(tmp_path) -> None:
-    from loushang.harness.agent_transcript.session_export import export_session_to_html
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
+    from loushang.harness.session.export import export_session_to_html
 
     def _renderer(message, options, theme):
         assert options == {"format": "html_export"}

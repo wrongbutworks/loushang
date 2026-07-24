@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from loushang.harness.host.queue import HostInputQueue
+from loushang.harness.runtime.input_queue import HostInputQueue
 
 
 @dataclass(frozen=True)

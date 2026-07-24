@@ -17,7 +17,7 @@ The governing split is:
 
 ## Harness Ownership
 
-`loushang.harness.host` owns:
+`loushang.harness.runtime` owns:
 
 - `TurnOrchestrator`, which orders interception, preflight, active-run queueing,
   before-run preparation, message construction, pending-input drain, start
@@ -28,7 +28,10 @@ The governing split is:
 - `RetryCoordinator`, which owns attempt state, exponential backoff,
   single-flight delay, cancellation handles, waiter completion, exhaustion,
   and delegated continuation;
-- `PayloadEventRouter`, which provides ordered, payload-neutral mirror routing.
+
+`loushang.harness.host.routing.PayloadEventRouter` remains an outer
+payload-neutral adapter utility; it is not part of the execution/queue/retry
+state-machine core.
 
 The existing `loushang.harness.context.CompactionCoordinator` remains the only
 generic compaction single-flight lifecycle. Product compaction adapters reuse

@@ -26,7 +26,7 @@ from loushang.harness.events import (
     TranscriptRecordCommitted,
     session_runtime_event_kind,
 )
-from loushang.harness.host.runtime import HostRuntime
+from loushang.harness.runtime.execution import HostRuntime
 from loushang.harness.session.agent_event_router import (
     AgentEventRouter,
     CompactionRouterPort,

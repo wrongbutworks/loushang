@@ -1,4 +1,4 @@
-"""Product-neutral session export adapter over Agent transcript exporters."""
+"""Session export adapter over Agent transcript exporters."""
 
 from __future__ import annotations
 
@@ -120,3 +120,6 @@ def _export_theme(session: SessionFacade) -> dict[str, str]:
     if isinstance(theme, dict):
         return {str(key): str(value) for key, value in theme.items()}
     return {}
+
+
+__all__ = ["export_session_to_html", "export_session_to_jsonl"]

@@ -15,8 +15,7 @@ from loushang.harness.events import (
     ToolPolicyAuditEvent,
     session_runtime_event_kind,
 )
-from loushang.harness.host.retry import RetryAttempt, RetryOutcome
-from loushang.harness.host.types import QueueSnapshot
+from loushang.harness.events.session import QueueSnapshot, RetryAttempt, RetryOutcome
 
 
 @pytest.mark.parametrize(
