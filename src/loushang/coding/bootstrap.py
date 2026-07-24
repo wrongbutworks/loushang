@@ -32,12 +32,10 @@ from loushang.harness.capabilities import (
     CapabilityCompositionRuntime,
     bind_capability_composition_runtime,
 )
-from loushang.harness.config.agent import ControlConfig, SettingsManager
-from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.config.agent import SettingsManager
 from loushang.harness.diagnostics.types import StartupCheckResult
 from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
-from loushang.harness.model_catalog import ModelCatalog
 from loushang.harness.resources.packages.materializer import (
     GitPackageMaterializerBackend,
     resolve_session_package_install_root,
@@ -50,6 +48,8 @@ from loushang.harness.session import (
     CreateAgentSessionResult,
     CwdBoundServicesAudit,
     build_agent_product_session_runtime,
+    build_standard_agent_session_result,
+    create_standard_agent_bootstrap_services,
     project_root_from_settings_base,
     record_default_model_unavailable,
 )
@@ -82,20 +82,15 @@ def create_services(
     thinking_level: ThinkingLevel = "off",
     system_prompt: str = "",
 ) -> BootstrapServices:
-    model_registry = ModelCatalog(ai_registry=ai_model_registry)
-    resolved_settings_manager = settings_manager or SettingsManager(
-        ControlConfig(
-            default_model=default_model,
-            thinking_level=thinking_level,
-            system_prompt=system_prompt,
-        )
-    )
-    return BootstrapServices(
-        settings_manager=resolved_settings_manager,
-        model_registry=model_registry,
-        resource_loader=resource_loader or DefaultResourceLoader(),
-        diagnostics_service=DiagnosticsService(),
-        exec_service=exec_service or ExecService(),
+    return create_standard_agent_bootstrap_services(
+        resource_loader_factory=DefaultResourceLoader,
+        ai_model_registry=ai_model_registry,
+        resource_loader=resource_loader,
+        settings_manager=settings_manager,
+        exec_service=exec_service,
+        default_model=default_model,
+        thinking_level=thinking_level,
+        system_prompt=system_prompt,
     )
 
 
@@ -369,14 +364,11 @@ def create_agent_session_result(
         extension_flag_values=extension_flag_values,
         approval_resolver=approval_resolver,
     )
-    return CreateAgentSessionResult(
-        session=session,
+    return build_standard_agent_session_result(
+        session,
         resource_bundle=session.resource_bundle,
-        diagnostics=tuple(
-            resolved_services.diagnostics_service.get_diagnostics(
-                session_id=session.session_id
-            )
-        ),
+        diagnostics_service=resolved_services.diagnostics_service,
+        session_id=session.session_id,
         cwd_bound_services_audit=session.cwd_bound_services_audit,
     )
 

@@ -4,8 +4,11 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import loushang.harness.session.bootstrap as bootstrap_module
+from loushang.ai.model import ModelSelection
+from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
 from loushang.harness.bootstrap import BootstrapActivationRuntime
 from loushang.harness.config.agent import ControlConfig
+from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.session.bootstrap import (
     AgentBootstrapRequest,
     AgentBootstrapRuntime,
@@ -19,8 +22,11 @@ from loushang.harness.session.bootstrap import (
     StandardAgentSessionActivationEffects,
     StandardAgentSessionConfigurationResult,
     activate_standard_agent_session_configuration,
+    build_standard_agent_session_result,
+    create_standard_agent_bootstrap_services,
     standard_agent_session_activation_plan,
 )
+from loushang.harness.workspace.exec import ExecService
 
 
 def test_agent_bootstrap_runtime_builds_agent_and_product_session() -> None:
@@ -58,6 +64,70 @@ def test_agent_bootstrap_runtime_builds_agent_and_product_session() -> None:
         "tools": [],
     }
     assert calls[0][1]["max_retry_delay_ms"] == 50
+
+
+def test_standard_agent_services_bind_research_resources_and_shared_defaults() -> None:
+    class ResearchResourceLoader:
+        pass
+
+    loader = ResearchResourceLoader()
+    diagnostics = DiagnosticsService()
+    exec_service = ExecService()
+    ai_registry = AiModelRegistry()
+
+    services = create_standard_agent_bootstrap_services(
+        resource_loader_factory=lambda: loader,
+        ai_model_registry=ai_registry,
+        diagnostics_service=diagnostics,
+        exec_service=exec_service,
+        default_model=ModelSelection("research", "primary"),
+        thinking_level="medium",
+        system_prompt="Use primary sources.",
+    )
+
+    assert services.resource_loader is loader
+    assert services.model_registry.ai_registry is ai_registry
+    assert services.diagnostics_service is diagnostics
+    assert services.exec_service is exec_service
+    settings = services.settings_manager.get_settings()
+    assert settings.default_model == ModelSelection("research", "primary")
+    assert settings.thinking_level == "medium"
+    assert settings.system_prompt == "Use primary sources."
+
+
+def test_standard_agent_session_result_collects_scoped_diagnostics() -> None:
+    diagnostics = DiagnosticsService()
+    diagnostics.capture_failure(
+        code="research_source_unavailable",
+        error="source unavailable",
+        phase="runtime",
+        source="session",
+        session_id="research-session",
+    )
+    diagnostics.capture_failure(
+        code="other_session_failure",
+        error="other failure",
+        phase="runtime",
+        source="session",
+        session_id="other-session",
+    )
+    session = object()
+    bundle = {"sources": ["paper"]}
+
+    result = build_standard_agent_session_result(
+        session,
+        resource_bundle=bundle,
+        diagnostics_service=diagnostics,
+        session_id="research-session",
+        cwd_bound_services_audit="research-audit",
+    )
+
+    assert result.session is session
+    assert result.resource_bundle is bundle
+    assert tuple(record.code for record in result.diagnostics) == (
+        "research_source_unavailable",
+    )
+    assert result.cwd_bound_services_audit == "research-audit"
 
 
 def test_agent_session_construction_runtime_uses_product_callbacks() -> None:

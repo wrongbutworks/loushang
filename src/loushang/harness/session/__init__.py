@@ -44,6 +44,8 @@ from loushang.harness.session.bootstrap import (
     StandardAgentSessionConfigurationRuntime,
     activate_standard_agent_session_configuration,
     build_agent_product_session_runtime,
+    build_standard_agent_session_result,
+    create_standard_agent_bootstrap_services,
     prepare_agent_session_services,
     standard_agent_session_activation_plan,
 )
@@ -296,6 +298,8 @@ __all__ = [
     "AgentSessionConstructionRuntime",
     "AgentSessionServices",
     "build_agent_product_session_runtime",
+    "build_standard_agent_session_result",
+    "create_standard_agent_bootstrap_services",
     "prepare_agent_session_services",
     "BootstrapServices",
     "CreateAgentSessionResult",

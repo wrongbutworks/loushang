@@ -4367,7 +4367,14 @@ def test_coding_agent_product_construction_uses_shared_binding() -> None:
     imports = set(_absolute_imports(coding_path))
 
     assert "loushang.harness.session.AgentProductConstructionBinding" in imports
+    assert "loushang.harness.session.build_standard_agent_session_result" in imports
+    assert (
+        "loushang.harness.session.create_standard_agent_bootstrap_services" in imports
+    )
     for direct_owner in (
+        "loushang.harness.config.agent.ControlConfig",
+        "loushang.harness.diagnostics.service.DiagnosticsService",
+        "loushang.harness.model_catalog.ModelCatalog",
         "loushang.harness.session.AgentProductConstructionPorts",
         "loushang.harness.session.AgentProductConstructionRequest",
         "loushang.harness.session.AgentProductConstructionRuntime",

@@ -1112,3 +1112,36 @@ are independently exercised by Research-style structural sessions without
 Coding imports. Architecture gates keep the neutral startup view free of
 Agent policy and require the Agent application owner, rather than Coding, to
 load standard session model facts.
+
+### Wave 7, Slice V: Agent Product Service Bundle Finalization (Complete)
+
+This slice moves only the remaining standard Agent service-bundle construction
+and bootstrap-result collection into the existing
+`harness.session.bootstrap` owner. It reuses `BootstrapServices`,
+`DiagnosticsService`, `ModelCatalog`, `SettingsManager`, `ExecService`,
+`prepare_agent_session_services`, `AgentProductConstructionBinding`, and
+`build_agent_product_session_runtime`; it does not add another service
+container, bootstrap runtime, configuration runtime, or session factory.
+
+| Source mechanism | Existing shared owner | Product retained | Status |
+| --- | --- | --- | --- |
+| standard settings/model/diagnostics/exec service construction | `create_standard_agent_bootstrap_services` in the existing session bootstrap owner | Product resource-loader factory and optional injected service instances | Complete |
+| Product session plus resource/diagnostics/audit result projection | `build_standard_agent_session_result` beside the existing `CreateAgentSessionResult` contract | Product session creation and selection of session/resource/audit values | Complete |
+| cwd-bound resource and extension service preparation | existing `prepare_agent_session_services` | Coding settings paths, loader options, and extension runtime factory | Already canonical |
+| Agent and Product session construction | existing `AgentProductConstructionBinding` with Coding session factory callbacks | Coding `AgentSession`, prompt/image wording, tool activation, package materializer, diagnostics identity, and approval policy | Intentionally retained |
+
+Production accounting: `src/loushang/coding` changes from 4,745 to 4,737
+physical Python LOC (-8), while `coding.bootstrap` changes from 482 to 474
+lines. The small reduction is intentional: public Coding signatures remain
+stable and continue to expose Product choices, while the reusable construction
+logic has a single shared owner. Harness production grows by 66 lines,
+including exports. Research-style contract tests bind a custom resource loader,
+model registry, diagnostics service, execution service, model default, prompt,
+and session result without importing Coding.
+
+The slice stops at this boundary. Moving the remaining Coding session factory
+would only turn Product-specific `AgentSession`, resource, prompt, tool,
+package, approval, and diagnostic choices into a long callback list. An
+architecture gate requires Coding to use the shared service/result helpers and
+forbids it from directly constructing `ControlConfig`, `DiagnosticsService`, or
+`ModelCatalog`.

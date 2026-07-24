@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Generic, TypeVar, cast
 
+from loushang.agent.types import ThinkingLevel
+from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
+from loushang.ai.model.selection import ModelSelection
 from loushang.harness.bootstrap import (
     BootstrapActivationPlan,
     BootstrapActivationRuntime,
@@ -23,7 +26,7 @@ from loushang.harness.diagnostics.service import (
     DiagnosticsService,
     run_standard_startup_checks,
 )
-from loushang.harness.diagnostics.types import StartupCheckResult
+from loushang.harness.diagnostics.types import DiagnosticRecord, StartupCheckResult
 from loushang.harness.model_catalog import ModelCatalog
 from loushang.harness.resources.activation import SkillActivationRuntime
 from loushang.harness.resources.loader import ResourceLoader
@@ -55,6 +58,7 @@ from loushang.harness.session.model_resolution import (
     scoped_models_from_patterns,
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.workspace.exec import ExecService
 
 SettingsT = TypeVar("SettingsT")
 ModelRegistryT = TypeVar("ModelRegistryT")
@@ -390,6 +394,42 @@ class BootstrapServices(
     exec_service: ExecServiceT | None = None
 
 
+def create_standard_agent_bootstrap_services(
+    *,
+    resource_loader_factory: Callable[[], ResourceLoaderT],
+    ai_model_registry: AiModelRegistry | None = None,
+    resource_loader: ResourceLoaderT | None = None,
+    settings_manager: SettingsManager | None = None,
+    diagnostics_service: DiagnosticsService | None = None,
+    exec_service: ExecService | None = None,
+    default_model: ModelSelection | None = None,
+    thinking_level: ThinkingLevel = "off",
+    system_prompt: str = "",
+) -> BootstrapServices[
+    SettingsManager,
+    ModelCatalog,
+    ResourceLoaderT,
+    DiagnosticsService,
+    ExecService,
+]:
+    """Construct standard Agent services with Product resource loading injected."""
+
+    resolved_settings_manager = settings_manager or SettingsManager(
+        ControlConfig(
+            default_model=default_model,
+            thinking_level=thinking_level,
+            system_prompt=system_prompt,
+        )
+    )
+    return BootstrapServices(
+        settings_manager=resolved_settings_manager,
+        model_registry=ModelCatalog(ai_registry=ai_model_registry),
+        resource_loader=resource_loader or resource_loader_factory(),
+        diagnostics_service=diagnostics_service or DiagnosticsService(),
+        exec_service=exec_service or ExecService(),
+    )
+
+
 @dataclass(frozen=True)
 class AgentSessionServices(Generic[ServicesT, BundleT, ExtensionT, DiagnosticRecordT]):
     """Cwd-bound services and results of the shared resource bootstrap."""
@@ -530,6 +570,26 @@ class CreateAgentSessionResult(Generic[SessionT, BundleT, DiagnosticRecordT, Aud
     resource_bundle: BundleT | None
     diagnostics: tuple[DiagnosticRecordT, ...]
     cwd_bound_services_audit: AuditT | None = None
+
+
+def build_standard_agent_session_result(
+    session: SessionT,
+    *,
+    resource_bundle: BundleT | None,
+    diagnostics_service: DiagnosticsService,
+    session_id: str,
+    cwd_bound_services_audit: AuditT | None = None,
+) -> CreateAgentSessionResult[SessionT, BundleT, DiagnosticRecord, AuditT]:
+    """Collect standard bootstrap outputs for a Product-created session."""
+
+    return CreateAgentSessionResult(
+        session=session,
+        resource_bundle=resource_bundle,
+        diagnostics=tuple(
+            diagnostics_service.get_diagnostics(session_id=session_id)
+        ),
+        cwd_bound_services_audit=cwd_bound_services_audit,
+    )
 
 
 @dataclass(frozen=True)
@@ -1003,7 +1063,9 @@ __all__ = [
     "AgentProductConstructionResult",
     "AgentProductConstructionRuntime",
     "AgentSessionServices",
+    "build_standard_agent_session_result",
     "build_agent_product_session_runtime",
+    "create_standard_agent_bootstrap_services",
     "prepare_agent_session_services",
     "BootstrapServices",
     "CreateAgentSessionResult",
