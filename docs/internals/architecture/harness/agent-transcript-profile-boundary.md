@@ -17,7 +17,7 @@ removes the old Coding implementation.
 catalog, checkpoint mechanics, and compaction planning. It must not import AI,
 Agent, Coding, or another Product package.
 
-`loushang.harness.agent_transcript` is an optional profile over that core. It
+`loushang.harness.transcript` is an optional profile over that core. It
 owns the common durable meanings required by Agent-backed Products:
 
 - Agent messages and their stable wire codec;

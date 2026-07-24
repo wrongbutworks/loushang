@@ -10,7 +10,7 @@ by [Conversation Persistence Refactor](conversation-persistence-refactor.md).
 
 ## Purpose
 
-The optional `loushang.harness.agent_transcript` profile owns the current
+The optional `loushang.harness.transcript` profile owns the current
 Native Agent transcript JSONL provider. This includes the v1 header and record
 codecs, durable journal policy, platform file lock, file layout, discovery,
 and `FileConversationStore` adapter. These are common Agent-transcript storage
@@ -39,7 +39,7 @@ Coding supplies its runtime-profile selection, session root, persist decision,
 display naming, retention, CLI/TUI behavior, and diagnostic wording. The
 standard Native transcript catalog, summary projection, query, JSON index,
 and branch-label read model live beside this provider in
-`harness.agent_transcript.session_catalog`. `SessionManager` is a Coding facade over
+`harness.transcript.session_catalog`. `SessionManager` is a Coding facade over
 the Harness transcript session and catalog rather than the owner of native
 codecs, file layout, or cross-session read mechanics.
 
@@ -72,5 +72,5 @@ outbox delivery, or extension-owned persistence providers.
 - Coding file/session tests exercise the same Harness provider through Coding
   compatibility exports and runtime-profile assembly.
 - Import-boundary tests require codec and lock ownership in
-  `harness.agent_transcript.native_file` and prohibit Coding from recreating
+  `harness.transcript.native_file` and prohibit Coding from recreating
   them.

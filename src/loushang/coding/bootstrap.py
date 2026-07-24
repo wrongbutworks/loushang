@@ -24,7 +24,6 @@ from loushang.coding.resource_runtime import (
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
-from loushang.harness.agent_transcript import context_items_to_model_messages
 from loushang.harness.bootstrap import (
     create_standard_resource_bootstrap_runtime,
 )
@@ -63,6 +62,7 @@ from loushang.harness.session import (
     prepare_agent_session_services as prepare_standard_agent_session_services,
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.transcript import context_items_to_model_messages
 from loushang.harness.workspace.exec import ExecService
 
 AgentFactory = Callable[..., Agent]

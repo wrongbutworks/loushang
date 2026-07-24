@@ -123,7 +123,7 @@ session object is not an Agent session.
 `harness.session.transcript_lifecycle` may depend on the neutral lifecycle
 runtime and the optional Agent transcript directory profile, but must not
 depend on Coding or another Product. The facade is deliberately not placed in
-`harness.agent_transcript`: directory/catalog ownership alone does not imply
+`harness.transcript`: directory/catalog ownership alone does not imply
 ownership of active-session replacement.
 
 `loushang.harness.session` remains an optional profile package and is not

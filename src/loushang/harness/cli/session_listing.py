@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from loushang.harness.agent_transcript.session_catalog import (
+from loushang.harness.transcript.session_catalog import (
     SessionQuery,
     try_project_session_record,
 )

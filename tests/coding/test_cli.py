@@ -2335,7 +2335,7 @@ def test_run_cli_lists_all_sessions_when_requested(tmp_path) -> None:
 
 def test_run_cli_list_sessions_supports_query_filters(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.harness.agent_transcript import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     records = [
         SimpleNamespace(
@@ -2399,7 +2399,7 @@ def test_run_cli_list_sessions_supports_query_filters(tmp_path) -> None:
 
 def test_run_cli_list_sessions_supports_no_diagnostics_filter(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.harness.agent_transcript import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     runtime = FakeRuntime(FakeSession("unused"), records=[])
     stdout = StringIO()
@@ -2428,7 +2428,7 @@ def test_run_cli_list_sessions_supports_all_sessions_with_query_filters(
     tmp_path,
 ) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.harness.agent_transcript import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     runtime = FakeRuntime(
         FakeSession("unused"),
@@ -2477,7 +2477,7 @@ def test_run_cli_list_sessions_supports_all_sessions_with_query_filters(
 
 def test_run_cli_list_sessions_can_use_session_index(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.harness.agent_transcript import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     runtime = FakeRuntime(
         FakeSession("unused"),
@@ -2528,7 +2528,7 @@ def test_run_cli_list_sessions_can_use_session_index(tmp_path) -> None:
 
 def test_run_cli_list_sessions_can_refresh_all_session_indexes(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.harness.agent_transcript import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     runtime = FakeRuntime(FakeSession("unused"), records=[])
     stdout = StringIO()

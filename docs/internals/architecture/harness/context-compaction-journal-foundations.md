@@ -99,7 +99,7 @@ different product semantics:
 - `coding.compaction` owns context cut-point planning, recent-token retention,
   a compaction coordinator, summary production, and Coding-specific summary
   quality rules;
-- `harness.agent_transcript` owns cross-platform file locking, atomic JSONL
+- `harness.transcript` owns cross-platform file locking, atomic JSONL
   rewrite, append/load recovery, a parent-linked entry graph, branch selection,
   fork, and a session index; Coding binds it through
   `coding.session_manager`;
@@ -739,7 +739,7 @@ final wave merge, but it does not block progress on the other adapters.
 | removed `coding.store.file_codec` | JSONL framing and atomic IO | SessionHeader/SessionEntry codec remains in Harness |
 | `coding.session_manager.SessionManager` | Coding Product runtime binding | projection schema/fields, lifecycle, cwd, labels, naming, recovery, and retention |
 | `work.event_log` | matching JSONL I/O only | Work normalization, in-memory backend, positions, filters, query, replay, subscriptions, records, and public adapters |
-| `coding.message.json_codec` | superseded by `loushang.harness.agent_transcript` for common transcript records | AI owns base codecs, Agent owns extension codec composition, and Products own only domain payload codecs |
+| `coding.message.json_codec` | superseded by `loushang.harness.transcript` for common transcript records | AI owns base codecs, Agent owns extension codec composition, and Products own only domain payload codecs |
 
 ## Planned Size And Measured Outcome
 

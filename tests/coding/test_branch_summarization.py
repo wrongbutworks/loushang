@@ -9,7 +9,7 @@ from loushang.coding.session_manager import SessionManager
 def test_collect_entries_for_branch_summary_returns_entries_from_old_leaf(
     tmp_path,
 ) -> None:
-    from loushang.harness.agent_transcript import collect_branch_summary_delta
+    from loushang.harness.transcript import collect_branch_summary_delta
 
     session = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)
@@ -55,7 +55,7 @@ def test_collect_entries_for_branch_summary_returns_entries_from_old_leaf(
 def test_prepare_branch_entries_keeps_recent_messages_within_token_budget(
     tmp_path,
 ) -> None:
-    from loushang.harness.agent_transcript import prepare_branch_summary
+    from loushang.harness.transcript import prepare_branch_summary
 
     session = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd=str(tmp_path), persist=False)

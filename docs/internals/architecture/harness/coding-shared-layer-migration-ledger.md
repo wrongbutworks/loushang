@@ -20,7 +20,7 @@ kind of capability, not the name of the old package.
 
 Neutral Harness core remains independent from Agent and AI. Declared optional
 integration packages, including `harness.session` and
-`harness.agent_transcript`, may use stable public Agent and AI value contracts;
+`harness.transcript`, may use stable public Agent and AI value contracts;
 they must not own provider registration, credentials, or product model policy.
 
 ## Wave 1: Leaf Foundations (Complete)
@@ -82,7 +82,7 @@ selection runtime, or plain-prompt host.
 
 | Removed or reduced Coding region | Existing or extended shared owner | Retained Product input |
 | --- | --- | --- |
-| removed `coding.runtime_profile` | `harness.agent_transcript.AgentTranscriptProfileRuntime` composed over the existing runtime resolver/binder, transcript stores/profile, and compaction capability | `coding.product_plan` declares Product IDs, metadata key, store/profile implementation identities, and current defaults. |
+| removed `coding.runtime_profile` | `harness.transcript.AgentTranscriptProfileRuntime` composed over the existing runtime resolver/binder, transcript stores/profile, and compaction capability | `coding.product_plan` declares Product IDs, metadata key, store/profile implementation identities, and current defaults. |
 | removed `coding.capability_plan` | existing `harness.capabilities.composition_runtime` via `standard_capability_composition_plan` | `coding.product_plan` selects the standard composition profile; future Coding deltas remain declared Product data. |
 | `coding.session_manager` runtime binding | the shared Agent transcript profile runtime | Coding retains session-root and persistence decisions plus restored-header Product validation. |
 | `coding.model_selection_tui` | existing `harness.session.model_selection` and `harnesstui.selection` catalog/runtime | Coding retains preferred-model policy, settings persistence, and its persistence-warning wording. |
@@ -345,7 +345,7 @@ wording, or RPC schemas.
 | prompt/stdin/file/image input resolution | `harness.host.prompt_input` | CLI argument grammar and product prompt policy | Complete |
 | model listing normalization and metadata formatting | `harness.session.model_selection` | Preferred model candidates and persistence wording | Complete |
 | command descriptor listing projection | `harness.commands.project_command_descriptor` | Descriptor source selection and JSON/TSV output | Complete |
-| skill/plugin/session catalog listing projections | `harness.resources.*`, `harness.agent_transcript.catalog` | Discovery, settings, query grammar, and output format | Complete |
+| skill/plugin/session catalog listing projections | `harness.resources.*`, `harness.transcript.catalog` | Discovery, settings, query grammar, and output format | Complete |
 | diagnostic record/error/summary serialization | `harness.diagnostics.serialization` | Existing call sites only; camelCase output retained | Complete |
 | package catalog and materialization record projection | `harness.resources.packages.projection` | Coding retains resource discovery, materializer policy, and command selection | Complete |
 
@@ -698,7 +698,7 @@ The detailed boundary is
 | extension flag application and tool registration | `harness.extensions.ExtensionRuntime` and `harness.bootstrap` | Coding loader/policy and legacy pack identifiers | Complete |
 | package sources, roots, install root, lock diagnostics | existing `harness.resources.packages` components | Coding package security policy | Complete |
 | startup checks and cwd audit recording | existing `harness.diagnostics` and `harness.session.cwd_audit` | Coding executable identity check | Complete |
-| prompt/model/context bootstrap leaves | existing `harness.session` and `harness.agent_transcript` | Coding default prompt, model preference, image message | Complete |
+| prompt/model/context bootstrap leaves | existing `harness.session` and `harness.transcript` | Coding default prompt, model preference, image message | Complete |
 | project model-catalog reload | `ModelCatalog.reload_if_project_layer` | `.loushang/models` path convention | Complete |
 
 Slice H accounting (production implementation only):
@@ -945,7 +945,7 @@ engine.
 
 | Source mechanism | Existing shared owner | Product retained | Status |
 | --- | --- | --- | --- |
-| Agent tool-call resource evidence attached to compaction and branch summaries | `harness.agent_transcript.summarization` over the existing `SummaryResourceOperations` model | tool-name, operation, detail-key, tag, and exclusion profile | Complete |
+| Agent tool-call resource evidence attached to compaction and branch summaries | `harness.transcript.summarization` over the existing `SummaryResourceOperations` model | tool-name, operation, detail-key, tag, and exclusion profile | Complete |
 | local plus session command catalog binding for conversation hosts | `harnesstui.commands.catalog` over the existing `harness.commands.MixedCommandCatalog` | session command provider and local action handlers | Complete |
 | changelog discovery, parsing, formatting, and standard session-command payload | `harness.session.changelog` | optional filename and entry-limit profile | Complete |
 | command-backed config values | neutral injected runner in `harness.config.values`, with explicit local-shell adapter in `harness.config.subprocess_values` | optional Product/OEM runner selection | Complete |

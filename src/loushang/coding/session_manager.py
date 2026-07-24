@@ -6,16 +6,16 @@ from loushang.coding.product_plan import (
     CODING_PRODUCT_ID,
     CODING_TRANSCRIPT_RUNTIME,
 )
-from loushang.harness.agent_transcript import (
-    AgentTranscriptLifecycle,
-    AgentTranscriptSessionFactory,
-    ProductTranscriptSession,
-)
 from loushang.harness.conversation import ConversationHeader
 from loushang.harness.runtime import (
     ResolvedRuntimeProfile,
     RuntimeProfileBinding,
     RuntimeProfileSnapshot,
+)
+from loushang.harness.transcript import (
+    AgentTranscriptLifecycle,
+    AgentTranscriptSessionFactory,
+    ProductTranscriptSession,
 )
 from loushang.protocol import JSONValue
 

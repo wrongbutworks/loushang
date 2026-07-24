@@ -15,7 +15,15 @@ from dataclasses import dataclass
 from loushang.agent import Agent
 from loushang.ai.types import AssistantMessage
 from loushang.ai.utils import is_context_overflow
-from loushang.harness.agent_transcript import (
+from loushang.harness.events import CompactionReason
+from loushang.harness.extensions.context import (
+    SessionShutdownEvent,
+)
+from loushang.harness.runtime import CancellationSignal
+from loushang.harness.session.composition import (
+    SessionComposition,
+)
+from loushang.harness.transcript import (
     BranchSummaryOutput,
     CompactionHookDecision,
     CompactionHookRequest,
@@ -25,14 +33,6 @@ from loushang.harness.agent_transcript import (
     TranscriptNavigationPlan,
     TranscriptNavigationResult,
     normalize_branch_summary_output,
-)
-from loushang.harness.events import CompactionReason
-from loushang.harness.extensions.context import (
-    SessionShutdownEvent,
-)
-from loushang.harness.runtime import CancellationSignal
-from loushang.harness.session.composition import (
-    SessionComposition,
 )
 
 

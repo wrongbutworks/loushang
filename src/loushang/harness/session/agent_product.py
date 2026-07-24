@@ -9,12 +9,6 @@ from loushang.ai.api_registry import (
     ApiProviderRegistry,
     get_default_api_provider_registry,
 )
-from loushang.harness.agent_transcript import (
-    BranchSummaryOutput,
-    CompactionHookDecision,
-    CompactionHookRequest,
-    CompactionResult,
-)
 from loushang.harness.capabilities import CapabilityCompositionRuntime
 from loushang.harness.config.agent import (
     CompactionSettings,
@@ -55,6 +49,12 @@ from loushang.harness.session.facade import SessionFacade
 from loushang.harness.session.operations_runtime import SessionOperationsPorts
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.transcript import (
+    BranchSummaryOutput,
+    CompactionHookDecision,
+    CompactionHookRequest,
+    CompactionResult,
+)
 from loushang.harness.workspace.exec import ExecService
 
 CompactionExecutor = Callable[..., Awaitable[object]]

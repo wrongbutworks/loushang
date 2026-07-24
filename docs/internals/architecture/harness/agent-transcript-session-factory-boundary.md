@@ -7,7 +7,7 @@ Status: implementation complete for integration into `lane/harness` on
 
 ## Purpose
 
-`loushang.harness.agent_transcript.AgentTranscriptSessionFactory` owns the
+`loushang.harness.transcript.AgentTranscriptSessionFactory` owns the
 reusable assembly of a current Native Agent transcript session. It composes an
 already configured `AgentTranscriptLifecycle` into Product-facing `new`,
 `load`, `open`, `continue_recent`, `in_memory`, `fork_from`, and selected-path

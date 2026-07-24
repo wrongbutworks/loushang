@@ -10,7 +10,7 @@ Discovery/index placement in this historical wave is superseded by
 
 ## Purpose
 
-`loushang.harness.agent_transcript.session_catalog` owns the reusable read model
+`loushang.harness.transcript.session_catalog` owns the reusable read model
 for Agent transcripts. It provides `AgentTranscriptSessionCatalog`,
 `SessionRecord`, `SessionSummary`, `SessionQuery`, and `SessionTreeNode` for
 discovery, summary projection, query, JSON projection indexes, and annotated

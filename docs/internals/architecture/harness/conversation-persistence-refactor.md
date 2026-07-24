@@ -16,7 +16,7 @@ Implemented storage outcomes:
 - `journal` contains only codec-driven JSONL mechanics;
 - `conversation` owns branches, the in-memory repository, Store contracts,
   reference providers, provider-bound catalog, and revision-aware indexes;
-- `agent_transcript` owns `AgentTranscriptUnitOfWork`, Native file composition,
+- `transcript` owns `AgentTranscriptUnitOfWork`, Native file composition,
   Agent summary/query projection, and read-only legacy import;
 - top-level `harness.storage`, journal repositories/branches/indexes, direct
   Native append helpers, and in-place Session v3 migration are removed;
@@ -30,7 +30,7 @@ The refactor has four goals:
 1. keep `journal` a genuinely reusable physical JSONL primitive;
 2. make `conversation` the only owner of conversation structure and storage
    contracts;
-3. make `agent_transcript` an Agent-specific application/profile layer rather
+3. make `transcript` an Agent-specific application/profile layer rather
    than a second persistence subsystem;
 4. define catalog and resume flows that can work with file, database, and
    remote backends without making an index authoritative.
@@ -42,13 +42,13 @@ The target is a dependency graph, not three interchangeable storage layers:
 ```text
 work.event_logs.jsonl ─────────────────────> journal
 conversation.native_codec / stores.file ──> journal
-agent_transcript ─────────────────────────> conversation
-agent_transcript.native_file ─────────────> journal
-harness.session / Product runtime ────────> agent_transcript
+transcript ─────────────────────────> conversation
+transcript.native_file ─────────────> journal
+harness.session / Product runtime ────────> transcript
 CLI / TUI ────────────────────────────────> Product operations
 ```
 
-`agent_transcript` may also compose Native journal codecs and file-layout
+`transcript` may also compose Native journal codecs and file-layout
 factories, but it must not bypass `ConversationStore` for authoritative writes.
 
 The shortest useful statement of ownership is:
@@ -61,7 +61,7 @@ conversation
   I know conversation envelopes, branches, revisions, storage ports, and
   rebuildable discovery/index mechanics. I do not know AgentMessage.
 
-agent_transcript
+transcript
   I know Agent payload codecs, replay, commit coordination, and Agent session
   summaries. I do not define another durable-store protocol.
 
@@ -118,9 +118,9 @@ schemas or storage contracts.
 
 It must not import Agent, AI, Coding, Work, Method, Product, or TUI types.
 
-### `loushang.harness.agent_transcript`
+### `loushang.harness.transcript`
 
-`agent_transcript` is an Agent-specific profile and application layer:
+`transcript` is an Agent-specific profile and application layer:
 
 - Agent transcript payload kinds and codecs;
 - mapping between conversation records and `AgentMessage`;
@@ -143,7 +143,7 @@ Agent titles, previews, message counts, model fields, or Agent search text.
 The Agent catalog therefore owns the projection and query vocabulary, not
 physical discovery, Product/project identity, or durable transcript storage.
 
-`agent_transcript` must not import `harness.session`, CLI, TUI, or a concrete
+`transcript` must not import `harness.session`, CLI, TUI, or a concrete
 Product. Its commit layer returns a receipt plus neutral Agent transcript data;
 it does not publish Product events or replace the active Product session.
 
@@ -207,7 +207,7 @@ loushang/harness/
 │       ├── memory.py
 │       └── json_file.py
 │
-├── agent_transcript/
+├── transcript/
 │   ├── types.py
 │   ├── kinds.py
 │   ├── codecs.py
@@ -638,7 +638,7 @@ deletion or authoritative non-existence.
 The current Agent transcript file module has valid Agent-specific work, but its
 name should describe composition rather than a second Store.
 
-The target `agent_transcript.native_file` may own:
+The target `transcript.native_file` may own:
 
 - Native header/record codec assembly;
 - payload codec registration;
@@ -652,7 +652,7 @@ The target `agent_transcript.native_file` may own:
 It must not own a direct durable append path beside
 `FileConversationStore.append`.
 
-Likewise, `agent_transcript.session_catalog` may own:
+Likewise, `transcript.session_catalog` may own:
 
 - projection from a loaded Agent transcript to `AgentTranscriptSummary`;
 - title, preview, message-count, model, status, and search-field derivation;
@@ -828,9 +828,9 @@ not yet transactional.
 | `storage/file.py` | `conversation/stores/file.py` | Native file provider for the conversation port |
 | `storage/memory.py` | `conversation/stores/memory.py` | Reference provider for the conversation port |
 | `journal/index.py` | `conversation/indexes/json_file.py` | It is a rebuildable JSON projection, not a journal |
-| `agent_transcript/store.py` | `agent_transcript/unit_of_work.py` and `AgentTranscriptUnitOfWork` | It owns the bound repository/revision/CAS transaction; it is not the backend |
-| `agent_transcript/file_store.py` | `agent_transcript/native_file.py` | It composes Agent codecs/layout with the file provider |
-| `agent_transcript/catalog.py` | `agent_transcript/session_catalog.py` | It owns Agent summary/search meaning, not physical storage |
+| `transcript/store.py` | `transcript/unit_of_work.py` and `AgentTranscriptUnitOfWork` | It owns the bound repository/revision/CAS transaction; it is not the backend |
+| `transcript/file_store.py` | `transcript/native_file.py` | It composes Agent codecs/layout with the file provider |
+| `transcript/catalog.py` | `transcript/session_catalog.py` | It owns Agent summary/search meaning, not physical storage |
 
 Avoid a large `conversation/store.py` only for aesthetic consolidation. Keep
 the public contract, value types, and errors together while implementation
@@ -1005,11 +1005,11 @@ The refactor is complete only when these gates pass:
 After migration:
 
 ```text
-journal             must not import conversation, agent_transcript, or Product
+journal             must not import conversation, transcript, or Product
 conversation        must not import Agent, AI, Coding, Work, Method, Product, TUI
-agent_transcript    may import conversation and compose journal codecs
+transcript    may import conversation and compose journal codecs
 harness.session /
-Product runtime     may import agent_transcript and owns active transitions
+Product runtime     may import transcript and owns active transitions
 CLI / TUI           invokes Product operations and owns presentation only
 ```
 

@@ -6,7 +6,7 @@ import pytest
 
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.coding.session_manager import SessionManager
-from loushang.harness.agent_transcript import build_agent_transcript_session_context
+from loushang.harness.transcript import build_agent_transcript_session_context
 
 
 def _assistant(text: str, timestamp: float) -> AssistantMessage:

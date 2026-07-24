@@ -8,7 +8,7 @@ from loushang.protocol import require_json_value
 
 
 def serialize_agent_message(message: object) -> object:
-    from loushang.harness.agent_transcript import create_agent_transcript_message_codec
+    from loushang.harness.transcript import create_agent_transcript_message_codec
 
     return create_agent_transcript_message_codec().serialize(message)
 

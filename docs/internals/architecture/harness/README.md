@@ -278,7 +278,7 @@ Accepted decisions that govern this directory:
 Harness may depend on stable `loushang.agent` primitives and the existing agent
 loop. `loushang.agent` must not depend on harness. The neutral
 `loushang.harness.conversation` core imports neither Agent nor AI. The optional
-`loushang.harness.agent_transcript` and the optional
+`loushang.harness.transcript` and the optional
 `loushang.harness.session` profile have narrow, separately tested Agent/AI data
 dependencies. The exact allowlists are recorded in the
 [Agent Transcript Profile Boundary](agent-transcript-profile-boundary.md) and

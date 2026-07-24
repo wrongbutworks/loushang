@@ -138,7 +138,7 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
 def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None:
     harness_root = Path("src/loushang/harness")
     profile_allowlists = {
-        harness_root / "agent_transcript": (
+        harness_root / "transcript": (
             "loushang.ai",
             "loushang.ai.model",
             "loushang.ai.types",
@@ -249,8 +249,8 @@ def test_harness_internal_dependency_graph_is_acyclic() -> None:
 def test_runtime_event_layers_follow_declared_dependency_direction() -> None:
     graph = _harness_internal_dependency_graph(Path("src/loushang/harness"))
     forbidden_edges = {
-        "agent_transcript": {"host", "session"},
-        "events": {"agent_transcript", "host", "runtime", "session"},
+        "transcript": {"host", "session"},
+        "events": {"host", "runtime", "session", "transcript"},
         "session": {"host"},
     }
     offenders = sorted(
@@ -264,7 +264,7 @@ def test_runtime_event_layers_follow_declared_dependency_direction() -> None:
 
 def test_runtime_event_legacy_owner_modules_are_extinct() -> None:
     legacy_paths = (
-        "src/loushang/harness/agent_transcript/session_export.py",
+        "src/loushang/harness/transcript/session_export.py",
         "src/loushang/harness/events/runtime_views.py",
         "src/loushang/harness/events/session_projection.py",
         "src/loushang/harness/events/session_serialization.py",
@@ -296,8 +296,8 @@ def test_coding_runtime_plans_are_declarative_over_shared_bindings() -> None:
 
     expected_imports = {
         Path("src/loushang/coding/product_plan.py"): {
-            "loushang.harness.agent_transcript.AgentTranscriptProfileRuntime",
-            "loushang.harness.agent_transcript.AgentTranscriptRuntimeSpec",
+            "loushang.harness.transcript.AgentTranscriptProfileRuntime",
+            "loushang.harness.transcript.AgentTranscriptRuntimeSpec",
             "loushang.harness.capabilities.standard_capability_composition_plan",
             "loushang.harness.runtime.RuntimeProfileResolver",
         },
@@ -585,7 +585,7 @@ def test_coding_agent_session_delegates_shared_turn_runtime_to_harness() -> None
 
 def test_agent_transcript_interaction_runtime_is_neutral_and_adopted() -> None:
     interaction_source = Path(
-        "src/loushang/harness/agent_transcript/interaction.py"
+        "src/loushang/harness/transcript/interaction.py"
     ).read_text(encoding="utf-8")
     composition_source = Path("src/loushang/harness/session/composition.py").read_text(
         encoding="utf-8"
@@ -610,7 +610,7 @@ def test_agent_transcript_interaction_runtime_is_neutral_and_adopted() -> None:
 
 def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
     maintenance_source = Path(
-        "src/loushang/harness/agent_transcript/maintenance.py"
+        "src/loushang/harness/transcript/maintenance.py"
     ).read_text(encoding="utf-8")
     composition_source = Path("src/loushang/harness/session/composition.py").read_text(
         encoding="utf-8"
@@ -628,7 +628,7 @@ def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
 
 
 def test_agent_transcript_export_runtime_is_neutral_and_adopted() -> None:
-    export_root = Path("src/loushang/harness/agent_transcript/export")
+    export_root = Path("src/loushang/harness/transcript/export")
     session_adapter = Path("src/loushang/harness/session/export.py")
     boundary = Path(
         "docs/internals/architecture/harness/agent-transcript-export-boundary.md"
@@ -650,10 +650,10 @@ def test_agent_transcript_export_runtime_is_neutral_and_adopted() -> None:
 
 def test_transcript_compaction_capability_is_neutral_and_adopted() -> None:
     capability_source = Path(
-        "src/loushang/harness/agent_transcript/compaction.py"
+        "src/loushang/harness/transcript/compaction.py"
     ).read_text(encoding="utf-8")
     runtime_profile_source = Path(
-        "src/loushang/harness/agent_transcript/runtime_profile.py"
+        "src/loushang/harness/transcript/runtime_profile.py"
     ).read_text(encoding="utf-8")
     product_plan_source = Path("src/loushang/coding/product_plan.py").read_text(
         encoding="utf-8"
@@ -665,7 +665,7 @@ def test_transcript_compaction_capability_is_neutral_and_adopted() -> None:
         encoding="utf-8"
     )
     summary_executor_source = Path(
-        "src/loushang/harness/agent_transcript/summarization.py"
+        "src/loushang/harness/transcript/summarization.py"
     ).read_text(encoding="utf-8")
     coding_adapter_source = Path("src/loushang/coding/compaction/adapter.py").read_text(
         encoding="utf-8"
@@ -1224,7 +1224,7 @@ def test_extension_input_runtime_is_harness_owned() -> None:
 
 def test_product_transcript_session_is_neutral_and_adopted() -> None:
     session_source = Path(
-        "src/loushang/harness/agent_transcript/product_session.py"
+        "src/loushang/harness/transcript/product_session.py"
     ).read_text(encoding="utf-8")
     coding_adapter_source = Path("src/loushang/coding/session_manager.py").read_text(
         encoding="utf-8"
@@ -2247,16 +2247,16 @@ def test_harness_context_compaction_and_journal_design_is_documented() -> None:
 
 def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
     expected_imports = {
-            Path("src/loushang/harness/agent_transcript/native_file.py"): {
+            Path("src/loushang/harness/transcript/native_file.py"): {
             "loushang.harness.conversation.NativeConversationHeaderCodec",
             "loushang.harness.conversation.NativeConversationRecordCodec",
             "loushang.harness.journal.JsonlJournal",
             "loushang.harness.journal.journal_file_lock",
         },
         Path("src/loushang/coding/session_manager.py"): {
-            "loushang.harness.agent_transcript.AgentTranscriptLifecycle",
-            "loushang.harness.agent_transcript.AgentTranscriptSessionFactory",
-            "loushang.harness.agent_transcript.ProductTranscriptSession",
+            "loushang.harness.transcript.AgentTranscriptLifecycle",
+            "loushang.harness.transcript.AgentTranscriptSessionFactory",
+            "loushang.harness.transcript.ProductTranscriptSession",
         },
         Path("src/loushang/work/event_log.py"): {
             "loushang.harness.journal.FunctionalJournalRecordCodec",
@@ -2329,7 +2329,7 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
 
     catalog_imports = set(
         _absolute_imports(
-            Path("src/loushang/harness/agent_transcript/session_catalog.py")
+            Path("src/loushang/harness/transcript/session_catalog.py")
         )
     )
     assert "loushang.harness.conversation.ConversationCatalog" in catalog_imports
@@ -2338,10 +2338,10 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
     )
 
     directory_runtime_imports = set(
-        _absolute_imports(Path("src/loushang/harness/agent_transcript/directory.py"))
+        _absolute_imports(Path("src/loushang/harness/transcript/directory.py"))
     )
     assert (
-        "loushang.harness.agent_transcript.session_catalog.AgentTranscriptSessionCatalog"
+        "loushang.harness.transcript.session_catalog.AgentTranscriptSessionCatalog"
         in (directory_runtime_imports)
     )
     assert not any(
@@ -2352,7 +2352,7 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
         _absolute_imports(Path("src/loushang/coding/session_manager.py"))
     )
     assert (
-        "loushang.harness.agent_transcript.ProductTranscriptSession"
+        "loushang.harness.transcript.ProductTranscriptSession"
         in session_manager_imports
     )
 
@@ -2399,7 +2399,7 @@ def test_harness_agent_transcript_lifecycle_is_documented_and_adopted() -> None:
     assert "Agent Transcript Lifecycle Boundary" in readme_text
 
     lifecycle_imports = set(
-        _absolute_imports(Path("src/loushang/harness/agent_transcript/lifecycle.py"))
+        _absolute_imports(Path("src/loushang/harness/transcript/lifecycle.py"))
     )
     assert not any(
         imported.startswith("loushang.coding") for imported in lifecycle_imports
@@ -2409,7 +2409,7 @@ def test_harness_agent_transcript_lifecycle_is_documented_and_adopted() -> None:
         _absolute_imports(Path("src/loushang/coding/session_manager.py"))
     )
     assert (
-        "loushang.harness.agent_transcript.AgentTranscriptLifecycle"
+        "loushang.harness.transcript.AgentTranscriptLifecycle"
         in session_manager_imports
     )
 
@@ -2438,7 +2438,7 @@ def test_harness_agent_transcript_session_factory_is_documented_and_adopted() ->
 
     factory_imports = set(
         _absolute_imports(
-            Path("src/loushang/harness/agent_transcript/session_factory.py")
+            Path("src/loushang/harness/transcript/session_factory.py")
         )
     )
     assert not any(
@@ -2449,7 +2449,7 @@ def test_harness_agent_transcript_session_factory_is_documented_and_adopted() ->
         _absolute_imports(Path("src/loushang/coding/session_manager.py"))
     )
     assert (
-        "loushang.harness.agent_transcript.AgentTranscriptSessionFactory"
+        "loushang.harness.transcript.AgentTranscriptSessionFactory"
         in session_manager_imports
     )
 
@@ -2492,15 +2492,15 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
 
     expected_imports = {
         Path("src/loushang/coding/session_manager.py"): {
-            "loushang.harness.agent_transcript.ProductTranscriptSession",
+            "loushang.harness.transcript.ProductTranscriptSession",
         },
         Path("src/loushang/harness/config/agent/manager.py"): {
             "loushang.harness.config.LayeredConfig",
         },
-        Path("src/loushang/harness/agent_transcript/compaction.py"): {
+        Path("src/loushang/harness/transcript/compaction.py"): {
             "loushang.harness.context.ConversationCompactionPlanner",
         },
-        Path("src/loushang/harness/agent_transcript/summarization.py"): {
+        Path("src/loushang/harness/transcript/summarization.py"): {
             "loushang.harness.context.SummaryProfile",
             "loushang.harness.context.build_summary_prompt",
         },
@@ -2695,14 +2695,14 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
         for path in (Path("src/loushang/coding/session_manager.py"),)
         for imported in _absolute_imports(path)
     }
-    assert "loushang.harness.agent_transcript.ProductTranscriptSession" in (
+    assert "loushang.harness.transcript.ProductTranscriptSession" in (
         coding_store_imports
     )
     assert "loushang.harness.journal.TranscriptRepository" not in (coding_store_imports)
     assert "loushang.harness.journal.BranchGraph" not in coding_store_imports
 
     harness_compaction_imports = set(
-        _absolute_imports(Path("src/loushang/harness/agent_transcript/compaction.py"))
+        _absolute_imports(Path("src/loushang/harness/transcript/compaction.py"))
     )
     assert "loushang.harness.context.ConversationCompactionPlanner" in (
         harness_compaction_imports
@@ -2719,11 +2719,11 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
 def test_conversation_persistence_has_one_native_writer_boundary() -> None:
     roots = (
         Path("src/loushang/harness/conversation"),
-        Path("src/loushang/harness/agent_transcript"),
+        Path("src/loushang/harness/transcript"),
     )
     allowed = {
         Path("src/loushang/harness/conversation/stores/file.py"),
-        Path("src/loushang/harness/agent_transcript/native_file.py"),
+        Path("src/loushang/harness/transcript/native_file.py"),
     }
     writer_calls = {"append_jsonl_record", "write_jsonl"}
     offenders: list[str] = []
@@ -2747,13 +2747,13 @@ def test_conversation_persistence_has_one_native_writer_boundary() -> None:
     assert not Path("src/loushang/harness/journal/branch.py").exists()
     assert not Path("src/loushang/harness/journal/transcript.py").exists()
     assert not Path("src/loushang/harness/journal/index.py").exists()
-    assert not Path("src/loushang/harness/agent_transcript/store.py").exists()
-    assert not Path("src/loushang/harness/agent_transcript/file_store.py").exists()
-    assert not Path("src/loushang/harness/agent_transcript/catalog.py").exists()
+    assert not Path("src/loushang/harness/transcript/store.py").exists()
+    assert not Path("src/loushang/harness/transcript/file_store.py").exists()
+    assert not Path("src/loushang/harness/transcript/catalog.py").exists()
 
 
 def test_agent_session_catalog_uses_bound_store_discovery() -> None:
-    path = Path("src/loushang/harness/agent_transcript/session_catalog.py")
+    path = Path("src/loushang/harness/transcript/session_catalog.py")
     source = path.read_text(encoding="utf-8")
     imports = set(_absolute_imports(path))
 
@@ -3812,7 +3812,7 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
             "loushang.harness.runtime.stage_file_import",
         },
         Path("src/loushang/harness/session/transcript_lifecycle.py"): {
-            "loushang.harness.agent_transcript.directory.AgentTranscriptDirectoryRuntime",
+            "loushang.harness.transcript.directory.AgentTranscriptDirectoryRuntime",
             "loushang.harness.session.lifecycle.SessionLifecycleRuntime",
         },
         Path("src/loushang/coding/runtime/agent_session_runtime.py"): {
@@ -3831,10 +3831,10 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
             "loushang.harness.resources.refresh.ResourceRefreshCoordinator",
         },
         Path("src/loushang/harness/session/composition.py"): {
-            "loushang.harness.agent_transcript.AgentTranscriptRetryRuntime",
-            "loushang.harness.agent_transcript.AgentTranscriptCompactionRuntime",
-            "loushang.harness.agent_transcript.AgentTranscriptNavigationRuntime",
-            "loushang.harness.agent_transcript.AgentTranscriptSelectionRuntime",
+            "loushang.harness.transcript.AgentTranscriptRetryRuntime",
+            "loushang.harness.transcript.AgentTranscriptCompactionRuntime",
+            "loushang.harness.transcript.AgentTranscriptNavigationRuntime",
+            "loushang.harness.transcript.AgentTranscriptSelectionRuntime",
             "loushang.harness.extensions.session_runtime.ExtensionSessionRuntime",
             "loushang.harness.extensions.agent.ExtensionInputRuntime",
         },

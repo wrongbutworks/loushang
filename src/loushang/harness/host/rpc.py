@@ -22,10 +22,6 @@ from loushang.channel import (
     RemoteUiContext,
     project_channel_value,
 )
-from loushang.harness.agent_transcript import (
-    SessionQuery,
-    create_agent_transcript_message_codec,
-)
 from loushang.harness.commands import complete_slash_commands
 from loushang.harness.diagnostics.serialization import (
     serialize_diagnostic,
@@ -51,6 +47,10 @@ from loushang.harness.session import (
     shape_stream_event,
     should_emit_projected_event,
     should_emit_runtime_event_view,
+)
+from loushang.harness.transcript import (
+    SessionQuery,
+    create_agent_transcript_message_codec,
 )
 
 _THINKING_LEVEL_ORDER: tuple[str, ...] = (

@@ -2628,7 +2628,6 @@ def test_extension_runner_context_exposes_standard_ui_namespace_and_has_ui() -> 
 
 
 def test_extension_runner_emits_tree_and_compact_decision_hooks() -> None:
-    from loushang.harness.agent_transcript import BranchSummaryOutput, CompactionResult
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
@@ -2639,6 +2638,7 @@ def test_extension_runner_emits_tree_and_compact_decision_hooks() -> None:
         SessionBeforeTreeEvent,
         SessionBeforeTreeResult,
     )
+    from loushang.harness.transcript import BranchSummaryOutput, CompactionResult
 
     seen: list[tuple[str, str]] = []
 

@@ -15,17 +15,6 @@ from typing import Generic, TypeVar, cast
 from loushang.agent import AgentEvent
 from loushang.ai.model import ModelSelection
 from loushang.ai.types import AssistantMessage
-from loushang.harness.agent_transcript import (
-    AgentTranscriptContext,
-    BranchSummaryOutput,
-    CompactionPreparation,
-    CompactionResult,
-    CompactionStatus,
-    ProductTranscriptSession,
-    TranscriptNavigationPlan,
-    TranscriptNavigationResult,
-    normalize_branch_summary_output,
-)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft, DiagnosticPhase
 from loushang.harness.events import (
@@ -86,6 +75,17 @@ from loushang.harness.session.transcript_lifecycle import (
 )
 from loushang.harness.tools.workspace.protocol import (
     normalize_bash_result_from_protocol,
+)
+from loushang.harness.transcript import (
+    AgentTranscriptContext,
+    BranchSummaryOutput,
+    CompactionPreparation,
+    CompactionResult,
+    CompactionStatus,
+    ProductTranscriptSession,
+    TranscriptNavigationPlan,
+    TranscriptNavigationResult,
+    normalize_branch_summary_output,
 )
 from loushang.harness.workspace.exec import ExecRequest, ExecResult, ExecUpdateCallback
 

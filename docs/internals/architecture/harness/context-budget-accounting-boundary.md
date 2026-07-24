@@ -50,7 +50,7 @@ message content, and constructing the record. Harness therefore does not import
 The former `loushang.coding.compaction.policy` and generic
 `loushang.coding.compaction.types` facades are removed. Products import budget
 and usage records from `loushang.harness.context` and transcript maintenance
-records from `loushang.harness.agent_transcript` directly.
+records from `loushang.harness.transcript` directly.
 
 Coding internal consumers import the focused Harness owners directly:
 

@@ -29,9 +29,9 @@ rules.
 | Runtime profile resolution | `harness.runtime` | profile root | Implemented; Coding adopted | `ProductRuntimePlan`, deterministic resolver, JSON snapshot, diagnostics |
 | Binding lifecycle | `harness.runtime` | lifecycle coordinator | Implemented; Coding adopted | explicit factory registry/binder, sealed/turn refresh, generation leases |
 | Conversation store | `harness.storage` | single, session-sealed | Planned | `ConversationStore`, Memory/File adapters |
-| Transcript profile | `harness.agent_transcript` | single, session-sealed | Planned | common Agent profile, codec registry, commit service |
+| Transcript profile | `harness.transcript` | single, session-sealed | Planned | common Agent profile, codec registry, commit service |
 | Memory | `harness.context` | ordered-many | Planned | context items, packing, salience foundations |
-| Context compaction | `harness.context` + `harness.agent_transcript` | one selected mechanism plus Product executor ports | Implemented | coordinator, strategies, turn-aware transcript planning, checkpoint runtime, bound capability |
+| Context compaction | `harness.context` + `harness.transcript` | one selected mechanism plus Product executor ports | Implemented | coordinator, strategies, turn-aware transcript planning, checkpoint runtime, bound capability |
 | Artifact store | focused Harness artifact contract or Work owner | typed single or per-kind | Deferred | Product/Work artifact semantics remain unresolved |
 | Prompt | `harness.capabilities` | ordered-many | Standard runtime binding implemented | section composition and templates |
 | Skill | `harness.resources` plus Product selection | ordered-many | Standard runtime binding implemented | descriptor, discovery, resource overlay |
@@ -52,7 +52,7 @@ than the order in which current Coding files happen to appear.
 
 | Migration wave | Components prepared by this design | Current Coding migration relationship | Required design gate before code |
 | --- | --- | --- | --- |
-| 0. Runtime profile foundation | requirements, profile resolution, binding lifecycle | `harness.runtime.profile` supplies the common contract; `harness.agent_transcript.AgentTranscriptProfileRuntime` composes the optional standard Agent profile; `coding.product_plan` declares Coding's identities and defaults. | `runtime-profile-resolution.md` and contract tests. |
+| 0. Runtime profile foundation | requirements, profile resolution, binding lifecycle | `harness.runtime.profile` supplies the common contract; `harness.transcript.AgentTranscriptProfileRuntime` composes the optional standard Agent profile; `coding.product_plan` declares Coding's identities and defaults. | `runtime-profile-resolution.md` and contract tests. |
 | 1. Session coordination | binding lifecycle, prompt, tool/command contribution hooks | Reduce `coding.session` event, prompt, and queue coordination to Product adapters over Harness runtime/host mechanisms. | Runtime profile resolution and binding lifecycle designs. |
 | 2. Transcript and durable store | conversation store, transcript profile | Extend existing direct Store injection to declared profile selection; preserve sealed session semantics. | Conversation store and transcript profile binding designs. |
 | 3. Context runtime | memory and context compaction | Coding selects a Harness compaction mechanism and binds Product execution; memory remains a separate future component. | Context compaction binding design complete; memory binding design before memory cutover. |

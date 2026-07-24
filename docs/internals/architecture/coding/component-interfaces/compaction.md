@@ -15,7 +15,7 @@
 - `store`
 - `control`
 - `loushang-ai`
-- `loushang.harness.agent_transcript`
+- `loushang.harness.transcript`
 - `loushang.harness.context`
 
 ## Commands

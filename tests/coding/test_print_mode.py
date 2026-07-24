@@ -2184,7 +2184,7 @@ def test_print_mode_json_streams_all_supported_session_events() -> None:
 
     from loushang.agent import AgentToolResult
     from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, Usage
-    from loushang.harness.agent_transcript import ApplicationMessage
+    from loushang.harness.transcript import ApplicationMessage
     from loushang.harnesstui.conversation.agent_binding import (
         AgentPlainHost as PrintMode,
     )
