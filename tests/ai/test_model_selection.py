@@ -50,10 +50,3 @@ def test_model_selection_reference_parser_accepts_shared_forms(
 def test_model_selection_reference_parser_rejects_partial_reference() -> None:
     with pytest.raises(ValueError, match="Model selection requires"):
         parse_model_selection_reference("model")
-
-
-@pytest.mark.skip(reason="coding auth integration is pending its dedicated rebuild")
-def test_coding_model_selection_is_the_ai_value_object() -> None:
-    from loushang.ai.model import ModelSelection as CodingModelSelection
-
-    assert CodingModelSelection is ModelSelection
