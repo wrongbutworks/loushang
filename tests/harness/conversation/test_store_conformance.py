@@ -1,3 +1,5 @@
+"""Conformance tests for neutral conversation Store providers."""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,17 +12,19 @@ from typing import Any
 
 import pytest
 
-from loushang.harness.journal import JournalLoadPolicy, JsonlJournal
-from loushang.harness.storage import (
+from loushang.harness.conversation import (
     ConversationKey,
     ConversationStore,
     FileConversationStore,
     MemoryConversationStore,
     StoreAlreadyExistsError,
+    StoreCommitOutcomeUnknown,
     StoreConflictError,
     StoreDataError,
     StoreNotFoundError,
+    StoreOperationConflictError,
 )
+from loushang.harness.journal import JournalLoadPolicy, JsonlJournal
 
 
 @dataclass(frozen=True)
@@ -58,6 +62,10 @@ _StoreFactory = Callable[[], ConversationStore[_Header, _Record]]
 
 def _record_id(record: _Record) -> str:
     return record.record_id
+
+
+def _operation(action: str, key: ConversationKey, suffix: str = "") -> str:
+    return f"{action}:{key.namespace}:{key.conversation_id}:{suffix}"
 
 
 def _memory_factory(
@@ -124,10 +132,17 @@ def test_store_implements_protocol_and_round_trips_initial_records(
         records = (_Record("record-1", "first"), _Record("record-2", "second"))
 
         assert isinstance(store, ConversationStore)
-        created = await store.create(key, _Header("Original"), records)
-        loaded = await store.load(key)
+        created = await store.create(
+            key,
+            _Header("Original"),
+            records,
+            operation_id=_operation("create", key),
+        )
+        load_result = await store.load(key)
+        loaded = load_result.snapshot
 
         assert created == loaded
+        assert load_result.diagnostics == ()
         assert loaded.header == _Header("Original")
         assert loaded.records == records
         assert loaded.revision == 2
@@ -139,25 +154,33 @@ def test_append_checks_revision_before_mutation(store_factory: _StoreFactory) ->
     async def scenario() -> None:
         store = store_factory()
         key = ConversationKey("coding", "session-1")
-        await store.create(key, _Header("Immutable"))
+        await store.create(
+            key,
+            _Header("Immutable"),
+            operation_id=_operation("create", key),
+        )
 
-        receipt = await store.append(
+        commit_result = await store.append(
             key,
             _Record("record-1", "first"),
             expected_revision=0,
+            operation_id="record-1",
         )
+        receipt = commit_result.receipt
         assert receipt.revision == 1
         assert receipt.record_id == "record-1"
         assert receipt.committed_at == _NOW
+        assert commit_result.diagnostics == ()
 
         with pytest.raises(StoreConflictError):
             await store.append(
                 key,
                 _Record("record-2", "stale"),
                 expected_revision=0,
+                operation_id="record-2",
             )
 
-        loaded = await store.load(key)
+        loaded = (await store.load(key)).snapshot
         assert loaded.header == _Header("Immutable")
         assert loaded.records == (_Record("record-1", "first"),)
         assert loaded.revision == 1
@@ -171,12 +194,21 @@ def test_create_existing_key_fails_without_replacing_data(
     async def scenario() -> None:
         store = store_factory()
         key = ConversationKey("coding", "session-1")
-        await store.create(key, _Header("Original"), (_Record("one", "kept"),))
+        await store.create(
+            key,
+            _Header("Original"),
+            (_Record("one", "kept"),),
+            operation_id=_operation("create", key),
+        )
 
         with pytest.raises(StoreAlreadyExistsError):
-            await store.create(key, _Header("Replacement"))
+            await store.create(
+                key,
+                _Header("Replacement"),
+                operation_id=_operation("replacement", key),
+            )
 
-        loaded = await store.load(key)
+        loaded = (await store.load(key)).snapshot
         assert loaded.header == _Header("Original")
         assert loaded.records == (_Record("one", "kept"),)
 
@@ -197,9 +229,14 @@ def test_missing_load_append_and_delete_share_not_found_error(
                 key,
                 _Record("record-1", "missing"),
                 expected_revision=0,
+                operation_id="record-1",
             )
         with pytest.raises(StoreNotFoundError):
-            await store.delete(key)
+            await store.delete(
+                key,
+                expected_revision=0,
+                operation_id=_operation("delete", key),
+            )
 
     asyncio.run(scenario())
 
@@ -212,14 +249,30 @@ def test_scan_is_namespace_scoped_and_delete_removes_key(
         coding_b = ConversationKey("coding", "b")
         coding_a = ConversationKey("coding", "a")
         research = ConversationKey("research", "a")
-        await store.create(coding_b, _Header("B"))
-        await store.create(research, _Header("Research"))
-        await store.create(coding_a, _Header("A"))
+        await store.create(
+            coding_b,
+            _Header("B"),
+            operation_id=_operation("create", coding_b),
+        )
+        await store.create(
+            research,
+            _Header("Research"),
+            operation_id=_operation("create", research),
+        )
+        await store.create(
+            coding_a,
+            _Header("A"),
+            operation_id=_operation("create", coding_a),
+        )
 
         assert await store.scan("coding") == (coding_a, coding_b)
         assert await store.scan("research") == (research,)
 
-        await store.delete(coding_a)
+        await store.delete(
+            coding_a,
+            expected_revision=0,
+            operation_id=_operation("delete", coding_a),
+        )
         assert await store.scan("coding") == (coding_b,)
 
     asyncio.run(scenario())
@@ -230,11 +283,19 @@ def test_file_delete_preserves_default_lock_artifact(tmp_path: Path) -> None:
     key = ConversationKey("coding", "conversation-1")
 
     async def scenario() -> None:
-        await store.create(key, _Header("conversation-1"))
+        await store.create(
+            key,
+            _Header("conversation-1"),
+            operation_id=_operation("create", key),
+        )
         path = tmp_path / "conversations" / "coding" / "conversation-1.jsonl"
         assert path.with_name(f"{path.name}.lock").exists()
 
-        await store.delete(key)
+        await store.delete(
+            key,
+            expected_revision=0,
+            operation_id=_operation("delete", key),
+        )
 
         assert not path.exists()
         assert path.with_name(f"{path.name}.lock").exists()
@@ -250,14 +311,19 @@ def test_invalid_expected_revision_is_rejected(
     async def scenario() -> None:
         store = store_factory()
         key = ConversationKey("coding", "session-1")
-        await store.create(key, _Header("Header"))
+        await store.create(
+            key,
+            _Header("Header"),
+            operation_id=_operation("create", key),
+        )
         with pytest.raises((TypeError, ValueError)):
             await store.append(
                 key,
                 _Record("record-1", "invalid revision"),
                 expected_revision=revision,
+                operation_id="record-1",
             )
-        assert (await store.load(key)).revision == 0
+        assert (await store.load(key)).snapshot.revision == 0
 
     asyncio.run(scenario())
 
@@ -309,12 +375,17 @@ def test_file_append_loads_counts_and_appends_inside_one_exclusive_lock(
     )
 
     async def scenario() -> None:
-        await store.create(key, _Header("Header"))
+        await store.create(
+            key,
+            _Header("Header"),
+            operation_id=_operation("create", key),
+        )
         lock_entries.clear()
         await store.append(
             key,
             _Record("record-1", "atomic"),
             expected_revision=0,
+            operation_id="record-1",
         )
 
     asyncio.run(scenario())
@@ -327,7 +398,11 @@ def test_file_maps_corrupted_persistence_to_data_error(tmp_path: Path) -> None:
     async def scenario() -> None:
         store = factory()
         key = ConversationKey("coding", "session-1")
-        await store.create(key, _Header("Header"))
+        await store.create(
+            key,
+            _Header("Header"),
+            operation_id=_operation("create", key),
+        )
         path = tmp_path / "conversations" / "coding" / "session-1.jsonl"
         path.write_text("not-json\n", encoding="utf-8")
 
@@ -338,6 +413,7 @@ def test_file_maps_corrupted_persistence_to_data_error(tmp_path: Path) -> None:
                 key,
                 _Record("record-1", "blocked"),
                 expected_revision=0,
+                operation_id="record-1",
             )
 
     asyncio.run(scenario())
@@ -376,6 +452,7 @@ def test_file_create_with_initial_records_is_atomic_on_codec_failure(
                 ConversationKey("coding", "session-1"),
                 _Header("Header"),
                 (_Record("kept", "first"), _Record("broken", "second")),
+                operation_id="create:broken",
             )
 
     asyncio.run(scenario())
@@ -391,15 +468,168 @@ def test_receipt_projection_failure_does_not_commit(tmp_path: Path) -> None:
     async def scenario(factory: _StoreFactory) -> None:
         base_store = factory()
         key = ConversationKey("coding", "session-1")
-        await base_store.create(key, _Header("Header"))
+        await base_store.create(
+            key,
+            _Header("Header"),
+            operation_id=_operation("create", key),
+        )
 
         with pytest.raises((StoreDataError, ValueError)):
             await base_store.append(
                 key,
                 _Record("record-1", "must not commit"),
                 expected_revision=0,
+                operation_id="record-1",
             )
-        assert (await base_store.load(key)).revision == 0
+        assert (await base_store.load(key)).snapshot.revision == 0
 
     for factory in factories:
         asyncio.run(scenario(factory))
+
+
+def test_operations_are_idempotent_and_deleted_keys_are_retired(
+    store_factory: _StoreFactory,
+) -> None:
+    async def scenario() -> None:
+        store = store_factory()
+        key = ConversationKey("coding", "idempotent")
+        create_operation = _operation("create", key)
+        first = await store.create(
+            key,
+            _Header("Header"),
+            operation_id=create_operation,
+        )
+        repeated = await store.create(
+            key,
+            _Header("Header"),
+            operation_id=create_operation,
+        )
+        assert repeated == first
+
+        append = await store.append(
+            key,
+            _Record("record-1", "once"),
+            expected_revision=0,
+            operation_id="record-1",
+        )
+        repeated_append = await store.append(
+            key,
+            _Record("record-1", "once"),
+            expected_revision=0,
+            operation_id="record-1",
+        )
+        assert repeated_append.receipt.revision == append.receipt.revision == 1
+        assert (await store.load(key)).snapshot.records == (
+            _Record("record-1", "once"),
+        )
+
+        with pytest.raises(StoreOperationConflictError):
+            await store.append(
+                key,
+                _Record("record-1", "different"),
+                expected_revision=1,
+                operation_id="record-1",
+            )
+        with pytest.raises(StoreConflictError):
+            await store.delete(
+                key,
+                expected_revision=0,
+                operation_id=_operation("delete", key, "stale"),
+            )
+
+        delete_operation = _operation("delete", key, "1")
+        deleted = await store.delete(
+            key,
+            expected_revision=1,
+            operation_id=delete_operation,
+        )
+        repeated_delete = await store.delete(
+            key,
+            expected_revision=1,
+            operation_id=delete_operation,
+        )
+        assert repeated_delete == deleted
+        with pytest.raises(StoreAlreadyExistsError):
+            await store.create(
+                key,
+                _Header("Reused"),
+                operation_id=_operation("create", key, "again"),
+            )
+
+    asyncio.run(scenario())
+
+
+def test_scan_page_is_paginated_and_content_ordered(
+    store_factory: _StoreFactory,
+) -> None:
+    async def scenario() -> None:
+        store = store_factory()
+        keys = tuple(ConversationKey("coding", value) for value in ("c", "a", "b"))
+        for key in keys:
+            await store.create(
+                key,
+                _Header(key.conversation_id),
+                operation_id=_operation("create", key),
+            )
+
+        first = await store.scan_page("coding", limit=2)
+        second = await store.scan_page(
+            "coding",
+            cursor=first.next_cursor,
+            limit=2,
+        )
+
+        assert [head.key.conversation_id for head in first.heads] == ["a", "b"]
+        assert first.next_cursor == "2"
+        assert [head.key.conversation_id for head in second.heads] == ["c"]
+        assert second.next_cursor is None
+        assert all(head.revision == 0 for head in (*first.heads, *second.heads))
+
+    asyncio.run(scenario())
+
+
+def test_file_append_reconciles_a_lost_success_response(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loushang.harness.conversation.stores import file as file_store_module
+
+    store = _file_factory(tmp_path)()
+    key = ConversationKey("coding", "lost-response")
+    append_once = file_store_module.append_jsonl_record
+
+    def append_then_lose_response(*args, **kwargs):
+        append_once(*args, **kwargs)
+        raise OSError("response lost after fsync")
+
+    async def scenario() -> None:
+        await store.create(
+            key,
+            _Header("Header"),
+            operation_id=_operation("create", key),
+        )
+        monkeypatch.setattr(
+            file_store_module,
+            "append_jsonl_record",
+            append_then_lose_response,
+        )
+        record = _Record("record-1", "committed once")
+        with pytest.raises(StoreCommitOutcomeUnknown):
+            await store.append(
+                key,
+                record,
+                expected_revision=0,
+                operation_id=record.record_id,
+            )
+
+        assert (await store.load(key)).snapshot.records == (record,)
+        reconciled = await store.append(
+            key,
+            record,
+            expected_revision=0,
+            operation_id=record.record_id,
+        )
+        assert reconciled.receipt.revision == 1
+        assert (await store.load(key)).snapshot.records == (record,)
+
+    asyncio.run(scenario())

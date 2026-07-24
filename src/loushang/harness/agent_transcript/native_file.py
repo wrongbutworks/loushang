@@ -1,4 +1,4 @@
-"""Current Native Agent transcript JSONL storage over ``ConversationStore``.
+"""Current Native Agent transcript file composition over ``ConversationStore``.
 
 This optional Agent/AI profile owns the current Loushang transcript file
 format. Product code chooses a root directory and a storage provider; it does
@@ -7,6 +7,7 @@ not own JSONL codecs, locking, or native-file discovery.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import os
 from collections.abc import Callable, Iterator
@@ -21,7 +22,9 @@ from loushang.harness.agent_transcript.profile import AgentTranscriptProfile
 from loushang.harness.agent_transcript.types import AgentTranscriptRecord
 from loushang.harness.conversation import (
     ConversationHeader,
+    ConversationKey,
     ConversationRepository,
+    FileConversationStore,
     NativeConversationHeaderCodec,
     NativeConversationRecordCodec,
 )
@@ -29,7 +32,6 @@ from loushang.harness.journal import (
     DEFAULT_JSONL_FORMAT,
     DURABLE_LOCKED_JOURNAL,
     JournalCodecError,
-    JournalDiagnostic,
     JournalFileError,
     JournalLoadPolicy,
     JournalRecordCodec,
@@ -38,7 +40,6 @@ from loushang.harness.journal import (
     LockMode,
     journal_file_lock,
 )
-from loushang.harness.storage import ConversationKey, FileConversationStore
 
 
 class AgentTranscriptFileError(ValueError):
@@ -116,62 +117,37 @@ def agent_transcript_journal(
     )
 
 
-def write_agent_transcript_file(
+def write_agent_transcript_export(
     path: Path,
     header: ConversationHeader,
     records: list[AgentTranscriptRecord],
 ) -> None:
+    """Write a derived Native JSONL artifact, never an active Store stream."""
+
     agent_transcript_journal(path).rewrite(records, header=header)
-
-
-def append_agent_transcript_record(
-    path: Path,
-    record: AgentTranscriptRecord,
-) -> None:
-    agent_transcript_journal(path).append(record)
 
 
 def create_agent_transcript_repository(
     *,
     header: ConversationHeader,
     records: list[AgentTranscriptRecord],
-    path: Path | None = None,
 ) -> ConversationRepository[ConversationHeader, AgentTranscriptRecord]:
     return ConversationRepository.create(
         header=header,
         records=records,
         record_id=lambda record: record.record_id,
         parent_id=lambda record: record.parent_id,
-        journal=agent_transcript_journal(path) if path is not None else None,
         mode="compatible",
     )
 
 
 def load_agent_transcript_repository(
     path: Path,
-    *,
-    writable: bool = True,
-    persist: bool | None = None,
 ) -> ConversationRepository[ConversationHeader, AgentTranscriptRecord]:
-    """Load a current Native transcript without accepting legacy formats."""
+    """Load a detached current Native transcript without mutating its source."""
 
-    persist_to_source = writable if persist is None else persist
-    if persist_to_source and not writable:
-        raise ValueError("read-only transcript repositories cannot persist changes")
     try:
-        journal = agent_transcript_journal(
-            path,
-            repair_partial_tail=persist_to_source,
-        )
-        if persist_to_source:
-            return ConversationRepository.load(
-                journal,
-                record_id=lambda record: record.record_id,
-                parent_id=lambda record: record.parent_id,
-                mode="compatible",
-                writable=True,
-            )
-        snapshot = journal.load()
+        snapshot = agent_transcript_journal(path).load()
         if snapshot.header is None:
             raise AgentTranscriptFileError(
                 "Transcript file must start with a conversation header",
@@ -181,9 +157,6 @@ def load_agent_transcript_repository(
         return _create_detached_repository(
             header=snapshot.header,
             records=snapshot.records,
-            path=path,
-            diagnostics=snapshot.diagnostics,
-            writable=writable,
         )
     except JournalFileError as exc:
         raise _agent_transcript_file_error(exc) from exc
@@ -287,7 +260,11 @@ class AgentTranscriptFileLayout:
     def scan_paths(self, namespace: str) -> tuple[Path, ...]:
         if namespace != self.namespace or not self.root.is_dir():
             return ()
-        return tuple(sorted(self.root.glob("*.jsonl")))
+        return tuple(
+            path
+            for path in sorted(self.root.glob("*.jsonl"))
+            if not path.name.endswith("-export.jsonl")
+        )
 
     def key_for_path(self, namespace: str, path: Path) -> ConversationKey:
         if namespace != self.namespace:
@@ -305,6 +282,13 @@ class AgentTranscriptFileLayout:
 
         self.bind_path(key, path)
 
+    def tombstone_path(self, key: ConversationKey) -> Path:
+        self._require_namespace(key)
+        digest = hashlib.sha256(
+            f"{key.namespace}\0{key.conversation_id}".encode()
+        ).hexdigest()
+        return self.root / ".conversation-identities" / f"{digest}.deleted.json"
+
     def _require_namespace(self, key: ConversationKey) -> None:
         if key.namespace != self.namespace:
             raise ValueError("conversation key does not belong to this layout")
@@ -321,7 +305,12 @@ def create_agent_transcript_file_store(
         scan_paths=layout.scan_paths,
         key_for_path=layout.key_for_path,
         journal_factory=agent_transcript_journal,
+        write_journal_factory=lambda path: agent_transcript_journal(
+            path,
+            repair_partial_tail=True,
+        ),
         record_id=lambda record: record.record_id,
+        tombstone_path=layout.tombstone_path,
     )
 
 
@@ -329,9 +318,6 @@ def _create_detached_repository(
     *,
     header: ConversationHeader,
     records: tuple[AgentTranscriptRecord, ...],
-    path: Path,
-    diagnostics: tuple[JournalDiagnostic, ...] = (),
-    writable: bool,
 ) -> ConversationRepository[ConversationHeader, AgentTranscriptRecord]:
     return ConversationRepository.create(
         header=header,
@@ -339,9 +325,6 @@ def _create_detached_repository(
         record_id=lambda record: record.record_id,
         parent_id=lambda record: record.parent_id,
         mode="compatible",
-        diagnostics=diagnostics,
-        source_path=path,
-        writable=writable,
     )
 
 
@@ -403,11 +386,10 @@ __all__ = [
     "LockMode",
     "agent_transcript_file_lock",
     "agent_transcript_journal",
-    "append_agent_transcript_record",
     "create_agent_transcript_file_store",
     "create_agent_transcript_repository",
     "load_agent_transcript_file",
     "load_agent_transcript_repository",
     "load_current_agent_transcript_header",
-    "write_agent_transcript_file",
+    "write_agent_transcript_export",
 ]

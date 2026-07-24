@@ -15,13 +15,13 @@ from inspect import isawaitable
 from pathlib import Path
 from typing import Generic, TypeVar
 
-from loushang.harness.agent_transcript.catalog import SessionSummary
 from loushang.harness.agent_transcript.directory import (
     AgentTranscriptDirectoryRuntime,
 )
 from loushang.harness.agent_transcript.product_session import (
     ProductTranscriptSession,
 )
+from loushang.harness.agent_transcript.session_catalog import SessionSummary
 from loushang.harness.diagnostics.types import (
     DiagnosticRecord,
     DiagnosticsQuery,

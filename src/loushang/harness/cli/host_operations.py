@@ -11,7 +11,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import TextIO
 
-from loushang.harness.agent_transcript.catalog import try_project_session_record
+from loushang.harness.agent_transcript.session_catalog import try_project_session_record
 from loushang.harness.cli.agent_args import AgentCliArgs
 from loushang.harness.cli.command_execution import (
     CommandExecutionError,

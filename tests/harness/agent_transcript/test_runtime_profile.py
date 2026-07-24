@@ -11,8 +11,7 @@ from loushang.harness.agent_transcript import (
     AgentTranscriptProfileRuntime,
     AgentTranscriptRuntimeSpec,
 )
-from loushang.harness.conversation import ConversationHeader
-from loushang.harness.storage import MemoryConversationStore
+from loushang.harness.conversation import ConversationHeader, MemoryConversationStore
 
 
 def _runtime(product_id: str = "research") -> AgentTranscriptProfileRuntime:

@@ -621,8 +621,7 @@ async def test_list_summaries_skips_one_projection_failure(
     tmp_path, monkeypatch
 ) -> None:
     from loushang.coding.session_manager import SessionManager
-    from loushang.harness.agent_transcript import catalog as catalog_module
-    from loushang.harness.conversation import FunctionalConversationProjector
+    from loushang.harness.agent_transcript import session_catalog as catalog_module
 
     await SessionManager.new(
         session_dir=tmp_path,
@@ -636,22 +635,23 @@ async def test_list_summaries_skips_one_projection_failure(
         persist=True,
         session_id="bad",
     )
-    original = catalog_module._SESSION_SUMMARY_PROJECTOR
+    original = catalog_module.project_agent_transcript_session_summary
 
-    def project(header, records, leaf_id, source_path):
+    def project(header, records, leaf_id, source_path, *, locator=None):
         if header.conversation_id == "bad":
             raise ValueError("bad product projection")
-        return original.project(
-            header=header,
-            records=records,
-            leaf_id=leaf_id,
-            source_path=source_path,
+        return original(
+            header,
+            records,
+            leaf_id,
+            source_path,
+            locator=locator,
         )
 
     monkeypatch.setattr(
         catalog_module,
-        "_SESSION_SUMMARY_PROJECTOR",
-        FunctionalConversationProjector(project),
+        "project_agent_transcript_session_summary",
+        project,
     )
 
     assert [
@@ -1260,7 +1260,7 @@ async def test_session_manager_rebuilds_stale_index_when_indexed_session_file_di
     assert [summary.session_id for summary in summaries] == [
         first.get_header().conversation_id
     ]
-    assert [item["session_id"] for item in raw_index["summaries"]] == [
+    assert [item["projection"]["session_id"] for item in raw_index["items"]] == [
         first.get_header().conversation_id
     ]
 
@@ -1306,7 +1306,7 @@ async def test_session_manager_rebuilds_nested_stale_indexes_during_all_index_qu
     assert [summary.session_id for summary in summaries] == [
         root.get_header().conversation_id
     ]
-    assert nested_index["summaries"] == []
+    assert nested_index["items"] == []
 
 
 @_async_test
@@ -1355,7 +1355,7 @@ async def test_session_manager_open_rejects_invalid_empty_session_file(
     import pytest
 
     from loushang.coding.session_manager import SessionManager
-    from loushang.harness.agent_transcript.file_store import (
+    from loushang.harness.agent_transcript.native_file import (
         AgentTranscriptFileError as SessionFileError,
     )
 
@@ -1380,7 +1380,7 @@ async def test_session_manager_open_rejects_invalid_header_session_file(
     import pytest
 
     from loushang.coding.session_manager import SessionManager
-    from loushang.harness.agent_transcript.file_store import (
+    from loushang.harness.agent_transcript.native_file import (
         AgentTranscriptFileError as SessionFileError,
     )
 
@@ -1402,7 +1402,7 @@ async def test_session_manager_open_rejects_missing_header_session_file(
     import pytest
 
     from loushang.coding.session_manager import SessionManager
-    from loushang.harness.agent_transcript.file_store import (
+    from loushang.harness.agent_transcript.native_file import (
         AgentTranscriptFileError as SessionFileError,
     )
 
@@ -1430,7 +1430,7 @@ async def test_session_manager_rejects_session_v3_without_rewriting_it(
     import pytest
 
     from loushang.coding.session_manager import SessionManager
-    from loushang.harness.agent_transcript.file_store import (
+    from loushang.harness.agent_transcript.native_file import (
         AgentTranscriptFileError as SessionFileError,
     )
 

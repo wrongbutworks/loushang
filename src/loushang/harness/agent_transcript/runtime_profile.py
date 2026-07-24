@@ -18,17 +18,22 @@ from loushang.harness.agent_transcript.compaction import (
     AgentTranscriptCompactionCapability,
     create_agent_transcript_compaction_capability,
 )
-from loushang.harness.agent_transcript.file_store import (
-    AgentTranscriptFileLayout,
-    create_agent_transcript_file_store,
-)
 from loushang.harness.agent_transcript.lifecycle import (
     AgentTranscriptLifecycleContext,
     AgentTranscriptRuntimeBinding,
 )
+from loushang.harness.agent_transcript.native_file import (
+    AgentTranscriptFileLayout,
+    create_agent_transcript_file_store,
+)
 from loushang.harness.agent_transcript.profile import AgentTranscriptProfile
 from loushang.harness.agent_transcript.types import AgentTranscriptRecord
-from loushang.harness.conversation import ConversationHeader
+from loushang.harness.conversation import (
+    ConversationHeader,
+    ConversationKey,
+    ConversationStore,
+    MemoryConversationStore,
+)
 from loushang.harness.runtime import (
     ProductRuntimePlan,
     ResolvedRuntimeProfile,
@@ -40,11 +45,6 @@ from loushang.harness.runtime import (
     RuntimeProfileResolver,
     RuntimeProfileSnapshot,
     standard_agent_session_slots,
-)
-from loushang.harness.storage import (
-    ConversationKey,
-    ConversationStore,
-    MemoryConversationStore,
 )
 from loushang.protocol import JSONValue
 

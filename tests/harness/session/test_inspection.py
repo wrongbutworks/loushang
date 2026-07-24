@@ -14,11 +14,14 @@ from loushang.ai.types import (
 )
 from loushang.harness.agent_transcript import (
     AgentTranscriptSession,
-    AgentTranscriptSessionStore,
+    AgentTranscriptUnitOfWork,
 )
-from loushang.harness.conversation import ConversationHeader
+from loushang.harness.conversation import (
+    ConversationHeader,
+    ConversationKey,
+    MemoryConversationStore,
+)
 from loushang.harness.session import AgentSessionInspector, AgentSessionState
-from loushang.harness.storage import ConversationKey, MemoryConversationStore
 
 
 def _model() -> Model:
@@ -68,7 +71,7 @@ def _assistant() -> AssistantMessage:
 
 async def _inspector() -> AgentSessionInspector:
     store = MemoryConversationStore(record_id=lambda record: record.record_id)
-    transcript = await AgentTranscriptSessionStore.create(
+    transcript = await AgentTranscriptUnitOfWork.create(
         store,
         ConversationKey("test", "inspection-1"),
         ConversationHeader(

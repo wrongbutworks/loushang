@@ -18,16 +18,15 @@ artifact vocabulary. Agent-backed Products may select the follow-on common
 - neutral conversation headers, parent-linked record envelopes, tree nodes,
   branch deltas, and structured `CommandExecutionRecord` payloads;
 - header and record codec ports, projector ports, and state-folder ports;
-- `ConversationRepository`, composed over the existing Harness
-  `TranscriptRepository` and `BranchGraph` rather than duplicating JSONL or
-  graph behavior;
+- the single pure in-memory `ConversationRepository`, composed with the
+  conversation-owned `BranchGraph` and independent of JSONL;
 - active-path selection, children, tree construction, lowest common ancestor,
   branch delta, fork, and state fold mechanics;
 - `ConversationReplayFolder`, including visible-item projection, checkpoint
   replacement, first-kept suffix reconstruction, and independent product-state
   folding;
-- `ConversationCatalog`, `ProjectionQuery`, and composition with
-  `JsonProjectionIndex` for discover, project, cache, filter, sort, and limit;
+- provider-bound `ConversationCatalog`, `ProjectionQuery`, and revision-aware
+  `JsonConversationIndex` for discovery, projection, cache, filter, and search;
 - functional adapters for products that prefer callables over custom classes.
 
 `loushang.harness.context.conversation` owns:
@@ -74,7 +73,7 @@ Transcript Profile wave supersedes the Coding ownership of common session-entry
 schemas, codecs, and replay projection described here; Product storage-root,
 prompt, artifact, and presentation policy remain Coding-owned.
 
-Coding now uses `AgentTranscriptSessionStore` as the single open-session commit
+Coding now uses `AgentTranscriptUnitOfWork` as the single open-session commit
 owner over an injected `ConversationStore`. The optional Agent transcript
 profile owns the current Native codec, journal factory, file locking, revision
 CAS, and durable append; Coding chooses the storage root and runtime binding.

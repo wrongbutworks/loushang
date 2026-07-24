@@ -11,12 +11,15 @@ from loushang.harness.agent_transcript import (
     AgentTranscriptCompactionCapability,
     AgentTranscriptRecord,
     AgentTranscriptSession,
-    AgentTranscriptSessionStore,
+    AgentTranscriptUnitOfWork,
     TranscriptCompactionConfiguration,
     create_agent_transcript_compaction_capability,
 )
-from loushang.harness.conversation import ConversationHeader
-from loushang.harness.storage import ConversationKey, MemoryConversationStore
+from loushang.harness.conversation import (
+    ConversationHeader,
+    ConversationKey,
+    MemoryConversationStore,
+)
 
 
 def _assistant(text: str, *, timestamp: float) -> AssistantMessage:
@@ -45,7 +48,7 @@ async def _session() -> AgentTranscriptSession:
     store: MemoryConversationStore[ConversationHeader, AgentTranscriptRecord] = (
         MemoryConversationStore(record_id=lambda record: record.record_id)
     )
-    transcript = await AgentTranscriptSessionStore.create(
+    transcript = await AgentTranscriptUnitOfWork.create(
         store,
         ConversationKey("test", "compaction-capability"),
         ConversationHeader(

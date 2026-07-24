@@ -9,7 +9,7 @@ from loushang.harness.agent_transcript import (
     AgentTranscriptDirectoryRuntime,
     SessionQuery,
     SessionSummary,
-    write_agent_transcript_file,
+    write_agent_transcript_export,
 )
 from loushang.harness.conversation import ConversationHeader, ConversationRecord
 
@@ -46,12 +46,12 @@ def test_directory_runtime_exposes_current_and_all_root_catalog_queries(
     project_b = tmp_path / "project-b"
     project_a.mkdir()
     project_b.mkdir()
-    write_agent_transcript_file(
+    write_agent_transcript_export(
         project_a / "alpha.jsonl",
         _header("alpha", cwd="/workspace/a"),
         [_record("alpha-record", "first searchable message", timestamp=1.0)],
     )
-    write_agent_transcript_file(
+    write_agent_transcript_export(
         project_b / "beta.jsonl",
         _header("beta", cwd="/workspace/b"),
         [_record("beta-record", "second searchable message", timestamp=2.0)],
@@ -79,7 +79,7 @@ def test_directory_runtime_exposes_current_and_all_root_catalog_queries(
 def test_directory_runtime_coalesces_requested_index_refreshes(tmp_path: Path) -> None:
     project_dir = tmp_path / "project"
     project_dir.mkdir()
-    write_agent_transcript_file(
+    write_agent_transcript_export(
         project_dir / "alpha.jsonl",
         _header("alpha", cwd="/workspace/a"),
         [_record("alpha-record", "indexed message", timestamp=1.0)],

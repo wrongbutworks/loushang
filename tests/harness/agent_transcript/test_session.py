@@ -5,16 +5,19 @@ import asyncio
 from loushang.ai.types import UserMessage
 from loushang.harness.agent_transcript import (
     AgentTranscriptSession,
-    AgentTranscriptSessionStore,
+    AgentTranscriptUnitOfWork,
 )
-from loushang.harness.conversation import ConversationHeader
-from loushang.harness.storage import ConversationKey, MemoryConversationStore
+from loushang.harness.conversation import (
+    ConversationHeader,
+    ConversationKey,
+    MemoryConversationStore,
+)
 
 
 def test_agent_transcript_session_owns_standard_commit_and_label_operations() -> None:
     async def scenario() -> None:
         backend = MemoryConversationStore(record_id=lambda record: record.record_id)
-        transcript = await AgentTranscriptSessionStore.create(
+        transcript = await AgentTranscriptUnitOfWork.create(
             backend,
             ConversationKey("test", "conversation-1"),
             ConversationHeader(

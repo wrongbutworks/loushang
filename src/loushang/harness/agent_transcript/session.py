@@ -1,6 +1,6 @@
 """Session-facing operations for one optional Agent transcript profile.
 
-``AgentTranscriptSessionStore`` owns durable records and revisions. This class
+``AgentTranscriptUnitOfWork`` owns durable records and revisions. This class
 owns the shared session-facing operations built on that store: standard record
 append helpers, application-message commit observation, labels, and selected
 branch context. Product code remains responsible for storage selection,
@@ -19,10 +19,6 @@ from loushang.harness.agent_transcript.committer import (
     TranscriptCommitter,
 )
 from loushang.harness.agent_transcript.kinds import RECORD_ANNOTATION_PATCH_KIND
-from loushang.harness.agent_transcript.store import (
-    AgentTranscriptCommit,
-    AgentTranscriptSessionStore,
-)
 from loushang.harness.agent_transcript.types import (
     AgentTranscriptContext,
     AgentTranscriptRecord,
@@ -34,6 +30,10 @@ from loushang.harness.agent_transcript.types import (
     ModelSelectionSnapshot,
     RecordAnnotationPatch,
     ThinkingSelectionSnapshot,
+)
+from loushang.harness.agent_transcript.unit_of_work import (
+    AgentTranscriptCommit,
+    AgentTranscriptUnitOfWork,
 )
 from loushang.harness.conversation import (
     BranchDelta,
@@ -54,7 +54,7 @@ class AgentTranscriptSession:
     def __init__(
         self,
         *,
-        transcript: AgentTranscriptSessionStore,
+        transcript: AgentTranscriptUnitOfWork,
         labels_by_target_id: dict[str, str] | None = None,
         label_timestamps_by_target_id: dict[str, str] | None = None,
         application_message_id_factory: ApplicationMessageIdFactory | None = None,

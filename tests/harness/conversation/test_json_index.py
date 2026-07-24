@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,7 +14,7 @@ class _Projection:
 
 
 def _index(path: Path):
-    from loushang.harness.journal import (
+    from loushang.harness.conversation import (
         FunctionalProjectionCodec,
         JsonProjectionIndex,
     )
@@ -109,3 +110,72 @@ def test_projection_index_skips_invalid_items_and_marks_snapshot_stale(
 
     assert snapshot.stale is True
     assert [item.projection_id for item in snapshot.projections] == ["ok"]
+
+
+def test_revision_aware_json_index_rejects_stale_upsert_and_late_recreation(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.conversation import (
+        ConversationKey,
+        ConversationLocator,
+        FunctionalProjectionCodec,
+        IndexedProjection,
+        JsonConversationIndex,
+    )
+
+    def query_items(query: str, items):
+        return tuple(
+            item for item in items if query.lower() in item.projection.projection_id
+        )
+
+    index = JsonConversationIndex(
+        tmp_path / "conversation-index.json",
+        version=1,
+        codec=FunctionalProjectionCodec(
+            encoder=lambda item: {
+                "id": item.projection_id,
+                "updated_at": item.updated_at,
+                "source_path": str(item.source_path),
+            },
+            decoder=lambda value: _Projection(
+                projection_id=str(value["id"]),
+                updated_at=int(value["updated_at"]),
+                source_path=Path(str(value["source_path"])),
+            ),
+        ),
+        query_items=query_items,
+    )
+    locator = ConversationLocator(
+        "provider-1",
+        ConversationKey("coding", "session-1"),
+    )
+
+    async def scenario() -> None:
+        current = IndexedProjection(
+            locator,
+            2,
+            _Projection("current", 2, tmp_path / "current.jsonl"),
+        )
+        stale = IndexedProjection(
+            locator,
+            1,
+            _Projection("stale", 1, tmp_path / "stale.jsonl"),
+        )
+        assert await index.upsert(current)
+        assert not await index.upsert(stale)
+        assert (await index.get(locator)) == current
+
+        assert await index.delete(locator, through_revision=2)
+        assert await index.get(locator) is None
+        assert not await index.upsert(current)
+        newer = IndexedProjection(
+            locator,
+            3,
+            _Projection("newer", 3, tmp_path / "newer.jsonl"),
+        )
+        assert await index.upsert(newer)
+        assert [item.projection.projection_id for item in await index.query("new")] == [
+            "newer"
+        ]
+
+    asyncio.run(scenario())

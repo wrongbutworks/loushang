@@ -19,11 +19,11 @@ from loushang.harness.agent_transcript import (
     AgentTranscriptCompactionCapability,
     AgentTranscriptProfile,
 )
-from loushang.harness.agent_transcript.file_store import (
-    write_agent_transcript_file as write_session_file,
+from loushang.harness.agent_transcript.native_file import (
+    write_agent_transcript_export as write_session_file,
 )
+from loushang.harness.conversation import FileConversationStore, MemoryConversationStore
 from loushang.harness.runtime import RuntimeProfileSnapshot
-from loushang.harness.storage import FileConversationStore, MemoryConversationStore
 
 
 def _model() -> Model:

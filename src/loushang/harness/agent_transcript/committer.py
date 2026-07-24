@@ -9,9 +9,9 @@ from loushang.harness.agent_transcript.codecs import (
     create_agent_transcript_payload_registry,
 )
 from loushang.harness.agent_transcript.kinds import APPLICATION_MESSAGE_KIND
-from loushang.harness.agent_transcript.store import AgentTranscriptSessionStore
 from loushang.harness.agent_transcript.types import ApplicationMessage
-from loushang.harness.storage import CommitReceipt
+from loushang.harness.agent_transcript.unit_of_work import AgentTranscriptUnitOfWork
+from loushang.harness.conversation import CommitReceipt
 from loushang.protocol import dump_json_value
 
 
@@ -35,7 +35,7 @@ class _CommittedApplicationMessage:
 class TranscriptCommitter:
     """Own the process-local idempotent commit of application messages."""
 
-    def __init__(self, store: AgentTranscriptSessionStore) -> None:
+    def __init__(self, store: AgentTranscriptUnitOfWork) -> None:
         self._store = store
         self._committed: dict[str, _CommittedApplicationMessage] = {}
         self._payload_codecs = create_agent_transcript_payload_registry()

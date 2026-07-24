@@ -15,7 +15,7 @@ from loushang.ai.types import (
 )
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
-from loushang.harness.agent_transcript.file_store import (
+from loushang.harness.agent_transcript.native_file import (
     load_agent_transcript_file as load_session_file,
 )
 from loushang.harness.tools.workspace import ToolDefinition

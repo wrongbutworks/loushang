@@ -2,12 +2,28 @@
 
 ## Status
 
-Status: proposed follow-on refactor; not implemented.
+Status: persistence phases 1–3 implemented on
+`harness/conversation-persistence-refactor`; Product resume/picker work in
+Phase 4 remains a follow-on.
 
-This document refines the package placement and persistence model established
-by the implemented conversation, Agent transcript, and file-store waves. Those
-boundary documents remain the description of the current code until this
-migration is complete. This proposal does not change the Native JSONL format.
+This document is the current storage-boundary decision. It supersedes the
+earlier package placement in the conversation, Agent transcript, catalog, and
+file-store boundary notes. The implementation does not change the Native JSONL
+format.
+
+Implemented storage outcomes:
+
+- `journal` contains only codec-driven JSONL mechanics;
+- `conversation` owns branches, the in-memory repository, Store contracts,
+  reference providers, provider-bound catalog, and revision-aware indexes;
+- `agent_transcript` owns `AgentTranscriptUnitOfWork`, Native file composition,
+  Agent summary/query projection, and read-only legacy import;
+- top-level `harness.storage`, journal repositories/branches/indexes, direct
+  Native append helpers, and in-place Session v3 migration are removed;
+- File Store I/O runs off the event loop, append/delete critical sections are
+  shielded, and load/commit recovery diagnostics cross the Store boundary;
+- existing direct resume behavior remains, while the project/worktree picker
+  and fully provider-bound Product transition are explicitly Phase 4.
 
 The refactor has four goals:
 
