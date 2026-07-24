@@ -11,11 +11,11 @@ from loushang.coding.policy.approval import (
     resolve_approval,
 )
 from loushang.coding.policy.engine import PolicyEngine
-from loushang.coding.policy.package_security import (
+from loushang.harness.policy import PolicyDecision
+from loushang.harness.resources.packages.security import (
     PackageSecurityPolicy,
     PackageSourceSecurityReport,
 )
-from loushang.harness.policy import PolicyDecision
 
 __all__ = [
     "ApprovalDecision",

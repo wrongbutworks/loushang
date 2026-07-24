@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -10,9 +9,6 @@ from loushang.coding.session_manager import SessionManager
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.extensions.context import SessionShutdownEvent
 from loushang.harness.runtime import copy_file_exclusive
-from loushang.harness.session import (
-    MissingSessionCwdError as HarnessMissingSessionCwdError,
-)
 from loushang.harness.session import (
     ProductSessionRuntime,
     SessionDiagnosticScope,
@@ -25,39 +21,6 @@ from loushang.harness.session import (
 
 SessionFactory = Callable[..., AgentSession]
 _copy_import_file = copy_file_exclusive
-
-
-@dataclass(frozen=True)
-class MissingSessionCwdIssue:
-    session_cwd: str
-    session_file: Path | None = None
-    fallback_cwd: str | None = None
-
-
-class MissingSessionCwdError(RuntimeError):
-    def __init__(self, issue: MissingSessionCwdIssue) -> None:
-        message = f"Session cwd is not available: {issue.session_cwd}"
-        if issue.session_file is not None:
-            message = f"{message} ({issue.session_file})"
-        if issue.fallback_cwd is not None:
-            message = f"{message}. Fallback cwd: {issue.fallback_cwd}"
-        super().__init__(message)
-        self.issue = issue
-
-
-def get_missing_session_cwd_issue(
-    session_manager: SessionManager,
-    fallback_cwd: str | Path | None = None,
-) -> MissingSessionCwdIssue | None:
-    session_cwd = session_manager.get_cwd()
-    candidate = Path(session_cwd).expanduser()
-    if candidate.exists() and candidate.is_dir():
-        return None
-    return MissingSessionCwdIssue(
-        session_cwd=session_cwd,
-        session_file=session_manager.get_session_file(),
-        fallback_cwd=str(fallback_cwd) if fallback_cwd is not None else None,
-    )
 
 
 class AgentSessionRuntime(
@@ -89,7 +52,6 @@ class AgentSessionRuntime(
                 ),
                 diagnostics_runtime=self._session_diagnostics_runtime,
                 record_shutdown_failure=self._record_shutdown_failure,
-                translate_missing_cwd_error=_coding_missing_cwd_error,
             ),
             current_session=current_session,
             auto_refresh_session_index=auto_refresh_session_index,
@@ -133,16 +95,3 @@ class AgentSessionRuntime(
                 "target_session_file": event.target_session_file,
             },
         )
-
-
-def _coding_missing_cwd_error(
-    error: HarnessMissingSessionCwdError,
-) -> MissingSessionCwdError:
-    session_ref = error.issue.session_ref
-    return MissingSessionCwdError(
-        MissingSessionCwdIssue(
-            session_cwd=error.issue.session_cwd,
-            session_file=Path(session_ref) if session_ref is not None else None,
-            fallback_cwd=error.issue.fallback_cwd,
-        )
-    )

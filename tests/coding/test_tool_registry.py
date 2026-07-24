@@ -526,7 +526,8 @@ def test_tool_factory_uses_builtin_external_tool_downloader_when_enabled(
 ) -> None:
     import asyncio
 
-    import loushang.coding.tool_pack as factory
+    import loushang.coding.tool_pack as coding_factory
+    import loushang.harness.tools.workspace.factory as workspace_factory
     from loushang.harness.tools.workspace import ToolsOptions
     from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
 
@@ -550,10 +551,12 @@ def test_tool_factory_uses_builtin_external_tool_downloader_when_enabled(
     created: list[BuiltinDownloader] = []
     calls: list[str] = []
     monkeypatch.setattr(
-        factory, "GitHubReleaseExternalToolDownloader", BuiltinDownloader, raising=False
+        workspace_factory,
+        "GitHubReleaseExternalToolDownloader",
+        BuiltinDownloader,
     )
     runtime_tool = wrap_tool_definition(
-        factory.create_coding_tool_definition(
+        coding_factory.create_coding_tool_definition(
             "find",
             options=ToolsOptions(
                 external_tool_resolver=MissingResolver(),
@@ -639,12 +642,13 @@ def test_register_builtin_tools_reuses_factory_but_keeps_legacy_order() -> None:
 
 def test_register_builtin_tools_uses_harness_pack_resolver(monkeypatch) -> None:
     import loushang.coding.tool_pack as builtins
+    import loushang.harness.tools.workspace.registry as registry_module
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
 
     calls: list[dict[str, object]] = []
-    real_resolver = builtins.resolve_tool_contributions
+    real_resolver = registry_module.resolve_tool_contributions
 
     def spy_resolver(contributions, **kwargs):
         calls.append(
@@ -656,7 +660,7 @@ def test_register_builtin_tools_uses_harness_pack_resolver(monkeypatch) -> None:
         )
         return real_resolver(calls[-1]["contributions"], **kwargs)
 
-    monkeypatch.setattr(builtins, "resolve_tool_contributions", spy_resolver)
+    monkeypatch.setattr(registry_module, "resolve_tool_contributions", spy_resolver)
 
     registry = ToolRegistry()
     builtins.register_coding_builtin_tools(registry)

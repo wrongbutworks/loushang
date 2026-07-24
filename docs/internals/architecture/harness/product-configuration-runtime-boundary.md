@@ -192,14 +192,15 @@ Coding adopts the shared runtime without surrendering Product semantics:
   retain type identity without preserving duplicate implementation modules;
 - the existing validation, aliases, removed-setting messages, JSON shape, and
   setter behavior remain unchanged by the owner move;
-- `coding.control.config_value` injects its Product-owned shell runner into the
-  Harness value resolver and preserves the established public functions;
+- `harness.config.subprocess_values.SubprocessConfigValueResolver` provides the optional
+  local-shell resolver over the neutral injected-runner contract; Products may
+  use the shared default or inject a different runner without adding a facade;
 - `coding.bootstrap` declares Product-owned activation steps and callbacks over
   an explicit Coding state object while retaining the existing effect order.
 
 No second configuration implementation remains in Coding where the Harness
-profile is sufficient. Product paths, command-backed value execution,
-`ModelRegistry`, policy, and presentation remain Product-owned.
+profile is sufficient. Product paths, `ModelRegistry`, policy, and
+presentation remain Product-owned.
 
 ## Import And Validation Rules
 

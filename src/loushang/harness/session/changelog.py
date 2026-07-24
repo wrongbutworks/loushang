@@ -1,7 +1,9 @@
+"""Standard changelog provider for shared session commands."""
+
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 
@@ -12,8 +14,24 @@ class ChangelogEntry:
     date: str | None = None
 
 
+@dataclass(frozen=True)
+class ChangelogProfile:
+    filename: str = "CHANGELOG.md"
+    entry_limit: int = 3
+
+    def __post_init__(self) -> None:
+        if not self.filename or Path(self.filename).name != self.filename:
+            raise ValueError("changelog filename must be one plain file name")
+        if self.entry_limit < 1:
+            raise ValueError("changelog entry limit must be positive")
+
+
+STANDARD_CHANGELOG_PROFILE = ChangelogProfile()
+
 _HEADING_RE = re.compile(r"^##\s+(?P<title>.+?)\s*$")
-_DATED_TITLE_RE = re.compile(r"^\[?(?P<version>[^\]\-]+?)\]?\s+-\s+(?P<date>\d{4}-\d{2}-\d{2})$")
+_DATED_TITLE_RE = re.compile(
+    r"^\[?(?P<version>[^\]\-]+?)\]?\s+-\s+(?P<date>\d{4}-\d{2}-\d{2})$"
+)
 
 
 def parse_changelog(path: str | Path) -> list[ChangelogEntry]:
@@ -36,17 +54,25 @@ def parse_changelog(path: str | Path) -> list[ChangelogEntry]:
     return entries
 
 
-def find_changelog_path(start: str | Path) -> Path | None:
+def find_changelog_path(
+    start: str | Path,
+    *,
+    profile: ChangelogProfile = STANDARD_CHANGELOG_PROFILE,
+) -> Path | None:
     path = Path(start).resolve()
     current = path if path.is_dir() else path.parent
     for directory in (current, *current.parents):
-        candidate = directory / "CHANGELOG.md"
+        candidate = directory / profile.filename
         if candidate.is_file():
             return candidate
     return None
 
 
-def format_changelog_entries(entries: list[ChangelogEntry], *, limit: int | None = None) -> str:
+def format_changelog_entries(
+    entries: list[ChangelogEntry],
+    *,
+    limit: int | None = None,
+) -> str:
     selected = entries[:limit] if limit is not None else entries
     parts: list[str] = []
     for entry in selected:
@@ -57,22 +83,32 @@ def format_changelog_entries(entries: list[ChangelogEntry], *, limit: int | None
     return "\n\n".join(parts)
 
 
-def read_changelog_for_cwd(cwd: str | Path, args: str = "") -> dict[str, object]:
-    """Read the nearest project changelog for the shared session command."""
+def read_changelog_for_cwd(
+    cwd: str | Path,
+    args: str = "",
+    *,
+    profile: ChangelogProfile = STANDARD_CHANGELOG_PROFILE,
+) -> dict[str, object]:
+    """Read the nearest changelog for the standard session command."""
 
     del args
-    path = find_changelog_path(cwd)
+    path = find_changelog_path(cwd, profile=profile)
     if path is None:
         return {"path": None, "entries": [], "text": ""}
     entries = parse_changelog(path)
+    selected = entries[: profile.entry_limit]
     return {
         "path": path.as_posix(),
-        "entries": [entry.__dict__ for entry in entries[:3]],
-        "text": format_changelog_entries(entries, limit=3),
+        "entries": [asdict(entry) for entry in selected],
+        "text": format_changelog_entries(entries, limit=profile.entry_limit),
     }
 
 
-def _append_entry(entries: list[ChangelogEntry], title: str | None, body_lines: list[str]) -> None:
+def _append_entry(
+    entries: list[ChangelogEntry],
+    title: str | None,
+    body_lines: list[str],
+) -> None:
     if title is None:
         return
     match = _DATED_TITLE_RE.match(title)
@@ -87,7 +123,9 @@ def _append_entry(entries: list[ChangelogEntry], title: str | None, body_lines: 
 
 
 __all__ = [
+    "STANDARD_CHANGELOG_PROFILE",
     "ChangelogEntry",
+    "ChangelogProfile",
     "find_changelog_path",
     "format_changelog_entries",
     "parse_changelog",

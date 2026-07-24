@@ -88,7 +88,7 @@ selection runtime, or plain-prompt host.
 | `coding.model_selection_tui` | existing `harness.session.model_selection` and `harnesstui.selection` catalog/runtime | Coding retains preferred-model policy, settings persistence, and its persistence-warning wording. |
 | `coding.resource_runtime` | existing `ResourceLoader` through `ResourceLoaderProfile` and `ProfiledResourceLoader` | Coding retains built-in package identity, context-file compatibility names, prompt assembly, package security policy, and default loader choice. |
 | duplicated helpers in `coding.prompt_command` and HarnessTUI plain mode | existing `harnesstui.conversation.plain_prompt_host` | Coding retains Work/Method preparation, renderer, Product diagnostics, and final wording. |
-| `coding.tool_pack` audit | existing Harness workspace tool factories and contribution/activation runtimes | Retained in Coding: the file is Product membership/order, descriptions, prompt snippets, downloader default, policy, approval, diagnostics, and execution-service binding. No duplicate shared tool engine was added. |
+| `coding.tool_pack` | existing Harness workspace tool factory/registry plus `WorkspaceToolProfile` | Coding retains Product membership/order, descriptions, prompt snippets, policy, approval, diagnostics, and execution-service inputs. Contribution resolution and registration no longer repeat in Coding. |
 
 Implementation accounting, excluding tests and documentation:
 
@@ -934,3 +934,67 @@ Coding extension package; all behavior is now exercised through the canonical
 Agent profile. A non-Coding contract probe loads a Research-style extension
 through that profile, and architecture gates prohibit the profile from
 importing Coding, Channel, Work, Method, TUI, or Harness Session.
+
+### Wave 7, Slice P: Shared Leaf Convergence (Complete)
+
+This slice removes small but canonical Coding owners only where an existing
+shared component can absorb the behavior or a reusable binding is missing. It
+does not introduce another transcript, command, config, event, package, or TUI
+engine.
+
+| Source mechanism | Existing shared owner | Product retained | Status |
+| --- | --- | --- | --- |
+| Agent tool-call resource evidence attached to compaction and branch summaries | `harness.agent_transcript.summarization` over the existing `SummaryResourceOperations` model | tool-name, operation, detail-key, tag, and exclusion profile | Complete |
+| local plus session command catalog binding for conversation hosts | `harnesstui.commands.catalog` over the existing `harness.commands.MixedCommandCatalog` | session command provider and local action handlers | Complete |
+| changelog discovery, parsing, formatting, and standard session-command payload | `harness.session.changelog` | optional filename and entry-limit profile | Complete |
+| command-backed config values | neutral injected runner in `harness.config.values`, with explicit local-shell adapter in `harness.config.subprocess_values` | optional Product/OEM runner selection | Complete |
+| transcript recording/cancellation policy | existing `harness.events.recording_policy` | no Coding facade | Complete |
+| package-source security policy | existing `harness.resources.packages.security` | policy construction and Product trust inputs | Complete |
+
+Deleted canonical Coding modules:
+
+- `coding.commands` and its 127-line catalog;
+- `coding.control.config_value`;
+- `coding.event.presentation_policy`;
+- `coding.platform.changelog`;
+- `coding.policy.package_security`.
+
+Production accounting: `src/loushang/coding` changed from 5,641 to 5,272
+physical Python LOC (-369, 6.5%). The patch deletes 436 Coding lines and adds
+67 direct Product bindings, so 84.6% of the gross deletion remains as net
+reduction.
+Shared production code grows by 589 lines, including independent Design-style
+summary-resource and conversation-command contracts. The higher shared cost is
+intentional public capability rather than a relocated Coding implementation:
+the new profiles cover arbitrary resource operations, command sources,
+changelog names, and config runners without importing Coding.
+
+Architecture gates require the removed Coding modules to remain absent, keep
+the neutral config resolver free of subprocess ownership, and keep lightweight
+HarnessTUI interaction imports free of Harness, Agent, AI, and Coding package
+side effects. Coding compaction, command completion, changelog, event,
+package-security, AgentSession, and TUI behavior remain covered by their
+existing regressions.
+
+### Wave 7, Slice Q: Reusable Product Binding Cleanup (Complete)
+
+This slice revisits small Product bindings only where the implementation was a
+reusable mechanism. Existing factories, registries, loaders, application
+bindings, and lifecycle runtimes remain the execution owners; no parallel tool,
+resource, approval, retry, or session runtime was added.
+
+| Source mechanism | Existing shared owner | Product retained | Status |
+| --- | --- | --- | --- |
+| workspace tool selection, decoration, contribution resolution, and registration | existing `harness.tools.workspace` factory and registry, extended with `WorkspaceToolProfile` and `register_profile()` | tool membership/order, descriptions, prompt snippets, policy and service inputs | Complete |
+| package-root resource summary discovery | existing `ResourceLoaderProfile`, `ProfiledResourceLoader`, and package catalog | built-in package, context-file conventions, prompt assembly, and security defaults | Complete |
+| Agent screen approval presenter and session-transition cleanup | existing `harnesstui.conversation.agent_application` binding | approval policy, surface rendering, fallback copy, and Product composition | Complete |
+| abort-aware retry sleep | existing `harness.session.composition` | no Product implementation | Complete |
+| missing-session-cwd issue and error translation | existing `harness.session.lifecycle` contract and Product session runtime | no Coding compatibility exception | Complete |
+
+The three Coding resource classes remain intentionally thin profile/default
+bindings; deleting them would only obscure Product choices. Production
+accounting: `src/loushang/coding` changed from 5,272 to 5,085 physical Python
+LOC (-187). Shared production additions total 325 LOC and are independently
+exercised with Design/Research-style profiles and structural ports. The former
+108-line `coding.policy.tui` mechanism and the 51-line Coding cwd compatibility
+layer are deleted rather than retained as facades.

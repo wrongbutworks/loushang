@@ -49,7 +49,7 @@ remain behind injected AI/Product ports.
 | removed `coding.control.settings_manager` | 0 | `harness.config.agent.SettingsManager` composed over `SettingsRuntime`, `ScopedConfigRuntime`, schema codec, and JSON store | `shared adopted` | Standard Agent field codecs, accessors, and mutations moved without adding a second engine |
 | removed `coding.control.types` | 0 | `harness.config.agent.types` | `shared adopted` | Standard Agent settings records are shared; Products retain only true domain additions and overlays |
 | `coding.policy.*` | 515 | Harness rule, approval, and resource-policy mechanisms | `product adapter` + `product kernel` | Extract profiles, not rules mechanically |
-| `coding.tool_pack`, `resource_runtime` | 346 -> 287 | Workspace tool composition and resource/package engines, plus `ResourceLoaderProfile`/`ProfiledResourceLoader` | `product adapter` | Retain Coding membership, order, descriptions, built-in package and context-file conventions, prompt assembler, and security/default bindings |
+| `coding.tool_pack`, `resource_runtime` | 346 -> 317 | Workspace tool factory/registry profile binding and resource/package catalog summary over `ResourceLoaderProfile`/`ProfiledResourceLoader` | `product adapter` | Shared owners now perform profile-based tool registration and package summary discovery. Retain Coding membership, order, descriptions, built-in package and context-file conventions, prompt assembler, and security/default bindings. |
 | `coding.compaction.adapter`, `profiles` | 359 | Transcript capability and summary-profile mechanism | `product adapter` + `product kernel` | Retain Coding executor and prompt text |
 
 ## Leaf And Interaction Regions

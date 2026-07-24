@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from loushang.coding.ui.product_binding import snapshot_coding_command_catalog
+from loushang.harnesstui.commands.catalog import snapshot_conversation_command_catalog
 from loushang.harnesstui.commands.presentation import command_completion_provider
 from loushang.harnesstui.completion.host import (
     CatalogCompletionProfile,
@@ -39,7 +39,10 @@ def coding_completion_host(session: Any) -> PreparedCatalogCompletionHost:
 
 
 async def _coding_command_provider(session: Any) -> CompletionProvider:
-    catalog = await snapshot_coding_command_catalog(session)
+    getter = getattr(session, "list_commands", None)
+    catalog = await snapshot_conversation_command_catalog(
+        getter if callable(getter) else None
+    )
     return command_completion_provider(catalog.commands())
 
 

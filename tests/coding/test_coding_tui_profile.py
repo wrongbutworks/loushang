@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loushang.coding.commands.catalog import CodingCommandCatalog
+from loushang.harnesstui.commands.catalog import ConversationCommandCatalog
 from loushang.harnesstui.conversation.control import (
     ConversationRunControl,
     ConversationTextAction,
@@ -76,7 +76,7 @@ def _profile(
     return build_standard_conversation_host_profile(
         lifecycle=lifecycle,
         local_actions=_local_actions(),
-        command_effect=CodingCommandCatalog(
+        command_effect=ConversationCommandCatalog(
             session_commands=lambda: []
         ).effect_for_route,
         session_running=lambda: False,

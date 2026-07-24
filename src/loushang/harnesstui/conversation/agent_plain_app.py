@@ -8,6 +8,11 @@ from pathlib import Path
 from typing import Protocol, TextIO
 
 from loushang.harness.commands import CommandDef, CommandEffect
+from loushang.harnesstui.commands.catalog import (
+    ConversationCommandCatalog,
+    SessionCommandsProvider,
+    snapshot_conversation_command_catalog,
+)
 from loushang.harnesstui.commands.interaction import (
     CommandInteractionPresentationCopy,
     CommandInteractionSnapshot,
@@ -65,6 +70,9 @@ from loushang.harnesstui.conversation.session_view import (
     is_running,
     session_error_message,
 )
+from loushang.harnesstui.selection.binding import (
+    format_available_session_models,
+)
 from loushang.harnesstui.selection.interaction import ModelInteractionChooser
 from loushang.tui import CompletionProvider
 
@@ -84,9 +92,7 @@ class AgentPlainConversationCopy:
     command_ambiguous_title: str = "Multiple commands match:"
     command_ambiguous_hint: str = "Use /command <full command> to select one."
     command_selected_prefix: str = "Command selected: "
-    abort_settling: str = (
-        "Abort in progress. Wait for the current request to settle."
-    )
+    abort_settling: str = "Abort in progress. Wait for the current request to settle."
     idle_follow_up: str = "Follow-up is only available while a run is active."
     queued_follow_up: str = "Follow-up queued."
 
@@ -101,7 +107,6 @@ class AgentPlainConversationPorts:
     event_renderer: AgentPlainEventRenderer
     stderr: TextIO
     verbose: bool
-    cwd: str
     emit: StableEmit
     trace: TraceFn
     now: Callable[[], float]
@@ -123,6 +128,76 @@ class AgentPlainConversationPorts:
     model_palette_chooser: ModelInteractionChooser | None = None
     command_palette_chooser: CommandPaletteChooser | None = None
     info_panel_presenter: InfoPanelPresenter | None = None
+
+
+def build_agent_plain_conversation_ports(
+    *,
+    session: object,
+    renderer: PlainConversationRenderer,
+    event_renderer: AgentPlainEventRenderer,
+    stderr: TextIO,
+    verbose: bool,
+    emit: StableEmit,
+    trace: TraceFn,
+    now: Callable[[], float],
+    controller: PlainConversationController[ConversationIntent],
+    select_model: Callable[[str, ModelInteractionChooser | None], Awaitable[str]],
+    hotkeys: Callable[[], str],
+    debug_status: Callable[[Path, tuple[str, ...]], str],
+    enable_debug: Callable[..., Path],
+    disable_debug: Callable[[], None],
+    suppress_cancelled_error: Callable[[str | None], bool],
+    settings_manager: object | None = None,
+    completion_provider: CompletionProvider | None = None,
+    model_palette_chooser: ModelInteractionChooser | None = None,
+    command_palette_chooser: CommandPaletteChooser | None = None,
+    info_panel_presenter: InfoPanelPresenter | None = None,
+    command_catalog: ConversationCommandCatalog | None = None,
+) -> AgentPlainConversationPorts:
+    """Bind standard command, model, and settings ports for an Agent session."""
+
+    session_commands = _agent_session_commands_provider(session)
+    catalog = command_catalog or ConversationCommandCatalog(
+        session_commands=session_commands
+    )
+
+    async def snapshot_commands() -> Sequence[CommandDef]:
+        return (
+            await snapshot_conversation_command_catalog(session_commands)
+        ).commands()
+
+    return AgentPlainConversationPorts(
+        session=session,
+        renderer=renderer,
+        event_renderer=event_renderer,
+        stderr=stderr,
+        verbose=verbose,
+        emit=emit,
+        trace=trace,
+        now=now,
+        controller=controller,
+        command_effect=catalog.effect_for_route,
+        snapshot_commands=snapshot_commands,
+        select_model=select_model,
+        format_models=lambda query: format_available_session_models(
+            session,
+            query=query,
+        ),
+        hotkeys=hotkeys,
+        debug_status=debug_status,
+        enable_debug=enable_debug,
+        disable_debug=disable_debug,
+        suppress_cancelled_error=suppress_cancelled_error,
+        settings_manager=(
+            settings_manager
+            if settings_manager is not None
+            else getattr(session, "settings_manager", None)
+        ),
+        completion_provider=completion_provider,
+        model_palette_chooser=model_palette_chooser,
+        command_palette_chooser=command_palette_chooser,
+        info_panel_presenter=info_panel_presenter,
+    )
 
 
 def build_agent_plain_conversation_app(
@@ -333,8 +408,16 @@ def _command_value(item: CommandDef) -> str:
     return completion.value if completion is not None else ""
 
 
+def _agent_session_commands_provider(
+    session: object,
+) -> SessionCommandsProvider | None:
+    getter = getattr(session, "list_commands", None)
+    return getter if callable(getter) else None
+
+
 __all__ = [
     "AgentPlainConversationCopy",
     "AgentPlainConversationPorts",
+    "build_agent_plain_conversation_ports",
     "build_agent_plain_conversation_app",
 ]

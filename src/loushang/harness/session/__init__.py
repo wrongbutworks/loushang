@@ -41,6 +41,7 @@ from loushang.harness.session.bootstrap import (
     StandardAgentSessionConfigurationResult,
     StandardAgentSessionConfigurationRuntime,
     activate_standard_agent_session_configuration,
+    prepare_agent_session_services,
     standard_agent_session_activation_plan,
 )
 from loushang.harness.session.bootstrap_utils import (
@@ -66,6 +67,15 @@ from loushang.harness.session.capabilities import (
     UserCommandRequest,
     command_result_from_tool_result,
     create_tool_prompt_rebuilder,
+)
+from loushang.harness.session.changelog import (
+    STANDARD_CHANGELOG_PROFILE,
+    ChangelogEntry,
+    ChangelogProfile,
+    find_changelog_path,
+    format_changelog_entries,
+    parse_changelog,
+    read_changelog_for_cwd,
 )
 from loushang.harness.session.command_controller import (
     BuiltinCommandExecutor,
@@ -280,6 +290,7 @@ __all__ = [
     "AgentSessionConstructionRequest",
     "AgentSessionConstructionRuntime",
     "AgentSessionServices",
+    "prepare_agent_session_services",
     "BootstrapServices",
     "CreateAgentSessionResult",
     "StandardAgentSessionActivationEffects",
@@ -323,6 +334,13 @@ __all__ = [
     "BuiltinDescriptorProvider",
     "STANDARD_SESSION_COMMAND_PROFILE",
     "STANDARD_SESSION_COMMANDS",
+    "STANDARD_CHANGELOG_PROFILE",
+    "ChangelogEntry",
+    "ChangelogProfile",
+    "find_changelog_path",
+    "format_changelog_entries",
+    "parse_changelog",
+    "read_changelog_for_cwd",
     "ContextUsage",
     "DEFAULT_FORK_PROFILE",
     "ExtensionDiagnosticsPort",

@@ -5,12 +5,6 @@ from functools import partial
 from pathlib import Path
 from typing import Any, TextIO
 
-from loushang.coding.policy.tui import (
-    bind_screen_approval_presenter,
-    bind_screen_session_transition,
-    handle_screen_approval,
-    runtime_session,
-)
 from loushang.coding.presentation.tui.plain import (
     PlainCodingUiRenderer,
 )
@@ -28,6 +22,10 @@ from loushang.harness.diagnostics import observability_runtime
 from loushang.harnesstui.conversation.agent_application import (
     AgentPlainConversationApplicationBinding,
     AgentScreenConversationApplicationBinding,
+    bind_agent_screen_approval_presenter,
+    bind_agent_screen_session_transition,
+    current_agent_runtime_session,
+    handle_agent_screen_approval,
 )
 from loushang.harnesstui.conversation.application_host import (
     run_prepared_plain_conversation,
@@ -122,7 +120,7 @@ async def _run_screen_interactive_tui(
             app=app,
             session=session,
             status_provider=status_provider,
-            on_approval=lambda event: handle_screen_approval(session, event),
+            on_approval=lambda event: handle_agent_screen_approval(session, event),
         ),
         startup=snapshot,
         interaction_context=log_context(
@@ -135,12 +133,12 @@ async def _run_screen_interactive_tui(
         stdout=stdout,
         now=time.monotonic,
         completion_provider=completion_provider,
-        bind_presenter=lambda surface: bind_screen_approval_presenter(
+        bind_presenter=lambda surface: bind_agent_screen_approval_presenter(
             session,
             surface,
-            session_provider=lambda: runtime_session(runtime, session),
+            session_provider=lambda: current_agent_runtime_session(runtime, session),
         ),
-        bind_transition=lambda surface: bind_screen_session_transition(
+        bind_transition=lambda surface: bind_agent_screen_session_transition(
             runtime,
             surface,
         ),

@@ -15,6 +15,11 @@ from loushang.harness.tools.core import DecoratedTool, ToolDefinition
 from loushang.harness.tools.core import ToolRegistry as CoreToolRegistry
 
 from .context import ToolContextProvider
+from .factory import (
+    ToolsOptions,
+    WorkspaceToolProfile,
+    create_profiled_workspace_tool_definitions,
+)
 from .normalize import tool_to_definition
 from .wrapper import wrap_tool_definition
 
@@ -86,6 +91,32 @@ class WorkspaceToolRegistry(CoreToolRegistry):
             disabled_tools=disabled_tools,
             fail_on_errors=fail_on_errors,
         )
+
+    def register_profile(
+        self,
+        profile: WorkspaceToolProfile,
+        *,
+        options: ToolsOptions | None = None,
+    ) -> WorkspaceToolRegistry:
+        """Build, resolve, and register one Product workspace tool profile."""
+
+        definitions = create_profiled_workspace_tool_definitions(
+            profile,
+            options=options,
+            tool_names=profile.builtin_tool_names,
+        )
+        pack = ToolPackDefinition(
+            name=profile.pack_id,
+            tools=profile.builtin_tool_names,
+        )
+        result = resolve_tool_contributions(
+            tuple(ToolContribution(definition) for definition in definitions),
+            packs=(pack,),
+            include_packs=(pack.name,),
+        )
+        for definition in result.definitions:
+            self.register_tool(definition)
+        return self
 
 
 __all__ = ["WorkspaceToolRegistry"]

@@ -367,9 +367,11 @@ Resume-hint discovery and standard Agent session history projection live in
 `loushang.harness.session.footer` so non-UI session code never imports the UI
 layer. Coding supplies only Product command prefixes, persisted-session
 loading, final presentation, and copy.
-Approval presenter binding and Session transition cleanup remain Coding product policy in
-`loushang.coding.policy.tui`. They do not belong to Harnesstui merely because a
-shared surface displays the prepared approval facts.
+Agent approval presenter binding and Session transition cleanup extend the
+existing `AgentScreenConversationApplicationBinding` module. They depend only
+on structural Agent session and screen-surface ports, so every Agent Product
+uses the same binding and cleanup mechanics. Products continue to own approval
+policy, surface presentation, and fallback copy supplied to the binding.
 
 ## Conversation Playback Testing
 

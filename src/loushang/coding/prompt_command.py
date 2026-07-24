@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, TextIO
 
 from loushang.coding.domain.work import create_coding_work_runtime
@@ -12,7 +12,12 @@ from loushang.harnesstui.conversation.agent_binding import (
 )
 from loushang.harnesstui.conversation.plain_prompt_host import session_identity
 from loushang.work import EventLogBackend
-from loushang.work.session import SessionWorkRuntime, SessionWorkTurn
+from loushang.work.session import (
+    SessionWorkRuntime,
+    SessionWorkTurn,
+    require_session_work_turn,
+    submit_session_turn,
+)
 
 
 async def run_prompt_command(
@@ -41,24 +46,39 @@ async def run_prompt_command(
     """Run one product prompt and render the stable coding transcript."""
 
     renderer = PlainCodingUiRenderer(stdout=stdout, stderr=stderr)
+    turn_work_runtime: SessionWorkRuntime | Callable[[], SessionWorkRuntime] | None = (
+        None
+    )
+    if work_event_log is not None:
+        turn_work_runtime = work_runtime or (
+            lambda: create_coding_work_runtime(
+                session=session,
+                event_log=work_event_log,
+                session_id=lambda: session_identity(session),
+            )
+        )
 
     async def submit_turn(text: str, turn_index: int, turn_count: int) -> None:
         del turn_count
-        await _run_prompt_session(
+        await submit_session_turn(
             session,
-            text,
-            images=images if turn_index == 0 else None,
-            work_event_log=work_event_log,
-            work_runtime=work_runtime,
-            method_id=method_id if turn_index == 0 else None,
-            plan_id=plan_id if turn_index == 0 else None,
-            step_id=step_id if turn_index == 0 else None,
-            step_index=step_index if turn_index == 0 else None,
-            step_title=step_title if turn_index == 0 else None,
-            planned_constraint=planned_constraint if turn_index == 0 else None,
-            audit_policy=audit_policy if turn_index == 0 else None,
-            plan_facts=plan_facts if turn_index == 0 else None,
-            step_facts=step_facts if turn_index == 0 else None,
+            SessionWorkTurn(
+                text=text,
+                images=images if turn_index == 0 else None,
+                method_id=method_id if turn_index == 0 else None,
+                plan_id=plan_id if turn_index == 0 else None,
+                step_id=step_id if turn_index == 0 else None,
+                step_index=step_index if turn_index == 0 else None,
+                step_title=step_title if turn_index == 0 else None,
+                planned_constraint=planned_constraint if turn_index == 0 else None,
+                audit_policy=audit_policy if turn_index == 0 else None,
+                plan_facts=plan_facts if turn_index == 0 else None,
+                step_facts=step_facts if turn_index == 0 else None,
+            ),
+            session_id=(
+                session_identity(session) if turn_work_runtime is not None else ""
+            ),
+            work_runtime=turn_work_runtime,
         )
 
     return await run_agent_plain_prompt(
@@ -101,7 +121,7 @@ async def run_prompt_plan_command(
             session_id=lambda: session_identity(session),
         )
         await resolved_work_runtime.submit_plan(
-            tuple(_require_session_work_turn(turn) for turn in prepared_turns),
+            tuple(require_session_work_turn(turn) for turn in prepared_turns),
             session_id=session_identity(session),
             before_turn=before_turn,
             after_turn=after_turn,
@@ -115,69 +135,11 @@ async def run_prompt_plan_command(
         renderer=renderer,
         prepare=lambda: ensure_usable_session_model(session),
         submit_plan=submit_plan,
-        turn_text=lambda turn: _require_session_work_turn(turn).text,
+        turn_text=lambda turn: require_session_work_turn(turn).text,
         stderr=stderr,
         verbose=verbose,
         dispose=dispose,
     )
-
-
-async def _run_prompt_session(
-    session: Any,
-    user_input: str,
-    *,
-    images: list[object] | None = None,
-    work_event_log: EventLogBackend | None = None,
-    work_runtime: SessionWorkRuntime | None = None,
-    method_id: str | None = None,
-    plan_id: str | None = None,
-    step_id: str | None = None,
-    step_index: int | None = None,
-    step_title: str | None = None,
-    planned_constraint: Mapping[str, object] | None = None,
-    audit_policy: Mapping[str, object] | None = None,
-    plan_facts: Mapping[str, object] | None = None,
-    step_facts: Mapping[str, object] | None = None,
-) -> None:
-    if work_event_log is None:
-        await _prompt_session(session, user_input, images=images)
-        return
-    resolved_work_runtime = work_runtime or create_coding_work_runtime(
-        session=session,
-        event_log=work_event_log,
-        session_id=lambda: session_identity(session),
-    )
-    await resolved_work_runtime.submit_turn(
-        SessionWorkTurn(
-            text=user_input,
-            images=images,
-            method_id=method_id,
-            plan_id=plan_id,
-            step_id=step_id,
-            step_index=step_index,
-            step_title=step_title,
-            planned_constraint=planned_constraint,
-            audit_policy=audit_policy,
-            plan_facts=plan_facts,
-            step_facts=step_facts,
-        ),
-        session_id=session_identity(session),
-    )
-
-
-async def _prompt_session(
-    session: Any, user_input: str, *, images: list[object] | None = None
-) -> None:
-    if images is None:
-        await session.prompt(user_input)
-        return
-    await session.prompt(user_input, images=images)
-
-
-def _require_session_work_turn(value: object) -> SessionWorkTurn:
-    if not isinstance(value, SessionWorkTurn):
-        raise TypeError("planned execution requires SessionWorkTurn values")
-    return value
 
 
 __all__ = ["run_prompt_command", "run_prompt_plan_command"]
