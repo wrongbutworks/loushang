@@ -90,6 +90,30 @@ class ScreenProjectionStatusCopy(Protocol):
     ) -> str: ...
 
 
+class StandardScreenProjectionStatusCopy:
+    """Default status copy shared by Agent Product screens."""
+
+    def retry_status(
+        self,
+        *,
+        attempt: int | None,
+        max_attempts: int | None,
+        delay_ms: int | float | None,
+        error_message: str | None,
+    ) -> str:
+        return f"retry {attempt}/{max_attempts} in {delay_ms}ms: {error_message}"
+
+    def compaction_started_status(self, *, reason: str | None) -> str:
+        return f"compact start: {reason}"
+
+    def compaction_finished_status(
+        self,
+        *,
+        error_message: str | None,
+    ) -> str:
+        return f"compact error: {error_message}" if error_message else "compact done"
+
+
 @dataclass(slots=True)
 class ScreenConversationProjectionTarget:
     """Map neutral conversation facts onto a reusable screen conversation port."""
@@ -247,6 +271,7 @@ __all__ = [
     "ScreenConversationProjectionPort",
     "ScreenConversationProjectionTarget",
     "ScreenProjectionStatusCopy",
+    "StandardScreenProjectionStatusCopy",
     "ToolRecordProjector",
     "ToolTitleResolver",
     "build_screen_conversation_projection",

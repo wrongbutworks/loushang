@@ -19,6 +19,12 @@ ToolTranscriptStatus = Literal[
 ToolVerbResolver = Callable[[str, object | None], str]
 ToolBodyVisibility = Callable[[str, ToolTranscriptStatus], bool]
 ToolCommandResolver = Callable[[str, object | None, str], str | None]
+ToolEventRenderer = Callable[[Mapping[str, Any], bool], str | None]
+ToolResultTextProjector = Callable[[object, int], str]
+ToolResultDetailsProjector = Callable[[object], Mapping[str, Any]]
+ToolResultTerminationPredicate = Callable[[object], bool]
+ToolErrorSummaryProjector = Callable[[object], str | None]
+ToolResultMessageEventProjector = Callable[[object], Mapping[str, Any]]
 ToolTranscriptEventT = TypeVar("ToolTranscriptEventT")
 ToolTranscriptMessageT = TypeVar("ToolTranscriptMessageT")
 
@@ -206,6 +212,206 @@ class ToolTranscriptProjectionBinding(
             self.tool_result_message_view(message)
         )
 
+
+@dataclass
+class MappingToolTranscriptViewAdapter:
+    """Adapt normalized mapping events through injected result projections."""
+
+    result_text: ToolResultTextProjector
+    result_details: ToolResultDetailsProjector
+    result_terminated: ToolResultTerminationPredicate
+    error_summary: ToolErrorSummaryProjector
+    message_event: ToolResultMessageEventProjector
+    render_event_text: ToolEventRenderer | None = None
+    max_body_lines: int = 8
+
+    def call_id(self, event: Mapping[str, Any]) -> str:
+        value = event.get("tool_call_id")
+        if isinstance(value, str) and value:
+            return value
+        return self._tool_name(event)
+
+    def message_id(self, message: object) -> str:
+        value = getattr(message, "tool_call_id", None)
+        return value if isinstance(value, str) and value else ""
+
+    def call_view(self, event: Mapping[str, Any]) -> ToolCallView:
+        return ToolCallView(
+            tool_call_id=self.call_id(event),
+            tool_name=self._tool_name(event),
+            args=event.get("args"),
+            rendered_text=self._render(event),
+        )
+
+    def result_view(
+        self,
+        event: Mapping[str, Any],
+        snapshot: ToolCallSnapshot | None = None,
+        tool_call_id: str | None = None,
+    ) -> ToolResultView:
+        result = self._event_result(event)
+        details = self.result_details(result)
+        status = self._result_status(event, result=result, details=details)
+        event_tool_name = self._tool_name(event)
+        policy_tool_name = (
+            snapshot.tool_name if snapshot is not None else event_tool_name
+        )
+        result_text = ""
+        if workspace_tool_body_visibility(policy_tool_name, status):
+            result_text = self.result_text(result, self.max_body_lines)
+        return ToolResultView(
+            tool_call_id=self.call_id(event) if tool_call_id is None else tool_call_id,
+            tool_name=event_tool_name,
+            status=status,
+            args=event.get("args"),
+            result_text=result_text,
+            rendered_text=self._render(event),
+            details=details,
+            error_summary=self.error_summary(result),
+        )
+
+    def tool_result_message_view(self, message: object) -> ToolResultView:
+        event = self.message_event(message)
+        return self.result_view(
+            event,
+            tool_call_id=self.message_id(message) or self._tool_name(event),
+        )
+
+    def _render(self, event: Mapping[str, Any]) -> str | None:
+        if self.render_event_text is None:
+            return None
+        return self.render_event_text(event, False)
+
+    @staticmethod
+    def _event_result(event: Mapping[str, Any]) -> object:
+        if event.get("type") == "tool_execution_update":
+            return event.get("partial_result")
+        return event.get("result")
+
+    @staticmethod
+    def _tool_name(event: Mapping[str, Any]) -> str:
+        value = event.get("tool_name")
+        return value if isinstance(value, str) and value else "tool"
+
+    def _result_status(
+        self,
+        event: Mapping[str, Any],
+        *,
+        result: object,
+        details: Mapping[str, Any],
+    ) -> ToolTranscriptStatus:
+        if details.get("timed_out") is True:
+            return "timed_out"
+        if details.get("cancelled") is True:
+            return "cancelled"
+        if bool(event.get("is_error", False)):
+            return "error"
+        if self.result_terminated(result):
+            return "terminate"
+        return "ok"
+
+
+def build_mapping_tool_transcript_projection(
+    *,
+    result_text: ToolResultTextProjector,
+    result_details: ToolResultDetailsProjector,
+    result_terminated: ToolResultTerminationPredicate,
+    error_summary: ToolErrorSummaryProjector,
+    message_event: ToolResultMessageEventProjector,
+    render_event_text: ToolEventRenderer | None = None,
+    max_body_lines: int = 8,
+) -> ToolTranscriptProjectionBinding[Mapping[str, Any], object]:
+    """Compose the standard workspace transcript policy with mapping events."""
+
+    adapter = MappingToolTranscriptViewAdapter(
+        result_text=result_text,
+        result_details=result_details,
+        result_terminated=result_terminated,
+        error_summary=error_summary,
+        message_event=message_event,
+        render_event_text=render_event_text,
+        max_body_lines=max_body_lines,
+    )
+    return ToolTranscriptProjectionBinding(
+        neutral_projector=ToolTranscriptProjector(
+            verb_resolver=workspace_tool_verb,
+            body_visibility=workspace_tool_body_visibility,
+            command_resolver=workspace_tool_command,
+            max_body_lines=max_body_lines,
+        ),
+        call_id=adapter.call_id,
+        message_id=adapter.message_id,
+        call_view=adapter.call_view,
+        result_view=adapter.result_view,
+        tool_result_message_view=adapter.tool_result_message_view,
+    )
+
+
+def workspace_tool_verb(tool_name: str, args: object | None) -> str:
+    """Return the standard Agent-workspace transcript verb."""
+
+    normalized = tool_name.lower()
+    command = _workspace_command_from_args(args).lower()
+    if any(
+        part in normalized for part in ("read", "grep", "glob", "list", "ls", "search")
+    ):
+        return "Explored"
+    if any(part in normalized for part in ("edit", "write", "patch")):
+        return "Edited"
+    if any(part in normalized for part in ("test", "lint", "ruff", "pytest")):
+        return "Tested"
+    if any(part in command for part in ("pytest", "ruff", "mypy", "lint", "test ")):
+        return "Tested"
+    if any(part in normalized for part in ("bash", "shell", "exec", "run")):
+        return "Ran"
+    return f"Used {tool_name}"
+
+
+def workspace_tool_body_visibility(
+    tool_name: str,
+    status: ToolTranscriptStatus,
+) -> bool:
+    """Choose standard command and inspection bodies for collapsed display."""
+
+    if status != "ok":
+        return False
+    normalized = tool_name.lower()
+    return any(
+        part in normalized
+        for part in (
+            "bash",
+            "shell",
+            "exec",
+            "run",
+            "grep",
+            "find",
+            "ls",
+            "test",
+            "lint",
+            "ruff",
+            "pytest",
+        )
+    )
+
+
+def workspace_tool_command(
+    tool_name: str,
+    args: object | None,
+    title: str,
+) -> str | None:
+    """Expose command labels for standard run and test tools."""
+
+    return title if workspace_tool_verb(tool_name, args) in {"Ran", "Tested"} else None
+
+
+def _workspace_command_from_args(args: object | None) -> str:
+    if isinstance(args, Mapping):
+        command = args.get("command")
+        if isinstance(command, str):
+            return command
+    return ""
+
+
 def tool_block_to_record(
     block: ToolTranscriptBlock, *, elapsed_seconds: float = 0.0
 ) -> ToolExecutionRecord:
@@ -354,7 +560,10 @@ def _exit_code(detail: str) -> int | None:
 
 
 __all__ = [
+    "MappingToolTranscriptViewAdapter",
     "ToolBodyVisibility",
+    "ToolErrorSummaryProjector",
+    "ToolEventRenderer",
     "ToolCommandResolver",
     "ToolCallSnapshot",
     "ToolCallView",
@@ -362,7 +571,15 @@ __all__ = [
     "ToolTranscriptBlock",
     "ToolTranscriptProjectionBinding",
     "ToolTranscriptProjector",
+    "ToolResultDetailsProjector",
+    "ToolResultMessageEventProjector",
+    "ToolResultTerminationPredicate",
+    "ToolResultTextProjector",
     "ToolTranscriptStatus",
     "ToolVerbResolver",
+    "build_mapping_tool_transcript_projection",
     "tool_block_to_record",
+    "workspace_tool_body_visibility",
+    "workspace_tool_command",
+    "workspace_tool_verb",
 ]

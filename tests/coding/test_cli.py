@@ -1122,6 +1122,7 @@ def test_cwd_bound_services_factory_uses_sdk_services_creation(
 ) -> None:
     import loushang.coding.cli.__main__ as cli_main
     from loushang.coding.bootstrap import create_services
+    from loushang.harness.cli import cwd_bound_services_factory
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -1139,15 +1140,10 @@ def test_cwd_bound_services_factory_uses_sdk_services_creation(
         calls.append(kwargs)
         return SimpleNamespace(services=created_services)
 
-    monkeypatch.setattr(
-        cli_main,
-        "create_agent_session_services",
-        fake_create_agent_session_services,
-        raising=False,
-    )
-
-    factory = cli_main._cwd_bound_services_factory(
-        base_services, resource_loader_options
+    factory = cwd_bound_services_factory(
+        base_services,
+        resource_loader_options,
+        create_services=fake_create_agent_session_services,
     )
 
     assert factory is not None
@@ -1221,6 +1217,8 @@ def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
 
     def build_registry(**kwargs):
         captured["tool_resolver"] = kwargs["approval_resolver"]
+        captured["tool_runtime_settings"] = kwargs["runtime_settings"]
+        captured["settings_manager"] = kwargs["settings_manager"]
         return ToolRegistry()
 
     def runtime_builder(**kwargs):
@@ -1228,6 +1226,7 @@ def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
         return runtime
 
     monkeypatch.setattr(cli_main, "build_builtin_tool_registry", build_registry)
+    services = _fake_services()
 
     exit_code = asyncio.run(
         cli_main.run_cli(
@@ -1236,7 +1235,7 @@ def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
             stdout=StringIO(),
             stderr=StringIO(),
             cwd=tmp_path,
-            services=_fake_services(),
+            services=services,
             runtime_builder=runtime_builder,
         )
     )
@@ -1244,6 +1243,8 @@ def test_run_cli_shares_interactive_approval_resolver_with_tools_and_runtime(
     assert exit_code == 0
     assert isinstance(captured["tool_resolver"], InteractiveApprovalResolver)
     assert captured["runtime_resolver"] is captured["tool_resolver"]
+    assert captured["tool_runtime_settings"] is not None
+    assert captured["settings_manager"] is services.settings_manager
 
 
 def test_run_cli_keeps_legacy_fixed_runtime_builder_signature(tmp_path) -> None:
@@ -2950,8 +2951,9 @@ def test_run_cli_accepts_explicit_endpoint_model_override(tmp_path) -> None:
 
 
 def test_apply_model_override_persists_global_default_with_endpoint() -> None:
-    from loushang.ai.model import ModelSelection
-    from loushang.coding.cli.__main__ import _apply_model_and_thinking_overrides
+    from loushang.ai.model import ModelSelection, parse_model_selection_reference
+    from loushang.coding.model_selection import apply_model_selection
+    from loushang.harness.cli import configure_agent_cli_session
 
     session = FakeSession("session-1")
     settings_calls: list[tuple[ModelSelection | None, str]] = []
@@ -2964,11 +2966,23 @@ def test_apply_model_override_persists_global_default_with_endpoint() -> None:
     stderr = StringIO()
 
     result = asyncio.run(
-        _apply_model_and_thinking_overrides(
-            args,
+        configure_agent_cli_session(
             session,
-            stderr,
-            settings_manager=settings_manager,
+            session_name=None,
+            extension_flag_values={},
+            model_selection=None,
+            resolve_model_selection=lambda: parse_model_selection_reference(
+                args.model,
+                provider=args.provider,
+            ),
+            thinking_level=args.thinking,
+            apply_model_selection=lambda current, selection: apply_model_selection(
+                current,
+                selection,
+                settings_manager=settings_manager,
+            ),
+            model_result_warning=lambda _result: None,
+            stderr=stderr,
         )
     )
 

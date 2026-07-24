@@ -3,15 +3,19 @@ from loushang.harness.resources.packages.catalog import (
     PackageCatalogDiagnostic,
     PackageCatalogEntry,
     PackageCatalogSources,
+    PackageSummaryProvider,
+    collect_package_catalog,
     empty_package_summary,
     load_package_catalog,
     mark_package_conflicts,
     package_catalog_sources,
     summarize_package_resources,
+    summarize_profiled_package_resources,
 )
 from loushang.harness.resources.packages.catalog_diagnostics import (
     PackageCatalogDiagnosticsRecorder,
     record_package_lockfile_diagnostics,
+    record_package_source_policy_denial,
 )
 from loushang.harness.resources.packages.manifest import (
     PackageManifestInfo,
@@ -38,6 +42,7 @@ from loushang.harness.resources.packages.operations import (
     PackageUpdatePreparation,
 )
 from loushang.harness.resources.packages.projection import (
+    collect_projected_package_entries,
     project_package_entries,
     project_package_entry,
     serialize_package_materialization_record,
@@ -81,6 +86,7 @@ __all__ = [
     "PackageCatalogDiagnosticsRecorder",
     "PackageCatalogEntry",
     "PackageCatalogSources",
+    "PackageSummaryProvider",
     "PackageManifestInfo",
     "PackageMaterializationLifecycle",
     "PackageMaterializationRecord",
@@ -103,6 +109,8 @@ __all__ = [
     "PythonPackageInstallerBackend",
     "ResolvedPackageResourceRoots",
     "clone_source_and_ref",
+    "collect_package_catalog",
+    "collect_projected_package_entries",
     "configure_resource_loader_roots",
     "configured_package_sources",
     "empty_package_summary",
@@ -121,9 +129,11 @@ __all__ = [
     "python_package_requirement",
     "remote_package_name",
     "record_package_lockfile_diagnostics",
+    "record_package_source_policy_denial",
     "resolve_package_manifest",
     "resolve_package_resource_roots",
     "resolve_session_package_install_root",
     "serialize_package_materialization_record",
+    "summarize_profiled_package_resources",
     "summarize_package_resources",
 ]

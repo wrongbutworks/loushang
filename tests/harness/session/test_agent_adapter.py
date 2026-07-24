@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 from loushang.harness.session import (
+    AgentProductSessionRuntime,
     SessionLifecycleTransition,
+    build_agent_product_session_runtime_ports,
     build_agent_session_lifecycle_hooks,
     prepare_current_agent_session,
 )
@@ -115,3 +118,80 @@ def test_prepare_current_agent_session_reopens_and_binds_runtime_host() -> None:
     prepare_current_agent_session(session, runtime_host)
 
     assert actions == [("open-approvals",), ("bind-host", runtime_host)]
+
+
+def test_agent_product_runtime_ports_bind_standard_session_conventions(
+    tmp_path: Path,
+) -> None:
+    events: list[object] = []
+
+    class Transcript:
+        def get_cwd(self) -> str:
+            return str(tmp_path)
+
+        def get_session_file(self) -> Path:
+            return tmp_path / "research.jsonl"
+
+        def get_leaf_id(self) -> str:
+            return "leaf-1"
+
+    class Session:
+        def __init__(self, manager: Transcript) -> None:
+            self.session_manager = manager
+
+    def session_factory(
+        manager: Transcript,
+        *,
+        session_start_event: object,
+    ) -> Session:
+        events.append(session_start_event)
+        return Session(manager)
+
+    ports = build_agent_product_session_runtime_ports(
+        runtime_host=object(),
+        transcript_session_type=Transcript,
+        session_dir=tmp_path,
+        session_factory=session_factory,
+        persist=True,
+        diagnostics_runtime=None,
+        record_shutdown_failure=lambda _session, _event, _error: None,
+        copy_file=lambda _source, _destination: None,
+    )
+    transcript = Transcript()
+    session = ports.build_session(
+        transcript,
+        None,
+        SessionLifecycleTransition(reason="new"),
+    )
+
+    assert session.session_manager is transcript
+    assert events[0].reason == "startup"
+    assert ports.transcript_for_session(session) is transcript
+    assert ports.transcript_cwd(transcript) == str(tmp_path)
+    assert ports.transcript_session_ref(transcript).endswith("research.jsonl")
+    assert ports.transcript_leaf_entry_id(transcript) == "leaf-1"
+    assert ports.fork_profile.default_position == "before"
+    assert ports.fork_profile.supported_positions == frozenset({"at", "before"})
+
+
+def test_agent_product_session_runtime_binds_current_session_without_product_code(
+    tmp_path: Path,
+) -> None:
+    actions: list[tuple[object, ...]] = []
+    current = _Session(actions, "research")
+
+    runtime = AgentProductSessionRuntime[
+        _Session,
+        _Manager,
+    ](
+        transcript_session_type=_Manager,
+        session_dir=tmp_path,
+        session_factory=lambda manager: _Session(actions, manager.get_cwd()),
+        current_session=current,
+    )
+
+    assert runtime.current_session is current
+    assert actions == [
+        ("open-approvals",),
+        ("bind-host", runtime),
+    ]

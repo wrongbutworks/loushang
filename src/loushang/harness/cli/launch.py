@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from loushang.harness.cli.agent_args import AgentCliArgs
+
 
 @dataclass(frozen=True, slots=True)
 class CliLaunchPlan:
@@ -27,6 +29,91 @@ class CliLaunchPlan:
     fork_requested: bool = False
     command_operation: bool = False
     structured_operation_output: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class AgentCliLaunchOverlay:
+    """Product additions to the standard Agent CLI launch projection."""
+
+    workflow_requested: bool = False
+    work_log_requested: bool = False
+    method_requested: bool = False
+    method_disabled: bool = False
+    command_operation: bool = False
+    structured_operation_output: bool = False
+
+
+def agent_cli_launch_plan(
+    args: AgentCliArgs,
+    *,
+    overlay: AgentCliLaunchOverlay = AgentCliLaunchOverlay(),
+) -> CliLaunchPlan:
+    """Project standard Agent arguments plus explicit Product additions."""
+
+    command_operations = (
+        args.list_sessions,
+        args.source_info,
+        args.list_models is not False,
+        args.list_commands,
+        args.list_diagnostics,
+        args.list_skills,
+        args.list_plugins,
+        args.list_packages,
+        args.export is not None,
+        args.diag_export,
+        args.command is not None,
+        bool(args.enable_skills),
+        bool(args.disable_skills),
+        bool(args.add_plugin_sources),
+        bool(args.remove_plugin_sources),
+        bool(args.enable_plugins),
+        bool(args.disable_plugins),
+        bool(args.install_packages),
+        bool(args.uninstall_packages),
+        bool(args.materialize_packages),
+        bool(args.update_packages),
+        bool(args.remove_packages),
+        args.update_all_packages,
+        args.check_package_updates,
+        overlay.command_operation,
+    )
+    structured_operations = (
+        args.list_sessions and args.list_sessions_format == "json",
+        args.list_models is not False and args.list_models_format == "json",
+        args.list_commands and args.list_commands_format == "json",
+        args.list_diagnostics and args.list_diagnostics_format == "json",
+        args.list_skills and args.list_skills_format == "json",
+        args.list_plugins and args.list_plugins_format == "json",
+        args.list_packages and args.list_packages_format == "json",
+        args.export is not None and args.export_result_format == "json",
+        args.command is not None and args.command_result_format == "json",
+        bool(args.materialize_packages),
+        bool(args.update_packages),
+        bool(args.remove_packages),
+        args.update_all_packages,
+        args.check_package_updates,
+        overlay.structured_operation_output,
+    )
+    return CliLaunchPlan(
+        mode=args.mode,
+        force_tui=args.tui,
+        disable_tui=args.no_tui,
+        prompt_requested=args.prompt is not None,
+        workflow_requested=overlay.workflow_requested,
+        message_input=bool(args.messages),
+        file_input=bool(args.file_args),
+        follow_up_input=bool(args.message_prompts),
+        render_tool_events=args.render_tool_events,
+        work_log_requested=overlay.work_log_requested,
+        method_requested=overlay.method_requested,
+        method_disabled=overlay.method_disabled,
+        session_requested=args.session is not None,
+        continue_requested=args.continue_,
+        resume_requested=bool(args.resume),
+        fork_requested=args.fork is not None,
+        command_operation=any(command_operations),
+        structured_operation_output=any(structured_operations),
+    )
 
 
 def cli_help_belongs_on_stderr(plan: CliLaunchPlan) -> bool:
@@ -133,7 +220,9 @@ def cli_observability_mode(plan: CliLaunchPlan, *, effective_tui: bool) -> str:
 
 
 __all__ = [
+    "AgentCliLaunchOverlay",
     "CliLaunchPlan",
+    "agent_cli_launch_plan",
     "cli_help_belongs_on_stderr",
     "cli_observability_mode",
     "cli_output_guard_enabled",

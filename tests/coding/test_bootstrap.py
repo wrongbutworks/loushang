@@ -169,92 +169,6 @@ def _runtime_footer(cwd: str) -> str:
     return f"Current date: {date.today().isoformat()}\nCurrent working directory: {cwd}"
 
 
-_CONFIG_ACTIVATION_STEPS = (
-    "startup_checks",
-    "package_sources",
-    "resource_roots",
-    "resources",
-    "extensions",
-    "cwd_audit",
-    "model_registry",
-)
-
-
-def _patch_config_activation_steps(
-    monkeypatch,
-    bootstrap,
-    calls: list[str],
-    *,
-    failed_step: str | None = None,
-    failure: Exception | None = None,
-) -> None:
-    for step_name in _CONFIG_ACTIVATION_STEPS:
-
-        def activate(selection, state, *, _step_name=step_name):
-            del selection, state
-            calls.append(_step_name)
-            if _step_name == failed_step:
-                assert failure is not None
-                raise failure
-
-        monkeypatch.setattr(bootstrap, f"_activate_{step_name}", activate)
-
-
-def test_session_configuration_activation_preserves_product_effect_order(
-    monkeypatch,
-) -> None:
-    from loushang.coding import bootstrap
-    from loushang.coding.control import ControlConfig
-
-    calls: list[str] = []
-    _patch_config_activation_steps(monkeypatch, bootstrap, calls)
-
-    bootstrap._activate_session_configuration(
-        settings=ControlConfig(),
-        services=object(),  # type: ignore[arg-type]
-        session_manager=object(),  # type: ignore[arg-type]
-        package_materializer=object(),  # type: ignore[arg-type]
-        extension_flag_values=None,
-    )
-
-    assert calls == list(_CONFIG_ACTIVATION_STEPS)
-
-
-def test_session_configuration_activation_stops_and_reraises_original_failure(
-    monkeypatch,
-) -> None:
-    import pytest
-
-    from loushang.coding import bootstrap
-    from loushang.coding.control import ControlConfig
-
-    class _ProductActivationError(RuntimeError):
-        pass
-
-    for failed_index, failed_step in enumerate(_CONFIG_ACTIVATION_STEPS):
-        calls: list[str] = []
-        failure = _ProductActivationError(f"failed at {failed_step}")
-        _patch_config_activation_steps(
-            monkeypatch,
-            bootstrap,
-            calls,
-            failed_step=failed_step,
-            failure=failure,
-        )
-
-        with pytest.raises(_ProductActivationError) as caught:
-            bootstrap._activate_session_configuration(
-                settings=ControlConfig(),
-                services=object(),  # type: ignore[arg-type]
-                session_manager=object(),  # type: ignore[arg-type]
-                package_materializer=object(),  # type: ignore[arg-type]
-                extension_flag_values=None,
-            )
-
-        assert caught.value is failure
-        assert calls == list(_CONFIG_ACTIVATION_STEPS[: failed_index + 1])
-
-
 def test_create_agent_session_uses_manager_header_as_agent_session_id(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.session_manager import SessionManager
@@ -2033,7 +1947,7 @@ def test_create_agent_session_merges_extension_resources_and_tools(tmp_path) -> 
 
     class _Extension:
         def resources_discover(self, bundle):
-            from loushang.coding.extensions import ExtensionResourceContribution
+            from loushang.harness.extensions.agent import ExtensionResourceContribution
 
             return ExtensionResourceContribution(
                 prompt_descriptors=[
@@ -2133,7 +2047,7 @@ def test_create_agent_session_wires_extension_tool_interception_into_agent(
             [
                 "from loushang.agent.types import AgentToolResult",
                 "from loushang.ai.types import TextPart",
-                "from loushang.coding.extensions import ToolCallDecision, ToolResultDecision",
+                "from loushang.harness.extensions.agent import ToolCallDecision, ToolResultDecision",
                 "from loushang.harness.tools.workspace import ToolDefinition",
                 "",
                 "async def _ext_execute(tool_name, arguments, context, signal):",
@@ -2364,8 +2278,8 @@ def test_create_agent_session_records_nonfatal_extension_tool_conflicts(
 
 
 def test_extension_tool_contribution_projection_preserves_source_info(tmp_path) -> None:
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.harness.bootstrap import project_extension_tool_contributions
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
     from loushang.harness.tools.workspace import ToolDefinition
 
     async def _execute_tool(

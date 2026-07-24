@@ -73,11 +73,12 @@ for the following compatibility-preserving paths:
   handler; the command list continues to display built-ins, extensions, then
   resource commands.
 
-`coding.capability_plan` records the resolved selection snapshot under the
-separate `capabilityProfile` header key. New sessions and forks write that
-snapshot; persistent resume rejects a different supported-profile snapshot.
-This is independent from `runtimeProfile`, which continues to select the
-store, transcript, and context-compaction runtime.
+`coding.product_plan` selects
+`standard_capability_composition_plan(product_id="coding")`; session headers
+record its resolved snapshot under the separate `capabilityProfile` key. New
+sessions and forks write that snapshot; persistent resume rejects a different
+supported-profile snapshot. This is independent from `runtimeProfile`, which
+continues to select the store, transcript, and context-compaction runtime.
 
 The current Coding plan admits only Product selections because it registers
 only Product-owned, pure factories. OEM and extension selections are not

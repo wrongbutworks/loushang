@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from loushang.harness.commands.descriptors import (
     CommandCatalog,
@@ -375,6 +375,60 @@ def _known_command_names(
     return selected
 
 
+def command_def_from_descriptor(
+    descriptor: CommandDescriptor[SourceInfoT],
+    *,
+    id_prefix: str = "harness.session",
+) -> CommandDef:
+    """Project a typed session descriptor into the shared host command shape."""
+
+    normalized = descriptor.effective_invocation_name
+    return CommandDef(
+        id=f"{id_prefix}.{normalized}",
+        name=normalized,
+        kind=CommandKind.SESSION,
+        description=descriptor.description,
+        source=descriptor.source,
+        aliases=descriptor.aliases,
+        argument_hint=descriptor.argument_hint,
+    )
+
+
+def coerce_command_descriptor(value: object) -> CommandDescriptor[Any] | None:
+    """Normalize a structural Product command into the shared descriptor."""
+
+    if isinstance(value, CommandDescriptor):
+        return value
+    name = _non_empty_string_attr(value, "name")
+    invocation_name = _non_empty_string_attr(value, "invocation_name") or name
+    if invocation_name is None:
+        return None
+    precedence = getattr(value, "precedence", 0)
+    if not isinstance(precedence, int) or isinstance(precedence, bool):
+        precedence = 0
+    aliases = getattr(value, "aliases", ())
+    if not isinstance(aliases, (tuple, list)):
+        aliases = ()
+    return CommandDescriptor(
+        name=name or invocation_name,
+        description=_non_empty_string_attr(value, "description"),
+        source=_non_empty_string_attr(value, "source") or "session",
+        source_info=getattr(value, "source_info", None),
+        invocation_name=invocation_name,
+        aliases=tuple(
+            alias for alias in aliases if isinstance(alias, str) and alias
+        ),
+        conflict_group=_non_empty_string_attr(value, "conflict_group"),
+        argument_hint=_non_empty_string_attr(value, "argument_hint"),
+        precedence=precedence,
+    )
+
+
+def _non_empty_string_attr(value: object, name: str) -> str | None:
+    raw = getattr(value, name, None)
+    return raw if isinstance(raw, str) and raw else None
+
+
 __all__ = [
     "DEFAULT_LOCAL_COMMANDS_PROFILE",
     "EMPTY_LOCAL_COMMAND_CATALOG_PROFILE",
@@ -382,4 +436,6 @@ __all__ = [
     "MixedCommandCatalog",
     "MixedCommandCatalogPorts",
     "MixedCommandMatch",
+    "command_def_from_descriptor",
+    "coerce_command_descriptor",
 ]

@@ -13,12 +13,15 @@ from loushang.channel import (
     encode_rpc_jsonl_frame,
 )
 from loushang.channel.types import ChannelEnvelope
-from loushang.coding.mode.channel_mode import (
-    CodingChannelOperationPort,
-    run_channel_mode,
+from loushang.coding.domain.work import (
+    CODING_WORK_CHANNEL_PROFILE,
+    create_coding_work_runtime,
+    run_coding_work_channel,
 )
 from loushang.harness.events import RuntimeEvent, RuntimeEventView
-from loushang.work import WorkEvent, WorkOperation
+from loushang.harness.host.channel_events import AgentRuntimeChannelProjection
+from loushang.work import InMemoryEventLogBackend, WorkEvent, WorkOperation
+from loushang.work.channel import SessionWorkChannelPort
 
 
 class _FakeSession:
@@ -74,10 +77,24 @@ class _FakeSession:
                 asyncio.get_running_loop().create_task(result)
 
 
+def _coding_channel_port(session: _FakeSession) -> SessionWorkChannelPort:
+    event_log = InMemoryEventLogBackend()
+    return SessionWorkChannelPort(
+        session=session,
+        runtime=create_coding_work_runtime(
+            session=session,
+            event_log=event_log,
+            session_id=lambda: session.session_id,
+        ),
+        profile=CODING_WORK_CHANNEL_PROFILE,
+        project_runtime_envelopes=AgentRuntimeChannelProjection(),
+    )
+
+
 def test_coding_channel_port_accepts_standard_turn_and_projects_runtime_event() -> None:
     async def scenario() -> None:
         session = _FakeSession()
-        port = CodingChannelOperationPort(session=session)
+        port = _coding_channel_port(session)
         deliveries = []
         unsubscribe = port.subscribe_deliveries(deliveries.append)
 
@@ -119,7 +136,7 @@ def test_coding_channel_port_accepts_standard_turn_and_projects_runtime_event() 
 def test_coding_channel_port_rejects_non_standard_operation_before_prompting() -> None:
     async def scenario() -> None:
         session = _FakeSession()
-        port = CodingChannelOperationPort(session=session)
+        port = _coding_channel_port(session)
         request = _request(kind="SetCodingModel")
 
         result = await port.accept_operation(request)
@@ -134,7 +151,7 @@ def test_coding_channel_port_rejects_non_standard_operation_before_prompting() -
 def test_coding_channel_port_cancels_active_operation_through_session_abort() -> None:
     async def scenario() -> None:
         session = _FakeSession()
-        port = CodingChannelOperationPort(session=session)
+        port = _coding_channel_port(session)
         await port.accept_operation(_request())
         await asyncio.sleep(0)
 
@@ -156,7 +173,7 @@ def test_coding_channel_port_cancels_active_operation_through_session_abort() ->
 def test_channel_host_correlates_coding_runtime_views_to_standard_request() -> None:
     async def scenario() -> None:
         session = _FakeSession()
-        port = CodingChannelOperationPort(session=session)
+        port = _coding_channel_port(session)
         stdout = StringIO()
         host = ChannelHost(port=port, stdin=StringIO(), stdout=stdout)
         unsubscribe = port.subscribe_deliveries(host.deliver)
@@ -198,7 +215,7 @@ def test_run_channel_mode_uses_active_session_and_releases_subscription() -> Non
         session = _FakeSession()
         stdout = StringIO()
 
-        exit_code = await run_channel_mode(
+        exit_code = await run_coding_work_channel(
             runtime=_Runtime(session),
             stdin=StringIO(encode_rpc_jsonl_frame(_request()) + "\n"),
             stdout=stdout,

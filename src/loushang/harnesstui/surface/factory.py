@@ -3,7 +3,10 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Literal
 
-from loushang.harnesstui.commands.presentation import command_palette_select_items
+from loushang.harnesstui.commands.presentation import (
+    command_palette,
+    command_palette_select_items,
+)
 from loushang.harnesstui.selection.model import ModelSelectorSurface
 from loushang.harnesstui.surface.view import (
     ScreenSurfacePresentation,
@@ -98,6 +101,31 @@ def command_palette_surface_view(
     )
 
 
+def command_catalog_surface_view(
+    catalog: object,
+    *,
+    title: str = "Commands",
+    purpose: Literal["model", "command"] = "command",
+    subtitle: str = "",
+    footer: str = "Enter to select - Esc to close",
+    presentation: ScreenSurfacePresentation = "bottom",
+    max_visible: int = 8,
+) -> ScreenSurfaceView:
+    """Build a command selection surface from a structural catalog."""
+
+    commands = getattr(catalog, "commands", None)
+    items = commands() if callable(commands) else ()
+    return command_palette_surface_view(
+        command_palette(items, title=title),
+        title=title,
+        purpose=purpose,
+        subtitle=subtitle,
+        footer=footer,
+        presentation=presentation,
+        max_visible=max_visible,
+    )
+
+
 def model_selector_surface_view(
     *,
     all_items: Iterable[SelectItem],
@@ -130,6 +158,7 @@ def model_selector_surface_view(
 
 
 __all__ = [
+    "command_catalog_surface_view",
     "command_palette_surface_view",
     "command_surface_view",
     "info_surface_view",

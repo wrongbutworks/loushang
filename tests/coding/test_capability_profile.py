@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from loushang.coding.capability_plan import (
+from loushang.coding.product_plan import (
+    CODING_CAPABILITY_PLAN,
+    CODING_CAPABILITY_PROFILE,
     CODING_CAPABILITY_PROFILE_METADATA_KEY,
-    coding_capability_plan,
-    coding_capability_snapshot_metadata,
-    resolve_coding_capability_profile,
-    validate_coding_capability_snapshot,
+    CODING_PRODUCT_ID,
 )
 from loushang.harness.capabilities import (
     CapabilityPack,
@@ -14,10 +13,11 @@ from loushang.harness.capabilities import (
 from loushang.harness.capabilities.prompt import PromptSection
 from loushang.harness.conversation import ConversationHeader
 from loushang.harness.resources.types import ResourceBundle, SkillDescriptor
+from loushang.harness.runtime import RuntimeProfileSnapshot
 
 
 def test_coding_capability_profile_binds_all_default_capabilities(tmp_path) -> None:
-    profile = resolve_coding_capability_profile()
+    profile = CODING_CAPABILITY_PROFILE
     binding = bind_capability_composition_runtime(profile)
     bundle = ResourceBundle(
         cwd=tmp_path,
@@ -52,26 +52,28 @@ def test_coding_capability_profile_binds_all_default_capabilities(tmp_path) -> N
 
 
 def test_coding_capability_snapshot_is_separate_from_other_header_metadata() -> None:
-    profile = resolve_coding_capability_profile()
+    profile = CODING_CAPABILITY_PROFILE
     header = ConversationHeader(
         conversation_id="session",
         version=1,
         created_at="2026-07-17T00:00:00Z",
         metadata={
             "cwd": "/workspace",
-            **coding_capability_snapshot_metadata(profile),
+            CODING_CAPABILITY_PROFILE_METADATA_KEY: profile.snapshot().to_json(),
         },
     )
 
-    snapshot = validate_coding_capability_snapshot(header)
+    snapshot = RuntimeProfileSnapshot.from_json(
+        header.metadata[CODING_CAPABILITY_PROFILE_METADATA_KEY]
+    )
 
-    assert snapshot is not None
+    assert snapshot.product_id == CODING_PRODUCT_ID
     assert (
         header.metadata[CODING_CAPABILITY_PROFILE_METADATA_KEY]
         == profile.snapshot().to_json()
     )
     assert snapshot.to_json() == profile.snapshot().to_json()
-    assert set(slot.key for slot in coding_capability_plan().slots) == {
+    assert set(slot.key for slot in CODING_CAPABILITY_PLAN.slots) == {
         "resource.runtime",
         "prompt.sections",
         "skill.activation",
@@ -80,5 +82,5 @@ def test_coding_capability_snapshot_is_separate_from_other_header_metadata() -> 
     }
     assert all(
         slot.allowed_sources == frozenset({"product"})
-        for slot in coding_capability_plan().slots
+        for slot in CODING_CAPABILITY_PLAN.slots
     )

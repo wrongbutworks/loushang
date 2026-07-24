@@ -29,12 +29,12 @@ they must not own provider registration, credentials, or product model policy.
 | --- | --- | --- | --- |
 | `coding.diagnostics.problem_bridge` | `harness.diagnostics.observability_bridge` | Products may supply phase/source resolvers. Coding supplies its `config -> model` source override. | Complete: the Coding bridge was deleted. |
 | `coding.diagnostics.debug_status` problem-store formatting | `observability.problem_text` | Coding keeps CLI text and default diagnostic export command. | Complete: reusable formatting has no Coding import. |
-| `coding.diag_export` archive writer and redaction | `harness.diagnostics.export` | Coding supplies archive path, README, manifest projection, artifact list, and diagnostic JSON projection. | Complete: Coding is a thin product adapter. |
+| removed `coding.diag_export` archive writer and redaction | `harness.diagnostics.export` | Products may replace the shared `DiagnosticBundleProfile`; Loushang products use the standard archive, manifest, README, artifact set, and diagnostic projection. | Complete: Coding imports the shared bundle operation directly. |
 | `coding.source_info` descriptor conversion | `harness.resources.source` | Coding only supplies its resource descriptor values. | Complete: production resource consumers import Harness directly. |
-| `coding.source_info` executable, package, and Git inspection | `observability.runtime_identity` | Coding supplies package/module identity, executable name, and display title. | Complete: Coding has no subprocess, package metadata, or PATH logic. |
+| removed `coding.source_info` executable, package, and Git inspection | `observability.runtime_identity` | `coding.diagnostics.profile` supplies package/module aliases, executable name, and display title through `RuntimeIdentityProfile`. | Complete: Coding has no source-info facade, subprocess, package metadata, or PATH logic. |
 | `coding.model_selection` normalization and presentation-neutral ordering | `ai.model` | Coding retains preferred models and Coding persistence wording. | Complete: non-policy consumers import `ai.model`. |
 | `coding.model_selection` session model application and discovery | `harness.session.model_selection` | Products inject preferred candidate selection and persistence callbacks. | Complete: Coding is the preferred-candidate adapter. |
-| `coding.observability` configuration lifecycle | `observability.runtime` | Coding supplies CLI/environment names, `.loushang` default paths, and diagnostic source mapping. | Complete: Coding is a path/profile adapter. |
+| removed `coding.observability` configuration lifecycle | `harness.diagnostics.observability_runtime` over `observability.runtime` | Coding supplies only its `config -> model` diagnostic-source policy. Shared defaults own `.loushang` paths and stable session labels. | Complete: CLI and TUI bind the shared contexts directly. |
 
 Wave 1 contract probes:
 
@@ -46,6 +46,103 @@ Wave 1 contract probes:
   candidate chooser; it has no Coding import.
 - Observability lifecycle configuration restores a pre-existing sink after the
   product context exits.
+
+## Top-Level Work, Diagnostics, And Bootstrap Collapse (Complete)
+
+This batch applies the same ownership test to root-level `coding/*.py` files;
+placement at the Product package root does not imply Product ownership.
+
+| Removed or reduced Coding region | Canonical owner | Retained Product input |
+| --- | --- | --- |
+| removed `work_executor.py`, `work_runtime.py`, `work_shell.py`, and `work.coding` | `work.session.SessionWorkRuntime` composed over the existing `work.WorkRuntime` | `coding.domain.work` supplies `domain="coding"`, `SubmitCodingTurn`, and the Agent-event fact projector. |
+| `prompt_command.py` and print/channel/CLI Work bindings | existing `harnesstui.conversation` hosts plus `work.session` | Coding retains its renderer, failure wording, Method metadata preparation, and Product binding names. |
+| removed `diag_export.py`, `observability.py`, and `source_info.py` | existing Harness diagnostics and Observability packages | `coding.diagnostics.profile` supplies only source aliases and runtime-identity labels. |
+| `sdk_surface.py` | `harness.sdk_surface` inspection algorithm | Coding retains the required public entry-name tuple and default module binding. |
+| `bootstrap.py` standard activation effects | existing `harness.session.bootstrap` activation graph and `StandardAgentSessionConfigurationRuntime` | Coding supplies Extension construction, source-identity check, prompt/model/tool/session factories, and Product defaults. |
+
+Implementation accounting, excluding tests and documentation:
+
+- Coding Python: 11,969 to 11,010 LOC, a net reduction of 959 LOC.
+- root-level `coding/*.py`: 3,473 to 2,358 LOC, a reduction of 1,115 LOC.
+- Work/Prompt Coding region: 867 to 392 LOC, a reduction of 475 LOC.
+- diagnostics/source/SDK Coding region: 427 to 127 LOC, a reduction of 300 LOC.
+- `coding.bootstrap`: 773 to 567 LOC, a reduction of 206 LOC.
+- shared mechanisms added or expanded: approximately 1,110 LOC, giving a
+  Coding-deletion/shared-addition ratio of approximately 0.86.
+
+The old Coding files are deleted rather than retained as aliases. Architecture
+probes require `work.session`, `harness.sdk_surface`, Harness diagnostics, and
+the standard session bootstrap runtime to remain free of Coding imports.
+
+## Root Product Plan And Shared Adapters (Complete)
+
+This batch removes the remaining root-level runtime/capability implementations
+without introducing a second resolver, transcript lifecycle, resource loader,
+selection runtime, or plain-prompt host.
+
+| Removed or reduced Coding region | Existing or extended shared owner | Retained Product input |
+| --- | --- | --- |
+| removed `coding.runtime_profile` | `harness.agent_transcript.AgentTranscriptProfileRuntime` composed over the existing runtime resolver/binder, transcript stores/profile, and compaction capability | `coding.product_plan` declares Product IDs, metadata key, store/profile implementation identities, and current defaults. |
+| removed `coding.capability_plan` | existing `harness.capabilities.composition_runtime` via `standard_capability_composition_plan` | `coding.product_plan` selects the standard composition profile; future Coding deltas remain declared Product data. |
+| `coding.session_manager` runtime binding | the shared Agent transcript profile runtime | Coding retains session-root and persistence decisions plus restored-header Product validation. |
+| `coding.model_selection_tui` | existing `harness.session.model_selection` and `harnesstui.selection` catalog/runtime | Coding retains preferred-model policy, settings persistence, and its persistence-warning wording. |
+| `coding.resource_runtime` | existing `ResourceLoader` through `ResourceLoaderProfile` and `ProfiledResourceLoader` | Coding retains built-in package identity, context-file compatibility names, prompt assembly, package security policy, and default loader choice. |
+| duplicated helpers in `coding.prompt_command` and HarnessTUI plain mode | existing `harnesstui.conversation.plain_prompt_host` | Coding retains Work/Method preparation, renderer, Product diagnostics, and final wording. |
+| `coding.tool_pack` | existing Harness workspace tool factory/registry plus `WorkspaceToolProfile` | Coding retains Product membership/order, descriptions, prompt snippets, policy, approval, diagnostics, and execution-service inputs. Contribution resolution and registration no longer repeat in Coding. |
+
+Implementation accounting, excluding tests and documentation:
+
+- Coding Python: 11,007 to 10,363 LOC, a net reduction of 644 LOC.
+- root-level `coding/*.py`: 2,358 to 1,708 LOC, a reduction of 650 LOC.
+- removed runtime/capability implementations: 404 LOC, replaced by the
+  38-line declarative `coding.product_plan`.
+- `coding.model_selection_tui`: 165 to 38 LOC.
+- `coding.resource_runtime`: 154 to 95 LOC.
+- `coding.prompt_command`: 324 to 251 LOC.
+- shared implementation added or expanded: 761 lines and 69 lines removed,
+  including the reusable Agent transcript binding, for a Coding-deletion/shared-
+  addition ratio of approximately 0.85.
+
+Product-neutral probes bind `research`/`design` transcript, capability,
+resource, model-selection, and plain-prompt adapters without importing Coding.
+The old Coding implementations are deleted rather than retained as facades.
+
+## HarnessTUI Conversation Product Binding Collapse (Complete)
+
+This batch removes the remaining Coding-owned copies of the standard
+conversation interaction and Agent presentation bindings. It extends existing
+HarnessTUI owners rather than introducing a second controller, action host,
+history projector, tool projector, surface workflow, or model selector.
+
+| Removed or reduced Coding region | Existing or extended shared owner | Retained Product input |
+| --- | --- | --- |
+| removed `coding.interaction.intent` | `harnesstui.conversation.intents` | Coding adds no private grammar; future Product intents can be composed at the Product boundary. |
+| removed `coding.interaction.controller`, `screen_host`, and `tui_profile` | existing `harnesstui.conversation.controller`, `host`, `action_presentation`, and `info` | `coding.ui.product_binding` injects the command catalog, callbacks, logger, problem prefix, and Product copy. |
+| removed `coding.presentation.tui.screen` and `tool_transcript` | optional `harnesstui.conversation.agent_binding` over the existing neutral history, tool, plain, and screen projectors | Coding retains its renderer/glyph profile and attachment-to-AI conversion. |
+| reduced `coding.presentation.tui.history` and removed `coding.presentation.session` | `harnesstui.conversation.agent_binding` and `session_view` | Coding retains only persisted SessionManager history loading. |
+| standard command/model/settings surface construction | existing `harnesstui.surface` and `harnesstui.selection` profiles/factories | Coding retains settings fields, terminal diagnostics, approval UI, model-application callback, and Product subtitle. |
+
+Closure probes require:
+
+- the neutral conversation modules to remain free of Agent, AI, and Coding
+  imports while the optional Agent binding remains free of Coding imports;
+- Coding UI construction to use the shared controller, routing profile, local
+  action registry, action host, history/tool projectors, and surface factories;
+- deleted Coding modules to remain absent rather than returning as compatibility
+  re-exports;
+- prompt, command, model, queue, retry, compaction, history, tool transcript,
+  plain-mode, and screen-mode behavior tests to remain unchanged.
+
+Implementation accounting, excluding tests and documentation:
+
+- Coding Python: 10,363 to 9,520 LOC, a net reduction of 843 LOC.
+- Coding source changes delete 1,153 lines and add 310 lines, including the
+  96-line Product binding; nine duplicate implementation modules are removed.
+- HarnessTUI Python: 15,728 to 16,739 LOC, a net increase of 1,011 LOC.
+- Shared source changes add 1,014 lines and remove 3 lines. The additions are
+  contracts and compositions over existing owners, not replacement engines.
+- Across Coding and HarnessTUI production Python, the batch adds 168 net lines
+  while moving the reusable ownership out of Coding.
 
 ## Wave 2: Event And Extension Product Adapter Collapse (Complete)
 
@@ -60,7 +157,7 @@ into Harness.
 | Agent prompt/context/session-decision reducers formerly in `coding.extensions.runner.ExtensionRunner` | `harness.extensions.agent.hooks` and `harness.extensions.session_runtime` | Coding supplies bound context, CWD, API binding, `before_agent_start` factory/result coercer, and session-decision coercer. | Complete: shared dispatchers own the reducer mechanics; Coding retains provider behavior and Product coercers. |
 | removed `harness.session.extension_{hooks,events,input}` modules | `harness.extensions.agent.{hooks,lifecycle,input}` | Session only consumes the profile during Agent-session composition. Input receives normalized typed requests plus queue/delivery ports; lifecycle is an observation-only extension callback adapter with injected clock/correlation values; Coding retains wire parsing/defaults. | Complete: consumers import the profile directly, input has no Session import, and Session no longer re-exports the profile. |
 | `coding.extensions.runner.ExtensionRunner` loader/API portions | Coding adapter over `harness.extensions.runner.ExtensionRunner` | `ExtensionAPI`, policy resolver, loader configuration, provider actions, and Coding error dictionary remain Product-owned. | Complete: the Coding runner is a thin loader/policy binding; shared reducer and dispatch mechanics live in Harness with snake_case-only extension events. |
-| `coding.event` runtime projection, views, serializer, and presentation policy | `harness.events.session_types`, `session_projection`, `runtime_views`, `recording_policy`, and `session_serialization` | Coding retains `AgentSessionEvent`, Product/Work mapping, rendering, and final wording. Harness owns runtime-view selection/stream shaping, delivery hints, transcript-write decisions, and cancellation classification. The shared wire schema is snake_case-only; no duplicate neutral event engine exists. | Complete: production consumers use the Harness implementations; Coding keeps only established thin import facades and no Pi/camelCase aliases. |
+| removed `coding.event` runtime projection, views, serializer, presentation policy, and final import facade | `harness.events.session_types`, `session_projection`, `runtime_views`, `recording_policy`, and `session_serialization` | Product/Work mapping, rendering, and final wording remain in their existing owners. Harness owns runtime-view selection/stream shaping, delivery hints, transcript-write decisions, and cancellation classification. The shared wire schema is snake_case-only; no duplicate neutral event engine exists. | Complete: all consumers and tests import the canonical Harness implementations directly; no Coding event facade or Pi/camelCase alias remains. |
 
 Wave 2 contract probes:
 
@@ -342,16 +439,17 @@ The repeated CLI/session observability binding now lives in
 `harness.diagnostics.observability_runtime`. It owns scope parsing, explicit or
 environment-derived output paths, startup/session labels, sink binding, and
 debug enable/disable lifecycle. Coding keeps only its source classification
-(`config` problems are presented as `model`) and the historic wrapper names.
+(`config` problems are presented as `model`); the historic wrapper module has
+now been deleted.
 
 | Source region | Shared owner | Coding retained | Status |
 | --- | --- | --- | --- |
-| `coding.observability` session/startup context and debug file lifecycle | `harness.diagnostics.observability_runtime` | Coding diagnostic source mapping and wrapper names | Complete |
+| removed `coding.observability` session/startup context and debug file lifecycle | `harness.diagnostics.observability_runtime` | Coding diagnostic source mapping | Complete |
 
-Slice D accounting: Coding shrank from 157 to 109 LOC (-48); Harness gained
-187 LOC of parameterized binding. Existing Coding observability bridge tests
-and an independent Harness directory-injection probe pass. No debug/trace
-environment variables or file naming behavior changed.
+Slice D initially reduced the adapter from 157 to 109 LOC; the top-level
+collapse later deleted the remaining 109 LOC and bound CLI/TUI directly to the
+shared context. No debug/trace environment variables or file naming behavior
+changed.
 
 ### Wave 6, Slice E: Top-Level Session Bootstrap Leaves (Complete)
 
@@ -429,15 +527,16 @@ diagnostics ports explicitly.
 
 | Source region | Shared owner | Coding retained | Status |
 | --- | --- | --- | --- |
-| `coding.control.model_registry` registry/reload/resolve/build implementation | `harness.model_catalog` | public zero-logic import alias | Complete |
+| removed `coding.control.model_registry` registry/reload/resolve/build implementation and import alias | `harness.model_catalog` | no Coding implementation or submodule facade | Complete |
 | bootstrap default-model fallback and failure diagnostics | `harness.session.model_resolution` | model preference/default selection | Complete |
 | enabled model/thinking pattern parsing and scoped payload assembly | `harness.session.model_resolution` | Product settings wiring | Complete |
 
-Slice B accounting: `coding/control/model_registry.py` shrank from 176 to 5
-LOC and `coding/bootstrap.py` from approximately 1,277 to 1,178 LOC. Harness
-gained the shared catalog and resolution helpers, with no changes to
-`loushang.ai.model` and no external wire behavior changes. Focused Coding
-regressions and independent Harness model-resolution probes pass.
+Slice B originally reduced `coding/control/model_registry.py` from 176 to 5
+LOC; Wave 7 Slice W removes the remaining alias. `coding/bootstrap.py` moved
+from approximately 1,277 to 1,178 LOC during this slice. Harness gained the
+shared catalog and resolution helpers, with no changes to `loushang.ai.model`
+and no external wire behavior changes. Focused Coding regressions and
+independent Harness model-resolution probes pass.
 
 ### Wave 7, Slice C: Session Public Adapter Audit (Already Complete)
 
@@ -475,30 +574,26 @@ presentation, and the final apply-result message. Those operations now live in
 `ModelChoice` values, the current value, and an apply callback; it does not
 expose a Coding session or discover capabilities dynamically.
 
-Coding retains the AI/model-value projection, endpoint/detail normalization,
-preferred-model policy, settings persistence, and the public
-`coding.model_selection_tui` import surface. Its module now contains only the
-Coding acquisition adapter and these product bindings; no generic interaction
-copy or selection runtime is duplicated there.
+Harness owns the AI/model-value projection and standard session acquisition;
+HarnessTUI owns endpoint/detail view projection over its existing selection
+catalog and interaction runtime. Coding retains preferred-model policy,
+settings persistence, and persistence-warning wording. Its module contains
+only those Product bindings; no generic interaction, acquisition, or selection
+runtime is duplicated there.
 
 | Source region | Shared owner | Coding retained | Status |
 | --- | --- | --- | --- |
-| model list filtering, completion, palette resolution and result presentation | `harnesstui.selection.runtime` | normalized choice acquisition | Complete |
+| model list filtering, completion, palette resolution and result presentation | `harnesstui.selection.runtime` | Product persistence warning | Complete |
 | model-selection apply/persistence boundary | `ModelSelectionViewPort` | `apply_model_selection` and warning policy | Complete |
-| Coding model details, endpoint identity and current-session projection | Coding adapter | AI value mapping and Product data | Retained |
+| model details, endpoint identity and current-session projection | `harness.session.model_selection` and `harnesstui.selection.binding` | preferred-model policy | Complete |
 
-Slice D accounting: `coding/model_selection_tui.py` shrank from 279 to 164
-LOC (-115). `harnesstui.selection.runtime` adds 135 LOC for interaction
-mechanics; the Harness session model-selection contract adds 109 LOC for AI
-value normalization; and the explicit HarnessTUI binding converts those
-neutral records into view models without making the lightweight catalog import
-Harness. The total removed interaction/projection code is 175
-LOC against 289 shared LOC (0.61 deletion/addition). The interaction sub-slice
-alone is 100/135 (0.74); the lower aggregate reflects making the AI endpoint
-projection explicit rather than retaining dynamic attribute probing in Coding.
-`harnesstui` remains free of AI imports, Harness owns the AI-aware value
-contract, and no shared module imports Coding. Independent HarnessTUI probes,
-endpoint identity regressions, and the Coding model-list suite remain green.
+Slice D final accounting: `coding/model_selection_tui.py` shrank from 279 to
+38 LOC (-241), including 127 LOC in this follow-on. Harness owns the AI-aware
+session data contract; HarnessTUI converts those records into view models by
+extending the existing selection binding rather than creating another runtime.
+HarnessTUI has no direct AI import, no shared module imports Coding, and
+independent fake-Product probes cover acquisition, endpoint identity,
+completion, and application.
 
 ### Wave 7, Slice E: CLI Standard Operation Host (Complete)
 
@@ -613,3 +708,490 @@ reduction of 432 LOC. The remaining bootstrap code is the public Product
 factory surface, Coding service/default construction, seven injected effects,
 and concrete `AgentSession`/runtime binding. Private helper tests were moved to
 the canonical Harness owner rather than preserving a Coding facade.
+
+### Wave 7, Slice I: CLI Application Composition (Complete)
+
+The remaining Coding CLI still copied the standard Agent argument value object,
+extension bootstrap parser, two-pass application phase order, standard
+operation queue, and repeated prepared-turn lifecycle arguments. These
+mechanisms now extend the existing `harness.cli` package; no parser, session
+runtime, or transport was duplicated.
+
+| Source mechanism | Shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| standard Agent CLI dataclass and argparse namespace projection | `harness.cli.AgentCliArgs` | Method/Work additive fields | Complete |
+| standard package/diagnostics/observability argv normalization and extension flag bootstrap parsing | `harness.cli.agent_args` and `harness.cli.extension_flags` | Method subcommand aliases | Complete |
+| bootstrap parse, validation, guarded runtime/session creation, final parse, operations, and host phase order | `harness.cli.CliApplicationRuntime` | Product services, tool policy, observability context, and runner bindings | Complete |
+| standard export/catalog/package/command/model precedence | `harness.cli.run_standard_cli_operations` | Method and package-catalog stage insertions | Complete |
+| first/last prepared-turn images, follow-ups, and disposal flags | `harness.cli.run_keyword_cli_turns` | Method/Work prepared-turn metadata and Product runners | Complete |
+| standard launch intent projection | `harness.cli.agent_cli_launch_plan` | Method/Work launch overlay | Complete |
+| standard resource/session/catalog request projection and ephemeral bootstrap policy | existing `harness.cli` capability modules | Method catalog insertion and package security callbacks | Complete |
+| resource-loader flags, session path, image policy, and offline activation | `harness.cli.agent_args` | Coding service factory and resource package content | Complete |
+| tool settings to policy/approval projection | `harness.tools.workspace.factory` | Coding rule-id policy factory and interactive approval presentation | Complete |
+| post-resolution extension/name/model/thinking configuration | `harness.cli.session_configuration` | model persistence policy and warning wording | Complete |
+| fake workflow pre-runtime exit | `harness.scenario.cli` | Coding workflow runner and CLI flag | Complete |
+
+Production accounting: `coding/cli` changed from 2,441 to 1,602 physical
+Python LOC (-839 net). The cumulative patch deletes 1,525 Coding
+implementation lines and adds 686 Coding binding lines. Shared production
+additions are approximately 1,779 lines, for a gross
+deletion/shared-addition ratio of 0.86. The larger shared addition establishes
+typed, independently tested contracts rather than moving the old function
+intact. Channel remains the owner of streams, output protection, turn ordering,
+and disposal.
+
+### Wave 7, Slice J: HarnessTUI Conversation Adapter Extinction (Complete)
+
+Reusable conversation presentation and routing mechanics no longer have a
+second implementation under Coding. This slice extends four existing
+HarnessTUI owners and deletes the Coding event facade; it does not add a new
+projector, controller, runtime, application, queue adapter, or package.
+The detailed boundary is
+[Coding Conversation Adapter Extinction](coding-conversation-adapter-extinction.md).
+
+| Source mechanism | Existing shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| normalized Session event routing and message/tool lifecycle | `harnesstui.conversation.projection` | visibility flags and Agent tool-result binding | Complete |
+| queue-source normalization | `harnesstui.conversation.runtime_view` | explicit Session queue sources | Reused |
+| mapping-shaped tool event/result projection and standard workspace presentation policy | `harnesstui.conversation.tool_transcript` | `AgentToolResult` conversion, optional Product renderer and final command-label policy | Complete |
+| structural Agent message and command-history projection | `harnesstui.conversation.history` | persisted-session acquisition, kind dispositions and tool binding | Complete |
+| abort-settling/follow-up/steer/local/dispatch decision order | `harnesstui.conversation.host` | Coding intents, local-action declarations, command catalog and copy | Complete |
+| Plain/Screen effects and rendering | existing `plain_target`, `screen_target`, `screen_app` and TUI transcript engine | Product title, glyphs, status copy and theme | Reused |
+
+Production accounting: Coding Python changed from 12,475 to 11,969 physical
+LOC (-506 net). The affected Coding implementation changed from 1,369 to 863
+LOC. The four existing HarnessTUI owner files changed from 1,106 to 1,715 LOC
+(+609), giving a net Coding-reduction/shared-addition ratio of 0.83. No
+compatibility facade replaces `coding.presentation.tui.events`, and
+`CodingTuiProfile` is removed rather than re-exported. Independent HarnessTUI
+tests cover structural event, history, tool and routing behavior; architecture
+gates keep HarnessTUI free of Coding, Agent and AI imports.
+
+### Wave 7, Slice K: Agent Product Host Binding Collapse (Complete)
+
+The remaining Coding host layer still coordinated standard TUI/RPC/Channel/
+workflow precedence, repeated Agent prompt failure/disposal logic, translated
+plain-host metadata into `SessionWorkTurn`, and owned the Work-to-Channel
+operation loop. This slice extends the existing CLI, HarnessTUI, Work, and
+Channel-facing owners; it does not add another host, Work runtime, event
+projector, or transport.
+
+| Source mechanism | Existing shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| Agent CLI mode precedence and prepared-turn lifecycle | `harness.cli.run_agent_cli_host` plus `CliApplicationRuntime` and `run_keyword_cli_turns` | input/Method preparation and runner binding | Complete |
+| standard Agent plain JSON event projection | `harnesstui.conversation.agent_binding` plus existing `PlainHost` | plain renderer selection | Complete |
+| prompt and fixed-plan subscribe/failure/worked/dispose lifecycle | existing `plain_prompt_host` with Agent binding helpers | model preparation and Coding Work factory | Complete |
+| host metadata to session Work turns | `work.session.SessionWorkHostPort` over `SessionWorkRuntime` | Coding Work profile | Complete |
+| Work operation acceptance, cancellation and Channel delivery | `work.channel.SessionWorkChannelPort` over `ChannelHost` | `coding` domain and `SubmitCodingTurn` vocabulary | Complete |
+| standard Agent runtime views to Channel envelopes | `harness.host.AgentRuntimeChannelProjection` | event-view selection | Complete |
+
+Production accounting: `src/loushang/coding` changed from 9,519 to 9,071
+physical Python LOC (-448). The affected files changed as follows:
+
+- `coding/cli/__main__.py`: 1,332 to 1,239 LOC (-93);
+- `coding/mode/channel_mode.py`: 310 to 105 LOC (-205);
+- `coding/mode/print_mode.py`: 254 to 172 LOC (-82);
+- `coding/prompt_command.py`: 251 to 183 LOC (-68).
+
+The patch deletes 617 Coding implementation lines and adds 165 Product binding
+lines. Shared additions are independently usable: contract probes bind a
+Research Work/Channel profile and a Product-neutral CLI host without importing
+Coding. Existing Coding CLI, prompt, print, RPC, and Channel snapshots remain
+unchanged.
+
+### Wave 7, Slice L: Agent Product Construction Final Collapse (Complete)
+
+This slice completes five related owner switches without introducing a second
+session, package, Method, Work, CLI, or presentation engine:
+
+| Source mechanism | Existing shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| standard Agent Product session construction | `harness.session.AgentProductSession` over `SessionComposition`, `SessionFacade`, transcript, retry, compaction, diagnostics, commands, packages, and extensions | capability profile, summary executors, prompt/content, changelog, clipboard, footer, and package summary | Complete |
+| session package operations and projected catalog fallback | `harness.resources.packages.session`, `catalog`, and `projection` | built-in package/content profile and package security policy | Complete |
+| standard session command source composition | `harness.session.StandardSessionCommandController` | no duplicate Coding controller | Complete |
+| plain conversation app, resume hint, and Agent session history | existing `harnesstui.conversation` app/binding/resume/history components | title/copy, command prefix, Product session loader, and renderer | Complete |
+| Method domain discovery/select/compile/project/prompt preparation | `method.MethodDomainRuntime` over the existing Method components | `domain="coding"` and guidance template | Complete |
+| Agent RuntimeEvent to Work facts and session Work factory | `work.agent_projection` plus existing `SessionWorkRuntime` | `CODING_WORK_PROFILE` | Complete |
+| prepared domain turn to CLI/Work turn projection, prompt error boundary, package listing, Work-log inspection | existing `harness.cli` and `work` CLI/session components | argument mapping, Product callbacks, and wording | Complete |
+
+Deleted canonical Coding modules:
+
+- `coding.session.command_controller`;
+- `coding.session.package_controller`;
+- `coding.package_projection`;
+- `coding.presentation.resume`;
+- `coding.domain.types`.
+
+Production accounting: `src/loushang/coding` changed from 9,071 to 7,755
+physical Python LOC (-1,316) in Slice L. From the Slice K pre-change baseline
+of 9,519 LOC, the combined Agent Product host/construction work reduced Coding
+by 1,764 LOC. Notable final sizes are:
+
+- `coding.session.agent_session`: 140 LOC, a Product binding over
+  `AgentProductSession`;
+- `coding.cli.__main__`: 1,145 LOC, with standard application/host/input/listing
+  mechanics delegated to shared owners;
+- `coding.ui.plain_app`: 103 LOC, a Product binding over the HarnessTUI plain
+  app;
+- `coding.domain.app` plus `coding.domain.work`: 94 LOC, containing only
+  Product profiles and thin bindings.
+
+Independent Research/Design-style contract probes exercise the Method runtime,
+prepared-turn CLI projection, package listing, Work turn projection, and Work/
+Channel profiles without importing Coding. Architecture gates allow the
+optional Agent Product session profile to depend on public Agent/AI contracts
+while continuing to prohibit all shared owners from importing Coding.
+
+### Wave 7, Slice M: CLI Product Binding Final Collapse (Complete)
+
+This slice removes the remaining standard Agent CLI bootstrap and session-host
+mechanics from Coding while extending the existing `harness.cli` application,
+operation, prompt-input, and host components. It does not add another parser,
+session runtime, transport, Work runtime, or presentation engine.
+
+| Source mechanism | Existing shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| service/session-path preparation, resource toggles, tool and approval binding | `AgentCliStatePreparationPorts` plus existing resource/session/tool owners | Product service, tool-pack, and policy factories | Complete |
+| extension-aware help bootstrap | the same state ports plus `collect_agent_cli_help_extension_flags` | Product parser and help formatter | Complete |
+| help, version, and source-info early exits | `AgentCliEarlyOperationPorts` and `run_agent_cli_early_operation` | Product source identity and wording | Complete |
+| runtime-builder invocation | `invoke_agent_cli_runtime_builder` over `invoke_cli_builder` | Product runtime factory | Complete |
+| standard session listing and resolution | `run_agent_cli_session_listing` and `resolve_agent_cli_session` over the existing request/runtime functions | no duplicate Coding wrappers | Complete |
+| prompt input and tool selection | `resolve_agent_prompt_input` and `agent_tool_selection` | Product domain-turn preparation | Complete |
+| TTY/mode/Work/observability host binding | `AgentCliSessionHostBinding` over `run_agent_cli_host` | Coding Work profile and final runner callbacks | Complete |
+| diagnostic archive and Work log leaf operations | existing Harness diagnostics and Work engines with shared CLI bindings | Product paths, diagnostics source, and error wording | Complete |
+
+Production accounting: `src/loushang/coding/cli/__main__.py` changed from 1,145
+to 810 physical Python LOC (-335, 29.3%). Because this was the only Coding
+production file changed by Slice M, total `src/loushang/coding` changed from
+7,755 to 7,420 LOC (-335). The deleted code consisted of private state,
+bootstrap, help, early-operation, runtime-builder, prompt-input, session,
+diagnostic, and Work-log wrappers; Product arguments, operation ordering,
+runner selection, output contracts, and error wording remain intact.
+
+Shared contract tests bind Research-style state preparation and session hosts
+without Coding imports. Coding CLI regression tests preserve two-pass extension
+flags, session resolution, model/thinking configuration, output selection,
+diagnostic export, Work logs, and exit behavior. Architecture gates verify
+that Harness CLI continues to avoid Coding, Method, Work, and TUI imports.
+
+### Wave 7, Slice N: Product Host And Leaf Extinction (Complete)
+
+This slice completes the owner switch after the CLI binding collapse. It
+removes the Coding mode namespace, reuses the existing Agent Product
+construction/session ports, adds a HarnessTUI application binding over the
+existing screen/plain runners, and moves reusable leaf services to their
+canonical owners. It does not add a second host, session runtime, transcript,
+scenario engine, footer model, or transport.
+
+| Source mechanism | Existing shared owner | Coding retained | Status |
+| --- | --- | --- | --- |
+| RPC/plain/Channel mode facades | `harness.host.rpc`, `harnesstui.conversation`, `channel`, and `work.channel` | Product runner callbacks, Work profile, renderer, and diagnostics | Removed |
+| standard Agent Product configuration and construction | `harness.session.AgentProductConstructionRuntime` over existing configuration, prompt, model, tool, capability, and session construction runtimes | Coding prompt, pack IDs, image policy, and concrete session factory | Complete |
+| Agent Product session runtime port assembly | `harness.session.build_agent_product_session_runtime_ports` over existing lifecycle, transcript, fork, and Product session runtimes | Coding store/profile binding and diagnostic mapping | Complete |
+| screen/plain Agent application binding | `harnesstui.conversation.AgentScreenConversationApplicationBinding` and `AgentPlainConversationApplicationBinding` | screen app, surfaces, Product controller/action host, renderer, completion, copy, theme, and policy | Complete |
+| session footer state and Git watcher | `harness.session.footer` | no Coding facade | Complete |
+| version-check engine | `harness.cli.version_check` | Loushang endpoint, user agent, offline variables, and named Product entrypoint | Complete |
+| scenario discovery/report/CLI lifecycle | existing `harness.scenario` | model readiness and injected `ExecService` shell policy | Complete |
+
+Production accounting: `src/loushang/coding` changed from 7,420 to 5,986
+physical Python LOC (-1,434, 19.3%). Notable reductions are:
+
+- the complete `coding.mode` namespace is deleted;
+- `coding.bootstrap` is 505 LOC and delegates construction to the shared
+  runtime;
+- `coding.runtime.agent_session_runtime` is 148 LOC and delegates standard
+  port construction;
+- `coding.ui.mode` is 220 LOC and contains Product UI composition rather than
+  Agent history/status/queue wiring;
+- the 231-line Coding footer implementation is removed;
+- `coding.platform.version_check` is a 45-line Product profile;
+- `coding.workflow` is a 69-line Product adapter and no longer owns discovery,
+  reporting, or scenario lifecycle.
+
+Independent Harness, HarnessTUI, Work, Method, and scenario contract tests bind
+non-Coding products to each shared owner. Architecture gates prohibit shared
+owners from importing Coding and prohibit Harness scenario code from starting
+a shell process.
+
+### Wave 7, Slice O: Agent Extension Profile Extinction (Complete)
+
+This slice moves the remaining standard Agent extension API, permission
+profile, loader selection, and runner selection into the existing
+`harness.extensions.agent` profile. It reuses the neutral
+`harness.extensions.loader`, `harness.extensions.runner`, runtime binding
+records, routing, lifecycle, and hook components; no second extension engine,
+event bus, or Product session runtime is introduced.
+
+| Source mechanism | Existing shared owner | Product retained | Status |
+| --- | --- | --- | --- |
+| Agent session/model/message Extension API | `harness.extensions.agent.api` over `ExtensionContributionAPI` and injected runtime bindings | provider implementation, credentials, preferred-model defaults | Complete |
+| Agent permission defaults | `harness.extensions.agent.policy` | optional Product/OEM resolver replacement | Complete |
+| Agent loader/runner selection | `harness.extensions.agent.loader` and `.runner` over the existing neutral core | live Product binding callbacks and final UI/transport projection | Complete |
+| `coding.extensions` facade and implementation | no replacement facade | none | Removed |
+
+Production accounting: `src/loushang/coding` changed from 5,986 to 5,640
+physical Python LOC (-346, 5.8%). The deleted 346 lines are the complete former
+Coding extension package; all behavior is now exercised through the canonical
+Agent profile. A non-Coding contract probe loads a Research-style extension
+through that profile, and architecture gates prohibit the profile from
+importing Coding, Channel, Work, Method, TUI, or Harness Session.
+
+### Wave 7, Slice P: Shared Leaf Convergence (Complete)
+
+This slice removes small but canonical Coding owners only where an existing
+shared component can absorb the behavior or a reusable binding is missing. It
+does not introduce another transcript, command, config, event, package, or TUI
+engine.
+
+| Source mechanism | Existing shared owner | Product retained | Status |
+| --- | --- | --- | --- |
+| Agent tool-call resource evidence attached to compaction and branch summaries | `harness.agent_transcript.summarization` over the existing `SummaryResourceOperations` model | tool-name, operation, detail-key, tag, and exclusion profile | Complete |
+| local plus session command catalog binding for conversation hosts | `harnesstui.commands.catalog` over the existing `harness.commands.MixedCommandCatalog` | session command provider and local action handlers | Complete |
+| changelog discovery, parsing, formatting, and standard session-command payload | `harness.session.changelog` | optional filename and entry-limit profile | Complete |
+| command-backed config values | neutral injected runner in `harness.config.values`, with explicit local-shell adapter in `harness.config.subprocess_values` | optional Product/OEM runner selection | Complete |
+| transcript recording/cancellation policy | existing `harness.events.recording_policy` | no Coding facade | Complete |
+| package-source security policy | existing `harness.resources.packages.security` | policy construction and Product trust inputs | Complete |
+
+Deleted canonical Coding modules:
+
+- `coding.commands` and its 127-line catalog;
+- `coding.control.config_value`;
+- `coding.event.presentation_policy`;
+- `coding.platform.changelog`;
+- `coding.policy.package_security`.
+
+Production accounting: `src/loushang/coding` changed from 5,641 to 5,272
+physical Python LOC (-369, 6.5%). The patch deletes 436 Coding lines and adds
+67 direct Product bindings, so 84.6% of the gross deletion remains as net
+reduction.
+Shared production code grows by 589 lines, including independent Design-style
+summary-resource and conversation-command contracts. The higher shared cost is
+intentional public capability rather than a relocated Coding implementation:
+the new profiles cover arbitrary resource operations, command sources,
+changelog names, and config runners without importing Coding.
+
+Architecture gates require the removed Coding modules to remain absent, keep
+the neutral config resolver free of subprocess ownership, and keep lightweight
+HarnessTUI interaction imports free of Harness, Agent, AI, and Coding package
+side effects. Coding compaction, command completion, changelog, event,
+package-security, AgentSession, and TUI behavior remain covered by their
+existing regressions.
+
+### Wave 7, Slice Q: Reusable Product Binding Cleanup (Complete)
+
+This slice revisits small Product bindings only where the implementation was a
+reusable mechanism. Existing factories, registries, loaders, application
+bindings, and lifecycle runtimes remain the execution owners; no parallel tool,
+resource, approval, retry, or session runtime was added.
+
+| Source mechanism | Existing shared owner | Product retained | Status |
+| --- | --- | --- | --- |
+| workspace tool selection, decoration, contribution resolution, and registration | existing `harness.tools.workspace` factory and registry, extended with `WorkspaceToolProfile` and `register_profile()` | tool membership/order, descriptions, prompt snippets, policy and service inputs | Complete |
+| package-root resource summary discovery | existing `ResourceLoaderProfile`, `ProfiledResourceLoader`, and package catalog | built-in package, context-file conventions, prompt assembly, and security defaults | Complete |
+| Agent screen approval presenter and session-transition cleanup | existing `harnesstui.conversation.agent_application` binding | approval policy, surface rendering, fallback copy, and Product composition | Complete |
+| abort-aware retry sleep | existing `harness.session.composition` | no Product implementation | Complete |
+| missing-session-cwd issue and error translation | existing `harness.session.lifecycle` contract and Product session runtime | no Coding compatibility exception | Complete |
+
+The three Coding resource classes remain intentionally thin profile/default
+bindings; deleting them would only obscure Product choices. Production
+accounting: `src/loushang/coding` changed from 5,272 to 5,085 physical Python
+LOC (-187). Shared production additions total 325 LOC and are independently
+exercised with Design/Research-style profiles and structural ports. The former
+108-line `coding.policy.tui` mechanism and the 51-line Coding cwd compatibility
+layer are deleted rather than retained as facades.
+
+### Wave 7, Slice R: Agent Product Runtime Factory Collapse (Complete)
+
+This slice moves the final standard Agent lifecycle-runtime adapter out of
+Coding and into the existing Harness session stack. It extends
+`build_agent_product_session_runtime_ports`, `ProductSessionRuntime`, and the
+existing bootstrap contracts; it does not introduce another session,
+transcript, lifecycle, diagnostics, or bootstrap engine.
+
+| Source mechanism | Existing shared owner | Product retained | Status |
+| --- | --- | --- | --- |
+| standard Agent transcript/lifecycle runtime construction | `harness.session.AgentProductSessionRuntime` over `ProductSessionRuntime` and `build_agent_product_session_runtime_ports` | transcript session type and Product session factory | Complete |
+| session diagnostic scope and shutdown-failure recording | the same shared Agent runtime adapter over `SessionDiagnosticsRuntime` | optional diagnostics service | Complete |
+| current-session approval/runtime-host activation | existing `prepare_current_agent_session` | no Product implementation | Complete |
+| cwd-aware service selection and non-persistent session finalization | `harness.session.build_agent_product_session_runtime` | Product service factory, session builder, and finalizer callbacks | Complete |
+| import-copy race test seam | shared runtime `copy_file` port | Coding injects its named test seam | Complete |
+
+`coding.runtime.AgentSessionRuntime` is now a 47-line type binding that fixes
+`SessionManager` and preserves the public constructor. Coding prompt,
+capability, model, tool, resource, and session-facade selection remain in
+Coding. Production accounting for this slice changes `src/loushang/coding`
+from 4,948 to 4,893 physical Python LOC (-55). Independent Harness tests bind a
+Research-style current session and cwd service factory without importing
+Coding; the Coding runtime/bootstrap, SDK signature, file-import race, and
+architecture suites preserve existing behavior.
+
+### Wave 7, Slice S: CLI Application Binding Convergence (Complete)
+
+This slice removes the remaining manual application-phase assembly from the
+Coding CLI. It extends the existing `CliApplicationRuntime`,
+`AgentCliSessionHostBinding`, state preparation, early-operation, session
+listing, and session-resolution components; it does not add another parser,
+host, operation runtime, session runtime, transport, or presentation engine.
+
+| Source mechanism | Existing shared owner | Product retained | Status |
+| --- | --- | --- | --- |
+| two-pass parse and application phase composition | `harness.cli.AgentCliApplicationBinding` compiled onto `CliApplicationRuntime` | Product parser, launch plan, validated operation, and final error wording | Complete |
+| extension-aware help session and runtime construction | the same application binding over existing state ports and runtime builder invocation | Product help text, runtime identity, services, and runtime factory | Complete |
+| offline initialization and cwd selection | existing `AgentCliArgs` contract and application runtime | no repeated Product callbacks | Complete |
+| standard session listing, resolution, and extension-flag collection | existing CLI operations and session lifecycle functions selected by the application binding | Product session configuration and operation insertions | Complete |
+| session host callback binding | existing `AgentCliSessionHostBinding.bind()` over `run_agent_cli_session_host` | Work/Method preparation, observability source, and Product runners | Complete |
+
+`src/loushang/coding/cli/__main__.py` changes from 815 to 722 physical Python
+LOC (-93, 11.4%). The file deletes 132 lines and adds 39 lines of Product
+binding, so 70.5% of the gross deletion remains as net reduction. Total
+`src/loushang/coding` changes from 4,893 to 4,800 physical Python LOC.
+
+The shared binding compiles existing ports rather than reimplementing their
+phase behavior. A Research-style contract probe exercises state preparation,
+runtime/session construction, the second parse, and host dispatch without
+Coding imports. Architecture gates require Coding to use the binding and
+forbid it from directly assembling `CliApplicationRuntime`, help-session,
+session-listing, or session-resolution internals.
+
+### Wave 7, Slice T: Agent Product Construction Binding Convergence (Complete)
+
+This slice removes the final direct construction-request assembly from Coding.
+It extends the existing `AgentProductConstructionRuntime` owner with a
+declarative `AgentProductConstructionBinding`; it does not introduce another
+bootstrap, configuration, prompt, model, tool, Agent, session, or capability
+runtime.
+
+| Source mechanism | Existing shared owner | Product retained | Status |
+| --- | --- | --- | --- |
+| Product capability runtime acquisition | existing `bind_capability_composition_runtime`, selected through `AgentProductConstructionBinding` | Product capability profile | Complete |
+| standard services to configuration-request mapping | existing `StandardAgentSessionConfigurationRequest` and configuration runtime | source-identity check, package materializer, and extension flags | Complete |
+| capability runtime to construction ports | existing `AgentProductConstructionPorts` | extension tool discovery callbacks and Product pack IDs | Complete |
+| default thinking selection and Product construction request assembly | existing `AgentProductConstructionRuntime` request contract | default prompt, explicit/append prompt inputs, model/tool selections, and Agent factory | Complete |
+| configured Agent to Product session binding | existing construction runtime callback | Coding `AgentSession` policy constructor, session manager, approval resolver, and Product event inputs | Complete |
+
+`src/loushang/coding/bootstrap.py` changes from 496 to 482 physical Python LOC
+(-14), and total `src/loushang/coding` changes from 4,800 to 4,786 LOC. The
+small LOC delta is intentional: the former request assembly was already using
+the correct shared engines. The responsibility change prevents Coding and
+future Research, Design, or PPT products from repeating the nested
+configuration/port wiring while preserving Product-owned policies.
+
+A Research-style contract probe verifies that the binding compiles Product
+choices into the canonical request, resolves the standard thinking default,
+and passes the same capability runtime to the Product session factory.
+Architecture gates require Coding to import the binding and prohibit direct
+imports of the construction runtime, request, ports, and standard
+configuration request.
+
+### Wave 7, Slice U: HarnessTUI Agent Surface Binding Finalization (Complete)
+
+This slice removes the last repeated Agent-session reads from Coding startup,
+completion, and settings adapters. It extends the existing HarnessTUI startup
+view, Agent application binding, prepared completion host, model-selection
+binding, and settings workflow; it does not introduce another TUI
+application, runtime, controller, catalog, selection engine, or settings page.
+
+| Source mechanism | Existing shared owner | Product retained | Status |
+| --- | --- | --- | --- |
+| prepared Agent session to startup view | `harnesstui.conversation.agent_application` over the existing neutral startup view and session-view facts | usable-model preparation and Product startup entry point | Complete |
+| live session command/model completion sources | `harnesstui.completion.host` over the existing command catalog and model-selection binding | completion command, argument-group, alias, and wording profile | Complete |
+| session model settings snapshot and workflow ports | `harnesstui.settings.workflow` over the existing selection binding and settings dashboard | boolean setting bindings/copy and model persistence action | Complete |
+| plain Agent conversation application | existing `build_agent_plain_conversation_ports` and `build_agent_plain_conversation_app` | renderer, controller, hotkeys, debug behavior, and Product copy | Already canonical |
+| interactive model selection | existing `select_session_model` with an injected apply callback | preferred models, persistence scope, and warning copy | Already canonical |
+
+The neutral `conversation.startup` module remains free of Agent model access;
+the structural Agent session binding lives in the existing
+`conversation.agent_application` owner. This preserves the selected-session
+model semantics at restore/switch boundaries rather than silently preferring
+a possibly stale live Agent model.
+
+Production accounting: `src/loushang/coding` changes from 4,786 to 4,745
+physical Python LOC (-41). The three Coding adapters delete 57 lines and add
+16 lines of Product profile/callback binding, so 71.9% of the gross deletion
+remains as net reduction. HarnessTUI production additions total 102 lines and
+are independently exercised by Research-style structural sessions without
+Coding imports. Architecture gates keep the neutral startup view free of
+Agent policy and require the Agent application owner, rather than Coding, to
+load standard session model facts.
+
+### Wave 7, Slice V: Agent Product Service Bundle Finalization (Complete)
+
+This slice moves only the remaining standard Agent service-bundle construction
+and bootstrap-result collection into the existing
+`harness.session.bootstrap` owner. It reuses `BootstrapServices`,
+`DiagnosticsService`, `ModelCatalog`, `SettingsManager`, `ExecService`,
+`prepare_agent_session_services`, `AgentProductConstructionBinding`, and
+`build_agent_product_session_runtime`; it does not add another service
+container, bootstrap runtime, configuration runtime, or session factory.
+
+| Source mechanism | Existing shared owner | Product retained | Status |
+| --- | --- | --- | --- |
+| standard settings/model/diagnostics/exec service construction | `create_standard_agent_bootstrap_services` in the existing session bootstrap owner | Product resource-loader factory and optional injected service instances | Complete |
+| Product session plus resource/diagnostics/audit result projection | `build_standard_agent_session_result` beside the existing `CreateAgentSessionResult` contract | Product session creation and selection of session/resource/audit values | Complete |
+| cwd-bound resource and extension service preparation | existing `prepare_agent_session_services` | Coding settings paths, loader options, and extension runtime factory | Already canonical |
+| Agent and Product session construction | existing `AgentProductConstructionBinding` with Coding session factory callbacks | Coding `AgentSession`, prompt/image wording, tool activation, package materializer, diagnostics identity, and approval policy | Intentionally retained |
+
+Production accounting: `src/loushang/coding` changes from 4,745 to 4,737
+physical Python LOC (-8), while `coding.bootstrap` changes from 482 to 474
+lines. The small reduction is intentional: public Coding signatures remain
+stable and continue to expose Product choices, while the reusable construction
+logic has a single shared owner. Harness production grows by 66 lines,
+including exports. Research-style contract tests bind a custom resource loader,
+model registry, diagnostics service, execution service, model default, prompt,
+and session result without importing Coding.
+
+The slice stops at this boundary. Moving the remaining Coding session factory
+would only turn Product-specific `AgentSession`, resource, prompt, tool,
+package, approval, and diagnostic choices into a long callback list. An
+architecture gate requires Coding to use the shared service/result helpers and
+forbids it from directly constructing `ControlConfig`, `DiagnosticsService`, or
+`ModelCatalog`.
+
+### Wave 7, Slice W: Coding Public Facade Cull (Complete)
+
+This slice removes only zero-logic Coding import facades after checking their
+production, test, example, and SDK consumers. It adds no shared implementation
+and changes no runtime behavior.
+
+| Removed facade | Canonical owner | Product surface retained |
+| --- | --- | --- |
+| `coding.event` | `harness.events` | Product/Work projections and final presentation remain in their existing owners |
+| `coding.control.model_registry` | `harness.model_catalog.ModelCatalog` | Coding model preferences and selection persistence remain in `coding.model_selection` |
+| `coding.prompt.types` | `harness.capabilities.prompt` and `prompt_assembly` | Coding prompt default and assembler remain in `coding.prompt` |
+| `coding.prompt.preflight` and package-level preflight/template re-exports | `harness.capabilities.prompt_preflight` and `prompt` | no duplicate Product preflight mechanism |
+
+The top-level Coding SDK retains its Product constructors, sessions, resource
+bindings, workspace-tool profile helpers, policy defaults, and prompt
+assembler. Shared event and model-catalog symbols that were not part of the
+declared SDK entry contract are no longer re-exported. Event and model-catalog
+tests move to the Harness suite, while Coding prompt tests import canonical
+preflight/template owners for the shared portions.
+
+Production accounting: `src/loushang/coding` changes from 4,737 to 4,641
+physical Python LOC (-96). Harness production adds zero lines. Architecture
+gates require all four retired prefixes to remain unimportable and reject
+imports from source, tests, and examples.
+
+### Wave 7, Slice X: CLI Leaf Binding Convergence (Complete)
+
+This slice removes two repeated CLI leaf mechanisms by extending their existing
+owners. It adds no CLI runtime, tool registry, policy engine, approval resolver,
+or diagnostics service.
+
+| Repeated leaf | Existing owner reused | Product retained |
+| --- | --- | --- |
+| tool settings parsed once by Harness and then parsed again while Coding built its registry | `harness.cli.AgentCliStatePreparationPorts` now passes the existing `WorkspaceToolRuntimeSettings` value produced by `workspace_tool_runtime_settings` | Coding workspace-tool profile, membership, descriptions, and service injection |
+| package-source policy rejection mapped to a diagnostic in Coding | existing `harness.resources.packages.catalog_diagnostics` exports `record_package_source_policy_denial` | Coding security policy selection, allow/deny decision, CLI command selection, and final error text |
+
+Normal application preparation and extension-aware help discovery both resolve
+tool runtime settings once per path and pass the same policy/resolver facts to
+the Product registry builder. The help path does not create an interactive
+resolver, preserving its non-interactive behavior. Coding's model persistence
+warning, Method/Work operations, help copy, and completion failure wording stay
+Product-owned.
+
+Production accounting: `src/loushang/coding` changes from 4,641 to 4,632
+physical Python LOC (-9), all in `coding.cli.__main__`. Shared production
+owners grow by 43 net lines including exports. The small LOC delta is intentional:
+the change removes duplicate settings interpretation and centralizes one
+standard diagnostic contract without relocating Product callbacks.

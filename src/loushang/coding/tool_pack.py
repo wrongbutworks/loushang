@@ -8,32 +8,27 @@ how the Coding product selects and configures that reusable capability.
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any
+from typing import Any, cast
 
 from loushang.agent.types import AgentTool
 from loushang.coding.policy import ApprovalResolver, PolicyEngine
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.tools.contribution import (
-    ToolContribution,
-    ToolPackDefinition,
-    resolve_tool_contributions,
-)
+from loushang.harness.tools.contribution import ToolPackDefinition
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.context import ToolContextProvider
 from loushang.harness.tools.workspace.external_tools import (
     ExternalToolDownloader,
     ExternalToolPolicy,
     ExternalToolResolver,
-    GitHubReleaseExternalToolDownloader,
 )
 from loushang.harness.tools.workspace.factory import (
     CORE_WORKSPACE_TOOL_NAMES,
     ToolName,
     ToolsOptions,
-    create_tool,
-)
-from loushang.harness.tools.workspace.factory import (
-    create_tool_definition as create_workspace_tool_definition,
+    WorkspaceToolProfile,
+    create_profiled_workspace_tool_definition,
+    create_profiled_workspace_tool_definitions,
+    create_profiled_workspace_tools,
 )
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import ExecService
@@ -48,10 +43,6 @@ CODING_BUILTIN_TOOL_NAMES: tuple[ToolName, ...] = (
     "grep",
     "write",
     "edit",
-)
-CODING_BUILTIN_TOOL_PACK = ToolPackDefinition(
-    name="coding.builtin",
-    tools=CODING_BUILTIN_TOOL_NAMES,
 )
 
 _CODING_TOOL_TEXT: dict[ToolName, tuple[str, str]] = {
@@ -87,25 +78,12 @@ _CODING_TOOL_TEXT: dict[ToolName, tuple[str, str]] = {
 }
 
 
-def create_coding_tool_definition(
-    tool_name: ToolName,
-    *,
-    options: ToolsOptions | None = None,
+def _decorate_coding_tool_definition(
+    definition: ToolDefinition,
 ) -> ToolDefinition:
-    """Create a workspace definition with Coding's copy and download default."""
-    if (
-        tool_name in {"find", "grep"}
-        and options is not None
-        and options.external_tool_downloader is None
-        and options.external_tool_policy != "never"
-        and options.allow_external_tool_downloads
-    ):
-        options = replace(
-            options,
-            external_tool_downloader=GitHubReleaseExternalToolDownloader(),
-        )
-    definition = create_workspace_tool_definition(tool_name, options=options)
-    description, prompt_snippet = _CODING_TOOL_TEXT[tool_name]
+    description, prompt_snippet = _CODING_TOOL_TEXT[
+        cast(ToolName, definition.name)
+    ]
     return replace(
         definition,
         description=description,
@@ -113,13 +91,40 @@ def create_coding_tool_definition(
     )
 
 
+CODING_WORKSPACE_TOOL_PROFILE = WorkspaceToolProfile(
+    profile_id="coding.workspace",
+    tool_names=CODING_TOOL_NAMES,
+    builtin_tool_names=CODING_BUILTIN_TOOL_NAMES,
+    pack_id="coding.builtin",
+    decorate_definition=_decorate_coding_tool_definition,
+)
+CODING_BUILTIN_TOOL_PACK = ToolPackDefinition(
+    name=CODING_WORKSPACE_TOOL_PROFILE.pack_id,
+    tools=CODING_WORKSPACE_TOOL_PROFILE.builtin_tool_names,
+)
+
+
+def create_coding_tool_definition(
+    tool_name: ToolName,
+    *,
+    options: ToolsOptions | None = None,
+) -> ToolDefinition:
+    """Create a workspace definition with Coding's selected copy."""
+
+    return create_profiled_workspace_tool_definition(
+        CODING_WORKSPACE_TOOL_PROFILE,
+        tool_name,
+        options=options,
+    )
+
+
 def create_coding_tool_definitions(
     *, options: ToolsOptions | None = None
 ) -> list[ToolDefinition]:
-    return [
-        create_coding_tool_definition(tool_name, options=options)
-        for tool_name in CODING_TOOL_NAMES
-    ]
+    return create_profiled_workspace_tool_definitions(
+        CODING_WORKSPACE_TOOL_PROFILE,
+        options=options,
+    )
 
 
 def create_coding_tools(
@@ -129,16 +134,13 @@ def create_coding_tools(
     context_provider: ToolContextProvider | None = None,
     model: object | None = None,
 ) -> list[AgentTool[Any]]:
-    return [
-        create_tool(
-            tool_name,
-            cwd=cwd,
-            options=options,
-            context_provider=context_provider,
-            model=model,
-        )
-        for tool_name in CODING_TOOL_NAMES
-    ]
+    return create_profiled_workspace_tools(
+        CODING_WORKSPACE_TOOL_PROFILE,
+        cwd=cwd,
+        options=options,
+        context_provider=context_provider,
+        model=model,
+    )
 
 
 def register_coding_builtin_tools(
@@ -167,24 +169,17 @@ def register_coding_builtin_tools(
         allow_external_tool_downloads=allow_external_tool_downloads,
         require_external_tools=require_external_tools,
     )
-    contributions = tuple(
-        ToolContribution(create_coding_tool_definition(tool_name, options=options))
-        for tool_name in CODING_BUILTIN_TOOL_NAMES
+    return registry.register_profile(
+        CODING_WORKSPACE_TOOL_PROFILE,
+        options=options,
     )
-    result = resolve_tool_contributions(
-        contributions,
-        packs=(CODING_BUILTIN_TOOL_PACK,),
-        include_packs=(CODING_BUILTIN_TOOL_PACK.name,),
-    )
-    for definition in result.definitions:
-        registry.register_tool(definition)
-    return registry
 
 
 __all__ = [
     "CODING_BUILTIN_TOOL_NAMES",
     "CODING_BUILTIN_TOOL_PACK",
     "CODING_TOOL_NAMES",
+    "CODING_WORKSPACE_TOOL_PROFILE",
     "create_coding_tool_definition",
     "create_coding_tool_definitions",
     "create_coding_tools",

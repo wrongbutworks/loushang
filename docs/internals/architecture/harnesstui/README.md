@@ -46,10 +46,11 @@ This layer owns reusable Harness-oriented terminal interaction, including:
 decoding, host clipboard-image acquisition, generic widgets, and transcript
 presentation primitives.
 `loushang.harness` continues to own neutral runtime and durable conversation
-contracts. Product adapters under `loushang.coding.presentation.tui` continue
-to own raw product-event and transcript interpretation. `loushang.coding.ui`
-owns product UI composition, while Coding retains commands, policy, branding,
-and runtime assembly.
+contracts. HarnessTUI may interpret the standard normalized Session event and
+transcript shapes structurally, while Product adapters supply Agent result
+conversion, visibility choices, command policy, and final presentation copy.
+`loushang.coding.ui` owns product UI composition, while Coding retains intent
+types, policy, branding, and runtime assembly.
 
 ## Catalog Interaction Workflows
 
@@ -156,8 +157,8 @@ a session-like port. Products retain queue availability policy, tracing sinks,
 and the decision about when to present or restore queued input.
 
 This slice does not own session lifecycle, persistence, runtime orchestration,
-or raw Agent/Coding event projection. The state and active-window algorithms
-retain their existing semantics after moving here. Incremental transcript
+or Agent/AI object construction. The state and active-window algorithms retain
+their existing semantics after moving here. Incremental transcript
 segmentation, render caches, committed and draft segments, streaming Markdown
 reuse, and tail clipping live in `loushang.tui.ui_parts.transcript`; Harnesstui
 does not duplicate or wrap that rendering engine.
@@ -175,8 +176,9 @@ yet expose a broader convenience API.
 
 ## Tool Transcript and Status Profile
 
-This migration slice adds two reusable presentation capabilities without
-moving product event interpretation into this package.
+This migration slice keeps the reusable presentation core independent from
+Agent, AI, and Product modules. Optional Agent composition lives in a separate
+binding module.
 
 `loushang.harnesstui.conversation.tool_transcript` owns the neutral tool-result
 view and the display contracts used to project tool activity into conversation
@@ -185,12 +187,25 @@ provider objects. Deterministic transcript status, block construction, and
 record projection belong here because they are reusable across Harness-backed
 terminal products.
 
-`loushang.coding.presentation.tui.tool_transcript` remains responsible for
-adapting raw `AgentToolResult` instances and runtime events into that neutral
-view. It also retains product policy: which events are visible,
-product-specific labels and commands, redaction, and any decision that requires
-Coding runtime state. This keeps the dependency pointing from Coding into
-Harnesstui and prevents Agent event types from becoming presentation contracts.
+`MappingToolTranscriptViewAdapter` and
+`build_mapping_tool_transcript_projection` extend that existing owner for the
+standard mapping-shaped Session event contract. The adapter reuses
+`ToolTranscriptProjectionBinding` and `ToolTranscriptProjector`; it is not a
+second projector.
+
+`loushang.harnesstui.conversation.agent_binding` is the optional Agent profile.
+It composes the existing neutral history, tool-transcript, plain-target, and
+screen-target owners with stable Agent event and message contracts. It owns the
+standard Agent history dispositions and result conversion without duplicating
+their projection engines. Products import this module when they need an Agent
+conversation; the neutral modules do not import it eagerly.
+
+Coding no longer owns a parallel intent parser, conversation controller,
+action host, history disposition table, tool projector, or plain/screen event
+adapter. Its product binding supplies the command catalog, callbacks, Product
+copy, attachment-to-AI conversion, settings surfaces, approval presentation,
+and final renderer profile. This keeps the dependency pointing from Coding into
+HarnessTUI while preserving an Agent-free neutral conversation core.
 
 `loushang.harnesstui.status.line` owns a shared Harness status profile and its
 product-neutral presentation rules. A product shell supplies the profile's
@@ -218,17 +233,15 @@ initializers do not need to provide convenience re-exports.
 that projects neutral conversation facts into a `ConversationProjectionTarget`.
 It coordinates run starts, queue snapshots, assistant streaming, tool-call
 snapshots and elapsed time, duplicate tool results, and duplicate assistant
-errors. Its inputs are strings, timestamps, neutral tool views, and other
-presentation-ready values; raw Agent/Coding event dictionaries and AI message
-objects are not part of this contract.
+errors. `SessionConversationEventAdapter` extends this existing owner to route
+the standard normalized Session event mapping. It consumes message roles and
+text structurally and delegates tool values through an injected
+`ToolTranscriptProjectionBinding`; it never imports Agent, AI, or Coding.
 
-Product adapters keep ownership of raw event interpretation. In Coding,
-`loushang.coding.presentation.tui.events` reads product event shapes,
-extracts message and compaction values, applies Coding cancellation policy,
-and converts tool events through the Coding tool adapter before invoking the
-neutral projector. `loushang.harnesstui.conversation.plain_target` owns the
-reusable Plain projection target and its generic retry/compaction status copy.
-Coding keeps the raw-event facade and decides which events reach that target.
+`loushang.harnesstui.conversation.plain_target` owns the reusable Plain
+projection target and its generic retry/compaction status copy. Coding injects
+visibility flags and Agent tool-result conversion directly into the shared
+adapter; the former `coding.presentation.tui.events` facade is deleted.
 `loushang.harnesstui.conversation.screen_target` owns the reusable Screen
 projection target: it maps neutral facts onto a product-neutral Screen app
 port, including optimistic user-echo handling, assistant lifecycle calls, tool
@@ -236,22 +249,22 @@ record upserts, and compaction-record dispatch. Coding injects its running-tool
 title resolver, tool-record projector, and retry/compaction status copy, so
 tool labeling and all product wording remain outside Harnesstui.
 
-Surface-interest checks happen in the Coding adapter before queue reads, text
+Surface-interest checks happen in the shared adapter before queue reads, text
 joins, or tool rendering. This preserves Plain and Screen's distinct event
-interests and prevents ignored or duplicate events from mutating the product
-tool-render runtime. The neutral projector exposes only cheap state probes and
-a tool-finish context for this purpose; Coding event dictionaries still never
-cross the package boundary. Tool elapsed time brackets result adaptation and
-neutral projection, while each target keeps its prior cleanup behavior if
-projection fails.
+interests and prevents ignored or duplicate events from mutating the injected
+Product tool-render runtime. Queue readers reuse
+`conversation.runtime_view.stable_string_queue_reader`; the projection module
+does not create another queue abstraction. Tool elapsed time brackets result
+adaptation and neutral projection, while each target keeps its prior cleanup
+behavior if projection fails.
 
-Assistant text deltas form a strict pass-through hot path. The Coding adapter
+Assistant text deltas form a strict pass-through hot path. The shared adapter
 must call `ConversationProjector.assistant_delta` directly, and that method
 must call the target directly without constructing an intermediate event,
 action list, tuple, mapping, generator, or concatenated buffer. Render caching,
 segmentation, invalidation, frame composition, and terminal writes remain in
 `loushang.tui` and the product renderer; this projection layer does not replace
-or bypass the frozen TUI render-performance contract. A marked Coding adapter
+or bypass the frozen TUI render-performance contract. A marked Product-binding
 test exercises the complete adapter-to-projector-to-target delta path, so the
 existing `make test-tui-render-contract` gate covers this new boundary.
 
@@ -299,7 +312,7 @@ conversation package initializer.
 
 ## Conversation Interaction Control
 
-The reusable control plane for a full-screen conversation lives behind five
+The reusable control plane for a full-screen conversation lives behind six
 explicit entrypoints:
 
 - `loushang.harnesstui.conversation.input` coordinates decoded input,
@@ -312,17 +325,21 @@ explicit entrypoints:
   result-presentation, and stable event-stream lifecycles;
 - `loushang.harnesstui.conversation.run_context` owns UI subscription cleanup,
   stable emission, tracing, and context-exit ordering;
+- `loushang.harnesstui.conversation.host` owns the standard
+  abort-settling/follow-up/steer/local/dispatch routing state machine and the
+  action-host port;
 - `loushang.harnesstui.conversation.screen_runner` owns the reusable terminal
   read/route/run loop over explicit screen, router, and result ports.
 
 These modules build conversation interaction from neutral UI values. They do
-not own a Harness Session, persistence, runtime construction, raw product
-events, Coding intents, model-facing image types, workspace paths, command
-policy, or product copy. A product facade supplies those decisions and adapts
-neutral attachments to its runtime-facing values. In particular, Coding keeps
-`PromptIntent` and `BashIntent`, `ImagePart`, Session and observability setup,
-raw-event interpretation, `.loushang` storage policy, and its interruption,
-queue, and error messages.
+not own a Harness Session, persistence, runtime construction, Product intent
+classes, model-facing image types, workspace paths, command policy, or product
+copy. `ConversationRoutingProfile` receives the parser, exit predicate, local
+action mapping, follow-up projection, command effect resolver, and lifecycle
+as explicit callbacks, then compiles them into the existing
+`ConversationHostProfile`. In particular, Coding keeps `PromptIntent` and
+`BashIntent`, `ImagePart`, Session and observability setup, `.loushang` storage
+policy, and its interruption, queue, and error messages.
 
 The action host is a dependency-inversion seam, not a second lifecycle or
 dispatch engine. Plain products may compose the existing run-control,
@@ -337,16 +354,24 @@ composition, or terminal writes. Those hot-path responsibilities and the
 independent render-performance contract remain unchanged. The conversation
 package initializer intentionally does not re-export these entrypoints.
 
-Coding's `ui.mode` is the composition root for these ports. It explicitly
-constructs the screen app, surface manager, event projector, action host, and
-runner, and preserves their reverse cleanup order. Raw Session discovery for
-tool definitions, queues, keybindings, and full transcript branch records is
-now expressed as explicit composition-root ports in `loushang.coding.ui.mode`;
-the former `loushang.coding.presentation.tui.runtime` reflection facade is
-retired. Resume-hint discovery lives in `loushang.coding.presentation.resume`.
-Approval presenter binding and Session transition cleanup remain Coding product policy in
-`loushang.coding.policy.tui`. They do not belong to Harnesstui merely because a
-shared surface displays the prepared approval facts.
+`AgentScreenConversationApplicationBinding` and
+`AgentPlainConversationApplicationBinding` compose these existing ports for
+Agent Products. They bind shared history, event projection, status, queues,
+resume hints, trace events, transcript sources, and reverse cleanup without
+creating another screen/plain host. Coding's `ui.mode` remains the Product
+composition root for the screen app, surface manager, controller/action host,
+renderer, completion, copy, theme, and policy. The former
+`loushang.coding.presentation.tui.runtime` reflection facade is retired.
+Resume-hint discovery and standard Agent session history projection live in
+`loushang.harnesstui`; reusable footer state lives in
+`loushang.harness.session.footer` so non-UI session code never imports the UI
+layer. Coding supplies only Product command prefixes, persisted-session
+loading, final presentation, and copy.
+Agent approval presenter binding and Session transition cleanup extend the
+existing `AgentScreenConversationApplicationBinding` module. They depend only
+on structural Agent session and screen-surface ports, so every Agent Product
+uses the same binding and cleanup mechanics. Products continue to own approval
+policy, surface presentation, and fallback copy supplied to the binding.
 
 ## Conversation Playback Testing
 
@@ -463,9 +488,9 @@ blocks, and presentation-ready status values.
 
 Coding retains a thin `PlainCodingUiRenderer` profile adapter. That adapter
 owns the `Loushang TUI` title, `/feedback` interruption copy, Coding glyphs,
-line mapping, and the Ran/Tested legacy command fallback. Coding also retains
-`PlainCodingEventRenderer`, `CodingConversationEventAdapter`, raw event and AI
-message interpretation, tool-result adaptation, and event-interest policy.
+line mapping, and the Ran/Tested command fallback. The existing shared event
+adapter and Plain target own event routing; Coding retains Agent tool-result
+adaptation and injects Plain-specific event-interest flags.
 
 The shared Plain renderer and target do not participate in the Screen pipeline's
 transcript segmentation, invalidation, caching, frame composition, or terminal

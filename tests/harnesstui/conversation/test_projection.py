@@ -3,18 +3,21 @@ from __future__ import annotations
 import dis
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 
 import pytest
 
 from loushang.harnesstui.conversation.projection import (
     ConversationProjectionBinding,
     ConversationProjector,
+    SessionConversationEventAdapter,
 )
 from loushang.harnesstui.conversation.tool_transcript import (
     ToolCallSnapshot,
     ToolCallView,
     ToolResultView,
     ToolTranscriptBlock,
+    ToolTranscriptProjectionBinding,
     ToolTranscriptProjector,
 )
 
@@ -160,6 +163,66 @@ def test_assistant_delta_forwards_the_same_object_without_building_containers() 
             "RETURN_GENERATOR",
         }
     )
+
+
+def test_session_event_adapter_routes_structural_events_without_product_types() -> None:
+    target = RecordingTarget()
+    projector = ConversationProjector(target, now=lambda: 2.0)
+    tool_projection = ToolTranscriptProjectionBinding[dict[str, object], object](
+        neutral_projector=ToolTranscriptProjector(),
+        call_id=lambda event: str(event["tool_call_id"]),
+        message_id=lambda message: str(getattr(message, "tool_call_id", "")),
+        call_view=lambda event: ToolCallView(
+            tool_call_id=str(event["tool_call_id"]),
+            tool_name=str(event["tool_name"]),
+        ),
+        result_view=lambda event, _snapshot, _tool_call_id: ToolResultView(
+            tool_call_id=str(event["tool_call_id"]),
+            tool_name=str(event["tool_name"]),
+            status="ok",
+        ),
+        tool_result_message_view=lambda message: ToolResultView(
+            tool_call_id=str(getattr(message, "tool_call_id", "")),
+            tool_name=str(getattr(message, "tool_name", "tool")),
+            status="ok",
+        ),
+    )
+    adapter = SessionConversationEventAdapter(
+        projector,
+        tool_projection,
+        read_pending_steers=lambda: ["adjust"],
+        read_pending_followups=lambda: ["next"],
+    )
+
+    adapter.handle({"type": "agent_start"})
+    adapter.handle({"type": "queue_update"})
+    adapter.handle(
+        {
+            "type": "message_start",
+            "message": SimpleNamespace(role="user", content="hello"),
+        }
+    )
+    adapter.handle(
+        {
+            "type": "message_update",
+            "message": SimpleNamespace(role="assistant"),
+            "assistant_message_event": {"type": "text_delta", "delta": "part"},
+        }
+    )
+    adapter.handle(
+        {
+            "type": "compaction_end",
+            "result": {"summary": "condensed", "tokens_before": 120},
+        }
+    )
+
+    assert target.events == [
+        ("run_started", 2.0),
+        ("queues_updated", ("adjust",), ("next",)),
+        ("user_message", "hello"),
+        ("compaction_finished", None, "condensed", 120),
+    ]
+    assert target.last_delta == "part"
 
 
 def test_tool_call_snapshot_and_elapsed_time_are_shared_with_target() -> None:

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
-from typing import Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 from loushang.harness.resources.builtin import BuiltInResourceRegistry
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
@@ -18,7 +19,6 @@ from loushang.harness.resources.layout import (
     resolve_user_resource_roots,
     resolve_workspace_resource_root,
 )
-from loushang.harness.resources.packages.source import PackageSourceConfig
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
     PackageResourceSummary,
@@ -30,6 +30,9 @@ from loushang.harness.resources.types import (
     SkillDescriptor,
     ThemeDescriptor,
 )
+
+if TYPE_CHECKING:
+    from loushang.harness.resources.packages.source import PackageSourceConfig
 
 _MAX_SKILL_NAME_LENGTH = 64
 _MAX_SKILL_DESCRIPTION_LENGTH = 1024
@@ -64,6 +67,34 @@ DescriptorT = TypeVar(
     ExtensionDescriptor,
     ThemeDescriptor,
 )
+SystemPromptAssembler = Callable[[str | None, ResourceBundle], str | None]
+
+
+@dataclass(frozen=True)
+class ResourceLoaderProfile:
+    """Product defaults for the shared resource discovery engine."""
+
+    built_in_resource_packages: tuple[str, ...] = ()
+    context_file_names: tuple[str, ...] = DEFAULT_CONTEXT_FILE_NAMES
+    user_resource_roots: tuple[str | Path, ...] | None = None
+    project_resource_mode: Literal["standard", "legacy"] = "standard"
+    system_prompt_assembler: SystemPromptAssembler | None = None
+
+    def __post_init__(self) -> None:
+        if self.project_resource_mode not in {"standard", "legacy"}:
+            raise ValueError("project_resource_mode must be standard or legacy")
+        object.__setattr__(
+            self,
+            "built_in_resource_packages",
+            tuple(self.built_in_resource_packages),
+        )
+        object.__setattr__(self, "context_file_names", tuple(self.context_file_names))
+        if self.user_resource_roots is not None:
+            object.__setattr__(
+                self,
+                "user_resource_roots",
+                tuple(self.user_resource_roots),
+            )
 
 
 @dataclass(frozen=True)
@@ -391,6 +422,33 @@ class ResourceLoader:
 
     def get_extensions(self) -> list[ExtensionDescriptor]:
         return list(self.get_resource_snapshot().active_extension_descriptors)
+
+
+class ProfiledResourceLoader(ResourceLoader):
+    """Resource loader bound to one Product profile."""
+
+    def __init__(
+        self,
+        *args: Any,
+        profile: ResourceLoaderProfile,
+        **kwargs: Any,
+    ) -> None:
+        kwargs.setdefault(
+            "built_in_resource_packages",
+            profile.built_in_resource_packages,
+        )
+        kwargs.setdefault("context_file_names", profile.context_file_names)
+        kwargs.setdefault("project_resource_mode", profile.project_resource_mode)
+        if profile.user_resource_roots is not None:
+            kwargs.setdefault("user_resource_roots", profile.user_resource_roots)
+        super().__init__(*args, **kwargs)
+        self._resource_profile = profile
+
+    def get_system_prompt(self, *, base_prompt: str | None = None) -> str | None:
+        assembler = self._resource_profile.system_prompt_assembler
+        if assembler is None:
+            return base_prompt
+        return assembler(base_prompt, self.get_resource_bundle())
 
 
 def _discover_snapshot(

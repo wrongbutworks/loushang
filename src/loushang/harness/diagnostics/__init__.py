@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from loushang.harness.diagnostics.export import (
+    DEFAULT_DIAGNOSTIC_BUNDLE_PROFILE,
+    DEFAULT_DIAGNOSTICS_LIMIT,
+    DiagnosticBundleProfile,
     collect_diagnostics,
+    export_diagnostics_bundle,
     path_exists,
     resolve_export_output_path,
     utc_now,
@@ -30,6 +34,7 @@ from loushang.harness.diagnostics.types import (
 
 __all__ = [
     "DiagnosticLevel",
+    "DiagnosticBundleProfile",
     "DiagnosticPhase",
     "DiagnosticRecord",
     "DiagnosticSource",
@@ -37,7 +42,10 @@ __all__ = [
     "DiagnosticsQuery",
     "DiagnosticsService",
     "collect_diagnostics",
+    "DEFAULT_DIAGNOSTIC_BUNDLE_PROFILE",
+    "DEFAULT_DIAGNOSTICS_LIMIT",
     "ErrorReport",
+    "export_diagnostics_bundle",
     "StartupCheck",
     "StartupCheckResult",
     "directory_available_startup_check",

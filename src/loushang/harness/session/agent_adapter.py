@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
+from typing import Generic, TypeVar, cast
 
 from loushang.agent import AgentEvent
 from loushang.ai.model import ModelSelection
@@ -20,6 +21,7 @@ from loushang.harness.agent_transcript import (
     CompactionPreparation,
     CompactionResult,
     CompactionStatus,
+    ProductTranscriptSession,
     TranscriptNavigationPlan,
     TranscriptNavigationResult,
     normalize_branch_summary_output,
@@ -28,6 +30,7 @@ from loushang.harness.agent_transcript.session_export import (
     export_session_to_html,
     export_session_to_jsonl,
 )
+from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticPhase
 from loushang.harness.events import (
     AgentSessionEvent,
@@ -41,16 +44,25 @@ from loushang.harness.extensions.context import (
     SessionBeforeSwitchEvent,
     SessionBeforeTreeEvent,
     SessionShutdownEvent,
+    SessionStartEvent,
 )
 from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.packages.materializer import PackageProgressEvent
+from loushang.harness.runtime import copy_file_exclusive
 from loushang.harness.session.capabilities import (
     UserCommandHookResult,
     UserCommandRequest,
 )
 from loushang.harness.session.composition import SessionComposition
+from loushang.harness.session.diagnostics import (
+    SessionDiagnosticScope,
+    SessionDiagnosticsRuntime,
+)
 from loushang.harness.session.facade import SessionFacade
 from loushang.harness.session.lifecycle import (
+    ForkProfile,
+    ForkSelection,
+    MissingSessionCwdError,
     SessionLifecycleDecision,
     SessionLifecycleHooks,
     SessionLifecycleTransition,
@@ -60,15 +72,26 @@ from loushang.harness.session.operations_runtime import (
     SessionOperationsPorts,
 )
 from loushang.harness.session.product_runtime import (
+    ProductSessionRuntime,
+    ProductSessionRuntimePorts,
     dispose_session_only,
     emit_session_shutdown,
+    invoke_session_factory,
+    resolve_agent_transcript_fork_target,
+    resolve_existing_cwd,
     session_file_from_session,
     session_id_from_session,
+)
+from loushang.harness.session.transcript_lifecycle import (
+    ProductTranscriptSessionBinding,
 )
 from loushang.harness.tools.workspace.protocol import (
     normalize_bash_result_from_protocol,
 )
 from loushang.harness.workspace.exec import ExecRequest, ExecResult, ExecUpdateCallback
+
+SessionT = TypeVar("SessionT")
+TranscriptT = TypeVar("TranscriptT", bound=ProductTranscriptSession)
 
 
 class AgentSessionAdapterMixin:
@@ -79,7 +102,9 @@ class AgentSessionAdapterMixin:
         return self._resource_loader
 
     def create_replaced_session_context(self, session: object | None = None):
-        return self._create_replaced_session_context(self if session is None else session)
+        return self._create_replaced_session_context(
+            self if session is None else session
+        )
 
     def _get_registered_provider(self, name: str):
         return self._extension_provider_controller.get_registered_provider(name)
@@ -87,7 +112,9 @@ class AgentSessionAdapterMixin:
     async def set_active_tools(self, tool_names: list[str]) -> None:
         await self._operations.set_active_tools(tool_names, emit_refresh=True)
 
-    def _apply_agent_transcript_context(self, session_context: AgentTranscriptContext) -> None:
+    def _apply_agent_transcript_context(
+        self, session_context: AgentTranscriptContext
+    ) -> None:
         self.agent.state.set_messages(session_context.messages)
         if self.session_manager.get_entries():
             self.agent.thinking_level = session_context.thinking_level
@@ -103,7 +130,9 @@ class AgentSessionAdapterMixin:
         self.agent.model = resolved_model
 
     def _refresh_agent_transcript_context(self) -> None:
-        self._apply_agent_transcript_context(self.session_manager.build_session_context())
+        self._apply_agent_transcript_context(
+            self.session_manager.build_session_context()
+        )
 
     def _refresh_agent_messages(self) -> None:
         self.agent.state.set_messages(
@@ -231,7 +260,9 @@ class AgentSessionAdapterMixin:
     def _record_extension_command_error(
         self, *, command: object, exc: BaseException
     ) -> None:
-        self._command_controller.record_extension_command_error(command=command, exc=exc)
+        self._command_controller.record_extension_command_error(
+            command=command, exc=exc
+        )
 
     def get_context_usage(self):
         return super().get_context_usage()
@@ -275,7 +306,9 @@ class AgentSessionAdapterMixin:
     async def _set_model_internal(
         self, model: object, *, emit_refresh: bool, source: str = "set"
     ) -> None:
-        await self._operations.set_model(model, emit_refresh=emit_refresh, source=source)
+        await self._operations.set_model(
+            model, emit_refresh=emit_refresh, source=source
+        )
 
     def _apply_active_tools(self, tool_names: list[str]) -> None:
         self._operations.apply_active_tools(tool_names)
@@ -285,7 +318,9 @@ class AgentSessionAdapterMixin:
     ) -> None:
         await self._operations.set_active_tools(tool_names, emit_refresh=emit_refresh)
 
-    async def _compact_manual(self, custom_instructions: str | None = None) -> CompactionResult:
+    async def _compact_manual(
+        self, custom_instructions: str | None = None
+    ) -> CompactionResult:
         return await self._operations.compact_manual(custom_instructions)
 
     async def maybe_compact_after_turn(
@@ -361,7 +396,9 @@ class AgentSessionAdapterMixin:
             False,
         )
 
-    async def dispose(self, session_shutdown_event: SessionShutdownEvent | None = None) -> None:
+    async def dispose(
+        self, session_shutdown_event: SessionShutdownEvent | None = None
+    ) -> None:
         await self._operations.dispose(session_shutdown_event)
 
     async def _dispose_after_session_shutdown(self) -> None:
@@ -465,10 +502,14 @@ class AgentSessionAdapterMixin:
     async def _prepare_configured_remote_package_records(self) -> None:
         await self._package_controller.prepare_configured_remote_package_records()
 
-    def _record_package_projection_diagnostics(self, packages: list[dict[str, object]]) -> None:
+    def _record_package_projection_diagnostics(
+        self, packages: list[dict[str, object]]
+    ) -> None:
         self._package_controller.record_package_projection_diagnostics(packages)
 
-    def _record_package_update_check_diagnostics(self, updates: list[dict[str, object]]) -> None:
+    def _record_package_update_check_diagnostics(
+        self, updates: list[dict[str, object]]
+    ) -> None:
         self._package_controller.record_package_update_check_diagnostics(updates)
 
     def _configure_package_resource_roots(self) -> None:
@@ -590,7 +631,9 @@ class AgentSessionAdapterMixin:
 
     def _bind_package_progress_events(self) -> None:
         if self._package_materializer is not None:
-            self._package_materializer.set_progress_callback(self._emit_package_progress)
+            self._package_materializer.set_progress_callback(
+                self._emit_package_progress
+            )
 
     def _emit_package_progress(self, progress: PackageProgressEvent) -> None:
         event = PackageProgressChanged(
@@ -598,7 +641,9 @@ class AgentSessionAdapterMixin:
             action=progress.action,
             source=progress.source,
             message=progress.message,
-            target_path=str(progress.target_path) if progress.target_path is not None else None,
+            target_path=str(progress.target_path)
+            if progress.target_path is not None
+            else None,
         )
         try:
             self._session_runtime.schedule_event_dispatch(event)
@@ -619,7 +664,9 @@ class AgentSessionAdapterMixin:
     def _get_retry_settings(self) -> object:
         return self._settings_controller.get_retry_settings()
 
-    async def _check_auto_compaction(self, assistant_message: AssistantMessage) -> CompactionResult | None:
+    async def _check_auto_compaction(
+        self, assistant_message: AssistantMessage
+    ) -> CompactionResult | None:
         return await self._operations.check_auto_compaction(assistant_message)
 
     async def _compact_before_prompt(self) -> CompactionResult | None:
@@ -649,23 +696,31 @@ class AgentSessionAdapterMixin:
             preparation, custom_instructions
         )
 
-    def _preflight_user_input(self, user_input: str, *, allow_extension_commands: bool = True):
+    def _preflight_user_input(
+        self, user_input: str, *, allow_extension_commands: bool = True
+    ):
         return self._command_controller.preflight_user_input(
             user_input, allow_extension_commands=allow_extension_commands
         )
 
-    async def _preflight_user_input_async(self, user_input: str, *, allow_extension_commands: bool = True):
+    async def _preflight_user_input_async(
+        self, user_input: str, *, allow_extension_commands: bool = True
+    ):
         return await self._command_controller.preflight_user_input_async(
             user_input, allow_extension_commands=allow_extension_commands
         )
 
-    def _extract_extension_command_invocation(self, user_input: str) -> tuple[str, str] | None:
+    def _extract_extension_command_invocation(
+        self, user_input: str
+    ) -> tuple[str, str] | None:
         return self._command_controller.extract_extension_command_invocation(user_input)
 
     def _raise_if_queued_extension_command(self, user_input: str) -> None:
         self._command_controller.raise_if_queued_extension_command(user_input)
 
-    def _record_preflight_diagnostics(self, diagnostics: tuple[ResourceDiagnostic, ...]) -> None:
+    def _record_preflight_diagnostics(
+        self, diagnostics: tuple[ResourceDiagnostic, ...]
+    ) -> None:
         self._command_controller.record_preflight_diagnostics(diagnostics)
 
     def _sync_extension_diagnostics(self, *, phase: str) -> None:
@@ -674,13 +729,17 @@ class AgentSessionAdapterMixin:
     def _record_runtime_exception(self, *, code: str, exc: Exception | str) -> None:
         self._diagnostics_bridge.record_runtime_exception(code=code, exc=exc)
 
-    def _record_assistant_response_error(self, assistant_message: AssistantMessage) -> None:
+    def _record_assistant_response_error(
+        self, assistant_message: AssistantMessage
+    ) -> None:
         self._diagnostics_bridge.record_assistant_response_error(assistant_message)
 
     def _record_tool_execution_error(self, event: AgentEvent) -> None:
         self._diagnostics_bridge.record_tool_execution_error(event)
 
-    def _record_extension_runtime_diagnostic(self, diagnostic: ResourceDiagnostic) -> None:
+    def _record_extension_runtime_diagnostic(
+        self, diagnostic: ResourceDiagnostic
+    ) -> None:
         self._diagnostics_bridge.record_extension_runtime_diagnostic(diagnostic)
 
     def _wire_extension_hooks(self) -> None:
@@ -691,7 +750,9 @@ class AgentSessionAdapterMixin:
                 get_cwd=self.session_manager.get_cwd,
             ).install()
 
-    def subscribe(self, listener: Callable[[AgentSessionEvent], Awaitable[None] | None]):
+    def subscribe(
+        self, listener: Callable[[AgentSessionEvent], Awaitable[None] | None]
+    ):
         return super().subscribe(listener, project=project_session_runtime_event)
 
 
@@ -727,8 +788,12 @@ def initialize_composed_session(
     session._extension_input_runtime = composition.extension_input_runtime
     session._extension_message_controller = composition.extension_message_controller
     session._extension_provider_controller = composition.extension_provider_controller
-    session._extension_replacement_controller = composition.extension_replacement_controller
-    session._extension_runtime_binding_factory = composition.extension_runtime_binding_factory
+    session._extension_replacement_controller = (
+        composition.extension_replacement_controller
+    )
+    session._extension_runtime_binding_factory = (
+        composition.extension_runtime_binding_factory
+    )
     session._extension_runtime_controller = composition.extension_runtime_controller
     session._selection_runtime = composition.selection_runtime
     session._model_binding = composition.model_binding
@@ -775,9 +840,7 @@ def initialize_composed_session(
 def build_agent_session_lifecycle_hooks(
     *,
     runtime_host: object,
-    record_shutdown_failure: Callable[
-        [object, SessionShutdownEvent, Exception], None
-    ],
+    record_shutdown_failure: Callable[[object, SessionShutdownEvent, Exception], None],
 ) -> SessionLifecycleHooks[object, str]:
     """Bind standard Agent-session effects to the shared lifecycle runtime."""
 
@@ -869,6 +932,176 @@ def build_agent_session_lifecycle_hooks(
         before_release=before_release,
         dispose_session=dispose_session_only,
     )
+
+
+def build_agent_product_session_runtime_ports(
+    *,
+    runtime_host: object,
+    transcript_session_type: type[TranscriptT],
+    session_dir: Path,
+    session_factory: Callable[..., SessionT],
+    persist: bool,
+    diagnostics_runtime: Callable[[SessionT | None], SessionDiagnosticsRuntime] | None,
+    record_shutdown_failure: Callable[[object, SessionShutdownEvent, Exception], None],
+    copy_file: Callable[[Path, Path], None],
+    translate_missing_cwd_error: Callable[[MissingSessionCwdError], Exception]
+    | None = None,
+) -> ProductSessionRuntimePorts[SessionT, TranscriptT, str]:
+    """Bind standard Agent session conventions to ``ProductSessionRuntime``."""
+
+    transcript = ProductTranscriptSessionBinding(
+        session_type=transcript_session_type,
+        session_dir=session_dir,
+        persist=persist,
+        resolve_cwd_override=resolve_existing_cwd,
+    )
+
+    def build_session(
+        manager: TranscriptT,
+        current: SessionT | None,
+        transition: SessionLifecycleTransition,
+    ) -> SessionT:
+        reason = (
+            "startup"
+            if current is None and transition.reason == "new"
+            else transition.reason
+        )
+        return invoke_session_factory(
+            session_factory,
+            manager,
+            session_start_event=SessionStartEvent(
+                reason=reason,
+                previous_session_file=session_file_from_session(current),
+            ),
+        )
+
+    def fork_target(
+        session: SessionT,
+        entry_id: str,
+        position: str,
+    ) -> ForkSelection[str]:
+        return resolve_agent_transcript_fork_target(
+            getattr(session, "session_manager"),
+            entry_id,
+            position,
+        )
+
+    return ProductSessionRuntimePorts(
+        session_factory=session_factory,
+        persist=persist,
+        create_transcript=transcript.create,
+        restore_transcript=transcript.restore,
+        fork_transcript=transcript.fork,
+        dispose_transcript=transcript.dispose,
+        transcript_for_session=lambda session: cast(
+            TranscriptT, getattr(session, "session_manager")
+        ),
+        transcript_cwd=lambda manager: getattr(manager, "get_cwd")(),
+        transcript_session_ref=lambda manager: (
+            str(value)
+            if (value := getattr(manager, "get_session_file")()) is not None
+            else None
+        ),
+        transcript_leaf_entry_id=lambda manager: getattr(manager, "get_leaf_id")(),
+        build_session=build_session,
+        validate_restored_transcript=transcript.validate_available_cwd,
+        fork_profile=ForkProfile(
+            default_position="before",
+            supported_positions=frozenset({"at", "before"}),
+        ),
+        fork_target_resolver=fork_target,
+        copy_file=copy_file,
+        hooks=cast(
+            SessionLifecycleHooks[SessionT, str],
+            build_agent_session_lifecycle_hooks(
+                runtime_host=runtime_host,
+                record_shutdown_failure=record_shutdown_failure,
+            ),
+        ),
+        diagnostics_runtime=diagnostics_runtime,
+        rename_transcript=transcript.rename,
+        delete_transcript=transcript.delete,
+        current_session_file=session_file_from_session,
+        resolve_import_cwd=resolve_existing_cwd,
+        translate_missing_cwd_error=translate_missing_cwd_error,
+    )
+
+
+class AgentProductSessionRuntime(
+    ProductSessionRuntime[SessionT, TranscriptT, str],
+    Generic[SessionT, TranscriptT],
+):
+    """Standard Agent conventions bound to the shared Product session runtime."""
+
+    def __init__(
+        self,
+        *,
+        transcript_session_type: type[TranscriptT],
+        session_dir: Path,
+        session_factory: Callable[..., SessionT],
+        persist: bool = True,
+        current_session: SessionT | None = None,
+        diagnostics_service: DiagnosticsService | None = None,
+        copy_file: Callable[[Path, Path], None] = copy_file_exclusive,
+        auto_refresh_session_index: bool = False,
+        session_index_refresh_interval: float = 0.5,
+        session_index_flush_delay: float = 0.25,
+    ) -> None:
+        self._agent_diagnostics_service = diagnostics_service
+        super().__init__(
+            session_dir=session_dir,
+            ports=build_agent_product_session_runtime_ports(
+                runtime_host=self,
+                transcript_session_type=transcript_session_type,
+                session_dir=session_dir,
+                session_factory=session_factory,
+                persist=persist,
+                copy_file=copy_file,
+                diagnostics_runtime=self._agent_session_diagnostics_runtime,
+                record_shutdown_failure=self._record_agent_shutdown_failure,
+            ),
+            current_session=current_session,
+            auto_refresh_session_index=auto_refresh_session_index,
+            session_index_refresh_interval=session_index_refresh_interval,
+            session_index_flush_delay=session_index_flush_delay,
+        )
+        if current_session is not None:
+            prepare_current_agent_session(current_session, self)
+
+    def _agent_session_diagnostics_runtime(
+        self,
+        session: SessionT | None = None,
+    ) -> SessionDiagnosticsRuntime:
+        active_session = session or self.current_session
+        diagnostics_service = self._agent_diagnostics_service or getattr(
+            active_session,
+            "diagnostics_service",
+            None,
+        )
+        session_id = session_id_from_session(active_session) or ""
+        return SessionDiagnosticsRuntime(
+            diagnostics_service=diagnostics_service,
+            get_scope=lambda: SessionDiagnosticScope(session_id=session_id),
+            get_extension_diagnostics=lambda: None,
+        )
+
+    def _record_agent_shutdown_failure(
+        self,
+        session: object,
+        event: SessionShutdownEvent,
+        exc: Exception,
+    ) -> None:
+        typed_session = cast(SessionT, session)
+        self._record_failure_for_session(
+            typed_session,
+            code="session_shutdown_failed",
+            exc=exc,
+            details={
+                "reason": event.reason,
+                "session_file": session_file_from_session(typed_session),
+                "target_session_file": event.target_session_file,
+            },
+        )
 
 
 def prepare_current_agent_session(session: object, runtime_host: object) -> None:
@@ -986,7 +1219,9 @@ def _bash_result_from_extension_result(
     return normalize_bash_result_from_protocol(result)
 
 
-def _bash_operations_from_extension_result(event_result: object | None) -> object | None:
+def _bash_operations_from_extension_result(
+    event_result: object | None,
+) -> object | None:
     if event_result is None:
         return None
     if isinstance(event_result, dict):
@@ -996,6 +1231,7 @@ def _bash_operations_from_extension_result(event_result: object | None) -> objec
 
 __all__ = [
     "AgentSessionAdapterMixin",
+    "build_agent_product_session_runtime_ports",
     "build_agent_session_lifecycle_hooks",
     "prepare_current_agent_session",
 ]

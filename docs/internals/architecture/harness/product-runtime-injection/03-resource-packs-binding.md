@@ -78,9 +78,11 @@ active.
 
 `coding.capability_profile` previously combined Product-plan declaration with
 its own registry, factory, and wrapper mechanics. It is removed.
-`coding.capability_plan` now contains only Coding's default declarations and
-snapshot validation; Coding bootstrap and `AgentSession` bind the Harness
-composition runtime directly.
+`coding.capability_plan` is also removed:
+`harness.capabilities.standard_capability_composition_plan` owns the reusable
+standard declaration, while `coding.product_plan` selects it and Coding
+session/header code retains Product snapshot validation. Coding bootstrap and
+`AgentSession` bind the Harness composition runtime directly.
 
 This removal is intentionally internal. It does not remove Coding's Product
 prompt, tool, command, resource, extension, or policy adapters.

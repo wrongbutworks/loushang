@@ -8,7 +8,7 @@ from pathlib import Path
 
 RETIRED_CODING_UI_COMPATIBILITY_MODULES: dict[str, tuple[str, ...]] = {
     "loushang.coding.commands.tui": (
-        "loushang.coding.commands.catalog",
+        "loushang.harnesstui.commands.catalog",
         "loushang.harnesstui.commands.interaction",
         "loushang.harnesstui.commands.presentation",
         "loushang.harnesstui.commands.source",
@@ -27,7 +27,7 @@ RETIRED_CODING_UI_COMPATIBILITY_MODULES: dict[str, tuple[str, ...]] = {
     ),
     "loushang.coding.interaction.plain_dispatch": (
         "loushang.harnesstui.conversation.dispatch",
-        "loushang.coding.interaction.tui_profile",
+        "loushang.harnesstui.conversation.host",
     ),
     "loushang.coding.interaction.plain_follow_up": (
         "loushang.harnesstui.conversation.control",
@@ -35,7 +35,7 @@ RETIRED_CODING_UI_COMPATIBILITY_MODULES: dict[str, tuple[str, ...]] = {
     ),
     "loushang.coding.interaction.plain_host": (
         "loushang.harnesstui.conversation.host",
-        "loushang.coding.interaction.tui_profile",
+        "loushang.harnesstui.conversation.info",
     ),
     "loushang.coding.interaction.plain_result": (
         "loushang.harnesstui.conversation.dispatch",
@@ -43,7 +43,7 @@ RETIRED_CODING_UI_COMPATIBILITY_MODULES: dict[str, tuple[str, ...]] = {
     ),
     "loushang.coding.interaction.routing": (
         "loushang.harnesstui.conversation.host",
-        "loushang.coding.interaction.tui_profile",
+        "loushang.harnesstui.conversation.intents",
     ),
     "loushang.coding.ui.lifecycle": ("loushang.harnesstui.conversation.control",),
     "loushang.coding.ui.event_stream": ("loushang.harnesstui.conversation.dispatch",),
@@ -109,29 +109,32 @@ MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
         "loushang.coding.ui.plain_app",
     ),
     "loushang.coding.ui.command_list": (
-        "loushang.coding.commands.catalog",
+        "loushang.harnesstui.commands.catalog",
         "loushang.harnesstui.commands.interaction",
         "loushang.harnesstui.commands.presentation",
         "loushang.harnesstui.commands.source",
     ),
     "loushang.coding.ui.conversation_event_adapter": (
-        "loushang.coding.presentation.tui.events",
+        "loushang.harnesstui.conversation.projection",
     ),
-    "loushang.coding.ui.controller": ("loushang.coding.interaction.controller",),
+    "loushang.coding.ui.controller": (
+        "loushang.harnesstui.conversation.controller",
+        "loushang.coding.ui.product_binding",
+    ),
     "loushang.coding.ui.debug_status": ("loushang.coding.diagnostics.debug_status",),
     "loushang.coding.ui.debug_command": (
         "loushang.harnesstui.conversation.debug_action",
         "loushang.coding.ui.plain_app",
     ),
-    "loushang.coding.ui.event_policy": ("loushang.coding.event.presentation_policy",),
-    "loushang.coding.ui.intent": ("loushang.coding.interaction.intent",),
+    "loushang.coding.ui.event_policy": ("loushang.harness.events.recording_policy",),
+    "loushang.coding.ui.intent": ("loushang.harnesstui.conversation.intents",),
     "loushang.coding.ui.follow_up_queue": (
         "loushang.harnesstui.conversation.control",
         "loushang.coding.ui.plain_app",
     ),
     "loushang.coding.ui.handlers": (
         "loushang.harnesstui.conversation.host",
-        "loushang.coding.interaction.tui_profile",
+        "loushang.harnesstui.conversation.info",
     ),
     "loushang.coding.ui.model": ("loushang.coding.model_selection",),
     "loushang.coding.ui.model_list": ("loushang.coding.model_selection_tui",),
@@ -139,7 +142,7 @@ MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
     "loushang.coding.ui.plain_renderer": ("loushang.coding.presentation.tui.plain",),
     "loushang.coding.ui.prompt_dispatch": (
         "loushang.harnesstui.conversation.dispatch",
-        "loushang.coding.interaction.tui_profile",
+        "loushang.harnesstui.conversation.host",
     ),
     "loushang.coding.ui.prompt_result": (
         "loushang.harnesstui.conversation.dispatch",
@@ -147,10 +150,14 @@ MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
     ),
     "loushang.coding.ui.prompt_routing": (
         "loushang.harnesstui.conversation.host",
-        "loushang.coding.interaction.tui_profile",
+        "loushang.harnesstui.conversation.intents",
     ),
-    "loushang.coding.ui.session_view": ("loushang.coding.presentation.session",),
-    "loushang.coding.ui.screen_events": ("loushang.coding.presentation.tui.screen",),
+    "loushang.coding.ui.session_view": (
+        "loushang.harnesstui.conversation.session_view",
+    ),
+    "loushang.coding.ui.screen_events": (
+        "loushang.harnesstui.conversation.agent_binding",
+    ),
     "loushang.coding.ui.session_history": ("loushang.coding.presentation.tui.history",),
     "loushang.coding.ui.settings_config": (
         "loushang.coding.interaction.settings_profile",
@@ -162,14 +169,15 @@ MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
         "loushang.harnesstui.status.snapshot",
     ),
     "loushang.coding.ui.tool_blocks": (
-        "loushang.coding.presentation.tui.tool_transcript",
+        "loushang.harnesstui.conversation.agent_binding",
     ),
     "loushang.coding.ui.transcript_projection": (
-        "loushang.coding.presentation.tui.tool_transcript",
+        "loushang.harnesstui.conversation.agent_binding",
     ),
     "loushang.coding.ui.transcript_source": (
-        "loushang.coding.presentation.tui.history",
+        "loushang.harnesstui.conversation.agent_binding",
     ),
+    "loushang.coding.presentation.resume": ("loushang.harnesstui.conversation.resume",),
 }
 
 RETIRED_CODING_UI_MODULES = {
@@ -183,6 +191,7 @@ RETAINED_CODING_UI_PRODUCT_ADAPTER_MODULES = {
     "hotkeys",
     "mode",
     "plain_app",
+    "product_binding",
     "screen_app",
     "screen_input",
     "screen_surfaces",
@@ -193,24 +202,15 @@ RETAINED_CODING_UI_PRODUCT_ADAPTER_MODULES = {
 NON_UI_CODING_OWNERS = (
     "loushang.coding.model_selection",
     "loushang.coding.diagnostics.debug_status",
-    "loushang.coding.event.presentation_policy",
-    "loushang.coding.interaction.intent",
-    "loushang.coding.presentation.session",
+    "loushang.harness.events.recording_policy",
 )
 
 CODING_TUI_FEATURE_OWNERS = (
-    "loushang.coding.interaction.controller",
-    "loushang.coding.interaction.screen_host",
     "loushang.coding.interaction.settings_profile",
-    "loushang.coding.interaction.tui_profile",
     "loushang.coding.model_selection_tui",
-    "loushang.coding.policy.tui",
-    "loushang.coding.presentation.resume",
-    "loushang.coding.presentation.tui.events",
     "loushang.coding.presentation.tui.history",
     "loushang.coding.presentation.tui.plain",
-    "loushang.coding.presentation.tui.screen",
-    "loushang.coding.presentation.tui.tool_transcript",
+    "loushang.harnesstui.conversation.agent_binding",
 )
 
 
@@ -406,27 +406,32 @@ def test_mode_is_only_the_coding_tui_composition_root() -> None:
         assert token not in source
 
     for token in (
-        "ScreenCodingConversationActionHost",
-        "build_screen_coding_event_projection",
-        "build_plain_coding_event_projection",
+        "build_screen_coding_action_host",
+        "AgentScreenConversationApplicationBinding",
+        "AgentPlainConversationApplicationBinding",
         "ScreenSurfaceManager",
         "run_action_host_conversation_screen",
         "CODING_SCREEN_RUN_PROFILE",
         "build_plain_coding_tui_app",
-        "PreparedScreenConversationRun",
         "run_prepared_screen_conversation",
-        "PreparedPlainConversationRun",
         "run_prepared_plain_conversation",
         "TuiLaunchProfile",
         "run_tui_launch_shell",
+    ):
+        assert token in source
+
+    for token in (
         "class _CodingTuiSessionPort",
-        "get_tool_definition",
+        "build_agent_screen_conversation_projection",
+        "build_agent_plain_conversation_projection",
+        "MaterializedTranscriptSource",
+        "StatusProvider",
         "get_steering_messages",
         "get_follow_up_messages",
         "get_keybindings",
         "stable_string_queue_reader",
     ):
-        assert token in source
+        assert token not in source
 
     assert "ScreenCodingEventProjector" not in source
     assert "PlainCodingEventRenderer" not in source
@@ -436,19 +441,27 @@ def test_prepared_application_host_owns_only_neutral_run_coordination() -> None:
     shared = Path("src/loushang/harnesstui/conversation/application_host.py").read_text(
         encoding="utf-8"
     )
+    agent_binding = Path(
+        "src/loushang/harnesstui/conversation/agent_application.py"
+    ).read_text(encoding="utf-8")
     coding = Path("src/loushang/coding/ui/mode.py").read_text(encoding="utf-8")
 
     for token in (
         "loushang.coding",
         "ScreenCodingTuiApp",
-        "CodingUiController",
+        "build_coding_ui_controller",
         "ScreenSurfaceManager",
-        "StatusProvider",
-        "handle_screen_approval",
-        "model_label",
     ):
         assert token not in shared
         assert token in coding
+
+    assert "handle_agent_screen_approval" not in shared
+    assert "handle_agent_screen_approval" in agent_binding
+    assert "handle_agent_screen_approval" in coding
+
+    assert "model_label" not in shared
+    assert "StatusProvider" in agent_binding
+    assert "model_label" in agent_binding
 
     for token in (
         "PreparedScreenConversationRun",
@@ -457,38 +470,45 @@ def test_prepared_application_host_owns_only_neutral_run_coordination() -> None:
         "run_prepared_plain_conversation",
     ):
         assert token in shared
-        assert token in coding
+    assert "run_prepared_screen_conversation" in coding
+    assert "run_prepared_plain_conversation" in coding
 
 
 def test_plain_prompt_host_owns_only_neutral_turn_lifecycle() -> None:
     shared = Path(
         "src/loushang/harnesstui/conversation/plain_prompt_host.py"
     ).read_text(encoding="utf-8")
-    coding = Path("src/loushang/coding/prompt_command.py").read_text(
-        encoding="utf-8"
-    )
+    agent_binding = Path(
+        "src/loushang/harnesstui/conversation/agent_binding.py"
+    ).read_text(encoding="utf-8")
+    coding = Path("src/loushang/coding/prompt_command.py").read_text(encoding="utf-8")
 
     for token in (
         "loushang.coding",
         "ensure_usable_session_model",
-        "CodingWorkShell",
+        "SessionWorkRuntime",
         "EventLogBackend",
-        "_last_assistant_failure_message",
         "method_id",
         "plan_id",
     ):
         assert token not in shared
         assert token in coding
 
-    for token in (
-        "PlainPromptHostPorts",
-        "PreparedPlainPromptRun",
-        "run_plain_prompt_host",
-    ):
+    for token in ("last_assistant_failure_message", "dispose_runtime_or_session"):
         assert token in shared
-        assert token in coding
+        assert token in agent_binding
+        assert token not in coding
 
-    assert "def _run_turn" not in coding
+    assert "session_identity" in shared
+    assert "session_identity" in coding
+
+    for token in ("PlainPromptHostPorts", "run_plain_prompt_host"):
+        assert token in shared
+        assert token in agent_binding
+        assert token not in coding
+
+    assert "run_agent_plain_prompt" in agent_binding
+    assert "run_agent_plain_prompt" in coding
 
 
 def test_shared_resume_runtime_and_startup_keep_product_policy_outside() -> None:
@@ -498,36 +518,44 @@ def test_shared_resume_runtime_and_startup_keep_product_policy_outside() -> None
         )
         for module in ("resume", "runtime_view", "startup")
     )
+    agent_binding = Path(
+        "src/loushang/harnesstui/conversation/agent_application.py"
+    ).read_text(encoding="utf-8")
     coding = "\n".join(
         Path(path).read_text(encoding="utf-8")
         for path in (
-            "src/loushang/coding/presentation/resume.py",
             "src/loushang/coding/ui/startup.py",
             "src/loushang/coding/ui/mode.py",
         )
     )
+    assert not Path("src/loushang/coding/presentation/resume.py").exists()
     assert not Path("src/loushang/coding/presentation/tui/runtime.py").exists()
 
-    for token in (
-        "loushang.coding",
-        "ensure_usable_session_model",
-        "get_session_model_selection",
-        "get_steering_messages",
-        "get_follow_up_messages",
-        "Resume this session with:",
-        "session_manager",
-    ):
+    for token in ("loushang.coding", "ensure_usable_session_model"):
         assert token not in shared
+        assert token not in agent_binding
         assert token in coding
+    assert "get_session_model_selection" not in shared
+    assert "get_session_model_selection" in agent_binding
+    assert "get_session_model_selection" not in coding
+
+    for token in ("get_steering_messages", "get_follow_up_messages"):
+        assert token not in shared
+        assert token in agent_binding
+        assert token not in coding
 
     for token in (
         "ConversationResumeHint",
+        "resume_hint_for_session",
         "write_clean_exit_resume_hint",
         "stable_string_queue_reader",
         "build_conversation_startup_view",
     ):
         assert token in shared
-        assert token in coding
+    assert "resume_hint_for_session" in agent_binding
+    assert "stable_string_queue_reader" in agent_binding
+    assert "load_agent_conversation_startup_view" in agent_binding
+    assert "load_coding_tui_startup_view" in coding
 
 
 def test_generic_tui_launch_shell_does_not_own_product_or_harness_policy() -> None:
@@ -584,15 +612,17 @@ else:
     assert result.returncode == 0, result.stderr
 
 
-def test_conversation_raw_event_dispatch_stays_in_coding_adapter() -> None:
-    adapter = Path("src/loushang/coding/presentation/tui/events.py").read_text(
+def test_conversation_event_dispatch_uses_shared_projection_owner() -> None:
+    adapter = Path("src/loushang/harnesstui/conversation/projection.py").read_text(
         encoding="utf-8"
     )
     assert 'event.get("type")' in adapter
+    assert "SessionConversationEventAdapter" in adapter
+    assert not Path("src/loushang/coding/presentation/tui/events.py").exists()
 
     for path in (
         Path("src/loushang/coding/presentation/tui/plain.py"),
-        Path("src/loushang/coding/presentation/tui/screen.py"),
+        Path("src/loushang/harnesstui/conversation/agent_binding.py"),
     ):
         assert 'event.get("type")' not in path.read_text(encoding="utf-8")
 
@@ -654,12 +684,15 @@ def test_shared_performance_probe_does_not_load_coding_sessions() -> None:
         assert token not in shared
 
     assert "SessionManager" in coding
-    assert "session_history_records" in coding
+    assert "load_agent_session_history_records" in coding
     assert "load_persisted_session_history_records" in coding
 
 
-def test_shared_history_dispatch_keeps_raw_coding_projection_outside() -> None:
+def test_shared_history_dispatch_uses_structural_agent_message_projection() -> None:
     shared = Path("src/loushang/harnesstui/conversation/history.py").read_text(
+        encoding="utf-8"
+    )
+    agent = Path("src/loushang/harnesstui/conversation/agent_binding.py").read_text(
         encoding="utf-8"
     )
     coding = Path("src/loushang/coding/presentation/tui/history.py").read_text(
@@ -672,29 +705,44 @@ def test_shared_history_dispatch_keeps_raw_coding_projection_outside() -> None:
         "SessionManager",
         "UserMessage",
         "ToolResultMessage",
-        "CodingToolTranscriptProjection",
-        "TUI_TRANSCRIPT_DISPOSITIONS",
+        "AgentToolTranscriptProjection",
+        "STANDARD_AGENT_HISTORY_DISPOSITIONS",
     ):
         assert token not in shared
-        assert token in coding
+
+    assert "SessionManager" in coding
+    assert "STANDARD_AGENT_HISTORY_DISPOSITIONS" in agent
+    assert "project_agent_conversation_history" in agent
+    assert "agent_session_history_records" in agent
+    assert "load_agent_session_history_records" in coding
+    assert "loushang.ai" not in coding
+    assert "UserMessage" not in coding
+    assert "ToolResultMessage" not in coding
+    assert "AgentToolTranscriptProjection" not in coding
 
     for token in (
         "ConversationHistoryProjector",
+        "project_agent_message_payload",
+        "project_command_execution_payload",
         "project_context_compaction_payload",
         "project_context_branch_summary_payload",
     ):
         assert token in shared
-        assert token in coding
+        assert token in agent
 
     assert "def _transcript_record" not in coding
     assert "class SessionTranscriptSource" not in coding
     assert "def _session_transcript_items" not in coding
-    assert "branch_items: Iterable[object]" in coding
-    assert "manager.get_branch()" in coding
+    assert "branch_items: Iterable[object]" in agent
+    assert "get_branch()" in agent
 
     mode = Path("src/loushang/coding/ui/mode.py").read_text(encoding="utf-8")
-    assert "MaterializedTranscriptSource" in mode
-    assert "session_port.session_manager.get_branch()" in mode
+    application = Path(
+        "src/loushang/harnesstui/conversation/agent_application.py"
+    ).read_text(encoding="utf-8")
+    assert "MaterializedTranscriptSource" not in mode
+    assert "MaterializedTranscriptSource" in application
+    assert "manager.get_branch()" in application
 
 
 def test_shared_playback_support_does_not_own_coding_copy_or_budgets() -> None:
@@ -796,6 +844,7 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
             "host",
             "info",
             "input",
+            "intents",
             "plain_app",
             "run_context",
             "screen_runner",
@@ -809,98 +858,96 @@ def test_shared_conversation_interaction_does_not_own_coding_policy_or_copy() ->
         "Operation aborted",
         ".loushang/clipboard",
         "ImagePart",
-        "PromptIntent",
-        "BashIntent",
     ):
         assert token not in shared
 
     plain_app = Path("src/loushang/coding/ui/plain_app.py").read_text(encoding="utf-8")
-    profile = Path("src/loushang/coding/interaction/tui_profile.py").read_text(
+    agent_plain_app = Path(
+        "src/loushang/harnesstui/conversation/agent_plain_app.py"
+    ).read_text(encoding="utf-8")
+    intents = Path("src/loushang/harnesstui/conversation/intents.py").read_text(
         encoding="utf-8"
     )
     screen_input = Path("src/loushang/coding/ui/screen_input.py").read_text(
         encoding="utf-8"
     )
-    screen_host = Path("src/loushang/coding/interaction/screen_host.py").read_text(
+    product_binding = Path("src/loushang/coding/ui/product_binding.py").read_text(
         encoding="utf-8"
     )
 
-    assert "Follow-up is only available while a run is active." in plain_app
-    assert "Follow-up queued." in plain_app
+    assert "Follow-up is only available while a run is active." in agent_plain_app
+    assert "Follow-up queued." in agent_plain_app
+    assert "build_agent_plain_conversation_app" in plain_app
     assert (
         "Conversation interrupted - tell the model what to do differently."
         in screen_input
     )
     assert "Operation aborted" in screen_input
     assert "ImagePart" not in screen_input
-    assert "ImagePart" in screen_host
+    assert "ImagePart" in product_binding
     assert '".loushang" / "clipboard"' in screen_input
     assert "class ScreenInputResult" not in screen_input
     assert "class ScreenInputRouter" not in screen_input
     assert "bind_clipboard_image_input_router(" in screen_input
-    assert "PromptIntent" in profile
-    assert "BashIntent" in profile
-    assert "build_plain_conversation_app" in plain_app
+    assert "PromptIntent" in intents
+    assert "BashIntent" in intents
+    assert "ConversationRoutingProfile" in shared
+    assert "build_standard_conversation_host_profile" in shared
+    assert "build_plain_conversation_app" in agent_plain_app
 
 
-def test_shared_action_presentation_keeps_product_controller_and_copy_outside() -> None:
+def test_shared_action_presentation_owns_standard_binding_without_product_imports() -> (
+    None
+):
     shared = Path(
         "src/loushang/harnesstui/conversation/action_presentation.py"
     ).read_text(encoding="utf-8")
     result_owner = Path("src/loushang/harness/host/types.py").read_text(
         encoding="utf-8"
     )
-    controller = Path("src/loushang/coding/interaction/controller.py").read_text(
+    controller = Path("src/loushang/harnesstui/conversation/controller.py").read_text(
         encoding="utf-8"
     )
-    screen_host = Path("src/loushang/coding/interaction/screen_host.py").read_text(
-        encoding="utf-8"
-    )
-    profile = Path("src/loushang/coding/interaction/tui_profile.py").read_text(
+    product_binding = Path("src/loushang/coding/ui/product_binding.py").read_text(
         encoding="utf-8"
     )
 
     for token in (
         "loushang.coding",
         "ImagePart",
-        "PromptIntent",
-        "AbortIntent",
-        "Request failed:",
-        "Steering failed:",
-        "Follow-up failed:",
     ):
         assert token not in shared
 
     assert "class HostActionResult" in result_owner
     assert "ConversationUiController" in controller
-    assert "HostActionResult" not in controller
     assert "class ControllerResult" not in controller
-    assert "ImagePart" in screen_host
-    assert "PromptIntent" in screen_host
-    assert "Request failed:" in profile
-    assert "Steering failed:" in profile
-    assert "Follow-up failed:" in profile
+    assert "ImagePart" in product_binding
+    assert "build_standard_presented_conversation_action_host" in shared
+    assert "Request failed:" in shared
+    assert "Steering failed:" in shared
+    assert "Follow-up failed:" in shared
 
 
 def test_shared_debug_action_keeps_product_binding_and_copy_outside() -> None:
-    shared = Path(
-        "src/loushang/harnesstui/conversation/debug_action.py"
-    ).read_text(encoding="utf-8")
-    coding = Path("src/loushang/coding/ui/plain_app.py").read_text(
+    shared = Path("src/loushang/harnesstui/conversation/debug_action.py").read_text(
         encoding="utf-8"
     )
+    coding = Path("src/loushang/coding/ui/plain_app.py").read_text(encoding="utf-8")
+    agent_binding = Path(
+        "src/loushang/harnesstui/conversation/agent_plain_app.py"
+    ).read_text(encoding="utf-8")
 
     for token in (
         "loushang.coding",
         "debug_status_text",
-        "Debug logging disabled.",
-        '"debug.enabled"',
-        '"debug.disabled"',
         "session=session",
         "cwd=cwd",
     ):
         assert token not in shared
         assert token in coding
+    assert "Debug logging disabled." in agent_binding
+    assert "debug:enabled" in agent_binding
+    assert "debug:disabled" in agent_binding
 
     for token in (
         "DebugActionCopy",
@@ -908,7 +955,7 @@ def test_shared_debug_action_keeps_product_binding_and_copy_outside() -> None:
         "DebugActionPorts",
     ):
         assert token in shared
-        assert token in coding
+        assert token in agent_binding
 
 
 def test_shared_surface_controller_does_not_own_coding_policy_or_copy() -> None:
@@ -916,23 +963,41 @@ def test_shared_surface_controller_does_not_own_coding_policy_or_copy() -> None:
         Path(f"src/loushang/harnesstui/surface/{module}.py").read_text(encoding="utf-8")
         for module in ("controller", "workflow")
     )
+    agent_binding = Path(
+        "src/loushang/harnesstui/conversation/agent_application.py"
+    ).read_text(encoding="utf-8")
     coding = Path("src/loushang/coding/ui/screen_surfaces.py").read_text(
         encoding="utf-8"
     )
 
     for token in (
-        "CodingCommandCatalog",
+        "ConversationCommandCatalog",
         "build_coding_settings_page",
         "ScreenCodingTuiApp",
         "select_available_model",
-        "parse_prompt_intent",
+    ):
+        assert token not in shared
+
+    assert "ConversationCommandCatalog" in agent_binding
+    assert "build_agent_screen_surface_workflow_ports" in agent_binding
+    assert "loushang.coding" not in agent_binding
+    for token in (
+        "build_coding_settings_page",
+        "ScreenCodingTuiApp",
+        "select_available_model",
+    ):
+        assert token in coding
+    assert "ConversationCommandCatalog" not in coding
+
+    for token in (
+        "parse_conversation_intent",
         "Action confirmed:",
         "Action rejected",
         "Approval request is no longer pending",
         "Command selected:",
     ):
-        assert token not in shared
-        assert token in coding
+        assert token in shared
+        assert token not in coding
 
 
 def test_shared_settings_workflow_does_not_own_coding_bindings_or_copy() -> None:
@@ -958,20 +1023,22 @@ def test_shared_settings_workflow_does_not_own_coding_bindings_or_copy() -> None
 
 
 def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
+    command_catalog = Path("src/loushang/harnesstui/commands/catalog.py").read_text(
+        encoding="utf-8"
+    )
     command_interaction = Path(
         "src/loushang/harnesstui/commands/interaction.py"
     ).read_text(encoding="utf-8")
     model_interaction = Path(
         "src/loushang/harnesstui/selection/interaction.py"
     ).read_text(encoding="utf-8")
-    model_runtime = Path(
-        "src/loushang/harnesstui/selection/runtime.py"
-    ).read_text(encoding="utf-8")
-    shared = command_interaction + model_interaction + model_runtime
+    model_runtime = Path("src/loushang/harnesstui/selection/runtime.py").read_text(
+        encoding="utf-8"
+    )
+    shared = command_catalog + command_interaction + model_interaction + model_runtime
     command_adapter = "\n".join(
         Path(path).read_text(encoding="utf-8")
         for path in (
-            "src/loushang/coding/commands/catalog.py",
             "src/loushang/coding/ui/completion.py",
             "src/loushang/coding/ui/plain_app.py",
             "src/loushang/coding/ui/screen_surfaces.py",
@@ -980,11 +1047,17 @@ def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
     model_adapter = Path("src/loushang/coding/model_selection_tui.py").read_text(
         encoding="utf-8"
     )
+    agent_bindings = "\n".join(
+        Path(path).read_text(encoding="utf-8")
+        for path in (
+            "src/loushang/harnesstui/conversation/agent_plain_app.py",
+            "src/loushang/harnesstui/conversation/agent_application.py",
+        )
+    )
     coding = command_adapter + model_adapter
 
     for token in (
         "loushang.coding",
-        "CodingCommandCatalog",
         "apply_model_selection",
         "persistence_warning_message",
         "settings_manager",
@@ -994,14 +1067,19 @@ def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
         assert token not in shared
 
     for token in (
-        "CodingCommandCatalog",
         "apply_model_selection",
         "persistence_warning_message",
         "settings_manager",
-        "Command selected:",
-        "Use /command <full command> to select one.",
     ):
         assert token in coding
+    assert "ConversationCommandCatalog" in command_catalog
+    assert "ConversationCommandCatalog" in agent_bindings
+    assert "ConversationCommandCatalog" not in command_adapter
+    agent_plain_app = Path(
+        "src/loushang/harnesstui/conversation/agent_plain_app.py"
+    ).read_text(encoding="utf-8")
+    assert "Command selected:" in agent_plain_app
+    assert "Use /command <full command> to select one." in agent_plain_app
 
     assert "loushang.harnesstui.commands.interaction" in command_adapter
     assert "loushang.harnesstui.selection.interaction" in model_adapter
@@ -1020,14 +1098,14 @@ def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
     assert "available_model_palette" not in model_adapter
 
 
-def test_shared_command_catalog_keeps_coding_definitions_and_raw_adaptation_outside() -> None:
+def test_shared_command_catalog_owns_structural_session_adaptation() -> None:
     shared = Path("src/loushang/harness/commands/catalog.py").read_text(
         encoding="utf-8"
     )
     descriptors = Path("src/loushang/harness/commands/descriptors.py").read_text(
         encoding="utf-8"
     )
-    coding = Path("src/loushang/coding/commands/catalog.py").read_text(
+    conversation = Path("src/loushang/harnesstui/commands/catalog.py").read_text(
         encoding="utf-8"
     )
     profile = Path("src/loushang/harness/commands/catalog.py").read_text(
@@ -1036,47 +1114,52 @@ def test_shared_command_catalog_keeps_coding_definitions_and_raw_adaptation_outs
 
     assert "loushang.coding" not in shared
     assert "loushang.coding" not in descriptors
+    assert "loushang.coding" not in conversation
 
-    for token in ("coding.ui.model", "coding.session.", "raw_command"):
+    for token in ("coding.ui.model", "coding.session."):
         assert token not in shared
+        assert token not in conversation
 
     for token in ("harness.ui.model", "harness.ui.config", "model_select", "terminal"):
         assert token in profile
 
-    for token in ("coding.session.", "CommandEffectKind", "raw_command"):
-        assert token in coding
-
     for token in ("MixedCommandCatalog", "MixedCommandCatalogPorts"):
         assert token in shared
-        assert token in coding
+        assert token in conversation
 
     assert "LocalCommandCatalogProfile" in shared
-    assert "LocalCommandCatalogProfile" in shared
+    assert "coerce_command_descriptor" in shared
+    assert "command_def_from_descriptor" in shared
+    assert "ConversationCommandCatalog" in conversation
+    assert not Path("src/loushang/coding/commands/catalog.py").exists()
 
     for token in ("CommandCatalog", "CommandDescriptor", "split_slash_command"):
         assert token in descriptors
 
 
-def test_shared_model_choice_catalog_keeps_session_and_endpoint_acquisition_outside() -> None:
+def test_shared_model_choice_binding_owns_standard_session_acquisition() -> None:
     shared = "\n".join(
         Path(f"src/loushang/harnesstui/selection/{module}.py").read_text(
             encoding="utf-8"
         )
         for module in ("binding", "catalog", "runtime")
     )
+    session_binding = Path("src/loushang/harness/session/model_selection.py").read_text(
+        encoding="utf-8"
+    )
     coding = Path("src/loushang/coding/model_selection_tui.py").read_text(
         encoding="utf-8"
     )
 
-    for token in (
-        "loushang.coding",
-        "get_available_model_details",
-        "get_model_selection",
-        "apply_model_selection",
-        "persistence_warning_message",
-    ):
-        assert token not in shared
-        assert token in coding
+    assert "loushang.coding" not in shared
+    assert "loushang.coding" not in session_binding
+    assert "get_available_model_details" in session_binding
+    assert "get_model_selection" in session_binding
+    assert "available_session_model_choices" in shared
+    assert "apply_model_selection" in coding
+    assert "persistence_warning_message" in coding
+    assert "get_available_model_details" not in coding
+    assert "get_model_selection" not in coding
 
     for token in (
         "ModelChoiceIdentity",
@@ -1084,7 +1167,7 @@ def test_shared_model_choice_catalog_keeps_session_and_endpoint_acquisition_outs
         "merge_model_choice_sources",
     ):
         assert token in shared
-        assert token in coding
+        assert token not in coding
 
     for token in (
         "def model_choices_from_details",
@@ -1126,7 +1209,7 @@ def test_shared_completion_host_does_not_own_coding_catalog_or_path_policy() -> 
         assert token in coding
 
     assert "_session_completion_base_path" not in coding
-    assert len(coding.splitlines()) <= 50
+    assert len(coding.splitlines()) <= 60
 
 
 def test_shared_status_provider_does_not_own_settings_manager_adaptation() -> None:
@@ -1161,40 +1244,37 @@ def test_shared_plain_presentation_does_not_own_coding_policy() -> None:
     assert 'event.get("type")' not in target
 
 
-def test_tool_transcript_projection_keeps_raw_coding_policy_at_product_edge() -> None:
+def test_agent_binding_owns_standard_agent_tool_projection() -> None:
     shared = Path("src/loushang/harnesstui/conversation/tool_transcript.py").read_text(
         encoding="utf-8"
     )
-    coding = Path("src/loushang/coding/presentation/tui/tool_transcript.py").read_text(
+    agent = Path("src/loushang/harnesstui/conversation/agent_binding.py").read_text(
         encoding="utf-8"
     )
 
     for token in (
         "AgentToolResult",
         "ToolDefinitionResolver",
-        'event.get("tool_call_id")',
-        'event.get("tool_name")',
         "render_tool_result_presentation",
     ):
         assert token not in shared
-        assert token in coding
+        assert token in agent
 
-    coding_tree = ast.parse(coding)
-    coding_class_names = {
-        node.name for node in ast.walk(coding_tree) if isinstance(node, ast.ClassDef)
-    }
-    assert "ToolTranscriptProjector" not in coding_class_names
-    assert "CodingToolTranscriptViewAdapter" in coding_class_names
-    assert "build_coding_tool_transcript_projection" in coding
+    assert 'event.get("tool_call_id")' in shared
+    assert 'event.get("tool_name")' in shared
+    assert "MappingToolTranscriptViewAdapter" in shared
+    assert "workspace_tool_verb" in shared
+    assert "workspace_tool_body_visibility" in shared
+    assert "build_agent_tool_transcript_projection" in agent
     assert "ToolTranscriptProjectionBinding" in shared
-    assert "ToolTranscriptProjectionBinding" in coding
+    assert "ToolTranscriptProjectionBinding" in agent
 
 
 def test_shared_screen_projection_target_does_not_own_coding_policy_or_copy() -> None:
     shared = Path("src/loushang/harnesstui/conversation/screen_target.py").read_text(
         encoding="utf-8"
     )
-    coding = Path("src/loushang/coding/presentation/tui/screen.py").read_text(
+    agent = Path("src/loushang/harnesstui/conversation/agent_binding.py").read_text(
         encoding="utf-8"
     )
 
@@ -1205,14 +1285,10 @@ def test_shared_screen_projection_target_does_not_own_coding_policy_or_copy() ->
         'event.get("type")',
         'verb="Ran"',
         'verb="Tested"',
-        "retry {attempt}/{max_attempts}",
-        "compact start:",
-        "compact error:",
-        'return "compact done"',
     ):
         assert token not in shared
 
-    tree = ast.parse(coding)
+    tree = ast.parse(agent)
     class_names = {
         node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
     }
@@ -1220,14 +1296,14 @@ def test_shared_screen_projection_target_does_not_own_coding_policy_or_copy() ->
     assert "ScreenCodingEventProjector" not in class_names
     assert "ScreenConversationProjectionTarget" in shared
     assert "build_screen_conversation_projection" in shared
-    assert "build_screen_conversation_projection" in coding
-    assert "build_screen_coding_event_projection" in coding
-    assert "tool_title_resolver=_tool_title" in coding
-    assert "tool_record_projector=tool_block_to_record" in coding
-    assert "retry {attempt}/{max_attempts}" in coding
-    assert "compact start:" in coding
-    assert "compact error:" in coding
-    assert 'return "compact done"' in coding
+    assert "build_screen_conversation_projection" in agent
+    assert "build_agent_screen_conversation_projection" in agent
+    assert "tool_title_resolver=_standard_tool_title" in agent
+    assert "tool_record_projector=agent_tool_block_to_record" in agent
+    assert "retry {attempt}/{max_attempts}" in shared
+    assert "compact start:" in shared
+    assert "compact error:" in shared
+    assert '"compact done"' in shared
 
 
 def test_shared_window_budget_does_not_own_screen_runtime_policy() -> None:

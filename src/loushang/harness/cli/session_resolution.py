@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.harness.cli.agent_args import AgentCliArgs
 from loushang.harness.session import require_session_operation_session
 
 
@@ -15,6 +16,20 @@ class SessionResolutionRequest:
     resume: bool | str = False
     fork: str | None = None
     cwd: str | Path = "."
+
+
+def agent_session_resolution_request(
+    args: AgentCliArgs,
+    *,
+    cwd: str | Path,
+) -> SessionResolutionRequest:
+    return SessionResolutionRequest(
+        session=args.session,
+        continue_=args.continue_,
+        resume=args.resume,
+        fork=args.fork,
+        cwd=cwd,
+    )
 
 
 async def resolve_session(runtime: object, request: SessionResolutionRequest) -> object:
@@ -53,6 +68,19 @@ async def resolve_session(runtime: object, request: SessionResolutionRequest) ->
     return session
 
 
+async def resolve_agent_cli_session(
+    args: AgentCliArgs,
+    runtime: object,
+    project_root: str | Path,
+) -> object:
+    """Resolve one standard Agent CLI session request."""
+
+    return await resolve_session(
+        runtime,
+        agent_session_resolution_request(args, cwd=project_root),
+    )
+
+
 def resolve_latest_session_file(runtime: object) -> str | None:
     try:
         sessions = runtime.list_sessions()
@@ -71,6 +99,8 @@ def resolve_latest_session_file(runtime: object) -> str | None:
 
 __all__ = [
     "SessionResolutionRequest",
+    "agent_session_resolution_request",
+    "resolve_agent_cli_session",
     "resolve_latest_session_file",
     "resolve_session",
 ]

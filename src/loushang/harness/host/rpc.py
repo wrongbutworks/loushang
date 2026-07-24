@@ -27,8 +27,23 @@ from loushang.harness.agent_transcript import (
     create_agent_transcript_message_codec,
 )
 from loushang.harness.commands import complete_slash_commands
+from loushang.harness.diagnostics.serialization import (
+    serialize_diagnostic,
+    serialize_diagnostic_summary,
+    serialize_error_report,
+)
 from loushang.harness.diagnostics.types import DiagnosticsQuery
-from loushang.harness.events import RuntimeEvent
+from loushang.harness.events import (
+    SUPPORTED_JSON_EVENT_VIEWS,
+    RuntimeEvent,
+    normalize_event_select,
+    project_runtime_event_to_json_views,
+    project_session_event,
+    shape_runtime_event_view,
+    shape_stream_event,
+    should_emit_projected_event,
+    should_emit_runtime_event_view,
+)
 from loushang.harness.host.mode import ModeAdapter, ModeState
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.harness.session import (
@@ -115,6 +130,24 @@ class RpcDiagnosticsProjection:
     serialize_error_report: Callable[[object], dict[str, object] | None]
 
 
+STANDARD_AGENT_RPC_EVENT_PROJECTION = RpcEventProjection(
+    supported_views=SUPPORTED_JSON_EVENT_VIEWS,
+    normalize_select=normalize_event_select,
+    project_session_event=project_session_event,
+    should_emit_projected_event=should_emit_projected_event,
+    shape_stream_event=shape_stream_event,
+    project_runtime_event_to_json_views=project_runtime_event_to_json_views,
+    should_emit_runtime_event_view=should_emit_runtime_event_view,
+    shape_runtime_event_view=shape_runtime_event_view,
+)
+
+STANDARD_RPC_DIAGNOSTICS_PROJECTION = RpcDiagnosticsProjection(
+    serialize_diagnostic=serialize_diagnostic,
+    serialize_diagnostic_summary=serialize_diagnostic_summary,
+    serialize_error_report=serialize_error_report,
+)
+
+
 class RpcExtensionUIContext(RemoteUiContext):
     """RPC-backed extension UI context for headless hosts."""
 
@@ -152,8 +185,10 @@ class RpcHost(ModeAdapter):
         event_view: str = "full",
         event_select: str | Sequence[str] | None = None,
         render_tool_events: bool = False,
-        event_projection: RpcEventProjection,
-        diagnostics_projection: RpcDiagnosticsProjection,
+        event_projection: RpcEventProjection = STANDARD_AGENT_RPC_EVENT_PROJECTION,
+        diagnostics_projection: RpcDiagnosticsProjection = (
+            STANDARD_RPC_DIAGNOSTICS_PROJECTION
+        ),
     ) -> None:
         if event_view not in event_projection.supported_views:
             raise ValueError(f"unsupported json event view: {event_view}")
@@ -2655,8 +2690,10 @@ async def run_rpc_host(
     event_view: str = "full",
     event_select: str | Sequence[str] | None = None,
     render_tool_events: bool = False,
-    event_projection: RpcEventProjection,
-    diagnostics_projection: RpcDiagnosticsProjection,
+    event_projection: RpcEventProjection = STANDARD_AGENT_RPC_EVENT_PROJECTION,
+    diagnostics_projection: RpcDiagnosticsProjection = (
+        STANDARD_RPC_DIAGNOSTICS_PROJECTION
+    ),
 ) -> int:
     mode = RpcHost(
         runtime=runtime,
@@ -2731,5 +2768,7 @@ __all__ = [
     "RpcModel",
     "RpcModelCost",
     "RpcSessionState",
+    "STANDARD_AGENT_RPC_EVENT_PROJECTION",
+    "STANDARD_RPC_DIAGNOSTICS_PROJECTION",
     "run_rpc_host",
 ]

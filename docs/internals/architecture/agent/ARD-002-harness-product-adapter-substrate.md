@@ -222,9 +222,10 @@ Do not keep `loushang.runtime` as a compatibility shim.
 
 The command substrate now includes value types, descriptors, parsing,
 completion, dispatch, and immutable local/session catalog composition under
-`loushang.harness.commands`. `loushang.coding.commands.catalog`, session
-command execution, local command vocabulary, and UI command handlers remain
-owned by `loushang.coding`.
+`loushang.harness.commands`. HarnessTUI binds that substrate to conversation
+routes through `ConversationCommandCatalog`. Products retain command selection,
+session operation bindings, local action handlers, and final wording; Coding
+does not retain a parallel catalog.
 
 ### Phase 2: Host and adapter contracts
 

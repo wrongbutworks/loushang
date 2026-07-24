@@ -32,115 +32,145 @@ class _Session:
         self.follow_ups.append(text)
 
 
-def test_parse_prompt_intent_skips_blank_input() -> None:
-    from loushang.coding.interaction.intent import parse_prompt_intent
+def test_parse_conversation_intent_skips_blank_input() -> None:
+    from loushang.harnesstui.conversation.intents import parse_conversation_intent
 
-    assert parse_prompt_intent("  \n") is None
-
-
-def test_parse_prompt_intent_routes_regular_text_to_prompt() -> None:
-    from loushang.coding.interaction.intent import PromptIntent, parse_prompt_intent
-
-    assert parse_prompt_intent("hello") == PromptIntent(text="hello")
+    assert parse_conversation_intent("  \n") is None
 
 
-def test_parse_prompt_intent_routes_bang_bang_to_bash() -> None:
-    from loushang.coding.interaction.intent import BashIntent, parse_prompt_intent
+def test_parse_conversation_intent_routes_regular_text_to_prompt() -> None:
+    from loushang.harnesstui.conversation.intents import (
+        PromptIntent,
+        parse_conversation_intent,
+    )
 
-    assert parse_prompt_intent("!!  ls -al") == BashIntent(command="ls -al")
-
-
-def test_parse_prompt_intent_routes_quit_command() -> None:
-    from loushang.coding.interaction.intent import QuitIntent, parse_prompt_intent
-
-    assert parse_prompt_intent("/quit") == QuitIntent()
+    assert parse_conversation_intent("hello") == PromptIntent(text="hello")
 
 
-def test_parse_prompt_intent_routes_debug_command() -> None:
-    from loushang.coding.interaction.intent import DebugIntent, parse_prompt_intent
+def test_parse_conversation_intent_routes_bang_bang_to_bash() -> None:
+    from loushang.harnesstui.conversation.intents import (
+        BashIntent,
+        parse_conversation_intent,
+    )
 
-    assert parse_prompt_intent("/debug") == DebugIntent()
-
-
-def test_parse_prompt_intent_routes_debug_scopes() -> None:
-    from loushang.coding.interaction.intent import DebugIntent, parse_prompt_intent
-
-    assert parse_prompt_intent("/debug tui,agent") == DebugIntent(scopes=("tui", "agent"))
-    assert parse_prompt_intent("/debug on provider tool") == DebugIntent(scopes=("provider", "tool"))
+    assert parse_conversation_intent("!!  ls -al") == BashIntent(command="ls -al")
 
 
-def test_parse_prompt_intent_routes_debug_off() -> None:
-    from loushang.coding.interaction.intent import DebugIntent, parse_prompt_intent
+def test_parse_conversation_intent_routes_quit_command() -> None:
+    from loushang.harnesstui.conversation.intents import (
+        QuitIntent,
+        parse_conversation_intent,
+    )
 
-    assert parse_prompt_intent("/debug off") == DebugIntent(enabled=False, scopes=())
+    assert parse_conversation_intent("/quit") == QuitIntent()
 
 
-def test_parse_prompt_intent_routes_terminal_diagnostics_command() -> None:
-    from loushang.coding.interaction.intent import (
+def test_parse_conversation_intent_routes_debug_command() -> None:
+    from loushang.harnesstui.conversation.intents import (
+        DebugIntent,
+        parse_conversation_intent,
+    )
+
+    assert parse_conversation_intent("/debug") == DebugIntent()
+
+
+def test_parse_conversation_intent_routes_debug_scopes() -> None:
+    from loushang.harnesstui.conversation.intents import (
+        DebugIntent,
+        parse_conversation_intent,
+    )
+
+    assert parse_conversation_intent("/debug tui,agent") == DebugIntent(scopes=("tui", "agent"))
+    assert parse_conversation_intent("/debug on provider tool") == DebugIntent(scopes=("provider", "tool"))
+
+
+def test_parse_conversation_intent_routes_debug_off() -> None:
+    from loushang.harnesstui.conversation.intents import (
+        DebugIntent,
+        parse_conversation_intent,
+    )
+
+    assert parse_conversation_intent("/debug off") == DebugIntent(enabled=False, scopes=())
+
+
+def test_parse_conversation_intent_routes_terminal_diagnostics_command() -> None:
+    from loushang.harnesstui.conversation.intents import (
         TerminalDiagnosticsIntent,
-        parse_prompt_intent,
+        parse_conversation_intent,
     )
 
-    assert parse_prompt_intent("/terminal") == TerminalDiagnosticsIntent()
+    assert parse_conversation_intent("/terminal") == TerminalDiagnosticsIntent()
 
 
-def test_parse_prompt_intent_routes_settings_command() -> None:
-    from loushang.coding.interaction.intent import SettingsIntent, parse_prompt_intent
+def test_parse_conversation_intent_routes_settings_command() -> None:
+    from loushang.harnesstui.conversation.intents import (
+        SettingsIntent,
+        parse_conversation_intent,
+    )
 
-    assert parse_prompt_intent("/settings") == SettingsIntent()
-    assert parse_prompt_intent("/config") == SettingsIntent()
-
-
-def test_parse_prompt_intent_routes_models_command() -> None:
-    from loushang.coding.interaction.intent import ModelsIntent, parse_prompt_intent
-
-    assert parse_prompt_intent("/models") == ModelsIntent()
-    assert parse_prompt_intent("/models kimi") == ModelsIntent(query="kimi")
+    assert parse_conversation_intent("/settings") == SettingsIntent()
+    assert parse_conversation_intent("/config") == SettingsIntent()
 
 
-def test_parse_prompt_intent_routes_model_command() -> None:
-    from loushang.coding.interaction.intent import (
+def test_parse_conversation_intent_routes_models_command() -> None:
+    from loushang.harnesstui.conversation.intents import (
+        ModelsIntent,
+        parse_conversation_intent,
+    )
+
+    assert parse_conversation_intent("/models") == ModelsIntent()
+    assert parse_conversation_intent("/models kimi") == ModelsIntent(query="kimi")
+
+
+def test_parse_conversation_intent_routes_model_command() -> None:
+    from loushang.harnesstui.conversation.intents import (
         ModelSelectIntent,
-        parse_prompt_intent,
+        parse_conversation_intent,
     )
 
-    assert parse_prompt_intent("/model") == ModelSelectIntent()
-    assert parse_prompt_intent("/model moonshot/kimi") == ModelSelectIntent(query="moonshot/kimi")
+    assert parse_conversation_intent("/model") == ModelSelectIntent()
+    assert parse_conversation_intent("/model moonshot/kimi") == ModelSelectIntent(query="moonshot/kimi")
 
 
-def test_parse_prompt_intent_routes_hotkeys_command() -> None:
-    from loushang.coding.interaction.intent import HotkeysIntent, parse_prompt_intent
+def test_parse_conversation_intent_routes_hotkeys_command() -> None:
+    from loushang.harnesstui.conversation.intents import (
+        HotkeysIntent,
+        parse_conversation_intent,
+    )
 
-    assert parse_prompt_intent("/hotkeys") == HotkeysIntent()
+    assert parse_conversation_intent("/hotkeys") == HotkeysIntent()
 
 
-def test_parse_prompt_intent_routes_commands_command() -> None:
-    from loushang.coding.interaction.intent import (
+def test_parse_conversation_intent_routes_commands_command() -> None:
+    from loushang.harnesstui.conversation.intents import (
         CommandSelectIntent,
         CommandsIntent,
-        parse_prompt_intent,
+        parse_conversation_intent,
     )
 
-    assert parse_prompt_intent("/commands") == CommandsIntent()
-    assert parse_prompt_intent("/commands model") == CommandsIntent(query="model")
-    assert parse_prompt_intent("/command") == CommandSelectIntent()
-    assert parse_prompt_intent("/command demo") == CommandSelectIntent(query="demo")
+    assert parse_conversation_intent("/commands") == CommandsIntent()
+    assert parse_conversation_intent("/commands model") == CommandsIntent(query="model")
+    assert parse_conversation_intent("/command") == CommandSelectIntent()
+    assert parse_conversation_intent("/command demo") == CommandSelectIntent(query="demo")
 
 
-def test_parse_prompt_intent_routes_follow_up_command() -> None:
-    from loushang.coding.interaction.intent import FollowUpIntent, parse_prompt_intent
+def test_parse_conversation_intent_routes_follow_up_command() -> None:
+    from loushang.harnesstui.conversation.intents import (
+        FollowUpIntent,
+        parse_conversation_intent,
+    )
 
-    assert parse_prompt_intent("/follow continue with tests") == FollowUpIntent(
+    assert parse_conversation_intent("/follow continue with tests") == FollowUpIntent(
         text="continue with tests"
     )
 
 
 def test_controller_dispatches_prompt_intent_to_session_prompt() -> None:
-    from loushang.coding.interaction.controller import CodingUiController
-    from loushang.coding.interaction.intent import PromptIntent
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
 
     session = _Session()
-    controller = CodingUiController(session=session)
+    controller = build_coding_ui_controller(session=session)
 
     result = asyncio.run(controller.dispatch(PromptIntent(text="hello")))
 
@@ -149,8 +179,8 @@ def test_controller_dispatches_prompt_intent_to_session_prompt() -> None:
 
 
 def test_controller_dispatches_catalog_session_command_without_prompting_agent() -> None:
-    from loushang.coding.interaction.controller import CodingUiController
-    from loushang.coding.interaction.intent import PromptIntent
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
 
     class CommandSession(_Session):
         def __init__(self) -> None:
@@ -180,7 +210,7 @@ def test_controller_dispatches_catalog_session_command_without_prompting_agent()
             )
 
     session = CommandSession()
-    controller = CodingUiController(session=session)
+    controller = build_coding_ui_controller(session=session)
 
     result = asyncio.run(controller.dispatch(PromptIntent(text="/name Project Alpha")))
 
@@ -191,8 +221,8 @@ def test_controller_dispatches_catalog_session_command_without_prompting_agent()
 
 
 def test_controller_prefers_session_command_display_text_for_status() -> None:
-    from loushang.coding.interaction.controller import CodingUiController
-    from loushang.coding.interaction.intent import PromptIntent
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
 
     class CommandSession(_Session):
         def list_commands(self) -> list[object]:
@@ -216,7 +246,7 @@ def test_controller_prefers_session_command_display_text_for_status() -> None:
                 },
             )
 
-    controller = CodingUiController(session=CommandSession())
+    controller = build_coding_ui_controller(session=CommandSession())
 
     result = asyncio.run(controller.dispatch(PromptIntent(text="/extensions")))
 
@@ -229,8 +259,8 @@ def test_controller_prefers_session_command_display_text_for_status() -> None:
 
 
 def test_controller_leaves_prompt_resource_commands_on_prompt_path() -> None:
-    from loushang.coding.interaction.controller import CodingUiController
-    from loushang.coding.interaction.intent import PromptIntent
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
 
     class PromptResourceSession(_Session):
         def __init__(self) -> None:
@@ -252,7 +282,7 @@ def test_controller_leaves_prompt_resource_commands_on_prompt_path() -> None:
             return SimpleNamespace(invocation_name=invocation_name, result={"text": "expanded prompt"})
 
     session = PromptResourceSession()
-    controller = CodingUiController(session=session)
+    controller = build_coding_ui_controller(session=session)
 
     result = asyncio.run(controller.dispatch(PromptIntent(text="/review https://example.test/pr/1")))
 
@@ -263,8 +293,8 @@ def test_controller_leaves_prompt_resource_commands_on_prompt_path() -> None:
 
 def test_controller_dispatches_prompt_images_to_session_prompt() -> None:
     from loushang.ai.types import ImagePart
-    from loushang.coding.interaction.controller import CodingUiController
-    from loushang.coding.interaction.intent import PromptIntent
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
 
     class ImageSession:
         def __init__(self) -> None:
@@ -275,7 +305,7 @@ def test_controller_dispatches_prompt_images_to_session_prompt() -> None:
 
     image = ImagePart(type="image", data="abc", mime_type="image/png")
     session = ImageSession()
-    controller = CodingUiController(session=session)
+    controller = build_coding_ui_controller(session=session)
 
     result = asyncio.run(controller.dispatch(PromptIntent(text="hello", images=(image,))))
 
@@ -284,11 +314,11 @@ def test_controller_dispatches_prompt_images_to_session_prompt() -> None:
 
 
 def test_controller_dispatches_bash_intent_outside_context() -> None:
-    from loushang.coding.interaction.controller import CodingUiController
-    from loushang.coding.interaction.intent import BashIntent
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import BashIntent
 
     session = _Session()
-    controller = CodingUiController(session=session)
+    controller = build_coding_ui_controller(session=session)
 
     result = asyncio.run(controller.dispatch(BashIntent(command="pwd")))
 
@@ -297,11 +327,11 @@ def test_controller_dispatches_bash_intent_outside_context() -> None:
 
 
 def test_controller_dispatches_abort_to_agent_and_bash() -> None:
-    from loushang.coding.interaction.controller import CodingUiController
-    from loushang.coding.interaction.intent import AbortIntent
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import AbortIntent
 
     session = _Session()
-    controller = CodingUiController(session=session)
+    controller = build_coding_ui_controller(session=session)
 
     result = asyncio.run(controller.dispatch(AbortIntent()))
 
@@ -311,10 +341,10 @@ def test_controller_dispatches_abort_to_agent_and_bash() -> None:
 
 
 def test_controller_sends_steering_when_session_supports_it() -> None:
-    from loushang.coding.interaction.controller import CodingUiController
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
 
     session = _Session()
-    controller = CodingUiController(session=session)
+    controller = build_coding_ui_controller(session=session)
 
     result = asyncio.run(controller.steer("use a smaller diff"))
 
@@ -323,7 +353,7 @@ def test_controller_sends_steering_when_session_supports_it() -> None:
 
 
 def test_controller_prefers_session_prompt_streaming_behavior_for_steering() -> None:
-    from loushang.coding.interaction.controller import CodingUiController
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
 
     class StreamingPromptSession:
         def __init__(self) -> None:
@@ -342,7 +372,7 @@ def test_controller_prefers_session_prompt_streaming_behavior_for_steering() -> 
             raise AssertionError("steer fallback should not be used")
 
     session = StreamingPromptSession()
-    controller = CodingUiController(session=session)
+    controller = build_coding_ui_controller(session=session)
 
     result = asyncio.run(controller.steer("use a smaller diff"))
 
@@ -351,21 +381,21 @@ def test_controller_prefers_session_prompt_streaming_behavior_for_steering() -> 
 
 
 def test_controller_reports_when_steering_is_unavailable() -> None:
-    from loushang.coding.interaction.controller import CodingUiController
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
 
     class NoSteerSession:
         pass
 
-    result = asyncio.run(CodingUiController(session=NoSteerSession()).steer("wait"))
+    result = asyncio.run(build_coding_ui_controller(session=NoSteerSession()).steer("wait"))
 
     assert result.error_message == "Steering is unavailable for this session."
 
 
 def test_controller_sends_follow_up_when_session_supports_it() -> None:
-    from loushang.coding.interaction.controller import CodingUiController
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
 
     session = _Session()
-    controller = CodingUiController(session=session)
+    controller = build_coding_ui_controller(session=session)
 
     result = asyncio.run(controller.follow_up("continue after this turn"))
 
@@ -375,7 +405,7 @@ def test_controller_sends_follow_up_when_session_supports_it() -> None:
 
 
 def test_controller_prefers_session_prompt_streaming_behavior_for_follow_up() -> None:
-    from loushang.coding.interaction.controller import CodingUiController
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
 
     class StreamingPromptSession:
         def __init__(self) -> None:
@@ -394,7 +424,7 @@ def test_controller_prefers_session_prompt_streaming_behavior_for_follow_up() ->
             raise AssertionError("follow_up fallback should not be used")
 
     session = StreamingPromptSession()
-    controller = CodingUiController(session=session)
+    controller = build_coding_ui_controller(session=session)
 
     result = asyncio.run(controller.follow_up("continue after this turn"))
 
@@ -403,22 +433,22 @@ def test_controller_prefers_session_prompt_streaming_behavior_for_follow_up() ->
 
 
 def test_controller_returns_error_result_without_verbose_traceback() -> None:
-    from loushang.coding.interaction.controller import CodingUiController
-    from loushang.coding.interaction.intent import PromptIntent
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
 
     class FailingSession(_Session):
         async def prompt(self, text: str) -> None:
             raise RuntimeError(f"failed: {text}")
 
-    result = asyncio.run(CodingUiController(session=FailingSession()).dispatch(PromptIntent(text="hello")))
+    result = asyncio.run(build_coding_ui_controller(session=FailingSession()).dispatch(PromptIntent(text="hello")))
 
     assert result.error_message == "failed: hello"
     assert result.traceback_text is None
 
 
 def test_controller_records_problem_for_dispatch_failure() -> None:
-    from loushang.coding.interaction.controller import CodingUiController
-    from loushang.coding.interaction.intent import PromptIntent
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
     from loushang.observability import (
         get_problem_store,
         log_context,
@@ -432,7 +462,7 @@ def test_controller_records_problem_for_dispatch_failure() -> None:
     reset_observability()
     try:
         with log_context(session_id="session-1", run_id=7, cwd="/repo", mode="tui"):
-            result = asyncio.run(CodingUiController(session=FailingSession()).dispatch(PromptIntent(text="hello")))
+            result = asyncio.run(build_coding_ui_controller(session=FailingSession()).dispatch(PromptIntent(text="hello")))
 
         records = get_problem_store().all()
         assert result.error_message == "failed: hello"
@@ -451,8 +481,8 @@ def test_controller_records_problem_for_dispatch_failure() -> None:
 
 
 def test_controller_records_problem_for_cancelled_prompt() -> None:
-    from loushang.coding.interaction.controller import CodingUiController
-    from loushang.coding.interaction.intent import PromptIntent
+    from loushang.coding.ui.product_binding import build_coding_ui_controller
+    from loushang.harnesstui.conversation.intents import PromptIntent
     from loushang.observability import get_problem_store, reset_observability
 
     class CancelledSession(_Session):
@@ -461,7 +491,7 @@ def test_controller_records_problem_for_cancelled_prompt() -> None:
 
     reset_observability()
     try:
-        result = asyncio.run(CodingUiController(session=CancelledSession()).dispatch(PromptIntent(text="hello")))
+        result = asyncio.run(build_coding_ui_controller(session=CancelledSession()).dispatch(PromptIntent(text="hello")))
 
         records = get_problem_store().all()
         assert result.error_message == "Request cancelled."

@@ -11,6 +11,13 @@ from typing import Any, Protocol, cast
 
 from loushang.harness.commands import CommandEffectKind
 from loushang.harness.host.types import HostActionResult
+from loushang.harnesstui.conversation.intents import (
+    AbortIntent,
+    BashIntent,
+    FollowUpIntent,
+    PromptIntent,
+    QuitIntent,
+)
 
 CommandCatalogFactory = Callable[[Any], Any]
 ImageParts = tuple[object, ...] | list[object] | None
@@ -231,6 +238,32 @@ class ConversationUiController:
         )
 
 
+def build_standard_conversation_ui_controller(
+    *,
+    session: Any,
+    runtime: Any | None = None,
+    verbose: bool = False,
+    command_catalog_factory: CommandCatalogFactory | None = None,
+    problem_code_prefix: str = "conversation_ui",
+    problem_logger: Any | None = None,
+) -> ConversationUiController:
+    """Bind the standard conversation intents to the shared controller."""
+
+    return ConversationUiController(
+        session=session,
+        runtime=runtime,
+        verbose=verbose,
+        command_catalog_factory=command_catalog_factory,
+        prompt_intent_type=PromptIntent,
+        bash_intent_type=BashIntent,
+        follow_up_intent_type=FollowUpIntent,
+        abort_intent_type=AbortIntent,
+        quit_intent_type=QuitIntent,
+        problem_code_prefix=problem_code_prefix,
+        problem_logger=problem_logger,
+    )
+
+
 async def _call_if_available(target: Any, method_name: str) -> None:
     method = getattr(target, method_name, None)
     if callable(method):
@@ -305,4 +338,9 @@ async def _maybe_await(value: Any) -> Any:
     return value
 
 
-__all__ = ["CommandCatalogFactory", "ConversationUiController", "ImageParts"]
+__all__ = [
+    "CommandCatalogFactory",
+    "ConversationUiController",
+    "ImageParts",
+    "build_standard_conversation_ui_controller",
+]

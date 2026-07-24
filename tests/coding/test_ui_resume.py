@@ -3,7 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from loushang.coding.presentation.resume import coding_resume_hint_for_session
+from loushang.harnesstui.conversation.resume import resume_hint_for_session
+
+
+def _coding_resume_hint(session: object):
+    return resume_hint_for_session(
+        session,
+        command_prefix=("loushang", "--resume"),
+    )
 
 
 def test_coding_resume_hint_prefers_session_id() -> None:
@@ -15,7 +22,7 @@ def test_coding_resume_hint_prefers_session_id() -> None:
         ),
     )
 
-    hint = coding_resume_hint_for_session(session)
+    hint = _coding_resume_hint(session)
 
     assert hint is not None
     assert hint.heading == "Resume this session with:"
@@ -29,10 +36,10 @@ def test_coding_resume_hint_falls_back_to_header_then_file() -> None:
         get_header=lambda: SimpleNamespace(conversation_id="header-id"),
     )
 
-    header_hint = coding_resume_hint_for_session(
+    header_hint = _coding_resume_hint(
         SimpleNamespace(session_id=None, session_manager=manager)
     )
-    file_hint = coding_resume_hint_for_session(
+    file_hint = _coding_resume_hint(
         SimpleNamespace(
             session_id=None,
             session_manager=SimpleNamespace(
@@ -54,4 +61,4 @@ def test_coding_resume_hint_requires_a_session_file() -> None:
         session_manager=SimpleNamespace(get_session_file=lambda: None),
     )
 
-    assert coding_resume_hint_for_session(session) is None
+    assert _coding_resume_hint(session) is None

@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+
+from loushang.ai.model import ModelSelection
+from loushang.harnesstui.conversation.agent_application import (
+    load_agent_conversation_startup_view,
+)
 from loushang.harnesstui.conversation.startup import (
     build_conversation_startup_view,
 )
@@ -32,3 +38,39 @@ def test_build_conversation_startup_view_preserves_root_as_project_label() -> No
     )
 
     assert view.project_label == "/"
+
+
+def test_load_agent_startup_view_prepares_structural_product_session() -> None:
+    class Runtime:
+        def get_cwd(self) -> str:
+            return "/workspace/research"
+
+    class Session:
+        session_id = "research-42"
+        session_name = "Literature review"
+
+        def __init__(self) -> None:
+            self.selection = ModelSelection("provider", "initial")
+
+        async def get_model_selection(self) -> ModelSelection:
+            return self.selection
+
+    session = Session()
+
+    async def prepare(value: object) -> None:
+        assert value is session
+        session.selection = ModelSelection("provider", "prepared")
+
+    view = asyncio.run(
+        load_agent_conversation_startup_view(
+            runtime=Runtime(),
+            session=session,
+            prepare_session=prepare,
+        )
+    )
+
+    assert view.model_label == "provider/prepared"
+    assert view.cwd == "/workspace/research"
+    assert view.project_label == "research"
+    assert view.session_label == "Literature review"
+    assert view.session_observability_id == "research-42"

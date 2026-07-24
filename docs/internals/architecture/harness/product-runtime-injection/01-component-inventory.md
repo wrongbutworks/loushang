@@ -52,7 +52,7 @@ than the order in which current Coding files happen to appear.
 
 | Migration wave | Components prepared by this design | Current Coding migration relationship | Required design gate before code |
 | --- | --- | --- | --- |
-| 0. Runtime profile foundation | requirements, profile resolution, binding lifecycle | `harness.runtime.profile` supplies the common contract; `coding.runtime_profile` is the first Product plan for store, transcript, and compaction defaults. | `runtime-profile-resolution.md` and contract tests. |
+| 0. Runtime profile foundation | requirements, profile resolution, binding lifecycle | `harness.runtime.profile` supplies the common contract; `harness.agent_transcript.AgentTranscriptProfileRuntime` composes the optional standard Agent profile; `coding.product_plan` declares Coding's identities and defaults. | `runtime-profile-resolution.md` and contract tests. |
 | 1. Session coordination | binding lifecycle, prompt, tool/command contribution hooks | Reduce `coding.session` event, prompt, and queue coordination to Product adapters over Harness runtime/host mechanisms. | Runtime profile resolution and binding lifecycle designs. |
 | 2. Transcript and durable store | conversation store, transcript profile | Extend existing direct Store injection to declared profile selection; preserve sealed session semantics. | Conversation store and transcript profile binding designs. |
 | 3. Context runtime | memory and context compaction | Coding selects a Harness compaction mechanism and binds Product execution; memory remains a separate future component. | Context compaction binding design complete; memory binding design before memory cutover. |

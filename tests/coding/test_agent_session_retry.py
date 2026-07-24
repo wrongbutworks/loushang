@@ -104,7 +104,7 @@ def test_agent_session_retryable_error_starts_retry_and_removes_error_message(
         continued.append("continued")
 
     monkeypatch.setattr(
-        "loushang.coding.session.agent_session._sleep_for_retry", _instant_sleep
+        "loushang.coding.session.agent_session.sleep_for_retry", _instant_sleep
     )
     monkeypatch.setattr(
         session._session_runtime, "schedule_continue_run", _fake_continue_run
@@ -174,7 +174,7 @@ def test_agent_session_retry_success_emits_end_event_and_resolves_waiter(
         return None
 
     monkeypatch.setattr(
-        "loushang.coding.session.agent_session._sleep_for_retry", _instant_sleep
+        "loushang.coding.session.agent_session.sleep_for_retry", _instant_sleep
     )
     monkeypatch.setattr(
         session._session_runtime, "schedule_continue_run", _fake_continue_run
@@ -249,7 +249,7 @@ def test_agent_session_retry_preserves_queued_messages_until_retry_continues(
         )
 
     monkeypatch.setattr(
-        "loushang.coding.session.agent_session._sleep_for_retry", _instant_sleep
+        "loushang.coding.session.agent_session.sleep_for_retry", _instant_sleep
     )
     monkeypatch.setattr(
         session._session_runtime, "schedule_continue_run", _fake_continue_run
@@ -322,7 +322,7 @@ def test_agent_session_abort_retry_ends_retry_with_failure(
         raise AssertionError("continue_run should not be called after retry abort")
 
     monkeypatch.setattr(
-        "loushang.coding.session.agent_session._sleep_for_retry", _blocking_sleep
+        "loushang.coding.session.agent_session.sleep_for_retry", _blocking_sleep
     )
     monkeypatch.setattr(
         session._session_runtime, "schedule_continue_run", _fake_continue_run
@@ -395,7 +395,7 @@ def test_agent_session_retry_max_retries_emits_final_failure(
         return None
 
     monkeypatch.setattr(
-        "loushang.coding.session.agent_session._sleep_for_retry", _instant_sleep
+        "loushang.coding.session.agent_session.sleep_for_retry", _instant_sleep
     )
     monkeypatch.setattr(
         session._session_runtime, "schedule_continue_run", _fake_continue_run

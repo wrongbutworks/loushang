@@ -1,25 +1,21 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
-from loushang.coding.interaction.tui_profile import snapshot_coding_command_catalog
-from loushang.coding.model_selection_tui import available_model_completion_provider
-from loushang.harnesstui.commands.presentation import command_completion_provider
 from loushang.harnesstui.completion.host import (
     CatalogCompletionProfile,
     CatalogSlashAlias,
     PreparedCatalogCompletionHost,
+    build_session_catalog_completion_host,
 )
 from loushang.tui import (
     CombinedCompletionProvider,
-    CompletionProvider,
     SlashCommandCompletionProvider,
 )
 
 
 async def coding_inline_completion_provider(
-    session: Any,
+    session: object,
     *,
     base_path: Path | None,
 ) -> SlashCommandCompletionProvider | CombinedCompletionProvider:
@@ -28,19 +24,11 @@ async def coding_inline_completion_provider(
     )
 
 
-def coding_completion_host(session: Any) -> PreparedCatalogCompletionHost:
-    """Bind Coding catalog sources to the shared completion host."""
-
-    return PreparedCatalogCompletionHost(
-        command_provider_source=lambda: _coding_command_provider(session),
-        model_provider_source=lambda: available_model_completion_provider(session),
+def coding_completion_host(session: object) -> PreparedCatalogCompletionHost:
+    return build_session_catalog_completion_host(
+        session,
         profile=_CODING_COMPLETION_PROFILE,
     )
-
-
-async def _coding_command_provider(session: Any) -> CompletionProvider:
-    catalog = await snapshot_coding_command_catalog(session)
-    return command_completion_provider(catalog.commands())
 
 
 _CODING_COMPLETION_PROFILE = CatalogCompletionProfile(

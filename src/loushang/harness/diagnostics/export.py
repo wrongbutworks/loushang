@@ -7,11 +7,15 @@ this module. The writer owns only archive safety and mandatory redaction.
 from __future__ import annotations
 
 import json
+import platform
 import re
+import sys
 import zipfile
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from pathlib import Path, PurePosixPath
 
 
@@ -21,6 +25,92 @@ class DiagnosticExportArtifact:
 
     archive_name: str
     source_path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class DiagnosticBundleProfile:
+    """Stable archive identity shared by Loushang Product hosts."""
+
+    package_name: str = "loushang"
+    archive_directory: str = ".loushang/diagnostics"
+    archive_prefix: str = "loushang-diag"
+    debug_directory: str = ".loushang/debug"
+    trace_directory: str = ".loushang/traces"
+    readme: str = (
+        "Loushang diagnostics bundle\n"
+        "\n"
+        "This archive contains recent local debugging artifacts for troubleshooting.\n"
+        "It may include debug logs, structured trace events, the latest session JSONL,\n"
+        "and a diagnostics summary. Common bearer tokens and API key fields are redacted\n"
+        "on export, but review the archive before sharing it outside your machine.\n"
+    )
+
+
+DEFAULT_DIAGNOSTIC_BUNDLE_PROFILE = DiagnosticBundleProfile()
+DEFAULT_DIAGNOSTICS_LIMIT = 50
+
+
+def export_diagnostics_bundle(
+    *,
+    project_root: str | Path,
+    session_dir: str | Path,
+    output: str | Path | None = None,
+    diagnostics_service: object | None = None,
+    debug_latest_path: str | Path | None = None,
+    trace_latest_path: str | Path | None = None,
+    now: Callable[[], datetime] | None = None,
+    profile: DiagnosticBundleProfile = DEFAULT_DIAGNOSTIC_BUNDLE_PROFILE,
+) -> Path:
+    """Collect and export the standard Product diagnostics bundle."""
+
+    from loushang.harness.diagnostics.serialization import serialize_diagnostic
+
+    root = Path(project_root).expanduser().resolve()
+    sessions = Path(session_dir).expanduser().resolve()
+    generated_at = (now or utc_now)()
+    bundle_path = resolve_export_output_path(
+        root,
+        output,
+        generated_at,
+        directory=profile.archive_directory,
+        prefix=profile.archive_prefix,
+    )
+    diagnostics = collect_diagnostics(
+        diagnostics_service,
+        serializer=serialize_diagnostic,
+        limit=DEFAULT_DIAGNOSTICS_LIMIT,
+    )
+    debug_latest = (
+        Path.home() / profile.debug_directory / "latest"
+        if debug_latest_path is None
+        else Path(debug_latest_path).expanduser()
+    )
+    trace_latest = (
+        Path.home() / profile.trace_directory / "latest"
+        if trace_latest_path is None
+        else Path(trace_latest_path).expanduser()
+    )
+    session_latest = sessions / "latest.jsonl"
+    return export_diagnostics_archive(
+        output_path=bundle_path,
+        readme=profile.readme,
+        manifest=_standard_manifest(
+            profile=profile,
+            project_root=root,
+            session_dir=sessions,
+            generated_at=generated_at,
+            debug_latest=debug_latest,
+            trace_latest=trace_latest,
+            session_latest=session_latest,
+            diagnostics=diagnostics,
+        ),
+        diagnostics=diagnostics,
+        artifacts=(
+            DiagnosticExportArtifact("debug/latest.log", debug_latest),
+            DiagnosticExportArtifact("traces/latest.jsonl", trace_latest),
+            DiagnosticExportArtifact("sessions/latest.jsonl", session_latest),
+        ),
+    )
 
 
 def export_diagnostics_archive(
@@ -119,6 +209,43 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def _standard_manifest(
+    *,
+    profile: DiagnosticBundleProfile,
+    project_root: Path,
+    session_dir: Path,
+    generated_at: datetime,
+    debug_latest: Path,
+    trace_latest: Path,
+    session_latest: Path,
+    diagnostics: list[dict[str, object]],
+) -> dict[str, object]:
+    return {
+        "schemaVersion": 1,
+        "generatedAt": generated_at.isoformat(timespec="seconds").replace(
+            "+00:00", "Z"
+        ),
+        "cwd": str(project_root),
+        "sessionDir": str(session_dir),
+        "python": sys.version.split()[0],
+        "platform": platform.platform(),
+        "loushangVersion": _package_version(profile.package_name),
+        "included": {
+            "debugLatest": path_exists(debug_latest),
+            "traceLatest": path_exists(trace_latest),
+            "sessionLatest": path_exists(session_latest),
+            "diagnostics": bool(diagnostics),
+        },
+    }
+
+
+def _package_version(package_name: str) -> str | None:
+    try:
+        return package_version(package_name)
+    except PackageNotFoundError:
+        return None
+
+
 def redact_json_value(value: object) -> object:
     """Recursively redact known credential fields while preserving JSON shape."""
 
@@ -196,8 +323,12 @@ _REDACTION_PATTERNS = (
 
 
 __all__ = [
+    "DEFAULT_DIAGNOSTIC_BUNDLE_PROFILE",
+    "DEFAULT_DIAGNOSTICS_LIMIT",
+    "DiagnosticBundleProfile",
     "DiagnosticExportArtifact",
     "collect_diagnostics",
+    "export_diagnostics_bundle",
     "export_diagnostics_archive",
     "path_exists",
     "redact_json_value",

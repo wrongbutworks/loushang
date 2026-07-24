@@ -7,11 +7,11 @@ import pytest
 
 from loushang.ai.model import Capabilities, Model
 from loushang.coding.bootstrap import create_agent_session
-from loushang.coding.capability_plan import (
+from loushang.coding.product_plan import (
+    CODING_CAPABILITY_PROFILE,
     CODING_CAPABILITY_PROFILE_METADATA_KEY,
-    resolve_coding_capability_profile,
+    CODING_RUNTIME_PROFILE_METADATA_KEY,
 )
-from loushang.coding.runtime_profile import CODING_RUNTIME_PROFILE_METADATA_KEY
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.agent_transcript import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
@@ -56,7 +56,7 @@ def test_in_memory_session_binds_the_coding_runtime_profile_and_records_snapshot
         assert snapshot.to_json() == manager.runtime_profile.snapshot().to_json()
         assert (
             capability_snapshot.to_json()
-            == resolve_coding_capability_profile().snapshot().to_json()
+            == CODING_CAPABILITY_PROFILE.snapshot().to_json()
         )
         assert isinstance(
             manager.get_runtime_capability("conversation.store"),
@@ -95,7 +95,7 @@ def test_persistent_session_resumes_the_snapshotted_file_profile(tmp_path) -> No
         )
         expected_snapshot = manager.runtime_profile.snapshot().to_json()
         expected_capability_snapshot = (
-            resolve_coding_capability_profile().snapshot().to_json()
+            CODING_CAPABILITY_PROFILE.snapshot().to_json()
         )
 
         resumed = await SessionManager.load(manager.session_file, persist=True)

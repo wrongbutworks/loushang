@@ -5,6 +5,7 @@ import pytest
 from loushang.harness.cli import (
     ResourceToggleError,
     ResourceToggleRequest,
+    agent_resource_toggle_request,
     apply_resource_toggles,
 )
 
@@ -19,6 +20,23 @@ class _Settings:
     def add_plugin_source(self, source: str, *, scope: str) -> bool:
         self.calls.append(("add_plugin_source", f"{source}:{scope}"))
         return True
+
+
+def test_agent_resource_flags_project_optional_request() -> None:
+    from types import SimpleNamespace
+
+    request = agent_resource_toggle_request(
+        SimpleNamespace(
+            enable_skills=("review",),
+            disable_skills=(),
+            add_plugin_sources=(),
+            remove_plugin_sources=(),
+            enable_plugins=(),
+            disable_plugins=(),
+        )
+    )
+
+    assert request == ResourceToggleRequest(enable_skills=("review",))
 
 
 def test_resource_toggles_return_ordered_messages_and_use_injected_policy() -> None:

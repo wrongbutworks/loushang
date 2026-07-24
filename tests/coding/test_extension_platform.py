@@ -142,7 +142,7 @@ kind = "observe"
 
 
 def test_extension_loader_reports_removed_provider_hook_manifest(tmp_path) -> None:
-    from loushang.coding.extensions.loader import ExtensionLoader
+    from loushang.harness.extensions.agent.loader import ExtensionLoader
     from loushang.harness.resources.types import ExtensionDescriptor
 
     extension_dir = tmp_path / "provider-hooks"
@@ -252,7 +252,7 @@ name = "valid_tool"
 def test_extension_loader_attaches_manifest_policy_and_surface_snapshot(
     tmp_path,
 ) -> None:
-    from loushang.coding.extensions.loader import ExtensionLoader
+    from loushang.harness.extensions.agent.loader import ExtensionLoader
     from loushang.harness.resources.types import ExtensionDescriptor
 
     extension_dir = tmp_path / "review"
@@ -340,7 +340,7 @@ kind = "augment"
 def test_extension_runner_lists_extension_visibility_snapshot() -> None:
     from pathlib import Path
 
-    from loushang.coding.extensions import (
+    from loushang.harness.extensions.agent import (
         ExtensionManifest,
         ExtensionPermissionDeclaration,
         ExtensionPolicyDecision,

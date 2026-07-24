@@ -3,24 +3,26 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TextIO
 
-from loushang.coding.interaction.controller import CodingUiController
-from loushang.coding.interaction.screen_host import ScreenCodingConversationActionHost
+from loushang.coding.ui.product_binding import (
+    build_screen_coding_action_host,
+)
 from loushang.harnesstui.conversation.action_presentation import (
     ConversationActionPresentationPort,
 )
 from loushang.harnesstui.conversation.control import ConversationTextAction
+from loushang.harnesstui.conversation.controller import ConversationUiController
 
 
 def coding_screen_prompt_handler(
     *,
     presenter: ConversationActionPresentationPort,
-    controller: CodingUiController,
+    controller: ConversationUiController,
     stderr: TextIO,
     verbose: bool,
 ) -> Callable[[str], Awaitable[int | None]]:
     """Bind the production Coding action host to a playback prompt callback."""
 
-    host = ScreenCodingConversationActionHost(
+    host = build_screen_coding_action_host(
         presenter=presenter,
         controller=controller,
         stderr=stderr,

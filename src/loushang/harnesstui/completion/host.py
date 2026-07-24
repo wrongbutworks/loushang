@@ -5,6 +5,13 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.harnesstui.commands.catalog import (
+    snapshot_conversation_command_catalog,
+)
+from loushang.harnesstui.commands.presentation import command_completion_provider
+from loushang.harnesstui.selection.binding import (
+    available_session_model_completion_provider,
+)
 from loushang.tui import (
     CombinedCompletionProvider,
     CompletionItem,
@@ -105,6 +112,30 @@ class PreparedCatalogCompletionHost:
         return SlashCommandCompletionProvider(tuple(commands))
 
 
+def build_session_catalog_completion_host(
+    session: object,
+    *,
+    profile: CatalogCompletionProfile,
+) -> PreparedCatalogCompletionHost:
+    """Bind a standard session command/model catalog to the completion host."""
+
+    return PreparedCatalogCompletionHost(
+        command_provider_source=lambda: _session_command_provider(session),
+        model_provider_source=lambda: available_session_model_completion_provider(
+            session
+        ),
+        profile=profile,
+    )
+
+
+async def _session_command_provider(session: object) -> CompletionProvider:
+    getter = getattr(session, "list_commands", None)
+    catalog = await snapshot_conversation_command_catalog(
+        getter if callable(getter) else None
+    )
+    return command_completion_provider(catalog.commands())
+
+
 async def _resolve_provider(source: CompletionProviderSource) -> CompletionProvider:
     provider = source()
     if inspect.isawaitable(provider):
@@ -117,4 +148,5 @@ __all__ = [
     "CatalogSlashAlias",
     "CompletionProviderSource",
     "PreparedCatalogCompletionHost",
+    "build_session_catalog_completion_host",
 ]

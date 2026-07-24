@@ -23,13 +23,14 @@ camelCase aliases are intentionally unavailable.
 
 - Coding's selected default seven-tool membership and activation order;
 - Coding-specific tool descriptions and prompt snippets;
-- the Coding default for managed `fd` and `rg` downloads; and
-- injection of Coding policy, approval, diagnostics, and execution services
-  while registering that selected pack.
+- declaration of the Coding `WorkspaceToolProfile`; and
+- injection of Coding policy, approval, diagnostics, and execution services.
 
 `loushang.harness.tools.workspace.registry.WorkspaceToolRegistry` owns the
 generic decorated-tool normalization, context-aware materialization, and
-contribution resolution. It is not a Coding type.
+contribution resolution. Its `register_profile()` method composes the existing
+factory, pack, resolver, and registry rather than introducing another tool
+runtime. It is not a Coding type.
 
 ## Dependency Direction
 

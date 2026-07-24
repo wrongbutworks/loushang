@@ -8,11 +8,21 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Generic, TextIO, TypeVar
 
+from loushang.harness.commands import CommandEffect
 from loushang.harnesstui.conversation.attachments import PromptImageAttachment
 from loushang.harnesstui.conversation.control import (
     ConversationActionHost,
+    ConversationRunControl,
     ConversationTextAction,
 )
+from loushang.harnesstui.conversation.info import ConversationLocalActionRegistry
+from loushang.harnesstui.conversation.intents import (
+    ConversationIntent,
+    FollowUpIntent,
+    QuitIntent,
+    parse_conversation_intent,
+)
+from loushang.harnesstui.conversation.run_context import TraceFn
 from loushang.harnesstui.conversation.screen_runner import (
     AbortHandler,
     ConversationInputRouterFactoryPort,
@@ -77,6 +87,121 @@ class ConversationHostProfile(Generic[IntentT, LocalT]):
     is_exit: Callable[[IntentT], bool]
     now: Callable[[], float] = time.monotonic
     follow_up_source: str = "keybinding"
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationRoutingProfile(Generic[IntentT, LocalT]):
+    """Compose standard conversation routing from Product intent callbacks."""
+
+    lifecycle: ConversationRunControl
+    parse_intent: Callable[[str], IntentT | None]
+    is_exit: Callable[[IntentT], bool]
+    local_action: Callable[[IntentT], LocalT | None]
+    deferred_local_action: Callable[[IntentT], LocalT | None]
+    follow_up_text: Callable[[IntentT], str | None]
+    command_effect: Callable[[LocalT, IntentT], CommandEffect | None]
+    session_running: Callable[[], bool]
+    trace: TraceFn
+
+    def host_profile(
+        self,
+        *,
+        now: Callable[[], float],
+    ) -> ConversationHostProfile[IntentT, LocalT]:
+        return ConversationHostProfile(
+            parse=self.parse,
+            decide=self.decide,
+            is_exit=self.is_exit,
+            now=now,
+        )
+
+    def parse(self, action: ConversationTextAction) -> IntentT | None:
+        self.trace(
+            "prompt.start",
+            active_run=self.lifecycle.active,
+            active_run_id=self.lifecycle.active_id,
+            aborted_run_id=self.lifecycle.aborted_id,
+            session_running=self.session_running(),
+            text_len=len(action.text),
+        )
+        intent = self.parse_intent(action.text)
+        if intent is None:
+            self.trace("prompt.ignored", reason="empty")
+        return intent
+
+    def decide(
+        self,
+        intent: IntentT,
+        _action: ConversationTextAction,
+    ) -> ConversationHostDecision[LocalT]:
+        if self.lifecycle.abort_is_settling() and not self.is_exit(intent):
+            self.trace(
+                "prompt.ignored",
+                reason="abort_in_progress",
+                active_run_id=self.lifecycle.active_id,
+            )
+            return ConversationHostDecision(ConversationHostRoute.ABORT_SETTLING)
+        local_action = self.local_action(intent)
+        if local_action is not None:
+            return self._local_decision(local_action, intent)
+        follow_up_text = self.follow_up_text(intent)
+        if follow_up_text is not None:
+            return ConversationHostDecision(
+                ConversationHostRoute.FOLLOW_UP,
+                text=follow_up_text,
+                source="command",
+            )
+        if self.lifecycle.active and not self.is_exit(intent):
+            return ConversationHostDecision(ConversationHostRoute.STEER)
+        local_action = self.deferred_local_action(intent)
+        if local_action is not None:
+            return self._local_decision(local_action, intent)
+        return ConversationHostDecision(ConversationHostRoute.DISPATCH)
+
+    def _local_decision(
+        self,
+        action: LocalT,
+        intent: IntentT,
+    ) -> ConversationHostDecision[LocalT]:
+        effect = self.command_effect(action, intent)
+        if effect is not None:
+            self.trace(
+                "prompt.command",
+                route=str(action.value if isinstance(action, Enum) else action),
+                command_id=effect.command.id,
+                command_name=effect.command.name,
+                effect=effect.kind.value,
+            )
+        return ConversationHostDecision(ConversationHostRoute.LOCAL, local=action)
+
+
+def build_standard_conversation_host_profile(
+    *,
+    lifecycle: ConversationRunControl,
+    local_actions: ConversationLocalActionRegistry[ConversationIntent],
+    command_effect: Callable[[str, ConversationIntent], CommandEffect | None],
+    session_running: Callable[[], bool],
+    trace: TraceFn,
+    now: Callable[[], float],
+) -> ConversationHostProfile[ConversationIntent, str]:
+    """Bind standard Agent Product intents to the existing routed host."""
+
+    routing: ConversationRoutingProfile[ConversationIntent, str] = (
+        ConversationRoutingProfile(
+            lifecycle=lifecycle,
+            parse_intent=parse_conversation_intent,
+            is_exit=lambda intent: isinstance(intent, QuitIntent),
+            local_action=local_actions.immediate_action,
+            deferred_local_action=local_actions.deferred_action,
+            follow_up_text=lambda intent: (
+                intent.text if isinstance(intent, FollowUpIntent) else None
+            ),
+            command_effect=command_effect,
+            session_running=session_running,
+            trace=trace,
+        )
+    )
+    return routing.host_profile(now=now)
 
 
 @dataclass(frozen=True, slots=True)
@@ -293,9 +418,11 @@ __all__ = [
     "ConversationHostPorts",
     "ConversationHostProfile",
     "ConversationHostRoute",
+    "ConversationRoutingProfile",
     "ConversationScreenCallbacks",
     "ConversationScreenRunProfile",
     "RoutedConversationActionHost",
     "bind_action_host_to_screen_runner",
+    "build_standard_conversation_host_profile",
     "run_action_host_conversation_screen",
 ]

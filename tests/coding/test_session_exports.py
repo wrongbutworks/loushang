@@ -589,15 +589,17 @@ def test_export_session_to_html_embeds_entry_tree_and_summary_entries(tmp_path) 
 
 
 def test_product_transcript_dispositions_cover_every_standard_kind() -> None:
-    from loushang.coding.presentation.tui.history import TUI_TRANSCRIPT_DISPOSITIONS
     from loushang.harness.agent_transcript import STANDARD_AGENT_TRANSCRIPT_KINDS
     from loushang.harness.agent_transcript.export import (
         HTML_TRANSCRIPT_DISPOSITIONS,
     )
+    from loushang.harnesstui.conversation.agent_binding import (
+        STANDARD_AGENT_HISTORY_DISPOSITIONS,
+    )
 
     expected = set(STANDARD_AGENT_TRANSCRIPT_KINDS)
     assert set(HTML_TRANSCRIPT_DISPOSITIONS) == expected
-    assert set(TUI_TRANSCRIPT_DISPOSITIONS) == expected
+    assert set(STANDARD_AGENT_HISTORY_DISPOSITIONS) == expected
 
 
 def test_export_session_to_html_embeds_system_prompt_and_tool_definitions(
@@ -663,8 +665,8 @@ def test_export_session_to_html_embeds_system_prompt_and_tool_definitions(
 
 
 def test_export_session_to_html_uses_custom_renderer_and_theme(tmp_path) -> None:
-    from loushang.coding.extensions import ExtensionRunner, LoadedExtension
     from loushang.harness.agent_transcript.session_export import export_session_to_html
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
 
     def _renderer(message, options, theme):
         assert options == {"format": "html_export"}

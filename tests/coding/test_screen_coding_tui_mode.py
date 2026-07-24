@@ -18,7 +18,6 @@ from loushang.ai import (
     UserMessage,
 )
 from loushang.ai.model import ModelSelection
-from loushang.coding.policy import tui as tui_policy
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.harness.agent_transcript import (
     AGENT_MESSAGE_KIND,
@@ -28,6 +27,7 @@ from loushang.harness.agent_transcript import (
     ContextCompactionCheckpoint,
 )
 from loushang.harness.conversation import ConversationRecord
+from loushang.harnesstui.conversation import agent_application as tui_policy
 from loushang.harnesstui.conversation.control import ConversationTextAction
 from loushang.harnesstui.testing.performance import (
     characterize_long_transcript_rendering,
@@ -779,7 +779,7 @@ def test_screen_approval_presenter_resolves_ask_tools_and_clears_pending(
         context_provider=context_provider,
     )
     session = ApprovalSession()
-    unbind = tui_policy.bind_screen_approval_presenter(
+    unbind = tui_policy.bind_agent_screen_approval_presenter(
         session,
         ApprovalSurfaceManager(),  # type: ignore[arg-type]
     )
@@ -867,7 +867,7 @@ def test_screen_approval_unbind_targets_runtime_current_session() -> None:
     old_session = ApprovalSession()
     new_session = ApprovalSession()
     current_session = old_session
-    unbind = tui_policy.bind_screen_approval_presenter(
+    unbind = tui_policy.bind_agent_screen_approval_presenter(
         old_session,
         ApprovalSurfaceManager(),  # type: ignore[arg-type]
         session_provider=lambda: current_session,
@@ -927,10 +927,12 @@ def test_screen_approval_unbind_clears_host_presenter_without_current_session() 
             del action_id
 
     session = ClosedSession()
-    unbind = tui_policy.bind_screen_approval_presenter(
+    unbind = tui_policy.bind_agent_screen_approval_presenter(
         session,
         ApprovalSurfaceManager(),  # type: ignore[arg-type]
-        session_provider=lambda: tui_policy.runtime_session(EmptyRuntime(), session),
+        session_provider=lambda: tui_policy.current_agent_runtime_session(
+            EmptyRuntime(), session
+        ),
     )
     assert resolver._request_presenter is not None
 
@@ -971,7 +973,7 @@ def test_screen_approval_unbind_clears_initial_presenter_when_current_has_none()
 
     initial_session = InitialSession()
     current_session = SessionWithoutApproval()
-    unbind = tui_policy.bind_screen_approval_presenter(
+    unbind = tui_policy.bind_agent_screen_approval_presenter(
         initial_session,
         ApprovalSurfaceManager(),  # type: ignore[arg-type]
         session_provider=lambda: current_session,
@@ -1061,6 +1063,7 @@ def test_screen_tui_projector_failure_still_unbinds_presenter(
         InteractiveApprovalResolver,
     )
     from loushang.coding.ui import mode
+    from loushang.harnesstui.conversation import agent_application
 
     resolver = InteractiveApprovalResolver(
         fallback=HeadlessApprovalResolver(mode="deny")
@@ -1074,7 +1077,11 @@ def test_screen_tui_projector_failure_still_unbinds_presenter(
         del args, kwargs
         raise RuntimeError("projector failed")
 
-    monkeypatch.setattr(mode, "build_screen_coding_event_projection", fail_projector)
+    monkeypatch.setattr(
+        agent_application,
+        "build_agent_screen_conversation_projection",
+        fail_projector,
+    )
 
     exit_code = asyncio.run(
         mode.run_coding_tui(
@@ -1118,7 +1125,7 @@ def test_screen_session_transition_binding_clears_approval_surfaces() -> None:
             clears += 1
 
     runtime = Runtime()
-    unbind = tui_policy.bind_screen_session_transition(
+    unbind = tui_policy.bind_agent_screen_session_transition(
         runtime,
         SurfaceManager(),  # type: ignore[arg-type]
     )

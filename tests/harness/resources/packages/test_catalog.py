@@ -4,11 +4,13 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from loushang.harness.resources.loader import ResourceLoaderProfile
 from loushang.harness.resources.packages.catalog import (
     PackageCatalogBuilder,
     PackageCatalogEntry,
     PackageCatalogSources,
     package_catalog_sources,
+    summarize_profiled_package_resources,
 )
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.projection import project_package_entry
@@ -95,6 +97,32 @@ def test_package_projection_is_available_without_coding() -> None:
         "diagnostics": 0,
         "description": "",
     }
+
+
+def test_profiled_package_summary_uses_product_resource_profile(
+    tmp_path: Path,
+) -> None:
+    package_root = tmp_path / "design-package"
+    skill_root = package_root / "skills" / "layout-review"
+    skill_root.mkdir(parents=True)
+    (skill_root / "SKILL.md").write_text(
+        "---\nname: layout-review\ndescription: Review a layout\n---\n",
+        encoding="utf-8",
+    )
+
+    summary = summarize_profiled_package_resources(
+        package_root,
+        tmp_path,
+        profile=ResourceLoaderProfile(
+            built_in_resource_packages=(),
+            context_file_names=("DESIGN.md",),
+            user_resource_roots=(),
+            project_resource_mode="legacy",
+        ),
+    )
+
+    assert summary.source_root == package_root
+    assert summary.skill_count == 1
 
 
 def test_catalog_sources_resolve_scoped_local_paths_and_prefer_project_sources(

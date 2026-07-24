@@ -85,3 +85,39 @@ def test_workspace_factory_uses_product_neutral_metadata() -> None:
         or "coding" not in definition.prompt_snippet.lower()
         for definition in definitions.values()
     )
+
+
+def test_workspace_tool_settings_accept_product_policy_factory() -> None:
+    from types import SimpleNamespace
+
+    from loushang.harness.tools.workspace import workspace_tool_runtime_settings
+
+    captured: dict[str, object] = {}
+
+    def policy_factory(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return "policy"
+
+    manager = SimpleNamespace(
+        get_tool_settings=lambda: SimpleNamespace(
+            blocked_tools=("bash",),
+            ask_tools=(),
+            blocked_substrings=(),
+            ask_substrings=("sudo",),
+            blocked_path_substrings=(),
+            ask_path_substrings=(),
+            approval_mode="deny",
+            approval_reason="headless",
+        )
+    )
+
+    result = workspace_tool_runtime_settings(
+        manager,
+        policy_factory=policy_factory,
+    )
+
+    assert result.policy_engine == "policy"
+    assert result.approval_resolver is not None
+    assert result.approval_resolver.mode == "deny"
+    assert captured["blocked_tools"] == ("bash",)
+    assert captured["ask_substrings"] == ("sudo",)

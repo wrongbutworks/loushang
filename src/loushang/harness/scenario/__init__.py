@@ -1,5 +1,15 @@
 """Reusable scripted interaction scenarios for Product-owned adapters."""
 
+from loushang.harness.scenario.cli import (
+    AgentSessionPreparer,
+    WorkflowCliRunner,
+    dispose_runtime_or_session,
+    format_workflow_json_report,
+    format_workflow_report,
+    resolve_standard_workflow_adapter,
+    run_fake_workflow_cli,
+    run_workflow_cli,
+)
 from loushang.harness.scenario.events import (
     EventPattern,
     WorkflowEvent,
@@ -13,7 +23,10 @@ from loushang.harness.scenario.protocols import (
     ScenarioAdapter,
     WorkflowAdapter,
 )
-from loushang.harness.scenario.runner import AgentSessionWorkflowAdapter, run_workflow
+from loushang.harness.scenario.runner import (
+    AgentSessionWorkflowAdapter,
+    run_workflow,
+)
 from loushang.harness.scenario.schema import (
     AbortStep,
     CheckResult,
@@ -34,6 +47,7 @@ from loushang.harness.scenario.schema import (
 
 __all__ = [
     "AgentSessionWorkflowAdapter",
+    "AgentSessionPreparer",
     "AbortStep",
     "CheckResult",
     "CommandExpectation",
@@ -50,14 +64,21 @@ __all__ = [
     "WaitStep",
     "Workflow",
     "WorkflowAdapter",
+    "WorkflowCliRunner",
     "WorkflowEvent",
     "WorkflowExpectation",
     "WorkflowResult",
     "WorkflowStep",
     "WorkflowStepResult",
     "event_matches",
+    "dispose_runtime_or_session",
     "find_event",
+    "format_workflow_json_report",
+    "format_workflow_report",
     "load_workflow",
     "resolve_workflow_files",
     "run_workflow",
+    "run_fake_workflow_cli",
+    "resolve_standard_workflow_adapter",
+    "run_workflow_cli",
 ]

@@ -47,27 +47,29 @@ loaded.
 
 ## Coding Adapter
 
-Coding keeps:
+The optional Agent profile owns:
 
 - `ExtensionAPI` additions for session entries, messages, model selection,
-  thinking level, labels, and provider registration;
-- concrete permission-level defaults and capability mapping in
+  thinking level, labels, and provider-registration callbacks;
+- the standard Agent permission-level defaults and capability mapping in
   `policy_from_manifest`;
-- typed Coding specialization and product callback injection for the
-  Harness-owned runtime binding/context mechanisms defined by the
-  [Product Runtime Core Boundary](product-runtime-core-boundary.md);
+- the loader and runner profiles that bind those additions to the neutral
+  Harness extension loader and runtime.
+
+Products keep:
+
+- callback injection for the Harness-owned runtime binding/context mechanisms
+  defined by the [Product Runtime Core Boundary](product-runtime-core-boundary.md);
 - session switch/fork/compact/tree decisions and Coding event projection;
 - system-prompt augmentation, model/provider behavior, Agent tool-call result
   adaptation, compaction behavior, and UI integration;
-- the `ExtensionRunner` adapter and Product reducers that connect the
-  Harness-owned `ExtensionRuntime` to Coding session, prompt, context, and
-  Agent result types.
+- Product-specific provider factories, credentials, default activation,
+  diagnostics wording, and transport/UI projection.
 
-`loushang.coding.extensions.loader.ExtensionLoader` now only injects the Coding
-API factory, Coding permission policy, and legacy event names into the Harness
-loader. The legacy Coding `manifest`, `events`, `contributions`, `wrapper`, and
-`types` submodules are removed. Shared records are imported directly from their
-Harness owners.
+The complete `loushang.coding.extensions` package is removed. Agent products
+import `ExtensionAPI`, `ExtensionLoader`, and `ExtensionRunner` from
+`loushang.harness.extensions.agent`; neutral records remain owned by focused
+modules directly under `loushang.harness.extensions`.
 
 ## Runtime Composition
 
@@ -80,19 +82,21 @@ per-extension factory supports dispatched hooks and tools, while the optional
 resource factory preserves a Product's resource-refresh context semantics.
 
 The runtime has no Product session state and does not interpret model choices,
-approval outcomes, UI state, or Agent-specific hook results. Coding's
-`ExtensionRunner` only performs descriptor loading with Coding API injection,
-binds Coding's typed runtime context, maps legacy event objects and session
-decisions, and supplies the Coding error callback. It must not reimplement
+approval outcomes, UI state, or Agent-specific hook results. The optional
+Agent `ExtensionRunner` profile only selects the Agent API, policy, and loader;
+Products inject live runtime bindings and any Product error projection. It
+must not reimplement
 registry snapshots, resource discovery, generic input/event dispatch, command
 completion, flag state, or extension visibility serialization.
 
 The optional Agent extension profile owns `ExtensionInputRuntime`,
 `ExtensionAgentHookRuntime`, and `ExtensionAgentEventRuntime`. Its target
 package is `harness.extensions.agent`, split into `input.py`, `hooks.py`, and
-`lifecycle.py`; the former session-owned module locations are deleted. It delivers standard
-extension-originated input, composes typed Agent context/tool hooks, and
-observes Agent lifecycle facts without importing a Product.
+`api.py`, `loader.py`, `policy.py`, `runner.py`, `input.py`, `hooks.py`, and
+`lifecycle.py`; the former session-owned and Coding-owned module locations are
+deleted. It delivers standard extension-originated input, composes typed Agent
+context/tool hooks, and observes Agent lifecycle facts without importing a
+Product.
 
 The profile is an in-process integration boundary, not an event bus or a
 plugin container. Hook results are the only documented control path. Lifecycle
@@ -100,8 +104,8 @@ callbacks are observation-only and do not create a second `RuntimeEvent`,
 transport, or external-process JSON protocol. The profile receives an injected
 clock and available session/run/turn/tool-call correlation values so lifecycle
 callbacks are deterministic and attributable. A Product still supplies its
-extension API, runtime binding factory, session replacement/fork semantics,
-diagnostics wording, and transport/UI projection.
+runtime binding factory, session replacement/fork semantics, provider
+implementation, diagnostics wording, and transport/UI projection.
 
 These Agent-extension profile modules may depend on stable Agent/AI message and
 tool value contracts because they operate a live Agent session. They are
@@ -114,8 +118,9 @@ through typed ports.
 ## Policy Injection
 
 Harness supplies a neutral `ExtensionPolicyDecision` and a conservative
-descriptor-enabled default. It does not interpret product permission levels or
-capabilities. Products inject an `ExtensionPolicyResolver` into the loader.
+descriptor-enabled default. The optional Agent profile supplies the standard
+Agent permission-level mapping. Other profiles may inject their own
+`ExtensionPolicyResolver` into the neutral loader.
 
 Harness also leaves runtime state opaque. `ExtensionContributionAPI` only uses
 capability-shaped callbacks when a product binds them. Coding's binding record
@@ -215,27 +220,26 @@ the core does not infer user intent.
 
 ## Canonical Imports
 
-Coding product adapters remain available from `loushang.coding.extensions`, but
-shared extension contracts use their Harness owners directly:
+Agent products use the canonical Agent profile; neutral extension contracts
+continue to use their focused Harness owners directly:
 
 ```python
-from loushang.coding.extensions import ExtensionLoader, LoadedExtension
+from loushang.harness.extensions.agent import ExtensionLoader, ExtensionRunner
 from loushang.harness.extensions.manifest import parse_extension_manifest
-from loushang.coding.extensions.policy import ExtensionPolicyDecision
+from loushang.harness.extensions.types import ExtensionPolicyDecision
 ```
 
-The legacy `coding.extensions.manifest` submodule is removed. New
-cross-product code imports the focused Harness owner directly. Any selected
-values exposed through the product package remain the same Harness-owned
-objects; no legacy shared-utility submodule path is retained.
+The complete legacy `coding.extensions` package is removed. New cross-product
+code imports either the optional Agent profile or the focused neutral Harness
+owner directly; no Product compatibility path is retained.
 
 ## Dependency Direction
 
 The target direction is:
 
 ```text
-Coding extension/session adapter
-  -> loushang.harness.session                 # composition only
+loushang.coding                               # Product composition only
+  -> loushang.harness.session
   -> loushang.harness.extensions.agent        # optional typed Agent profile
   -> loushang.harness.extensions               # neutral routing/runtime
   -> loushang.harness.resources / tools / contributions

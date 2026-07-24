@@ -98,6 +98,10 @@ planning, work event persistence, or AI provider behavior.
   defines shared conversation records and ports, repository/catalog/replay,
   branch delta, command execution records, and turn-aware compaction planning
   while preserving Product prompts, domain payloads, and storage policy.
+- [Conversation Persistence Refactor](conversation-persistence-refactor.md)
+  proposes the follow-on consolidation of journal, conversation storage,
+  Agent transcript composition, backend-neutral catalogs/indexes, and
+  project-aware resume without changing the Native JSONL format.
 - [Agent Transcript Profile Boundary](agent-transcript-profile-boundary.md)
   defines the optional common Agent/AI transcript schema and codec profile,
   opaque preservation, Native v3 migration, idempotent application-message

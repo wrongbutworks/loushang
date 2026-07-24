@@ -15,8 +15,8 @@ from loushang.coding import (
 )
 from loushang.coding import (
     run_print_mode,
-    select_events,
 )
+from loushang.harness.events import select_events
 from loushang.harness.tools.workspace.registry import (
     WorkspaceToolRegistry as ToolRegistry,
 )

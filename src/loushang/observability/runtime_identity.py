@@ -8,9 +8,60 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Mapping
+from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, distribution
 from importlib.metadata import version as package_version
 from pathlib import Path
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeIdentityProfile:
+    """Product labels applied to the shared runtime identity collector."""
+
+    package_name: str
+    executable_name: str
+    title: str = "runtime source info"
+    module_file_field: str | None = None
+    related_module_file_fields: Mapping[str, str] | None = None
+
+
+def collect_profiled_runtime_identity(
+    *,
+    profile: RuntimeIdentityProfile,
+    package_module: object,
+    related_modules: Mapping[str, object] | None = None,
+    cwd: str | Path | None = None,
+    argv0: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> dict[str, object]:
+    """Collect identity and project Product-specific display field aliases."""
+
+    identity = collect_runtime_identity(
+        package_name=profile.package_name,
+        package_module=package_module,
+        executable_name=profile.executable_name,
+        related_modules=related_modules,
+        cwd=cwd,
+        argv0=argv0,
+        env=env,
+    )
+    if profile.module_file_field is not None:
+        identity[profile.module_file_field] = identity["module_file"]
+    related_files = identity.get("related_module_files")
+    if isinstance(related_files, Mapping):
+        for related_name, field_name in (
+            profile.related_module_file_fields or {}
+        ).items():
+            identity[field_name] = related_files.get(related_name, "")
+    return identity
+
+
+def format_profiled_runtime_identity_text(
+    identity: Mapping[str, object],
+    *,
+    profile: RuntimeIdentityProfile,
+) -> str:
+    return format_runtime_identity_text(identity, title=profile.title)
 
 
 def collect_runtime_identity(
@@ -256,4 +307,10 @@ def looks_like_path(value: str) -> bool:
     return os.sep in value or (os.altsep is not None and os.altsep in value)
 
 
-__all__ = ["collect_runtime_identity", "format_runtime_identity_text"]
+__all__ = [
+    "RuntimeIdentityProfile",
+    "collect_profiled_runtime_identity",
+    "collect_runtime_identity",
+    "format_profiled_runtime_identity_text",
+    "format_runtime_identity_text",
+]

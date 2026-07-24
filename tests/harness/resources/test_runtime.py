@@ -15,7 +15,11 @@ from loushang.harness.resources.layout import (
     resolve_user_resource_roots,
     resolve_workspace_resource_root,
 )
-from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.resources.loader import (
+    ProfiledResourceLoader,
+    ResourceLoader,
+    ResourceLoaderProfile,
+)
 from loushang.harness.resources.packages import (
     PackageMaterializationRecord,
     PackageMaterializer,
@@ -142,6 +146,28 @@ def test_resource_loader_uses_standard_workspace_resource_root(tmp_path) -> None
 
     assert [prompt.name for prompt in bundle.prompts] == ["review"]
     assert bundle.prompts[0].source_root == workspace / ".loushang" / "prompts"
+
+
+def test_profiled_resource_loader_injects_product_conventions(tmp_path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "RESEARCH.md").write_text("Cite primary sources.", encoding="utf-8")
+    profile = ResourceLoaderProfile(
+        context_file_names=("RESEARCH.md",),
+        user_resource_roots=(),
+        project_resource_mode="legacy",
+        system_prompt_assembler=lambda base, bundle: "\n".join(
+            item for item in (base, bundle.agents_md) if isinstance(item, str) and item
+        ),
+    )
+    loader = ProfiledResourceLoader(profile=profile)
+
+    bundle = loader.discover_resources(workspace)
+
+    assert bundle.agents_md == "Cite primary sources."
+    assert loader.get_system_prompt(base_prompt="Research carefully.") == (
+        "Research carefully.\nCite primary sources."
+    )
 
 
 def test_package_materializer_requires_product_policy(tmp_path) -> None:

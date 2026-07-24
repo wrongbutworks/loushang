@@ -9,8 +9,15 @@ import pytest
 
 from loushang.harnesstui.conversation.plain_prompt_host import (
     PlainPromptHostPorts,
+    PlainPromptPlanHostPorts,
+    PreparedPlainPromptPlanRun,
     PreparedPlainPromptRun,
+    dispose_runtime_or_session,
+    last_assistant_failure_message,
     run_plain_prompt_host,
+    run_plain_prompt_plan_host,
+    session_identity,
+    session_messages,
 )
 
 
@@ -113,6 +120,64 @@ def test_plain_prompt_host_owns_turn_order_and_cleanup() -> None:
         "submit:1/2:second",
         "wait",
         "resolve:0",
+        "worked:5.0",
+        "unsubscribe",
+        "dispose",
+    ]
+
+
+def test_plain_prompt_plan_host_owns_work_hooks_and_cleanup() -> None:
+    events: list[str] = []
+    ticks = iter((10.0, 12.0, 20.0, 25.0))
+
+    async def prepare() -> None:
+        events.append("prepare")
+
+    async def submit_plan(turns, before_turn, after_turn) -> None:
+        for index, turn in enumerate(turns):
+            await before_turn(turn, index, len(turns))
+            events.append(f"submit:{turn}")
+            await after_turn(turn, index, len(turns))
+
+    async def dispose() -> None:
+        events.append("dispose")
+
+    result = asyncio.run(
+        run_plain_prompt_plan_host(
+            PreparedPlainPromptPlanRun(
+                turns=("research", "verify"),
+                ports=PlainPromptPlanHostPorts(
+                    prepare=prepare,
+                    subscribe=lambda: (
+                        events.append("subscribe")
+                        or (lambda: events.append("unsubscribe"))
+                    ),
+                    submit_plan=submit_plan,
+                    turn_text=str,
+                    capture_failure_state=lambda: 0,
+                    resolve_failure=lambda _previous: None,
+                    render_user=lambda text: events.append(f"user:{text}"),
+                    render_worked=lambda elapsed: events.append(
+                        f"worked:{elapsed:.1f}"
+                    ),
+                    render_error=lambda text: events.append(f"error:{text}"),
+                    dispose=dispose,
+                ),
+                stderr=StringIO(),
+                now=lambda: next(ticks),
+            )
+        )
+    )
+
+    assert result == 0
+    assert events == [
+        "prepare",
+        "subscribe",
+        "user:research",
+        "submit:research",
+        "worked:2.0",
+        "user:verify",
+        "submit:verify",
         "worked:5.0",
         "unsubscribe",
         "dispose",
@@ -314,3 +379,55 @@ def test_plain_prompt_host_preserves_unsubscribe_failure_boundary() -> None:
         asyncio.run(run_plain_prompt_host(run))
 
     assert dispose_calls == 0
+
+
+def test_plain_prompt_session_helpers_support_standard_product_shapes() -> None:
+    class Session:
+        session_id = "research-session"
+
+        def get_session_context(self):
+            return type(
+                "Context",
+                (),
+                {
+                    "messages": (
+                        type("User", (), {"role": "user"})(),
+                        type(
+                            "Assistant",
+                            (),
+                            {
+                                "role": "assistant",
+                                "stop_reason": "error",
+                                "error_message": "provider unavailable",
+                            },
+                        )(),
+                    )
+                },
+            )()
+
+    session = Session()
+
+    assert len(session_messages(session)) == 2
+    assert last_assistant_failure_message(session) == "provider unavailable"
+    assert session_identity(session) == "research-session"
+
+
+def test_plain_prompt_disposal_prefers_runtime_then_session() -> None:
+    async def scenario() -> None:
+        calls: list[str] = []
+
+        class Runtime:
+            async def dispose(self) -> None:
+                calls.append("runtime")
+
+        class Session:
+            async def dispose(self) -> None:
+                calls.append("session")
+
+        session = Session()
+        await dispose_runtime_or_session(Runtime(), session)
+        await dispose_runtime_or_session(object(), session)
+
+        assert calls == ["runtime", "session"]
+
+    asyncio.run(scenario())

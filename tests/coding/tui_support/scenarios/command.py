@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from io import StringIO
 
-from loushang.coding.interaction.controller import CodingUiController
+from loushang.coding.ui.product_binding import build_coding_ui_controller
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.harnesstui.status.provider import StatusProvider
@@ -45,7 +45,7 @@ def _run_session_name_command() -> object:
         width=100, height=18, model_label="moonshot/kimi-for-coding"
     )
     session = SessionCommandPlaybackSession()
-    controller = CodingUiController(session=session)
+    controller = build_coding_ui_controller(session=session)
     manager = _surface_manager(playback.app, session=session)
 
     result = playback.run(
@@ -76,7 +76,7 @@ def _run_session_command_error() -> object:
         width=100, height=18, model_label="moonshot/kimi-for-coding"
     )
     session = SessionCommandPlaybackSession()
-    controller = CodingUiController(session=session)
+    controller = build_coding_ui_controller(session=session)
     manager = _surface_manager(playback.app, session=session)
 
     result = playback.run(
@@ -107,7 +107,7 @@ def _run_unknown_slash_prompt() -> object:
         width=100, height=18, model_label="moonshot/kimi-for-coding"
     )
     session = SessionCommandPlaybackSession()
-    controller = CodingUiController(session=session)
+    controller = build_coding_ui_controller(session=session)
     manager = _surface_manager(playback.app, session=session)
 
     result = playback.run(
@@ -137,7 +137,7 @@ def _run_non_executable_session_command() -> object:
         width=100, height=18, model_label="moonshot/kimi-for-coding"
     )
     session = SessionCommandPlaybackSession()
-    controller = CodingUiController(session=session)
+    controller = build_coding_ui_controller(session=session)
     manager = _surface_manager(playback.app, session=session)
 
     result = playback.run(

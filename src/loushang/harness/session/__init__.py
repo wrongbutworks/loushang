@@ -5,12 +5,15 @@ contracts. Products supply their own policies and integration callbacks.
 """
 
 from loushang.harness.session.agent_adapter import (
+    AgentProductSessionRuntime,
     AgentSessionAdapterMixin,
+    build_agent_product_session_runtime_ports,
     build_agent_session_lifecycle_hooks,
     initialize_composed_session,
     prepare_current_agent_session,
 )
 from loushang.harness.session.agent_event_router import AgentEventRouter
+from loushang.harness.session.agent_product import AgentProductSession
 from loushang.harness.session.application_input import (
     ApplicationInputDelivery,
     ApplicationInputRuntime,
@@ -25,13 +28,25 @@ from loushang.harness.session.bindings import (
 from loushang.harness.session.bootstrap import (
     AgentBootstrapRequest,
     AgentBootstrapRuntime,
+    AgentProductConstructionBinding,
+    AgentProductConstructionPorts,
+    AgentProductConstructionRequest,
+    AgentProductConstructionResult,
+    AgentProductConstructionRuntime,
     AgentSessionConstructionRequest,
     AgentSessionConstructionRuntime,
     AgentSessionServices,
     BootstrapServices,
     CreateAgentSessionResult,
     StandardAgentSessionActivationEffects,
+    StandardAgentSessionConfigurationRequest,
+    StandardAgentSessionConfigurationResult,
+    StandardAgentSessionConfigurationRuntime,
     activate_standard_agent_session_configuration,
+    build_agent_product_session_runtime,
+    build_standard_agent_session_result,
+    create_standard_agent_bootstrap_services,
+    prepare_agent_session_services,
     standard_agent_session_activation_plan,
 )
 from loushang.harness.session.bootstrap_utils import (
@@ -58,6 +73,15 @@ from loushang.harness.session.capabilities import (
     command_result_from_tool_result,
     create_tool_prompt_rebuilder,
 )
+from loushang.harness.session.changelog import (
+    STANDARD_CHANGELOG_PROFILE,
+    ChangelogEntry,
+    ChangelogProfile,
+    find_changelog_path,
+    format_changelog_entries,
+    parse_changelog,
+    read_changelog_for_cwd,
+)
 from loushang.harness.session.command_controller import (
     BuiltinCommandExecutor,
     BuiltinCommandMatcher,
@@ -65,6 +89,7 @@ from loushang.harness.session.command_controller import (
     CommandExecutionResult,
     SessionCommandController,
     SessionCommandStorePort,
+    StandardSessionCommandController,
 )
 from loushang.harness.session.command_pack import (
     STANDARD_SESSION_COMMAND_PROFILE,
@@ -131,6 +156,7 @@ from loushang.harness.session.facade import (
     SessionToolsPort,
     SessionTranscriptPort,
     SessionViewPort,
+    require_active_session_control,
 )
 from loushang.harness.session.inspection import (
     AgentInspectionPort,
@@ -190,10 +216,13 @@ from loushang.harness.session.model_selection import (
     PersistModelSelection,
     apply_session_model_selection,
     ensure_usable_session_model,
+    get_session_model_identity,
     get_session_model_selection,
+    iter_available_model_details,
     iter_available_model_selections,
     iter_scoped_model_selections,
     model_choice_data_from_details,
+    model_choice_data_from_selections,
     model_identity_data,
 )
 from loushang.harness.session.operations import (
@@ -251,18 +280,33 @@ from loushang.harness.session.transcript_lifecycle import (
 
 __all__ = [
     "AgentEventRouter",
+    "AgentProductSession",
+    "AgentProductSessionRuntime",
     "AgentSessionAdapterMixin",
+    "build_agent_product_session_runtime_ports",
     "build_agent_session_lifecycle_hooks",
     "prepare_current_agent_session",
     "initialize_composed_session",
     "AgentBootstrapRequest",
     "AgentBootstrapRuntime",
+    "AgentProductConstructionBinding",
+    "AgentProductConstructionPorts",
+    "AgentProductConstructionRequest",
+    "AgentProductConstructionResult",
+    "AgentProductConstructionRuntime",
     "AgentSessionConstructionRequest",
     "AgentSessionConstructionRuntime",
     "AgentSessionServices",
+    "build_agent_product_session_runtime",
+    "build_standard_agent_session_result",
+    "create_standard_agent_bootstrap_services",
+    "prepare_agent_session_services",
     "BootstrapServices",
     "CreateAgentSessionResult",
     "StandardAgentSessionActivationEffects",
+    "StandardAgentSessionConfigurationRequest",
+    "StandardAgentSessionConfigurationResult",
+    "StandardAgentSessionConfigurationRuntime",
     "activate_standard_agent_session_configuration",
     "AgentInspectionPort",
     "AfterTurnPolicyPort",
@@ -292,6 +336,7 @@ __all__ = [
     "split_model_thinking_pattern",
     "CommandRuntimeSource",
     "SessionCommandController",
+    "StandardSessionCommandController",
     "CommandExecutionResult",
     "SessionCommandStorePort",
     "BuiltinCommandExecutor",
@@ -299,6 +344,13 @@ __all__ = [
     "BuiltinDescriptorProvider",
     "STANDARD_SESSION_COMMAND_PROFILE",
     "STANDARD_SESSION_COMMANDS",
+    "STANDARD_CHANGELOG_PROFILE",
+    "ChangelogEntry",
+    "ChangelogProfile",
+    "find_changelog_path",
+    "format_changelog_entries",
+    "parse_changelog",
+    "read_changelog_for_cwd",
     "ContextUsage",
     "DEFAULT_FORK_PROFILE",
     "ExtensionDiagnosticsPort",
@@ -354,6 +406,7 @@ __all__ = [
     "OutputCallback",
     "RuntimeEventListener",
     "SessionControlPort",
+    "require_active_session_control",
     "SessionCommandExecutionPort",
     "SessionApplicationInputPort",
     "SessionCommandExecutionRuntime",
@@ -438,10 +491,13 @@ __all__ = [
     "command_result_from_tool_result",
     "execute_standard_session_command_async",
     "ensure_usable_session_model",
+    "get_session_model_identity",
     "get_session_model_selection",
+    "iter_available_model_details",
     "iter_available_model_selections",
     "iter_scoped_model_selections",
     "model_choice_data_from_details",
+    "model_choice_data_from_selections",
     "model_identity_data",
     "is_standard_session_command",
     "require_session_operation_session",
