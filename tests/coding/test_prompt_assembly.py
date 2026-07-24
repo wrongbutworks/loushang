@@ -277,7 +277,7 @@ def test_assemble_prompt_uses_tool_prompt_snippets_and_hides_tools_without_snipp
 
 
 def test_tuple_backed_inputs_snapshot_mutable_constructors() -> None:
-    from loushang.coding.prompt.types import PromptAssembly
+    from loushang.harness.capabilities.prompt_assembly import PromptAssembly
     from loushang.harness.tools.core import ToolDefinition
     from loushang.harness.workspace.exec import ExecRequest
 
@@ -318,7 +318,7 @@ def test_tuple_backed_inputs_snapshot_mutable_constructors() -> None:
 
 
 def test_tuple_backed_constructors_reject_bare_strings() -> None:
-    from loushang.coding.prompt.types import PromptAssembly
+    from loushang.harness.capabilities.prompt_assembly import PromptAssembly
     from loushang.harness.tools.core import ToolDefinition
     from loushang.harness.workspace.exec import ExecRequest
 
@@ -413,7 +413,7 @@ def test_exec_result_contract_defaults_and_shape() -> None:
 def test_preflight_user_input_expands_prompt_templates_and_skill_references() -> None:
     from pathlib import Path
 
-    from loushang.coding.prompt import preflight_user_input
+    from loushang.harness.capabilities.prompt_preflight import preflight_user_input
     from loushang.harness.resources.types import (
         PromptFragmentDescriptor,
         ResourceBundle,
@@ -461,7 +461,7 @@ def test_preflight_user_input_expands_prompt_templates_and_skill_references() ->
 
 
 def test_prompt_template_args_parse_quotes_and_substitute_pi_placeholders() -> None:
-    from loushang.coding.prompt import (
+    from loushang.harness.capabilities.prompt import (
         parse_prompt_template_args,
         substitute_prompt_template_args,
     )
@@ -482,7 +482,7 @@ def test_prompt_template_args_parse_quotes_and_substitute_pi_placeholders() -> N
 
 
 def test_prompt_template_args_do_not_recursively_substitute_argument_values() -> None:
-    from loushang.coding.prompt import substitute_prompt_template_args
+    from loushang.harness.capabilities.prompt import substitute_prompt_template_args
 
     assert (
         substitute_prompt_template_args("$ARGUMENTS", ["$1", "$ARGUMENTS", "${@:2}"])
@@ -495,7 +495,7 @@ def test_preflight_user_input_substitutes_prompt_template_args_when_placeholders
 ):
     from pathlib import Path
 
-    from loushang.coding.prompt import preflight_user_input
+    from loushang.harness.capabilities.prompt_preflight import preflight_user_input
     from loushang.harness.resources.types import (
         PromptFragmentDescriptor,
         ResourceBundle,
@@ -525,7 +525,7 @@ def test_preflight_user_input_keeps_legacy_arg_append_for_templates_without_plac
 ):
     from pathlib import Path
 
-    from loushang.coding.prompt import preflight_user_input
+    from loushang.harness.capabilities.prompt_preflight import preflight_user_input
     from loushang.harness.resources.types import (
         PromptFragmentDescriptor,
         ResourceBundle,
@@ -555,7 +555,8 @@ def test_preflight_user_input_rejects_disabled_skills_but_allows_explicit_only_s
 ):
     from pathlib import Path
 
-    from loushang.coding.prompt import assemble_prompt, preflight_user_input
+    from loushang.coding.prompt import assemble_prompt
+    from loushang.harness.capabilities.prompt_preflight import preflight_user_input
     from loushang.harness.resources.types import (
         ResourceBundle,
         SkillDescriptor,
@@ -609,7 +610,7 @@ def test_preflight_user_input_reports_unresolved_references_without_rewriting_te
 ):
     from pathlib import Path
 
-    from loushang.coding.prompt import preflight_user_input
+    from loushang.harness.capabilities.prompt_preflight import preflight_user_input
     from loushang.harness.resources.types import ResourceBundle
 
     result = preflight_user_input(
@@ -624,7 +625,9 @@ def test_preflight_user_input_reports_unresolved_references_without_rewriting_te
 
 
 def test_preflight_user_input_async_can_await_command_execution() -> None:
-    from loushang.coding.prompt import preflight_user_input_async
+    from loushang.harness.capabilities.prompt_preflight import (
+        preflight_user_input_async,
+    )
 
     calls: list[tuple[str, str]] = []
 
@@ -645,7 +648,9 @@ def test_preflight_user_input_async_can_await_command_execution() -> None:
 
 
 def test_preflight_user_input_async_consumes_if_command_handler_returns_none() -> None:
-    from loushang.coding.prompt import preflight_user_input_async
+    from loushang.harness.capabilities.prompt_preflight import (
+        preflight_user_input_async,
+    )
 
     calls: list[tuple[str, str]] = []
 

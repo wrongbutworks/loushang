@@ -160,8 +160,8 @@ def test_model_registry_records_problem_for_ambiguous_model_selection() -> None:
     import pytest
 
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-    from loushang.coding.control import ModelRegistry
     from loushang.coding.session import ModelSelection
+    from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
     from loushang.observability import (
         get_problem_store,
         log_context,
@@ -203,8 +203,8 @@ def test_model_registry_records_problem_for_missing_model_selection() -> None:
     import pytest
 
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-    from loushang.coding.control import ModelRegistry
     from loushang.coding.session import ModelSelection
+    from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
     from loushang.observability import get_problem_store, reset_observability
 
     registry = ModelRegistry(ai_registry=AiModelRegistry())

@@ -3494,13 +3494,21 @@ def test_coding_internal_resource_consumers_use_harness_owners() -> None:
 def test_coding_legacy_shared_utility_facades_are_extinct() -> None:
     from importlib.util import find_spec
 
+    import loushang.coding as coding
+    import loushang.coding.control as coding_control
+    import loushang.coding.prompt as coding_prompt
+
     retired_prefixes = (
         "loushang.coding.commands.slash",
+        "loushang.coding.control.model_registry",
+        "loushang.coding.event",
         "loushang.coding.extensions",
         "loushang.coding.frontmatter",
         "loushang.coding.policy.types",
         "loushang.coding.policy.tui",
+        "loushang.coding.prompt.preflight",
         "loushang.coding.prompt.templates",
+        "loushang.coding.prompt.types",
         "loushang.coding.session.context_usage",
         "loushang.coding.types",
         "loushang.coding.work_projection",
@@ -3511,6 +3519,21 @@ def test_coding_legacy_shared_utility_facades_are_extinct() -> None:
         "loushang.coding.workflow.schema",
     )
     assert all(find_spec(prefix) is None for prefix in retired_prefixes)
+    assert {
+        "AgentSessionEvent",
+        "JsonEventView",
+        "ModelRegistry",
+        "select_events",
+    }.isdisjoint(coding.__all__)
+    assert "ModelRegistry" not in coding_control.__all__
+    assert {
+        "PromptPreflightResult",
+        "parse_prompt_template_args",
+        "preflight_user_input",
+        "preflight_user_input_async",
+        "prompt_template_has_args",
+        "substitute_prompt_template_args",
+    }.isdisjoint(coding_prompt.__all__)
 
     offenders: list[str] = []
     for root in (Path("src"), Path("tests"), Path("examples")):
@@ -3815,12 +3838,6 @@ def test_coding_session_lifecycle_consumers_use_operation_results() -> None:
 def test_product_capability_composition_core_is_documented_and_adopted() -> None:
     import loushang.harness as harness
     import loushang.harness.capabilities as capabilities
-    from loushang.coding.prompt.preflight import (
-        PromptPreflightResult as CodingPromptPreflightResult,
-    )
-    from loushang.coding.prompt.types import PromptAssembly as CodingPromptAssembly
-    from loushang.harness.capabilities.prompt_assembly import PromptAssembly
-    from loushang.harness.capabilities.prompt_preflight import PromptPreflightResult
 
     capability_symbols = {
         "CommandCatalog",
@@ -3880,8 +3897,8 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
     assert (
         "product capability composition core implementation complete" in inventory_text
     )
-    assert CodingPromptAssembly is PromptAssembly
-    assert CodingPromptPreflightResult is PromptPreflightResult
+    assert not Path("src/loushang/coding/prompt/types.py").exists()
+    assert not Path("src/loushang/coding/prompt/preflight.py").exists()
 
     expected_imports = {
         Path("src/loushang/harnesstui/commands/catalog.py"): {

@@ -4,7 +4,7 @@ import pytest
 
 from loushang.ai.model import Capabilities, Endpoint, Model, ModelSelection, Provider
 from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-from loushang.coding.control.model_registry import ModelRegistry
+from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
 
 def _model(model_id: str, *, endpoint: str) -> Model:
@@ -41,7 +41,7 @@ def _registry(*, primary_preferred: bool = True) -> ModelRegistry:
     return ModelRegistry(ai_registry)
 
 
-def test_control_model_registry_resolves_provider_model_to_preferred_endpoint() -> None:
+def test_model_catalog_resolves_provider_model_to_preferred_endpoint() -> None:
     model = _registry().build_model(
         ModelSelection(provider="provider", model_id="chat")
     )
@@ -49,7 +49,7 @@ def test_control_model_registry_resolves_provider_model_to_preferred_endpoint() 
     assert model.endpoint_id == "primary"
 
 
-def test_control_model_registry_resolves_explicit_endpoint_selection() -> None:
+def test_model_catalog_resolves_explicit_endpoint_selection() -> None:
     model = _registry().build_model(
         ModelSelection(provider="provider", endpoint_id="secondary", model_id="chat")
     )
@@ -57,7 +57,7 @@ def test_control_model_registry_resolves_explicit_endpoint_selection() -> None:
     assert model.endpoint_id == "secondary"
 
 
-def test_control_model_registry_ambiguity_error_lists_explicit_alternatives() -> None:
+def test_model_catalog_ambiguity_error_lists_explicit_alternatives() -> None:
     with pytest.raises(ValueError) as exc_info:
         _registry(primary_preferred=False).build_model(
             ModelSelection(provider="provider", model_id="chat")

@@ -1,4 +1,3 @@
-from loushang.coding.control.model_registry import ModelRegistry
 from loushang.harness.config.agent import (
     BranchSummarySettings,
     CompactionSettings,
@@ -27,7 +26,6 @@ __all__ = [
     "KeybindingValue",
     "MarkdownSettings",
     "MethodSettings",
-    "ModelRegistry",
     "QueueMode",
     "RetrySettings",
     "SettingsError",

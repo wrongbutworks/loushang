@@ -3,11 +3,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from loushang.ai.types import AssistantMessage, Usage
-from loushang.coding.event import (
-    project_runtime_event_to_json_views,
-    project_runtime_event_to_session_event,
-    shape_runtime_event_view,
-)
 from loushang.harness.events import (
     BranchSummaryCompleted,
     ContextCompactionStarted,
@@ -17,6 +12,9 @@ from loushang.harness.events import (
     RuntimeEvent,
     ToolPolicyAuditEvent,
     TranscriptRecordCommitted,
+    project_runtime_event_to_json_views,
+    project_session_runtime_event,
+    shape_runtime_event_view,
 )
 from loushang.harness.host.retry import RetryOutcome
 from loushang.harness.host.types import QueuedMessageSnapshot, QueueSnapshot
@@ -37,7 +35,7 @@ def _event(kind: str, payload: object) -> RuntimeEvent[object]:
 def test_runtime_projection_preserves_agent_owned_event() -> None:
     payload = {"type": "agent_start"}
 
-    projected = project_runtime_event_to_session_event(
+    projected = project_session_runtime_event(
         _event("agent.agent_start", payload)
     )
 
@@ -51,14 +49,14 @@ def test_runtime_projection_converts_common_session_payloads() -> None:
             follow_up=(QueuedMessageSnapshot("q2", "follow_up", "continue"),),
         )
     )
-    assert project_runtime_event_to_session_event(
+    assert project_session_runtime_event(
         _event("session.queue_update", queue)
     ) == {
         "type": "queue_update",
         "steering": ["adjust"],
         "follow_up": ["continue"],
     }
-    assert project_runtime_event_to_session_event(
+    assert project_session_runtime_event(
         _event(
             "session.compaction_start",
             ContextCompactionStarted("threshold", usage={"tokens": 90}),
@@ -68,7 +66,7 @@ def test_runtime_projection_converts_common_session_payloads() -> None:
         "reason": "threshold",
         "usage": {"tokens": 90},
     }
-    assert project_runtime_event_to_session_event(
+    assert project_session_runtime_event(
         _event(
             "session.auto_retry_end",
             RetryCompleted(RetryOutcome(False, 2, error="unavailable")),
@@ -79,7 +77,7 @@ def test_runtime_projection_converts_common_session_payloads() -> None:
         "attempt": 2,
         "final_error": "unavailable",
     }
-    assert project_runtime_event_to_session_event(
+    assert project_session_runtime_event(
         _event(
             "session.auto_retry_end",
             RetryCompleted(RetryOutcome(True, 2, error="stale error")),
@@ -89,7 +87,7 @@ def test_runtime_projection_converts_common_session_payloads() -> None:
         "success": True,
         "attempt": 2,
     }
-    assert project_runtime_event_to_session_event(
+    assert project_session_runtime_event(
         _event(
             "session.branch_summary_end",
             BranchSummaryCompleted("target", "old", "new", "summary", False, False),
@@ -103,7 +101,7 @@ def test_runtime_projection_converts_common_session_payloads() -> None:
         "cancelled": False,
         "aborted": False,
     }
-    assert project_runtime_event_to_session_event(
+    assert project_session_runtime_event(
         _event(
             "session.package_progress",
             PackageProgressChanged(
@@ -131,7 +129,7 @@ def test_runtime_projection_hides_non_product_runtime_facts() -> None:
         TranscriptRecordCommitted("s1", "r1", 1, committed_at),
     )
 
-    assert project_runtime_event_to_session_event(event) is None
+    assert project_session_runtime_event(event) is None
 
 
 def test_runtime_projection_converts_tool_policy_audit_event() -> None:
@@ -143,7 +141,7 @@ def test_runtime_projection_converts_tool_policy_audit_event() -> None:
         ),
     )
 
-    assert project_runtime_event_to_session_event(event) == {
+    assert project_session_runtime_event(event) == {
         "type": "tool_approval_resolved",
         "tool_name": "write",
         "approval_decision": "allow",

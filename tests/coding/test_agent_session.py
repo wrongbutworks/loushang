@@ -2471,9 +2471,9 @@ def test_agent_session_set_model_and_thinking_level_persist_to_store(tmp_path) -
 
 def test_agent_session_persists_explicit_model_selection_endpoint(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.control import ModelRegistry
     from loushang.coding.session import AgentSession, ModelSelection
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
     first = _model()
     second = Model(
@@ -2517,9 +2517,9 @@ def test_agent_session_persists_explicit_model_selection_endpoint(tmp_path) -> N
 
 def test_agent_session_cycles_model_and_thinking_level(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.control import ModelRegistry
     from loushang.coding.session import AgentSession, ModelSelection
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
     first = _model()
     second = Model(
@@ -2562,10 +2562,10 @@ def test_agent_session_emits_model_select_event_for_async_model_control(
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.control import ModelRegistry
     from loushang.coding.session import AgentSession, ModelSelection
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
+    from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
     first = _model()
     second = Model(
@@ -2619,9 +2619,9 @@ def test_agent_session_emits_model_select_event_for_async_model_control(
 
 def test_agent_session_exposes_standard_model_and_session_mutators(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.control import ModelRegistry
     from loushang.coding.session import AgentSession, ModelSelection
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
     first = _model()
     second = Model(
@@ -2672,10 +2672,10 @@ def test_agent_session_applies_extension_provider_registration(tmp_path) -> None
 
     from loushang.agent import Agent
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-    from loushang.coding.control import ModelRegistry
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionAPI, ExtensionRunner
+    from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
     ai_registry = AiModelRegistry()
     model_registry = ModelRegistry(ai_registry=ai_registry)
@@ -2794,11 +2794,11 @@ def test_agent_session_rejects_pi_style_extension_provider_config(tmp_path) -> N
 
     from loushang.agent import Agent
     from loushang.ai.model.registry import ModelRegistry as AiModelRegistry
-    from loushang.coding.control import ModelRegistry
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsService
     from loushang.harness.extensions.agent import ExtensionAPI, ExtensionRunner
+    from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
     def _build_session(api: ExtensionAPI) -> tuple[AiModelRegistry, DiagnosticsService]:
         ai_registry = AiModelRegistry()
@@ -2892,12 +2892,12 @@ def test_agent_session_rejects_pi_style_extension_provider_config(tmp_path) -> N
 
 def test_agent_session_exposes_standard_scoped_models_and_resources(tmp_path) -> None:
     from loushang.agent import Agent
-    from loushang.coding.control import ModelRegistry
     from loushang.coding.resource_runtime import (
         CodingResourceLoader as DefaultResourceLoader,
     )
     from loushang.coding.session import AgentSession, ModelSelection
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
     first = _model()
     second = Model(
@@ -3167,10 +3167,10 @@ def test_agent_session_footer_data_provider_tracks_available_provider_count(
     from pathlib import Path
 
     from loushang.agent import Agent
-    from loushang.coding.control import ModelRegistry
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.extensions.agent import ExtensionAPI, ExtensionRunner
+    from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
     ai_registry = _ai_model_registry(
         Model(id="alpha", provider="base-a", endpoint="anthropic-messages"),
@@ -3217,9 +3217,9 @@ def test_agent_session_exposes_available_model_details_for_metadata_consumers(
     tmp_path,
 ) -> None:
     from loushang.agent import Agent
-    from loushang.coding.control import ModelRegistry
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 
     detailed = Model(
         id="detail-model",
