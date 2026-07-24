@@ -7,6 +7,8 @@ from loushang.harness.commands.catalog import (
     MixedCommandCatalog,
     MixedCommandCatalogPorts,
     MixedCommandMatch,
+    coerce_command_descriptor,
+    command_def_from_descriptor,
 )
 from loushang.harness.commands.descriptors import (
     CommandCatalog,
@@ -58,6 +60,8 @@ __all__ = [
     "MixedCommandCatalog",
     "MixedCommandCatalogPorts",
     "MixedCommandMatch",
+    "command_def_from_descriptor",
+    "coerce_command_descriptor",
     "ParsedSlashCommand",
     "SessionCommandDescriptor",
     "SlashCommandInfo",

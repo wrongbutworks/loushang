@@ -22,7 +22,10 @@ Harness owns:
 - optional `fd`/`rg` discovery, managed download mechanics, and a neutral
   `LOUSHANG_WORKSPACE_TOOLS_DIR` location override;
 - policy-enforcement plumbing and `PolicyEnforcementError`, expressed against
-  an injected evaluator and Harness approval resolver.
+  an injected evaluator and Harness approval resolver;
+- `WorkspaceToolProfile` selection/decoration plus
+  `WorkspaceToolRegistry.register_profile()`, reusing the existing definition
+  factory, contribution resolver, pack model, and registry.
 
 Harness provides generic workspace descriptions. It does not import Coding or
 AI packages, choose a product tool pack, select allowed roots, classify risk,
@@ -44,9 +47,10 @@ Request authentication remains AI-owned and does not move into Harness.
 
 ## Product Composition
 
-`loushang.coding.tool_pack` adds Coding metadata and the product-selected
-managed downloader, then registers Coding's selected tool pack through
-`WorkspaceToolRegistry`. It is not a generic tools facade.
+`loushang.coding.tool_pack` declares `CODING_WORKSPACE_TOOL_PROFILE`, Coding
+copy, and Product service/policy inputs. The existing Harness factory and
+registry create and register that profile; Coding does not repeat contribution
+resolution or the registration loop. It is not a generic tools facade.
 
 The shared external-tool locator accepts the legacy `LOUSHANG_CODING_BIN_DIR`
 and `LOUSHANG_CODING_AGENT_DIR` environment aliases and reuses an existing

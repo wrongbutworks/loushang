@@ -6,8 +6,7 @@ import base64
 from typing import Any, TextIO
 
 from loushang.ai.types import ImagePart
-from loushang.coding.commands.catalog import CodingCommandCatalog
-from loushang.harnesstui.commands.source import materialize_command_items
+from loushang.harnesstui.commands.catalog import ConversationCommandCatalog
 from loushang.harnesstui.conversation.action_presentation import (
     ConversationActionPresentationPort,
     PresentedConversationActionHost,
@@ -34,7 +33,7 @@ def build_coding_ui_controller(
         session=session,
         runtime=runtime,
         verbose=verbose,
-        command_catalog_factory=lambda current_session: CodingCommandCatalog(
+        command_catalog_factory=lambda current_session: ConversationCommandCatalog(
             session_commands=(
                 current_session.list_commands
                 if callable(getattr(current_session, "list_commands", None))
@@ -65,12 +64,6 @@ def build_screen_coding_action_host(
     )
 
 
-async def snapshot_coding_command_catalog(session: object) -> CodingCommandCatalog:
-    getter = getattr(session, "list_commands", None)
-    items = await materialize_command_items(getter if callable(getter) else None)
-    return CodingCommandCatalog(session_commands=lambda: items)
-
-
 def image_parts_from_prompt_attachments(
     attachments: tuple[PromptImageAttachment, ...],
 ) -> tuple[ImagePart, ...] | None:
@@ -92,5 +85,4 @@ __all__ = [
     "build_coding_ui_controller",
     "build_screen_coding_action_host",
     "image_parts_from_prompt_attachments",
-    "snapshot_coding_command_catalog",
 ]

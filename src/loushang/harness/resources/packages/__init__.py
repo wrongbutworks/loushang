@@ -10,6 +10,7 @@ from loushang.harness.resources.packages.catalog import (
     mark_package_conflicts,
     package_catalog_sources,
     summarize_package_resources,
+    summarize_profiled_package_resources,
 )
 from loushang.harness.resources.packages.catalog_diagnostics import (
     PackageCatalogDiagnosticsRecorder,
@@ -131,5 +132,6 @@ __all__ = [
     "resolve_package_resource_roots",
     "resolve_session_package_install_root",
     "serialize_package_materialization_record",
+    "summarize_profiled_package_resources",
     "summarize_package_resources",
 ]

@@ -58,6 +58,9 @@ from loushang.harness.session import (
 from loushang.harness.session import (
     audit_cwd_bound_services as _audit_cwd_bound_services,
 )
+from loushang.harness.session import (
+    prepare_agent_session_services as prepare_standard_agent_session_services,
+)
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import ExecService
 
@@ -111,9 +114,7 @@ def create_agent_session_services(
     resource_loader_options: dict[str, object] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
 ) -> AgentSessionServices:
-    resolved_cwd = Path(cwd).expanduser().resolve(strict=False)
-    resolved_services = services
-    if resolved_services is None:
+    def create_cwd_services(resolved_cwd: Path) -> BootstrapServices:
         resolved_settings_manager = settings_manager or SettingsManager(
             global_settings_path=Path(global_settings_path)
             if global_settings_path is not None
@@ -122,7 +123,7 @@ def create_agent_session_services(
             if project_settings_path is not None
             else default_project_settings_path(resolved_cwd),
         )
-        resolved_services = create_services(
+        return create_services(
             ai_model_registry=ai_model_registry,
             resource_loader=resource_loader,
             settings_manager=resolved_settings_manager,
@@ -131,37 +132,32 @@ def create_agent_session_services(
             thinking_level=thinking_level,
             system_prompt=system_prompt,
         )
-    elif any(
-        value is not None
-        for value in (
-            ai_model_registry,
-            resource_loader,
-            settings_manager,
-            exec_service,
-            default_model,
-        )
-    ):
-        raise ValueError(
-            "service components cannot be overridden when services is provided"
-        )
 
-    if resource_loader_options:
-        resolved_services.resource_loader.set_runtime_options(**resource_loader_options)
-    bootstrap_runtime = create_standard_resource_bootstrap_runtime(
-        create_extension_runtime=lambda bundle: ExtensionRunner(bundle.extensions),
-        diagnostics_service=resolved_services.diagnostics_service,
-    )
-    prepared = bootstrap_runtime.prepare(
-        loader=resolved_services.resource_loader,
-        cwd=resolved_cwd,
-        extension_flags=extension_flag_values,
-    )
-    return AgentSessionServices(
-        cwd=str(resolved_cwd),
-        services=resolved_services,
-        resource_bundle=prepared.resource_bundle,
-        extension_runner=prepared.extension_runtime,
-        diagnostics=prepared.diagnostics,
+    return prepare_standard_agent_session_services(
+        cwd=cwd,
+        services=services,
+        create_services=create_cwd_services,
+        service_overrides={
+            "ai_model_registry": ai_model_registry,
+            "resource_loader": resource_loader,
+            "settings_manager": settings_manager,
+            "exec_service": exec_service,
+            "default_model": default_model,
+        },
+        build_resource_bootstrap=lambda resolved_services: (
+            create_standard_resource_bootstrap_runtime(
+                create_extension_runtime=lambda bundle: ExtensionRunner(
+                    bundle.extensions
+                ),
+                diagnostics_service=resolved_services.diagnostics_service,
+            )
+        ),
+        get_resource_loader=lambda resolved_services: resolved_services.resource_loader,
+        resource_loader_options=resource_loader_options,
+        configure_resource_loader=lambda loader, options: loader.set_runtime_options(
+            **dict(options)
+        ),
+        extension_flag_values=extension_flag_values,
     )
 
 

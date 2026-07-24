@@ -632,7 +632,9 @@ def _compaction_policy(settings: object, capability: TranscriptCompactionPolicy)
     )
 
 
-async def _sleep_for_retry(delay_ms: int, signal: object) -> None:
+async def sleep_for_retry(delay_ms: int, signal: object) -> None:
+    """Sleep in abort-aware intervals for the standard Agent retry runtime."""
+
     remaining = max(delay_ms, 0) / 1000
     while remaining > 0:
         if getattr(signal, "aborted", False):
@@ -764,4 +766,9 @@ async def _unsupported_replacement(
     raise RuntimeError(f"Session replacement operation is not bound: {operation}")
 
 
-__all__ = ["SessionComposition", "SessionCompositionPorts", "compose_session_runtime"]
+__all__ = [
+    "SessionComposition",
+    "SessionCompositionPorts",
+    "compose_session_runtime",
+    "sleep_for_retry",
+]

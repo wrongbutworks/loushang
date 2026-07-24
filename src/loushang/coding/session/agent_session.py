@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 
 from loushang.agent import Agent
@@ -10,7 +9,6 @@ from loushang.coding.compaction.adapter import (
     execute_coding_compaction,
 )
 from loushang.coding.control.model_registry import ModelRegistry
-from loushang.coding.platform.changelog import read_changelog_for_cwd
 from loushang.coding.policy import InteractiveApprovalResolver
 from loushang.coding.product_plan import CODING_CAPABILITY_PROFILE
 from loushang.coding.resource_runtime import (
@@ -32,8 +30,9 @@ from loushang.harness.events import AgentSessionEvent, RuntimeEvent
 from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.resources.types import ResourceBundle
-from loushang.harness.runtime import CancellationSignal
 from loushang.harness.session import AgentProductSession
+from loushang.harness.session.changelog import read_changelog_for_cwd
+from loushang.harness.session.composition import sleep_for_retry
 from loushang.harness.session.footer import FooterDataProvider
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import ExecService
@@ -103,7 +102,7 @@ class AgentSession(AgentProductSession):
             execute_branch_summary=_execute_coding_branch_summary,
             get_changelog=read_changelog_for_cwd,
             copy_to_clipboard=_copy_to_clipboard,
-            retry_sleep=lambda delay, signal: _sleep_for_retry(delay, signal),
+            retry_sleep=lambda delay, signal: sleep_for_retry(delay, signal),
             footer_data_provider=footer_data_provider
             or FooterDataProvider(session_manager.get_cwd()),
             package_summary_provider=summarize_coding_package_root,
@@ -125,16 +124,3 @@ class AgentSession(AgentProductSession):
             exec_service=exec_service,
             approval_resolver=approval_resolver,
         )
-
-
-async def _sleep_for_retry(delay_ms: int, signal: CancellationSignal) -> None:
-    remaining = max(delay_ms, 0) / 1000
-    step = 0.05
-    while remaining > 0:
-        if signal.aborted:
-            raise asyncio.CancelledError
-        interval = min(step, remaining)
-        await asyncio.sleep(interval)
-        remaining -= interval
-    if signal.aborted:
-        raise asyncio.CancelledError

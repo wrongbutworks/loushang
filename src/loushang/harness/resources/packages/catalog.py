@@ -6,7 +6,11 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
-from loushang.harness.resources.loader import ResourceLoader
+from loushang.harness.resources.loader import (
+    ProfiledResourceLoader,
+    ResourceLoader,
+    ResourceLoaderProfile,
+)
 from loushang.harness.resources.packages.manifest import resolve_package_manifest
 from loushang.harness.resources.packages.materializer import (
     PackageMaterializer,
@@ -332,10 +336,41 @@ def summarize_package_resources(
     cwd: Path,
     package_source: PackageSourceConfig | None = None,
 ) -> PackageResourceSummary:
+    return _summarize_package_resources(
+        ResourceLoader,
+        package_root,
+        cwd,
+        package_source,
+    )
+
+
+def summarize_profiled_package_resources(
+    package_root: Path,
+    cwd: Path,
+    package_source: PackageSourceConfig | None = None,
+    *,
+    profile: ResourceLoaderProfile,
+) -> PackageResourceSummary:
+    """Summarize one package root through an existing resource-loader profile."""
+
+    return _summarize_package_resources(
+        lambda **kwargs: ProfiledResourceLoader(profile=profile, **kwargs),
+        package_root,
+        cwd,
+        package_source,
+    )
+
+
+def _summarize_package_resources(
+    loader_factory: Callable[..., ResourceLoader],
+    package_root: Path,
+    cwd: Path,
+    package_source: PackageSourceConfig | None,
+) -> PackageResourceSummary:
     filters: dict[str | Path, PackageSourceConfig] | None = (
         {package_root: package_source} if package_source is not None else None
     )
-    loader = ResourceLoader(
+    loader = loader_factory(
         package_roots=(package_root,), package_source_filters=filters
     )
     loader.discover_resources(cwd)

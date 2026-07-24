@@ -29,6 +29,12 @@ from loushang.harness.config.schema import (
 )
 from loushang.harness.config.settings_runtime import SettingsRuntime
 from loushang.harness.config.store import JsonConfigStore
+from loushang.harness.config.subprocess_values import (
+    SubprocessConfigValueResolver,
+    clear_subprocess_config_value_cache,
+    resolve_subprocess_config_value,
+    run_subprocess_config_command,
+)
 from loushang.harness.config.types import (
     ConfigApplyResult,
     ConfigCodec,
@@ -67,6 +73,7 @@ __all__ = [
     "ConfigSnapshot",
     "ConfigStore",
     "ConfigValueResolver",
+    "SubprocessConfigValueResolver",
     "JsonConfigStore",
     "LayeredConfig",
     "RecoverableErrors",
@@ -76,4 +83,7 @@ __all__ = [
     "UnknownFieldPolicy",
     "decode_dataclass_patch",
     "encode_dataclass_diff",
+    "clear_subprocess_config_value_cache",
+    "resolve_subprocess_config_value",
+    "run_subprocess_config_command",
 ]

@@ -1319,8 +1319,8 @@ async def test_runtime_import_from_jsonl_cleans_copied_file_when_stored_cwd_is_m
     import pytest
 
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.coding.runtime import MissingSessionCwdError
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.session import MissingSessionCwdError
 
     project_root = tmp_path / "project"
     missing_cwd = tmp_path / "missing-project"
@@ -1351,9 +1351,10 @@ async def test_runtime_import_from_jsonl_cleans_copied_file_when_stored_cwd_is_m
 async def test_runtime_import_from_jsonl_records_failure_diagnostic(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.runtime import AgentSessionRuntime, MissingSessionCwdError
+    from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
+    from loushang.harness.session import MissingSessionCwdError
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -1416,8 +1417,9 @@ async def test_runtime_restore_rejects_session_when_stored_cwd_is_missing(
 ) -> None:
     import pytest
 
-    from loushang.coding.runtime import AgentSessionRuntime, MissingSessionCwdError
+    from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session_manager import SessionManager
+    from loushang.harness.session import MissingSessionCwdError
 
     missing_cwd = tmp_path / "missing-project"
     manager = await SessionManager.new(
@@ -1439,7 +1441,7 @@ async def test_runtime_restore_rejects_session_when_stored_cwd_is_missing(
         await runtime.restore_session(session_file)
 
     assert exc_info.value.issue.session_cwd == str(missing_cwd)
-    assert exc_info.value.issue.session_file == session_file
+    assert exc_info.value.issue.session_ref == str(session_file)
     assert created == []
     assert runtime.get_current_session() is None
 
@@ -1448,9 +1450,10 @@ async def test_runtime_restore_rejects_session_when_stored_cwd_is_missing(
 async def test_runtime_restore_session_records_failure_diagnostic(tmp_path) -> None:
     import pytest
 
-    from loushang.coding.runtime import AgentSessionRuntime, MissingSessionCwdError
+    from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session_manager import SessionManager
     from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
+    from loushang.harness.session import MissingSessionCwdError
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:

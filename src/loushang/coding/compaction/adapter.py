@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from functools import partial
 
-from loushang.agent import AgentMessage
-from loushang.ai.types import AssistantMessage
 from loushang.coding.compaction.profiles import (
     CODING_BRANCH_SUMMARY_PROFILE,
     CODING_COMPACTION_SUMMARY_PROFILE,
@@ -15,15 +14,39 @@ from loushang.harness.agent_transcript import (
     BranchSummaryOutput,
     CompactionPreparation,
     CompactionResult,
+    SummaryResourceOperationDecorationProfile,
+    decorate_summary_resource_operations,
 )
 from loushang.harness.agent_transcript.summarization import (
     SummaryCompleter,
-    SummaryDecoration,
     default_summary_completer,
     execute_branch_summary,
     execute_transcript_compaction,
 )
-from loushang.protocol import JSONValue
+
+CODING_SUMMARY_RESOURCE_OPERATION_PROFILE = (
+    SummaryResourceOperationDecorationProfile(
+        tool_operations={
+            "read": "read",
+            "write": "modified",
+            "edit": "modified",
+        },
+        detail_keys={
+            "read": "readFiles",
+            "modified": "modifiedFiles",
+        },
+        tags={
+            "read": "read-files",
+            "modified": "modified-files",
+        },
+        excluded_by={"read": ("modified",)},
+    )
+)
+
+_decorate_coding_summary = partial(
+    decorate_summary_resource_operations,
+    profile=CODING_SUMMARY_RESOURCE_OPERATION_PROFILE,
+)
 
 
 async def execute_coding_compaction(
@@ -48,7 +71,7 @@ async def execute_coding_compaction(
         signal=signal,
         custom_instructions=custom_instructions,
         completer=completer,
-        decorate=_coding_summary_decoration,
+        decorate=_decorate_coding_summary,
     )
 
 
@@ -77,74 +100,12 @@ async def execute_coding_branch_summary(
         replace_instructions=replace_instructions,
         reserve_tokens=reserve_tokens,
         completer=completer,
-        decorate=_coding_summary_decoration,
+        decorate=_decorate_coding_summary,
     )
 
 
-def _coding_summary_decoration(
-    messages: Sequence[AgentMessage],
-    existing_details: JSONValue,
-) -> SummaryDecoration:
-    file_details = _collect_file_operation_details(messages)
-    return SummaryDecoration(
-        suffix=_format_file_operations(file_details),
-        details=_merge_summary_details(existing_details, file_details),
-    )
-
-
-def _collect_file_operation_details(
-    messages: Sequence[AgentMessage],
-) -> dict[str, list[str]]:
-    read: set[str] = set()
-    written: set[str] = set()
-    edited: set[str] = set()
-    for message in messages:
-        if not isinstance(message, AssistantMessage):
-            continue
-        for block in message.content:
-            if getattr(block, "type", None) != "toolCall":
-                continue
-            arguments = getattr(block, "arguments", None)
-            if not isinstance(arguments, Mapping):
-                continue
-            path = arguments.get("path")
-            if not isinstance(path, str) or not path:
-                continue
-            if block.name == "read":
-                read.add(path)
-            elif block.name == "write":
-                written.add(path)
-            elif block.name == "edit":
-                edited.add(path)
-    modified = written | edited
-    return {
-        "readFiles": sorted(path for path in read if path not in modified),
-        "modifiedFiles": sorted(modified),
-    }
-
-
-def _format_file_operations(details: Mapping[str, Sequence[str]]) -> str:
-    sections: list[str] = []
-    read_files = details["readFiles"]
-    modified_files = details["modifiedFiles"]
-    if read_files:
-        sections.append("<read-files>\n" + "\n".join(read_files) + "\n</read-files>")
-    if modified_files:
-        sections.append(
-            "<modified-files>\n" + "\n".join(modified_files) + "\n</modified-files>"
-        )
-    return "" if not sections else "\n\n" + "\n\n".join(sections)
-
-
-def _merge_summary_details(
-    existing: JSONValue,
-    file_details: dict[str, list[str]],
-) -> JSONValue:
-    if not file_details["readFiles"] and not file_details["modifiedFiles"]:
-        return existing
-    if isinstance(existing, Mapping):
-        return {**existing, **file_details}
-    return file_details
-
-
-__all__ = ["execute_coding_branch_summary", "execute_coding_compaction"]
+__all__ = [
+    "CODING_SUMMARY_RESOURCE_OPERATION_PROFILE",
+    "execute_coding_branch_summary",
+    "execute_coding_compaction",
+]

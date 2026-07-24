@@ -1,19 +1,40 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+from loushang.harness.commands import (
+    CommandDescriptor,
+    CommandEffectKind,
+    CommandKind,
+)
+from loushang.harnesstui.commands.catalog import ConversationCommandCatalog
+from loushang.harnesstui.conversation.host import ConversationHostRoute
+from loushang.harnesstui.conversation.intents import (
+    FollowUpIntent,
+    PromptIntent,
+    SettingsIntent,
+)
 
 
-def test_coding_command_catalog_classifies_local_and_session_commands() -> None:
-    from loushang.coding.commands.catalog import CodingCommandCatalog
-    from loushang.harness.commands import CommandEffectKind, CommandKind
-    from loushang.harnesstui.conversation.host import ConversationHostRoute
-    from loushang.harnesstui.conversation.intents import PromptIntent, SettingsIntent
+def _command(
+    name: str,
+    *,
+    description: str,
+    source: str,
+    argument_hint: str | None = None,
+) -> CommandDescriptor[object]:
+    return CommandDescriptor(
+        name=name,
+        invocation_name=name,
+        description=description,
+        source=source,
+        argument_hint=argument_hint,
+    )
 
-    catalog = CodingCommandCatalog(
+
+def test_classifies_local_and_session_commands() -> None:
+    catalog = ConversationCommandCatalog(
         session_commands=lambda: [
-            SimpleNamespace(
-                name="name",
-                invocation_name="name",
+            _command(
+                "name",
                 description="Set session display name",
                 source="builtin",
                 argument_hint="<name>",
@@ -35,15 +56,14 @@ def test_coding_command_catalog_classifies_local_and_session_commands() -> None:
     assert name_effect.kind is CommandEffectKind.SESSION
     assert name_effect.command.kind is CommandKind.SESSION
     assert name_effect.command.name == "name"
-    assert name_effect.payload == {"invocation_name": "name", "args": "Project Alpha"}
+    assert name_effect.payload == {
+        "invocation_name": "name",
+        "args": "Project Alpha",
+    }
 
 
-def test_coding_command_catalog_leaves_plain_prompts_and_queue_routes_unowned() -> None:
-    from loushang.coding.commands.catalog import CodingCommandCatalog
-    from loushang.harnesstui.conversation.host import ConversationHostRoute
-    from loushang.harnesstui.conversation.intents import FollowUpIntent, PromptIntent
-
-    catalog = CodingCommandCatalog(session_commands=lambda: [])
+def test_leaves_plain_prompts_and_queue_routes_unowned() -> None:
+    catalog = ConversationCommandCatalog(session_commands=lambda: [])
 
     assert (
         catalog.effect_for_route(
@@ -68,11 +88,8 @@ def test_coding_command_catalog_leaves_plain_prompts_and_queue_routes_unowned() 
     )
 
 
-def test_coding_command_catalog_preserves_local_command_argument_rules() -> None:
-    from loushang.coding.commands.catalog import CodingCommandCatalog
-    from loushang.harness.commands import CommandKind
-
-    catalog = CodingCommandCatalog(session_commands=lambda: [])
+def test_preserves_local_command_argument_rules() -> None:
+    catalog = ConversationCommandCatalog(session_commands=lambda: [])
 
     terminal = catalog.lookup("/terminal")
     assert terminal is not None
@@ -84,17 +101,18 @@ def test_coding_command_catalog_preserves_local_command_argument_rules() -> None
     assert catalog.lookup("/terminal extra") is None
 
 
-def test_coding_command_catalog_lists_local_and_session_commands_once() -> None:
-    from loushang.coding.commands.catalog import CodingCommandCatalog
-    from loushang.harness.commands import CommandKind
-
-    catalog = CodingCommandCatalog(
+def test_lists_local_and_session_commands_once() -> None:
+    catalog = ConversationCommandCatalog(
         session_commands=lambda: [
-            SimpleNamespace(
-                name="report", description="Session report", source="builtin"
+            _command(
+                "report",
+                description="Session report",
+                source="builtin",
             ),
-            SimpleNamespace(
-                name="deploy", description="Deploy app", source="extension"
+            _command(
+                "deploy",
+                description="Deploy app",
+                source="extension",
             ),
         ]
     )

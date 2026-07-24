@@ -9,7 +9,9 @@ from loushang.harness.resources.loader import (
     ResourceLoader,
     ResourceLoaderProfile,
 )
-from loushang.harness.resources.packages.catalog import empty_package_summary
+from loushang.harness.resources.packages.catalog import (
+    summarize_profiled_package_resources,
+)
 from loushang.harness.resources.packages.materializer import (
     PackageMaterializer,
     PackageSourcePolicy,
@@ -64,7 +66,9 @@ class CodingPackageMaterializer(PackageMaterializer):
         **kwargs: Any,
     ) -> None:
         if security_policy is None:
-            from loushang.coding.policy.package_security import PackageSecurityPolicy
+            from loushang.harness.resources.packages.security import (
+                PackageSecurityPolicy,
+            )
 
             security_policy = PackageSecurityPolicy()
         super().__init__(
@@ -97,15 +101,12 @@ def summarize_coding_package_root(
 ) -> PackageResourceSummary:
     """Summarize package resources with Coding's loader profile."""
 
-    filters: dict[str | Path, PackageSourceConfig] | None = (
-        {package_root: package_source} if package_source is not None else None
+    return summarize_profiled_package_resources(
+        package_root,
+        cwd,
+        package_source,
+        profile=CODING_RESOURCE_PROFILE,
     )
-    loader = CodingResourceLoader(
-        package_roots=(package_root,), package_source_filters=filters
-    )
-    loader.discover_resources(cwd)
-    summaries = loader.get_package_resource_summaries()
-    return summaries[0] if summaries else empty_package_summary(package_root)
 
 
 def collect_coding_package_entries(**kwargs: Any) -> list[dict[str, object]]:

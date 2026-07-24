@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import inspect
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Generic, Protocol, TextIO, TypeVar
 
+from loushang.harness.session.model_selection import get_session_model_identity
+from loushang.harnesstui.commands.catalog import (
+    ConversationCommandCatalog,
+    snapshot_conversation_command_catalog,
+)
+from loushang.harnesstui.commands.presentation import format_commands
 from loushang.harnesstui.conversation.agent_binding import (
     agent_session_history_records,
     build_agent_plain_conversation_projection,
@@ -50,15 +57,29 @@ from loushang.harnesstui.conversation.session_view import (
 )
 from loushang.harnesstui.conversation.source import MaterializedTranscriptSource
 from loushang.harnesstui.conversation.startup import ConversationStartupView
+from loushang.harnesstui.selection.binding import (
+    SessionModelSelectorSurfaceProfile,
+    build_session_model_selector_surface,
+    format_available_session_models,
+)
 from loushang.harnesstui.status.persistence import (
     statusline_settings_from_store,
     statusline_settings_persistence_callback,
 )
 from loushang.harnesstui.status.provider import StatusProvider
+from loushang.harnesstui.surface.controller import ApprovalSurfaceDecision
+from loushang.harnesstui.surface.factory import command_catalog_surface_view
+from loushang.harnesstui.surface.workflow import (
+    ScreenSurfaceCommandCatalog,
+    ScreenSurfaceWorkflowPorts,
+    normalize_standard_conversation_surface_command,
+    strip_available_models_heading,
+)
 from loushang.tui.transcript import DisplayRecord
 
 Cleanup = Callable[[], None]
 SurfaceT = TypeVar("SurfaceT", bound=PreparedScreenSurfacePort)
+AgentScreenApprovalHandler = Callable[[dict[str, object]], Awaitable[bool | None]]
 
 
 def _no_cleanup() -> None:
@@ -170,6 +191,189 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
         )
 
 
+def build_agent_screen_surface_workflow_ports(
+    session: object,
+    *,
+    select_model: Callable[[str], Awaitable[str]],
+    set_model_label: Callable[[str], None],
+    build_settings_content: Callable[[], Awaitable[object]],
+    terminal_diagnostics: Callable[[], str],
+    hotkeys: Callable[[], str],
+    on_approval: AgentScreenApprovalHandler | None = None,
+    command_catalog: ScreenSurfaceCommandCatalog | None = None,
+    model_selector_profile: SessionModelSelectorSurfaceProfile = (
+        SessionModelSelectorSurfaceProfile()
+    ),
+) -> ScreenSurfaceWorkflowPorts:
+    """Bind a structural Agent session to the existing screen-surface workflow."""
+
+    session_commands = _agent_session_commands_provider(session)
+    live_catalog = command_catalog or ConversationCommandCatalog()
+
+    async def presentation_command_catalog() -> ScreenSurfaceCommandCatalog:
+        if command_catalog is not None:
+            return command_catalog
+        return await snapshot_conversation_command_catalog(session_commands)
+
+    async def format_session_commands(query: str) -> str:
+        catalog = await presentation_command_catalog()
+        return format_commands(catalog.commands(), query=query)
+
+    async def build_command_selector():
+        return command_catalog_surface_view(await presentation_command_catalog())
+
+    async def refresh_model_label() -> None:
+        label = (await get_session_model_identity(session)).label
+        if label is not None:
+            set_model_label(label)
+
+    async def decide_approval(
+        payload: ApprovalSurfaceDecision | None = None,
+    ) -> bool | None:
+        if on_approval is None:
+            return True
+        event: dict[str, object] = {}
+        if payload is not None:
+            event = {
+                "action_id": payload.action_id,
+                "action": payload.action,
+                "approved": payload.approved,
+                "raw_note": payload.raw_note,
+            }
+        return await on_approval(event)
+
+    return ScreenSurfaceWorkflowPorts(
+        select_model=select_model,
+        refresh_model_label=refresh_model_label,
+        command_catalog=live_catalog,
+        normalize_command=normalize_standard_conversation_surface_command,
+        format_models=lambda query: format_available_session_models(
+            session,
+            query=query,
+        ),
+        models_info_body=strip_available_models_heading,
+        format_commands=format_session_commands,
+        build_model_selector=lambda: build_session_model_selector_surface(
+            session,
+            profile=model_selector_profile,
+        ),
+        build_command_selector=build_command_selector,
+        build_settings_content=build_settings_content,
+        terminal_diagnostics=terminal_diagnostics,
+        hotkeys=hotkeys,
+        decide_approval=decide_approval,
+    )
+
+
+def _agent_session_commands_provider(
+    session: object,
+) -> Callable[[], object] | None:
+    getter = getattr(session, "list_commands", None)
+    return getter if callable(getter) else None
+
+
+class AgentScreenApprovalSurface(Protocol):
+    """Approval controls supplied by an Agent conversation screen surface."""
+
+    def open_approval(
+        self,
+        *,
+        action: str,
+        risk: str = "",
+        action_id: str | None = None,
+    ) -> None: ...
+
+    def dismiss_approval(self, action_id: str) -> None: ...
+
+    def clear_approval_surfaces(self) -> None: ...
+
+
+async def handle_agent_screen_approval(
+    session: object,
+    event: dict[str, object],
+) -> bool:
+    """Forward a screen approval decision to a supporting Agent session."""
+
+    sink = getattr(session, "handle_screen_approval", None)
+    if not callable(sink):
+        return False
+    result = sink(event)
+    if inspect.isawaitable(result):
+        result = await result
+    return bool(result)
+
+
+def bind_agent_screen_approval_presenter(
+    session: object,
+    surface: AgentScreenApprovalSurface,
+    *,
+    session_provider: Callable[[], object] | None = None,
+    default_action: str = "Approve tool call",
+) -> Cleanup:
+    """Bind an Agent session approval presenter to an existing screen surface."""
+
+    setter = getattr(session, "set_approval_presenter", None)
+    if not callable(setter):
+        return _no_cleanup
+
+    def present(payload: dict[str, object]) -> None:
+        action = payload.get("action")
+        risk = payload.get("risk")
+        action_id = payload.get("action_id")
+        surface.open_approval(
+            action=action if isinstance(action, str) else default_action,
+            risk=risk if isinstance(risk, str) else "",
+            action_id=action_id if isinstance(action_id, str) else None,
+        )
+
+    setter(present, dismisser=surface.dismiss_approval)
+
+    def unbind() -> None:
+        target = session_provider() if session_provider is not None else session
+        _unbind_agent_screen_approval_presenter(target)
+        if target is not session:
+            _unbind_agent_screen_approval_presenter(session)
+
+    return unbind
+
+
+def current_agent_runtime_session(runtime: object, fallback: object) -> object:
+    """Resolve the current runtime session without depending on a Product host."""
+
+    getter = getattr(runtime, "get_current_session", None)
+    if callable(getter):
+        current = getter()
+        if current is not None:
+            return current
+    current = getattr(runtime, "current_session", None)
+    return current if current is not None else fallback
+
+
+def bind_agent_screen_session_transition(
+    runtime: object,
+    surface: AgentScreenApprovalSurface,
+) -> Cleanup:
+    """Clear approval surfaces before or after a runtime session transition."""
+
+    subscribe = getattr(runtime, "subscribe_after_session_invalidate", None)
+    if not callable(subscribe):
+        subscribe = getattr(runtime, "subscribe_before_session_invalidate", None)
+    if not callable(subscribe):
+        return _no_cleanup
+    unsubscribe = subscribe(surface.clear_approval_surfaces)
+    return unsubscribe if callable(unsubscribe) else _no_cleanup
+
+
+def _unbind_agent_screen_approval_presenter(session: object) -> None:
+    host_unbind = getattr(session, "_unbind_approval_presenter_host", None)
+    if callable(host_unbind):
+        host_unbind()
+        return
+    setter = getattr(session, "set_approval_presenter", None)
+    if callable(setter):
+        setter(None)
+
+
 PlainAppFactory = Callable[
     [object, StableEmit],
     PlainConversationApp,
@@ -260,5 +464,12 @@ def _trace_installed_history(
 
 __all__ = [
     "AgentPlainConversationApplicationBinding",
+    "AgentScreenApprovalHandler",
+    "AgentScreenApprovalSurface",
     "AgentScreenConversationApplicationBinding",
+    "bind_agent_screen_approval_presenter",
+    "bind_agent_screen_session_transition",
+    "build_agent_screen_surface_workflow_ports",
+    "current_agent_runtime_session",
+    "handle_agent_screen_approval",
 ]

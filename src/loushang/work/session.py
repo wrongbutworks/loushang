@@ -221,9 +221,7 @@ class SessionTurnExecutor:
         try:
             messages = (turn.text, *turn.follow_up_messages)
             for message_index, text in enumerate(messages):
-                active_turn = (
-                    turn if message_index == 0 else SessionWorkTurn(text=text)
-                )
+                active_turn = turn if message_index == 0 else SessionWorkTurn(text=text)
                 await _call_turn_hook(
                     self.before_turn,
                     active_turn,
@@ -283,9 +281,7 @@ class SessionTurnExecutor:
         if streaming_behavior is not None and (
             not isinstance(streaming_behavior, str) or not streaming_behavior
         ):
-            raise ValueError(
-                "streaming_behavior must be a non-empty string when set"
-            )
+            raise ValueError("streaming_behavior must be a non-empty string when set")
         return SessionWorkTurn(
             text=text,
             streaming_behavior=streaming_behavior,
@@ -495,6 +491,22 @@ class SessionWorkRuntime:
         )
 
 
+async def submit_session_turn(
+    session: SessionPromptPort,
+    turn: SessionWorkTurn,
+    *,
+    session_id: str = "",
+    work_runtime: (SessionWorkRuntime | Callable[[], SessionWorkRuntime] | None) = None,
+) -> WorkRun | None:
+    """Submit directly to a session or record the turn through Work."""
+
+    if work_runtime is None:
+        await _prompt_turn(session, turn)
+        return None
+    resolved_runtime = work_runtime() if callable(work_runtime) else work_runtime
+    return await resolved_runtime.submit_turn(turn, session_id=session_id)
+
+
 class SessionWorkHostPort:
     """Bind generic host turn arguments to a session Work runtime."""
 
@@ -552,7 +564,7 @@ class SessionWorkHostPort:
         after_turn: Callable[[object, int, int], Awaitable[None]],
     ) -> None:
         await self._runtime().submit_plan(
-            tuple(_require_session_work_turn(turn) for turn in turns),
+            tuple(require_session_work_turn(turn) for turn in turns),
             session_id=session_id,
             after_turn=after_turn,
             wait_for_idle_after_prompt=True,
@@ -592,7 +604,9 @@ def project_prepared_session_work_turns(
     )
 
 
-def _require_session_work_turn(value: object) -> SessionWorkTurn:
+def require_session_work_turn(value: object) -> SessionWorkTurn:
+    """Require the canonical turn shape at an untyped Product boundary."""
+
     if not isinstance(value, SessionWorkTurn):
         raise TypeError("planned execution requires SessionWorkTurn values")
     return value
@@ -659,4 +673,6 @@ __all__ = [
     "SessionWorkRuntime",
     "SessionWorkTurn",
     "project_prepared_session_work_turns",
+    "require_session_work_turn",
+    "submit_session_turn",
 ]

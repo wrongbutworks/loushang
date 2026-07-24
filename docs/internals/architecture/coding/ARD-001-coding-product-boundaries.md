@@ -202,9 +202,11 @@ vertical，不是 `work` 的协作语义层名称。
 因此：
 
 - `coding` 可以直接使用 `loushang.harness` 执行普通 headless agent run
-- `coding` 可以使用 `loushang.harness.commands` 的 product-neutral
-  command/effect value types，但 `coding.commands.catalog`、slash parsing、
-  session command execution 和 UI command handlers 仍归 `loushang.coding`
+- `coding` 使用 `loushang.harness.commands` 的 product-neutral
+  command/effect/catalog 能力，并通过
+  `loushang.harnesstui.commands.catalog.ConversationCommandCatalog`
+  绑定会话命令；
+  Coding 只保留产品命令选择、最终 UI action 和产品措辞
 - `coding` 可以直接写入或投影到 `loushang.work`
 - `method` 是结构化 / guided work 的可选组织层，不是所有 coding turn 的必经层
 - `coding` 不应把自己的 tools、slash commands、`AGENTS.md` prompt

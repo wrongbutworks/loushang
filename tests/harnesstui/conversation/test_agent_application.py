@@ -1,17 +1,26 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import nullcontext
 from types import SimpleNamespace
 from typing import Any, cast
 
+from loushang.ai.model import ModelSelection
+from loushang.harness.commands import CommandDescriptor
 from loushang.harnesstui.conversation.agent_application import (
     AgentPlainConversationApplicationBinding,
     AgentScreenConversationApplicationBinding,
+    bind_agent_screen_approval_presenter,
+    bind_agent_screen_session_transition,
+    build_agent_screen_surface_workflow_ports,
+    current_agent_runtime_session,
+    handle_agent_screen_approval,
 )
 from loushang.harnesstui.conversation.host import (
     ConversationScreenRunProfile,
 )
 from loushang.harnesstui.conversation.startup import ConversationStartupView
+from loushang.harnesstui.surface.controller import ApprovalSurfaceDecision
 
 
 class _Manager:
@@ -113,6 +122,151 @@ def test_agent_screen_application_binding_prepares_shared_state() -> None:
             },
         )
     ]
+
+
+def test_agent_screen_surface_ports_bind_structural_research_session() -> None:
+    labels: list[str] = []
+    approvals: list[dict[str, object]] = []
+
+    class ResearchSession:
+        def get_model_selection(self) -> ModelSelection:
+            return ModelSelection(provider="research", model_id="analyst")
+
+        def get_available_models(self) -> tuple[ModelSelection, ...]:
+            return (
+                ModelSelection(provider="research", model_id="analyst"),
+                ModelSelection(provider="research", model_id="reviewer"),
+            )
+
+        async def list_commands(self) -> tuple[CommandDescriptor[object], ...]:
+            return (
+                CommandDescriptor(
+                    name="report",
+                    description="Build a research report",
+                    source="research",
+                ),
+            )
+
+    async def select_model(value: str) -> str:
+        return f"Selected {value}"
+
+    async def build_settings_content() -> object:
+        return {"product": "research"}
+
+    async def on_approval(event: dict[str, object]) -> bool:
+        approvals.append(event)
+        return True
+
+    ports = build_agent_screen_surface_workflow_ports(
+        ResearchSession(),
+        select_model=select_model,
+        set_model_label=labels.append,
+        build_settings_content=build_settings_content,
+        terminal_diagnostics=lambda: "research terminal",
+        hotkeys=lambda: "research hotkeys",
+        on_approval=on_approval,
+    )
+
+    assert asyncio.run(ports.format_commands("report")) == (
+        "Commands:\n/report - Build a research report (research)"
+    )
+    assert "research/analyst" in asyncio.run(ports.format_models(""))
+    assert asyncio.run(ports.build_model_selector()).purpose == "model"
+    assert asyncio.run(ports.build_command_selector()).purpose == "command"
+    assert asyncio.run(ports.build_settings_content()) == {"product": "research"}
+    asyncio.run(ports.refresh_model_label())
+    assert labels == ["research/analyst"]
+
+    assert ports.decide_approval is not None
+    assert asyncio.run(
+        ports.decide_approval(
+            ApprovalSurfaceDecision(
+                action_id="research-approval",
+                action="Publish report",
+                approved=True,
+                raw_note="approved",
+            )
+        )
+    )
+    assert approvals == [
+        {
+            "action_id": "research-approval",
+            "action": "Publish report",
+            "approved": True,
+            "raw_note": "approved",
+        }
+    ]
+
+
+def test_agent_screen_approval_binding_uses_structural_product_ports() -> None:
+    presented: list[dict[str, object]] = []
+    cleared: list[str] = []
+    subscriptions: list[object] = []
+
+    class Session:
+        presenter: object | None = None
+
+        def set_approval_presenter(
+            self,
+            presenter: object | None,
+            *,
+            dismisser: object | None = None,
+        ) -> None:
+            self.presenter = presenter
+            self.dismisser = dismisser
+
+        async def handle_screen_approval(self, event: dict[str, object]) -> bool:
+            return event.get("approved") is True
+
+    class Surface:
+        def open_approval(self, **payload: object) -> None:
+            presented.append(payload)
+
+        def dismiss_approval(self, action_id: str) -> None:
+            presented.append({"dismissed": action_id})
+
+        def clear_approval_surfaces(self) -> None:
+            cleared.append("cleared")
+
+    class Runtime:
+        current_session: object | None
+
+        def __init__(self, session: object) -> None:
+            self.current_session = session
+
+        def subscribe_after_session_invalidate(self, callback: object):
+            subscriptions.append(callback)
+            return lambda: subscriptions.append("unsubscribed")
+
+    session = Session()
+    surface = Surface()
+    runtime = Runtime(session)
+    unbind_presenter = bind_agent_screen_approval_presenter(
+        session,
+        surface,
+        default_action="Approve operation",
+    )
+    unbind_transition = bind_agent_screen_session_transition(runtime, surface)
+
+    assert callable(session.presenter)
+    session.presenter({"action_id": "approval-1"})  # type: ignore[operator]
+    assert presented == [
+        {
+            "action": "Approve operation",
+            "risk": "",
+            "action_id": "approval-1",
+        }
+    ]
+    assert asyncio.run(handle_agent_screen_approval(session, {"approved": True}))
+    assert current_agent_runtime_session(runtime, object()) is session
+    assert callable(subscriptions[0])
+    subscriptions[0]()  # type: ignore[operator]
+    assert cleared == ["cleared"]
+
+    unbind_transition()
+    unbind_presenter()
+    assert subscriptions[-1] == "unsubscribed"
+    assert session.presenter is None
 
 
 def test_agent_plain_application_binding_prepares_projection_and_header() -> None:

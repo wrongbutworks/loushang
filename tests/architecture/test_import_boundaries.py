@@ -874,16 +874,112 @@ def test_package_projection_is_harness_owned_and_product_free() -> None:
     projection_source = Path(
         "src/loushang/harness/resources/packages/projection.py"
     ).read_text(encoding="utf-8")
+    catalog_source = Path(
+        "src/loushang/harness/resources/packages/catalog.py"
+    ).read_text(encoding="utf-8")
     coding_resources = Path("src/loushang/coding/resource_runtime.py").read_text(
         encoding="utf-8"
     )
 
     assert "loushang.coding" not in projection_source
+    assert "loushang.coding" not in catalog_source
     assert "project_package_entry" in projection_source
     assert "serialize_package_materialization_record" in projection_source
     assert "collect_projected_package_entries" in projection_source
+    assert "summarize_profiled_package_resources" in catalog_source
     assert "summarize_coding_package_root" in coding_resources
+    assert "summarize_profiled_package_resources" in coding_resources
+    assert "discover_resources" not in coding_resources
     assert not Path("src/loushang/coding/package_projection.py").exists()
+
+
+def test_reusable_product_bindings_use_existing_shared_owners() -> None:
+    workspace_factory = Path(
+        "src/loushang/harness/tools/workspace/factory.py"
+    ).read_text(encoding="utf-8")
+    workspace_registry = Path(
+        "src/loushang/harness/tools/workspace/registry.py"
+    ).read_text(encoding="utf-8")
+    coding_tools = Path("src/loushang/coding/tool_pack.py").read_text(encoding="utf-8")
+    agent_application = Path(
+        "src/loushang/harnesstui/conversation/agent_application.py"
+    ).read_text(encoding="utf-8")
+    coding_ui = Path("src/loushang/coding/ui/mode.py").read_text(encoding="utf-8")
+    coding_surfaces = Path("src/loushang/coding/ui/screen_surfaces.py").read_text(
+        encoding="utf-8"
+    )
+    coding_session = Path("src/loushang/coding/session/agent_session.py").read_text(
+        encoding="utf-8"
+    )
+    coding_runtime = Path(
+        "src/loushang/coding/runtime/agent_session_runtime.py"
+    ).read_text(encoding="utf-8")
+
+    assert "class WorkspaceToolProfile" in workspace_factory
+    assert "def register_profile" in workspace_registry
+    assert "WorkspaceToolProfile" in coding_tools
+    assert "resolve_tool_contributions" not in coding_tools
+    assert "handle_agent_screen_approval" in agent_application
+    assert "bind_agent_screen_approval_presenter" in coding_ui
+    assert "build_agent_screen_surface_workflow_ports" in agent_application
+    assert "build_agent_screen_surface_workflow_ports" in coding_surfaces
+    for duplicate in (
+        "snapshot_conversation_command_catalog",
+        "format_available_session_models",
+        "get_session_model_identity",
+        "ApprovalSurfaceDecision",
+    ):
+        assert duplicate not in coding_surfaces
+    assert not Path("src/loushang/coding/policy/tui.py").exists()
+    assert "async def _sleep_for_retry" not in coding_session
+    assert "sleep_for_retry" in coding_session
+    assert "MissingSessionCwdIssue" not in coding_runtime
+    assert "_coding_missing_cwd_error" not in coding_runtime
+
+
+def test_plain_services_and_work_bindings_remove_coding_duplication() -> None:
+    agent_plain = Path(
+        "src/loushang/harnesstui/conversation/agent_plain_app.py"
+    ).read_text(encoding="utf-8")
+    coding_plain = Path("src/loushang/coding/ui/plain_app.py").read_text(
+        encoding="utf-8"
+    )
+    session_bootstrap = Path("src/loushang/harness/session/bootstrap.py").read_text(
+        encoding="utf-8"
+    )
+    coding_bootstrap = Path("src/loushang/coding/bootstrap.py").read_text(
+        encoding="utf-8"
+    )
+    work_session = Path("src/loushang/work/session.py").read_text(encoding="utf-8")
+    coding_prompt = Path("src/loushang/coding/prompt_command.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "build_agent_plain_conversation_ports" in agent_plain
+    assert "build_agent_plain_conversation_ports" in coding_plain
+    for duplicate in (
+        "ConversationCommandCatalog",
+        "snapshot_conversation_command_catalog",
+        "format_available_session_models",
+        "AgentPlainConversationPorts",
+    ):
+        assert duplicate not in coding_plain
+
+    assert "prepare_agent_session_services" in session_bootstrap
+    assert "prepare_standard_agent_session_services" in coding_bootstrap
+    assert "bootstrap_runtime.prepare" not in coding_bootstrap
+    assert "service components cannot be overridden" not in coding_bootstrap
+
+    assert "submit_session_turn" in work_session
+    assert "require_session_work_turn" in work_session
+    assert "submit_session_turn" in coding_prompt
+    assert "require_session_work_turn" in coding_prompt
+    for duplicate in (
+        "def _run_prompt_session",
+        "def _prompt_session",
+        "def _require_session_work_turn",
+    ):
+        assert duplicate not in coding_prompt
 
 
 def test_channel_product_host_stdio_and_shutdown_helpers_are_neutral() -> None:
@@ -2419,9 +2515,6 @@ def test_product_configuration_runtime_boundary_is_documented_and_adopted() -> N
             "loushang.harness.config.SchemaConfigCodec",
             "loushang.harness.config.ScopedConfigRuntime",
         },
-        Path("src/loushang/coding/control/config_value.py"): {
-            "loushang.harness.config.values.ConfigValueResolver",
-        },
         Path("src/loushang/coding/bootstrap.py"): {
             "loushang.harness.session.AgentProductConstructionRuntime",
         },
@@ -2435,6 +2528,20 @@ def test_product_configuration_runtime_boundary_is_documented_and_adopted() -> N
     assert missing == []
     assert not Path("src/loushang/coding/control/settings_manager.py").exists()
     assert not Path("src/loushang/coding/control/types.py").exists()
+    assert not Path("src/loushang/coding/control/config_value.py").exists()
+    config_values = Path("src/loushang/harness/config/values.py").read_text(
+        encoding="utf-8"
+    )
+    for symbol in ("class ConfigValueResolver",):
+        assert symbol in config_values
+    subprocess_values = Path(
+        "src/loushang/harness/config/subprocess_values.py"
+    ).read_text(encoding="utf-8")
+    for symbol in (
+        "class SubprocessConfigValueResolver",
+        "def resolve_subprocess_config_value",
+    ):
+        assert symbol in subprocess_values
     assert CodingControlConfig is ControlConfig
     assert CodingSettingsManager is SettingsManager
 
@@ -2595,12 +2702,12 @@ def test_harness_extension_runtime_core_boundary_is_documented() -> None:
     required_phrases = {
         "Harness Extension Runtime Core Boundary",
         "`loushang.harness.extensions`",
-            "`ExtensionContributionAPI`",
-            "`ExtensionRuntime`",
-            "`ExtensionSessionRuntime`",
-            "The optional Agent profile owns",
-            "Products keep",
-            "neutral modules directly under `loushang.harness.extensions` must not",
+        "`ExtensionContributionAPI`",
+        "`ExtensionRuntime`",
+        "`ExtensionSessionRuntime`",
+        "The optional Agent profile owns",
+        "Products keep",
+        "neutral modules directly under `loushang.harness.extensions` must not",
     }
     assert (
         sorted(phrase for phrase in required_phrases if phrase not in design_text) == []
@@ -3383,6 +3490,7 @@ def test_coding_legacy_shared_utility_facades_are_extinct() -> None:
         "loushang.coding.extensions",
         "loushang.coding.frontmatter",
         "loushang.coding.policy.types",
+        "loushang.coding.policy.tui",
         "loushang.coding.prompt.templates",
         "loushang.coding.session.context_usage",
         "loushang.coding.types",
@@ -3772,8 +3880,9 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
     assert CodingPromptPreflightResult is PromptPreflightResult
 
     expected_imports = {
-        Path("src/loushang/coding/commands/catalog.py"): {
+        Path("src/loushang/harnesstui/commands/catalog.py"): {
             "loushang.harness.commands.CommandCatalog",
+            "loushang.harness.commands.MixedCommandCatalog",
         },
         Path("src/loushang/coding/bootstrap.py"): {
             "loushang.harness.session.AgentProductConstructionRuntime",
@@ -3793,6 +3902,8 @@ def test_product_capability_composition_core_is_documented_and_adopted() -> None
             f"{path.as_posix()} missing {name}" for name in sorted(required - imports)
         )
     assert missing == []
+    assert not Path("src/loushang/coding/commands/catalog.py").exists()
+    assert not Path("src/loushang/coding/commands/__init__.py").exists()
 
     product_neutral_boundaries = (
         ImportBoundary(

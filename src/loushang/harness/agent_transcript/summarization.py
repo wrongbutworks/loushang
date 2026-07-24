@@ -9,12 +9,13 @@ code-file activity; it does not reimplement the transcript algorithm.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
+from types import MappingProxyType
 from typing import cast
 
 from loushang.agent.types import AgentMessage
-from loushang.ai import ApiKeyAuth, CallOptions, Context, complete
-from loushang.ai.types import TextPart, UserMessage
+from loushang.ai import ApiKeyAuth, CallOptions, Context, Model, complete
+from loushang.ai.types import AssistantMessage, TextPart, UserMessage
 from loushang.harness.agent_transcript.interaction import BranchSummaryOutput
 from loushang.harness.agent_transcript.maintenance import (
     CompactionPreparation,
@@ -25,7 +26,11 @@ from loushang.harness.agent_transcript.profile import (
     record_to_context_item,
 )
 from loushang.harness.agent_transcript.types import AgentTranscriptRecord
-from loushang.harness.context import SummaryProfile, build_summary_prompt
+from loushang.harness.context import (
+    SummaryProfile,
+    SummaryResourceOperations,
+    build_summary_prompt,
+)
 from loushang.harness.conversation import ConversationRecord
 from loushang.protocol import JSONValue, require_json_value
 
@@ -56,6 +61,133 @@ class SummaryDecoration:
 
 
 SummaryDecorator = Callable[[Sequence[AgentMessage], JSONValue], SummaryDecoration]
+
+
+@dataclass(frozen=True)
+class SummaryResourceOperationDecorationProfile:
+    """Project Agent tool calls into structured summary resource evidence."""
+
+    tool_operations: Mapping[str, str]
+    detail_keys: Mapping[str, str]
+    tags: Mapping[str, str]
+    excluded_by: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    resource_argument: str = "path"
+
+    def __post_init__(self) -> None:
+        tool_operations = _non_empty_string_mapping(
+            self.tool_operations,
+            name="tool_operations",
+        )
+        detail_keys = _non_empty_string_mapping(
+            self.detail_keys,
+            name="detail_keys",
+        )
+        tags = _non_empty_string_mapping(self.tags, name="tags")
+        operations = frozenset(tool_operations.values())
+        if operations != detail_keys.keys() or operations != tags.keys():
+            raise ValueError(
+                "summary resource operation profile must declare matching "
+                "operations, detail keys, and tags"
+            )
+        excluded_by: dict[str, tuple[str, ...]] = {}
+        for operation, exclusions in self.excluded_by.items():
+            if operation not in operations:
+                raise ValueError(
+                    "summary resource operation exclusions must target a "
+                    "declared operation"
+                )
+            normalized = tuple(exclusions)
+            if not normalized or any(item not in operations for item in normalized):
+                raise ValueError(
+                    "summary resource operation exclusions must reference "
+                    "declared operations"
+                )
+            excluded_by[operation] = normalized
+        if not isinstance(self.resource_argument, str) or not self.resource_argument:
+            raise TypeError("summary resource argument must be a non-empty string")
+        object.__setattr__(
+            self,
+            "tool_operations",
+            MappingProxyType(tool_operations),
+        )
+        object.__setattr__(self, "detail_keys", MappingProxyType(detail_keys))
+        object.__setattr__(self, "tags", MappingProxyType(tags))
+        object.__setattr__(self, "excluded_by", MappingProxyType(excluded_by))
+
+
+def collect_summary_resource_operations(
+    messages: Sequence[AgentMessage],
+    *,
+    profile: SummaryResourceOperationDecorationProfile,
+) -> SummaryResourceOperations:
+    """Collect ordered, deduplicated resource operations from Agent tool calls."""
+
+    resources: dict[str, set[str]] = {
+        operation: set() for operation in profile.detail_keys
+    }
+    for message in messages:
+        if not isinstance(message, AssistantMessage):
+            continue
+        for block in message.content:
+            operation = profile.tool_operations.get(getattr(block, "name", ""))
+            if operation is None:
+                continue
+            arguments = getattr(block, "arguments", None)
+            if not isinstance(arguments, Mapping):
+                continue
+            resource = arguments.get(profile.resource_argument)
+            if isinstance(resource, str) and resource:
+                resources[operation].add(resource)
+
+    for operation, excluded_operations in profile.excluded_by.items():
+        excluded_resources: set[str] = set()
+        for excluded_operation in excluded_operations:
+            excluded_resources.update(resources[excluded_operation])
+        resources[operation].difference_update(excluded_resources)
+    return SummaryResourceOperations.from_mapping(
+        {
+            operation: tuple(sorted(operation_resources))
+            for operation, operation_resources in resources.items()
+        }
+    )
+
+
+def decorate_summary_resource_operations(
+    messages: Sequence[AgentMessage],
+    existing_details: JSONValue,
+    *,
+    profile: SummaryResourceOperationDecorationProfile,
+) -> SummaryDecoration:
+    """Render structured resource evidence into summary suffix and details."""
+
+    operations = collect_summary_resource_operations(messages, profile=profile)
+    projected_details: dict[str, JSONValue] = {
+        profile.detail_keys[item.operation]: require_json_value(
+            list(item.resources),
+            name=f"summary resource operation {item.operation!r}",
+        )
+        for item in operations.operations
+    }
+    suffix_sections = [
+        f"<{profile.tags[item.operation]}>\n"
+        + "\n".join(item.resources)
+        + f"\n</{profile.tags[item.operation]}>"
+        for item in operations.operations
+        if item.resources
+    ]
+    non_empty_details = {
+        key: resources for key, resources in projected_details.items() if resources
+    }
+    if not non_empty_details:
+        details = existing_details
+    elif isinstance(existing_details, Mapping):
+        details = {**existing_details, **projected_details}
+    else:
+        details = projected_details
+    return SummaryDecoration(
+        suffix="" if not suffix_sections else "\n\n" + "\n\n".join(suffix_sections),
+        details=details,
+    )
 
 
 @dataclass(frozen=True)
@@ -361,7 +493,7 @@ async def _complete_text(
     context: Context,
     options: CallOptions | None,
 ) -> str:
-    message = await complete(model, context, options)
+    message = await complete(cast(Model, model), context, options)
     return "".join(
         part.text
         for part in getattr(message, "content", ())
@@ -494,6 +626,25 @@ def _json_details(value: object | None) -> JSONValue:
     return require_json_value(value, name="compaction preparation details")
 
 
+def _non_empty_string_mapping(
+    value: Mapping[str, str],
+    *,
+    name: str,
+) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{name} must be a mapping")
+    normalized: dict[str, str] = {}
+    for key, item in value.items():
+        if not isinstance(key, str) or not key:
+            raise TypeError(f"{name} keys must be non-empty strings")
+        if not isinstance(item, str) or not item:
+            raise TypeError(f"{name} values must be non-empty strings")
+        normalized[key] = item
+    if not normalized:
+        raise ValueError(f"{name} must not be empty")
+    return normalized
+
+
 def _is_aborted(signal: object | None) -> bool:
     return bool(signal is not None and getattr(signal, "aborted", False))
 
@@ -505,6 +656,9 @@ __all__ = [
     "SummaryDecoration",
     "SummaryDecorator",
     "SummaryCompleter",
+    "SummaryResourceOperationDecorationProfile",
+    "collect_summary_resource_operations",
+    "decorate_summary_resource_operations",
     "default_summary_completer",
     "collect_branch_summary_delta",
     "estimate_agent_message_tokens",

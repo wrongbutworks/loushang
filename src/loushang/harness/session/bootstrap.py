@@ -10,6 +10,7 @@ from typing import Generic, TypeVar
 from loushang.harness.bootstrap import (
     BootstrapActivationPlan,
     BootstrapActivationRuntime,
+    ResourceBootstrapRuntime,
     StandardExtensionRuntime,
     create_standard_resource_bootstrap_runtime,
     register_resource_extension_tools,
@@ -417,6 +418,63 @@ class AgentSessionServices(Generic[ServicesT, BundleT, ExtensionT, DiagnosticRec
         return getattr(self.services, "exec_service")
 
 
+def prepare_agent_session_services(
+    *,
+    cwd: str | Path,
+    create_services: Callable[[Path], ServicesT],
+    build_resource_bootstrap: Callable[
+        [ServicesT],
+        ResourceBootstrapRuntime[
+            ResourceLoaderT,
+            BundleT,
+            ExtensionT,
+            DiagnosticRecordT,
+        ],
+    ],
+    get_resource_loader: Callable[[ServicesT], ResourceLoaderT],
+    services: ServicesT | None = None,
+    service_overrides: Mapping[str, object | None] | None = None,
+    resource_loader_options: Mapping[str, object] | None = None,
+    configure_resource_loader: (
+        Callable[[ResourceLoaderT, Mapping[str, object]], None] | None
+    ) = None,
+    extension_flag_values: ExtensionFlagValues | None = None,
+) -> AgentSessionServices[ServicesT, BundleT, ExtensionT, DiagnosticRecordT]:
+    """Prepare cwd-bound session services with the existing resource runtime."""
+
+    resolved_cwd = Path(cwd).expanduser().resolve(strict=False)
+    if services is None:
+        resolved_services = create_services(resolved_cwd)
+    else:
+        overrides = service_overrides or {}
+        if any(value is not None for value in overrides.values()):
+            raise ValueError(
+                "service components cannot be overridden when services is provided"
+            )
+        resolved_services = services
+
+    loader = get_resource_loader(resolved_services)
+    if resource_loader_options:
+        if configure_resource_loader is None:
+            raise ValueError(
+                "resource loader options require a configure_resource_loader port"
+            )
+        configure_resource_loader(loader, resource_loader_options)
+
+    prepared = build_resource_bootstrap(resolved_services).prepare(
+        loader=loader,
+        cwd=resolved_cwd,
+        extension_flags=extension_flag_values,
+    )
+    return AgentSessionServices(
+        cwd=str(resolved_cwd),
+        services=resolved_services,
+        resource_bundle=prepared.resource_bundle,
+        extension_runner=prepared.extension_runtime,
+        diagnostics=prepared.diagnostics,
+    )
+
+
 @dataclass(frozen=True)
 class CreateAgentSessionResult(Generic[SessionT, BundleT, DiagnosticRecordT, AuditT]):
     """Product session plus the shared bootstrap outputs."""
@@ -768,6 +826,7 @@ __all__ = [
     "AgentProductConstructionResult",
     "AgentProductConstructionRuntime",
     "AgentSessionServices",
+    "prepare_agent_session_services",
     "BootstrapServices",
     "CreateAgentSessionResult",
     "StandardAgentSessionActivationEffects",

@@ -11,6 +11,8 @@ from loushang.work.session import (
     SessionWorkRuntime,
     SessionWorkTurn,
     project_prepared_session_work_turns,
+    require_session_work_turn,
+    submit_session_turn,
 )
 
 
@@ -74,6 +76,55 @@ def test_session_work_runtime_accepts_product_vocabulary_as_a_profile() -> None:
         }
 
     asyncio.run(scenario())
+
+
+def test_submit_session_turn_selects_direct_or_work_delivery() -> None:
+    async def scenario() -> None:
+        direct_session = _DesignSession()
+        direct_result = await submit_session_turn(
+            direct_session,
+            SessionWorkTurn(text="draft directly"),
+            session_id="design-direct",
+        )
+
+        work_session = _DesignSession()
+        event_log = InMemoryEventLogBackend()
+        runtime = SessionWorkRuntime(
+            session=work_session,
+            event_log=event_log,
+            profile=SessionWorkProfile(
+                domain="design",
+                operation_kind="SubmitDesignTurn",
+            ),
+            project_event_facts=lambda _event: (),
+        )
+        work_result = await submit_session_turn(
+            work_session,
+            SessionWorkTurn(text="draft with evidence"),
+            session_id="design-work",
+            work_runtime=lambda: runtime,
+        )
+
+        assert direct_result is None
+        assert direct_session.prompts == ["draft directly"]
+        assert work_result is not None
+        assert work_result.status == "completed"
+        assert work_session.prompts == ["draft with evidence"]
+        assert event_log.query(session_id="design-work")
+
+    asyncio.run(scenario())
+
+
+def test_require_session_work_turn_rejects_product_specific_values() -> None:
+    turn = SessionWorkTurn(text="review")
+
+    assert require_session_work_turn(turn) is turn
+    try:
+        require_session_work_turn(object())
+    except TypeError as error:
+        assert str(error) == "planned execution requires SessionWorkTurn values"
+    else:  # pragma: no cover - defensive
+        raise AssertionError("product-specific turn should be rejected")
 
 
 def test_prepared_turn_projection_is_product_neutral() -> None:

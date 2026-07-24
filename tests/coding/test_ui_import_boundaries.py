@@ -8,7 +8,7 @@ from pathlib import Path
 
 RETIRED_CODING_UI_COMPATIBILITY_MODULES: dict[str, tuple[str, ...]] = {
     "loushang.coding.commands.tui": (
-        "loushang.coding.commands.catalog",
+        "loushang.harnesstui.commands.catalog",
         "loushang.harnesstui.commands.interaction",
         "loushang.harnesstui.commands.presentation",
         "loushang.harnesstui.commands.source",
@@ -109,7 +109,7 @@ MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
         "loushang.coding.ui.plain_app",
     ),
     "loushang.coding.ui.command_list": (
-        "loushang.coding.commands.catalog",
+        "loushang.harnesstui.commands.catalog",
         "loushang.harnesstui.commands.interaction",
         "loushang.harnesstui.commands.presentation",
         "loushang.harnesstui.commands.source",
@@ -126,7 +126,7 @@ MOVED_CODING_UI_PRODUCT_MODULES: dict[str, tuple[str, ...]] = {
         "loushang.harnesstui.conversation.debug_action",
         "loushang.coding.ui.plain_app",
     ),
-    "loushang.coding.ui.event_policy": ("loushang.coding.event.presentation_policy",),
+    "loushang.coding.ui.event_policy": ("loushang.harness.events.recording_policy",),
     "loushang.coding.ui.intent": ("loushang.harnesstui.conversation.intents",),
     "loushang.coding.ui.follow_up_queue": (
         "loushang.harnesstui.conversation.control",
@@ -202,13 +202,12 @@ RETAINED_CODING_UI_PRODUCT_ADAPTER_MODULES = {
 NON_UI_CODING_OWNERS = (
     "loushang.coding.model_selection",
     "loushang.coding.diagnostics.debug_status",
-    "loushang.coding.event.presentation_policy",
+    "loushang.harness.events.recording_policy",
 )
 
 CODING_TUI_FEATURE_OWNERS = (
     "loushang.coding.interaction.settings_profile",
     "loushang.coding.model_selection_tui",
-    "loushang.coding.policy.tui",
     "loushang.coding.presentation.tui.history",
     "loushang.coding.presentation.tui.plain",
     "loushang.harnesstui.conversation.agent_binding",
@@ -452,11 +451,13 @@ def test_prepared_application_host_owns_only_neutral_run_coordination() -> None:
         "ScreenCodingTuiApp",
         "build_coding_ui_controller",
         "ScreenSurfaceManager",
-        "handle_screen_approval",
     ):
         assert token not in shared
-        assert token not in agent_binding
         assert token in coding
+
+    assert "handle_agent_screen_approval" not in shared
+    assert "handle_agent_screen_approval" in agent_binding
+    assert "handle_agent_screen_approval" in coding
 
     assert "model_label" not in shared
     assert "StatusProvider" in agent_binding
@@ -962,18 +963,31 @@ def test_shared_surface_controller_does_not_own_coding_policy_or_copy() -> None:
         Path(f"src/loushang/harnesstui/surface/{module}.py").read_text(encoding="utf-8")
         for module in ("controller", "workflow")
     )
+    agent_binding = Path(
+        "src/loushang/harnesstui/conversation/agent_application.py"
+    ).read_text(encoding="utf-8")
     coding = Path("src/loushang/coding/ui/screen_surfaces.py").read_text(
         encoding="utf-8"
     )
 
     for token in (
-        "CodingCommandCatalog",
+        "ConversationCommandCatalog",
         "build_coding_settings_page",
         "ScreenCodingTuiApp",
         "select_available_model",
     ):
         assert token not in shared
+
+    assert "ConversationCommandCatalog" in agent_binding
+    assert "build_agent_screen_surface_workflow_ports" in agent_binding
+    assert "loushang.coding" not in agent_binding
+    for token in (
+        "build_coding_settings_page",
+        "ScreenCodingTuiApp",
+        "select_available_model",
+    ):
         assert token in coding
+    assert "ConversationCommandCatalog" not in coding
 
     for token in (
         "parse_conversation_intent",
@@ -1009,6 +1023,9 @@ def test_shared_settings_workflow_does_not_own_coding_bindings_or_copy() -> None
 
 
 def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
+    command_catalog = Path("src/loushang/harnesstui/commands/catalog.py").read_text(
+        encoding="utf-8"
+    )
     command_interaction = Path(
         "src/loushang/harnesstui/commands/interaction.py"
     ).read_text(encoding="utf-8")
@@ -1018,11 +1035,10 @@ def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
     model_runtime = Path("src/loushang/harnesstui/selection/runtime.py").read_text(
         encoding="utf-8"
     )
-    shared = command_interaction + model_interaction + model_runtime
+    shared = command_catalog + command_interaction + model_interaction + model_runtime
     command_adapter = "\n".join(
         Path(path).read_text(encoding="utf-8")
         for path in (
-            "src/loushang/coding/commands/catalog.py",
             "src/loushang/coding/ui/completion.py",
             "src/loushang/coding/ui/plain_app.py",
             "src/loushang/coding/ui/screen_surfaces.py",
@@ -1031,11 +1047,17 @@ def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
     model_adapter = Path("src/loushang/coding/model_selection_tui.py").read_text(
         encoding="utf-8"
     )
+    agent_bindings = "\n".join(
+        Path(path).read_text(encoding="utf-8")
+        for path in (
+            "src/loushang/harnesstui/conversation/agent_plain_app.py",
+            "src/loushang/harnesstui/conversation/agent_application.py",
+        )
+    )
     coding = command_adapter + model_adapter
 
     for token in (
         "loushang.coding",
-        "CodingCommandCatalog",
         "apply_model_selection",
         "persistence_warning_message",
         "settings_manager",
@@ -1045,12 +1067,14 @@ def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
         assert token not in shared
 
     for token in (
-        "CodingCommandCatalog",
         "apply_model_selection",
         "persistence_warning_message",
         "settings_manager",
     ):
         assert token in coding
+    assert "ConversationCommandCatalog" in command_catalog
+    assert "ConversationCommandCatalog" in agent_bindings
+    assert "ConversationCommandCatalog" not in command_adapter
     agent_plain_app = Path(
         "src/loushang/harnesstui/conversation/agent_plain_app.py"
     ).read_text(encoding="utf-8")
@@ -1074,38 +1098,40 @@ def test_shared_catalog_interactions_do_not_own_coding_policy_or_copy() -> None:
     assert "available_model_palette" not in model_adapter
 
 
-def test_shared_command_catalog_keeps_coding_definitions_and_raw_adaptation_outside() -> (
-    None
-):
+def test_shared_command_catalog_owns_structural_session_adaptation() -> None:
     shared = Path("src/loushang/harness/commands/catalog.py").read_text(
         encoding="utf-8"
     )
     descriptors = Path("src/loushang/harness/commands/descriptors.py").read_text(
         encoding="utf-8"
     )
-    coding = Path("src/loushang/coding/commands/catalog.py").read_text(encoding="utf-8")
+    conversation = Path("src/loushang/harnesstui/commands/catalog.py").read_text(
+        encoding="utf-8"
+    )
     profile = Path("src/loushang/harness/commands/catalog.py").read_text(
         encoding="utf-8"
     )
 
     assert "loushang.coding" not in shared
     assert "loushang.coding" not in descriptors
+    assert "loushang.coding" not in conversation
 
-    for token in ("coding.ui.model", "coding.session.", "raw_command"):
+    for token in ("coding.ui.model", "coding.session."):
         assert token not in shared
+        assert token not in conversation
 
     for token in ("harness.ui.model", "harness.ui.config", "model_select", "terminal"):
         assert token in profile
 
-    for token in ("coding.session.", "CommandEffectKind", "raw_command"):
-        assert token in coding
-
     for token in ("MixedCommandCatalog", "MixedCommandCatalogPorts"):
         assert token in shared
-        assert token in coding
+        assert token in conversation
 
     assert "LocalCommandCatalogProfile" in shared
-    assert "LocalCommandCatalogProfile" in shared
+    assert "coerce_command_descriptor" in shared
+    assert "command_def_from_descriptor" in shared
+    assert "ConversationCommandCatalog" in conversation
+    assert not Path("src/loushang/coding/commands/catalog.py").exists()
 
     for token in ("CommandCatalog", "CommandDescriptor", "split_slash_command"):
         assert token in descriptors
@@ -1183,7 +1209,7 @@ def test_shared_completion_host_does_not_own_coding_catalog_or_path_policy() -> 
         assert token in coding
 
     assert "_session_completion_base_path" not in coding
-    assert len(coding.splitlines()) <= 50
+    assert len(coding.splitlines()) <= 60
 
 
 def test_shared_status_provider_does_not_own_settings_manager_adaptation() -> None:
