@@ -8,6 +8,7 @@ from loushang.harness.resources.packages.catalog import (
 from loushang.harness.resources.packages.catalog_diagnostics import (
     PackageCatalogDiagnosticsRecorder,
     record_package_lockfile_diagnostics,
+    record_package_source_policy_denial,
 )
 from loushang.harness.resources.types import PackageResourceSummary
 
@@ -82,3 +83,37 @@ def test_lockfile_diagnostics_recorder_preserves_structured_details(tmp_path) ->
     assert records[0].source_path == lockfile
     assert records[0].details == {"line": 4}
     assert records[0].session_id == "session-1"
+
+
+def test_package_source_policy_denial_records_standard_diagnostic() -> None:
+    service = DiagnosticsService()
+
+    record = record_package_source_policy_denial(
+        service,
+        package_source="http://packages.example.invalid/review-pack.git",
+        reason="HTTPS is required.",
+        session_id="session-1",
+    )
+
+    assert record is service.get_last_diagnostics()[0]
+    assert record.code == "package_source_policy_denied"
+    assert record.message == "HTTPS is required."
+    assert record.phase == "runtime"
+    assert record.source == "policy"
+    assert record.session_id == "session-1"
+    assert record.details == {
+        "plugin_source": "http://packages.example.invalid/review-pack.git",
+        "policy": "package_security",
+        "disposition": "deny",
+    }
+
+
+def test_package_source_policy_denial_ignores_missing_diagnostics_service() -> None:
+    assert (
+        record_package_source_policy_denial(
+            None,
+            package_source="package",
+            reason=None,
+        )
+        is None
+    )
