@@ -9,8 +9,8 @@ from loushang.agent import ThinkingLevel
 from loushang.ai.model import ModelSelection
 from loushang.harness.commands import SessionCommandDescriptor
 from loushang.harness.context import serialize_context_usage_payload
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.context import ExtensionRuntimeBindings
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.workspace.exec import ExecResult
 
 
@@ -37,7 +37,7 @@ class ExtensionRuntimeBindingFactory:
     list_commands: Callable[[], list[SessionCommandDescriptor]]
     request_resource_refresh: Callable[[], None]
     shutdown: Callable[[], None]
-    record_diagnostic: Callable[[ResourceDiagnostic], None]
+    record_diagnostic: Callable[[DiagnosticDraft], None]
     abort: Callable[[], None]
     is_idle: Callable[[], bool]
     has_pending_messages: Callable[[], bool]
@@ -110,9 +110,7 @@ class ExtensionRuntimeBindingFactory:
             exec_command=self.exec_command,
             ui_context=ui_context,
             on_error=(
-                extension_error_handler
-                if callable(extension_error_handler)
-                else None
+                extension_error_handler if callable(extension_error_handler) else None
             ),
         )
 

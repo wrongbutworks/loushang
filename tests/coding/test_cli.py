@@ -6815,7 +6815,7 @@ def test_run_cli_lists_diagnostics_as_tsv_and_returns_early(tmp_path) -> None:
 
 def test_run_cli_lists_skills_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.harness.resources.diagnostics import ResourceDiagnostic
+    from loushang.harness.resources.diagnostics import resource_diagnostic
     from loushang.harness.resources.types import SkillDescriptor
 
     session = FakeSession("session-1")
@@ -6832,7 +6832,7 @@ def test_run_cli_lists_skills_as_json(tmp_path) -> None:
             canonical_name="debug/SKILL.md",
             source_root=Path("/tmp/project/skills"),
             diagnostics=(
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code="invalid_skill_description",
                     message="Skill frontmatter description is required.",
                     source_path=Path("/tmp/project/skills/debug/SKILL.md"),

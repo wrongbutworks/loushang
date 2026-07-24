@@ -9,6 +9,7 @@ from loushang.agent.types import (
     AgentMessage,
     BeforeToolCallResult,
 )
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.agent.hooks import (
     BeforeAgentStartState,
     ExtensionPromptHookDispatcher,
@@ -34,7 +35,6 @@ from loushang.harness.extensions.registry import (
 from loushang.harness.extensions.routing import ResolvedExtensionRoute
 from loushang.harness.extensions.runtime import ExtensionRuntime
 from loushang.harness.extensions.types import BeforeAgentStartResult, LoadedExtension
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
 )
@@ -90,7 +90,7 @@ class ExtensionRunner(ExtensionRuntime):
         *,
         loader_factory: Callable[[], ExtensionLoader] = ExtensionLoader,
     ) -> None:
-        self._diagnostics: list[ResourceDiagnostic] = []
+        self._diagnostics: list[DiagnosticDraft] = []
         self._runtime_state = _RunnerRuntimeState()
         loader = loader_factory()
         loaded_extensions: list[LoadedExtension] = []

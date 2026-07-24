@@ -17,9 +17,9 @@ from loushang.harness.commands import (
     list_resource_command_descriptors,
     split_slash_command,
 )
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.commands import list_extension_command_descriptors
 from loushang.harness.extensions.types import ResolvedCommand
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.types import ResourceBundle
 
 ResultT = TypeVar("ResultT")
@@ -98,7 +98,7 @@ class ExtensionCommandSourceRuntime(Generic[ResultT]):
 
 
 ResourceCommandBundleProvider = Callable[[], ResourceBundle | None]
-ResourceDiagnosticsRecorder = Callable[[tuple[ResourceDiagnostic, ...]], None]
+DiagnosticDraftRecorder = Callable[[tuple[DiagnosticDraft, ...]], None]
 ResourceCommandNotFoundRecorder = Callable[[str, str], None]
 ResourceCommandResultFactory = Callable[[str, ResourceCommandKind, str], ResultT]
 
@@ -108,7 +108,7 @@ class ResourceCommandSourceRuntime(Generic[ResultT]):
     """Resolve resource slash commands while Products own diagnostics and views."""
 
     get_resource_bundle: ResourceCommandBundleProvider
-    record_diagnostics: ResourceDiagnosticsRecorder
+    record_diagnostics: DiagnosticDraftRecorder
     record_command_not_found: ResourceCommandNotFoundRecorder
     result_factory: ResourceCommandResultFactory[ResultT]
 
@@ -161,5 +161,5 @@ __all__ = [
     "ResourceCommandNotFoundRecorder",
     "ResourceCommandResultFactory",
     "ResourceCommandSourceRuntime",
-    "ResourceDiagnosticsRecorder",
+    "DiagnosticDraftRecorder",
 ]

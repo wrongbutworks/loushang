@@ -12,6 +12,7 @@ import inspect
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.dispatch import ExtensionDispatcher
 from loushang.harness.extensions.manifest import ExtensionManifest
 from loushang.harness.extensions.registry import (
@@ -32,7 +33,6 @@ from loushang.harness.extensions.types import (
     extension_is_active,
 )
 from loushang.harness.extensions.wrapper import wrap_registered_tool_definition
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.source import SourceInfo
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.tools.core import ToolDefinition
@@ -57,7 +57,7 @@ class ExtensionRuntime:
         *,
         context_factory: ExtensionRuntimeContextFactory,
         resource_context_factory: ExtensionResourceContextFactory | None = None,
-        diagnostics: list[ResourceDiagnostic] | None = None,
+        diagnostics: list[DiagnosticDraft] | None = None,
         runtime_error_handler: ExtensionRuntimeErrorHandler | None = None,
     ) -> None:
         self._extensions = tuple(extensions)
@@ -76,9 +76,9 @@ class ExtensionRuntime:
         self._runtime_error_handler = runtime_error_handler
         self._tool_definitions: list[ToolDefinition] = []
         self._tool_source_info_by_name: dict[str, SourceInfo[Path]] = {}
-        self._command_diagnostics: list[ResourceDiagnostic] = []
-        self._flag_diagnostics: list[ResourceDiagnostic] = []
-        self._shortcut_diagnostics: list[ResourceDiagnostic] = []
+        self._command_diagnostics: list[DiagnosticDraft] = []
+        self._flag_diagnostics: list[DiagnosticDraft] = []
+        self._shortcut_diagnostics: list[DiagnosticDraft] = []
         self._registered_commands: list[ResolvedCommand] = []
         self._registered_commands_by_invocation_name: dict[str, ResolvedCommand] = {}
         self._resolved_flags: list[ResolvedFlag] = []
@@ -123,16 +123,16 @@ class ExtensionRuntime:
     def plain_diagnostic_router(self) -> ExtensionRouter:
         return self._plain_diagnostic_router
 
-    def get_diagnostics(self) -> list[ResourceDiagnostic]:
+    def get_diagnostics(self) -> list[DiagnosticDraft]:
         return list(self._diagnostics)
 
-    def get_command_diagnostics(self) -> list[ResourceDiagnostic]:
+    def get_command_diagnostics(self) -> list[DiagnosticDraft]:
         return list(self._command_diagnostics)
 
-    def get_flag_diagnostics(self) -> list[ResourceDiagnostic]:
+    def get_flag_diagnostics(self) -> list[DiagnosticDraft]:
         return list(self._flag_diagnostics)
 
-    def get_shortcut_diagnostics(self) -> list[ResourceDiagnostic]:
+    def get_shortcut_diagnostics(self) -> list[DiagnosticDraft]:
         return list(self._shortcut_diagnostics)
 
     def get_registered_commands(self) -> list[ResolvedCommand]:
@@ -153,7 +153,7 @@ class ExtensionRuntime:
                 result = await result
         except Exception as exc:
             self._diagnostics.append(
-                ResourceDiagnostic(
+                DiagnosticDraft(
                     code="extension_command_argument_completions_failed",
                     message=f"Extension command argument completions failed: {exc}",
                     source_path=command.source_info.path,
@@ -169,7 +169,7 @@ class ExtensionRuntime:
             return None
         if not isinstance(result, list):
             self._diagnostics.append(
-                ResourceDiagnostic(
+                DiagnosticDraft(
                     code="invalid_extension_command_argument_completions",
                     message="Command argument completions must return a list or None.",
                     source_path=command.source_info.path,
@@ -190,32 +190,32 @@ class ExtensionRuntime:
     def apply_flag_values(
         self,
         values: Mapping[str, bool | str] | None,
-    ) -> tuple[ResourceDiagnostic, ...]:
+    ) -> tuple[DiagnosticDraft, ...]:
         """Validate and apply Product-provided extension flag values."""
 
         if not values:
             return ()
         flags_by_name = {flag.name: flag for flag in self._resolved_flags}
-        diagnostics: list[ResourceDiagnostic] = []
+        diagnostics: list[DiagnosticDraft] = []
         for raw_name, value in values.items():
             name = raw_name[2:] if raw_name.startswith("--") else raw_name
             flag = flags_by_name.get(name)
             if flag is None:
                 diagnostics.append(
-                    ResourceDiagnostic(
+                    DiagnosticDraft(
                         code="unknown_extension_flag",
                         message=f"Unknown extension flag: --{name}",
-                        metadata={"flag": name},
+                        details={"metadata": {"flag": name}},
                     )
                 )
                 continue
             if flag.type == "string" and not isinstance(value, str):
                 diagnostics.append(
-                    ResourceDiagnostic(
+                    DiagnosticDraft(
                         code="extension_flag_value_required",
                         message=f'Extension flag "--{name}" requires a value.',
                         source_path=flag.source_info.path,
-                        metadata={"flag": name},
+                        details={"metadata": {"flag": name}},
                     )
                 )
                 continue
@@ -395,7 +395,7 @@ class ExtensionRuntime:
 def _extension_visibility_snapshot(
     extension: LoadedExtension,
     *,
-    diagnostics: Sequence[ResourceDiagnostic],
+    diagnostics: Sequence[DiagnosticDraft],
 ) -> dict[str, object]:
     manifest = extension.manifest
     manifest = manifest if isinstance(manifest, ExtensionManifest) else None
@@ -454,7 +454,7 @@ def _serialize_surface(surface: object) -> dict[str, object]:
         "diagnostics": [
             _serialize_diagnostic(diagnostic)
             for diagnostic in getattr(surface, "diagnostics", ())
-            if isinstance(diagnostic, ResourceDiagnostic)
+            if isinstance(diagnostic, DiagnosticDraft)
         ],
     }
 
@@ -462,9 +462,9 @@ def _serialize_surface(surface: object) -> dict[str, object]:
 def _extension_visibility_diagnostics(
     extension: LoadedExtension,
     *,
-    diagnostics: Sequence[ResourceDiagnostic],
+    diagnostics: Sequence[DiagnosticDraft],
     manifest_path: Path | None,
-) -> list[ResourceDiagnostic]:
+) -> list[DiagnosticDraft]:
     source_paths = {
         path
         for path in (
@@ -475,7 +475,7 @@ def _extension_visibility_diagnostics(
         )
         if path is not None
     }
-    result: list[ResourceDiagnostic] = []
+    result: list[DiagnosticDraft] = []
     seen: set[tuple[str, str, str | None]] = set()
     for diagnostic in extension.diagnostics:
         _append_extension_diagnostic(result, seen, diagnostic)
@@ -487,9 +487,9 @@ def _extension_visibility_diagnostics(
 
 
 def _append_extension_diagnostic(
-    result: list[ResourceDiagnostic],
+    result: list[DiagnosticDraft],
     seen: set[tuple[str, str, str | None]],
-    diagnostic: ResourceDiagnostic,
+    diagnostic: DiagnosticDraft,
 ) -> None:
     key = (
         diagnostic.code,
@@ -503,17 +503,18 @@ def _append_extension_diagnostic(
         result.append(diagnostic)
 
 
-def _serialize_diagnostic(diagnostic: ResourceDiagnostic) -> dict[str, object]:
+def _serialize_diagnostic(diagnostic: DiagnosticDraft) -> dict[str, object]:
+    metadata = diagnostic.details.get("metadata")
     return {
         "code": diagnostic.code,
         "message": diagnostic.message,
         "sourcePath": diagnostic.source_path.as_posix()
         if diagnostic.source_path is not None
         else None,
-        "resourceId": diagnostic.resource_id,
-        "resourceType": diagnostic.resource_type,
-        "sourceKind": diagnostic.source_kind,
-        "metadata": dict(diagnostic.metadata),
+        "resourceId": diagnostic.details.get("resource_id"),
+        "resourceType": diagnostic.details.get("resource_type"),
+        "sourceKind": diagnostic.details.get("source_kind"),
+        "metadata": dict(metadata) if isinstance(metadata, Mapping) else {},
     }
 
 

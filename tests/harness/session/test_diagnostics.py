@@ -6,9 +6,8 @@ from types import SimpleNamespace
 
 from loushang.ai.types import AssistantMessage, TextPart, Usage
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.diagnostics.types import DiagnosticsQuery
+from loushang.harness.diagnostics.types import DiagnosticDraft, DiagnosticsQuery
 from loushang.harness.extensions.types import ResolvedCommand
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.source import SourceInfo
 from loushang.harness.session import (
     SessionDiagnosticScope,
@@ -18,9 +17,9 @@ from loushang.harness.session import (
 
 @dataclass
 class _ExtensionDiagnostics:
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
 
-    def get_diagnostics(self) -> list[ResourceDiagnostic]:
+    def get_diagnostics(self) -> list[DiagnosticDraft]:
         return list(self.diagnostics)
 
 
@@ -51,8 +50,8 @@ def test_session_diagnostics_scopes_queries_and_syncs_extensions_once() -> None:
     diagnostics = DiagnosticsService()
     extension = _ExtensionDiagnostics(
         diagnostics=[
-            ResourceDiagnostic(code="already_seen", message="old"),
-            ResourceDiagnostic(
+            DiagnosticDraft(code="already_seen", message="old"),
+            DiagnosticDraft(
                 code="extension_session_refresh_failed",
                 message="refresh failed",
                 source_path=Path("/tmp/extensions/demo.py"),
@@ -160,7 +159,7 @@ def test_session_diagnostics_records_standard_command_failures() -> None:
 
     runtime.record_command_not_found("missing", "args")
     runtime.record_preflight_diagnostics(
-        (ResourceDiagnostic(code="unresolved_prompt_reference", message="missing"),)
+        (DiagnosticDraft(code="unresolved_prompt_reference", message="missing"),)
     )
     runtime.record_extension_command_error(command=command, exc=RuntimeError("boom"))
 

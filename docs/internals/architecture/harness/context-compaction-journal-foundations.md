@@ -163,9 +163,9 @@ loushang.harness.journal
 `types.py` may define small focused `ContextDiagnostic` and
 `JournalDiagnostic` records when an operation cannot yet construct a complete
 `DiagnosticRecord`. Products normalize those records through the existing
-Harness diagnostics service. Do not reuse `ResourceDiagnostic` merely because
-it has a convenient path field; journal corruption and context overflow are not
-resource-discovery failures.
+Harness diagnostics service. Do not use the `resource_diagnostic` factory
+merely because it accepts a path; journal corruption and context overflow are
+not resource-discovery failures.
 
 Do not introduce top-level `loushang.context`, `loushang.session`,
 `loushang.persistence`, or `loushang.memory`. Do not export the new symbols from

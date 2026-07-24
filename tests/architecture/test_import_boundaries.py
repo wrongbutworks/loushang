@@ -1794,6 +1794,7 @@ def test_harness_diagnostics_symbols_are_subpackage_exports_only() -> None:
     import loushang.harness.diagnostics as diagnostics
 
     diagnostic_symbols = {
+        "DiagnosticDraft",
         "DiagnosticLevel",
         "DiagnosticBundleProfile",
         "DiagnosticPhase",
@@ -2008,15 +2009,15 @@ def test_harness_diagnostics_core_boundary_is_documented() -> None:
     assert "diagnostics core implementation complete" in inventory_text
 
 
-def test_harness_diagnostics_core_does_not_import_observability() -> None:
+def test_harness_diagnostics_core_does_not_import_resources_or_observability() -> None:
     paths_and_forbidden_prefixes = (
         (
             Path("src/loushang/harness/diagnostics/types.py"),
-            ("loushang.observability",),
+            ("loushang.harness.resources", "loushang.observability"),
         ),
         (
             Path("src/loushang/harness/diagnostics/service.py"),
-            ("loushang.observability",),
+            ("loushang.harness.resources", "loushang.observability"),
         ),
         (
             Path("src/loushang/harness/diagnostics/observability_bridge.py"),
@@ -2029,6 +2030,22 @@ def test_harness_diagnostics_core_does_not_import_observability() -> None:
         for imported in _absolute_imports(path)
         if _matches_any(imported, forbidden_prefixes)
     ]
+    assert offenders == []
+
+
+def test_diagnostic_draft_has_no_resource_specific_compatibility_api() -> None:
+    legacy_names = (
+        "ResourceDiagnostic",
+        "normalize_resource_diagnostic",
+        "record_resource_diagnostics",
+    )
+    offenders = [
+        f"{path.as_posix()} contains {name}"
+        for path in sorted(Path("src/loushang/harness").rglob("*.py"))
+        for name in legacy_names
+        if name in path.read_text(encoding="utf-8")
+    ]
+
     assert offenders == []
 
 
@@ -4365,10 +4382,10 @@ def test_harness_resource_provenance_boundary_is_documented() -> None:
     import loushang.harness as harness
 
     provenance_symbols = {
-        "ResourceDiagnostic",
         "SourceInfo",
         "SourceOrigin",
         "SourceScope",
+        "resource_diagnostic",
     }
     assert provenance_symbols.isdisjoint(set(harness.__all__))
 
@@ -4379,9 +4396,10 @@ def test_harness_resource_provenance_boundary_is_documented() -> None:
     design_text = " ".join(design_path.read_text(encoding="utf-8").split())
     required_phrases = {
         "Harness Resource Provenance Boundary",
+        "`DiagnosticDraft`",
         "`loushang.harness.resources.source`",
         "`loushang.harness.resources.diagnostics`",
-        "same harness-owned classes",
+        "`resource_diagnostic`",
         "does not move or redesign",
         "must not import coding, method, work, TUI, AI, provider, or product packages",
     }

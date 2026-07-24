@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 from loushang.harness.diagnostics.types import (
+    DiagnosticDraft,
     DiagnosticLevel,
     DiagnosticPhase,
     DiagnosticRecord,
@@ -18,7 +19,6 @@ from loushang.harness.diagnostics.types import (
     StartupCheckResult,
     directory_available_startup_check,
 )
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
 
 def _now_iso() -> str:
@@ -52,26 +52,18 @@ class DiagnosticsService:
         for diagnostic in diagnostics:
             self.record(diagnostic)
 
-    def normalize_resource_diagnostic(
+    def normalize_diagnostic(
         self,
-        diagnostic: ResourceDiagnostic,
+        diagnostic: DiagnosticDraft,
         *,
         phase: DiagnosticPhase,
         source: DiagnosticSource,
         session_id: str | None = None,
         entry_id: str | None = None,
         level: DiagnosticLevel = "warning",
-        details: dict[str, object] | None = None,
+        details: Mapping[str, object] | None = None,
     ) -> DiagnosticRecord:
-        merged_details: dict[str, object] = {}
-        if diagnostic.resource_id:
-            merged_details["resource_id"] = diagnostic.resource_id
-        if diagnostic.resource_type:
-            merged_details["resource_type"] = diagnostic.resource_type
-        if diagnostic.source_kind:
-            merged_details["source_kind"] = diagnostic.source_kind
-        if diagnostic.metadata:
-            merged_details["metadata"] = dict(diagnostic.metadata)
+        merged_details = dict(diagnostic.details)
         if details:
             merged_details.update(details)
         return DiagnosticRecord(
@@ -87,9 +79,9 @@ class DiagnosticsService:
             details=merged_details,
         )
 
-    def record_resource_diagnostics(
+    def record_drafts(
         self,
-        diagnostics: Iterable[ResourceDiagnostic],
+        diagnostics: Iterable[DiagnosticDraft],
         *,
         phase: DiagnosticPhase,
         source: DiagnosticSource,
@@ -97,10 +89,10 @@ class DiagnosticsService:
         entry_id: str | None = None,
         level: DiagnosticLevel = "warning",
     ) -> list[DiagnosticRecord]:
-        """Normalize and record resource diagnostics with one shared scope."""
+        """Normalize and record diagnostic drafts with one shared scope."""
 
         records = [
-            self.normalize_resource_diagnostic(
+            self.normalize_diagnostic(
                 diagnostic,
                 phase=phase,
                 source=source,

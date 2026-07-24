@@ -18,22 +18,13 @@ def test_coding_source_info_paths_preserve_harness_owner_identity() -> None:
     assert extension_info.path == Path("/tmp/project/extensions/demo.py")
 
 
-def test_coding_resource_diagnostic_paths_preserve_harness_owner_identity() -> None:
-    from loushang.harness.resources.diagnostics import (
-        ResourceDiagnostic as HarnessResourceDiagnostic,
-    )
-    from loushang.harness.resources.diagnostics import (
-        ResourceDiagnostic as LoaderResourceDiagnostic,
-    )
-    from loushang.harness.resources.diagnostics import (
-        ResourceDiagnostic as LoaderTypesResourceDiagnostic,
-    )
+def test_resource_diagnostic_factory_returns_canonical_diagnostic_draft() -> None:
+    from loushang.harness.diagnostics import DiagnosticDraft as ExportedDiagnosticDraft
+    from loushang.harness.diagnostics.types import DiagnosticDraft
+    from loushang.harness.resources.diagnostics import resource_diagnostic
 
-    assert (
-        LoaderResourceDiagnostic
-        is LoaderTypesResourceDiagnostic
-        is HarnessResourceDiagnostic
-    )
-    assert (
-        HarnessResourceDiagnostic.__module__ == "loushang.harness.resources.diagnostics"
-    )
+    draft = resource_diagnostic(code="invalid_skill", message="Invalid skill.")
+
+    assert ExportedDiagnosticDraft is DiagnosticDraft
+    assert type(draft) is DiagnosticDraft
+    assert DiagnosticDraft.__module__ == "loushang.harness.diagnostics.types"

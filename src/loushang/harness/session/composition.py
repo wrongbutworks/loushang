@@ -33,6 +33,7 @@ from loushang.harness.agent_transcript import (
     TranscriptCompactionPolicy,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.events import (
     AgentSessionEvent,
     ConversationMetadataChanged,
@@ -50,7 +51,6 @@ from loushang.harness.extensions.provider_config import provider_from_extension_
 from loushang.harness.extensions.runtime_bindings import ExtensionRuntimeBindingFactory
 from loushang.harness.extensions.session_runtime import ExtensionSessionRuntime
 from loushang.harness.host.retry import RetryPolicy
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.resources.watcher import ResourceChangeWatcher
 from loushang.harness.session.bash import BashExecutionPorts, BashExecutionRuntime
@@ -138,7 +138,7 @@ class SessionCompositionPorts:
     prepare_resource_refresh: Callable[[], None]
     rebuild_prompt_and_tools_view: Callable[[], None]
     set_resource_bundle: Callable[[ResourceBundle], None]
-    record_extension_runtime_diagnostic: Callable[[ResourceDiagnostic], None]
+    record_extension_runtime_diagnostic: Callable[[DiagnosticDraft], None]
     refresh_resources_for_extension_runtime: Callable[[], None]
     refresh_resources_for_extension_runtime_async: Callable[[], Awaitable[None]]
     get_changelog: Callable[[str], object]
@@ -225,7 +225,7 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
         set_resource_bundle=ports.set_resource_bundle,
         rebuild_prompt_and_tools_view=ports.rebuild_prompt_and_tools_view,
         record_refresh_failure=lambda error: ports.record_extension_runtime_diagnostic(
-            ResourceDiagnostic(
+            DiagnosticDraft(
                 code="extension_resource_refresh_failed",
                 message=f"Extension resource refresh failed: {error}",
             )

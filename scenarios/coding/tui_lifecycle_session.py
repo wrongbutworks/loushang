@@ -4,14 +4,16 @@ import argparse
 import asyncio
 import inspect
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Callable
+from typing import Any
+
+from loushang.coding.types import ModelSelection
 
 from loushang.ai import Model, TextPart, UserMessage
-from loushang.coding.types import ModelSelection
 from loushang.coding.ui import mode as ui_mode
 from loushang.observability import (
     DebugLogSink,

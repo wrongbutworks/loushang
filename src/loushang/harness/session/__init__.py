@@ -107,6 +107,7 @@ from loushang.harness.session.command_pack import (
     project_standard_session_command_result,
 )
 from loushang.harness.session.command_sources import (
+    DiagnosticDraftRecorder,
     ExtensionCommandErrorRecorder,
     ExtensionCommandProvider,
     ExtensionCommandProviderFactory,
@@ -117,7 +118,6 @@ from loushang.harness.session.command_sources import (
     ResourceCommandNotFoundRecorder,
     ResourceCommandResultFactory,
     ResourceCommandSourceRuntime,
-    ResourceDiagnosticsRecorder,
 )
 from loushang.harness.session.cwd_audit import (
     CwdBoundServicesAudit,
@@ -398,7 +398,7 @@ __all__ = [
     "ResourceCommandNotFoundRecorder",
     "ResourceCommandResultFactory",
     "ResourceCommandSourceRuntime",
-    "ResourceDiagnosticsRecorder",
+    "DiagnosticDraftRecorder",
     "ResourceLoaderPort",
     "ResourceLoaderProvider",
     "ResourceSettingsPort",

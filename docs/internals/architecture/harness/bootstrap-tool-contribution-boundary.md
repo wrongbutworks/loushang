@@ -31,7 +31,7 @@ transition.
 ## Product Boundary
 
 Coding adapts its existing `ExtensionRunner`, `ResourceBundle`, and
-`ResourceDiagnostic` through a thin `_register_extension_tools` wrapper. It
+`DiagnosticDraft` values through a thin `_register_extension_tools` wrapper. It
 retains only the Coding diagnostic code/message and existing pack identifiers.
 Research, Design, PPT, and OEM Products can bind different extension runtimes,
 bundles, and diagnostic records without copying the contribution algorithm.

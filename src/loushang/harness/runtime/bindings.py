@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.workspace.exec import ExecResult
 
 B = TypeVar("B")
@@ -41,7 +41,7 @@ class ProductRuntimeBindings:
     set_model: Callable[[object], Awaitable[None]]
     request_resource_refresh: Callable[[], None]
     shutdown: Callable[[], None]
-    record_diagnostic: Callable[[ResourceDiagnostic], None]
+    record_diagnostic: Callable[[DiagnosticDraft], None]
     register_tool: Callable[[object, object | None], None] = _ignore_tool
     get_all_tools: Callable[[], list[object]] = lambda: []
     session_manager: object | None = None

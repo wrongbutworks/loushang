@@ -22,7 +22,8 @@ from loushang.harness.config.activation import (
     ConfigActivationStep,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.diagnostics.types import DiagnosticDraft
+from loushang.harness.resources.diagnostics import resource_diagnostic
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.tools.contribution import (
     ToolContribution,
@@ -53,11 +54,11 @@ class StandardExtensionRuntime(Protocol):
     def apply_flag_values(
         self,
         values: FlagValues,
-    ) -> Sequence[ResourceDiagnostic]: ...
+    ) -> Sequence[DiagnosticDraft]: ...
 
     def discover_resources(self, bundle: ResourceBundle) -> ResourceBundle: ...
 
-    def get_diagnostics(self) -> Sequence[ResourceDiagnostic]: ...
+    def get_diagnostics(self) -> Sequence[DiagnosticDraft]: ...
 
 
 @dataclass(frozen=True)
@@ -136,7 +137,6 @@ class ResourceBootstrapRuntime(Generic[LoaderT, BundleT, ExtensionT, DiagnosticT
                 *activation.flag_diagnostics,
             ),
         )
-
 
     def discover(
         self,
@@ -217,7 +217,7 @@ def create_standard_resource_bootstrap_runtime(
     StandardResourceLoader,
     ResourceBundle,
     StandardExtensionRuntime,
-    ResourceDiagnostic,
+    DiagnosticDraft,
 ]:
     """Bind standard Harness resource, extension, and diagnostic components."""
 
@@ -234,7 +234,7 @@ def create_standard_resource_bootstrap_runtime(
             bundle_diagnostics=lambda bundle: tuple(bundle.diagnostics),
             extension_diagnostics=lambda runtime: runtime.get_diagnostics(),
             normalize_diagnostic=lambda diagnostic, phase, source: (
-                diagnostics_service.normalize_resource_diagnostic(
+                diagnostics_service.normalize_diagnostic(
                     diagnostic,
                     phase=phase,
                     source=source,
@@ -397,7 +397,7 @@ def register_resource_extension_tools(
     product_pack_id: str = "product.tools",
     extension_pack_id: str = "extension.tools",
     resolve_contributions: ExtensionToolResolver = resolve_tool_contributions,
-) -> tuple[ResourceBundle, WorkspaceToolRegistry | None, list[ResourceDiagnostic]]:
+) -> tuple[ResourceBundle, WorkspaceToolRegistry | None, list[DiagnosticDraft]]:
     """Bind the standard resource bundle and diagnostic types to tool registration."""
 
     return register_extension_tools(
@@ -409,7 +409,7 @@ def register_resource_extension_tools(
         merge_diagnostics=lambda bundle, diagnostics: bundle.merge(
             diagnostics=diagnostics
         ),
-        make_conflict_diagnostic=lambda name, message: ResourceDiagnostic(
+        make_conflict_diagnostic=lambda name, message: resource_diagnostic(
             code="extension_tool_conflict",
             message=message,
         ),
