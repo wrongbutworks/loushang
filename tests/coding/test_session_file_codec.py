@@ -7,19 +7,19 @@ from pathlib import Path
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.harness.agent_transcript import AGENT_MESSAGE_KIND
-from loushang.harness.agent_transcript.native_file import (
+from loushang.harness.conversation import (
+    ConversationHeader,
+    ConversationRecord,
+    NativeConversationHeaderCodec,
+)
+from loushang.harness.transcript import AGENT_MESSAGE_KIND
+from loushang.harness.transcript.native_file import (
     AgentTranscriptFileError,
     AgentTranscriptFileLayout,
     create_agent_transcript_file_store,
     load_agent_transcript_file,
     load_agent_transcript_repository,
     write_agent_transcript_export,
-)
-from loushang.harness.conversation import (
-    ConversationHeader,
-    ConversationRecord,
-    NativeConversationHeaderCodec,
 )
 
 SessionFileError = AgentTranscriptFileError

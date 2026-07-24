@@ -2,7 +2,7 @@
 
 ## Decision
 
-`loushang.harness.agent_transcript` owns the standard maintenance mechanics
+`loushang.harness.transcript` owns the standard maintenance mechanics
 around an open Agent transcript:
 
 - context token extraction and estimation from stable Agent/AI message values;
@@ -35,7 +35,7 @@ The compaction runtime operates through the existing `AgentTranscriptSession`:
 it reads the active branch, receives a Product-selected preparation strategy and
 summary binding, appends the standard compaction checkpoint only after
 successful execution, refreshes context, and publishes common lifecycle events.
-`harness.agent_transcript.summarization` owns the reusable model-call and
+`harness.transcript.summarization` owns the reusable model-call and
 message-serialization mechanism; it accepts Product prompt profiles,
 completion selection, and JSON-safe summary decoration. It does not own prompt
 wording, provider discovery, credentials, model policy, or an extension API.
@@ -67,9 +67,9 @@ projection, default settings, and TUI/RPC/HTML output projection.
 
 ## Dependency Rule
 
-`harness.agent_transcript.maintenance` may import public Agent message aliases
+`harness.transcript.maintenance` may import public Agent message aliases
 and stable `loushang.ai.types`. The adjacent optional
-`harness.agent_transcript.summarization` module may additionally use the
+`harness.transcript.summarization` module may additionally use the
 public `loushang.ai` completion surface. Neither module may import Coding, AI
 provider registries, provider implementations, authentication resolution,
 Product configuration, or UI/RPC types. Product-specific prompt/profile,

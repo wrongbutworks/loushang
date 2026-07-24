@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from loushang.ai.types import ImagePart
-from loushang.harness.agent_transcript import ApplicationMessage
+from loushang.harness.transcript import ApplicationMessage
 
 
 class ApplicationInputDeliveryPort(Protocol):

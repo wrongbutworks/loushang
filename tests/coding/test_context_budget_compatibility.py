@@ -21,8 +21,8 @@ def test_coding_context_budget_facades_are_removed() -> None:
 
 def test_agent_transcript_context_estimator_returns_harness_record() -> None:
     from loushang.ai.types import UserMessage
-    from loushang.harness.agent_transcript import estimate_context_tokens
     from loushang.harness.context.usage import ContextUsageEstimate
+    from loushang.harness.transcript import estimate_context_tokens
 
     estimate = estimate_context_tokens(
         [UserMessage(role="user", content="follow up", timestamp=1.0)]

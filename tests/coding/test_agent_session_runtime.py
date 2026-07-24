@@ -298,7 +298,7 @@ async def test_runtime_lists_session_summaries(tmp_path) -> None:
 @_async_test
 async def test_runtime_finds_session_summaries(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.harness.agent_transcript import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -502,7 +502,7 @@ async def test_runtime_finds_all_session_summaries_across_session_dirs(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.harness.agent_transcript import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -530,7 +530,7 @@ async def test_runtime_finds_all_session_summaries_across_session_dirs(
 @_async_test
 async def test_runtime_exposes_indexed_session_summary_facades(tmp_path) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.harness.agent_transcript import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
@@ -3245,8 +3245,8 @@ async def test_runtime_dispose_records_session_index_flush_failure(
 ) -> None:
     from loushang.coding.runtime import AgentSessionRuntime
     from loushang.coding.session_manager import SessionManager
-    from loushang.harness.agent_transcript import AgentTranscriptSessionCatalog
     from loushang.harness.diagnostics import DiagnosticsQuery, DiagnosticsService
+    from loushang.harness.transcript import AgentTranscriptSessionCatalog
 
     class DummySession:
         def __init__(self, manager: SessionManager) -> None:
@@ -3404,10 +3404,10 @@ async def test_runtime_restore_session_rejects_ambiguous_session_id_prefix(
     import pytest
 
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.harness.agent_transcript.native_file import (
+    from loushang.harness.conversation import ConversationHeader
+    from loushang.harness.transcript.native_file import (
         write_agent_transcript_export as write_session_file,
     )
-    from loushang.harness.conversation import ConversationHeader
 
     project = tmp_path / "project"
     project.mkdir()

@@ -5,7 +5,7 @@ import asyncio
 from loushang.agent import Agent
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
-from loushang.harness.agent_transcript import ApplicationMessage
+from loushang.harness.transcript import ApplicationMessage
 
 
 def test_agent_session_direct_application_input_reuses_one_commit_and_projection(

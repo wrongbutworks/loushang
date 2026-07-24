@@ -49,7 +49,7 @@ excluding `__pycache__`. Tests do not count.
    not a migration.
 5. **Neutral-core rule.** `harness` core stays independent of Agent/AI;
    declared integration packages (`harness.session`,
-   `harness.agent_transcript`, `harness.host`) may use stable public Agent/AI
+   `harness.transcript`, `harness.host`) may use stable public Agent/AI
    value contracts only.
 6. **Compression-ratio tracking.** Each slice records deleted vs added LOC in
    the ledger. Target ratio ≥ 0.7 (deleted/added). If a slice lands below 0.5,

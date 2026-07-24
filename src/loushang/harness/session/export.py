@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from loushang.harness.agent_transcript import (
+from loushang.harness.transcript import (
     TranscriptExportRequest,
     TranscriptHtmlExportProfile,
     TranscriptToolDefinition,

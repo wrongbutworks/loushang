@@ -12,12 +12,12 @@ from typing import Protocol, cast
 from uuid import uuid4
 
 from loushang.ai.types import ImagePart
-from loushang.harness.agent_transcript import ApplicationMessage
 from loushang.harness.extensions.agent.input import (
     ExtensionApplicationInput,
     ExtensionInputRuntime,
     ExtensionUserInput,
 )
+from loushang.harness.transcript import ApplicationMessage
 
 
 class ExtensionInputAgentPort(Protocol):

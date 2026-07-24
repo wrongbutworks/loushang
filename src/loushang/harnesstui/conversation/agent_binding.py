@@ -10,19 +10,6 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, TextIO, TypeAlias
 
 from loushang.agent.types import AgentToolResult
-from loushang.harness.agent_transcript import (
-    AGENT_MESSAGE_KIND,
-    APPLICATION_MESSAGE_KIND,
-    COMMAND_EXECUTION_KIND,
-    CONTEXT_BRANCH_SUMMARY_KIND,
-    CONTEXT_COMPACTION_CHECKPOINT_KIND,
-    CONVERSATION_METADATA_PATCH_KIND,
-    EXTENSION_DATA_KIND,
-    MODEL_SELECTION_KIND,
-    RECORD_ANNOTATION_PATCH_KIND,
-    STANDARD_AGENT_TRANSCRIPT_KINDS,
-    THINKING_SELECTION_KIND,
-)
 from loushang.harness.events import normalize_event_select
 from loushang.harness.host.mode import ModeConfig
 from loushang.harness.host.rpc import run_rpc_host
@@ -36,6 +23,19 @@ from loushang.harness.session import (
 )
 from loushang.harness.tools.workspace.presentation import (
     render_tool_result_presentation,
+)
+from loushang.harness.transcript import (
+    AGENT_MESSAGE_KIND,
+    APPLICATION_MESSAGE_KIND,
+    COMMAND_EXECUTION_KIND,
+    CONTEXT_BRANCH_SUMMARY_KIND,
+    CONTEXT_COMPACTION_CHECKPOINT_KIND,
+    CONVERSATION_METADATA_PATCH_KIND,
+    EXTENSION_DATA_KIND,
+    MODEL_SELECTION_KIND,
+    RECORD_ANNOTATION_PATCH_KIND,
+    STANDARD_AGENT_TRANSCRIPT_KINDS,
+    THINKING_SELECTION_KIND,
 )
 from loushang.harnesstui.conversation.history import (
     ConversationHistoryProjector,

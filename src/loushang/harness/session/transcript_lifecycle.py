@@ -15,13 +15,6 @@ from inspect import isawaitable
 from pathlib import Path
 from typing import Generic, TypeVar
 
-from loushang.harness.agent_transcript.directory import (
-    AgentTranscriptDirectoryRuntime,
-)
-from loushang.harness.agent_transcript.product_session import (
-    ProductTranscriptSession,
-)
-from loushang.harness.agent_transcript.session_catalog import SessionSummary
 from loushang.harness.diagnostics.types import (
     DiagnosticRecord,
     DiagnosticsQuery,
@@ -37,6 +30,13 @@ from loushang.harness.session.lifecycle import (
     SessionLifecycleRuntime,
     SessionLifecycleTransition,
 )
+from loushang.harness.transcript.directory import (
+    AgentTranscriptDirectoryRuntime,
+)
+from loushang.harness.transcript.product_session import (
+    ProductTranscriptSession,
+)
+from loushang.harness.transcript.session_catalog import SessionSummary
 
 SessionT = TypeVar("SessionT")
 PayloadT = TypeVar("PayloadT")

@@ -6,7 +6,7 @@ Implemented on `harness/session-adapter-collapse`.
 
 ## Purpose
 
-`loushang.harness.agent_transcript.ProductTranscriptSession` is the reusable
+`loushang.harness.transcript.ProductTranscriptSession` is the reusable
 Product-facing wrapper around a bound `AgentTranscriptLifecycleSession`. It
 owns the repetitive session surface shared by Coding, Research, Design, PPT,
 and OEM Products:

@@ -13,17 +13,17 @@ from loushang.coding.product_plan import (
     CODING_RUNTIME_PROFILE_METADATA_KEY,
 )
 from loushang.coding.session_manager import SessionManager
-from loushang.harness.agent_transcript import (
+from loushang.harness.conversation import FileConversationStore, MemoryConversationStore
+from loushang.harness.runtime import RuntimeProfileSnapshot
+from loushang.harness.transcript import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
     TURN_AWARE_SUMMARY_VERSION,
     AgentTranscriptCompactionCapability,
     AgentTranscriptProfile,
 )
-from loushang.harness.agent_transcript.native_file import (
+from loushang.harness.transcript.native_file import (
     write_agent_transcript_export as write_session_file,
 )
-from loushang.harness.conversation import FileConversationStore, MemoryConversationStore
-from loushang.harness.runtime import RuntimeProfileSnapshot
 
 
 def _model() -> Model:

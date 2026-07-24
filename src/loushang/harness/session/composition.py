@@ -18,20 +18,6 @@ from loushang.agent import Agent
 from loushang.ai.api_registry import ApiProviderRegistry
 from loushang.ai.model import ModelSelection
 from loushang.ai.utils import is_context_overflow
-from loushang.harness.agent_transcript import (
-    AgentTranscriptCompactionCapability,
-    AgentTranscriptCompactionRuntime,
-    AgentTranscriptContext,
-    AgentTranscriptNavigationRuntime,
-    AgentTranscriptRetryRuntime,
-    AgentTranscriptSelectionRuntime,
-    BranchSummaryOutput,
-    CompactionHookDecision,
-    CompactionHookRequest,
-    CompactionPreparation,
-    CompactionResult,
-    TranscriptCompactionPolicy,
-)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.events import (
@@ -76,6 +62,20 @@ from loushang.harness.session.runtime import (
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.transcript import (
+    AgentTranscriptCompactionCapability,
+    AgentTranscriptCompactionRuntime,
+    AgentTranscriptContext,
+    AgentTranscriptNavigationRuntime,
+    AgentTranscriptRetryRuntime,
+    AgentTranscriptSelectionRuntime,
+    BranchSummaryOutput,
+    CompactionHookDecision,
+    CompactionHookRequest,
+    CompactionPreparation,
+    CompactionResult,
+    TranscriptCompactionPolicy,
+)
 from loushang.harness.workspace.exec import ExecService
 
 AsyncEvent = Callable[[object], Awaitable[None]]
@@ -592,7 +592,7 @@ def _resolve_compaction_capability(session: object) -> AgentTranscriptCompaction
         value = capability("context.compaction")
         if isinstance(value, AgentTranscriptCompactionCapability):
             return value
-    from loushang.harness.agent_transcript import (
+    from loushang.harness.transcript import (
         create_agent_transcript_compaction_capability,
     )
 

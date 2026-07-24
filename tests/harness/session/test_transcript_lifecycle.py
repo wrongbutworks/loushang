@@ -7,7 +7,6 @@ from typing import cast
 
 import pytest
 
-from loushang.harness.agent_transcript import ProductTranscriptSession
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.session import (
     AgentTranscriptSessionRuntime,
@@ -21,6 +20,7 @@ from loushang.harness.session import (
     SessionLifecycleTransition,
     resolve_fork_target,
 )
+from loushang.harness.transcript import ProductTranscriptSession
 
 
 @dataclass(frozen=True)

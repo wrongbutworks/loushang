@@ -1844,7 +1844,7 @@ def test_create_agent_session_projects_application_messages_to_model_input(
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session
     from loushang.coding.session_manager import SessionManager
-    from loushang.harness.agent_transcript import ApplicationMessage
+    from loushang.harness.transcript import ApplicationMessage
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -2499,7 +2499,7 @@ def test_create_agent_session_passes_compaction_settings_to_session(
     from loushang.coding.bootstrap import create_agent_session, create_services
     from loushang.coding.control import CompactionSettings
     from loushang.coding.session_manager import SessionManager
-    from loushang.harness.agent_transcript import CompactionResult
+    from loushang.harness.transcript import CompactionResult
 
     services = create_services()
     services.settings_manager.update_settings(

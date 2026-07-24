@@ -2,7 +2,7 @@
 
 ## Decision
 
-`loushang.harness.agent_transcript` owns the standard interaction mechanics
+`loushang.harness.transcript` owns the standard interaction mechanics
 over an already-open Agent transcript:
 
 - selected-branch navigation and editor-text recovery for standard user and
@@ -65,7 +65,7 @@ serialization, cancellation, and normalized output are Harness behavior.
 
 ## Dependency Rule
 
-`harness.agent_transcript` may import stable Agent message type aliases,
+`harness.transcript` may import stable Agent message type aliases,
 `loushang.ai.types`, and pure value objects in `loushang.ai.model`. Its
 dedicated `summarization` module may additionally call the public
 `loushang.ai` completion surface. It must not import Coding, model/provider

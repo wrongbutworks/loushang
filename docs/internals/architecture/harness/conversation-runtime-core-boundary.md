@@ -43,7 +43,7 @@ artifact vocabulary. Agent-backed Products may select the follow-on common
 
 These neutral conversation packages must not import Coding, Agent, AI messages,
 model/provider code, Product stores, Method, Work, TUI, or channel
-implementations. The optional `loushang.harness.agent_transcript` package is a
+implementations. The optional `loushang.harness.transcript` package is a
 separate profile with a narrow data/codec allowlist; it does not weaken this
 core boundary.
 

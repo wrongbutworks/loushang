@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
-from loushang.harness.agent_transcript import (
+from loushang.harness.transcript import (
     ApplicationDeliveryMode,
     ApplicationMessage,
     CommitResult,

@@ -46,7 +46,7 @@ def _assistant(
 
 
 def test_context_usage_snapshot_treats_length_usage_as_compactable() -> None:
-    from loushang.harness.agent_transcript import build_context_usage_snapshot
+    from loushang.harness.transcript import build_context_usage_snapshot
 
     snapshot = build_context_usage_snapshot(
         [_assistant(total_tokens=95, stop_reason="length")],
@@ -64,7 +64,7 @@ def test_context_usage_snapshot_treats_length_usage_as_compactable() -> None:
 
 
 def test_context_usage_snapshot_uses_compact_percent_threshold() -> None:
-    from loushang.harness.agent_transcript import build_context_usage_snapshot
+    from loushang.harness.transcript import build_context_usage_snapshot
 
     snapshot = build_context_usage_snapshot(
         [_assistant(total_tokens=85, stop_reason="stop")],
@@ -80,7 +80,7 @@ def test_context_usage_snapshot_uses_compact_percent_threshold() -> None:
 
 
 def test_context_usage_snapshot_exposes_compaction_budget_fields() -> None:
-    from loushang.harness.agent_transcript import build_context_usage_snapshot
+    from loushang.harness.transcript import build_context_usage_snapshot
 
     snapshot = build_context_usage_snapshot(
         [_assistant(total_tokens=85, stop_reason="stop")],
@@ -102,7 +102,7 @@ def test_context_usage_snapshot_exposes_compaction_budget_fields() -> None:
 
 def test_context_usage_snapshot_consumes_ai_usage_derived_from_raw_parts() -> None:
     from loushang.ai.event_stream import AssistantMessageEventStream, RawAssembler
-    from loushang.harness.agent_transcript import build_context_usage_snapshot
+    from loushang.harness.transcript import build_context_usage_snapshot
 
     stream = AssistantMessageEventStream()
     assembler = RawAssembler(
@@ -121,7 +121,7 @@ def test_context_usage_snapshot_consumes_ai_usage_derived_from_raw_parts() -> No
 
 
 def test_context_usage_snapshot_marks_pre_compaction_usage_stale(tmp_path) -> None:
-    from loushang.harness.agent_transcript import build_context_usage_snapshot
+    from loushang.harness.transcript import build_context_usage_snapshot
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)

@@ -28,7 +28,7 @@ from loushang.coding.compaction import (
     evaluate_summary_case,
 )
 from loushang.coding.compaction.adapter import execute_coding_compaction
-from loushang.harness.agent_transcript import CompactionPreparation
+from loushang.harness.transcript import CompactionPreparation
 
 SAMPLE_SUMMARY = """## Goal
 Harden the session index lifecycle and runtime diagnostics.

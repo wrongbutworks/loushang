@@ -51,7 +51,7 @@ The required split is:
   resources, generic diagnostics, configuration, and generic event values do
   not depend on Agent or AI;
 - Agent integration packages such as `harness.session`,
-  `harness.agent_transcript`, extension Agent bridges, and reusable
+  `harness.transcript`, extension Agent bridges, and reusable
   AI-assisted maintenance executors may depend on stable public Agent and AI
   APIs when that is part of their declared contract;
 - those integrations may invoke a public AI/Agent capability when the Product

@@ -15,12 +15,12 @@ from loushang.ai.types import (
 )
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
-from loushang.harness.agent_transcript.native_file import (
-    load_agent_transcript_file as load_session_file,
-)
 from loushang.harness.tools.workspace import ToolDefinition
 from loushang.harness.tools.workspace.registry import (
     WorkspaceToolRegistry as ToolRegistry,
+)
+from loushang.harness.transcript.native_file import (
+    load_agent_transcript_file as load_session_file,
 )
 
 
@@ -188,7 +188,7 @@ def test_export_session_to_jsonl_rechains_current_branch_parent_ids(tmp_path) ->
 
 
 def test_render_transcript_uses_stable_message_ids() -> None:
-    from loushang.harness.agent_transcript.export import render_transcript
+    from loushang.harness.transcript.export import render_transcript
 
     html = render_transcript(
         [
@@ -212,7 +212,7 @@ def test_render_transcript_uses_stable_message_ids() -> None:
 def test_render_transcript_renders_markdown_code_fences_with_syntax_highlighting() -> (
     None
 ):
-    from loushang.harness.agent_transcript.export import render_transcript
+    from loushang.harness.transcript.export import render_transcript
 
     html = render_transcript(
         [
@@ -298,7 +298,7 @@ def test_export_session_to_html_script_loads_embedded_session_data(tmp_path) -> 
 def test_export_session_to_html_tool_results_include_presentation_notices(
     tmp_path,
 ) -> None:
-    from loushang.harness.agent_transcript.export import render_tool_sections
+    from loushang.harness.transcript.export import render_tool_sections
 
     html = render_tool_sections(
         [
@@ -322,7 +322,7 @@ def test_export_session_to_html_tool_results_include_presentation_notices(
 
 
 def test_export_session_to_html_tool_results_convert_ansi_to_html() -> None:
-    from loushang.harness.agent_transcript.export import render_tool_sections
+    from loushang.harness.transcript.export import render_tool_sections
 
     html = render_tool_sections(
         [
@@ -394,7 +394,7 @@ def test_export_session_to_html_uses_tool_renderers(tmp_path) -> None:
 
 
 def test_render_tool_sections_falls_back_when_tool_renderer_fails() -> None:
-    from loushang.harness.agent_transcript.export import render_tool_sections
+    from loushang.harness.transcript.export import render_tool_sections
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -432,7 +432,7 @@ def test_render_tool_sections_falls_back_when_tool_renderer_fails() -> None:
 
 
 def test_render_tool_sections_uses_shared_renderer_runtime_state() -> None:
-    from loushang.harness.agent_transcript.export import render_tool_sections
+    from loushang.harness.transcript.export import render_tool_sections
 
     async def execute(tool_call_id, params, signal=None, on_update=None):
         del tool_call_id, params, signal, on_update
@@ -589,8 +589,8 @@ def test_export_session_to_html_embeds_entry_tree_and_summary_entries(tmp_path) 
 
 
 def test_product_transcript_dispositions_cover_every_standard_kind() -> None:
-    from loushang.harness.agent_transcript import STANDARD_AGENT_TRANSCRIPT_KINDS
-    from loushang.harness.agent_transcript.export import (
+    from loushang.harness.transcript import STANDARD_AGENT_TRANSCRIPT_KINDS
+    from loushang.harness.transcript.export import (
         HTML_TRANSCRIPT_DISPOSITIONS,
     )
     from loushang.harnesstui.conversation.agent_binding import (

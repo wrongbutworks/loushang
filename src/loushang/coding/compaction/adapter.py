@@ -10,14 +10,14 @@ from loushang.coding.compaction.profiles import (
     CODING_COMPACTION_SUMMARY_PROFILE,
     CODING_TURN_PREFIX_SUMMARY_PROFILE,
 )
-from loushang.harness.agent_transcript import (
+from loushang.harness.transcript import (
     BranchSummaryOutput,
     CompactionPreparation,
     CompactionResult,
     SummaryResourceOperationDecorationProfile,
     decorate_summary_resource_operations,
 )
-from loushang.harness.agent_transcript.summarization import (
+from loushang.harness.transcript.summarization import (
     SummaryCompleter,
     default_summary_completer,
     execute_branch_summary,

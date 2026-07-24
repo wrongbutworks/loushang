@@ -1107,12 +1107,12 @@ def test_agent_session_execute_bash_records_command_execution(tmp_path) -> None:
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
-    from loushang.harness.agent_transcript import COMMAND_EXECUTION_KIND
     from loushang.harness.conversation import CommandExecutionRecord
     from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
+    from loushang.harness.transcript import COMMAND_EXECUTION_KIND
     from loushang.harness.workspace.exec import ExecOutputChunk, ExecResult
 
     class AllowingPolicyEngine:
@@ -1200,12 +1200,12 @@ def test_agent_session_abort_bash_cancels_active_execution_and_records_command(
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
-    from loushang.harness.agent_transcript import COMMAND_EXECUTION_KIND
     from loushang.harness.conversation import CommandExecutionRecord
     from loushang.harness.policy import PolicyDecision
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
+    from loushang.harness.transcript import COMMAND_EXECUTION_KIND
     from loushang.harness.workspace.exec import ExecOutputChunk, ExecResult
 
     class AllowingPolicyEngine:

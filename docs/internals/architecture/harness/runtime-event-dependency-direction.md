@@ -11,14 +11,14 @@ Harness runtime/event/session packages form a directed acyclic graph:
 ```text
 host (RPC, channel, mode adapters)
   -> session (Agent-session composition and projections)
-       -> agent_transcript (Agent transcript codecs and mechanics)
+       -> transcript (Agent transcript codecs and mechanics)
        -> runtime (execution, queue, retry, turn behavior)
        -> events (facts, envelopes, bus, generic projection)
-  -> agent_transcript
+  -> transcript
   -> events
 
-agent_transcript -> runtime -> events
-agent_transcript ----------> events
+transcript -> runtime -> events
+transcript ----------> events
 ```
 
 The ownership test is semantic:
@@ -27,19 +27,19 @@ The ownership test is semantic:
 | --- | --- |
 | `events` | Immutable host/session facts, runtime envelopes, bus/publisher, generic selectors and JSON normalization |
 | `runtime` | Host execution, queue ledger, turn orchestration, retry coordination, runtime snapshots |
-| `agent_transcript` | Agent message codecs, transcript persistence mechanics, compaction/navigation/catalog/export engines |
+| `transcript` | Agent message codecs, transcript persistence mechanics, compaction/navigation/catalog/export engines |
 | `session` | Agent-session composition, typed session dictionaries, transport views, live-session export adapter |
 | `host` | RPC/channel/mode adapters and adapter result values |
 
 Event payload records do not import the runtime behavior that emits them.
 Session-specific projections do not live in `events`, because they require
 Agent message codecs and presentation/tool rendering. The live export adapter
-does not live in `agent_transcript`, because it consumes `SessionFacade`.
+does not live in `transcript`, because it consumes `SessionFacade`.
 
 ## Enforced Boundaries
 
-- `events` must not import `runtime`, `agent_transcript`, `session`, or `host`.
-- `agent_transcript` must not import `session` or `host`.
+- `events` must not import `runtime`, `transcript`, `session`, or `host`.
+- `transcript` must not import `session` or `host`.
 - `session` must not import `host`.
 - Compatibility re-exports must not recreate a reverse edge.
 - `tests/architecture/test_import_boundaries.py` computes strongly connected

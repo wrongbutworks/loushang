@@ -161,8 +161,8 @@ def test_serialize_session_event_uses_snake_case_for_branch_summary_events() -> 
 
 
 def test_serialize_session_event_uses_snake_case_for_compaction_usage() -> None:
-    from loushang.harness.agent_transcript import ContextUsageSnapshot
     from loushang.harness.session import serialize_session_event
+    from loushang.harness.transcript import ContextUsageSnapshot
 
     usage = ContextUsageSnapshot(
         tokens=85,

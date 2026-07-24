@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from loushang.agent import Agent
-from loushang.harness.agent_transcript import ApplicationMessage, CommitResult
 from loushang.harness.conversation import CommitReceipt
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.session import (
@@ -14,6 +13,7 @@ from loushang.harness.session import (
     TranscriptRuntimePort,
     TurnPolicyPort,
 )
+from loushang.harness.transcript import ApplicationMessage, CommitResult
 
 
 @dataclass(frozen=True)

@@ -18,7 +18,6 @@ from loushang.coding.resource_runtime import (
 )
 from loushang.coding.resource_runtime import summarize_coding_package_root
 from loushang.coding.session_manager import SessionManager
-from loushang.harness.agent_transcript import BranchSummaryOutput
 from loushang.harness.capabilities import (
     CapabilityCompositionRuntime,
     bind_capability_composition_runtime,
@@ -36,6 +35,7 @@ from loushang.harness.session.composition import sleep_for_retry
 from loushang.harness.session.event_types import AgentSessionEvent
 from loushang.harness.session.footer import FooterDataProvider
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.transcript import BranchSummaryOutput
 from loushang.harness.workspace.exec import ExecService
 
 SessionEventListener = Callable[[AgentSessionEvent], Awaitable[None] | None]

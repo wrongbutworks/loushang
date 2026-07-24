@@ -83,7 +83,7 @@ they are test contracts, not a production registration or discovery API.
 Add a focused application service to the existing optional Agent profile:
 
 ```text
-loushang.harness.agent_transcript.store
+loushang.harness.transcript.store
   AgentTranscriptSessionStore
 ```
 

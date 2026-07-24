@@ -7,7 +7,7 @@ Status: implementation complete for integration into `lane/harness` on
 
 ## Purpose
 
-`loushang.harness.agent_transcript.lifecycle` owns the reusable lifecycle
+`loushang.harness.transcript.lifecycle` owns the reusable lifecycle
 assembly for one optional Agent transcript. `AgentTranscriptLifecycle` creates,
 restores, detaches, forks, and disposes an `AgentTranscriptSessionStore` without
 knowing a Product's profile-selection, root-selection, or resume policy.

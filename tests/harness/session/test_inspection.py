@@ -12,16 +12,16 @@ from loushang.ai.types import (
     Usage,
     UserMessage,
 )
-from loushang.harness.agent_transcript import (
-    AgentTranscriptSession,
-    AgentTranscriptUnitOfWork,
-)
 from loushang.harness.conversation import (
     ConversationHeader,
     ConversationKey,
     MemoryConversationStore,
 )
 from loushang.harness.session import AgentSessionInspector, AgentSessionState
+from loushang.harness.transcript import (
+    AgentTranscriptSession,
+    AgentTranscriptUnitOfWork,
+)
 
 
 def _model() -> Model:

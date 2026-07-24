@@ -19,11 +19,6 @@ from loushang.ai.model.domain import (
     Pricing,
 )
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.harness.agent_transcript import (
-    AGENT_MESSAGE_KIND,
-    CompactionResult,
-    SessionQuery,
-)
 from loushang.harness.commands import CommandSourceInfo, SessionCommandDescriptor
 from loushang.harness.conversation import ConversationRecord
 from loushang.harness.diagnostics import (
@@ -41,6 +36,11 @@ from loushang.harness.resources.types import (
 from loushang.harness.runtime import SessionOperationResult
 from loushang.harness.runtime.types import RunState
 from loushang.harness.session.inspection import AgentSessionState
+from loushang.harness.transcript import (
+    AGENT_MESSAGE_KIND,
+    CompactionResult,
+    SessionQuery,
+)
 
 
 def _assistant_message(text: str) -> AssistantMessage:

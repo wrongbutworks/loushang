@@ -15,12 +15,6 @@ from pathlib import Path
 from typing import Generic, Protocol, TypeVar
 
 from loushang.ai.types import UserMessage
-from loushang.harness.agent_transcript import (
-    AGENT_MESSAGE_KIND,
-    AgentTranscriptRecord,
-    SessionSummary,
-    user_message_text,
-)
 from loushang.harness.runtime import (
     SessionOperationFailure,
     SessionOperationPhase,
@@ -47,6 +41,12 @@ from loushang.harness.session.transcript_lifecycle import (
     ProductTranscriptSessionLifecyclePorts,
     ProductTranscriptSessionLifecycleStore,
     require_session_operation_session,
+)
+from loushang.harness.transcript import (
+    AGENT_MESSAGE_KIND,
+    AgentTranscriptRecord,
+    SessionSummary,
+    user_message_text,
 )
 
 SessionT = TypeVar("SessionT")

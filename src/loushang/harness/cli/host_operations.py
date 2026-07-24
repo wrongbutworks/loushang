@@ -11,7 +11,6 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import TextIO
 
-from loushang.harness.agent_transcript.session_catalog import try_project_session_record
 from loushang.harness.cli.agent_args import AgentCliArgs
 from loushang.harness.cli.command_execution import (
     CommandExecutionError,
@@ -83,6 +82,7 @@ from loushang.harness.cli.skill_listing import (
 )
 from loushang.harness.diagnostics import export_diagnostics_bundle
 from loushang.harness.session.model_selection import format_model_metadata_table
+from loushang.harness.transcript.session_catalog import try_project_session_record
 
 CliErrorFormatter = Callable[[BaseException], str]
 PolicyEvaluator = Callable[[str], str | None]
