@@ -213,11 +213,14 @@ def test_opaque_records_survive_repository_load_rewrite_and_selected_fork(
         ),
         record_id=lambda record: record.record_id,
         parent_id=lambda record: record.parent_id,
-        journal=source_journal,
     )
+    source_journal.rewrite(source.records, header=source.header)
 
-    loaded = ConversationRepository.load(
-        source_journal,
+    loaded_snapshot = source_journal.load()
+    assert loaded_snapshot.header is not None
+    loaded = ConversationRepository.create(
+        header=loaded_snapshot.header,
+        records=loaded_snapshot.records,
         record_id=lambda record: record.record_id,
         parent_id=lambda record: record.parent_id,
     )
@@ -226,9 +229,12 @@ def test_opaque_records_survive_repository_load_rewrite_and_selected_fork(
     assert isinstance(loaded.get("opaque-side").payload, OpaquePayload)  # type: ignore[union-attr]
     assert isinstance(loaded.get("opaque-leaf").payload, OpaquePayload)  # type: ignore[union-attr]
 
-    loaded.rewrite()
-    rewritten = ConversationRepository.load(
-        source_journal,
+    source_journal.rewrite(loaded.records, header=loaded.header)
+    rewritten_snapshot = source_journal.load()
+    assert rewritten_snapshot.header is not None
+    rewritten = ConversationRepository.create(
+        header=rewritten_snapshot.header,
+        records=rewritten_snapshot.records,
         record_id=lambda record: record.record_id,
         parent_id=lambda record: record.parent_id,
     )
@@ -237,16 +243,19 @@ def test_opaque_records_survive_repository_load_rewrite_and_selected_fork(
     fork_journal = _journal(tmp_path / "fork.jsonl", registry)
     forked = loaded.fork(
         header=_header("conversation-fork"),
-        journal=fork_journal,
         leaf_id="opaque-leaf",
     )
+    fork_journal.rewrite(forked.records, header=forked.header)
     assert [record.record_id for record in forked.records] == [
         "opaque-root",
         "known-child",
         "opaque-leaf",
     ]
-    reloaded_fork = ConversationRepository.load(
-        fork_journal,
+    fork_snapshot = fork_journal.load()
+    assert fork_snapshot.header is not None
+    reloaded_fork = ConversationRepository.create(
+        header=fork_snapshot.header,
+        records=fork_snapshot.records,
         record_id=lambda record: record.record_id,
         parent_id=lambda record: record.parent_id,
     )

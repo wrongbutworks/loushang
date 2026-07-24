@@ -1,28 +1,5 @@
 """Optional Agent/AI transcript profile over the neutral conversation core."""
 
-from loushang.harness.agent_transcript.catalog import (
-    AgentTranscriptSessionCatalog,
-    SessionMetadata,
-    SessionQuery,
-    SessionRecord,
-    SessionSummary,
-    SessionTreeNode,
-    agent_transcript_header_cwd,
-    agent_transcript_header_parent_session,
-    build_agent_transcript_label_indexes,
-    build_agent_transcript_session_context,
-    build_agent_transcript_session_tree,
-    filter_agent_transcript_session_summaries,
-    find_all_agent_transcript_session_summaries,
-    find_all_indexed_agent_transcript_session_summaries,
-    list_all_agent_transcript_session_summaries,
-    list_all_indexed_agent_transcript_session_summaries,
-    load_agent_transcript_session_metadata,
-    project_agent_transcript_session_summary,
-    project_session_record,
-    refresh_all_agent_transcript_session_indexes,
-    same_agent_transcript_session_path,
-)
 from loushang.harness.agent_transcript.codecs import (
     STANDARD_PAYLOAD_VERSION,
     create_agent_transcript_message_codec,
@@ -58,20 +35,6 @@ from loushang.harness.agent_transcript.export import (
     render_entry_tree,
     render_tool_sections,
     render_transcript,
-)
-from loushang.harness.agent_transcript.file_store import (
-    AgentTranscriptFileError,
-    AgentTranscriptFileLayout,
-    FilenameForKey,
-    agent_transcript_file_lock,
-    agent_transcript_journal,
-    append_agent_transcript_record,
-    create_agent_transcript_file_store,
-    create_agent_transcript_repository,
-    load_agent_transcript_file,
-    load_agent_transcript_repository,
-    load_current_agent_transcript_header,
-    write_agent_transcript_file,
 )
 from loushang.harness.agent_transcript.interaction import (
     AgentTranscriptInspector,
@@ -139,12 +102,26 @@ from loushang.harness.agent_transcript.migration import (
     LEGACY_SESSION_OPAQUE_KIND,
     NATIVE_CONVERSATION_VERSION,
     MigrationDisposition,
+    SessionV3ImportResult,
     SessionV3MigrationError,
     SessionV3MigrationResult,
     convert_session_v3_snapshot,
+    import_session_v3_file,
     is_native_conversation_file,
-    migrate_session_v3_file,
     read_session_v3_file,
+)
+from loushang.harness.agent_transcript.native_file import (
+    AgentTranscriptFileError,
+    AgentTranscriptFileLayout,
+    FilenameForKey,
+    agent_transcript_file_lock,
+    agent_transcript_journal,
+    create_agent_transcript_file_store,
+    create_agent_transcript_repository,
+    load_agent_transcript_file,
+    load_agent_transcript_repository,
+    load_current_agent_transcript_header,
+    write_agent_transcript_export,
 )
 from loushang.harness.agent_transcript.product_session import (
     ProductTranscriptSession,
@@ -170,6 +147,29 @@ from loushang.harness.agent_transcript.session import (
     ApplicationMessageIdFactory,
     CommitObserver,
 )
+from loushang.harness.agent_transcript.session_catalog import (
+    AgentTranscriptSessionCatalog,
+    SessionMetadata,
+    SessionQuery,
+    SessionRecord,
+    SessionSummary,
+    SessionTreeNode,
+    agent_transcript_header_cwd,
+    agent_transcript_header_parent_session,
+    build_agent_transcript_label_indexes,
+    build_agent_transcript_session_context,
+    build_agent_transcript_session_tree,
+    filter_agent_transcript_session_summaries,
+    find_all_agent_transcript_session_summaries,
+    find_all_indexed_agent_transcript_session_summaries,
+    list_all_agent_transcript_session_summaries,
+    list_all_indexed_agent_transcript_session_summaries,
+    load_agent_transcript_session_metadata,
+    project_agent_transcript_session_summary,
+    project_session_record,
+    refresh_all_agent_transcript_session_indexes,
+    same_agent_transcript_session_path,
+)
 from loushang.harness.agent_transcript.session_export import (
     export_session_to_html,
     export_session_to_jsonl,
@@ -180,10 +180,6 @@ from loushang.harness.agent_transcript.session_factory import (
     HeaderMetadataFactory,
     RestoredHeaderValidator,
     SessionFileFactory,
-)
-from loushang.harness.agent_transcript.store import (
-    AgentTranscriptCommit,
-    AgentTranscriptSessionStore,
 )
 from loushang.harness.agent_transcript.summarization import (
     DEFAULT_BRANCH_SUMMARY_PREAMBLE,
@@ -223,6 +219,11 @@ from loushang.harness.agent_transcript.types import (
     ThinkingSelectionSnapshot,
     application_message_content_blocks,
 )
+from loushang.harness.agent_transcript.unit_of_work import (
+    AgentTranscriptCommit,
+    AgentTranscriptOpenDiagnostic,
+    AgentTranscriptUnitOfWork,
+)
 from loushang.harness.agent_transcript.writer import (
     AgentTranscriptRecordFactory,
     Clock,
@@ -251,6 +252,7 @@ __all__ = [
     "AgentTranscriptContext",
     "AgentTranscriptDirectoryRuntime",
     "AgentTranscriptCommit",
+    "AgentTranscriptOpenDiagnostic",
     "AgentTranscriptCompactionCapability",
     "AgentTranscriptCompactionRuntime",
     "AgentTranscriptFileError",
@@ -269,7 +271,7 @@ __all__ = [
     "AgentTranscriptRuntimeBinding",
     "AgentTranscriptRuntimeSpec",
     "AgentTranscriptSelectionRuntime",
-    "AgentTranscriptSessionStore",
+    "AgentTranscriptUnitOfWork",
     "AgentTranscriptSession",
     "AgentTranscriptSessionCatalog",
     "AgentTranscriptSessionFactory",
@@ -313,6 +315,7 @@ __all__ = [
     "RecordAnnotationPatch",
     "RecordSemantics",
     "SessionV3MigrationError",
+    "SessionV3ImportResult",
     "SessionV3MigrationResult",
     "SessionMetadata",
     "SessionFileFactory",
@@ -343,7 +346,6 @@ __all__ = [
     "agent_transcript_header_parent_session",
     "agent_transcript_file_lock",
     "agent_transcript_journal",
-    "append_agent_transcript_record",
     "command_execution_to_text",
     "compaction_plan_to_json",
     "context_item_to_model_message",
@@ -378,6 +380,7 @@ __all__ = [
     "filter_agent_transcript_session_summaries",
     "find_all_agent_transcript_session_summaries",
     "find_all_indexed_agent_transcript_session_summaries",
+    "import_session_v3_file",
     "is_native_conversation_file",
     "is_compaction_aborted",
     "is_retryable_assistant_error",
@@ -387,7 +390,6 @@ __all__ = [
     "load_agent_transcript_file",
     "load_agent_transcript_repository",
     "load_current_agent_transcript_header",
-    "migrate_session_v3_file",
     "model_selection_from_model",
     "model_context_window",
     "normalize_branch_summary_output",
@@ -410,7 +412,7 @@ __all__ = [
     "render_transcript",
     "serialize_agent_conversation",
     "register_standard_payload_codecs",
-    "write_agent_transcript_file",
+    "write_agent_transcript_export",
     "user_message_text",
     "default_summary_completer",
     "validate_model",

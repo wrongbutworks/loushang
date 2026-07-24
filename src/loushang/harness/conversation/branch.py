@@ -4,7 +4,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Generic, Literal, TypeVar
 
-from loushang.harness.journal.types import JournalDiagnostic
+from loushang.harness.conversation.diagnostics import ConversationDiagnostic
 
 R = TypeVar("R")
 BranchMode = Literal["strict", "compatible"]
@@ -36,7 +36,7 @@ class BranchGraph(Generic[R]):
         self._record_id = record_id
         self._parent_id = parent_id
         self._mode = mode
-        self._diagnostics: list[JournalDiagnostic] = []
+        self._diagnostics: list[ConversationDiagnostic] = []
         self._by_id: dict[str, R] = {}
         self._source_order: list[str] = []
         self._build_lookup()
@@ -44,7 +44,7 @@ class BranchGraph(Generic[R]):
         self._children = self._build_children()
 
     @property
-    def diagnostics(self) -> tuple[JournalDiagnostic, ...]:
+    def diagnostics(self) -> tuple[ConversationDiagnostic, ...]:
         return tuple(self._diagnostics)
 
     @property
@@ -172,9 +172,10 @@ class BranchGraph(Generic[R]):
         if self._mode == "strict":
             raise BranchGraphError(message, code=code, record_id=record_id)
         self._diagnostics.append(
-            JournalDiagnostic(
+            ConversationDiagnostic(
                 code=code,
                 message=message,
+                record_id=record_id,
                 details={"record_id": record_id},
             )
         )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -20,9 +21,14 @@ from loushang.harness.agent_transcript import (
     ApplicationMessage,
     ContextCompactionCheckpoint,
     SessionV3MigrationError,
-    migrate_session_v3_file,
+    import_session_v3_file,
+    read_session_v3_file,
 )
-from loushang.harness.conversation import OpaquePayload
+from loushang.harness.conversation import (
+    ConversationKey,
+    MemoryConversationStore,
+    OpaquePayload,
+)
 
 
 def _header(*, version: int = 3):
@@ -144,14 +150,30 @@ def _write_jsonl(path: Path, values) -> None:
     )
 
 
+def _import(path: Path):
+    store = MemoryConversationStore(record_id=lambda record: record.record_id)
+    key = ConversationKey("imported", "session-1")
+    result = asyncio.run(
+        import_session_v3_file(
+            path,
+            store=store,
+            key=key,
+            operation_id="import:session-1",
+        )
+    )
+    return result, store
+
+
 def test_current_session_v3_migrates_all_standard_kinds_and_preserves_unknown(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "session.jsonl"
     source_entries = _current_entries()
     _write_jsonl(path, [_header(), *source_entries])
+    original = path.read_bytes()
 
-    result = migrate_session_v3_file(path)
+    imported, store = _import(path)
+    result = imported.source
 
     assert result.disposition == "migrated"
     assert result.header.conversation_id == "session-1"
@@ -185,17 +207,20 @@ def test_current_session_v3_migrates_all_standard_kinds_and_preserves_unknown(
     assert isinstance(opaque, OpaquePayload)
     assert opaque.value == source_entries[-1]
 
-    migrated_bytes = path.read_bytes()
-    migrated_lines = path.read_text(encoding="utf-8").splitlines()
-    assert json.loads(migrated_lines[0])["type"] == "conversation"
-    assert all(json.loads(line)["type"] == "record" for line in migrated_lines[1:])
+    assert imported.snapshot.header == result.header
+    assert imported.snapshot.records == result.records
+    assert path.read_bytes() == original
 
-    repeated = migrate_session_v3_file(path)
-
-    assert repeated.disposition == "already_native"
-    assert repeated.header == result.header
-    assert repeated.records == result.records
-    assert path.read_bytes() == migrated_bytes
+    repeated = asyncio.run(
+        import_session_v3_file(
+            path,
+            store=store,
+            key=imported.key,
+            operation_id="import:session-1",
+        )
+    )
+    assert repeated.snapshot == imported.snapshot
+    assert path.read_bytes() == original
 
 
 def test_corrupted_known_entry_fails_without_modifying_source(tmp_path: Path) -> None:
@@ -213,7 +238,7 @@ def test_corrupted_known_entry_fails_without_modifying_source(tmp_path: Path) ->
     original = path.read_bytes()
 
     with pytest.raises(SessionV3MigrationError) as error:
-        migrate_session_v3_file(path)
+        read_session_v3_file(path)
 
     assert error.value.code == "invalid_session_entry"
     assert error.value.line_number == 2
@@ -228,7 +253,7 @@ def test_unsupported_session_version_fails_without_modifying_source(
     original = path.read_bytes()
 
     with pytest.raises(SessionV3MigrationError) as error:
-        migrate_session_v3_file(path)
+        read_session_v3_file(path)
 
     assert error.value.code == "unsupported_session_version"
     assert path.read_bytes() == original
@@ -240,7 +265,7 @@ def test_invalid_json_fails_without_modifying_source(tmp_path: Path) -> None:
     original = path.read_bytes()
 
     with pytest.raises(SessionV3MigrationError) as error:
-        migrate_session_v3_file(path)
+        read_session_v3_file(path)
 
     assert error.value.code == "invalid_session_json"
     assert error.value.line_number == 2
@@ -254,9 +279,10 @@ def test_partial_tail_is_skipped_during_session_v3_migration(tmp_path: Path) -> 
         json.dumps(_header()) + "\n" + json.dumps(valid_entry) + "\n{",
         encoding="utf-8",
     )
+    original = path.read_bytes()
 
-    result = migrate_session_v3_file(path)
+    result, _ = _import(path)
 
-    assert result.disposition == "migrated"
-    assert tuple(record.record_id for record in result.records) == ("e1",)
-    assert path.read_text(encoding="utf-8").endswith("\n")
+    assert result.source.disposition == "migrated"
+    assert tuple(record.record_id for record in result.source.records) == ("e1",)
+    assert path.read_bytes() == original

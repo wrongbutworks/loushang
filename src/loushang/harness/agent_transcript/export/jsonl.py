@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
 
-from loushang.harness.agent_transcript.file_store import write_agent_transcript_file
+from loushang.harness.agent_transcript.native_file import write_agent_transcript_export
 from loushang.harness.agent_transcript.types import AgentTranscriptRecord
 from loushang.harness.conversation import ConversationHeader
 
@@ -20,7 +20,7 @@ def export_agent_transcript_to_jsonl(
 
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    write_agent_transcript_file(
+    write_agent_transcript_export(
         path, header, linearize_agent_transcript_branch(branch_entries)
     )
     return str(path)

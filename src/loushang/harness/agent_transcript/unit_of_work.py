@@ -37,6 +37,13 @@ from loushang.harness.agent_transcript.writer import (
     Clock,
     IdFactory,
 )
+from loushang.harness.conversation import (
+    CommitReceipt,
+    ConversationDiagnostic,
+    ConversationKey,
+    ConversationSourceDiagnostic,
+    ConversationStore,
+)
 from loushang.harness.conversation.repository import ConversationRepository
 from loushang.harness.conversation.types import (
     BranchDelta,
@@ -44,7 +51,6 @@ from loushang.harness.conversation.types import (
     ConversationHeader,
     ConversationTreeNode,
 )
-from loushang.harness.storage import CommitReceipt, ConversationKey, ConversationStore
 from loushang.protocol import JSONValue
 
 
@@ -54,9 +60,15 @@ class AgentTranscriptCommit:
 
     record: AgentTranscriptRecord
     receipt: CommitReceipt
+    diagnostics: tuple[ConversationSourceDiagnostic, ...] = ()
 
 
-class AgentTranscriptSessionStore:
+AgentTranscriptOpenDiagnostic = (
+    ConversationSourceDiagnostic | ConversationDiagnostic
+)
+
+
+class AgentTranscriptUnitOfWork:
     """One durable Agent transcript stream and its journal-free runtime view."""
 
     def __init__(
@@ -71,6 +83,7 @@ class AgentTranscriptSessionStore:
         revision: int,
         record_factory: AgentTranscriptRecordFactory | None = None,
         profile: AgentTranscriptProfile | None = None,
+        diagnostics: Sequence[AgentTranscriptOpenDiagnostic] = (),
     ) -> None:
         if revision != len(repository.records):
             raise ValueError("transcript store revision must equal its record count")
@@ -82,6 +95,7 @@ class AgentTranscriptSessionStore:
         self._revision = revision
         self._record_factory = record_factory or AgentTranscriptRecordFactory()
         self._profile = profile or AgentTranscriptProfile.default()
+        self._diagnostics = tuple(diagnostics)
         self._commit_lock = asyncio.Lock()
 
     @classmethod
@@ -97,7 +111,7 @@ class AgentTranscriptSessionStore:
         id_factory: IdFactory | None = None,
         record_factory: AgentTranscriptRecordFactory | None = None,
         profile: AgentTranscriptProfile | None = None,
-    ) -> AgentTranscriptSessionStore:
+    ) -> AgentTranscriptUnitOfWork:
         _require_matching_identity(key, header)
         initial_records = tuple(records)
         _create_repository(
@@ -105,10 +119,16 @@ class AgentTranscriptSessionStore:
             records=initial_records,
             leaf_id=leaf_id,
         )
-        snapshot = await backend.create(key, header, initial_records)
-        repository = _create_repository(
-            header=snapshot.header,
-            records=snapshot.records,
+        snapshot = await backend.create(
+            key,
+            header,
+            initial_records,
+            operation_id=_create_operation_id(key),
+        )
+        repository = ConversationRepository.from_snapshot(
+            snapshot,
+            record_id=lambda record: record.record_id,
+            parent_id=lambda record: record.parent_id,
             leaf_id=leaf_id,
         )
         return cls(
@@ -119,6 +139,7 @@ class AgentTranscriptSessionStore:
             record_factory=record_factory
             or AgentTranscriptRecordFactory(clock=clock, id_factory=id_factory),
             profile=profile,
+            diagnostics=repository.diagnostics,
         )
 
     @classmethod
@@ -132,22 +153,25 @@ class AgentTranscriptSessionStore:
         id_factory: IdFactory | None = None,
         record_factory: AgentTranscriptRecordFactory | None = None,
         profile: AgentTranscriptProfile | None = None,
-    ) -> AgentTranscriptSessionStore:
-        snapshot = await backend.load(key)
-        _require_matching_identity(key, snapshot.header)
-        repository = _create_repository(
-            header=snapshot.header,
-            records=snapshot.records,
+    ) -> AgentTranscriptUnitOfWork:
+        load_result = await backend.load(key)
+        _require_matching_identity(key, load_result.snapshot.header)
+        open_result = ConversationRepository.open(
+            load_result,
+            record_id=lambda record: record.record_id,
+            parent_id=lambda record: record.parent_id,
             leaf_id=leaf_id,
         )
+        repository = open_result.repository
         return cls(
             backend=backend,
             key=key,
             repository=repository,
-            revision=snapshot.revision,
+            revision=load_result.snapshot.revision,
             record_factory=record_factory
             or AgentTranscriptRecordFactory(clock=clock, id_factory=id_factory),
             profile=profile,
+            diagnostics=open_result.diagnostics,
         )
 
     @property
@@ -171,6 +195,10 @@ class AgentTranscriptSessionStore:
     @property
     def records(self) -> tuple[AgentTranscriptRecord, ...]:
         return self._repository.records
+
+    @property
+    def diagnostics(self) -> tuple[AgentTranscriptOpenDiagnostic, ...]:
+        return self._diagnostics
 
     @property
     def leaf_id(self) -> str | None:
@@ -332,7 +360,7 @@ class AgentTranscriptSessionStore:
         header: ConversationHeader,
         *,
         leaf_id: str | None = None,
-    ) -> AgentTranscriptSessionStore:
+    ) -> AgentTranscriptUnitOfWork:
         async with self._commit_lock:
             selected_id = self.leaf_id if leaf_id is None else leaf_id
             records = self.records_to(selected_id) if selected_id is not None else ()
@@ -360,11 +388,13 @@ class AgentTranscriptSessionStore:
             records=(*self.records, record),
             leaf_id=record.record_id,
         )
-        receipt = await self._backend.append(
+        commit_result = await self._backend.append(
             self._key,
             record,
             expected_revision=self._revision,
+            operation_id=record.record_id,
         )
+        receipt = commit_result.receipt
         expected_revision = self._revision + 1
         if receipt.revision != expected_revision:
             raise RuntimeError(
@@ -377,7 +407,12 @@ class AgentTranscriptSessionStore:
             )
         self._repository = candidate
         self._revision = receipt.revision
-        return AgentTranscriptCommit(record=record, receipt=receipt)
+        self._diagnostics = (*self._diagnostics, *commit_result.diagnostics)
+        return AgentTranscriptCommit(
+            record=record,
+            receipt=receipt,
+            diagnostics=commit_result.diagnostics,
+        )
 
     def _require_idle_commit(self, operation: str) -> None:
         if self._commit_lock.locked():
@@ -407,4 +442,12 @@ def _require_matching_identity(
         raise ValueError("conversation key and header id must match")
 
 
-__all__ = ["AgentTranscriptCommit", "AgentTranscriptSessionStore"]
+def _create_operation_id(key: ConversationKey) -> str:
+    return f"create:{key.namespace}:{key.conversation_id}"
+
+
+__all__ = [
+    "AgentTranscriptCommit",
+    "AgentTranscriptOpenDiagnostic",
+    "AgentTranscriptUnitOfWork",
+]

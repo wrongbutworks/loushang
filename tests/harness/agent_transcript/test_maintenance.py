@@ -9,16 +9,19 @@ from loushang.harness.agent_transcript import (
     AgentTranscriptRecord,
     AgentTranscriptRetryRuntime,
     AgentTranscriptSession,
-    AgentTranscriptSessionStore,
+    AgentTranscriptUnitOfWork,
     CompactionPreparation,
     CompactionResult,
     TranscriptCompactionPolicy,
     build_context_usage_snapshot,
 )
-from loushang.harness.conversation import ConversationHeader
+from loushang.harness.conversation import (
+    ConversationHeader,
+    ConversationKey,
+    MemoryConversationStore,
+)
 from loushang.harness.events import ContextCompactionCompleted, RetryCompleted
 from loushang.harness.host.retry import RetryPolicy
-from loushang.harness.storage import ConversationKey, MemoryConversationStore
 
 
 def _model(*, context_window: int = 100) -> Model:
@@ -71,7 +74,7 @@ async def _session() -> AgentTranscriptSession:
     store: MemoryConversationStore[ConversationHeader, AgentTranscriptRecord] = (
         MemoryConversationStore(record_id=lambda record: record.record_id)
     )
-    transcript = await AgentTranscriptSessionStore.create(
+    transcript = await AgentTranscriptUnitOfWork.create(
         store,
         ConversationKey("test", "maintenance"),
         ConversationHeader(

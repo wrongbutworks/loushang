@@ -3404,8 +3404,8 @@ async def test_runtime_restore_session_rejects_ambiguous_session_id_prefix(
     import pytest
 
     from loushang.coding.bootstrap import create_agent_session_runtime
-    from loushang.harness.agent_transcript.file_store import (
-        write_agent_transcript_file as write_session_file,
+    from loushang.harness.agent_transcript.native_file import (
+        write_agent_transcript_export as write_session_file,
     )
     from loushang.harness.conversation import ConversationHeader
 

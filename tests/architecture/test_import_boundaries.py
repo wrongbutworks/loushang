@@ -398,7 +398,7 @@ def test_neutral_conversation_core_does_not_import_agent_ai_or_products() -> Non
     assert _find_forbidden_imports(boundary) == []
 
 
-def test_neutral_storage_and_event_cores_do_not_import_runtime_or_products() -> None:
+def test_neutral_conversation_and_event_cores_do_not_import_runtime_or_products() -> None:
     forbidden = (
         "loushang.agent",
         "loushang.ai",
@@ -409,11 +409,6 @@ def test_neutral_storage_and_event_cores_do_not_import_runtime_or_products() -> 
         "loushang.work",
     )
     boundaries = (
-        ImportBoundary(
-            name="storage",
-            root=Path("src/loushang/harness/storage"),
-            forbidden_prefixes=forbidden,
-        ),
         ImportBoundary(
             name="events",
             root=Path("src/loushang/harness/events"),
@@ -2190,7 +2185,7 @@ def test_harness_context_compaction_and_journal_design_is_documented() -> None:
 
 def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
     expected_imports = {
-        Path("src/loushang/harness/agent_transcript/file_store.py"): {
+            Path("src/loushang/harness/agent_transcript/native_file.py"): {
             "loushang.harness.conversation.NativeConversationHeaderCodec",
             "loushang.harness.conversation.NativeConversationRecordCodec",
             "loushang.harness.journal.JsonlJournal",
@@ -2271,7 +2266,9 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
     assert "Agent Transcript Catalog Boundary" in readme_text
 
     catalog_imports = set(
-        _absolute_imports(Path("src/loushang/harness/agent_transcript/catalog.py"))
+        _absolute_imports(
+            Path("src/loushang/harness/agent_transcript/session_catalog.py")
+        )
     )
     assert "loushang.harness.conversation.ConversationCatalog" in catalog_imports
     assert not any(
@@ -2282,7 +2279,7 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
         _absolute_imports(Path("src/loushang/harness/agent_transcript/directory.py"))
     )
     assert (
-        "loushang.harness.agent_transcript.catalog.AgentTranscriptSessionCatalog"
+        "loushang.harness.agent_transcript.session_catalog.AgentTranscriptSessionCatalog"
         in (directory_runtime_imports)
     )
     assert not any(
@@ -2404,8 +2401,8 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
     required_phrases = {
         "Harness Runtime Data Foundations",
         "`harness/runtime-data-foundations`",
-        "`loushang.harness.journal.TranscriptRepository[H, R]`",
-        "`JsonProjectionIndex[P]`",
+        "`loushang.harness.conversation.ConversationRepository[H, R]`",
+        "`JsonConversationIndex[P, Q]`",
         "`loushang.harness.config.LayeredConfig[T]`",
         "`ContextSalienceRanker`",
         "`SummaryProfile`",
@@ -2654,6 +2651,57 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
     )
     assert "loushang.harness.context.ConversationCompactionPlanner" not in (
         coding_compaction_imports
+    )
+
+
+def test_conversation_persistence_has_one_native_writer_boundary() -> None:
+    roots = (
+        Path("src/loushang/harness/conversation"),
+        Path("src/loushang/harness/agent_transcript"),
+    )
+    allowed = {
+        Path("src/loushang/harness/conversation/stores/file.py"),
+        Path("src/loushang/harness/agent_transcript/native_file.py"),
+    }
+    writer_calls = {"append_jsonl_record", "write_jsonl"}
+    offenders: list[str] = []
+    for path in sorted(
+        file_path
+        for root in roots
+        for file_path in root.rglob("*.py")
+        if file_path not in allowed
+    ):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if isinstance(node.func, ast.Name) and node.func.id in writer_calls:
+                offenders.append(f"{path.as_posix()} calls {node.func.id}")
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "rewrite":
+                offenders.append(f"{path.as_posix()} calls rewrite")
+
+    assert offenders == []
+    assert not any(Path("src/loushang/harness/storage").glob("*.py"))
+    assert not Path("src/loushang/harness/journal/branch.py").exists()
+    assert not Path("src/loushang/harness/journal/transcript.py").exists()
+    assert not Path("src/loushang/harness/journal/index.py").exists()
+    assert not Path("src/loushang/harness/agent_transcript/store.py").exists()
+    assert not Path("src/loushang/harness/agent_transcript/file_store.py").exists()
+    assert not Path("src/loushang/harness/agent_transcript/catalog.py").exists()
+
+
+def test_agent_session_catalog_uses_bound_store_discovery() -> None:
+    path = Path("src/loushang/harness/agent_transcript/session_catalog.py")
+    source = path.read_text(encoding="utf-8")
+    imports = set(_absolute_imports(path))
+
+    assert "AgentTranscriptSessionCatalog" in source
+    assert "ConversationProviderBinding" in source
+    assert "create_agent_transcript_file_store" in source
+    assert ".glob(" not in source
+    assert "load_agent_transcript_repository" not in source
+    assert not any(
+        imported.startswith("loushang.harness.journal") for imported in imports
     )
 
 

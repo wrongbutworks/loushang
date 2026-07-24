@@ -13,7 +13,12 @@ import builtins
 from pathlib import Path
 from typing import Generic, Self, TypeVar
 
-from loushang.harness.agent_transcript.catalog import (
+from loushang.harness.agent_transcript.lifecycle import (
+    AgentTranscriptLifecycleSession,
+    delete_current_native_agent_transcript,
+)
+from loushang.harness.agent_transcript.session import AgentTranscriptSession
+from loushang.harness.agent_transcript.session_catalog import (
     AgentTranscriptSessionCatalog,
     SessionMetadata,
     SessionRecord,
@@ -30,11 +35,6 @@ from loushang.harness.agent_transcript.catalog import (
     project_agent_transcript_session_summary,
     refresh_all_agent_transcript_session_indexes,
 )
-from loushang.harness.agent_transcript.lifecycle import (
-    AgentTranscriptLifecycleSession,
-    delete_current_native_agent_transcript,
-)
-from loushang.harness.agent_transcript.session import AgentTranscriptSession
 from loushang.harness.agent_transcript.session_factory import (
     AgentTranscriptSessionFactory,
 )

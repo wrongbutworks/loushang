@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, cast
@@ -40,17 +41,16 @@ from loushang.harness.agent_transcript.types import (
 from loushang.harness.conversation import (
     CommandExecutionRecord,
     ConversationHeader,
+    ConversationKey,
     ConversationRecord,
     ConversationRepository,
+    ConversationSnapshot,
+    ConversationStore,
     NativeConversationHeaderCodec,
     NativeConversationRecordCodec,
     OpaquePayload,
 )
-from loushang.harness.journal import (
-    DURABLE_LOCKED_JOURNAL,
-    journal_file_lock,
-    write_jsonl,
-)
+from loushang.harness.journal import journal_file_lock
 from loushang.protocol import JSONValue, JsonValueError, require_json_mapping
 
 CURRENT_SESSION_VERSION = 3
@@ -79,6 +79,13 @@ class SessionV3MigrationResult:
     header: ConversationHeader
     records: tuple[AgentTranscriptRecord, ...]
     disposition: MigrationDisposition
+
+
+@dataclass(frozen=True)
+class SessionV3ImportResult:
+    source: SessionV3MigrationResult
+    key: ConversationKey
+    snapshot: ConversationSnapshot[ConversationHeader, AgentTranscriptRecord]
 
 
 def convert_session_v3_snapshot(
@@ -116,34 +123,29 @@ def convert_session_v3_snapshot(
     return result
 
 
-def migrate_session_v3_file(path: str | Path) -> SessionV3MigrationResult:
-    """Atomically replace a Session v3 JSONL file with Native Conversation v1."""
+async def import_session_v3_file(
+    path: str | Path,
+    *,
+    store: ConversationStore[ConversationHeader, AgentTranscriptRecord],
+    key: ConversationKey,
+    operation_id: str,
+) -> SessionV3ImportResult:
+    """Read a legacy source and atomically create a distinct Native target."""
 
-    target = Path(path)
-    with journal_file_lock(target, "exclusive"):
-        raw = _read_session_text(target)
-        values = _parse_jsonl(raw, path=target)
-        result = _convert_or_load_native(values, path=target)
-        if result.disposition == "already_native":
-            return result
-        try:
-            write_jsonl(
-                target,
-                result.records,
-                header=result.header,
-                header_codec=NativeConversationHeaderCodec(),
-                record_codec=NativeConversationRecordCodec(
-                    create_agent_transcript_payload_registry()
-                ),
-                durability=replace(DURABLE_LOCKED_JOURNAL, locking=False),
-            )
-        except Exception as exc:
-            raise SessionV3MigrationError(
-                "Native Conversation file could not be written",
-                code="native_write_failed",
-                path=target,
-            ) from exc
-        return result
+    source = await asyncio.to_thread(read_session_v3_file, path)
+    if source.header.conversation_id != key.conversation_id:
+        raise SessionV3MigrationError(
+            "Import key and converted conversation id do not match",
+            code="conversation_identity_mismatch",
+            path=Path(path),
+        )
+    snapshot = await store.create(
+        key,
+        source.header,
+        source.records,
+        operation_id=operation_id,
+    )
+    return SessionV3ImportResult(source=source, key=key, snapshot=snapshot)
 
 
 def read_session_v3_file(path: str | Path) -> SessionV3MigrationResult:
@@ -654,8 +656,10 @@ __all__ = [
     "NATIVE_CONVERSATION_VERSION",
     "MigrationDisposition",
     "SessionV3MigrationError",
+    "SessionV3ImportResult",
     "SessionV3MigrationResult",
     "convert_session_v3_snapshot",
+    "import_session_v3_file",
     "is_native_conversation_file",
-    "migrate_session_v3_file",
+    "read_session_v3_file",
 ]

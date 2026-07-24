@@ -14,13 +14,15 @@ from pathlib import Path
 from typing import Generic, TypeVar
 from uuid import uuid4
 
-from loushang.harness.agent_transcript.catalog import AgentTranscriptSessionCatalog
 from loushang.harness.agent_transcript.lifecycle import (
     AgentTranscriptLifecycle,
     AgentTranscriptLifecycleContext,
     AgentTranscriptLifecycleSession,
 )
 from loushang.harness.agent_transcript.migration import NATIVE_CONVERSATION_VERSION
+from loushang.harness.agent_transcript.session_catalog import (
+    AgentTranscriptSessionCatalog,
+)
 from loushang.harness.agent_transcript.types import AgentTranscriptRecord
 from loushang.harness.conversation import ConversationHeader
 from loushang.protocol import JSONValue

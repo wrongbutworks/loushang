@@ -11,7 +11,7 @@ class _Record:
 
 
 def _graph(records, *, mode="strict"):
-    from loushang.harness.journal import BranchGraph
+    from loushang.harness.conversation import BranchGraph
 
     return BranchGraph(
         records,
@@ -90,7 +90,7 @@ def test_compatible_graph_cuts_cycles_deterministically() -> None:
 def test_strict_graph_rejects_corruption() -> None:
     import pytest
 
-    from loushang.harness.journal import BranchGraphError
+    from loushang.harness.conversation import BranchGraphError
 
     with pytest.raises(BranchGraphError) as exc_info:
         _graph((_Record("child", "missing"),))

@@ -15,10 +15,13 @@ from loushang.harness.agent_transcript import (
     AgentTranscriptRuntimeBinding,
     create_agent_transcript_file_store,
     delete_current_native_agent_transcript,
-    write_agent_transcript_file,
+    write_agent_transcript_export,
 )
-from loushang.harness.conversation import ConversationHeader
-from loushang.harness.storage import ConversationKey, MemoryConversationStore
+from loushang.harness.conversation import (
+    ConversationHeader,
+    ConversationKey,
+    MemoryConversationStore,
+)
 
 
 def _header(conversation_id: str = "conversation-1") -> ConversationHeader:
@@ -111,7 +114,7 @@ def test_lifecycle_detaches_current_native_source_before_writing(
 ) -> None:
     async def scenario() -> None:
         source = tmp_path / "source.jsonl"
-        write_agent_transcript_file(source, _header(), [_record("source-record")])
+        write_agent_transcript_export(source, _header(), [_record("source-record")])
         original = source.read_bytes()
 
         async def bind_runtime(context, binding: str):
@@ -277,7 +280,7 @@ def test_lifecycle_releases_binding_after_create_failure_and_protects_active_fil
         assert disposed == ["failed"]
 
         source = tmp_path / "deletable.jsonl"
-        write_agent_transcript_file(source, _header(), [_record("record-1")])
+        write_agent_transcript_export(source, _header(), [_record("record-1")])
         with pytest.raises(ValueError, match="currently active"):
             await delete_current_native_agent_transcript(
                 source,

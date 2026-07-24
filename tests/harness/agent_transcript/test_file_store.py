@@ -8,7 +8,7 @@ import pytest
 
 from loushang.ai.types import UserMessage
 from loushang.harness.agent_transcript import AGENT_MESSAGE_KIND
-from loushang.harness.agent_transcript.file_store import (
+from loushang.harness.agent_transcript.native_file import (
     AgentTranscriptFileError,
     AgentTranscriptFileLayout,
     create_agent_transcript_file_store,
@@ -16,10 +16,11 @@ from loushang.harness.agent_transcript.file_store import (
 )
 from loushang.harness.conversation import (
     ConversationHeader,
+    ConversationKey,
     ConversationRecord,
     NativeConversationHeaderCodec,
+    StoreAlreadyExistsError,
 )
-from loushang.harness.storage import ConversationKey
 
 
 def _header(conversation_id: str = "conversation-1") -> ConversationHeader:
@@ -53,7 +54,12 @@ def test_file_store_binds_and_discovers_current_native_transcript(
             conversation_id="conversation-1",
         )
 
-        snapshot = await store.create(key, _header(), [_record()])
+        snapshot = await store.create(
+            key,
+            _header(),
+            [_record()],
+            operation_id=f"create:{key.namespace}:{key.conversation_id}",
+        )
 
         assert snapshot.records == (_record(),)
         path = layout.resolve_path(key)
@@ -72,6 +78,36 @@ def test_file_layout_allows_product_filename_selection(tmp_path: Path) -> None:
     key = layout.key("conversation-2")
 
     assert layout.create_path(key) == tmp_path / "conversation-2.transcript.jsonl"
+
+
+def test_file_layout_retains_deleted_identity_across_store_instances(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        first_layout = AgentTranscriptFileLayout(tmp_path)
+        key = first_layout.key("conversation-1")
+        first_store = create_agent_transcript_file_store(first_layout)
+        await first_store.create(
+            key,
+            _header(),
+            operation_id=f"create:{key.namespace}:{key.conversation_id}",
+        )
+        await first_store.delete(
+            key,
+            expected_revision=0,
+            operation_id="delete:conversation-1:0",
+        )
+
+        second_layout = AgentTranscriptFileLayout(tmp_path)
+        second_store = create_agent_transcript_file_store(second_layout)
+        with pytest.raises(StoreAlreadyExistsError, match="retired identity"):
+            await second_store.create(
+                second_layout.key("conversation-1"),
+                _header(),
+                operation_id="create:conversation-1:replacement",
+            )
+
+    asyncio.run(scenario())
 
 
 def test_current_native_loader_rejects_future_format_without_rewrite(

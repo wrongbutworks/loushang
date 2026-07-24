@@ -13,7 +13,7 @@ from loushang.harness.agent_transcript import (
     AgentTranscriptSessionFactory,
     create_agent_transcript_file_store,
 )
-from loushang.harness.storage import ConversationKey, MemoryConversationStore
+from loushang.harness.conversation import ConversationKey, MemoryConversationStore
 
 
 def test_session_factory_composes_native_create_restore_and_fork(

@@ -8,13 +8,16 @@ import pytest
 from loushang.harness.agent_transcript import (
     APPLICATION_MESSAGE_KIND,
     AgentTranscriptRecordFactory,
-    AgentTranscriptSessionStore,
+    AgentTranscriptUnitOfWork,
     ApplicationMessage,
     ApplicationMessageIdentityConflictError,
     TranscriptCommitter,
 )
-from loushang.harness.conversation import ConversationHeader
-from loushang.harness.storage import ConversationKey, MemoryConversationStore
+from loushang.harness.conversation import (
+    ConversationHeader,
+    ConversationKey,
+    MemoryConversationStore,
+)
 
 
 def _ids(*values: str):
@@ -31,9 +34,9 @@ def _message(content: str = "notice") -> ApplicationMessage:
     )
 
 
-async def _store(*, ids) -> AgentTranscriptSessionStore:
+async def _store(*, ids) -> AgentTranscriptUnitOfWork:
     backend = MemoryConversationStore(record_id=lambda record: record.record_id)
-    return await AgentTranscriptSessionStore.create(
+    return await AgentTranscriptUnitOfWork.create(
         backend,
         ConversationKey("test", "conversation-1"),
         ConversationHeader(
@@ -114,7 +117,7 @@ def test_committer_rebuilds_application_message_identity_from_loaded_records() -
     async def scenario() -> None:
         store = await _store(ids=_ids("record-1"))
         first = await TranscriptCommitter(store).commit_application_message(_message())
-        loaded = await AgentTranscriptSessionStore.load(store.backend, store.key)
+        loaded = await AgentTranscriptUnitOfWork.load(store.backend, store.key)
 
         duplicate = await TranscriptCommitter(loaded).commit_application_message(
             _message()

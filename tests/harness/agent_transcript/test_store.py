@@ -19,7 +19,7 @@ from loushang.harness.agent_transcript import (
     RECORD_ANNOTATION_PATCH_KIND,
     THINKING_SELECTION_KIND,
     AgentTranscriptRecordFactory,
-    AgentTranscriptSessionStore,
+    AgentTranscriptUnitOfWork,
     ApplicationMessage,
     BranchContextSummary,
     ContextCompactionCheckpoint,
@@ -32,10 +32,8 @@ from loushang.harness.agent_transcript import (
 )
 from loushang.harness.conversation import (
     CommandExecutionRecord,
+    ConversationCommitResult,
     ConversationHeader,
-)
-from loushang.harness.storage import (
-    CommitReceipt,
     ConversationKey,
     ConversationSnapshot,
     MemoryConversationStore,
@@ -54,7 +52,8 @@ class FailingMemoryStore(MemoryConversationStore):
         record,
         *,
         expected_revision: int,
-    ) -> CommitReceipt:
+        operation_id: str,
+    ) -> ConversationCommitResult:
         self.append_calls += 1
         if self.failure is not None:
             error = self.failure
@@ -64,6 +63,7 @@ class FailingMemoryStore(MemoryConversationStore):
             key,
             record,
             expected_revision=expected_revision,
+            operation_id=operation_id,
         )
 
 
@@ -88,11 +88,11 @@ async def _create(
     backend=None,
     *,
     ids=None,
-) -> AgentTranscriptSessionStore:
+) -> AgentTranscriptUnitOfWork:
     resolved_backend = backend or MemoryConversationStore(
         record_id=lambda record: record.record_id
     )
-    return await AgentTranscriptSessionStore.create(
+    return await AgentTranscriptUnitOfWork.create(
         resolved_backend,
         _key(),
         _header(),
@@ -138,7 +138,7 @@ def test_store_create_append_load_and_replay_context() -> None:
         assert isinstance(context.messages[0], UserMessage)
         assert context.messages[0].content == "hello"
 
-        loaded = await AgentTranscriptSessionStore.load(backend, _key())
+        loaded = await AgentTranscriptUnitOfWork.load(backend, _key())
         assert loaded.header == store.header
         assert loaded.records == store.records
         assert loaded.revision == store.revision
@@ -342,12 +342,16 @@ def test_store_validates_identity_before_backend_create() -> None:
 
     async def scenario() -> ConversationSnapshot:
         with pytest.raises(ValueError, match="key and header id"):
-            await AgentTranscriptSessionStore.create(
+            await AgentTranscriptUnitOfWork.create(
                 backend,
                 _key("different"),
                 _header(),
             )
-        return await backend.create(_key(), _header())
+        return await backend.create(
+            _key(),
+            _header(),
+            operation_id="create:test:conversation-1",
+        )
 
     snapshot = asyncio.run(scenario())
     assert snapshot.revision == 0
@@ -362,7 +366,7 @@ def test_initial_records_are_validated_before_backend_create() -> None:
             await source.append_application_message(_application("one", "one"))
         ).record
         with pytest.raises(ValueError, match="Duplicate branch record id"):
-            await AgentTranscriptSessionStore.create(
+            await AgentTranscriptUnitOfWork.create(
                 backend,
                 _key(),
                 _header(),

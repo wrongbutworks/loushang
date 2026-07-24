@@ -12,7 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from time import monotonic
 
-from loushang.harness.agent_transcript.catalog import (
+from loushang.harness.agent_transcript.session_catalog import (
     AgentTranscriptSessionCatalog,
     SessionQuery,
     SessionRecord,

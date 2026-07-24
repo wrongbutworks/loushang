@@ -5,25 +5,28 @@
 Status: implementation complete for integration into `lane/harness` on
 `harness/agent-transcript-catalog`.
 
+Discovery/index placement in this historical wave is superseded by
+[Conversation Persistence Refactor](conversation-persistence-refactor.md).
+
 ## Purpose
 
-`loushang.harness.agent_transcript.catalog` owns the reusable read model for
-current Native Agent transcript files. It provides `AgentTranscriptSessionCatalog`,
+`loushang.harness.agent_transcript.session_catalog` owns the reusable read model
+for Agent transcripts. It provides `AgentTranscriptSessionCatalog`,
 `SessionRecord`, `SessionSummary`, `SessionQuery`, and `SessionTreeNode` for
 discovery, summary projection, query, JSON projection indexes, and annotated
 branch trees.
 
 This is an optional Agent/AI profile, not a neutral Harness core. The neutral
-`loushang.harness.conversation` and `loushang.harness.storage` packages remain
-independent of Agent and AI. The catalog may use the standard Agent transcript
-profile and the existing neutral `ConversationCatalog`; it must not import
-Coding or a Product package.
+`loushang.harness.conversation` package remains independent of Agent and AI.
+The catalog consumes provider-bound `ConversationStore` registrations through
+the neutral `ConversationCatalog`; it must not import Coding or a Product
+package.
 
 ## Ownership
 
 Harness owns these standard current-format facts:
 
-- direct Native JSONL discovery within a selected session directory;
+- Agent-specific projection and query over provider-discovered conversations;
 - per-session metadata, message previews, model snapshot, and diagnostic
   summary fields;
 - filters by workspace, name, parent session, text, diagnostic presence, and
@@ -33,9 +36,9 @@ Harness owns these standard current-format facts:
 - canonical comparison of transcript session paths.
 
 The catalog uses `ConversationCatalog`, `ConversationRepository`, and
-`JsonProjectionIndex`. It does not create another repository or replay
-implementation. Native loading remains current-format-only and retains the
-file-store loader's corruption and partial-tail policy.
+`JsonConversationIndex`. It does not create another repository or replay
+implementation. It does not scan JSONL itself; the bound Store owns physical
+discovery and loading.
 
 `AgentTranscriptDirectoryRuntime` is the optional runtime layer above that
 catalog. It owns current-root and all-root queries, direct or coalesced index
@@ -57,10 +60,9 @@ projection over the same Native records or supplies another catalog profile.
 It must not fork the file discovery, summary, query, or index mechanics merely
 to add presentation fields.
 
-Database, Redis, external search, journal-offset checkpoints, and an
-extension-owned catalog provider are outside this boundary. Those additions
-must implement the existing storage/catalog ports rather than extend the
-current Native file catalog with product policy.
+Database and remote Store providers can participate through the same provider
+binding. Redis is suitable as an optional bounded/rebuildable index, not as the
+assumed authoritative full transcript.
 
 ## Verification
 

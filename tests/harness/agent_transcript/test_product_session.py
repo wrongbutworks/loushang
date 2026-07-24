@@ -13,7 +13,7 @@ from loushang.harness.agent_transcript import (
     ProductTranscriptSession,
     create_agent_transcript_file_store,
 )
-from loushang.harness.storage import ConversationKey, MemoryConversationStore
+from loushang.harness.conversation import ConversationKey, MemoryConversationStore
 
 
 class _ExampleProductSession(ProductTranscriptSession[str, str]):

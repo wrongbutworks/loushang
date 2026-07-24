@@ -7,22 +7,25 @@ do not need to recreate native discovery, summary indexing, or query logic.
 
 from __future__ import annotations
 
+import asyncio
 import re
-from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Generic, Literal, TypeVar
 
 from loushang.agent.types import AgentMessage
 from loushang.ai.types import AssistantMessage, TextPart, ToolResultMessage, UserMessage
-from loushang.harness.agent_transcript.file_store import (
-    load_agent_transcript_repository,
-)
 from loushang.harness.agent_transcript.kinds import (
     AGENT_MESSAGE_KIND,
     EXTENSION_DATA_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
+)
+from loushang.harness.agent_transcript.native_file import (
+    AgentTranscriptFileLayout,
+    create_agent_transcript_file_store,
 )
 from loushang.harness.agent_transcript.profile import AgentTranscriptProfile
 from loushang.harness.agent_transcript.types import (
@@ -35,12 +38,17 @@ from loushang.harness.agent_transcript.types import (
 from loushang.harness.conversation import (
     ConversationCatalog,
     ConversationHeader,
+    ConversationIndex,
+    ConversationLocator,
+    ConversationProviderBinding,
     ConversationRepository,
     ConversationTreeNode,
     FunctionalConversationProjector,
+    FunctionalProjectionCodec,
+    IndexedProjection,
+    JsonConversationIndex,
     ProjectionQuery,
 )
-from loushang.harness.journal import FunctionalProjectionCodec, JsonProjectionIndex
 from loushang.observability import get_log
 
 RecordT = TypeVar("RecordT")
@@ -68,6 +76,7 @@ class SessionRecord:
     parent_session: str | None
     leaf_id: str | None
     metadata: SessionMetadata
+    locator: ConversationLocator | None = None
 
 
 @dataclass(frozen=True)
@@ -90,6 +99,7 @@ class SessionSummary:
     diagnostic_count: int = 0
     last_diagnostic_code: str | None = None
     last_diagnostic_level: str | None = None
+    locator: ConversationLocator | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -309,6 +319,8 @@ def project_agent_transcript_session_summary(
     records: Sequence[AgentTranscriptRecord],
     leaf_id: str | None,
     source_path: Path | None,
+    *,
+    locator: ConversationLocator | None = None,
 ) -> SessionSummary:
     """Project standard Agent transcript facts into one searchable summary."""
 
@@ -356,6 +368,7 @@ def project_agent_transcript_session_summary(
         diagnostic_count=diagnostic_count,
         last_diagnostic_code=last_diagnostic_code,
         last_diagnostic_level=last_diagnostic_level,
+        locator=locator,
     )
 
 
@@ -385,55 +398,73 @@ def build_agent_transcript_session_tree(
 
 
 class AgentTranscriptSessionCatalog:
-    """Discover, summarize, query, and index current Native transcript files."""
+    """Agent projection facade over a provider-bound conversation catalog."""
 
     def __init__(self, session_dir: str | Path) -> None:
-        self.session_dir = Path(session_dir)
+        self.session_dir = Path(session_dir).expanduser().resolve(strict=False)
+        self._layout = AgentTranscriptFileLayout(self.session_dir)
+        self._provider = ConversationProviderBinding(
+            provider_id=f"agent-native-file:{self.session_dir.as_posix()}",
+            namespace=self._layout.namespace,
+            store=create_agent_transcript_file_store(self._layout),
+        )
+        self._external_index: (
+            ConversationIndex[SessionSummary, SessionQuery] | None
+        ) = None
+        self._session_file_for: Callable[[ConversationLocator], Path | None] = (
+            lambda locator: self._layout.resolve_path(locator.key)
+        )
+
+    @classmethod
+    def from_provider(
+        cls,
+        provider: ConversationProviderBinding[
+            ConversationHeader,
+            AgentTranscriptRecord,
+        ],
+        *,
+        index: ConversationIndex[SessionSummary, SessionQuery] | None = None,
+        session_file_for: (
+            Callable[[ConversationLocator], Path | None] | None
+        ) = None,
+    ) -> AgentTranscriptSessionCatalog:
+        """Compose Agent projections over any registered Store provider."""
+
+        catalog = cls.__new__(cls)
+        catalog.session_dir = None
+        catalog._layout = None
+        catalog._provider = provider
+        catalog._external_index = index
+        catalog._session_file_for = session_file_for or (lambda locator: None)
+        return catalog
 
     @property
     def index_path(self) -> Path:
+        if self.session_dir is None:
+            raise ValueError("provider-backed catalog has no local JSON index path")
         return self.session_dir / _SESSION_INDEX_FILENAME
 
     def list_records(self) -> list[SessionRecord]:
-        if not self.session_dir.exists():
-            return []
-        records: list[SessionRecord] = []
-        for session_file in self._session_files():
-            try:
-                conversation = load_agent_transcript_repository(
-                    session_file,
-                    writable=False,
-                    persist=False,
-                )
-                records.append(
-                    SessionRecord(
-                        session_id=conversation.header.conversation_id,
-                        cwd=agent_transcript_header_cwd(conversation.header),
-                        session_file=session_file,
-                        parent_session=agent_transcript_header_parent_session(
-                            conversation.header
-                        ),
-                        leaf_id=conversation.leaf_id,
-                        metadata=load_agent_transcript_session_metadata(
-                            conversation.header,
-                            conversation.records,
-                        ),
-                    )
-                )
-            except Exception:
-                continue
-        records.sort(key=lambda record: record.metadata.updated_at, reverse=True)
-        return records
+        return [
+            SessionRecord(
+                session_id=summary.session_id,
+                cwd=summary.cwd,
+                session_file=summary.session_file,
+                parent_session=summary.parent_session,
+                leaf_id=summary.leaf_id,
+                metadata=SessionMetadata(
+                    created_at=summary.created_at,
+                    updated_at=summary.updated_at,
+                    name=summary.name,
+                ),
+                locator=summary.locator,
+            )
+            for summary in self.list_summaries()
+        ]
 
     def list_summaries(self) -> list[SessionSummary]:
-        if not self.session_dir.exists():
-            return []
-        return list(
-            ProjectionQuery[SessionSummary](
-                sort_key=lambda summary: summary.updated_at,
-                reverse=True,
-            ).apply(self._catalog(indexed=False).scan())
-        )
+        result = _run_catalog(self._catalog(indexed=False).scan())
+        return _sort_summaries(item.projection for item in result.items)
 
     def find_summaries(
         self,
@@ -444,14 +475,31 @@ class AgentTranscriptSessionCatalog:
         )
 
     def refresh_index(self) -> list[SessionSummary]:
-        self.session_dir.mkdir(parents=True, exist_ok=True)
-        return list(self._catalog(indexed=True).refresh())
+        if self.session_dir is not None:
+            self.session_dir.mkdir(parents=True, exist_ok=True)
+        result = _run_catalog(self._catalog(indexed=True).refresh())
+        return _sort_summaries(item.projection for item in result.items)
 
     def load_index(self) -> list[SessionSummary]:
-        return list(self._projection_index().load().projections)
+        items = _run_catalog(self._projection_index().query(SessionQuery()))
+        return [
+            replace(item.projection, locator=item.locator)
+            for item in items
+        ]
 
     def list_indexed_summaries(self, *, refresh: bool = False) -> list[SessionSummary]:
-        return list(self._catalog(indexed=True).list(refresh=refresh))
+        if self._external_index is not None:
+            summaries = self.refresh_index() if refresh else self.load_index()
+            return summaries or self.refresh_index()
+        if refresh or not self.index_path.exists():
+            return self.refresh_index()
+        summaries = self.load_index()
+        if not summaries or not self.index_path.exists() or any(
+            summary.session_file is None or not summary.session_file.is_file()
+            for summary in summaries
+        ):
+            return self.refresh_index()
+        return summaries
 
     def find_indexed_summaries(
         self,
@@ -461,53 +509,52 @@ class AgentTranscriptSessionCatalog:
             self.list_indexed_summaries(), query or SessionQuery()
         )
 
-    def _session_files(self) -> Iterable[Path]:
-        if not self.session_dir.exists():
-            return ()
-        return (
-            path
-            for path in self.session_dir.glob("*.jsonl")
-            if not path.name.endswith("-export.jsonl")
-        )
-
-    def _discover(
-        self,
-    ) -> Iterable[ConversationRepository[ConversationHeader, AgentTranscriptRecord]]:
-        for session_file in self._session_files():
-            try:
-                yield load_agent_transcript_repository(
-                    session_file,
-                    writable=False,
-                    persist=False,
-                )
-            except Exception:
-                continue
-
     def _catalog(
         self,
         *,
         indexed: bool,
-    ) -> ConversationCatalog[ConversationHeader, AgentTranscriptRecord, SessionSummary]:
+    ) -> ConversationCatalog[
+        ConversationHeader,
+        AgentTranscriptRecord,
+        SessionSummary,
+        SessionQuery,
+    ]:
         return ConversationCatalog(
-            discover=self._discover,
-            projector=_SESSION_SUMMARY_PROJECTOR,
+            providers=(self._provider,),
+            projector=FunctionalConversationProjector(self._project_summary),
+            record_id=lambda record: record.record_id,
             index=self._projection_index() if indexed else None,
-            skip_projection_errors=True,
+            query_items=_query_indexed_summaries,
         )
 
-    def _projection_index(self) -> JsonProjectionIndex[SessionSummary]:
-        return JsonProjectionIndex(
+    def _project_summary(
+        self,
+        header: ConversationHeader,
+        records: Sequence[AgentTranscriptRecord],
+        leaf_id: str | None,
+        locator: ConversationLocator,
+    ) -> SessionSummary:
+        return project_agent_transcript_session_summary(
+            header,
+            records,
+            leaf_id,
+            self._session_file_for(locator),
+            locator=locator,
+        )
+
+    def _projection_index(
+        self,
+    ) -> ConversationIndex[SessionSummary, SessionQuery]:
+        if self._external_index is not None:
+            return self._external_index
+        return JsonConversationIndex(
             self.index_path,
             version=_SESSION_INDEX_VERSION,
-            items_key="summaries",
             codec=FunctionalProjectionCodec(
                 encoder=_summary_to_index_item,
                 decoder=_decode_summary_index_item,
             ),
-            is_current=_indexed_session_file_exists,
-            sort_key=lambda summary: summary.updated_at,
-            reverse=True,
-            generated_at=_now_iso,
+            query_items=_query_indexed_summaries,
         )
 
 
@@ -883,13 +930,34 @@ def _model(value: object) -> dict[str, str] | None:
     return result
 
 
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+def _sort_summaries(summaries) -> list[SessionSummary]:
+    return sorted(summaries, key=lambda summary: summary.updated_at, reverse=True)
 
 
-_SESSION_SUMMARY_PROJECTOR = FunctionalConversationProjector(
-    project_agent_transcript_session_summary
-)
+def _query_indexed_summaries(
+    query: SessionQuery,
+    items: Sequence[IndexedProjection[SessionSummary]],
+) -> tuple[IndexedProjection[SessionSummary], ...]:
+    ordered = sorted(
+        items,
+        key=lambda item: item.projection.updated_at,
+        reverse=True,
+    )
+    selected = filter_agent_transcript_session_summaries(
+        [item.projection for item in ordered],
+        query,
+    )
+    by_identity = {id(item.projection): item for item in ordered}
+    return tuple(by_identity[id(summary)] for summary in selected)
+
+
+def _run_catalog(awaitable):
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(awaitable)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(asyncio.run, awaitable).result()
 
 
 __all__ = [

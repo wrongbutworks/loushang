@@ -13,22 +13,22 @@ from pathlib import Path
 from typing import Generic, TypeVar
 from uuid import uuid4
 
-from loushang.harness.agent_transcript.catalog import (
-    agent_transcript_header_cwd,
-    build_agent_transcript_label_indexes,
-    same_agent_transcript_session_path,
-)
-from loushang.harness.agent_transcript.file_store import (
+from loushang.harness.agent_transcript.native_file import (
     AgentTranscriptFileLayout,
     create_agent_transcript_file_store,
     load_agent_transcript_file,
     load_current_agent_transcript_header,
 )
 from loushang.harness.agent_transcript.profile import AgentTranscriptProfile
-from loushang.harness.agent_transcript.store import AgentTranscriptSessionStore
+from loushang.harness.agent_transcript.session_catalog import (
+    agent_transcript_header_cwd,
+    build_agent_transcript_label_indexes,
+    same_agent_transcript_session_path,
+)
 from loushang.harness.agent_transcript.types import AgentTranscriptRecord
-from loushang.harness.conversation import ConversationHeader
-from loushang.harness.storage import (
+from loushang.harness.agent_transcript.unit_of_work import AgentTranscriptUnitOfWork
+from loushang.harness.conversation import (
+    ConversationHeader,
     ConversationKey,
     ConversationStore,
     StoreNotFoundError,
@@ -79,7 +79,7 @@ class AgentTranscriptLifecycleSession(Generic[ProductBindingT]):
     """A bound transcript plus the Product lease that must be released."""
 
     context: AgentTranscriptLifecycleContext
-    transcript: AgentTranscriptSessionStore
+    transcript: AgentTranscriptUnitOfWork
     runtime_binding: AgentTranscriptRuntimeBinding[ProductBindingT]
     labels_by_target_id: dict[str, str]
     label_timestamps_by_target_id: dict[str, str]
@@ -194,7 +194,7 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
 
         runtime_binding = await self._bind_runtime(context, binding_input)
         try:
-            transcript = await AgentTranscriptSessionStore.create(
+            transcript = await AgentTranscriptUnitOfWork.create(
                 runtime_binding.store,
                 runtime_binding.key,
                 context.header,
@@ -223,7 +223,7 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
         runtime_binding = await self._bind_runtime(context, binding_input)
         try:
             if context.persist:
-                transcript = await AgentTranscriptSessionStore.load(
+                transcript = await AgentTranscriptUnitOfWork.load(
                     runtime_binding.store,
                     runtime_binding.key,
                     id_factory=self._id_factory,
@@ -237,7 +237,7 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
                 source_header, source_records = self._snapshot_loader(
                     context.session_file
                 )
-                transcript = await AgentTranscriptSessionStore.create(
+                transcript = await AgentTranscriptUnitOfWork.create(
                     runtime_binding.store,
                     runtime_binding.key,
                     source_header,
@@ -252,7 +252,7 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
 
     async def fork(
         self,
-        source: AgentTranscriptSessionStore,
+        source: AgentTranscriptUnitOfWork,
         context: AgentTranscriptLifecycleContext,
         binding_input: BindingInputT,
         *,
@@ -285,8 +285,14 @@ async def delete_current_native_agent_transcript(
         return False
     layout = AgentTranscriptFileLayout(target.parent)
     key = layout.bind_existing_path(target)
+    store = create_agent_transcript_file_store(layout)
     try:
-        await create_agent_transcript_file_store(layout).delete(key)
+        revision = (await store.load(key)).snapshot.revision
+        await store.delete(
+            key,
+            expected_revision=revision,
+            operation_id=f"delete:{key.namespace}:{key.conversation_id}:{revision}",
+        )
     except StoreNotFoundError:
         return False
     return True
@@ -294,7 +300,7 @@ async def delete_current_native_agent_transcript(
 
 def _lifecycle_session(
     context: AgentTranscriptLifecycleContext,
-    transcript: AgentTranscriptSessionStore,
+    transcript: AgentTranscriptUnitOfWork,
     runtime_binding: AgentTranscriptRuntimeBinding[ProductBindingT],
 ) -> AgentTranscriptLifecycleSession[ProductBindingT]:
     labels_by_target_id, label_timestamps_by_target_id = (

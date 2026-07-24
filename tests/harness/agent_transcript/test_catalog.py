@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from loushang.ai.types import UserMessage
@@ -13,9 +14,15 @@ from loushang.harness.agent_transcript import (
     build_agent_transcript_session_context,
     find_all_agent_transcript_session_summaries,
     project_session_record,
-    write_agent_transcript_file,
+    write_agent_transcript_export,
 )
-from loushang.harness.conversation import ConversationHeader, ConversationRecord
+from loushang.harness.conversation import (
+    ConversationHeader,
+    ConversationKey,
+    ConversationProviderBinding,
+    ConversationRecord,
+    MemoryConversationStore,
+)
 
 
 def _header(conversation_id: str, *, cwd: str) -> ConversationHeader:
@@ -47,12 +54,12 @@ def _record(
 def test_catalog_discovers_queries_and_indexes_current_native_transcripts(
     tmp_path: Path,
 ) -> None:
-    write_agent_transcript_file(
+    write_agent_transcript_export(
         tmp_path / "alpha.jsonl",
         _header("alpha", cwd="/workspace/a"),
         [_record("alpha-record", "first searchable message")],
     )
-    write_agent_transcript_file(
+    write_agent_transcript_export(
         tmp_path / "beta.jsonl",
         _header("beta", cwd="/workspace/b"),
         [_record("beta-record", "another message", timestamp=2.0)],
@@ -112,6 +119,32 @@ def test_catalog_context_and_labels_use_selected_standard_record_path() -> None:
     ]
     assert labels == {"selected": "important"}
     assert timestamps == {"selected": "2026-07-18T00:00:02Z"}
+
+
+def test_agent_catalog_projects_a_non_file_store_provider() -> None:
+    namespace = "remote"
+    key = ConversationKey(namespace, "remote-session")
+    store = MemoryConversationStore(record_id=lambda record: record.record_id)
+
+    async def create() -> None:
+        await store.create(
+            key,
+            _header("remote-session", cwd="/workspace/remote"),
+            [_record("remote-record", "remote message")],
+            operation_id="create:remote-session",
+        )
+
+    asyncio.run(create())
+    catalog = AgentTranscriptSessionCatalog.from_provider(
+        ConversationProviderBinding("remote-provider", namespace, store)
+    )
+
+    summaries = catalog.list_summaries()
+
+    assert [summary.session_id for summary in summaries] == ["remote-session"]
+    assert summaries[0].session_file is None
+    assert summaries[0].locator is not None
+    assert summaries[0].locator.provider_id == "remote-provider"
 
 
 def test_project_session_record_preserves_catalog_listing_shape() -> None:
