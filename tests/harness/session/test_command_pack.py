@@ -12,6 +12,7 @@ from loushang.harness.session.command_pack import (
     StandardSessionExport,
     execute_standard_session_command_async,
     is_standard_session_command,
+    list_standard_session_command_descriptors,
 )
 
 
@@ -29,6 +30,18 @@ def test_standard_session_command_profile_selects_and_removes_commands() -> None
 
     with pytest.raises(ValueError, match="unknown standard session command"):
         profile.select({"not-a-command"})
+
+
+def test_standard_session_commands_expose_rename_without_name_alias() -> None:
+    descriptors = {
+        descriptor.name: descriptor
+        for descriptor in list_standard_session_command_descriptors()
+    }
+
+    assert "name" not in descriptors
+    assert descriptors["rename"].argument_hint == "<name>"
+    assert is_standard_session_command("/rename")
+    assert not is_standard_session_command("/name")
 
 
 def test_standard_session_command_pack_delegates_common_operations() -> None:
@@ -79,7 +92,7 @@ def test_standard_session_command_pack_delegates_identity_and_transcript_operati
     calls: list[tuple[str, object]] = []
 
     async def _set_name(name: str | None) -> None:
-        calls.append(("name", name))
+        calls.append(("rename", name))
 
     def _export_jsonl(path: str | None) -> str:
         calls.append(("export", ("jsonl", path)))
@@ -95,7 +108,9 @@ def test_standard_session_command_pack_delegates_identity_and_transcript_operati
         import_session=_import,
     )
 
-    name = asyncio.run(execute_standard_session_command_async("name", "Alpha", ports))
+    renamed = asyncio.run(
+        execute_standard_session_command_async("rename", "Alpha", ports)
+    )
     export = asyncio.run(
         execute_standard_session_command_async("export", "saved.jsonl", ports)
     )
@@ -108,8 +123,8 @@ def test_standard_session_command_pack_delegates_identity_and_transcript_operati
         execute_standard_session_command_async("import", "", ports)
     )
 
-    assert name is not None
-    assert name.value == "Alpha"
+    assert renamed is not None
+    assert renamed.value == "Alpha"
     assert export is not None
     assert export.value == StandardSessionExport(
         format="jsonl", path="/tmp/session.jsonl"
@@ -119,7 +134,7 @@ def test_standard_session_command_pack_delegates_identity_and_transcript_operati
     assert invalid_import is not None
     assert invalid_import.error_code == "missing_import_path"
     assert calls == [
-        ("name", "Alpha"),
+        ("rename", "Alpha"),
         ("export", ("jsonl", "saved.jsonl")),
         ("import", ("saved.jsonl", "/tmp/project")),
     ]

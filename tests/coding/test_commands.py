@@ -35,7 +35,7 @@ def test_standard_session_commands_have_shared_metadata() -> None:
         "export": "Export session (HTML default, or specify path: .html/.jsonl)",
         "import": "Import and resume a session from a JSONL file",
         "copy": "Copy an assistant message to clipboard",
-        "name": "Set session display name",
+        "rename": "Rename the current session",
         "session": "Show session info and stats",
         "changelog": "Show changelog entries",
         "fork": "Create a new fork from a previous user message",

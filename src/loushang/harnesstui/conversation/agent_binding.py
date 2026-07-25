@@ -604,6 +604,7 @@ def build_agent_screen_conversation_projection(
     max_tool_body_lines: int = 8,
     read_pending_steers: StringQueueReader = tuple,
     read_pending_followups: StringQueueReader = tuple,
+    on_session_info_changed: Callable[[], None] | None = None,
     status_copy: ScreenProjectionStatusCopy | None = None,
     now: Callable[[], float] = time.monotonic,
 ) -> ConversationProjectionBinding[dict[str, Any]]:
@@ -625,6 +626,7 @@ def build_agent_screen_conversation_projection(
                 tool_projection,
                 read_pending_steers=read_pending_steers,
                 read_pending_followups=read_pending_followups,
+                on_session_info_changed=on_session_info_changed,
                 project_tool_result_messages=False,
             ).handle
         ),

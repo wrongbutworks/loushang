@@ -37,6 +37,7 @@ ScreenSurfaceCommandKind = Literal[
     "list_commands",
     "resume_session",
     "fork_session",
+    "rename_session",
     "side_question",
     "terminal_diagnostics",
     "hotkeys",
@@ -151,6 +152,8 @@ class ScreenSurfaceWorkflowPorts:
     fork_session: (
         Callable[[object], Awaitable[ScreenSurfaceForkResult]] | None
     ) = None
+    build_rename_surface: Callable[[], ScreenSurfaceView] | None = None
+    rename_session: Callable[[str | None], Awaitable[str]] | None = None
     build_side_question_surface: (
         Callable[[str], ScreenSurfaceView] | None
     ) = None
@@ -190,6 +193,7 @@ class ScreenSurfaceWorkflow:
                 "settings": self._handle_settings_submit,
                 "session": self._handle_session_submit,
                 "fork": self._handle_fork_submit,
+                "rename": self._handle_rename_submit,
                 "dialog": self._handle_dialog_submit,
                 "approval": self._handle_approval_submit,
             },
@@ -255,6 +259,16 @@ class ScreenSurfaceWorkflow:
                 self.app.set_status(self.copy.recoverable_error(error))
             else:
                 self.open(picker)
+        elif (
+            command.kind == "rename_session"
+            and self.ports.build_rename_surface is not None
+        ):
+            try:
+                surface = self.ports.build_rename_surface()
+            except Exception as error:
+                self.app.set_status(self.copy.recoverable_error(error))
+            else:
+                self.open(surface)
         elif command.kind == "side_question":
             question = command.query.strip()
             if not question:
@@ -454,6 +468,20 @@ class ScreenSurfaceWorkflow:
             return
         await self._activate_fork(payload, surface)
 
+    async def _handle_rename_submit(self, payload: object) -> None:
+        rename = self.ports.rename_session
+        if rename is None:
+            return
+        name = payload.strip() if isinstance(payload, str) else ""
+        try:
+            message = await rename(name or None)
+        except Exception as error:
+            self.app.set_status(self.copy.recoverable_error(error))
+            return
+        self.close()
+        self.app.set_status(message)
+        self.app.request_render(self.request_render_reason)
+
     async def _run_fork_activation(
         self,
         payload: object,
@@ -606,6 +634,8 @@ def normalize_standard_conversation_interactive_command(
         return ScreenSurfaceCommand("resume_session")
     if text.strip() == "/fork":
         return ScreenSurfaceCommand("fork_session")
+    if text.strip() == "/rename":
+        return ScreenSurfaceCommand("rename_session")
     return None
 
 

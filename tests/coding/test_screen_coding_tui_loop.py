@@ -874,12 +874,12 @@ def test_screen_loop_dispatches_session_command_without_prompting_agent() -> Non
     )
 
     result = playback.run(
-        (0.0, "/name Project Alpha\r"),
+        (0.0, "/rename Project Alpha\r"),
         handle_prompt=_bind_host_action(host.submit, source="prompt"),
     )
 
     assert result.exit_code == 0
-    assert session.commands == [("name", "Project Alpha")]
+    assert session.commands == [("rename", "Project Alpha")]
     assert session.prompt_calls == []
     assert "Session name set: Project Alpha" in result.text
     result.assert_no_clear_screen()
@@ -1032,8 +1032,8 @@ class _NameCommandSession:
     def list_commands(self) -> list[object]:
         return [
             SimpleNamespace(
-                name="name",
-                description="Set session display name",
+                name="rename",
+                description="Rename the current session",
                 source="builtin",
                 argument_hint="<name>",
             )

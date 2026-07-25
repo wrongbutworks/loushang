@@ -23,7 +23,7 @@ class StandardSessionCommandId(str, Enum):
     """Stable identifiers for shared session command mechanics."""
 
     SESSION = "session"
-    NAME = "name"
+    RENAME = "rename"
     EXPORT = "export"
     IMPORT = "import"
     COMPACT = "compact"
@@ -45,6 +45,7 @@ class StandardSessionCommandDefinition:
 
     command_id: StandardSessionCommandId
     description: str
+    argument_hint: str | None = None
 
     @property
     def name(self) -> str:
@@ -64,7 +65,11 @@ STANDARD_SESSION_COMMANDS: tuple[StandardSessionCommandDefinition, ...] = (
         StandardSessionCommandId.COPY,
         "Copy an assistant message to clipboard",
     ),
-    StandardSessionCommandDefinition(StandardSessionCommandId.NAME, "Set session display name"),
+    StandardSessionCommandDefinition(
+        StandardSessionCommandId.RENAME,
+        "Rename the current session",
+        "<name>",
+    ),
     StandardSessionCommandDefinition(StandardSessionCommandId.SESSION, "Show session info and stats"),
     StandardSessionCommandDefinition(StandardSessionCommandId.CHANGELOG, "Show changelog entries"),
     StandardSessionCommandDefinition(StandardSessionCommandId.FORK, "Create a new fork from a previous user message"),
@@ -89,6 +94,7 @@ def list_standard_session_command_descriptors() -> list[SessionCommandDescriptor
             description=definition.description,
             source="builtin",
             source_info=source_info,
+            argument_hint=definition.argument_hint,
         )
         for definition in STANDARD_SESSION_COMMANDS
     ]
@@ -247,7 +253,7 @@ async def execute_standard_session_command_async(
             return StandardSessionCommandResult.completed(
                 command_id, ports.get_session_info()
             )
-        case StandardSessionCommandId.NAME:
+        case StandardSessionCommandId.RENAME:
             if ports.set_session_name is None:
                 return StandardSessionCommandResult.unavailable(command_id)
             name = args.strip() or None
@@ -686,8 +692,17 @@ def project_standard_session_command_result(
             if isinstance(session, Mapping):
                 session = dict(session)
             return _ok_command_result(command, session=session)
-        case StandardSessionCommandId.NAME:
-            return _ok_command_result(command, name=result.value)
+        case StandardSessionCommandId.RENAME:
+            name = result.value
+            return _ok_command_result(
+                command,
+                name=name,
+                message=(
+                    f"Session renamed to {name}"
+                    if isinstance(name, str)
+                    else "Session name cleared"
+                ),
+            )
         case StandardSessionCommandId.EXPORT:
             export = result.value
             if not isinstance(export, StandardSessionExport):

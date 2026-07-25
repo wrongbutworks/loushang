@@ -190,8 +190,8 @@ def test_controller_dispatches_catalog_session_command_without_prompting_agent()
         def list_commands(self) -> list[object]:
             return [
                 SimpleNamespace(
-                    name="name",
-                    description="Set session display name",
+                    name="rename",
+                    description="Rename the current session",
                     source="builtin",
                     argument_hint="<name>",
                 )
@@ -212,11 +212,13 @@ def test_controller_dispatches_catalog_session_command_without_prompting_agent()
     session = CommandSession()
     controller = build_coding_ui_controller(session=session)
 
-    result = asyncio.run(controller.dispatch(PromptIntent(text="/name Project Alpha")))
+    result = asyncio.run(
+        controller.dispatch(PromptIntent(text="/rename Project Alpha"))
+    )
 
     assert result.error_message is None
     assert result.status_message == "Session name set: Project Alpha"
-    assert session.commands == [("name", "Project Alpha")]
+    assert session.commands == [("rename", "Project Alpha")]
     assert session.prompts == []
 
 

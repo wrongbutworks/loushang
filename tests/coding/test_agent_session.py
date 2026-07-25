@@ -1488,7 +1488,7 @@ def test_agent_session_get_commands_aggregates_extension_prompt_and_skill_source
 
     assert {descriptor.name for descriptor in descriptors} >= {
         "copy",
-        "name",
+        "rename",
         "session",
         "changelog",
     }

@@ -805,6 +805,56 @@ async def test_session_manager_rename_and_delete_refresh_existing_index(
 
 
 @_async_test
+async def test_current_session_rename_incrementally_updates_existing_index(
+    tmp_path, monkeypatch
+) -> None:
+    from loushang.ai.types import UserMessage
+    from loushang.coding.session_manager import SessionManager
+    from loushang.harness.transcript import AgentTranscriptSessionCatalog
+
+    manager = await SessionManager.new(
+        session_dir=tmp_path,
+        cwd="/tmp/project",
+        persist=True,
+    )
+    await manager.append_message(
+        UserMessage(role="user", content="hello", timestamp=1.0)
+    )
+    SessionManager.refresh_index(tmp_path)
+
+    def fail_repair(_self):
+        raise AssertionError("rename must not rebuild the full index")
+
+    monkeypatch.setattr(AgentTranscriptSessionCatalog, "repair_index", fail_repair)
+
+    await manager.append_session_info("Renamed now")
+
+    snapshot = AgentTranscriptSessionCatalog(tmp_path).try_query_index_snapshot()
+    assert snapshot.index_state == "fresh"
+    assert len(snapshot.items) == 1
+    assert snapshot.items[0].projection.name == "Renamed now"
+    assert snapshot.items[0].source_revision == 2
+
+
+@_async_test
+async def test_renaming_empty_session_does_not_materialize_transcript(tmp_path) -> None:
+    from loushang.coding.session_manager import SessionManager
+
+    SessionManager.refresh_index(tmp_path)
+    manager = await SessionManager.new(
+        session_dir=tmp_path,
+        cwd="/tmp/project",
+        persist=True,
+    )
+
+    await manager.append_session_info("Still empty")
+
+    assert manager.is_persisted() is False
+    assert list(tmp_path.glob("*.jsonl")) == []
+    assert SessionManager.list_indexed_summaries(tmp_path) == []
+
+
+@_async_test
 async def test_session_manager_dispose_upserts_changed_summary_into_existing_index(
     tmp_path,
 ) -> None:

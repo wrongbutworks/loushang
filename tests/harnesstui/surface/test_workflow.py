@@ -54,6 +54,7 @@ class _State:
     approvals: list[ApprovalSurfaceDecision | None] = field(default_factory=list)
     resumed_sessions: list[str] = field(default_factory=list)
     forked_entries: list[str] = field(default_factory=list)
+    renamed_sessions: list[str | None] = field(default_factory=list)
     side_questions: list[str] = field(default_factory=list)
     statusline_visible: list[bool] = field(default_factory=list)
     statusline_settings: list[StatusLineSettings] = field(default_factory=list)
@@ -178,6 +179,13 @@ def _workflow(*, state: _State | None = None) -> tuple[ScreenSurfaceWorkflow, _S
             composer_text="selected prompt",
         )
 
+    def rename_surface() -> ScreenSurfaceView:
+        return _surface("Rename session", "rename")
+
+    async def rename_session(name: str | None) -> str:
+        state.renamed_sessions.append(name)
+        return f"renamed:{name}"
+
     async def decide_approval(
         decision: ApprovalSurfaceDecision | None,
     ) -> bool | None:
@@ -210,13 +218,19 @@ def _workflow(*, state: _State | None = None) -> tuple[ScreenSurfaceWorkflow, _S
                 else (
                     ScreenSurfaceCommand("fork_session")
                     if text.strip() == "/fork"
-                    else None
+                    else (
+                        ScreenSurfaceCommand("rename_session")
+                        if text.strip() == "/rename"
+                        else None
+                    )
                 )
             ),
             build_resume_surface=resume_surface,
             activate_continuity=activate_continuity,
             build_fork_surface=fork_surface,
             fork_session=fork_session,
+            build_rename_surface=rename_surface,
+            rename_session=rename_session,
             build_side_question_surface=side_question_surface,
         ),
         copy=ScreenSurfaceWorkflowCopy(
@@ -233,6 +247,21 @@ def _workflow(*, state: _State | None = None) -> tuple[ScreenSurfaceWorkflow, _S
         ),
     )
     return workflow, state
+
+
+def test_surface_workflow_opens_and_submits_session_rename() -> None:
+    workflow, state = _workflow()
+
+    asyncio.run(workflow.handle_text("/rename"))
+    surface = workflow.current
+    assert isinstance(surface, ScreenSurfaceView)
+    assert surface.purpose == "rename"
+
+    asyncio.run(workflow.handle_intent(InputIntent(kind="select", text="Project Alpha")))
+
+    assert workflow.current is None
+    assert state.renamed_sessions == ["Project Alpha"]
+    assert state.statuses == ["renamed:Project Alpha"]
 
 
 def test_surface_workflow_routes_product_normalized_commands_and_copy() -> None:

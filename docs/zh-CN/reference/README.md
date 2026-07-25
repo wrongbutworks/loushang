@@ -78,7 +78,7 @@ loushang --command <command-name> --command-result-format json
 内置交互命令包括：
 
 ```text
-/settings /model /scoped-models /export /import /share /copy /name
+/settings /model /scoped-models /export /import /share /copy /rename
 /session /terminal /tools /changelog /hotkeys /fork /clone /tree
 /new /compact /resume /reload /quit
 ```

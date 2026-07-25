@@ -30,8 +30,8 @@ def _run_completion_session_command() -> ScreenTuiInputPlaybackResult:
 
     result = scenario.render().type_text("/na").tab().run()
 
-    result.assert_composer_text("/name ")
-    result.assert_visible_contains("› /name")
+    result.assert_composer_text("/rename ")
+    result.assert_visible_contains("› /rename")
     result.assert_no_clear_screen()
     result.assert_cursor_matches_diagnostics()
     assert session.commands == []

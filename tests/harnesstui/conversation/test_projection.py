@@ -225,6 +225,35 @@ def test_session_event_adapter_routes_structural_events_without_product_types() 
     assert target.last_delta == "part"
 
 
+def test_session_event_adapter_notifies_session_info_changes() -> None:
+    target = RecordingTarget()
+    changed: list[str] = []
+    adapter = SessionConversationEventAdapter(
+        ConversationProjector(target),
+        ToolTranscriptProjectionBinding[dict[str, object], object](
+            neutral_projector=ToolTranscriptProjector(),
+            call_id=lambda _event: "",
+            message_id=lambda _message: "",
+            call_view=lambda _event: ToolCallView(tool_call_id="", tool_name=""),
+            result_view=lambda _event, _snapshot, _tool_call_id: ToolResultView(
+                tool_call_id="",
+                tool_name="",
+                status="ok",
+            ),
+            tool_result_message_view=lambda _message: ToolResultView(
+                tool_call_id="",
+                tool_name="",
+                status="ok",
+            ),
+        ),
+        on_session_info_changed=lambda: changed.append("changed"),
+    )
+
+    adapter.handle({"type": "session_info_changed", "name": "Project Alpha"})
+
+    assert changed == ["changed"]
+
+
 def test_tool_call_snapshot_and_elapsed_time_are_shared_with_target() -> None:
     target = RecordingTarget()
     clock = iter((10.0, 11.0, 12.5)).__next__
