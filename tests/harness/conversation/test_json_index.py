@@ -177,5 +177,14 @@ def test_revision_aware_json_index_rejects_stale_upsert_and_late_recreation(
         assert [item.projection.projection_id for item in await index.query("new")] == [
             "newer"
         ]
+        before_replace = await index.query_snapshot("")
+        assert before_replace.index_state == "fresh"
+        assert before_replace.index_generation != "unavailable"
+        assert before_replace.query_snapshot.endswith(":3")
+
+        await index.replace((newer,))
+        after_replace = await index.query_snapshot("")
+        assert after_replace.index_generation != before_replace.index_generation
+        assert after_replace.query_snapshot.endswith(":0")
 
     asyncio.run(scenario())

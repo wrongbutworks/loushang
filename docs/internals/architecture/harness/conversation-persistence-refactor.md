@@ -8,7 +8,7 @@ Phase 4 remains a follow-on.
 
 This document is the current storage-boundary decision. It supersedes the
 earlier package placement in the conversation, Agent transcript, catalog, and
-file-store boundary notes. The implementation does not change the Native JSONL
+file-store boundary notes. The implementation does not change the Conversation JSONL
 format.
 
 Implemented storage outcomes:
@@ -41,9 +41,9 @@ The target is a dependency graph, not three interchangeable storage layers:
 
 ```text
 work.event_logs.jsonl ─────────────────────> journal
-conversation.native_codec / stores.file ──> journal
+conversation.jsonl_codec / stores.file ──> journal
 transcript ─────────────────────────> conversation
-transcript.native_file ─────────────> journal
+transcript.jsonl_file ─────────────> journal
 harness.session / Product runtime ────────> transcript
 CLI / TUI ────────────────────────────────> Product operations
 ```
@@ -192,7 +192,7 @@ loushang/harness/
 │   ├── diagnostics.py
 │   ├── branch.py
 │   ├── repository.py
-│   ├── native_codec.py
+│   ├── jsonl_codec.py
 │   ├── replay.py
 │   ├── ports.py
 │   ├── store.py
@@ -215,7 +215,7 @@ loushang/harness/
 │   ├── unit_of_work.py
 │   ├── session.py
 │   ├── committer.py
-│   ├── native_file.py
+│   ├── jsonl_file.py
 │   ├── session_catalog.py
 │   ├── session_factory.py
 │   ├── lifecycle.py
@@ -448,7 +448,7 @@ ConversationStore.append
 ```
 
 No migration helper, Agent file-layout helper, repository, catalog, or Product
-session may append the same Native transcript through a parallel path.
+session may append the same Conversation JSONL transcript through a parallel path.
 
 ## Diagnostics
 
@@ -638,7 +638,7 @@ deletion or authoritative non-existence.
 The current Agent transcript file module has valid Agent-specific work, but its
 name should describe composition rather than a second Store.
 
-The target `transcript.native_file` may own:
+The target `transcript.jsonl_file` may own:
 
 - Native header/record codec assembly;
 - payload codec registration;
@@ -829,7 +829,7 @@ not yet transactional.
 | `storage/memory.py` | `conversation/stores/memory.py` | Reference provider for the conversation port |
 | `journal/index.py` | `conversation/indexes/json_file.py` | It is a rebuildable JSON projection, not a journal |
 | `transcript/store.py` | `transcript/unit_of_work.py` and `AgentTranscriptUnitOfWork` | It owns the bound repository/revision/CAS transaction; it is not the backend |
-| `transcript/file_store.py` | `transcript/native_file.py` | It composes Agent codecs/layout with the file provider |
+| `transcript/file_store.py` | `transcript/jsonl_file.py` | It composes Agent codecs/layout with the file provider |
 | `transcript/catalog.py` | `transcript/session_catalog.py` | It owns Agent summary/search meaning, not physical storage |
 
 Avoid a large `conversation/store.py` only for aesthetic consolidation. Keep
@@ -843,7 +843,7 @@ becomes difficult to navigate.
 
 Before moves:
 
-- freeze Native JSONL byte fixtures covering every Agent payload kind,
+- freeze Conversation JSONL byte fixtures covering every Agent payload kind,
   non-ASCII text, opaque/future payloads, future headers, invalid complete
   lines, and partial tails;
 - characterize strict and compatible load behavior, including diagnostic code,
@@ -852,7 +852,7 @@ Before moves:
 - characterize atomic create-with-records, revision/CAS, lock, receipt,
   deletion, and partial-tail append behavior;
 - record catalog ordering, tolerant projection, and resume behavior;
-- inventory every production caller allowed to append/rewrite Native JSONL;
+- inventory every production caller allowed to append/rewrite Conversation JSONL;
 - build a symbol ledger for every exported
   `harness.storage.*`, `journal.BranchGraph`,
   `journal.TranscriptRepository`, `journal.JsonProjectionIndex`,
@@ -947,18 +947,25 @@ management declares any old path externally supported before implementation,
 pause and record a separate compatibility ADR with warning and removal
 versions rather than making this plan conditional.
 
-Native JSONL compatibility is stricter than Python import compatibility:
+Conversation JSONL uses one compatibility-oriented decoder:
 
-- existing files must remain byte-compatible for append;
-- load/recovery policy must not silently become more permissive;
-- record ids, parents, payload tags, revisions, and header fields do not change;
-- external formats remain explicit imports and are not rewritten during scan.
+- new sessions write `CURRENT_CONVERSATION_FORMAT_VERSION`;
+- the decoder accepts every released version from the minimum supported version
+  through the current version;
+- schema evolution is additive: new fields are optional, missing fields receive
+  defaults, and unknown optional fields are ignored;
+- existing field names, types, and meanings are not changed after 1.0;
+- breaking payload changes use `payloadVersion` or a new record `kind`;
+- external JSONL families are skipped during discovery and are never rewritten.
+
+Session v3 is a separate pre-1.0 format family. It is not part of Resume
+discovery or the Conversation JSONL compatibility promise.
 
 ## Verification Gates
 
 The refactor is complete only when these gates pass:
 
-- Native JSONL golden fixtures and append bytes for the Phase 0 fixture matrix
+- Conversation JSONL golden fixtures and append bytes for the Phase 0 fixture matrix
   are unchanged;
 - branch, fork, tree, delta, replay, and compaction characterization tests pass;
 - memory and file adapters pass the same Store conformance suite;
@@ -970,16 +977,15 @@ The refactor is complete only when these gates pass:
 - two independent Store instances produce the same CAS conflict behavior;
 - partial-tail load is read-only and append repairs only under the commit lock;
 - lost-response/outcome-unknown reconciliation cannot duplicate a record;
-- legacy import creates a new Native key without changing the source, and an
-  already-Native source is never rewritten by import;
+- any explicit legacy import leaves its source unchanged;
 - a failed commit does not mutate accepted in-memory repository state;
 - observer and index failures cannot mask a successful receipt or cause a
   duplicate retry;
 - diagnostic exception/result parity is preserved across journal,
   conversation, Agent, and Product layers;
 - stale/missing indexes rebuild from authoritative sources, lower revisions
-  cannot overwrite higher revisions, deletion removes ghosts, and a partial
-  scan cannot publish a replacement generation;
+  cannot overwrite higher revisions, deletion removes ghosts, and malformed or
+  unrelated source files do not prevent valid summaries from being published;
 - catalog tests run against a non-filesystem fake Store provider and disambiguate
   the same key in two providers;
 - a projection-only fake index proves listing/search do not require complete

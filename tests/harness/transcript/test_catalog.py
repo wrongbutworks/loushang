@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 from pathlib import Path
 
 from loushang.ai.types import UserMessage
@@ -51,7 +53,7 @@ def _record(
     )
 
 
-def test_catalog_discovers_queries_and_indexes_current_native_transcripts(
+def test_catalog_discovers_queries_and_indexes_conversation_jsonl_transcripts(
     tmp_path: Path,
 ) -> None:
     write_agent_transcript_export(
@@ -86,6 +88,161 @@ def test_catalog_discovers_queries_and_indexes_current_native_transcripts(
             tmp_path, SessionQuery(cwd="/workspace/b")
         )
     ] == ["beta"]
+
+
+def test_catalog_skips_other_jsonl_families_and_publishes_valid_entries(
+    tmp_path: Path,
+) -> None:
+    write_agent_transcript_export(
+        tmp_path / "current.jsonl",
+        _header("current", cwd="/workspace/current"),
+        [_record("record-1", "current message")],
+    )
+    (tmp_path / "legacy.jsonl").write_text(
+        json.dumps({"type": "session", "version": 3, "id": "legacy"}) + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "broken.jsonl").write_text(
+        "\n".join(
+            (
+                json.dumps(
+                    {
+                        "type": "conversation",
+                        "conversationId": "broken",
+                        "version": 1,
+                        "createdAt": "2026-07-18T00:00:00Z",
+                    }
+                ),
+                "{not valid json}",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+
+    assert [item.session_id for item in catalog.refresh_index()] == ["current"]
+    assert [item.session_id for item in catalog.load_index()] == ["current"]
+
+
+def test_catalog_marks_index_stale_when_transcript_authority_is_newer(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "current.jsonl"
+    write_agent_transcript_export(
+        transcript,
+        _header("current", cwd="/workspace/current"),
+        [_record("record-1", "first")],
+    )
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    catalog.refresh_index()
+    assert catalog.try_query_index_snapshot().index_state == "fresh"
+
+    write_agent_transcript_export(
+        transcript,
+        _header("current", cwd="/workspace/current"),
+        [
+            _record("record-1", "first"),
+            _record("record-2", "second", parent_id="record-1"),
+        ],
+    )
+    index_modified = catalog.index_path.stat().st_mtime_ns
+    transcript_modified = transcript.stat().st_mtime_ns
+    if transcript_modified <= index_modified:
+        os.utime(
+            transcript,
+            ns=(transcript.stat().st_atime_ns, index_modified + 1),
+        )
+
+    snapshot = catalog.try_query_index_snapshot()
+
+    assert snapshot.index_state == "stale"
+    assert snapshot.items[0].source_revision == 1
+
+
+def test_catalog_repairs_only_changed_new_and_deleted_transcripts(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    alpha = tmp_path / "alpha.jsonl"
+    beta = tmp_path / "beta.jsonl"
+    gamma = tmp_path / "gamma.jsonl"
+    write_agent_transcript_export(
+        alpha,
+        _header("alpha", cwd="/workspace"),
+        [_record("alpha-1", "alpha")],
+    )
+    write_agent_transcript_export(
+        beta,
+        _header("beta", cwd="/workspace"),
+        [_record("beta-1", "beta")],
+    )
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+    catalog.refresh_index()
+    index_modified = catalog.index_path.stat().st_mtime_ns
+
+    write_agent_transcript_export(
+        beta,
+        _header("beta", cwd="/workspace"),
+        [
+            _record("beta-1", "beta"),
+            _record("beta-2", "changed", parent_id="beta-1"),
+        ],
+    )
+    write_agent_transcript_export(
+        gamma,
+        _header("gamma", cwd="/workspace"),
+        [_record("gamma-1", "new")],
+    )
+    for path in (beta, gamma):
+        if path.stat().st_mtime_ns <= index_modified:
+            os.utime(
+                path,
+                ns=(path.stat().st_atime_ns, index_modified + 1),
+            )
+    alpha.unlink()
+
+    projected: list[str] = []
+    original = catalog._project_summary
+
+    def project(header, records, leaf_id, locator):
+        projected.append(header.conversation_id)
+        return original(header, records, leaf_id, locator)
+
+    monkeypatch.setattr(catalog, "_project_summary", project)
+
+    repaired = catalog.repair_index()
+
+    assert projected == ["beta", "gamma"]
+    assert {summary.session_id for summary in repaired} == {"beta", "gamma"}
+    assert next(
+        summary for summary in repaired if summary.session_id == "beta"
+    ).entry_count == 2
+    assert catalog.try_query_index_snapshot().index_state == "fresh"
+
+
+def test_catalog_query_can_exclude_sessions_without_messages(tmp_path: Path) -> None:
+    write_agent_transcript_export(
+        tmp_path / "empty.jsonl",
+        _header("empty", cwd="/workspace"),
+        [],
+    )
+    write_agent_transcript_export(
+        tmp_path / "active.jsonl",
+        _header("active", cwd="/workspace"),
+        [_record("record-1", "hello")],
+    )
+    catalog = AgentTranscriptSessionCatalog(tmp_path)
+
+    assert [
+        summary.session_id
+        for summary in catalog.find_summaries(SessionQuery(has_messages=True))
+    ] == ["active"]
+    assert [
+        summary.session_id
+        for summary in catalog.find_summaries(SessionQuery(has_messages=False))
+    ] == ["empty"]
 
 
 def test_catalog_context_and_labels_use_selected_standard_record_path() -> None:

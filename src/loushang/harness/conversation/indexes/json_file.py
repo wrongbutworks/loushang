@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import secrets
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
@@ -11,7 +13,12 @@ from threading import Lock
 from time import time_ns
 from typing import Any, Generic, Protocol, TypeVar, cast
 
-from loushang.harness.conversation.index import IndexedProjection, IndexQuery
+from loushang.harness.conversation.index import (
+    ConversationIndexSnapshot,
+    ConversationIndexState,
+    IndexedProjection,
+    IndexQuery,
+)
 from loushang.harness.conversation.store import (
     ConversationKey,
     ConversationLocator,
@@ -194,8 +201,11 @@ class JsonConversationIndex(Generic[P, Q]):
         return await asyncio.to_thread(self._get_sync, locator)
 
     async def query(self, query: Q) -> Sequence[IndexedProjection[P]]:
-        items = await asyncio.to_thread(self._items_sync)
-        return tuple(self._query_items(query, items))
+        snapshot = await self.query_snapshot(query)
+        return snapshot.items
+
+    async def query_snapshot(self, query: Q) -> ConversationIndexSnapshot[P]:
+        return await asyncio.to_thread(self._query_snapshot_sync, query)
 
     async def replace(
         self,
@@ -206,14 +216,19 @@ class JsonConversationIndex(Generic[P, Q]):
     def _upsert_sync(self, item: IndexedProjection[P]) -> bool:
         require_revision(item.source_revision, name="source revision")
         with self._lock:
-            items, tombstones = self._read_state()
-            if item.source_revision <= tombstones.get(item.locator, -1):
+            state = self._read_state()
+            if item.source_revision <= state.tombstones.get(item.locator, -1):
                 return False
-            current = items.get(item.locator)
+            current = state.items.get(item.locator)
             if current is not None and item.source_revision < current.source_revision:
                 return False
-            items[item.locator] = item
-            self._write_state(items, tombstones)
+            state.items[item.locator] = item
+            self._write_state(
+                state.items,
+                state.tombstones,
+                generation=_writable_generation(state),
+                sequence=state.sequence + 1,
+            )
             return True
 
     def _delete_sync(
@@ -223,15 +238,20 @@ class JsonConversationIndex(Generic[P, Q]):
     ) -> bool:
         revision = require_revision(through_revision, name="deletion revision")
         with self._lock:
-            items, tombstones = self._read_state()
-            previous = tombstones.get(locator, -1)
+            state = self._read_state()
+            previous = state.tombstones.get(locator, -1)
             if revision < previous:
                 return False
-            tombstones[locator] = revision
-            current = items.get(locator)
+            state.tombstones[locator] = revision
+            current = state.items.get(locator)
             if current is not None and current.source_revision <= revision:
-                del items[locator]
-            self._write_state(items, tombstones)
+                del state.items[locator]
+            self._write_state(
+                state.items,
+                state.tombstones,
+                generation=_writable_generation(state),
+                sequence=state.sequence + 1,
+            )
             return revision > previous
 
     def _get_sync(
@@ -239,46 +259,87 @@ class JsonConversationIndex(Generic[P, Q]):
         locator: ConversationLocator,
     ) -> IndexedProjection[P] | None:
         with self._lock:
-            items, _ = self._read_state()
-            return items.get(locator)
+            return self._read_state().items.get(locator)
 
     def _items_sync(self) -> tuple[IndexedProjection[P], ...]:
         with self._lock:
-            items, _ = self._read_state()
-            return tuple(items.values())
+            return tuple(self._read_state().items.values())
+
+    def _query_snapshot_sync(self, query: Q) -> ConversationIndexSnapshot[P]:
+        with self._lock:
+            state = self._read_state()
+            items = tuple(self._query_items(query, tuple(state.items.values())))
+        return ConversationIndexSnapshot(
+            items=items,
+            index_state=state.index_state,
+            index_generation=state.generation,
+            query_snapshot=f"{state.generation}:{state.sequence}",
+        )
 
     def _replace_sync(
         self,
         replacement: tuple[IndexedProjection[P], ...],
     ) -> tuple[IndexedProjection[P], ...]:
         with self._lock:
-            _, tombstones = self._read_state()
+            state = self._read_state()
             items = {
                 item.locator: item
                 for item in replacement
-                if item.source_revision > tombstones.get(item.locator, -1)
+                if item.source_revision > state.tombstones.get(item.locator, -1)
             }
-            self._write_state(items, tombstones)
+            self._write_state(
+                items,
+                state.tombstones,
+                generation=_new_generation(),
+                sequence=0,
+            )
             return tuple(items.values())
 
     def _read_state(
         self,
-    ) -> tuple[
-        dict[ConversationLocator, IndexedProjection[P]],
-        dict[ConversationLocator, int],
-    ]:
+    ) -> _JsonConversationIndexState[P]:
         if not self.path.exists():
-            return {}, {}
+            return _JsonConversationIndexState(
+                items={},
+                tombstones={},
+                generation="unavailable",
+                sequence=0,
+                index_state="unavailable",
+            )
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
-            if not isinstance(payload, Mapping) or payload.get("version") != self.version:
+            if (
+                not isinstance(payload, Mapping)
+                or payload.get("version") != self.version
+            ):
                 raise ValueError("conversation index version is unsupported")
             items = self._decode_items(payload.get("items"))
             tombstones = self._decode_tombstones(payload.get("tombstones"))
+            raw_generation = payload.get("index_generation")
+            generation = (
+                raw_generation
+                if isinstance(raw_generation, str) and raw_generation
+                else _legacy_generation(items)
+            )
+            raw_sequence = payload.get("index_sequence", 0)
+            if type(raw_sequence) is not int or raw_sequence < 0:
+                raise ValueError("conversation index sequence is invalid")
         except Exception:
             self._preserve_corrupt()
-            return {}, {}
-        return items, tombstones
+            return _JsonConversationIndexState(
+                items={},
+                tombstones={},
+                generation="stale",
+                sequence=0,
+                index_state="stale",
+            )
+        return _JsonConversationIndexState(
+            items=items,
+            tombstones=tombstones,
+            generation=generation,
+            sequence=raw_sequence,
+            index_state="fresh",
+        )
 
     def _decode_items(
         self,
@@ -298,9 +359,7 @@ class JsonConversationIndex(Generic[P, Q]):
             raw_projection = raw.get("projection")
             if not isinstance(raw_projection, Mapping):
                 raise ValueError("conversation index projection is invalid")
-            projection = self.codec.decode(
-                cast(Mapping[str, object], raw_projection)
-            )
+            projection = self.codec.decode(cast(Mapping[str, object], raw_projection))
             items[locator] = IndexedProjection(locator, revision, projection)
         return items
 
@@ -326,10 +385,15 @@ class JsonConversationIndex(Generic[P, Q]):
         self,
         items: Mapping[ConversationLocator, IndexedProjection[P]],
         tombstones: Mapping[ConversationLocator, int],
+        *,
+        generation: str,
+        sequence: int,
     ) -> None:
         payload = {
             "version": self.version,
             "generated_at": _now_iso(),
+            "index_generation": generation,
+            "index_sequence": sequence,
             "items": [
                 {
                     **_encode_locator(item.locator),
@@ -370,6 +434,43 @@ class JsonConversationIndex(Generic[P, Q]):
         return target
 
 
+@dataclass
+class _JsonConversationIndexState(Generic[P]):
+    items: dict[ConversationLocator, IndexedProjection[P]]
+    tombstones: dict[ConversationLocator, int]
+    generation: str
+    sequence: int
+    index_state: ConversationIndexState
+
+
+def _new_generation() -> str:
+    return secrets.token_hex(16)
+
+
+def _writable_generation(state: _JsonConversationIndexState[object]) -> str:
+    if state.index_state == "fresh":
+        return state.generation
+    return _new_generation()
+
+
+def _legacy_generation(
+    items: Mapping[ConversationLocator, IndexedProjection[object]],
+) -> str:
+    digest = json.dumps(
+        [
+            (
+                item.locator.provider_id,
+                item.locator.key.namespace,
+                item.locator.key.conversation_id,
+                item.source_revision,
+            )
+            for item in sorted(items.values(), key=_indexed_projection_key)
+        ],
+        separators=(",", ":"),
+    )
+    return "legacy-" + hashlib.sha256(digest.encode("utf-8")).hexdigest()[:24]
+
+
 def _encode_locator(locator: ConversationLocator) -> dict[str, str]:
     return {
         "provider_id": locator.provider_id,
@@ -382,11 +483,14 @@ def _decode_locator(value: Mapping[str, object]) -> ConversationLocator:
     provider_id = value.get("provider_id")
     namespace = value.get("namespace")
     conversation_id = value.get("conversation_id")
-    if not all(isinstance(item, str) and item for item in (
-        provider_id,
-        namespace,
-        conversation_id,
-    )):
+    if not all(
+        isinstance(item, str) and item
+        for item in (
+            provider_id,
+            namespace,
+            conversation_id,
+        )
+    ):
         raise ValueError("conversation index locator is invalid")
     return ConversationLocator(
         cast(str, provider_id),

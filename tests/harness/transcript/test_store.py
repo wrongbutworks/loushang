@@ -147,6 +147,49 @@ def test_store_create_append_load_and_replay_context() -> None:
     asyncio.run(scenario())
 
 
+def test_provisional_store_materializes_with_staged_records_on_first_user_message() -> (
+    None
+):
+    async def scenario() -> None:
+        backend = MemoryConversationStore(record_id=lambda record: record.record_id)
+        store = await AgentTranscriptUnitOfWork.create(
+            backend,
+            _key(),
+            _header(),
+            clock=lambda: datetime(2026, 7, 16, tzinfo=UTC),
+            id_factory=_id_factory(),
+            defer_materialization=True,
+        )
+
+        assert store.is_materialized is False
+        assert await backend.scan(_key().namespace) == ()
+
+        staged = await store.append_model_selection(
+            ModelSelectionSnapshot(provider="provider", model_id="model")
+        )
+        assert staged.receipt is None
+        assert staged.durable is False
+        assert store.revision == 1
+        assert await backend.scan(_key().namespace) == ()
+
+        committed = await store.append_agent_message(
+            UserMessage(role="user", content="hello", timestamp=1.0)
+        )
+        assert committed.receipt is not None
+        assert committed.receipt.revision == 2
+        assert committed.durable is True
+        assert store.is_materialized is True
+        assert await backend.scan(_key().namespace) == (_key(),)
+
+        loaded = await AgentTranscriptUnitOfWork.load(backend, _key())
+        assert [record.kind for record in loaded.records] == [
+            MODEL_SELECTION_KIND,
+            AGENT_MESSAGE_KIND,
+        ]
+
+    asyncio.run(scenario())
+
+
 def test_store_prevalidates_graph_and_does_not_advance_on_append_failure() -> None:
     async def scenario() -> None:
         backend = FailingMemoryStore()

@@ -53,7 +53,7 @@ TombstonePath = Callable[[ConversationKey], Path]
 
 
 class FileConversationStore(Generic[HeaderT, RecordT]):
-    """File-backed Store whose layout and Native codecs are Product supplied."""
+    """File-backed Store whose layout and codecs are Product supplied."""
 
     def __init__(
         self,
@@ -190,7 +190,9 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                         raise StoreCommitOutcomeUnknown(
                             f"create outcome for conversation {key!r} is unknown"
                         )
-                    raise StoreAlreadyExistsError(f"conversation {key!r} already exists")
+                    raise StoreAlreadyExistsError(
+                        f"conversation {key!r} already exists"
+                    )
                 _write_unlocked(journal, header=header, records=durable_records)
                 try:
                     _write_create_operation(path, operation)
@@ -228,8 +230,7 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
                 revision=len(snapshot.records),
             ),
             diagnostics=tuple(
-                _source_diagnostic(diagnostic)
-                for diagnostic in snapshot.diagnostics
+                _source_diagnostic(diagnostic) for diagnostic in snapshot.diagnostics
             ),
         )
 
@@ -295,8 +296,7 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
         return ConversationCommitResult(
             receipt=receipt,
             diagnostics=tuple(
-                _source_diagnostic(diagnostic)
-                for diagnostic in snapshot.diagnostics
+                _source_diagnostic(diagnostic) for diagnostic in snapshot.diagnostics
             ),
         )
 
@@ -412,7 +412,18 @@ class FileConversationStore(Generic[HeaderT, RecordT]):
         selected = keys[offset : offset + page_limit]
         heads = []
         for key in selected:
-            snapshot = self._load_sync(key).snapshot
+            try:
+                snapshot = self._load_sync(key).snapshot
+            except Exception as exc:
+                resolved = self._resolve_path(key)
+                diagnostics += (
+                    ConversationSourceDiagnostic(
+                        code="conversation_source_load_failed",
+                        message=str(exc),
+                        source_path=Path(resolved) if resolved is not None else None,
+                    ),
+                )
+                continue
             heads.append(
                 ConversationHead(
                     key=key,

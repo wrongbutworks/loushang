@@ -16,7 +16,10 @@ from loushang.harness.runtime import (
     SessionOperationResult,
     run_replacement_callbacks,
 )
-from loushang.harness.session.lifecycle import MissingSessionCwdError
+from loushang.harness.session.lifecycle import (
+    MissingSessionCwdError,
+    PreparedSessionLifecycleOperation,
+)
 from loushang.harness.session.transcript_lifecycle import (
     require_session_operation_session,
 )
@@ -113,6 +116,32 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
             options=options or None,
         )
 
+    async def prepare_restore_session_operation(
+        self,
+        session_id: str | Path,
+        *,
+        fallback_cwd: str | Path | None = None,
+        missing_cwd: str = "error",
+    ) -> PreparedSessionLifecycleOperation[SessionT, PayloadT]:
+        session_file = self.resolve_session_file(session_id)
+        try:
+            return await super().prepare_restore_session_operation(
+                session_file,
+                fallback_cwd=(str(fallback_cwd) if fallback_cwd is not None else None),
+                missing_cwd=missing_cwd,
+                metadata=self._lifecycle_metadata(
+                    operation="restore_session",
+                    session_ref=str(session_id),
+                    target_session_file=str(session_file),
+                    fallback_cwd=(
+                        str(fallback_cwd) if fallback_cwd is not None else None
+                    ),
+                    missing_cwd=missing_cwd,
+                ),
+            )
+        except MissingSessionCwdError as exc:
+            raise self._translate_missing_cwd_error(exc) from exc
+
     async def _run_restore_session_operation(
         self,
         session_id: str | Path,
@@ -125,9 +154,7 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
         try:
             return await super().restore_session_operation(
                 session_file,
-                fallback_cwd=(
-                    str(fallback_cwd) if fallback_cwd is not None else None
-                ),
+                fallback_cwd=(str(fallback_cwd) if fallback_cwd is not None else None),
                 missing_cwd=missing_cwd,
                 metadata=self._lifecycle_metadata(
                     operation="restore_session",
@@ -186,7 +213,9 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
         result = await self.clone_session_operation()
         return require_session_operation_session(result)
 
-    async def clone_session_operation(self) -> SessionOperationResult[SessionT, PayloadT]:
+    async def clone_session_operation(
+        self,
+    ) -> SessionOperationResult[SessionT, PayloadT]:
         return await self._run_fork_session_operation(None)
 
     async def import_from_jsonl(
@@ -210,9 +239,7 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
         try:
             return await super().import_session_operation(
                 source,
-                cwd_override=(
-                    str(cwd_override) if cwd_override is not None else None
-                ),
+                cwd_override=(str(cwd_override) if cwd_override is not None else None),
                 metadata=self._lifecycle_metadata(
                     operation="import_from_jsonl",
                     input_path=str(input_path),
@@ -236,7 +263,9 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
             ),
         )
 
-    def get_packages(self, *, catalog_path: str | None = None) -> list[dict[str, object]]:
+    def get_packages(
+        self, *, catalog_path: str | None = None
+    ) -> list[dict[str, object]]:
         current_session = self.session
         getter = getattr(current_session, "get_packages", None)
         if not callable(getter):
@@ -326,9 +355,7 @@ class SessionLifecycleOperationAdapter(Generic[SessionT, PayloadT]):
             metadata["options"] = options
         return metadata
 
-    def _translate_missing_cwd_error(
-        self, error: MissingSessionCwdError
-    ) -> Exception:
+    def _translate_missing_cwd_error(self, error: MissingSessionCwdError) -> Exception:
         """Allow a Product to preserve its public error type when required."""
 
         return error

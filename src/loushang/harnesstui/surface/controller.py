@@ -14,7 +14,9 @@ from loushang.tui import (
 )
 
 SurfaceEventKind = Literal["surface_submit", "surface_close"]
-SurfaceEventSource = Literal["model", "command", "settings", "dialog", "approval"]
+SurfaceEventSource = Literal[
+    "model", "command", "settings", "session", "dialog", "approval"
+]
 SurfaceSubmitHandler = Callable[[Any], Awaitable[None]]
 
 
@@ -64,9 +66,15 @@ class ScreenSurfaceCoordinator:
     )
     _approval_queue: list[ApprovalSurface] = field(default_factory=list, repr=False)
     _approval_transitioning: bool = field(default=False, init=False, repr=False)
+    _pending_page_view: ScreenSurfaceView | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
 
     @property
     def current(self) -> ScreenSurfaceView | object | None:
+        self._adopt_pending_page()
         if self._active_overlay_view is not None:
             return self._active_overlay_view
         return self.app.active_surface
@@ -98,6 +106,7 @@ class ScreenSurfaceCoordinator:
         surface_host = self.app.surface_host
         if surface_host is None or view.exclusive_bottom:
             self.app.active_surface = view
+            self._pending_page_view = view if view.full_screen_page else None
             return
         self.app.active_surface = None
         self._active_overlay_view = view
@@ -105,19 +114,41 @@ class ScreenSurfaceCoordinator:
             Surface(
                 renderable=view,
                 focus_target=view,
-                presentation="overlay",
-                anchor="bottom-left",
+                presentation="page" if view.full_screen_page else "overlay",
+                anchor="top-left" if view.full_screen_page else "bottom-left",
                 width="100%",
-                max_height="80%",
+                max_height="100%" if view.full_screen_page else "80%",
             )
         )
+        self._pending_page_view = None
 
     def close(self) -> None:
         if self._active_overlay_handle is not None:
             self._active_overlay_handle.close("closed")
         self._active_overlay_handle = None
         self._active_overlay_view = None
+        self._pending_page_view = None
         self.app.active_surface = None
+
+    def _adopt_pending_page(self) -> None:
+        pending = self._pending_page_view
+        surface_host = self.app.surface_host
+        if pending is None or surface_host is None:
+            return
+        if self.app.active_surface is pending:
+            promote_pending_page_surface(self.app)
+        for entry in surface_host.entries:
+            if (
+                entry.surface.renderable is pending
+                and entry.surface.presentation == "page"
+            ):
+                self._active_overlay_view = pending
+                self._active_overlay_handle = SurfaceHandle(
+                    host=surface_host,
+                    entry=entry,
+                )
+                self._pending_page_view = None
+                return
 
     def present_approval(
         self,
@@ -215,6 +246,13 @@ def normalize_surface_intent(
             source="settings",
             payload={"id": intent.text, "value": intent.note},
         )
+    if surface.purpose == "session" and intent.kind == "select":
+        selected_target = getattr(surface.content, "selected_target", None)
+        return SurfaceEvent(
+            kind="surface_submit",
+            source="session",
+            payload=selected_target if selected_target is not None else intent.text,
+        )
     if surface.purpose == "dialog" and intent.kind == "dialog_confirm":
         return SurfaceEvent(kind="surface_submit", source="dialog")
     if surface.purpose == "approval" and intent.kind in {"approve", "reject"}:
@@ -224,6 +262,31 @@ def normalize_surface_intent(
             note=intent.note,
         )
     return None
+
+
+def promote_pending_page_surface(app: ScreenSurfaceAppPort) -> bool:
+    """Promote a page opened before the runner installed its SurfaceHost."""
+
+    view = getattr(app, "active_surface", None)
+    surface_host = getattr(app, "surface_host", None)
+    if (
+        surface_host is None
+        or not isinstance(view, ScreenSurfaceView)
+        or not view.full_screen_page
+    ):
+        return False
+    app.active_surface = None
+    surface_host.open_surface(
+        Surface(
+            renderable=view,
+            focus_target=view,
+            presentation="page",
+            anchor="top-left",
+            width="100%",
+            max_height="100%",
+        )
+    )
+    return True
 
 
 def _approval_surface_event(
@@ -255,4 +318,5 @@ __all__ = [
     "SurfaceEventSource",
     "SurfaceSubmitHandler",
     "normalize_surface_intent",
+    "promote_pending_page_surface",
 ]

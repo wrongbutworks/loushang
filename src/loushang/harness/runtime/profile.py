@@ -1491,6 +1491,14 @@ COMMAND_PACKS_SLOT = RuntimeCapabilitySlot(
     refresh_boundary="turn",
     allowed_sources=frozenset({"product", "oem", "extension"}),
 )
+CONTINUITY_PROVIDER_PACKS_SLOT = RuntimeCapabilitySlot(
+    key="continuity.provider_packs",
+    shape="ordered",
+    scope="process",
+    refresh_boundary="sealed",
+    allowed_sources=frozenset({"product", "oem"}),
+    required=False,
+)
 
 
 def standard_agent_session_slots() -> tuple[RuntimeCapabilitySlot, ...]:
@@ -1512,6 +1520,7 @@ def standard_capability_composition_slots() -> tuple[RuntimeCapabilitySlot, ...]
         SKILL_ACTIVATION_SLOT,
         TOOL_PACKS_SLOT,
         COMMAND_PACKS_SLOT,
+        CONTINUITY_PROVIDER_PACKS_SLOT,
     )
 
 
@@ -1520,6 +1529,7 @@ __all__ = [
     "COMMAND_PACKS_SLOT",
     "CONTEXT_COMPACTION_SLOT",
     "CONVERSATION_STORE_SLOT",
+    "CONTINUITY_PROVIDER_PACKS_SLOT",
     "PROMPT_SECTIONS_SLOT",
     "ProductRuntimePlan",
     "ResolvedRuntimeCapability",

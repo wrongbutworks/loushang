@@ -357,6 +357,10 @@ class CliApplicationPorts(Generic[ArgsT, StateT, RuntimeT, SessionT]):
         CliMaybeAsync[int],
     ]
     output_guard: CliOutputGuard
+    pre_session_bootstrap: Callable[
+        [CliRuntimeContext[ArgsT, StateT, RuntimeT]],
+        CliMaybeAsync[CliPhaseResult[SessionT] | None],
+    ] = lambda _context: None
     format_error: Callable[[BaseException], str] = str
 
 
@@ -421,6 +425,30 @@ class AgentCliApplicationBinding(Generic[AgentArgsT]):
     host_lifecycle: ProductHostLifecycle
     services: object | None = None
     format_error: Callable[[BaseException], str] = format_cli_error
+    session_resolution_error: (
+        Callable[
+            [
+                CliRuntimeContext[
+                    AgentArgsT, AgentCliApplicationState[AgentArgsT], object
+                ]
+            ],
+            str | None,
+        ]
+        | None
+    ) = None
+    pre_session_bootstrap: (
+        Callable[
+            [
+                CliRuntimeContext[
+                    AgentArgsT,
+                    AgentCliApplicationState[AgentArgsT],
+                    object,
+                ]
+            ],
+            CliMaybeAsync[CliPhaseResult[object] | None],
+        ]
+        | None
+    ) = None
 
 
 def build_agent_cli_application_ports(
@@ -503,10 +531,14 @@ def build_agent_cli_application_ports(
             stderr=context.bootstrap.stderr,
             format_error=binding.format_error,
         ),
-        resolve_session=lambda context: resolve_agent_cli_session(
-            context.state.args,
-            context.runtime,
-            context.bootstrap.project_root,
+        pre_session_bootstrap=(
+            binding.pre_session_bootstrap
+            if binding.pre_session_bootstrap is not None
+            else lambda _context: None
+        ),
+        resolve_session=lambda context: _resolve_bound_agent_cli_session(
+            context,
+            session_resolution_error=binding.session_resolution_error,
         ),
         collect_extension_flags=collect_extension_flags,
         configure_session=binding.configure_session,
@@ -535,6 +567,36 @@ async def run_agent_cli_application(
         stdout=streams.stdout,
         stderr=streams.stderr,
         cwd=cwd,
+    )
+
+
+async def _resolve_bound_agent_cli_session(
+    context: CliRuntimeContext[
+        AgentArgsT,
+        AgentCliApplicationState[AgentArgsT],
+        object,
+    ],
+    *,
+    session_resolution_error: (
+        Callable[
+            [
+                CliRuntimeContext[
+                    AgentArgsT, AgentCliApplicationState[AgentArgsT], object
+                ]
+            ],
+            str | None,
+        ]
+        | None
+    ),
+) -> object:
+    if session_resolution_error is not None:
+        message = session_resolution_error(context)
+        if message is not None:
+            raise RuntimeError(message)
+    return await resolve_agent_cli_session(
+        context.state.args,
+        context.runtime,
+        context.bootstrap.project_root,
     )
 
 
@@ -614,9 +676,17 @@ class CliApplicationRuntime(Generic[ArgsT, StateT, RuntimeT, SessionT]):
                 with self._ports.output_guard(
                     cli_output_guard_enabled(bootstrap.launch_plan)
                 ):
-                    session = await _resolve(
-                        self._ports.resolve_session(runtime_context)
+                    pre_session = await _resolve(
+                        self._ports.pre_session_bootstrap(runtime_context)
                     )
+                    if pre_session is not None:
+                        if pre_session.exit_code is not None:
+                            return pre_session.exit_code
+                        session = cast(SessionT, pre_session.value)
+                    else:
+                        session = await _resolve(
+                            self._ports.resolve_session(runtime_context)
+                        )
             except (
                 FileNotFoundError,
                 NotADirectoryError,

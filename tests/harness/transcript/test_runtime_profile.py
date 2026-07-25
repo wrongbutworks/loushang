@@ -74,6 +74,28 @@ def test_product_runtime_round_trips_its_snapshot_metadata() -> None:
     )
 
 
+def test_product_runtime_accepts_pre_release_current_format_alias() -> None:
+    runtime = _runtime()
+    profile = runtime.resolve(persist=True)
+    metadata = runtime.snapshot_metadata(profile)
+    persisted = metadata["runtimeProfile"]
+    assert isinstance(persisted, dict)
+    transcript = next(
+        capability
+        for capability in persisted["capabilities"]
+        if capability["slot"] == "agent.transcript_profile"
+    )
+    transcript["selections"][0]["config"] = {"format": "current"}
+
+    restored = runtime.validate_snapshot(metadata, profile, require_current=True)
+
+    assert restored is not None
+    assert (
+        restored.capabilities[1].selections[0].config
+        == {"format": "current"}
+    )
+
+
 def test_product_runtime_rejects_another_products_snapshot() -> None:
     research = _runtime("research")
     design = _runtime("design")

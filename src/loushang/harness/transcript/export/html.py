@@ -1,4 +1,4 @@
-"""Self-contained HTML export for a current Native Agent transcript.
+"""Self-contained HTML export for a Conversation JSONL Agent transcript.
 
 The runtime owns the standard transcript document and default renderers. A
 Product supplies only its presentation profile: identity, optional custom
@@ -29,9 +29,9 @@ from loushang.ai.types import (
 from loushang.harness.conversation import (
     CommandExecutionRecord,
     ConversationHeader,
+    ConversationJsonlHeaderCodec,
+    ConversationJsonlRecordCodec,
     ConversationRecord,
-    NativeConversationHeaderCodec,
-    NativeConversationRecordCodec,
 )
 from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
 from loushang.harness.tools.workspace.presentation import render_tool_result_text
@@ -79,8 +79,8 @@ if set(HTML_TRANSCRIPT_DISPOSITIONS) != set(STANDARD_AGENT_TRANSCRIPT_KINDS):
     raise RuntimeError("HTML transcript dispositions must cover every standard kind")
 
 _PROFILE = AgentTranscriptProfile.default()
-_HEADER_CODEC = NativeConversationHeaderCodec()
-_RECORD_CODEC = NativeConversationRecordCodec(_PROFILE.payload_codecs)
+_HEADER_CODEC = ConversationJsonlHeaderCodec()
+_RECORD_CODEC = ConversationJsonlRecordCodec(_PROFILE.payload_codecs)
 
 
 @dataclass(frozen=True)

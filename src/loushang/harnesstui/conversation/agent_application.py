@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Generic, Protocol, TextIO, TypeVar
 
+from loushang.harness.presentation import RenderableToolDefinition
 from loushang.harness.session.model_selection import (
     get_session_model_identity,
     get_session_model_selection,
@@ -47,6 +48,7 @@ from loushang.harnesstui.conversation.resume import (
 )
 from loushang.harnesstui.conversation.run_context import (
     InteractionContext,
+    RebindableEventSource,
     StableEmit,
     TraceFn,
 )
@@ -79,9 +81,11 @@ from loushang.harnesstui.status.persistence import (
 from loushang.harnesstui.status.provider import StatusProvider
 from loushang.harnesstui.surface.controller import ApprovalSurfaceDecision
 from loushang.harnesstui.surface.factory import command_catalog_surface_view
+from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.harnesstui.surface.workflow import (
     ScreenSurfaceCommandCatalog,
     ScreenSurfaceWorkflowPorts,
+    normalize_standard_conversation_interactive_command,
     normalize_standard_conversation_surface_command,
     strip_available_models_heading,
 )
@@ -143,14 +147,18 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
     bind_presenter: Callable[[SurfaceT], Cleanup] = _ignore_surface
     bind_transition: Callable[[SurfaceT], Cleanup] = _ignore_surface
     resume_command_prefix: tuple[str, ...] = ()
+    session_provider: Callable[[], object] | None = None
+    event_source: object | None = None
 
     def prepare(self) -> PreparedScreenConversationRun:
         session = self.session
-        manager = getattr(session, "session_manager")
-        tool_resolver = getattr(session, "get_tool_definition", None)
+        active_session = self.session_provider or (lambda: session)
         settings_manager = getattr(session, "settings_manager", None)
 
         def materialize_history() -> tuple[DisplayRecord, ...]:
+            current = active_session()
+            manager = getattr(current, "session_manager")
+            tool_resolver = getattr(current, "get_tool_definition", None)
             return agent_session_history_records(
                 manager.get_branch(),
                 tool_definition_resolver=(
@@ -158,13 +166,21 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
                 ),
             )
 
+        def resolve_tool(name: str) -> RenderableToolDefinition | None:
+            resolver = getattr(active_session(), "get_tool_definition", None)
+            return resolver(name) if callable(resolver) else None
+
+        def read_pending(method_name: str) -> object:
+            reader = getattr(active_session(), method_name, None)
+            return reader() if callable(reader) else ()
+
         status_provider = StatusProvider(
             model_label=self.startup.model_label,
             cwd=self.startup.cwd,
             branch=self.startup.branch,
-            session_label=lambda: session_label(session),
-            thinking_level=lambda: thinking_level(session),
-            running=lambda: self.app.state.running or is_running(session),
+            session_label=lambda: session_label(active_session()),
+            thinking_level=lambda: thinking_level(active_session()),
+            running=lambda: self.app.state.running or is_running(active_session()),
             statusline_settings=statusline_settings_from_store(settings_manager),
             on_statusline_settings_changed=(
                 statusline_settings_persistence_callback(settings_manager)
@@ -178,18 +194,16 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
             app=self.app,
             action_host=self.action_host,
             surface=surface,
-            event_source=session,
+            event_source=self.event_source or session,
             event_listener_factory=lambda: (
                 build_agent_screen_conversation_projection(
                     self.app,
-                    tool_definition_resolver=(
-                        tool_resolver if callable(tool_resolver) else None
-                    ),
+                    tool_definition_resolver=resolve_tool,
                     read_pending_steers=stable_string_queue_reader(
-                        getattr(session, "get_steering_messages")
+                        lambda: read_pending("get_steering_messages")
                     ),
                     read_pending_followups=stable_string_queue_reader(
-                        getattr(session, "get_follow_up_messages")
+                        lambda: read_pending("get_follow_up_messages")
                     ),
                     now=self.now,
                 ).handle
@@ -219,7 +233,7 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
                 stdout=self.stdout,
                 exit_code=exit_code,
                 hint=resume_hint_for_session(
-                    session,
+                    active_session(),
                     command_prefix=self.resume_command_prefix,
                 ),
             ),
@@ -229,12 +243,15 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
 def build_agent_screen_surface_workflow_ports(
     session: object,
     *,
+    session_provider: Callable[[], object] | None = None,
     select_model: Callable[[str], Awaitable[str]],
     set_model_label: Callable[[str], None],
     build_settings_content: Callable[[], Awaitable[object]],
     terminal_diagnostics: Callable[[], str],
     hotkeys: Callable[[], str],
     on_approval: AgentScreenApprovalHandler | None = None,
+    build_resume_surface: Callable[[], ScreenSurfaceView] | None = None,
+    activate_continuity: Callable[[object], Awaitable[str]] | None = None,
     command_catalog: ScreenSurfaceCommandCatalog | None = None,
     model_selector_profile: SessionModelSelectorSurfaceProfile = (
         SessionModelSelectorSurfaceProfile()
@@ -242,13 +259,15 @@ def build_agent_screen_surface_workflow_ports(
 ) -> ScreenSurfaceWorkflowPorts:
     """Bind a structural Agent session to the existing screen-surface workflow."""
 
-    session_commands = _agent_session_commands_provider(session)
+    active_session = session_provider or (lambda: session)
     live_catalog = command_catalog or ConversationCommandCatalog()
 
     async def presentation_command_catalog() -> ScreenSurfaceCommandCatalog:
         if command_catalog is not None:
             return command_catalog
-        return await snapshot_conversation_command_catalog(session_commands)
+        return await snapshot_conversation_command_catalog(
+            _agent_session_commands_provider(active_session())
+        )
 
     async def format_session_commands(query: str) -> str:
         catalog = await presentation_command_catalog()
@@ -258,7 +277,7 @@ def build_agent_screen_surface_workflow_ports(
         return command_catalog_surface_view(await presentation_command_catalog())
 
     async def refresh_model_label() -> None:
-        label = (await get_session_model_identity(session)).label
+        label = (await get_session_model_identity(active_session())).label
         if label is not None:
             set_model_label(label)
 
@@ -283,13 +302,13 @@ def build_agent_screen_surface_workflow_ports(
         command_catalog=live_catalog,
         normalize_command=normalize_standard_conversation_surface_command,
         format_models=lambda query: format_available_session_models(
-            session,
+            active_session(),
             query=query,
         ),
         models_info_body=strip_available_models_heading,
         format_commands=format_session_commands,
         build_model_selector=lambda: build_session_model_selector_surface(
-            session,
+            active_session(),
             profile=model_selector_profile,
         ),
         build_command_selector=build_command_selector,
@@ -297,6 +316,13 @@ def build_agent_screen_surface_workflow_ports(
         terminal_diagnostics=terminal_diagnostics,
         hotkeys=hotkeys,
         decide_approval=decide_approval,
+        normalize_interactive_command=(
+            normalize_standard_conversation_interactive_command
+            if build_resume_surface is not None
+            else None
+        ),
+        build_resume_surface=build_resume_surface,
+        activate_continuity=activate_continuity,
     )
 
 
@@ -387,6 +413,8 @@ def current_agent_runtime_session(runtime: object, fallback: object) -> object:
 def bind_agent_screen_session_transition(
     runtime: object,
     surface: AgentScreenApprovalSurface,
+    *,
+    on_rebind: Callable[[object], object | Awaitable[object]] | None = None,
 ) -> Cleanup:
     """Clear approval surfaces before or after a runtime session transition."""
 
@@ -394,9 +422,52 @@ def bind_agent_screen_session_transition(
     if not callable(subscribe):
         subscribe = getattr(runtime, "subscribe_before_session_invalidate", None)
     if not callable(subscribe):
-        return _no_cleanup
-    unsubscribe = subscribe(surface.clear_approval_surfaces)
-    return unsubscribe if callable(unsubscribe) else _no_cleanup
+        unsubscribe = _no_cleanup
+    else:
+        subscribed = subscribe(surface.clear_approval_surfaces)
+        unsubscribe = subscribed if callable(subscribed) else _no_cleanup
+
+    set_rebind = getattr(runtime, "set_rebind_session", None)
+    if callable(set_rebind) and on_rebind is not None:
+        set_rebind(on_rebind)
+
+    def cleanup() -> None:
+        try:
+            unsubscribe()
+        finally:
+            if callable(set_rebind) and on_rebind is not None:
+                set_rebind(None)
+
+    return cleanup
+
+
+async def refresh_agent_screen_session(
+    *,
+    runtime: object,
+    app: ScreenConversationApp,
+    session: object,
+    event_source: RebindableEventSource,
+) -> None:
+    """Install a newly active Agent session into an existing screen app."""
+
+    snapshot = await load_agent_conversation_startup_view(
+        runtime=runtime,
+        session=session,
+    )
+    manager = getattr(session, "session_manager")
+    tool_resolver = getattr(session, "get_tool_definition", None)
+    history = agent_session_history_records(
+        manager.get_branch(),
+        tool_definition_resolver=(tool_resolver if callable(tool_resolver) else None),
+    )
+    app.state.model_label = snapshot.model_label
+    app.state.cwd = snapshot.cwd
+    app.state.branch = snapshot.branch
+    app.state.session_label = snapshot.session_label
+    app.replace_transcript_window(history, reason="resume")
+    app.trim_active_transcript_window()
+    event_source.rebind(session)
+    app.request_render("product")
 
 
 def _unbind_agent_screen_approval_presenter(session: object) -> None:
@@ -509,4 +580,5 @@ __all__ = [
     "current_agent_runtime_session",
     "handle_agent_screen_approval",
     "load_agent_conversation_startup_view",
+    "refresh_agent_screen_session",
 ]

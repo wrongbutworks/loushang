@@ -1,8 +1,8 @@
 """Catalog, summaries, and query helpers for current Agent transcripts.
 
-This optional Agent/AI profile projects current Native transcripts into a
+This optional Agent/AI profile projects Conversation JSONL transcripts into a
 portable session read model. Products choose their roots and presentation, but
-do not need to recreate native discovery, summary indexing, or query logic.
+do not need to recreate Conversation JSONL discovery, summary indexing, or query logic.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from loushang.harness.conversation import (
     ConversationCatalog,
     ConversationHeader,
     ConversationIndex,
+    ConversationIndexSnapshot,
     ConversationLocator,
     ConversationProviderBinding,
     ConversationRepository,
@@ -32,14 +33,14 @@ from loushang.harness.conversation import (
     JsonConversationIndex,
     ProjectionQuery,
 )
+from loushang.harness.transcript.jsonl_file import (
+    AgentTranscriptFileLayout,
+    create_agent_transcript_file_store,
+)
 from loushang.harness.transcript.kinds import (
     AGENT_MESSAGE_KIND,
     EXTENSION_DATA_KIND,
     RECORD_ANNOTATION_PATCH_KIND,
-)
-from loushang.harness.transcript.native_file import (
-    AgentTranscriptFileLayout,
-    create_agent_transcript_file_store,
 )
 from loushang.harness.transcript.profile import AgentTranscriptProfile
 from loushang.harness.transcript.types import (
@@ -109,8 +110,9 @@ class SessionQuery:
     parent_session: str | None = None
     text: str | None = None
     named: bool | None = None
-    sort_by: Literal["recent", "relevance"] = "recent"
+    sort_by: Literal["recent", "created", "relevance"] = "recent"
     has_diagnostics: bool | None = None
+    has_messages: bool | None = None
     limit: int | None = None
 
 
@@ -232,7 +234,7 @@ def _json_safe_session_value(value: Any) -> object:
 
 
 def agent_transcript_header_cwd(header: ConversationHeader) -> str:
-    """Return the current Native transcript workspace hint, if present."""
+    """Return the Conversation JSONL transcript workspace hint, if present."""
 
     cwd = header.metadata.get("cwd")
     return cwd if isinstance(cwd, str) else ""
@@ -241,7 +243,7 @@ def agent_transcript_header_cwd(header: ConversationHeader) -> str:
 def agent_transcript_header_parent_session(
     header: ConversationHeader,
 ) -> str | None:
-    """Return the current Native transcript parent-session reference."""
+    """Return the Conversation JSONL transcript parent-session reference."""
 
     parent = header.metadata.get("parentSession")
     return parent if isinstance(parent, str) else None
@@ -276,7 +278,7 @@ def build_agent_transcript_session_context(
     leaf_id: str | None | object = _LEAF_UNSET,
     by_id: dict[str, AgentTranscriptRecord] | None = None,
 ) -> AgentTranscriptContext:
-    """Replay one selected Native transcript branch into Agent context."""
+    """Replay one selected Conversation JSONL transcript branch into Agent context."""
 
     del by_id
     entries = list(records)
@@ -404,13 +406,13 @@ class AgentTranscriptSessionCatalog:
         self.session_dir = Path(session_dir).expanduser().resolve(strict=False)
         self._layout = AgentTranscriptFileLayout(self.session_dir)
         self._provider = ConversationProviderBinding(
-            provider_id=f"agent-native-file:{self.session_dir.as_posix()}",
+            provider_id=f"agent-conversation-jsonl:{self.session_dir.as_posix()}",
             namespace=self._layout.namespace,
             store=create_agent_transcript_file_store(self._layout),
         )
-        self._external_index: (
-            ConversationIndex[SessionSummary, SessionQuery] | None
-        ) = None
+        self._external_index: ConversationIndex[SessionSummary, SessionQuery] | None = (
+            None
+        )
         self._session_file_for: Callable[[ConversationLocator], Path | None] = (
             lambda locator: self._layout.resolve_path(locator.key)
         )
@@ -424,9 +426,7 @@ class AgentTranscriptSessionCatalog:
         ],
         *,
         index: ConversationIndex[SessionSummary, SessionQuery] | None = None,
-        session_file_for: (
-            Callable[[ConversationLocator], Path | None] | None
-        ) = None,
+        session_file_for: (Callable[[ConversationLocator], Path | None] | None) = None,
     ) -> AgentTranscriptSessionCatalog:
         """Compose Agent projections over any registered Store provider."""
 
@@ -480,12 +480,110 @@ class AgentTranscriptSessionCatalog:
         result = _run_catalog(self._catalog(indexed=True).refresh())
         return _sort_summaries(item.projection for item in result.items)
 
+    def repair_index(self) -> list[SessionSummary]:
+        """Incrementally repair changed local transcripts, rebuilding as fallback."""
+
+        if (
+            self.session_dir is None
+            or self._layout is None
+            or not self.index_path.exists()
+        ):
+            return self.refresh_index()
+        index = self._projection_index()
+        query_snapshot = getattr(index, "query_snapshot", None)
+        if query_snapshot is None:
+            return self.refresh_index()
+        snapshot = _run_catalog(query_snapshot(SessionQuery()))
+        if snapshot.index_state != "fresh":
+            return self.refresh_index()
+        try:
+            index_modified = self.index_path.stat().st_mtime_ns
+            changed_paths = self._layout.transcript_paths_modified_after(index_modified)
+            repaired = _run_catalog(
+                self._repair_local_index(
+                    snapshot.items,
+                    changed_paths,
+                )
+            )
+        except Exception:
+            return self.refresh_index()
+        return _sort_summaries(item.projection for item in repaired)
+
     def load_index(self) -> list[SessionSummary]:
         items = _run_catalog(self._projection_index().query(SessionQuery()))
-        return [
-            replace(item.projection, locator=item.locator)
-            for item in items
-        ]
+        return [replace(item.projection, locator=item.locator) for item in items]
+
+    def try_query_index_snapshot(
+        self,
+        query: SessionQuery | None = None,
+    ) -> ConversationIndexSnapshot[SessionSummary]:
+        """Read the current projection index without scanning transcript authority."""
+
+        index = self._projection_index()
+        requested = query or SessionQuery()
+        query_snapshot = getattr(index, "query_snapshot", None)
+        if query_snapshot is None:
+            items = tuple(_run_catalog(index.query(requested)))
+            snapshot = ConversationIndexSnapshot(
+                items=items,
+                index_state="unknown",
+                index_generation="unknown",
+                query_snapshot="unknown",
+            )
+        else:
+            snapshot = _run_catalog(query_snapshot(requested))
+        index_state = snapshot.index_state
+        if index_state == "fresh" and self._local_index_is_older_than_authority():
+            index_state = "stale"
+        return ConversationIndexSnapshot(
+            items=tuple(
+                IndexedProjection(
+                    locator=item.locator,
+                    source_revision=item.source_revision,
+                    projection=replace(item.projection, locator=item.locator),
+                )
+                for item in snapshot.items
+            ),
+            index_state=index_state,
+            index_generation=snapshot.index_generation,
+            query_snapshot=snapshot.query_snapshot,
+        )
+
+    async def upsert_summary(
+        self,
+        summary: SessionSummary,
+        *,
+        source_revision: int,
+    ) -> bool:
+        """Incrementally publish one authoritative local transcript summary."""
+
+        if self.session_dir is None or self._layout is None:
+            raise ValueError("provider-backed catalogs require an explicit locator")
+        if summary.session_file is None:
+            raise ValueError("local session summary has no transcript path")
+        if source_revision != summary.entry_count:
+            raise ValueError("session summary revision must equal its entry count")
+        key = self._layout.bind_existing_path(summary.session_file)
+        if key.conversation_id != summary.session_id:
+            raise ValueError("session summary identity does not match its transcript")
+        locator = ConversationLocator(self._provider.provider_id, key)
+        return await self._projection_index().upsert(
+            IndexedProjection(
+                locator=locator,
+                source_revision=source_revision,
+                projection=replace(summary, locator=locator),
+            )
+        )
+
+    def load_authoritative_revision(self, locator: ConversationLocator) -> int:
+        """Load one selected authority object and return its current revision."""
+
+        if locator.provider_id != self._provider.provider_id:
+            raise ValueError("conversation locator belongs to another provider")
+        if locator.key.namespace != self._provider.namespace:
+            raise ValueError("conversation locator belongs to another namespace")
+        result = _run_catalog(self._provider.store.load(locator.key))
+        return result.snapshot.revision
 
     def list_indexed_summaries(self, *, refresh: bool = False) -> list[SessionSummary]:
         if self._external_index is not None:
@@ -494,9 +592,13 @@ class AgentTranscriptSessionCatalog:
         if refresh or not self.index_path.exists():
             return self.refresh_index()
         summaries = self.load_index()
-        if not summaries or not self.index_path.exists() or any(
-            summary.session_file is None or not summary.session_file.is_file()
-            for summary in summaries
+        if (
+            not summaries
+            or not self.index_path.exists()
+            or any(
+                summary.session_file is None or not summary.session_file.is_file()
+                for summary in summaries
+            )
         ):
             return self.refresh_index()
         return summaries
@@ -525,6 +627,7 @@ class AgentTranscriptSessionCatalog:
             record_id=lambda record: record.record_id,
             index=self._projection_index() if indexed else None,
             query_items=_query_indexed_summaries,
+            publish_partial=True,
         )
 
     def _project_summary(
@@ -556,6 +659,68 @@ class AgentTranscriptSessionCatalog:
             ),
             query_items=_query_indexed_summaries,
         )
+
+    async def _repair_local_index(
+        self,
+        indexed: Sequence[IndexedProjection[SessionSummary]],
+        changed_paths: Sequence[Path],
+    ) -> tuple[IndexedProjection[SessionSummary], ...]:
+        if self._layout is None:
+            raise ValueError("provider-backed catalogs cannot repair a local index")
+        index = self._projection_index()
+        replacement = {item.locator: item for item in indexed}
+        updated_locators: set[ConversationLocator] = set()
+        for path in changed_paths:
+            key = self._layout.bind_existing_path(path)
+            locator = ConversationLocator(self._provider.provider_id, key)
+            load_result = await self._provider.store.load(key)
+            authority = load_result.snapshot
+            leaf_id = authority.records[-1].record_id if authority.records else None
+            summary = self._project_summary(
+                authority.header,
+                authority.records,
+                leaf_id,
+                locator,
+            )
+            replacement[locator] = IndexedProjection(
+                locator=locator,
+                source_revision=authority.revision,
+                projection=summary,
+            )
+            updated_locators.add(locator)
+
+        changed = bool(changed_paths)
+        for item in indexed:
+            session_file = item.projection.session_file
+            if item.locator not in updated_locators and (
+                session_file is None or not session_file.is_file()
+            ):
+                replacement.pop(item.locator, None)
+                changed = True
+        repaired = (
+            await index.replace(tuple(replacement.values()))
+            if changed
+            else tuple(replacement.values())
+        )
+        return tuple(
+            IndexedProjection(
+                locator=item.locator,
+                source_revision=item.source_revision,
+                projection=replace(item.projection, locator=item.locator),
+            )
+            for item in repaired
+        )
+
+    def _local_index_is_older_than_authority(self) -> bool:
+        if self.session_dir is None or self._layout is None:
+            return False
+        try:
+            index_modified = self.index_path.stat().st_mtime_ns
+            return self._layout.has_transcript_modified_after(
+                index_modified,
+            )
+        except OSError:
+            return True
 
 
 def list_all_agent_transcript_session_summaries(
@@ -649,6 +814,11 @@ def filter_agent_transcript_session_summaries(
         if (
             query.has_diagnostics is not None
             and summary.has_diagnostics is not query.has_diagnostics
+        ):
+            return False
+        if (
+            query.has_messages is not None
+            and (summary.message_count > 0) is not query.has_messages
         ):
             return False
         if query.text is not None and _session_query_score(summary, query.text) is None:
@@ -891,7 +1061,7 @@ def same_agent_transcript_session_path(left: Path, right: Path) -> bool:
     """Compare canonical existing transcript paths without requiring existence."""
 
     try:
-        return left.resolve(strict=True) == right.resolve(strict=True)
+        return left.resolve(strict=False) == right.resolve(strict=False)
     except OSError:
         return left == right
 
@@ -938,9 +1108,10 @@ def _query_indexed_summaries(
     query: SessionQuery,
     items: Sequence[IndexedProjection[SessionSummary]],
 ) -> tuple[IndexedProjection[SessionSummary], ...]:
+    timestamp_field = "created_at" if query.sort_by == "created" else "updated_at"
     ordered = sorted(
         items,
-        key=lambda item: item.projection.updated_at,
+        key=lambda item: getattr(item.projection, timestamp_field),
         reverse=True,
     )
     selected = filter_agent_transcript_session_summaries(

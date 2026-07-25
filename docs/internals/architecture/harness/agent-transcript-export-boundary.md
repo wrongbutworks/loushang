@@ -11,7 +11,7 @@ Implementation complete for integration into `lane/harness` on
 Native Agent transcript profile:
 
 - standalone JSONL export of a selected branch, with parent links linearized;
-- self-contained HTML document composition, current Native header/record
+- self-contained HTML document composition, Conversation JSONL header/record
   encoding, transcript tree, standard transcript-kind rendering, ANSI and
   Markdown rendering, and default tool-call/result presentation;
 - `TranscriptExportRequest`, the strict snapshot contract between a live

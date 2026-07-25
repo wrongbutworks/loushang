@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Generic, Protocol, TypeVar
+from typing import Generic, Literal, Protocol, TypeVar
 
 from loushang.harness.conversation.store import ConversationLocator
 
 ProjectionT = TypeVar("ProjectionT")
 QueryT = TypeVar("QueryT")
+ConversationIndexState = Literal["fresh", "stale", "unavailable", "unknown"]
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,16 @@ class IndexedProjection(Generic[ProjectionT]):
     locator: ConversationLocator
     source_revision: int
     projection: ProjectionT
+
+
+@dataclass(frozen=True)
+class ConversationIndexSnapshot(Generic[ProjectionT]):
+    """One non-rebuilding, revision-bearing view of a projection index."""
+
+    items: tuple[IndexedProjection[ProjectionT], ...]
+    index_state: ConversationIndexState
+    index_generation: str
+    query_snapshot: str
 
 
 class ConversationIndex(Protocol[ProjectionT, QueryT]):
@@ -38,6 +49,11 @@ class ConversationIndex(Protocol[ProjectionT, QueryT]):
         self,
         query: QueryT,
     ) -> Sequence[IndexedProjection[ProjectionT]]: ...
+
+    async def query_snapshot(
+        self,
+        query: QueryT,
+    ) -> ConversationIndexSnapshot[ProjectionT]: ...
 
     async def replace(
         self,
@@ -62,6 +78,8 @@ class MemoryConversationIndex(Generic[ProjectionT, QueryT]):
         self._query_items = query_items
         self._items: dict[ConversationLocator, IndexedProjection[ProjectionT]] = {}
         self._tombstones: dict[ConversationLocator, int] = {}
+        self._generation = "memory-1"
+        self._sequence = 0
 
     async def upsert(self, item: IndexedProjection[ProjectionT]) -> bool:
         tombstone = self._tombstones.get(item.locator, -1)
@@ -71,6 +89,7 @@ class MemoryConversationIndex(Generic[ProjectionT, QueryT]):
         if current is not None and item.source_revision < current.source_revision:
             return False
         self._items[item.locator] = item
+        self._sequence += 1
         return True
 
     async def delete(
@@ -86,6 +105,7 @@ class MemoryConversationIndex(Generic[ProjectionT, QueryT]):
         current = self._items.get(locator)
         if current is not None and current.source_revision <= through_revision:
             del self._items[locator]
+        self._sequence += 1
         return through_revision > previous
 
     async def get(
@@ -100,6 +120,17 @@ class MemoryConversationIndex(Generic[ProjectionT, QueryT]):
     ) -> Sequence[IndexedProjection[ProjectionT]]:
         return tuple(self._query_items(query, tuple(self._items.values())))
 
+    async def query_snapshot(
+        self,
+        query: QueryT,
+    ) -> ConversationIndexSnapshot[ProjectionT]:
+        return ConversationIndexSnapshot(
+            items=tuple(self._query_items(query, tuple(self._items.values()))),
+            index_state="fresh",
+            index_generation=self._generation,
+            query_snapshot=f"{self._generation}:{self._sequence}",
+        )
+
     async def replace(
         self,
         items: Sequence[IndexedProjection[ProjectionT]],
@@ -110,11 +141,16 @@ class MemoryConversationIndex(Generic[ProjectionT, QueryT]):
             if item.source_revision > self._tombstones.get(item.locator, -1)
         }
         self._items = replacement
+        generation = int(self._generation.removeprefix("memory-")) + 1
+        self._generation = f"memory-{generation}"
+        self._sequence = 0
         return tuple(replacement.values())
 
 
 __all__ = [
     "ConversationIndex",
+    "ConversationIndexSnapshot",
+    "ConversationIndexState",
     "IndexQuery",
     "IndexedProjection",
     "MemoryConversationIndex",

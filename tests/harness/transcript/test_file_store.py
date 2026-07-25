@@ -11,11 +11,10 @@ from loushang.harness.conversation import (
     ConversationHeader,
     ConversationKey,
     ConversationRecord,
-    NativeConversationHeaderCodec,
     StoreAlreadyExistsError,
 )
 from loushang.harness.transcript import AGENT_MESSAGE_KIND
-from loushang.harness.transcript.native_file import (
+from loushang.harness.transcript.jsonl_file import (
     AgentTranscriptFileError,
     AgentTranscriptFileLayout,
     create_agent_transcript_file_store,
@@ -43,7 +42,7 @@ def _record() -> ConversationRecord[object]:
     )
 
 
-def test_file_store_binds_and_discovers_current_native_transcript(
+def test_file_store_binds_and_discovers_conversation_jsonl_transcript(
     tmp_path: Path,
 ) -> None:
     async def scenario() -> None:
@@ -110,18 +109,19 @@ def test_file_layout_retains_deleted_identity_across_store_instances(
     asyncio.run(scenario())
 
 
-def test_current_native_loader_rejects_future_format_without_rewrite(
+def test_conversation_jsonl_loader_rejects_future_format_without_rewrite(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "future.jsonl"
-    future_header = ConversationHeader(
-        conversation_id="future",
-        version=2,
-        created_at="2026-07-18T00:00:00Z",
-        metadata={},
-    )
     path.write_text(
-        json.dumps(NativeConversationHeaderCodec().encode_header(future_header))
+        json.dumps(
+            {
+                "type": "conversation",
+                "conversationId": "future",
+                "version": 2,
+                "createdAt": "2026-07-18T00:00:00Z",
+            }
+        )
         + "\n",
         encoding="utf-8",
     )

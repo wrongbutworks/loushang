@@ -15,11 +15,12 @@ from loushang.tui import (
 )
 from loushang.tui.cell_width import truncate_to_width, wrap_cells
 from loushang.tui.input import InputIntentKind
+from loushang.tui.theme import ThemeResolver, apply_theme_style
 
 ScreenSurfacePurpose = Literal[
-    "info", "model", "command", "settings", "dialog", "approval"
+    "info", "model", "command", "settings", "session", "dialog", "approval"
 ]
-ScreenSurfacePresentation = Literal["bottom", "bottom-exclusive"]
+ScreenSurfacePresentation = Literal["bottom", "bottom-exclusive", "page"]
 
 
 @dataclass(slots=True)
@@ -31,6 +32,10 @@ class ScreenSurfaceView(FocusableMixin):
     subtitle: str = ""
     presentation: ScreenSurfacePresentation = "bottom"
     preferred_height: int | None = None
+    theme: ThemeResolver | None = None
+    title_theme_token: str = "surface.title"
+    subtitle_theme_token: str = "surface.subtitle"
+    footer_theme_token: str = "surface.footer"
     _last_content_start_row: int = field(default=0, init=False, repr=False)
     _info_scroll_offset: int = field(default=0, init=False, repr=False)
     _last_info_body_height: int = field(default=0, init=False, repr=False)
@@ -42,6 +47,10 @@ class ScreenSurfaceView(FocusableMixin):
     @property
     def exclusive_bottom(self) -> bool:
         return self.presentation == "bottom-exclusive"
+
+    @property
+    def full_screen_page(self) -> bool:
+        return self.presentation == "page"
 
     def editor_input_target(self) -> object | None:
         target = getattr(self.content, "editor_input_target", None)
@@ -67,10 +76,20 @@ class ScreenSurfaceView(FocusableMixin):
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         width = constraints.width
-        lines = [truncate_to_width(self.title, max_width=width)]
+        lines = [
+            self._styled(
+                truncate_to_width(self.title, max_width=width),
+                self.title_theme_token,
+            )
+        ]
         cursor: CursorDeclaration | None = None
         if self.subtitle:
-            lines.append(truncate_to_width(self.subtitle, max_width=width))
+            lines.append(
+                self._styled(
+                    truncate_to_width(self.subtitle, max_width=width),
+                    self.subtitle_theme_token,
+                )
+            )
         lines.append("")
         reserved_footer_lines = 2 if self.footer else 0
         body_constraints = RenderConstraints(
@@ -111,7 +130,12 @@ class ScreenSurfaceView(FocusableMixin):
         if footer and len(lines) < constraints.max_height:
             if len(lines) + 1 < constraints.max_height:
                 lines.append("")
-            lines.append(truncate_to_width(footer, max_width=width))
+            lines.append(
+                self._styled(
+                    truncate_to_width(footer, max_width=width),
+                    self.footer_theme_token,
+                )
+            )
         return RenderResult.from_lines(
             [RenderLine(line) for line in lines[: constraints.max_height]],
             constraints=constraints,
@@ -154,11 +178,18 @@ class ScreenSurfaceView(FocusableMixin):
         return max(0, self._last_info_body_line_count - self._last_info_body_height)
 
     def _footer_text(self) -> str:
-        if not self.footer:
+        dynamic_footer = getattr(self.content, "footer_help", None)
+        footer = dynamic_footer if isinstance(dynamic_footer, str) else self.footer
+        if not footer:
             return ""
         if self.purpose == "info" and self._max_info_scroll_offset() > 0:
-            return f"Up/Down/Page to scroll - {self.footer}"
-        return self.footer
+            return f"Up/Down/Page to scroll - {footer}"
+        return footer
+
+    def _styled(self, text: str, token: str) -> str:
+        if self.theme is None:
+            return text
+        return apply_theme_style(text, self.theme.resolve(token))
 
 
 def _screen_input_intent_or_none(result: object) -> InputIntent | None:

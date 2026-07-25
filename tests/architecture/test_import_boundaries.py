@@ -443,7 +443,9 @@ def test_neutral_conversation_core_does_not_import_agent_ai_or_products() -> Non
     assert _find_forbidden_imports(boundary) == []
 
 
-def test_neutral_conversation_and_event_cores_do_not_import_runtime_or_products() -> None:
+def test_neutral_conversation_and_event_cores_do_not_import_runtime_or_products() -> (
+    None
+):
     forbidden = (
         "loushang.agent",
         "loushang.ai",
@@ -649,9 +651,9 @@ def test_agent_transcript_export_runtime_is_neutral_and_adopted() -> None:
 
 
 def test_transcript_compaction_capability_is_neutral_and_adopted() -> None:
-    capability_source = Path(
-        "src/loushang/harness/transcript/compaction.py"
-    ).read_text(encoding="utf-8")
+    capability_source = Path("src/loushang/harness/transcript/compaction.py").read_text(
+        encoding="utf-8"
+    )
     runtime_profile_source = Path(
         "src/loushang/harness/transcript/runtime_profile.py"
     ).read_text(encoding="utf-8")
@@ -1259,6 +1261,54 @@ def test_tui_and_harness_keep_harnesstui_dependency_one_way() -> None:
     ]
 
     assert offenders == []
+
+
+def test_continuity_core_and_common_tui_keep_product_boundaries() -> None:
+    boundaries = (
+        ImportBoundary(
+            name="continuity core",
+            root=Path("src/loushang/harness/continuity"),
+            forbidden_prefixes=(
+                "loushang.agent",
+                "loushang.ai",
+                "loushang.coding",
+                "loushang.design",
+                "loushang.method",
+                "loushang.presentation",
+                "loushang.tui",
+                "loushang.work",
+                "loushang.harness.conversation",
+                "loushang.harness.journal",
+                "loushang.harness.transcript",
+                "loushang.harness.workspace",
+            ),
+        ),
+        ImportBoundary(
+            name="continuity tui",
+            root=Path("src/loushang/harnesstui/continuity"),
+            forbidden_prefixes=(
+                "loushang.agent",
+                "loushang.ai",
+                "loushang.coding",
+                "loushang.design",
+                "loushang.presentation",
+            ),
+        ),
+    )
+
+    offenders = [
+        offender
+        for boundary in boundaries
+        for offender in _find_forbidden_imports(boundary)
+    ]
+
+    assert offenders == []
+    design = Path(
+        "docs/internals/architecture/harness/"
+        "capability-domain-presentation-continuity-architecture.md"
+    ).read_text(encoding="utf-8")
+    assert "Accepted and implemented for V1" in design
+    assert "cross-Experience Host coordinator remains intentionally deferred" in design
 
 
 def test_workspace_git_and_clipboards_have_canonical_owners() -> None:
@@ -2247,9 +2297,9 @@ def test_harness_context_compaction_and_journal_design_is_documented() -> None:
 
 def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
     expected_imports = {
-            Path("src/loushang/harness/transcript/native_file.py"): {
-            "loushang.harness.conversation.NativeConversationHeaderCodec",
-            "loushang.harness.conversation.NativeConversationRecordCodec",
+        Path("src/loushang/harness/transcript/jsonl_file.py"): {
+            "loushang.harness.conversation.ConversationJsonlHeaderCodec",
+            "loushang.harness.conversation.ConversationJsonlRecordCodec",
             "loushang.harness.journal.JsonlJournal",
             "loushang.harness.journal.journal_file_lock",
         },
@@ -2301,7 +2351,7 @@ def test_harness_agent_transcript_file_store_is_documented() -> None:
     inventory_text = Path(
         "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
     ).read_text(encoding="utf-8")
-    assert "current Native Agent transcript codec" in inventory_text
+    assert "Conversation JSONL Agent transcript codec" in inventory_text
 
 
 def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
@@ -2328,9 +2378,7 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
     assert "Agent Transcript Catalog Boundary" in readme_text
 
     catalog_imports = set(
-        _absolute_imports(
-            Path("src/loushang/harness/transcript/session_catalog.py")
-        )
+        _absolute_imports(Path("src/loushang/harness/transcript/session_catalog.py"))
     )
     assert "loushang.harness.conversation.ConversationCatalog" in catalog_imports
     assert not any(
@@ -2437,9 +2485,7 @@ def test_harness_agent_transcript_session_factory_is_documented_and_adopted() ->
     assert "Agent Transcript Session Factory Boundary" in readme_text
 
     factory_imports = set(
-        _absolute_imports(
-            Path("src/loushang/harness/transcript/session_factory.py")
-        )
+        _absolute_imports(Path("src/loushang/harness/transcript/session_factory.py"))
     )
     assert not any(
         imported.startswith("loushang.coding") for imported in factory_imports
@@ -2723,7 +2769,7 @@ def test_conversation_persistence_has_one_native_writer_boundary() -> None:
     )
     allowed = {
         Path("src/loushang/harness/conversation/stores/file.py"),
-        Path("src/loushang/harness/transcript/native_file.py"),
+        Path("src/loushang/harness/transcript/jsonl_file.py"),
     }
     writer_calls = {"append_jsonl_record", "write_jsonl"}
     offenders: list[str] = []

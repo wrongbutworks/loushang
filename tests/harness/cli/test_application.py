@@ -173,6 +173,56 @@ def test_application_runtime_owns_two_pass_session_phase_order(tmp_path) -> None
     assert stderr.getvalue() == ""
 
 
+def test_application_pre_session_bootstrap_bypasses_default_resolution(
+    tmp_path,
+) -> None:
+    selected_session = object()
+    hosted: list[object] = []
+    application = CliApplicationRuntime(
+        CliApplicationPorts[
+            _Args,
+            str,
+            object,
+            object,
+        ](
+            parse_args=lambda *_args: CliParseResult(_Args()),
+            initialize_args=lambda _args: None,
+            launch_plan=lambda _args: CliLaunchPlan(),
+            args_cwd=lambda args: args.cwd,
+            early_operation=lambda _context: None,
+            validated_operation=lambda _context: None,
+            prepare_state=lambda _context: CliPhaseResult.continue_with("state"),
+            startup_context=lambda _context, _state: _null_context(),
+            build_runtime=lambda _context, _state: object(),
+            runtime_operation=lambda _context: None,
+            pre_session_bootstrap=lambda _context: CliPhaseResult.continue_with(
+                selected_session
+            ),
+            resolve_session=lambda _context: (_ for _ in ()).throw(
+                AssertionError("default resolution must not create a placeholder")
+            ),
+            collect_extension_flags=lambda _session: {},
+            configure_session=lambda _context: None,
+            session_operations=lambda _context: None,
+            run_host=lambda context: hosted.append(context.session) or 0,
+            output_guard=lambda _enabled: _null_context(),
+        )
+    )
+
+    result = asyncio.run(
+        application.run(
+            ("--resume",),
+            stdin=StringIO(),
+            stdout=StringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+        )
+    )
+
+    assert result == 0
+    assert hosted == [selected_session]
+
+
 def test_application_runtime_rejects_static_launch_conflict_before_prepare(
     tmp_path,
 ) -> None:

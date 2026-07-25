@@ -7,12 +7,12 @@ import pytest
 from loushang.harness.conversation import (
     CommandExecutionRecord,
     ConversationHeader,
+    ConversationJsonlHeaderCodec,
+    ConversationJsonlRecordCodec,
     ConversationPayloadCodecRegistry,
     ConversationRecord,
     ConversationRepository,
     FunctionalConversationPayloadCodec,
-    NativeConversationHeaderCodec,
-    NativeConversationRecordCodec,
     OpaquePayload,
 )
 from loushang.harness.journal import (
@@ -78,13 +78,13 @@ def _journal(
 ) -> JsonlJournal[ConversationHeader, ConversationRecord[object]]:
     return JsonlJournal(
         path,
-        header_codec=NativeConversationHeaderCodec(),
-        record_codec=NativeConversationRecordCodec(registry),
+        header_codec=ConversationJsonlHeaderCodec(),
+        record_codec=ConversationJsonlRecordCodec(registry),
         load_policy=JournalLoadPolicy(header="required"),
     )
 
 
-def test_native_envelope_codecs_use_stable_discriminators_and_versions() -> None:
+def test_conversation_jsonl_codecs_use_stable_discriminators_and_versions() -> None:
     header = _header()
     record = _record(
         "record-1",
@@ -93,8 +93,8 @@ def test_native_envelope_codecs_use_stable_discriminators_and_versions() -> None
         payload_version=1,
         payload="hello",
     )
-    header_codec = NativeConversationHeaderCodec()
-    record_codec = NativeConversationRecordCodec(_registry())
+    header_codec = ConversationJsonlHeaderCodec()
+    record_codec = ConversationJsonlRecordCodec(_registry())
 
     encoded_header = header_codec.encode_header(header)
     encoded_record = record_codec.encode_record(record)
@@ -121,9 +121,52 @@ def test_native_envelope_codecs_use_stable_discriminators_and_versions() -> None
     assert record_codec.decode_record(encoded_record) == record
 
 
+def test_conversation_jsonl_decoder_defaults_omitted_optional_fields() -> None:
+    header = ConversationJsonlHeaderCodec().decode_header(
+        {
+            "type": "conversation",
+            "conversationId": "conversation-1",
+            "version": 1,
+            "createdAt": "2026-07-16T00:00:00Z",
+            "futureOptionalField": {"ignored": True},
+        }
+    )
+    record = ConversationJsonlRecordCodec(_registry()).decode_record(
+        {
+            "type": "record",
+            "recordId": "record-1",
+            "kind": "test.message",
+            "payloadVersion": 1,
+            "createdAt": "2026-07-16T00:00:01Z",
+            "payload": {"text": "hello"},
+            "futureOptionalField": {"ignored": True},
+        }
+    )
+
+    assert header.parent_conversation_id is None
+    assert header.metadata == {}
+    assert record.parent_id is None
+    assert record.metadata == {}
+
+
+def test_conversation_jsonl_codec_rejects_unreleased_versions() -> None:
+    with pytest.raises(
+        JournalCodecError,
+        match="Conversation JSONL version is unsupported",
+    ):
+        ConversationJsonlHeaderCodec().decode_header(
+            {
+                "type": "conversation",
+                "conversationId": "future",
+                "version": 2,
+                "createdAt": "2026-07-16T00:00:00Z",
+            }
+        )
+
+
 def test_unknown_kind_and_version_decode_as_defensive_opaque_payloads() -> None:
     registry = _registry()
-    codec = NativeConversationRecordCodec(registry)
+    codec = ConversationJsonlRecordCodec(registry)
     encoded = {
         "type": "record",
         "recordId": "future",
@@ -155,7 +198,7 @@ def test_unknown_kind_and_version_decode_as_defensive_opaque_payloads() -> None:
 
 
 def test_known_corrupt_payload_fails_instead_of_becoming_opaque() -> None:
-    codec = NativeConversationRecordCodec(_registry())
+    codec = ConversationJsonlRecordCodec(_registry())
 
     with pytest.raises(JournalCodecError) as error:
         codec.decode_record(

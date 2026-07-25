@@ -11,15 +11,16 @@ from typing import Literal, cast
 from loushang.ai.json_codec import deserialize_content_part, deserialize_message
 from loushang.ai.types import ImagePart, TextPart
 from loushang.harness.conversation import (
+    CURRENT_CONVERSATION_FORMAT_VERSION,
     CommandExecutionRecord,
     ConversationHeader,
+    ConversationJsonlHeaderCodec,
+    ConversationJsonlRecordCodec,
     ConversationKey,
     ConversationRecord,
     ConversationRepository,
     ConversationSnapshot,
     ConversationStore,
-    NativeConversationHeaderCodec,
-    NativeConversationRecordCodec,
     OpaquePayload,
 )
 from loushang.harness.journal import journal_file_lock
@@ -54,9 +55,8 @@ from loushang.harness.transcript.types import (
 from loushang.protocol import JSONValue, JsonValueError, require_json_mapping
 
 CURRENT_SESSION_VERSION = 3
-NATIVE_CONVERSATION_VERSION = 1
 LEGACY_SESSION_OPAQUE_KIND = "loushang.session.opaque"
-MigrationDisposition = Literal["migrated", "already_native"]
+MigrationDisposition = Literal["migrated", "already_conversation_jsonl"]
 
 
 class SessionV3MigrationError(ValueError):
@@ -119,7 +119,7 @@ def convert_session_v3_snapshot(
         records=tuple(records),
         disposition="migrated",
     )
-    _validate_native_snapshot(result.header, result.records)
+    _validate_conversation_jsonl_snapshot(result.header, result.records)
     return result
 
 
@@ -130,7 +130,7 @@ async def import_session_v3_file(
     key: ConversationKey,
     operation_id: str,
 ) -> SessionV3ImportResult:
-    """Read a legacy source and atomically create a distinct Native target."""
+    """Read a legacy source and atomically create a Conversation JSONL target."""
 
     source = await asyncio.to_thread(read_session_v3_file, path)
     if source.header.conversation_id != key.conversation_id:
@@ -155,11 +155,11 @@ def read_session_v3_file(path: str | Path) -> SessionV3MigrationResult:
     with journal_file_lock(target, "shared"):
         raw = _read_session_text(target)
         values = _parse_jsonl(raw, path=target)
-        return _convert_or_load_native(values, path=target)
+        return _convert_or_load_conversation_jsonl(values, path=target)
 
 
-def is_native_conversation_file(path: str | Path) -> bool:
-    """Return whether the first nonblank line identifies a Native conversation."""
+def is_conversation_jsonl_file(path: str | Path) -> bool:
+    """Return whether the first nonblank line identifies a Conversation JSONL."""
 
     target = Path(path)
     try:
@@ -187,7 +187,7 @@ def _read_session_text(target: Path) -> str:
         ) from exc
 
 
-def _convert_or_load_native(
+def _convert_or_load_conversation_jsonl(
     values: tuple[dict[str, JSONValue], ...],
     *,
     path: Path,
@@ -200,10 +200,10 @@ def _convert_or_load_native(
         )
     discriminator = values[0].get("type")
     if discriminator == "conversation":
-        return _load_native_snapshot(values, path=path)
+        return _load_conversation_jsonl_snapshot(values, path=path)
     if discriminator != "session":
         raise SessionV3MigrationError(
-            "File is neither Session v3 nor Native Conversation",
+            "File is neither Session v3 nor Conversation JSONL",
             code="unsupported_conversation_format",
             path=path,
             line_number=1,
@@ -220,21 +220,13 @@ def _convert_or_load_native(
     return result
 
 
-def _load_native_snapshot(
+def _load_conversation_jsonl_snapshot(
     values: tuple[dict[str, JSONValue], ...],
     *,
     path: Path,
 ) -> SessionV3MigrationResult:
-    version = values[0].get("version")
-    if type(version) is not int or version != NATIVE_CONVERSATION_VERSION:
-        raise SessionV3MigrationError(
-            "Native Conversation version is unsupported",
-            code="unsupported_native_conversation_version",
-            path=path,
-            line_number=1,
-        )
-    header_codec = NativeConversationHeaderCodec()
-    record_codec = NativeConversationRecordCodec(
+    header_codec = ConversationJsonlHeaderCodec()
+    record_codec = ConversationJsonlRecordCodec(
         create_agent_transcript_payload_registry()
     )
     try:
@@ -243,17 +235,17 @@ def _load_native_snapshot(
             cast(AgentTranscriptRecord, record_codec.decode_record(value))
             for value in values[1:]
         )
-        _validate_native_snapshot(header, records)
+        _validate_conversation_jsonl_snapshot(header, records)
     except Exception as exc:
         raise SessionV3MigrationError(
-            "Native Conversation file is invalid",
-            code="invalid_native_conversation",
+            "Conversation JSONL file is invalid",
+            code="invalid_conversation_jsonl",
             path=path,
         ) from exc
     return SessionV3MigrationResult(
         header=header,
         records=records,
-        disposition="already_native",
+        disposition="already_conversation_jsonl",
     )
 
 
@@ -285,7 +277,7 @@ def _convert_session_header(value: Mapping[str, object]) -> ConversationHeader:
             metadata["parentSession"] = parent_session
         return ConversationHeader(
             conversation_id=conversation_id,
-            version=NATIVE_CONVERSATION_VERSION,
+            version=CURRENT_CONVERSATION_FORMAT_VERSION,
             created_at=created_at,
             metadata=metadata,
         )
@@ -468,13 +460,13 @@ def _application_message_from_entry(
     )
 
 
-def _validate_native_snapshot(
+def _validate_conversation_jsonl_snapshot(
     header: ConversationHeader,
     records: tuple[AgentTranscriptRecord, ...],
 ) -> None:
     registry = create_agent_transcript_payload_registry()
-    header_codec = NativeConversationHeaderCodec()
-    record_codec = NativeConversationRecordCodec(registry)
+    header_codec = ConversationJsonlHeaderCodec()
+    record_codec = ConversationJsonlRecordCodec(registry)
     header_codec.encode_header(header)
     for record in records:
         record_codec.encode_record(record)
@@ -635,9 +627,7 @@ def _number(value: Mapping[str, JSONValue], key: str) -> float:
     return float(field)
 
 
-def _optional_mapping(
-    value: Mapping[str, JSONValue], key: str
-) -> dict[str, JSONValue]:
+def _optional_mapping(value: Mapping[str, JSONValue], key: str) -> dict[str, JSONValue]:
     if key not in value:
         return {}
     return require_json_mapping(value[key], name=key)
@@ -653,13 +643,12 @@ def _timestamp_from_iso(value: str) -> float:
 __all__ = [
     "CURRENT_SESSION_VERSION",
     "LEGACY_SESSION_OPAQUE_KIND",
-    "NATIVE_CONVERSATION_VERSION",
     "MigrationDisposition",
     "SessionV3MigrationError",
     "SessionV3ImportResult",
     "SessionV3MigrationResult",
     "convert_session_v3_snapshot",
     "import_session_v3_file",
-    "is_native_conversation_file",
+    "is_conversation_jsonl_file",
     "read_session_v3_file",
 ]

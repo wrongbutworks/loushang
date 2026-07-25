@@ -96,8 +96,7 @@ class TranscriptCompactionConfiguration:
         missing = sorted(expected - set(config))
         if unknown:
             raise ValueError(
-                "compaction config contains unsupported fields: "
-                + ", ".join(unknown)
+                "compaction config contains unsupported fields: " + ", ".join(unknown)
             )
         if missing:
             raise ValueError(
@@ -145,7 +144,9 @@ class AgentTranscriptCompactionCapability:
         if not isinstance(self.implementation, str) or not self.implementation:
             raise ValueError("transcript compaction implementation must be non-empty")
         if type(self.implementation_version) is not int:
-            raise TypeError("transcript compaction implementation version must be an integer")
+            raise TypeError(
+                "transcript compaction implementation version must be an integer"
+            )
         if self.implementation != TURN_AWARE_SUMMARY_IMPLEMENTATION:
             raise ValueError(
                 "unsupported transcript compaction implementation: "
@@ -189,9 +190,13 @@ def create_agent_transcript_compaction_capability(
     if not isinstance(implementation, str) or not implementation:
         raise ValueError("transcript compaction implementation must be non-empty")
     if type(implementation_version) is not int:
-        raise TypeError("transcript compaction implementation version must be an integer")
+        raise TypeError(
+            "transcript compaction implementation version must be an integer"
+        )
     if implementation != TURN_AWARE_SUMMARY_IMPLEMENTATION:
-        raise ValueError(f"unsupported transcript compaction implementation: {implementation}")
+        raise ValueError(
+            f"unsupported transcript compaction implementation: {implementation}"
+        )
     if implementation_version != TURN_AWARE_SUMMARY_VERSION:
         raise ValueError(
             "unsupported transcript compaction implementation version: "
@@ -291,9 +296,9 @@ def compaction_plan_to_json(plan: CompactionPlan) -> dict[str, JSONValue]:
 
 def _turn_aware_profile() -> AgentTranscriptProfile:
     return AgentTranscriptProfile(
-        context_token_estimator=lambda messages: estimate_context_tokens(
-            list(messages)
-        ).tokens
+        context_token_estimator=lambda messages: (
+            estimate_context_tokens(list(messages)).tokens
+        )
     )
 
 
@@ -314,9 +319,8 @@ def _previous_first_kept_entry_id(
     if previous_compaction_id is None:
         return None
     for entry in entries:
-        if (
-            entry.record_id == previous_compaction_id
-            and isinstance(entry.payload, ContextCompactionCheckpoint)
+        if entry.record_id == previous_compaction_id and isinstance(
+            entry.payload, ContextCompactionCheckpoint
         ):
             return entry.payload.first_kept_record_id
     return None
@@ -328,9 +332,8 @@ def _previous_summary(
     if previous_compaction_id is None:
         return None
     for entry in entries:
-        if (
-            entry.record_id == previous_compaction_id
-            and isinstance(entry.payload, ContextCompactionCheckpoint)
+        if entry.record_id == previous_compaction_id and isinstance(
+            entry.payload, ContextCompactionCheckpoint
         ):
             return entry.payload.summary
     return None

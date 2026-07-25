@@ -10,11 +10,11 @@ import pytest
 
 from loushang.harness.conversation import (
     ConversationHeader,
-    NativeConversationHeaderCodec,
+    ConversationJsonlHeaderCodec,
 )
 from loushang.harness.events import RuntimeEvent
 
-_HEADER_CODEC = NativeConversationHeaderCodec()
+_HEADER_CODEC = ConversationJsonlHeaderCodec()
 
 
 def _runtime_event(payload: dict[str, object], sequence: int) -> RuntimeEvent[object]:

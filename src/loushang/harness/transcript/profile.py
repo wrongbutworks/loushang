@@ -19,7 +19,7 @@ from loushang.harness.context.conversation import (
     ConversationPreviousSummary,
     ConversationRecordPorts,
 )
-from loushang.harness.conversation.native_codec import (
+from loushang.harness.conversation.jsonl_codec import (
     ConversationPayloadCodec,
     ConversationPayloadCodecRegistry,
 )
@@ -678,9 +678,7 @@ def _require_standard_payload_codecs(
 ) -> None:
     registered = set(registry.registered_keys)
     missing = [
-        kind
-        for kind in STANDARD_AGENT_TRANSCRIPT_KINDS
-        if (kind, 1) not in registered
+        kind for kind in STANDARD_AGENT_TRANSCRIPT_KINDS if (kind, 1) not in registered
     ]
     if missing:
         raise ValueError(

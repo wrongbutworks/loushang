@@ -42,6 +42,67 @@ class InteractionContext(ExitContext, Protocol):
 
 
 @dataclass
+class _EventSubscription:
+    listener: object
+    cleanup: Callable[[], None]
+
+
+class RebindableEventSource:
+    """Keep existing listeners attached while the underlying source changes."""
+
+    def __init__(self, source: object) -> None:
+        self._source = source
+        self._subscriptions: list[_EventSubscription] = []
+        self._last_rebind_error: Exception | None = None
+
+    @property
+    def source(self) -> object:
+        return self._source
+
+    @property
+    def last_rebind_error(self) -> Exception | None:
+        return self._last_rebind_error
+
+    def subscribe(self, listener: object) -> Callable[[], None]:
+        subscription = _EventSubscription(
+            listener=listener,
+            cleanup=subscribe_events(self._source, listener),
+        )
+        self._subscriptions.append(subscription)
+        active = True
+
+        def unsubscribe() -> None:
+            nonlocal active
+            if not active:
+                return
+            active = False
+            self._subscriptions.remove(subscription)
+            subscription.cleanup()
+
+        return unsubscribe
+
+    def rebind(self, source: object) -> None:
+        if source is self._source:
+            return
+        self._last_rebind_error = None
+        for subscription in self._subscriptions:
+            try:
+                subscription.cleanup()
+            except Exception as error:
+                self._last_rebind_error = self._last_rebind_error or error
+        self._source = source
+        for subscription in self._subscriptions:
+            try:
+                subscription.cleanup = subscribe_events(
+                    source,
+                    subscription.listener,
+                )
+            except Exception as error:
+                self._last_rebind_error = self._last_rebind_error or error
+                subscription.cleanup = lambda: None
+
+
+@dataclass
 class InteractionRunContext:
     """Own close ordering for one product-neutral terminal interaction run.
 
@@ -136,6 +197,7 @@ __all__ = [
     "ExitContext",
     "InteractionContext",
     "InteractionRunContext",
+    "RebindableEventSource",
     "StableEmit",
     "TraceFn",
     "open_interaction_run_context",

@@ -86,6 +86,7 @@ class ConversationCatalog(Generic[H, R, P, Q]):
             | None
         ) = None,
         page_size: int = 100,
+        publish_partial: bool = False,
     ) -> None:
         provider_ids = [provider.provider_id for provider in providers]
         if len(provider_ids) != len(set(provider_ids)):
@@ -98,6 +99,7 @@ class ConversationCatalog(Generic[H, R, P, Q]):
         self._index = index
         self._query_items = query_items
         self._page_size = page_size
+        self._publish_partial = publish_partial
 
     async def scan(self) -> ConversationCatalogResult[P]:
         items: list[IndexedProjection[P]] = []
@@ -166,7 +168,7 @@ class ConversationCatalog(Generic[H, R, P, Q]):
 
     async def refresh(self) -> ConversationCatalogResult[P]:
         result = await self.scan()
-        if self._index is not None and result.complete:
+        if self._index is not None and (result.complete or self._publish_partial):
             await self._index.replace(result.items)
         return result
 

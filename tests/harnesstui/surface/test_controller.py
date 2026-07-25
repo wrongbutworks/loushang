@@ -51,20 +51,38 @@ def _recording_handlers(
 
     return {
         source: handler_for(source)
-        for source in ("model", "command", "settings", "dialog", "approval")
+        for source in (
+            "model",
+            "command",
+            "settings",
+            "session",
+            "dialog",
+            "approval",
+        )
     }
 
 
 @pytest.mark.parametrize(
     ("purpose", "intent", "source", "payload"),
     (
-        ("model", InputIntent(kind="select", text="provider/model"), "model", "provider/model"),
+        (
+            "model",
+            InputIntent(kind="select", text="provider/model"),
+            "model",
+            "provider/model",
+        ),
         ("command", InputIntent(kind="command", text="/status"), "command", "/status"),
         (
             "settings",
             InputIntent(kind="setting", text="statusline", note="false"),
             "settings",
             {"id": "statusline", "value": "false"},
+        ),
+        (
+            "session",
+            InputIntent(kind="select", text="/tmp/session.jsonl"),
+            "session",
+            "/tmp/session.jsonl",
         ),
         ("dialog", InputIntent(kind="dialog_confirm"), "dialog", None),
     ),
@@ -173,6 +191,23 @@ def test_screen_surface_coordinator_places_bottom_and_overlay_surfaces() -> None
 
     assert coordinator.current is None
     assert host.entries == []
+
+
+def test_screen_surface_coordinator_opens_page_as_full_viewport_surface() -> None:
+    host = SurfaceHost()
+    app = _App(surface_host=host)
+    coordinator = ScreenSurfaceCoordinator(app=app)
+    page = _view("session", presentation="page")
+
+    coordinator.open(page)
+
+    assert app.active_surface is None
+    assert coordinator.current is page
+    assert len(host.entries) == 1
+    surface = host.entries[0].surface
+    assert surface.presentation == "page"
+    assert surface.width == "100%"
+    assert surface.max_height == "100%"
 
 
 def test_screen_surface_coordinator_closes_overlay_idempotently_after_host_close() -> (

@@ -179,9 +179,7 @@ def test_current_session_v3_migrates_all_standard_kinds_and_preserves_unknown(
     assert result.header.conversation_id == "session-1"
     assert result.header.version == 1
     assert result.header.metadata["cwd"] == "/workspace/project"
-    assert (
-        result.header.metadata["parentSession"] == "/sessions/parent.jsonl"
-    )
+    assert result.header.metadata["parentSession"] == "/sessions/parent.jsonl"
     assert result.header.metadata["loushang.session.source"] == {
         "format": "loushang.session",
         "version": 3,

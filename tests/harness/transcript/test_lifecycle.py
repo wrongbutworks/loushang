@@ -18,8 +18,9 @@ from loushang.harness.transcript import (
     AgentTranscriptProfile,
     AgentTranscriptRecord,
     AgentTranscriptRuntimeBinding,
+    ModelSelectionSnapshot,
     create_agent_transcript_file_store,
-    delete_current_native_agent_transcript,
+    delete_agent_transcript_jsonl,
     write_agent_transcript_export,
 )
 
@@ -82,25 +83,33 @@ def test_lifecycle_creates_restores_and_disposes_native_session(tmp_path: Path) 
             cwd="/workspace",
             persist=True,
             header=header,
-            session_file=lifecycle.default_native_session_file(tmp_path, header),
+            session_file=lifecycle.default_jsonl_session_file(tmp_path, header),
         )
         created = await lifecycle.create(context, "created")
         assert context.session_file is not None
-        assert context.session_file.is_file()
+        assert not context.session_file.exists()
+        assert created.transcript.is_materialized is False
+        staged = await created.transcript.append_model_selection(
+            ModelSelectionSnapshot(provider="provider", model_id="model")
+        )
+        assert staged.receipt is None
+        assert not context.session_file.exists()
         await created.transcript.append_agent_message(
             UserMessage(role="user", content="hello", timestamp=1.0)
         )
+        assert created.transcript.is_materialized is True
+        assert context.session_file.is_file()
         await created.dispose()
         await created.dispose()
 
-        restored_context = lifecycle.current_native_context(
+        restored_context = lifecycle.conversation_jsonl_context(
             context.session_file,
             persist=True,
         )
         restored = await lifecycle.restore(restored_context, "restored")
         assert restored.product_binding == "restored"
         assert [record.record_id for record in restored.transcript.records] == [
-            created.transcript.records[0].record_id
+            record.record_id for record in created.transcript.records
         ]
         await restored.dispose()
 
@@ -109,7 +118,7 @@ def test_lifecycle_creates_restores_and_disposes_native_session(tmp_path: Path) 
     asyncio.run(scenario())
 
 
-def test_lifecycle_detaches_current_native_source_before_writing(
+def test_lifecycle_detaches_conversation_jsonl_source_before_writing(
     tmp_path: Path,
 ) -> None:
     async def scenario() -> None:
@@ -133,7 +142,7 @@ def test_lifecycle_detaches_current_native_source_before_writing(
             )
 
         lifecycle = AgentTranscriptLifecycle(bind_runtime=bind_runtime)
-        context = lifecycle.current_native_context(source, persist=False)
+        context = lifecycle.conversation_jsonl_context(source, persist=False)
         detached = await lifecycle.restore(context, "detached")
         await detached.transcript.append_agent_message(
             UserMessage(role="user", content="new", timestamp=2.0)
@@ -173,6 +182,10 @@ def test_lifecycle_context_allows_a_persistent_non_native_provider(
         )
 
         created = await lifecycle.create(context, "created")
+        assert await store.scan("database") == ()
+        await created.transcript.append_agent_message(
+            UserMessage(role="user", content="hello", timestamp=1.0)
+        )
         restored = await lifecycle.restore(context, "restored")
 
         assert context.persist
@@ -282,12 +295,12 @@ def test_lifecycle_releases_binding_after_create_failure_and_protects_active_fil
         source = tmp_path / "deletable.jsonl"
         write_agent_transcript_export(source, _header(), [_record("record-1")])
         with pytest.raises(ValueError, match="currently active"):
-            await delete_current_native_agent_transcript(
+            await delete_agent_transcript_jsonl(
                 source,
                 current_session_file=source,
             )
-        assert await delete_current_native_agent_transcript(source)
+        assert await delete_agent_transcript_jsonl(source)
         assert not source.exists()
-        assert not await delete_current_native_agent_transcript(source)
+        assert not await delete_agent_transcript_jsonl(source)
 
     asyncio.run(scenario())

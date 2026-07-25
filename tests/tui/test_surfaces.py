@@ -37,7 +37,10 @@ def test_selection_surface_wraps_navigation_and_scrolls_selected_item_visible() 
     for _ in range(3):
         surface.handle_input(InputEvent(kind="key", key="down"))
 
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=20, height=4)) == (
+    assert tuple(
+        strip_control_sequences(line)
+        for line in rendered_text(surface, width=20, height=4)
+    ) == (
         "  three",
         "> four",
         "  five",
@@ -50,18 +53,43 @@ def test_selection_surface_wraps_navigation_and_scrolls_selected_item_visible() 
     assert surface.selected_index == 0
 
 
+def test_selection_surface_can_clamp_navigation_at_edges() -> None:
+    surface = SelectionSurface(
+        [SelectItem("one"), SelectItem("two"), SelectItem("three")],
+        wrap_navigation=False,
+    )
+
+    surface.handle_input(InputEvent(kind="key", key="up"))
+    assert surface.selected_index == 0
+
+    surface.handle_input(InputEvent(kind="key", key="end"))
+    surface.handle_input(InputEvent(kind="key", key="down"))
+    surface.handle_input(InputEvent(kind="key", key="pageDown"))
+    assert surface.selected_index == 2
+
+
 def test_selection_surface_returns_select_and_close_intents() -> None:
     surface = SelectionSurface([SelectItem("Help", value="help")])
 
-    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="select", text="help")
-    assert surface.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(kind="surface_close")
+    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(
+        kind="select", text="help"
+    )
+    assert surface.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(
+        kind="surface_close"
+    )
 
 
-def test_selection_surface_uses_pi_style_primary_column_and_description_layout() -> None:
+def test_selection_surface_uses_pi_style_primary_column_and_description_layout() -> (
+    None
+):
     surface = SelectionSurface(
         [
             SelectItem("short", value="short", description="first line\nsecond line"),
-            SelectItem("a very long command name", value="long", description="Long description text"),
+            SelectItem(
+                "a very long command name",
+                value="long",
+                description="Long description text",
+            ),
         ],
         max_visible=4,
     )
@@ -76,10 +104,29 @@ def test_selection_surface_uses_pi_style_primary_column_and_description_layout()
     assert raw[0].endswith("\x1b[22;39m")
 
 
+def test_selection_surface_can_preserve_preformatted_description_spacing() -> None:
+    surface = SelectionSurface(
+        [
+            SelectItem(
+                "session",
+                value="session",
+                description="  1h ago · coding  · ready",
+            )
+        ],
+        preserve_description_spacing=True,
+    )
+
+    raw = strip_control_sequences(rendered_text(surface, width=80, height=2)[0])
+
+    assert raw == "> session                           1h ago · coding  · ready"
+
+
 def test_selection_surface_selected_row_uses_theme_token_when_provided() -> None:
     surface = SelectionSurface(
         [SelectItem("Theme")],
-        theme=ThemeResolver(defaults={"selection.selected": {"color": "cyan", "bold": True}}),
+        theme=ThemeResolver(
+            defaults={"selection.selected": {"color": "cyan", "bold": True}}
+        ),
     )
 
     raw = rendered_text(surface, width=24, height=3)[0]
@@ -97,7 +144,10 @@ def test_selection_surface_can_hide_scroll_info_for_product_selectors() -> None:
 
     surface.handle_input(InputEvent(kind="key", key="pageDown"))
 
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=20, height=4)) == (
+    assert tuple(
+        strip_control_sequences(line)
+        for line in rendered_text(surface, width=20, height=4)
+    ) == (
         "  3. item-2",
         "> 4. item-3",
         "  5. item-4",
@@ -114,7 +164,10 @@ def test_selection_surface_notifies_when_selection_changes() -> None:
     surface.handle_input(InputEvent(kind="key", key="down"))
     surface.handle_input(InputEvent(kind="key", key="down"))
 
-    assert seen == [SelectItem("Beta", value="beta"), SelectItem("Alpha", value="alpha")]
+    assert seen == [
+        SelectItem("Beta", value="beta"),
+        SelectItem("Alpha", value="alpha"),
+    ]
 
 
 def test_selection_surface_accepts_custom_layout_and_truncation_hooks() -> None:
@@ -125,13 +178,20 @@ def test_selection_surface_accepts_custom_layout_and_truncation_hooks() -> None:
         return text[:max_width]
 
     surface = SelectionSurface(
-        [SelectItem("long-command-name", value="long", description="Long description text")],
+        [
+            SelectItem(
+                "long-command-name", value="long", description="Long description text"
+            )
+        ],
         primary_column_width=8,
         min_description_width=3,
         truncate_text=truncate,
     )
 
-    assert strip_control_sequences(rendered_text(surface, width=24, height=2)[0]) == "> long-c  Long descri"
+    assert (
+        strip_control_sequences(rendered_text(surface, width=24, height=2)[0])
+        == "> long-c  Long descri"
+    )
     assert calls == [
         ("long-command-name", 6, ""),
         ("Long description text", 11, ""),
@@ -163,11 +223,49 @@ def test_selection_surface_search_input_filters_items_and_tracks_cursor() -> Non
 
     surface.handle_input(InputEvent(kind="key", key="backspace"))
 
-    lines = tuple(strip_control_sequences(line) for line in rendered_text(surface, width=60, height=6))
+    lines = tuple(
+        strip_control_sequences(line)
+        for line in rendered_text(surface, width=60, height=6)
+    )
     assert lines[:2] == ("Search: m", "")
     assert lines[2].startswith("> Model")
     assert lines[2].endswith("Current model")
     assert lines[3] == "  Memory"
+
+
+def test_selection_surface_search_toolbar_compacts_then_wraps() -> None:
+    surface = SelectionSurface(
+        [SelectItem("Alpha", value="alpha")],
+        enable_search=True,
+        search_placeholder="Type to search",
+        search_toolbar="Sort: [Updated] Created",
+        search_toolbar_compact="Sort:[Updated]",
+        search_min_input_width=20,
+        filter_mode="contains",
+    )
+
+    wide = surface.render(RenderConstraints(width=60, max_height=6))
+    wide_lines = tuple(strip_control_sequences(line.text) for line in wide.lines)
+    assert wide_lines[0].startswith("Type to search")
+    assert wide_lines[0].endswith("Sort: [Updated] Created")
+    assert wide_lines[1:3] == ("", "> Alpha")
+    assert wide.cursor is not None
+    assert (wide.cursor.row, wide.cursor.column) == (0, 0)
+
+    surface.handle_input(InputEvent(kind="text", text="a"))
+    compact = surface.render(RenderConstraints(width=40, max_height=6))
+    compact_lines = tuple(strip_control_sequences(line.text) for line in compact.lines)
+    assert compact_lines[0].startswith("Search: a")
+    assert compact_lines[0].endswith("Sort:[Updated]")
+
+    narrow = surface.render(RenderConstraints(width=24, max_height=6))
+    narrow_lines = tuple(strip_control_sequences(line.text) for line in narrow.lines)
+    assert narrow_lines[:4] == (
+        "Search: a",
+        "Sort:[Updated]",
+        "",
+        "> Alpha",
+    )
 
 
 def test_selection_surface_search_can_use_fuzzy_filtering() -> None:
@@ -182,7 +280,10 @@ def test_selection_surface_search_can_use_fuzzy_filtering() -> None:
 
     surface.handle_input(InputEvent(kind="text", text="ms"))
 
-    lines = tuple(strip_control_sequences(line) for line in rendered_text(surface, width=40, height=5))
+    lines = tuple(
+        strip_control_sequences(line)
+        for line in rendered_text(surface, width=40, height=5)
+    )
     assert lines[:3] == ("Search: ms", "", "> Model Selection")
 
 
@@ -199,12 +300,17 @@ def test_selection_surface_consumed_paths_return_true_without_intents() -> None:
 
 
 def test_selection_surface_page_navigation_keeps_selected_item_visible() -> None:
-    surface = SelectionSurface([SelectItem(f"item-{index}") for index in range(8)], max_visible=3)
+    surface = SelectionSurface(
+        [SelectItem(f"item-{index}") for index in range(8)], max_visible=3
+    )
 
     surface.handle_input(InputEvent(kind="key", key="pageDown"))
 
     assert surface.selected_index == 3
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=20, height=4)) == (
+    assert tuple(
+        strip_control_sequences(line)
+        for line in rendered_text(surface, width=20, height=4)
+    ) == (
         "  item-2",
         "> item-3",
         "  item-4",
@@ -213,12 +319,17 @@ def test_selection_surface_page_navigation_keeps_selected_item_visible() -> None
 
 
 def test_selection_surface_home_end_navigation_jumps_to_edges() -> None:
-    surface = SelectionSurface([SelectItem(f"item-{index}") for index in range(6)], max_visible=3)
+    surface = SelectionSurface(
+        [SelectItem(f"item-{index}") for index in range(6)], max_visible=3
+    )
 
     surface.handle_input(InputEvent(kind="key", key="end"))
 
     assert surface.selected_index == 5
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=20, height=4)) == (
+    assert tuple(
+        strip_control_sequences(line)
+        for line in rendered_text(surface, width=20, height=4)
+    ) == (
         "  item-3",
         "  item-4",
         "> item-5",
@@ -228,7 +339,10 @@ def test_selection_surface_home_end_navigation_jumps_to_edges() -> None:
     surface.handle_input(InputEvent(kind="key", key="home"))
 
     assert surface.selected_index == 0
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=20, height=4)) == (
+    assert tuple(
+        strip_control_sequences(line)
+        for line in rendered_text(surface, width=20, height=4)
+    ) == (
         "> item-0",
         "  item-1",
         "  item-2",
@@ -247,7 +361,10 @@ def test_selection_surface_home_end_navigation_works_when_search_is_hidden() -> 
     surface.handle_input(InputEvent(kind="key", key="end"))
 
     assert surface.selected_index == 5
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=20, height=4)) == (
+    assert tuple(
+        strip_control_sequences(line)
+        for line in rendered_text(surface, width=20, height=4)
+    ) == (
         "  item-3",
         "  item-4",
         "> item-5",
@@ -260,7 +377,9 @@ def test_selection_surface_home_end_navigation_works_when_search_is_hidden() -> 
 
 
 def test_selection_surface_mouse_press_selects_visible_row_after_render() -> None:
-    surface = SelectionSurface([SelectItem(f"item-{index}") for index in range(6)], max_visible=3)
+    surface = SelectionSurface(
+        [SelectItem(f"item-{index}") for index in range(6)], max_visible=3
+    )
     surface.handle_input(InputEvent(kind="key", key="pageDown"))
     rendered_text(surface, width=20, height=4)
 
@@ -276,22 +395,34 @@ def test_selection_surface_mouse_press_selects_visible_row_after_render() -> Non
 
     assert intent is True
     assert surface.selected_index == 4
-    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="select", text="item-4")
+    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(
+        kind="select", text="item-4"
+    )
 
 
 def test_selection_surface_empty_state_ignores_enter_and_mouse() -> None:
     surface = SelectionSurface([], empty_text="No items")
 
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=20, height=4)) == ("No items",)
+    assert tuple(
+        strip_control_sequences(line)
+        for line in rendered_text(surface, width=20, height=4)
+    ) == ("No items",)
     assert surface.handle_input(InputEvent(kind="key", key="enter")) is True
-    assert surface.handle_input(InputEvent(kind="mouse", mouse_button=0, mouse_row=0, mouse_action="press")) is True
+    assert (
+        surface.handle_input(
+            InputEvent(kind="mouse", mouse_button=0, mouse_row=0, mouse_action="press")
+        )
+        is True
+    )
     assert surface.selected_item() is None
 
 
 def test_autocomplete_surface_returns_completion_intent() -> None:
     surface = AutocompleteSurface([SelectItem("README.md", value="README.md")])
 
-    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="complete", text="README.md")
+    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(
+        kind="complete", text="README.md"
+    )
 
 
 def test_command_surface_filters_and_returns_command_intent() -> None:
@@ -300,12 +431,17 @@ def test_command_surface_filters_and_returns_command_intent() -> None:
         query="/h",
     )
 
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=20, height=4)) == (
+    assert tuple(
+        strip_control_sequences(line)
+        for line in rendered_text(surface, width=20, height=4)
+    ) == (
         "Search: /h",
         "",
         "> /help",
     )
-    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="command", text="help")
+    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(
+        kind="command", text="help"
+    )
 
 
 def test_command_surface_searches_from_typed_text() -> None:
@@ -318,12 +454,17 @@ def test_command_surface_searches_from_typed_text() -> None:
 
     surface.handle_input(InputEvent(kind="text", text="sta"))
 
-    assert tuple(strip_control_sequences(line) for line in rendered_text(surface, width=30, height=4)) == (
+    assert tuple(
+        strip_control_sequences(line)
+        for line in rendered_text(surface, width=30, height=4)
+    ) == (
         "Search: sta",
         "",
         "> /status",
     )
-    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="command", text="/status")
+    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(
+        kind="command", text="/status"
+    )
 
 
 def test_approval_surface_returns_explicit_approval_or_rejection() -> None:
@@ -334,10 +475,18 @@ def test_approval_surface_returns_explicit_approval_or_rejection() -> None:
         "writes files",
         "[y] approve  [n] reject",
     )
-    assert surface.handle_input(InputEvent(kind="key", key="y")) == InputIntent(kind="approve")
-    assert surface.handle_input(InputEvent(kind="key", key="n")) == InputIntent(kind="reject")
-    assert surface.handle_input(InputEvent(kind="text", text="y")) == InputIntent(kind="approve")
-    assert surface.handle_input(InputEvent(kind="text", text="n")) == InputIntent(kind="reject")
+    assert surface.handle_input(InputEvent(kind="key", key="y")) == InputIntent(
+        kind="approve"
+    )
+    assert surface.handle_input(InputEvent(kind="key", key="n")) == InputIntent(
+        kind="reject"
+    )
+    assert surface.handle_input(InputEvent(kind="text", text="y")) == InputIntent(
+        kind="approve"
+    )
+    assert surface.handle_input(InputEvent(kind="text", text="n")) == InputIntent(
+        kind="reject"
+    )
 
 
 def test_approval_surface_handle_input_carries_action_id() -> None:
@@ -354,8 +503,12 @@ def test_approval_surface_handle_input_carries_action_id() -> None:
 def test_approval_surface_no_action_id_keeps_empty_note() -> None:
     surface = ApprovalSurface(action="Delete cache")
 
-    assert surface.handle_input(InputEvent(kind="key", key="y")) == InputIntent(kind="approve", note="")
-    assert surface.handle_input(InputEvent(kind="key", key="n")) == InputIntent(kind="reject", note="")
+    assert surface.handle_input(InputEvent(kind="key", key="y")) == InputIntent(
+        kind="approve", note=""
+    )
+    assert surface.handle_input(InputEvent(kind="key", key="n")) == InputIntent(
+        kind="reject", note=""
+    )
 
 
 def test_dialog_surface_returns_confirm_cancel_and_escape_close_reasons() -> None:
@@ -366,5 +519,9 @@ def test_dialog_surface_returns_confirm_cancel_and_escape_close_reasons() -> Non
         "Unsaved draft remains",
         "[enter] confirm  [esc] cancel",
     )
-    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(kind="dialog_confirm")
-    assert surface.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(kind="dialog_cancel")
+    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(
+        kind="dialog_confirm"
+    )
+    assert surface.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(
+        kind="dialog_cancel"
+    )

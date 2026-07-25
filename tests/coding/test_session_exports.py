@@ -19,7 +19,7 @@ from loushang.harness.tools.workspace import ToolDefinition
 from loushang.harness.tools.workspace.registry import (
     WorkspaceToolRegistry as ToolRegistry,
 )
-from loushang.harness.transcript.native_file import (
+from loushang.harness.transcript.jsonl_file import (
     load_agent_transcript_file as load_session_file,
 )
 

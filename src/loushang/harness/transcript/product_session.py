@@ -1,6 +1,6 @@
 """Product-bound standard operations for current Agent transcript sessions.
 
-``AgentTranscriptSessionFactory`` owns native create, restore, and fork
+``AgentTranscriptSessionFactory`` owns Conversation JSONL create, restore, and fork
 assembly.  This module owns the repeated Product-facing wrapper around those
 results: session metadata, catalog/index access, standard transcript records,
 and file-level rename/delete maintenance.  Products provide only their factory
@@ -9,13 +9,14 @@ and the binding input to reuse for a fork.
 
 from __future__ import annotations
 
+import asyncio
 import builtins
 from pathlib import Path
 from typing import Generic, Self, TypeVar
 
 from loushang.harness.transcript.lifecycle import (
     AgentTranscriptLifecycleSession,
-    delete_current_native_agent_transcript,
+    delete_agent_transcript_jsonl,
 )
 from loushang.harness.transcript.session import AgentTranscriptSession
 from loushang.harness.transcript.session_catalog import (
@@ -70,6 +71,7 @@ class ProductTranscriptSession(
         self.cwd = lifecycle_session.context.cwd
         self.persist = lifecycle_session.context.persist
         self.session_file = lifecycle_session.context.session_file
+        self._published_index_revision: int | None = None
         super().__init__(
             transcript=lifecycle_session.transcript,
             labels_by_target_id=lifecycle_session.labels_by_target_id,
@@ -90,7 +92,33 @@ class ProductTranscriptSession(
     async def dispose_runtime_profile(self) -> None:
         """Release the Product-owned runtime binding for this session."""
 
-        await self._lifecycle_session.dispose()
+        try:
+            await self.publish_index_summary()
+        finally:
+            await self._lifecycle_session.dispose()
+
+    async def publish_index_summary(self) -> None:
+        """Publish this session's latest summary when a local index exists."""
+
+        if not self.is_persisted() or self.session_file is None:
+            return
+        revision = len(self.entries)
+        if revision == self._published_index_revision:
+            return
+        catalog = AgentTranscriptSessionCatalog(self.session_dir)
+        if not catalog.index_path.exists():
+            return
+        try:
+            summaries = await asyncio.to_thread(catalog.repair_index)
+        except Exception:
+            # The index is an auxiliary cache; the durable transcript already won.
+            return
+        if any(
+            summary.session_id == self.header.conversation_id
+            and summary.entry_count == revision
+            for summary in summaries
+        ):
+            self._published_index_revision = revision
 
     @classmethod
     async def new(
@@ -186,7 +214,7 @@ class ProductTranscriptSession(
         return self.cwd
 
     def is_persisted(self) -> bool:
-        return self.persist and self.session_file is not None
+        return self.persist and self.session_file is not None and self.is_materialized
 
     def load_metadata(self) -> SessionMetadata:
         return load_agent_transcript_session_metadata(self.header, self.entries)
@@ -279,7 +307,7 @@ class ProductTranscriptSession(
         current_session_file: str | Path | None = None,
     ) -> bool:
         target = Path(session_file).expanduser()
-        deleted = await delete_current_native_agent_transcript(
+        deleted = await delete_agent_transcript_jsonl(
             target,
             current_session_file=current_session_file,
         )

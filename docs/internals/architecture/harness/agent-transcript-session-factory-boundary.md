@@ -8,7 +8,7 @@ Status: implementation complete for integration into `lane/harness` on
 ## Purpose
 
 `loushang.harness.transcript.AgentTranscriptSessionFactory` owns the
-reusable assembly of a current Native Agent transcript session. It composes an
+reusable assembly of a Conversation JSONL Agent transcript session. It composes an
 already configured `AgentTranscriptLifecycle` into Product-facing `new`,
 `load`, `open`, `continue_recent`, `in_memory`, `fork_from`, and selected-path
 `fork` operations.
@@ -25,7 +25,7 @@ A Product supplies only these decisions:
 - a binding-input resolver for each persistence mode;
 - header metadata derived from that selected binding;
 - validation of a restored header against its Product resume policy; and
-- optionally, a current Native session-file naming policy.
+- optionally, a Conversation JSONL session-file naming policy.
 
 The factory owns conversation-id validation and generation, UTC header time,
 standard `cwd` and `parentSession` metadata, Native source context construction,
@@ -40,7 +40,7 @@ Native file operations, not a database discovery API.
 
 ## Lifecycle Semantics
 
-`load` validates the current Native header before acquiring the Product runtime
+`load` validates the Conversation JSONL header before acquiring the Product runtime
 binding. A non-persistent load remains a detached copy through
 `AgentTranscriptLifecycle`, so later writes never mutate the source file.
 

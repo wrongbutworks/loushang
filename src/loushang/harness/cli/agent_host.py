@@ -247,14 +247,17 @@ async def run_agent_cli_host(
         request.stderr.write(f"Error: {runtime_error}.\n")
         return 2
     if request.effective_tui:
-        return await _invoke(
+        return await _invoke_with_optional(
             runners.tui,
-            runtime=request.runtime,
-            session=request.session,
-            stdin=request.stdin,
-            stdout=request.stdout,
-            stderr=request.stderr,
-            verbose=request.verbose,
+            required={
+                "runtime": request.runtime,
+                "session": request.session,
+                "stdin": request.stdin,
+                "stdout": request.stdout,
+                "stderr": request.stderr,
+                "verbose": request.verbose,
+            },
+            optional={},
         )
     mode = request.launch_plan.mode
     if mode == "rpc":
@@ -422,6 +425,32 @@ async def _invoke(callback: Callable[..., object], **kwargs: object) -> int:
     if not isinstance(result, int):
         raise TypeError("Agent CLI host runner must return an integer exit code")
     return result
+
+
+async def _invoke_with_optional(
+    callback: Callable[..., object],
+    *,
+    required: dict[str, object],
+    optional: dict[str, object],
+) -> int:
+    kwargs = dict(required)
+    try:
+        signature = inspect.signature(callback)
+    except (TypeError, ValueError):
+        signature = None
+    accepts_kwargs = bool(
+        signature is not None
+        and any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in signature.parameters.values()
+        )
+    )
+    for name, value in optional.items():
+        if value is None:
+            continue
+        if accepts_kwargs or (signature is not None and name in signature.parameters):
+            kwargs[name] = value
+    return await _invoke(callback, **kwargs)
 
 
 async def _resolve(value: Any) -> Any:
