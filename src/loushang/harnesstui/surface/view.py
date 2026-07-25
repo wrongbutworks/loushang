@@ -23,6 +23,7 @@ ScreenSurfacePurpose = Literal[
     "command",
     "settings",
     "session",
+    "delete",
     "fork",
     "rename",
     "dialog",

@@ -83,6 +83,12 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             activate_continuity=(
                 self._activate_continuity if runtime is not None else None
             ),
+            build_delete_surface=(
+                self._build_delete_surface if runtime is not None else None
+            ),
+            delete_continuity=(
+                self._delete_continuity if runtime is not None else None
+            ),
             build_fork_surface=(
                 self._build_fork_surface if runtime is not None else None
             ),
@@ -149,6 +155,30 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         if getattr(result, "cancelled", False):
             raise RuntimeError("Session resume was cancelled")
         return f"Resumed session {target.opaque_id}"
+
+    def _build_delete_surface(self):
+        if self.continuity is None:
+            raise RuntimeError("Session runtime is not available")
+        current = self._current_session()
+        current_id = getattr(current, "session_id", None)
+        return build_continuity_surface_view(
+            hub=self.continuity.hub,
+            request_render=self.coding_app.request_render,
+            include_summary=lambda summary: summary.target.opaque_id != current_id,
+            title="Delete a previous session",
+            selection_action="delete",
+            purpose="delete",
+        )
+
+    async def _delete_continuity(self, target: object) -> str:
+        if self.continuity is None:
+            raise RuntimeError("Session runtime is not available")
+        if not isinstance(target, ContinuityTarget):
+            raise TypeError("Delete requires a provider-qualified continuity target")
+        deleted = await self.continuity.hub.delete(target)
+        if not deleted:
+            raise RuntimeError("The selected session was already deleted")
+        return f"Deleted session {target.opaque_id}"
 
     def _build_fork_surface(self):
         session = self._current_session()

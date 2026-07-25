@@ -258,6 +258,8 @@ def build_agent_screen_surface_workflow_ports(
     on_approval: AgentScreenApprovalHandler | None = None,
     build_resume_surface: Callable[[], ScreenSurfaceView] | None = None,
     activate_continuity: Callable[[object], Awaitable[str]] | None = None,
+    build_delete_surface: Callable[[], ScreenSurfaceView] | None = None,
+    delete_continuity: Callable[[object], Awaitable[str]] | None = None,
     build_fork_surface: Callable[[], ScreenSurfaceView] | None = None,
     fork_session: (
         Callable[[object], Awaitable[ScreenSurfaceForkResult]] | None
@@ -333,6 +335,7 @@ def build_agent_screen_surface_workflow_ports(
             normalize_standard_conversation_interactive_command
             if (
                 build_resume_surface is not None
+                or build_delete_surface is not None
                 or build_fork_surface is not None
                 or build_rename_surface is not None
             )
@@ -340,6 +343,8 @@ def build_agent_screen_surface_workflow_ports(
         ),
         build_resume_surface=build_resume_surface,
         activate_continuity=activate_continuity,
+        build_delete_surface=build_delete_surface,
+        delete_continuity=delete_continuity,
         build_fork_surface=build_fork_surface,
         fork_session=fork_session,
         build_rename_surface=build_rename_surface,

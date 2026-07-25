@@ -78,6 +78,8 @@ class CodingContinuityRuntimePort(Protocol):
 
     def get_current_session_ref(self) -> str | None: ...
 
+    async def delete_session(self, session_id: str | Path) -> bool: ...
+
     async def prepare_restore_session_operation(
         self,
         session_id: str | Path,
@@ -266,6 +268,36 @@ class CodingContinuityProvider:
             consume=candidate.consume,
             abort=candidate.abort,
         )
+
+    async def delete(self, target: ContinuityTarget) -> bool:
+        indexed = self._cached_target(target)
+        expected_revision = str(indexed.source_revision)
+        if target.revision != expected_revision:
+            raise StaleContinuityTargetError(
+                "The selected Coding session summary is stale."
+            )
+        reference: str | Path = (
+            indexed.projection.session_file or indexed.projection.session_id
+        )
+        if _same_session_reference(
+            self._runtime.get_current_session_ref(),
+            reference,
+        ):
+            raise ValueError("Cannot delete the currently active session")
+        current_revision = await asyncio.to_thread(
+            AgentTranscriptSessionCatalog(
+                self._runtime.session_dir
+            ).load_authoritative_revision,
+            indexed.locator,
+        )
+        if current_revision != indexed.source_revision:
+            raise StaleContinuityTargetError(
+                "The selected Coding session changed after it was listed."
+            )
+        deleted = await self._runtime.delete_session(reference)
+        if deleted:
+            self._preview_items.pop(target.opaque_id, None)
+        return deleted
 
     def _cached_target(
         self,

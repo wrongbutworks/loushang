@@ -56,6 +56,7 @@ def _recording_handlers(
             "command",
             "settings",
             "session",
+            "delete",
             "fork",
             "dialog",
             "approval",
@@ -92,6 +93,7 @@ def _recording_handlers(
             "entry-1",
         ),
         ("dialog", InputIntent(kind="dialog_confirm"), "dialog", None),
+        ("delete", InputIntent(kind="dialog_confirm"), "delete", ""),
     ),
 )
 def test_screen_surface_coordinator_routes_submit_intents_by_purpose(

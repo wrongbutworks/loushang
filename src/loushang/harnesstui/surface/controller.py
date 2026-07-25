@@ -19,6 +19,7 @@ SurfaceEventSource = Literal[
     "command",
     "settings",
     "session",
+    "delete",
     "fork",
     "rename",
     "dialog",
@@ -259,6 +260,16 @@ def normalize_surface_intent(
             kind="surface_submit",
             source="session",
             payload=selected_target if selected_target is not None else intent.text,
+        )
+    if surface.purpose == "delete" and intent.kind in {"select", "dialog_confirm"}:
+        selected_target = getattr(surface.content, "selected_target", None)
+        target = selected_target
+        if target is None:
+            target = getattr(surface.content, "target", None)
+        return SurfaceEvent(
+            kind="surface_submit",
+            source="delete",
+            payload=target if target is not None else intent.text,
         )
     if surface.purpose == "fork" and intent.kind == "select":
         selected_entry_id = getattr(surface.content, "selected_entry_id", None)

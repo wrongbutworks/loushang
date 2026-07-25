@@ -15,6 +15,7 @@ from typing import Any
 
 from loushang.harness.continuity.composition import ExperienceComposition
 from loushang.harness.continuity.provider import (
+    ContinuityDeletionProvider,
     ContinuityProvider,
     PreparedActivationLease,
 )
@@ -262,6 +263,17 @@ class ContinuityHub:
         provider = self._provider_for_target(target)
         return await asyncio.wait_for(
             provider.prepare(target),
+            timeout=self._provider_timeout,
+        )
+
+    async def delete(self, target: ContinuityTarget) -> bool:
+        """Delete a target only when its owning Provider explicitly supports it."""
+
+        provider = self._provider_for_target(target)
+        if not isinstance(provider, ContinuityDeletionProvider):
+            raise RuntimeError("The selected continuity item cannot be deleted")
+        return await asyncio.wait_for(
+            provider.delete(target),
             timeout=self._provider_timeout,
         )
 

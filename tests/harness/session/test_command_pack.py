@@ -13,6 +13,7 @@ from loushang.harness.session.command_pack import (
     execute_standard_session_command_async,
     is_standard_session_command,
     list_standard_session_command_descriptors,
+    project_standard_session_command_result,
 )
 
 
@@ -161,7 +162,7 @@ def test_standard_session_command_pack_requires_the_selected_export_port() -> No
 def test_standard_session_command_pack_parses_lifecycle_and_tree_arguments() -> None:
     calls: list[tuple[str, object]] = []
 
-    async def _new(options: object) -> dict[str, object]:
+    async def _new(options: object | None = None) -> dict[str, object]:
         calls.append(("new", options))
         return {"cancelled": False}
 
@@ -190,7 +191,7 @@ def test_standard_session_command_pack_parses_lifecycle_and_tree_arguments() -> 
     )
 
     results = [
-        asyncio.run(execute_standard_session_command_async("new", "/next", ports)),
+        asyncio.run(execute_standard_session_command_async("new", "", ports)),
         asyncio.run(
             execute_standard_session_command_async("resume", "session-2", ports)
         ),
@@ -209,6 +210,9 @@ def test_standard_session_command_pack_parses_lifecycle_and_tree_arguments() -> 
     missing_resume = asyncio.run(
         execute_standard_session_command_async("resume", "", ports)
     )
+    invalid_new = asyncio.run(
+        execute_standard_session_command_async("new", "/next", ports)
+    )
     invalid_fork = asyncio.run(
         execute_standard_session_command_async("fork", "entry-1 elsewhere", ports)
     )
@@ -219,12 +223,15 @@ def test_standard_session_command_pack_parses_lifecycle_and_tree_arguments() -> 
     assert missing_resume is not None
     assert missing_resume.disposition == "invalid_arguments"
     assert missing_resume.error_code == "missing_reference"
+    assert invalid_new is not None
+    assert invalid_new.disposition == "invalid_arguments"
+    assert invalid_new.error_code == "unexpected_arguments"
     assert invalid_fork is not None
     assert invalid_fork.disposition == "invalid_arguments"
     assert invalid_fork.error_code == "invalid_fork_position"
     assert invalid_fork.value == "elsewhere"
     assert calls == [
-        ("new", {"cwd": "/next"}),
+        ("new", None),
         ("resume", ("session-2", None)),
         ("fork", ("entry-1", {"position": "before"})),
         ("clone", None),
@@ -240,6 +247,27 @@ def test_standard_session_command_pack_parses_lifecycle_and_tree_arguments() -> 
             ),
         ),
     ]
+
+
+def test_standard_new_command_projects_cancelled_operation_explicitly() -> None:
+    result = asyncio.run(
+        execute_standard_session_command_async(
+            "new",
+            "",
+            StandardSessionCommandPorts(
+                new_session=lambda: {"cancelled": True},
+            ),
+        )
+    )
+
+    assert result is not None
+    assert project_standard_session_command_result(result) == {
+        "source": "builtin",
+        "command": "new",
+        "status": "ok",
+        "result": {"cancelled": True},
+        "message": "New session creation cancelled.",
+    }
 
 
 def test_standard_session_command_pack_manages_tools_without_coding() -> None:
