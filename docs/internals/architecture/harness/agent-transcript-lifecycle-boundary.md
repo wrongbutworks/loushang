@@ -7,14 +7,14 @@ Status: implementation complete for integration into `lane/harness` on
 
 ## Purpose
 
-`loushang.harness.agent_transcript.lifecycle` owns the reusable lifecycle
+`loushang.harness.transcript.lifecycle` owns the reusable lifecycle
 assembly for one optional Agent transcript. `AgentTranscriptLifecycle` creates,
 restores, detaches, forks, and disposes an `AgentTranscriptSessionStore` without
 knowing a Product's profile-selection, root-selection, or resume policy.
 
 The neutral `harness.conversation` and `harness.storage` cores remain
 independent of Agent and AI. This optional Agent/AI profile may use current
-Native transcript helpers, but does not import Coding or another Product.
+Conversation JSONL transcript helpers, but does not import Coding or another Product.
 
 ## Binding Contract
 
@@ -36,21 +36,30 @@ Native file provider, Memory, SQL, Redis, or another conforming provider. The
 lifecycle neither selects nor implements those providers, and it never changes
 the selected binding after construction.
 
-`default_native_session_file()` is only the current Native filename helper.
+`default_jsonl_session_file()` is only the Conversation JSONL filename helper.
 Coding calls it after selecting its Native file policy; a database or Redis
 Product does not call it and may use a persistent context with no file path.
 
 ## Lifecycle Semantics
 
-`create()` persists the supplied records through the bound store. `restore()`
-loads a persistent store, while a non-persistent restore snapshots a current
-Native source into the selected detached store before any new record can be
-written. Detached restore therefore never mutates its source file.
+`create()` with retained initial records persists them through the bound store.
+A persistent empty create is provisional: it binds the runtime and builds the
+in-memory repository without calling `ConversationStore.create()`.
+Administrative records may be staged in that repository. The first user Agent
+message or application message atomically calls Store create with the header,
+all staged records, and the materializing message. Disposing a still
+provisional transcript only releases its binding, so no empty authority or
+index row exists to delete.
+
+`restore()` loads an already materialized persistent store, while a
+non-persistent restore snapshots a current Conversation JSONL source into the
+selected detached store before any new record can be written. Detached restore
+therefore never mutates its source file.
 
 `fork()` copies only the selected ancestor path to a newly bound transcript.
 The new transcript has Product-selected header metadata and storage identity;
-the copied records retain their record identities. `delete_current_native_agent_transcript()`
-owns only current Native file deletion and rejects a path that is the active
+the copied records retain their record identities. `delete_agent_transcript_jsonl()`
+owns only Conversation JSONL file deletion and rejects a path that is the active
 transcript.
 
 If create or restore fails after a runtime binding has been acquired, Harness

@@ -14,7 +14,7 @@ from loushang.ai.types import (
 )
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.conversation import CommandExecutionRecord
-from loushang.harness.host.types import RunState
+from loushang.harness.runtime.types import RunState
 from loushang.harness.session import AgentSessionInspector
 from loushang.harness.session.inspection_projection import (
     project_fork_candidates,

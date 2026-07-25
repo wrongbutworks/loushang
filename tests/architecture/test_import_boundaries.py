@@ -138,7 +138,7 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
 def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None:
     harness_root = Path("src/loushang/harness")
     profile_allowlists = {
-        harness_root / "agent_transcript": (
+        harness_root / "transcript": (
             "loushang.ai",
             "loushang.ai.model",
             "loushang.ai.types",
@@ -148,6 +148,7 @@ def test_harness_profiles_have_explicit_ai_agent_dependency_allowlists() -> None
         ),
         harness_root / "session": (
             "loushang.ai.api_registry",
+            "loushang.ai.json_codec",
             "loushang.ai.model",
             "loushang.ai.types",
             "loushang.ai.utils",
@@ -233,6 +234,50 @@ def test_extension_agent_profile_has_no_session_or_product_dependency() -> None:
     assert not Path("src/loushang/harness/session/extension_input.py").exists()
 
 
+def test_harness_internal_dependency_graph_is_acyclic() -> None:
+    graph = _harness_internal_dependency_graph(Path("src/loushang/harness"))
+
+    cycles = [
+        component
+        for component in _strongly_connected_components(graph)
+        if len(component) > 1
+    ]
+
+    assert cycles == []
+
+
+def test_runtime_event_layers_follow_declared_dependency_direction() -> None:
+    graph = _harness_internal_dependency_graph(Path("src/loushang/harness"))
+    forbidden_edges = {
+        "transcript": {"host", "session"},
+        "events": {"host", "runtime", "session", "transcript"},
+        "session": {"host"},
+    }
+    offenders = sorted(
+        f"{source} -> {target}"
+        for source, forbidden_targets in forbidden_edges.items()
+        for target in graph.get(source, set()) & forbidden_targets
+    )
+
+    assert offenders == []
+
+
+def test_runtime_event_legacy_owner_modules_are_extinct() -> None:
+    legacy_paths = (
+        "src/loushang/harness/transcript/session_export.py",
+        "src/loushang/harness/events/runtime_views.py",
+        "src/loushang/harness/events/session_projection.py",
+        "src/loushang/harness/events/session_serialization.py",
+        "src/loushang/harness/events/session_types.py",
+        "src/loushang/harness/host/queue.py",
+        "src/loushang/harness/host/retry.py",
+        "src/loushang/harness/host/runtime.py",
+        "src/loushang/harness/host/turn.py",
+    )
+
+    assert [path for path in legacy_paths if Path(path).exists()] == []
+
+
 def test_capability_composition_runtime_has_no_product_dependency() -> None:
     path = Path("src/loushang/harness/capabilities/composition_runtime.py")
     offenders = [
@@ -251,8 +296,8 @@ def test_coding_runtime_plans_are_declarative_over_shared_bindings() -> None:
 
     expected_imports = {
         Path("src/loushang/coding/product_plan.py"): {
-            "loushang.harness.agent_transcript.AgentTranscriptProfileRuntime",
-            "loushang.harness.agent_transcript.AgentTranscriptRuntimeSpec",
+            "loushang.harness.transcript.AgentTranscriptProfileRuntime",
+            "loushang.harness.transcript.AgentTranscriptRuntimeSpec",
             "loushang.harness.capabilities.standard_capability_composition_plan",
             "loushang.harness.runtime.RuntimeProfileResolver",
         },
@@ -398,7 +443,9 @@ def test_neutral_conversation_core_does_not_import_agent_ai_or_products() -> Non
     assert _find_forbidden_imports(boundary) == []
 
 
-def test_neutral_storage_and_event_cores_do_not_import_runtime_or_products() -> None:
+def test_neutral_conversation_and_event_cores_do_not_import_runtime_or_products() -> (
+    None
+):
     forbidden = (
         "loushang.agent",
         "loushang.ai",
@@ -409,11 +456,6 @@ def test_neutral_storage_and_event_cores_do_not_import_runtime_or_products() -> 
         "loushang.work",
     )
     boundaries = (
-        ImportBoundary(
-            name="storage",
-            root=Path("src/loushang/harness/storage"),
-            forbidden_prefixes=forbidden,
-        ),
         ImportBoundary(
             name="events",
             root=Path("src/loushang/harness/events"),
@@ -545,7 +587,7 @@ def test_coding_agent_session_delegates_shared_turn_runtime_to_harness() -> None
 
 def test_agent_transcript_interaction_runtime_is_neutral_and_adopted() -> None:
     interaction_source = Path(
-        "src/loushang/harness/agent_transcript/interaction.py"
+        "src/loushang/harness/transcript/interaction.py"
     ).read_text(encoding="utf-8")
     composition_source = Path("src/loushang/harness/session/composition.py").read_text(
         encoding="utf-8"
@@ -570,7 +612,7 @@ def test_agent_transcript_interaction_runtime_is_neutral_and_adopted() -> None:
 
 def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
     maintenance_source = Path(
-        "src/loushang/harness/agent_transcript/maintenance.py"
+        "src/loushang/harness/transcript/maintenance.py"
     ).read_text(encoding="utf-8")
     composition_source = Path("src/loushang/harness/session/composition.py").read_text(
         encoding="utf-8"
@@ -588,8 +630,8 @@ def test_agent_transcript_maintenance_runtime_is_neutral_and_adopted() -> None:
 
 
 def test_agent_transcript_export_runtime_is_neutral_and_adopted() -> None:
-    export_root = Path("src/loushang/harness/agent_transcript/export")
-    coding_adapter = Path("src/loushang/harness/agent_transcript/session_export.py")
+    export_root = Path("src/loushang/harness/transcript/export")
+    session_adapter = Path("src/loushang/harness/session/export.py")
     boundary = Path(
         "docs/internals/architecture/harness/agent-transcript-export-boundary.md"
     )
@@ -600,8 +642,8 @@ def test_agent_transcript_export_runtime_is_neutral_and_adopted() -> None:
         for path in export_root.rglob("*.py")
         for imported in _absolute_imports(path)
     )
-    assert "TranscriptExportRequest" in coding_adapter.read_text(encoding="utf-8")
-    assert "TranscriptHtmlExportProfile" in coding_adapter.read_text(encoding="utf-8")
+    assert "TranscriptExportRequest" in session_adapter.read_text(encoding="utf-8")
+    assert "TranscriptHtmlExportProfile" in session_adapter.read_text(encoding="utf-8")
     assert not Path("src/loushang/coding/session/export_html/index.py").exists()
     assert not Path("src/loushang/coding/session/export_html/tool_renderer.py").exists()
     assert not Path("src/loushang/coding/session/export_jsonl.py").exists()
@@ -609,11 +651,11 @@ def test_agent_transcript_export_runtime_is_neutral_and_adopted() -> None:
 
 
 def test_transcript_compaction_capability_is_neutral_and_adopted() -> None:
-    capability_source = Path(
-        "src/loushang/harness/agent_transcript/compaction.py"
-    ).read_text(encoding="utf-8")
+    capability_source = Path("src/loushang/harness/transcript/compaction.py").read_text(
+        encoding="utf-8"
+    )
     runtime_profile_source = Path(
-        "src/loushang/harness/agent_transcript/runtime_profile.py"
+        "src/loushang/harness/transcript/runtime_profile.py"
     ).read_text(encoding="utf-8")
     product_plan_source = Path("src/loushang/coding/product_plan.py").read_text(
         encoding="utf-8"
@@ -625,7 +667,7 @@ def test_transcript_compaction_capability_is_neutral_and_adopted() -> None:
         encoding="utf-8"
     )
     summary_executor_source = Path(
-        "src/loushang/harness/agent_transcript/summarization.py"
+        "src/loushang/harness/transcript/summarization.py"
     ).read_text(encoding="utf-8")
     coding_adapter_source = Path("src/loushang/coding/compaction/adapter.py").read_text(
         encoding="utf-8"
@@ -1184,7 +1226,7 @@ def test_extension_input_runtime_is_harness_owned() -> None:
 
 def test_product_transcript_session_is_neutral_and_adopted() -> None:
     session_source = Path(
-        "src/loushang/harness/agent_transcript/product_session.py"
+        "src/loushang/harness/transcript/product_session.py"
     ).read_text(encoding="utf-8")
     coding_adapter_source = Path("src/loushang/coding/session_manager.py").read_text(
         encoding="utf-8"
@@ -1219,6 +1261,54 @@ def test_tui_and_harness_keep_harnesstui_dependency_one_way() -> None:
     ]
 
     assert offenders == []
+
+
+def test_continuity_core_and_common_tui_keep_product_boundaries() -> None:
+    boundaries = (
+        ImportBoundary(
+            name="continuity core",
+            root=Path("src/loushang/harness/continuity"),
+            forbidden_prefixes=(
+                "loushang.agent",
+                "loushang.ai",
+                "loushang.coding",
+                "loushang.design",
+                "loushang.method",
+                "loushang.presentation",
+                "loushang.tui",
+                "loushang.work",
+                "loushang.harness.conversation",
+                "loushang.harness.journal",
+                "loushang.harness.transcript",
+                "loushang.harness.workspace",
+            ),
+        ),
+        ImportBoundary(
+            name="continuity tui",
+            root=Path("src/loushang/harnesstui/continuity"),
+            forbidden_prefixes=(
+                "loushang.agent",
+                "loushang.ai",
+                "loushang.coding",
+                "loushang.design",
+                "loushang.presentation",
+            ),
+        ),
+    )
+
+    offenders = [
+        offender
+        for boundary in boundaries
+        for offender in _find_forbidden_imports(boundary)
+    ]
+
+    assert offenders == []
+    design = Path(
+        "docs/internals/architecture/harness/"
+        "capability-domain-presentation-continuity-architecture.md"
+    ).read_text(encoding="utf-8")
+    assert "Accepted and implemented for V1" in design
+    assert "cross-Experience Host coordinator remains intentionally deferred" in design
 
 
 def test_workspace_git_and_clipboards_have_canonical_owners() -> None:
@@ -1799,6 +1889,7 @@ def test_harness_diagnostics_symbols_are_subpackage_exports_only() -> None:
     import loushang.harness.diagnostics as diagnostics
 
     diagnostic_symbols = {
+        "DiagnosticDraft",
         "DiagnosticLevel",
         "DiagnosticBundleProfile",
         "DiagnosticPhase",
@@ -2013,15 +2104,15 @@ def test_harness_diagnostics_core_boundary_is_documented() -> None:
     assert "diagnostics core implementation complete" in inventory_text
 
 
-def test_harness_diagnostics_core_does_not_import_observability() -> None:
+def test_harness_diagnostics_core_does_not_import_resources_or_observability() -> None:
     paths_and_forbidden_prefixes = (
         (
             Path("src/loushang/harness/diagnostics/types.py"),
-            ("loushang.observability",),
+            ("loushang.harness.resources", "loushang.observability"),
         ),
         (
             Path("src/loushang/harness/diagnostics/service.py"),
-            ("loushang.observability",),
+            ("loushang.harness.resources", "loushang.observability"),
         ),
         (
             Path("src/loushang/harness/diagnostics/observability_bridge.py"),
@@ -2034,6 +2125,22 @@ def test_harness_diagnostics_core_does_not_import_observability() -> None:
         for imported in _absolute_imports(path)
         if _matches_any(imported, forbidden_prefixes)
     ]
+    assert offenders == []
+
+
+def test_diagnostic_draft_has_no_resource_specific_compatibility_api() -> None:
+    legacy_names = (
+        "ResourceDiagnostic",
+        "normalize_resource_diagnostic",
+        "record_resource_diagnostics",
+    )
+    offenders = [
+        f"{path.as_posix()} contains {name}"
+        for path in sorted(Path("src/loushang/harness").rglob("*.py"))
+        for name in legacy_names
+        if name in path.read_text(encoding="utf-8")
+    ]
+
     assert offenders == []
 
 
@@ -2190,16 +2297,16 @@ def test_harness_context_compaction_and_journal_design_is_documented() -> None:
 
 def test_context_compaction_and_journal_mechanics_use_harness_owners() -> None:
     expected_imports = {
-        Path("src/loushang/harness/agent_transcript/file_store.py"): {
-            "loushang.harness.conversation.NativeConversationHeaderCodec",
-            "loushang.harness.conversation.NativeConversationRecordCodec",
+        Path("src/loushang/harness/transcript/jsonl_file.py"): {
+            "loushang.harness.conversation.ConversationJsonlHeaderCodec",
+            "loushang.harness.conversation.ConversationJsonlRecordCodec",
             "loushang.harness.journal.JsonlJournal",
             "loushang.harness.journal.journal_file_lock",
         },
         Path("src/loushang/coding/session_manager.py"): {
-            "loushang.harness.agent_transcript.AgentTranscriptLifecycle",
-            "loushang.harness.agent_transcript.AgentTranscriptSessionFactory",
-            "loushang.harness.agent_transcript.ProductTranscriptSession",
+            "loushang.harness.transcript.AgentTranscriptLifecycle",
+            "loushang.harness.transcript.AgentTranscriptSessionFactory",
+            "loushang.harness.transcript.ProductTranscriptSession",
         },
         Path("src/loushang/work/event_log.py"): {
             "loushang.harness.journal.FunctionalJournalRecordCodec",
@@ -2244,7 +2351,7 @@ def test_harness_agent_transcript_file_store_is_documented() -> None:
     inventory_text = Path(
         "docs/internals/architecture/harness/coding-to-harness-migration-inventory.md"
     ).read_text(encoding="utf-8")
-    assert "current Native Agent transcript codec" in inventory_text
+    assert "Conversation JSONL Agent transcript codec" in inventory_text
 
 
 def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
@@ -2271,7 +2378,7 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
     assert "Agent Transcript Catalog Boundary" in readme_text
 
     catalog_imports = set(
-        _absolute_imports(Path("src/loushang/harness/agent_transcript/catalog.py"))
+        _absolute_imports(Path("src/loushang/harness/transcript/session_catalog.py"))
     )
     assert "loushang.harness.conversation.ConversationCatalog" in catalog_imports
     assert not any(
@@ -2279,10 +2386,10 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
     )
 
     directory_runtime_imports = set(
-        _absolute_imports(Path("src/loushang/harness/agent_transcript/directory.py"))
+        _absolute_imports(Path("src/loushang/harness/transcript/directory.py"))
     )
     assert (
-        "loushang.harness.agent_transcript.catalog.AgentTranscriptSessionCatalog"
+        "loushang.harness.transcript.session_catalog.AgentTranscriptSessionCatalog"
         in (directory_runtime_imports)
     )
     assert not any(
@@ -2293,7 +2400,7 @@ def test_harness_agent_transcript_catalog_is_documented_and_adopted() -> None:
         _absolute_imports(Path("src/loushang/coding/session_manager.py"))
     )
     assert (
-        "loushang.harness.agent_transcript.ProductTranscriptSession"
+        "loushang.harness.transcript.ProductTranscriptSession"
         in session_manager_imports
     )
 
@@ -2340,7 +2447,7 @@ def test_harness_agent_transcript_lifecycle_is_documented_and_adopted() -> None:
     assert "Agent Transcript Lifecycle Boundary" in readme_text
 
     lifecycle_imports = set(
-        _absolute_imports(Path("src/loushang/harness/agent_transcript/lifecycle.py"))
+        _absolute_imports(Path("src/loushang/harness/transcript/lifecycle.py"))
     )
     assert not any(
         imported.startswith("loushang.coding") for imported in lifecycle_imports
@@ -2350,7 +2457,7 @@ def test_harness_agent_transcript_lifecycle_is_documented_and_adopted() -> None:
         _absolute_imports(Path("src/loushang/coding/session_manager.py"))
     )
     assert (
-        "loushang.harness.agent_transcript.AgentTranscriptLifecycle"
+        "loushang.harness.transcript.AgentTranscriptLifecycle"
         in session_manager_imports
     )
 
@@ -2378,9 +2485,7 @@ def test_harness_agent_transcript_session_factory_is_documented_and_adopted() ->
     assert "Agent Transcript Session Factory Boundary" in readme_text
 
     factory_imports = set(
-        _absolute_imports(
-            Path("src/loushang/harness/agent_transcript/session_factory.py")
-        )
+        _absolute_imports(Path("src/loushang/harness/transcript/session_factory.py"))
     )
     assert not any(
         imported.startswith("loushang.coding") for imported in factory_imports
@@ -2390,7 +2495,7 @@ def test_harness_agent_transcript_session_factory_is_documented_and_adopted() ->
         _absolute_imports(Path("src/loushang/coding/session_manager.py"))
     )
     assert (
-        "loushang.harness.agent_transcript.AgentTranscriptSessionFactory"
+        "loushang.harness.transcript.AgentTranscriptSessionFactory"
         in session_manager_imports
     )
 
@@ -2404,8 +2509,8 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
     required_phrases = {
         "Harness Runtime Data Foundations",
         "`harness/runtime-data-foundations`",
-        "`loushang.harness.journal.TranscriptRepository[H, R]`",
-        "`JsonProjectionIndex[P]`",
+        "`loushang.harness.conversation.ConversationRepository[H, R]`",
+        "`JsonConversationIndex[P, Q]`",
         "`loushang.harness.config.LayeredConfig[T]`",
         "`ContextSalienceRanker`",
         "`SummaryProfile`",
@@ -2433,15 +2538,15 @@ def test_harness_runtime_data_foundations_are_documented_and_adopted() -> None:
 
     expected_imports = {
         Path("src/loushang/coding/session_manager.py"): {
-            "loushang.harness.agent_transcript.ProductTranscriptSession",
+            "loushang.harness.transcript.ProductTranscriptSession",
         },
         Path("src/loushang/harness/config/agent/manager.py"): {
             "loushang.harness.config.LayeredConfig",
         },
-        Path("src/loushang/harness/agent_transcript/compaction.py"): {
+        Path("src/loushang/harness/transcript/compaction.py"): {
             "loushang.harness.context.ConversationCompactionPlanner",
         },
-        Path("src/loushang/harness/agent_transcript/summarization.py"): {
+        Path("src/loushang/harness/transcript/summarization.py"): {
             "loushang.harness.context.SummaryProfile",
             "loushang.harness.context.build_summary_prompt",
         },
@@ -2636,14 +2741,14 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
         for path in (Path("src/loushang/coding/session_manager.py"),)
         for imported in _absolute_imports(path)
     }
-    assert "loushang.harness.agent_transcript.ProductTranscriptSession" in (
+    assert "loushang.harness.transcript.ProductTranscriptSession" in (
         coding_store_imports
     )
     assert "loushang.harness.journal.TranscriptRepository" not in (coding_store_imports)
     assert "loushang.harness.journal.BranchGraph" not in coding_store_imports
 
     harness_compaction_imports = set(
-        _absolute_imports(Path("src/loushang/harness/agent_transcript/compaction.py"))
+        _absolute_imports(Path("src/loushang/harness/transcript/compaction.py"))
     )
     assert "loushang.harness.context.ConversationCompactionPlanner" in (
         harness_compaction_imports
@@ -2654,6 +2759,57 @@ def test_harness_conversation_runtime_core_is_documented_and_adopted() -> None:
     )
     assert "loushang.harness.context.ConversationCompactionPlanner" not in (
         coding_compaction_imports
+    )
+
+
+def test_conversation_persistence_has_one_native_writer_boundary() -> None:
+    roots = (
+        Path("src/loushang/harness/conversation"),
+        Path("src/loushang/harness/transcript"),
+    )
+    allowed = {
+        Path("src/loushang/harness/conversation/stores/file.py"),
+        Path("src/loushang/harness/transcript/jsonl_file.py"),
+    }
+    writer_calls = {"append_jsonl_record", "write_jsonl"}
+    offenders: list[str] = []
+    for path in sorted(
+        file_path
+        for root in roots
+        for file_path in root.rglob("*.py")
+        if file_path not in allowed
+    ):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if isinstance(node.func, ast.Name) and node.func.id in writer_calls:
+                offenders.append(f"{path.as_posix()} calls {node.func.id}")
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "rewrite":
+                offenders.append(f"{path.as_posix()} calls rewrite")
+
+    assert offenders == []
+    assert not any(Path("src/loushang/harness/storage").glob("*.py"))
+    assert not Path("src/loushang/harness/journal/branch.py").exists()
+    assert not Path("src/loushang/harness/journal/transcript.py").exists()
+    assert not Path("src/loushang/harness/journal/index.py").exists()
+    assert not Path("src/loushang/harness/transcript/store.py").exists()
+    assert not Path("src/loushang/harness/transcript/file_store.py").exists()
+    assert not Path("src/loushang/harness/transcript/catalog.py").exists()
+
+
+def test_agent_session_catalog_uses_bound_store_discovery() -> None:
+    path = Path("src/loushang/harness/transcript/session_catalog.py")
+    source = path.read_text(encoding="utf-8")
+    imports = set(_absolute_imports(path))
+
+    assert "AgentTranscriptSessionCatalog" in source
+    assert "ConversationProviderBinding" in source
+    assert "create_agent_transcript_file_store" in source
+    assert ".glob(" not in source
+    assert "load_agent_transcript_repository" not in source
+    assert not any(
+        imported.startswith("loushang.harness.journal") for imported in imports
     )
 
 
@@ -3569,8 +3725,8 @@ def test_harness_host_runtime_boundary_is_documented() -> None:
     required_phrases = {
         "Harness Host Runtime Boundary",
         "implementation complete for integration into `lane/harness`",
-        "`loushang.harness.host.runtime.HostRuntime`",
-        "`loushang.harness.host.queue.HostInputQueue`",
+        "`loushang.harness.runtime.execution.HostRuntime`",
+        "`loushang.harness.runtime.input_queue.HostInputQueue`",
         "`loushang.harness.events.OrderedEventBus`",
         "must not implement a second agent loop",
         "Coding maps running, aborting, and disposing",
@@ -3702,7 +3858,7 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
             "loushang.harness.runtime.stage_file_import",
         },
         Path("src/loushang/harness/session/transcript_lifecycle.py"): {
-            "loushang.harness.agent_transcript.directory.AgentTranscriptDirectoryRuntime",
+            "loushang.harness.transcript.directory.AgentTranscriptDirectoryRuntime",
             "loushang.harness.session.lifecycle.SessionLifecycleRuntime",
         },
         Path("src/loushang/coding/runtime/agent_session_runtime.py"): {
@@ -3712,19 +3868,19 @@ def test_host_turn_session_orchestration_core_is_documented_and_adopted() -> Non
             "loushang.harness.extensions.lifecycle.ExtensionRuntimeCoordinator",
         },
         Path("src/loushang/harness/session/prompt_controller.py"): {
-            "loushang.harness.host.turn.TurnOrchestrator",
+            "loushang.harness.runtime.turn.TurnOrchestrator",
         },
         Path("src/loushang/harness/session/queue_controller.py"): {
-            "loushang.harness.host.turn.TurnInputQueue",
+            "loushang.harness.runtime.turn.TurnInputQueue",
         },
         Path("src/loushang/harness/session/resource_refresh.py"): {
             "loushang.harness.resources.refresh.ResourceRefreshCoordinator",
         },
         Path("src/loushang/harness/session/composition.py"): {
-            "loushang.harness.agent_transcript.AgentTranscriptRetryRuntime",
-            "loushang.harness.agent_transcript.AgentTranscriptCompactionRuntime",
-            "loushang.harness.agent_transcript.AgentTranscriptNavigationRuntime",
-            "loushang.harness.agent_transcript.AgentTranscriptSelectionRuntime",
+            "loushang.harness.transcript.AgentTranscriptRetryRuntime",
+            "loushang.harness.transcript.AgentTranscriptCompactionRuntime",
+            "loushang.harness.transcript.AgentTranscriptNavigationRuntime",
+            "loushang.harness.transcript.AgentTranscriptSelectionRuntime",
             "loushang.harness.extensions.session_runtime.ExtensionSessionRuntime",
             "loushang.harness.extensions.agent.ExtensionInputRuntime",
         },
@@ -4317,10 +4473,10 @@ def test_harness_resource_provenance_boundary_is_documented() -> None:
     import loushang.harness as harness
 
     provenance_symbols = {
-        "ResourceDiagnostic",
         "SourceInfo",
         "SourceOrigin",
         "SourceScope",
+        "resource_diagnostic",
     }
     assert provenance_symbols.isdisjoint(set(harness.__all__))
 
@@ -4331,9 +4487,10 @@ def test_harness_resource_provenance_boundary_is_documented() -> None:
     design_text = " ".join(design_path.read_text(encoding="utf-8").split())
     required_phrases = {
         "Harness Resource Provenance Boundary",
+        "`DiagnosticDraft`",
         "`loushang.harness.resources.source`",
         "`loushang.harness.resources.diagnostics`",
-        "same harness-owned classes",
+        "`resource_diagnostic`",
         "does not move or redesign",
         "must not import coding, method, work, TUI, AI, provider, or product packages",
     }
@@ -4491,6 +4648,99 @@ def _absolute_imports(path: Path) -> list[str]:
         elif isinstance(node, ast.ImportFrom):
             imports.extend(_import_from_targets(path, node))
     return imports
+
+
+def _harness_internal_dependency_graph(root: Path) -> dict[str, set[str]]:
+    graph: dict[str, set[str]] = {}
+    for path in sorted(root.rglob("*.py")):
+        relative = path.relative_to(root)
+        source = relative.parts[0]
+        if len(relative.parts) == 1:
+            source = path.stem
+        graph.setdefault(source, set())
+        imported_modules = [
+            *_absolute_imports(path),
+            *_lazy_export_modules(path),
+        ]
+        for imported in imported_modules:
+            prefix = "loushang.harness."
+            if not imported.startswith(prefix):
+                continue
+            target = imported.removeprefix(prefix).split(".", 1)[0]
+            if target != source:
+                graph[source].add(target)
+                graph.setdefault(target, set())
+    return graph
+
+
+def _lazy_export_modules(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=path.as_posix())
+    modules: list[str] = []
+    for node in tree.body:
+        value: ast.expr | None = None
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "_EXPORT_MODULES"
+            for target in node.targets
+        ):
+            value = node.value
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "_EXPORT_MODULES"
+        ):
+            value = node.value
+        if not isinstance(value, ast.Dict):
+            continue
+        modules.extend(
+            item.value
+            for item in value.values
+            if isinstance(item, ast.Constant)
+            and isinstance(item.value, str)
+            and item.value.startswith("loushang.harness.")
+        )
+    return modules
+
+
+def _strongly_connected_components(
+    graph: dict[str, set[str]],
+) -> list[tuple[str, ...]]:
+    next_index = 0
+    indices: dict[str, int] = {}
+    lowlinks: dict[str, int] = {}
+    stack: list[str] = []
+    on_stack: set[str] = set()
+    components: list[tuple[str, ...]] = []
+
+    def visit(node: str) -> None:
+        nonlocal next_index
+        indices[node] = next_index
+        lowlinks[node] = next_index
+        next_index += 1
+        stack.append(node)
+        on_stack.add(node)
+
+        for target in sorted(graph.get(node, set())):
+            if target not in indices:
+                visit(target)
+                lowlinks[node] = min(lowlinks[node], lowlinks[target])
+            elif target in on_stack:
+                lowlinks[node] = min(lowlinks[node], indices[target])
+
+        if lowlinks[node] != indices[node]:
+            return
+        component: list[str] = []
+        while stack:
+            target = stack.pop()
+            on_stack.remove(target)
+            component.append(target)
+            if target == node:
+                break
+        components.append(tuple(sorted(component)))
+
+    for node in sorted(graph):
+        if node not in indices:
+            visit(node)
+    return sorted(components)
 
 
 def _import_from_targets(path: Path, node: ast.ImportFrom) -> list[str]:

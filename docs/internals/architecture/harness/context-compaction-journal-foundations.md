@@ -99,7 +99,7 @@ different product semantics:
 - `coding.compaction` owns context cut-point planning, recent-token retention,
   a compaction coordinator, summary production, and Coding-specific summary
   quality rules;
-- `harness.agent_transcript` owns cross-platform file locking, atomic JSONL
+- `harness.transcript` owns cross-platform file locking, atomic JSONL
   rewrite, append/load recovery, a parent-linked entry graph, branch selection,
   fork, and a session index; Coding binds it through
   `coding.session_manager`;
@@ -163,9 +163,9 @@ loushang.harness.journal
 `types.py` may define small focused `ContextDiagnostic` and
 `JournalDiagnostic` records when an operation cannot yet construct a complete
 `DiagnosticRecord`. Products normalize those records through the existing
-Harness diagnostics service. Do not reuse `ResourceDiagnostic` merely because
-it has a convenient path field; journal corruption and context overflow are not
-resource-discovery failures.
+Harness diagnostics service. Do not use the `resource_diagnostic` factory
+merely because it accepts a path; journal corruption and context overflow are
+not resource-discovery failures.
 
 Do not introduce top-level `loushang.context`, `loushang.session`,
 `loushang.persistence`, or `loushang.memory`. Do not export the new symbols from
@@ -739,7 +739,7 @@ final wave merge, but it does not block progress on the other adapters.
 | removed `coding.store.file_codec` | JSONL framing and atomic IO | SessionHeader/SessionEntry codec remains in Harness |
 | `coding.session_manager.SessionManager` | Coding Product runtime binding | projection schema/fields, lifecycle, cwd, labels, naming, recovery, and retention |
 | `work.event_log` | matching JSONL I/O only | Work normalization, in-memory backend, positions, filters, query, replay, subscriptions, records, and public adapters |
-| `coding.message.json_codec` | superseded by `loushang.harness.agent_transcript` for common transcript records | AI owns base codecs, Agent owns extension codec composition, and Products own only domain payload codecs |
+| `coding.message.json_codec` | superseded by `loushang.harness.transcript` for common transcript records | AI owns base codecs, Agent owns extension codec composition, and Products own only domain payload codecs |
 
 ## Planned Size And Measured Outcome
 

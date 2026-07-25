@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from loushang.harness.agent_transcript import (
+from loushang.harness.context import serialize_context_usage_payload
+from loushang.harness.session import AgentSessionInspector, ContextUsage
+from loushang.harness.transcript import (
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     AgentTranscriptRecord,
     ContextCompactionCheckpoint,
 )
-from loushang.harness.context import serialize_context_usage_payload
-from loushang.harness.session import AgentSessionInspector, ContextUsage
 
 
 def project_session_stats(

@@ -7,6 +7,8 @@ from loushang.harness.runtime.context import (
     BoundProductRuntimeContext,
     UnboundProductRuntimeContext,
 )
+from loushang.harness.runtime.execution import HostRuntime, HostStateError
+from loushang.harness.runtime.input_queue import HostInputQueue
 from loushang.harness.runtime.navigation import (
     CancellationController,
     CancellationSignal,
@@ -17,6 +19,7 @@ from loushang.harness.runtime.profile import (
     AGENT_TRANSCRIPT_PROFILE_SLOT,
     COMMAND_PACKS_SLOT,
     CONTEXT_COMPACTION_SLOT,
+    CONTINUITY_PROVIDER_PACKS_SLOT,
     CONVERSATION_STORE_SLOT,
     PROMPT_SECTIONS_SLOT,
     RESOURCE_RUNTIME_SLOT,
@@ -52,6 +55,7 @@ from loushang.harness.runtime.profile import (
     standard_agent_session_slots,
     standard_capability_composition_slots,
 )
+from loushang.harness.runtime.retry import RetryCoordinator, RetryPolicy
 from loushang.harness.runtime.scheduling import CoalescingScheduler
 from loushang.harness.runtime.session_operations import (
     CancelledSessionOperation,
@@ -68,6 +72,14 @@ from loushang.harness.runtime.session_operations import (
     stage_file_import,
 )
 from loushang.harness.runtime.transition import SessionTransitionHost
+from loushang.harness.runtime.turn import (
+    StreamingBehavior,
+    TurnInput,
+    TurnInputQueue,
+    TurnOrchestrator,
+    normalize_streaming_behavior,
+)
+from loushang.harness.runtime.types import HostSnapshot, QueueMode, RunState
 
 __all__ = [
     "AGENT_TRANSCRIPT_PROFILE_SLOT",
@@ -78,12 +90,18 @@ __all__ = [
     "CancelledSessionOperation",
     "CoalescingScheduler",
     "CONTEXT_COMPACTION_SLOT",
+    "CONTINUITY_PROVIDER_PACKS_SLOT",
     "CONVERSATION_STORE_SLOT",
+    "HostInputQueue",
+    "HostRuntime",
+    "HostSnapshot",
+    "HostStateError",
     "PROMPT_SECTIONS_SLOT",
     "NavigationFailure",
     "NavigationTransactionCoordinator",
     "ProductRuntimeBindings",
     "ProductRuntimePlan",
+    "QueueMode",
     "ReplacementCallbackFailure",
     "ResolvedRuntimeCapability",
     "ResolvedRuntimeProfile",
@@ -112,6 +130,9 @@ __all__ = [
     "RuntimeProfileSnapshotSelection",
     "RuntimeProfileSource",
     "RuntimeRefreshBoundary",
+    "RetryCoordinator",
+    "RetryPolicy",
+    "RunState",
     "RESOURCE_RUNTIME_SLOT",
     "SKILL_ACTIVATION_SLOT",
     "SessionOperationCandidate",
@@ -121,11 +142,16 @@ __all__ = [
     "SessionOperationPreparation",
     "SessionOperationResult",
     "SessionTransitionHost",
+    "StreamingBehavior",
     "StagedFileImport",
     "TOOL_PACKS_SLOT",
+    "TurnInput",
+    "TurnInputQueue",
+    "TurnOrchestrator",
     "SealedRuntimeCapabilityError",
     "UnboundProductRuntimeContext",
     "copy_file_exclusive",
+    "normalize_streaming_behavior",
     "run_replacement_callbacks",
     "stage_file_import",
     "standard_agent_session_slots",

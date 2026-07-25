@@ -43,8 +43,12 @@ loushang -p "Summarize the current project."
 ```bash
 loushang --list-sessions
 loushang --resume
+loushang --continue
+loushang --resume <session-id-or-path>
 loushang --export
 ```
+
+交互式 `loushang --resume` 和无参数 `/resume` 会打开全屏、可搜索的 continuity 选择器。默认按键中，空格按需加载预览；安装多个 Provider 时 Tab 切换 Domain；Ctrl+S 切换公共排序。`--continue` 恢复当前项目最新会话，`--resume <session-id-or-path>` 和 `/resume <session-id-or-path>` 直接恢复指定会话。非交互模式必须使用这些显式形式之一。
 
 在交互界面中，内置 slash commands 包括 `/session`、`/resume`、`/fork`、`/clone`、`/tree`、`/tools`、`/extensions`、`/export`、`/compact`、`/reload` 和 `/quit`。
 

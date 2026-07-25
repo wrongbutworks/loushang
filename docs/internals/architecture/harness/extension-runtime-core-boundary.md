@@ -155,7 +155,7 @@ class ExtensionSurfaceDescriptor:
     active: bool = True
     priority: int = 0
     permission_requirements: tuple[str, ...] = ()
-    diagnostics: tuple[ResourceDiagnostic, ...] = ()
+    diagnostics: tuple[DiagnosticDraft, ...] = ()
     metadata: dict[str, object] = field(default_factory=dict)
     # Appended to preserve the legacy positional constructor contract.
     after: tuple[str, ...] = ()       # canonical route/extension references

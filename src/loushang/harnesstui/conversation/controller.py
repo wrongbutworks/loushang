@@ -144,7 +144,7 @@ class ConversationUiController:
         )
 
     async def wait_for_idle(self) -> None:
-        await _call_if_available(self.session, "wait_for_idle")
+        await _call_if_available(self._current_session(), "wait_for_idle")
 
     async def _dispatch_text_action(
         self,
@@ -156,12 +156,13 @@ class ConversationUiController:
         failure_code: str,
     ) -> HostActionResult:
         try:
+            session = self._current_session()
             method = _streaming_prompt_method(
-                self.session,
+                session,
                 streaming_behavior="steer" if action == "steer" else "followUp",
             )
             if method is None:
-                method = getattr(self.session, action, None)
+                method = getattr(session, action, None)
             if not callable(method):
                 return HostActionResult(error_message=unavailable)
             await _call_text_method(method, text, images=images)
@@ -183,7 +184,7 @@ class ConversationUiController:
         *,
         images: ImageParts,
     ) -> None:
-        method = getattr(self.session, "prompt", None)
+        method = getattr(self._current_session(), "prompt", None)
         if not callable(method):
             raise RuntimeError("Session does not support prompts")
         await _call_text_method(method, text, images=images)
@@ -193,10 +194,11 @@ class ConversationUiController:
     ) -> HostActionResult | None:
         if getattr(intent, "images", None):
             return None
-        executor = getattr(self.session, "execute_command_async", None)
+        session = self._current_session()
+        executor = getattr(session, "execute_command_async", None)
         if self.command_catalog_factory is None or not callable(executor):
             return None
-        catalog = self.command_catalog_factory(self.session)
+        catalog = self.command_catalog_factory(session)
         effect = catalog.effect_for_route(self.command_route, intent)
         if effect is None or effect.kind is not CommandEffectKind.SESSION:
             return None
@@ -213,17 +215,30 @@ class ConversationUiController:
         )
 
     async def _bash(self, command: str) -> None:
-        method = getattr(self.session, "execute_bash", None)
+        method = getattr(self._current_session(), "execute_bash", None)
         if not callable(method):
             raise RuntimeError("Session does not support bash execution")
         await _maybe_await(method(command, **dict(self.bash_options())))
 
     async def _abort(self) -> None:
+        session = self._current_session()
         try:
-            await _call_if_available(self.session, "abort")
+            await _call_if_available(session, "abort")
         finally:
-            await _call_if_available(self.session, "clear_queue")
-            await _call_if_available(self.session, "abort_bash")
+            await _call_if_available(session, "clear_queue")
+            await _call_if_available(session, "abort_bash")
+
+    def _current_session(self) -> Any:
+        if self.runtime is not None:
+            getter = getattr(self.runtime, "get_current_session", None)
+            if callable(getter):
+                current = getter()
+                if current is not None:
+                    return current
+            current = getattr(self.runtime, "current_session", None)
+            if current is not None:
+                return current
+        return self.session
 
     def _record_problem(self, code: str, **details: object) -> None:
         if self.problem_logger is None:

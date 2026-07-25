@@ -14,7 +14,8 @@ from typing import Literal, Protocol
 from loushang.agent.types import AgentMessage
 from loushang.ai.model import ModelSelection
 from loushang.ai.types import AssistantMessage
-from loushang.harness.agent_transcript import (
+from loushang.harness.runtime.types import RunState
+from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     AgentTranscriptInspector,
@@ -24,7 +25,6 @@ from loushang.harness.agent_transcript import (
     calculate_context_tokens,
     estimate_context_tokens,
 )
-from loushang.harness.host.types import RunState
 
 
 class AgentStateInspectionPort(Protocol):

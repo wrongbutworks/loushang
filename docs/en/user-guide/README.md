@@ -45,8 +45,18 @@ Common actions:
 ```bash
 loushang --list-sessions
 loushang --resume
+loushang --continue
+loushang --resume <session-id-or-path>
 loushang --export
 ```
+
+Interactive `loushang --resume` and argument-free `/resume` open the full-screen
+searchable continuity picker. By default, Space opens a lazy preview, Tab cycles
+available domains when several providers are installed, and Ctrl+S changes the
+common sort. `--continue` resumes the newest session in the current project,
+while `--resume <session-id-or-path>` and `/resume <session-id-or-path>` restore
+a specific session directly. Non-interactive use requires one of those explicit
+forms.
 
 Inside the interactive surface, built-in slash commands include `/session`, `/resume`, `/fork`, `/clone`, `/tree`, `/tools`, `/extensions`, `/export`, `/compact`, `/reload`, and `/quit`.
 

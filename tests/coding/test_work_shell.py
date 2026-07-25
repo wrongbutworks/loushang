@@ -173,7 +173,7 @@ def test_session_work_runtime_logs_coding_operation_and_projected_events() -> (
 
 
 def test_session_work_runtime_projects_custom_messages_with_product_codec() -> None:
-    from loushang.harness.agent_transcript import ApplicationMessage
+    from loushang.harness.transcript import ApplicationMessage
     from loushang.work import InMemoryEventLogBackend
 
     async def scenario() -> None:

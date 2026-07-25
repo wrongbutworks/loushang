@@ -13,8 +13,9 @@ from loushang.harness.capabilities.prompt import (
     expand_prompt_template,
 )
 from loushang.harness.commands import split_slash_command
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources.activation import ResourceActivation
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.diagnostics import resource_diagnostic
 from loushang.harness.resources.frontmatter import strip_frontmatter
 from loushang.harness.resources.types import ResourceBundle
 
@@ -23,7 +24,7 @@ from loushang.harness.resources.types import ResourceBundle
 class PromptPreflightResult:
     text: str
     consumed: bool = False
-    diagnostics: tuple[ResourceDiagnostic, ...] = field(default_factory=tuple)
+    diagnostics: tuple[DiagnosticDraft, ...] = field(default_factory=tuple)
 
 
 def preflight_user_input(
@@ -83,7 +84,7 @@ def _preflight_resource_input(
             return PromptPreflightResult(
                 text=original_text,
                 diagnostics=(
-                    ResourceDiagnostic(
+                    resource_diagnostic(
                         code="unresolved_skill_reference",
                         message=f"Skill reference '/skill:{skill_name}' did not match any discovered skill.",
                         resource_id=skill_name,
@@ -108,7 +109,7 @@ def _preflight_resource_input(
         return PromptPreflightResult(
             text=original_text,
             diagnostics=(
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code="unresolved_prompt_reference",
                     message=f"Prompt reference '/{command_name}' did not match any discovered prompt template.",
                     resource_id=command_name,

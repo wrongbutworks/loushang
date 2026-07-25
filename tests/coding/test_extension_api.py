@@ -274,6 +274,7 @@ def test_extension_api_rejects_invalid_flag_default_for_type() -> None:
 
 
 def test_extension_api_v1_core_types_are_available() -> None:
+    from loushang.harness.diagnostics.types import DiagnosticDraft
     from loushang.harness.extensions.events import VALID_EXTENSION_EVENTS
     from loushang.harness.extensions.types import (
         BeforeAgentStartResult,
@@ -282,7 +283,6 @@ def test_extension_api_v1_core_types_are_available() -> None:
         ToolCallDecision,
         ToolResultDecision,
     )
-    from loushang.harness.resources.diagnostics import ResourceDiagnostic
     from loushang.harness.tools.workspace import ToolDefinition
 
     async def _execute_tool(
@@ -300,7 +300,7 @@ def test_extension_api_v1_core_types_are_available() -> None:
         parameters={},
         execute=_execute_tool,
     )
-    diagnostic = ResourceDiagnostic(
+    diagnostic = DiagnosticDraft(
         code="demo", message="demo diagnostic", source_path=Path("/tmp/demo")
     )
     loaded = LoadedExtension(

@@ -80,6 +80,7 @@ from loushang.tui.framework import (
     surface_is_bottom_exclusive,
     surface_is_inline_presentation,
     surface_is_overlay_presentation,
+    surface_is_page_presentation,
     surface_presentation,
 )
 from loushang.tui.fuzzy import FuzzyMatch, fuzzy_filter, fuzzy_match
@@ -125,6 +126,7 @@ from loushang.tui.runner import (
     TuiInputResult,
     TuiRunContext,
     TuiRunner,
+    TuiStartHandler,
 )
 from loushang.tui.runtime import TuiRuntime
 from loushang.tui.scheduler import (
@@ -569,6 +571,7 @@ __all__ = [
     "surface_is_bottom_exclusive",
     "surface_is_inline_presentation",
     "surface_is_overlay_presentation",
+    "surface_is_page_presentation",
     "surface_presentation",
     "TerminalFrame",
     "TerminalImageRender",
@@ -609,6 +612,7 @@ __all__ = [
     "TuiInputResult",
     "TuiRunContext",
     "TuiRunner",
+    "TuiStartHandler",
     "TuiRuntime",
     "Tui",
     "UserPromptRecord",

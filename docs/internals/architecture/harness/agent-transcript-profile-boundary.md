@@ -17,7 +17,7 @@ removes the old Coding implementation.
 catalog, checkpoint mechanics, and compaction planning. It must not import AI,
 Agent, Coding, or another Product package.
 
-`loushang.harness.agent_transcript` is an optional profile over that core. It
+`loushang.harness.transcript` is an optional profile over that core. It
 owns the common durable meanings required by Agent-backed Products:
 
 - Agent messages and their stable wire codec;
@@ -172,32 +172,33 @@ This is in-process idempotent transcript commit. It is not crash-safe
 exactly-once delivery. Ordinary user, assistant, and tool messages do not gain
 an exactly-once claim from this contract.
 
-## Native Migration And External Data
+## Conversation JSONL And External Data
 
-The new Native Conversation envelope starts at version 1. This wave supports
-one migration source only:
+The Conversation JSONL envelope starts at version 1. Before 1.0, earlier
+development-only formats do not create a compatibility promise. In particular,
+Session v3 is not part of normal discovery or Resume.
+
+The existing Session v3 importer is an explicit migration utility only:
 
 ```text
 current Loushang Session format (version 3)
-  -> current Native Conversation format
+  -> Conversation JSONL format
 ```
 
-It does not implement a v1/v2 migration chain. The migrator reads the current
-Loushang format directly, converts known entries, preserves unknown
-JSON-compatible entries as opaque records, validates the complete result, and
-atomically replaces the source only after successful durable staging. Failure
-leaves the source unchanged. Opening an already migrated file is idempotent.
+It does not participate in the Conversation JSONL reader. After 1.0, every
+released Conversation JSONL version remains readable by the single current
+decoder; payload evolution continues to use each record's `payloadVersion`.
 
-Earlier or unknown future Native versions are rejected explicitly and must not
+Unknown future Conversation JSONL versions are rejected explicitly and must not
 enter empty-session recovery. A partial tail may use the documented journal
 recovery policy, but unknown profile payloads are valid opaque records and may
 not be handled by `invalid_record="skip"`.
 
 Pi, Claude Code, Codex, and other ecosystem formats are External data. Their
-future importers will be read-only source adapters that emit the current Native
+future importers will be read-only source adapters that emit the Conversation JSONL
 schema through the canonical writer and record source provenance plus import
 diagnostics. External importers are deferred from this wave and do not belong
-in the Native loader.
+in the Conversation JSONL reader.
 
 ## Dependency Boundary
 

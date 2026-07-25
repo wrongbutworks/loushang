@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources.source import SourceInfo
 from loushang.harness.runtime.bindings import RuntimeBindingLease
 from loushang.harness.workspace.exec import ExecResult, ExecUpdateCallback
@@ -187,7 +187,7 @@ class UnboundProductRuntimeContext:
     def shutdown(self) -> None:
         return None
 
-    def record_diagnostic(self, diagnostic: ResourceDiagnostic) -> None:
+    def record_diagnostic(self, diagnostic: DiagnosticDraft) -> None:
         del diagnostic
 
     def notify(self, message: str, notify_type: str | None = None) -> None:
@@ -454,7 +454,7 @@ class BoundProductRuntimeContext:
     def shutdown(self) -> None:
         self._require_bindings().shutdown()
 
-    def record_diagnostic(self, diagnostic: ResourceDiagnostic) -> None:
+    def record_diagnostic(self, diagnostic: DiagnosticDraft) -> None:
         self._require_bindings().record_diagnostic(diagnostic)
 
     def notify(self, message: str, notify_type: str | None = None) -> None:

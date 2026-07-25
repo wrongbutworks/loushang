@@ -76,6 +76,64 @@ class MissingSessionCwdError(RuntimeError):
         self.issue = issue
 
 
+class PreparedSessionOperationStateError(RuntimeError):
+    """Raised when a staged session operation is consumed more than once."""
+
+
+class SessionLifecyclePreparationCancelledError(RuntimeError):
+    """Raised when a lifecycle hook rejects a requested staged candidate."""
+
+
+class PreparedSessionLifecycleOperation(Generic[SessionT, PayloadT]):
+    """Own one unpublished session candidate until commit or abort."""
+
+    def __init__(
+        self,
+        *,
+        runtime: SessionLifecycleRuntime[SessionT, PayloadT],
+        transition: SessionLifecycleTransition,
+        previous: SessionT | None,
+        candidate: SessionOperationCandidate[SessionT, PayloadT | None],
+    ) -> None:
+        self._runtime = runtime
+        self._transition = transition
+        self._previous = previous
+        self._candidate = candidate
+        self._state: Literal["prepared", "consuming", "consumed", "closed"] = "prepared"
+
+    @property
+    def consumed(self) -> bool:
+        return self._state == "consumed"
+
+    async def consume(self) -> SessionOperationResult[SessionT, PayloadT | None]:
+        if self._state != "prepared":
+            raise PreparedSessionOperationStateError(
+                f"prepared session operation is {self._state}"
+            )
+        self._state = "consuming"
+        try:
+            result = await self._runtime._consume_prepared(
+                transition=self._transition,
+                previous=self._previous,
+                candidate=self._candidate,
+            )
+        except BaseException:
+            self._state = "closed"
+            raise
+        self._state = "consumed"
+        return result
+
+    async def abort(self) -> None:
+        if self._state != "prepared":
+            return
+        self._state = "closed"
+        if self._candidate.rollback is not None:
+            await _maybe_await(self._candidate.rollback())
+
+    async def close(self) -> None:
+        await self.abort()
+
+
 @dataclass(frozen=True)
 class ForkProfile:
     """Product-configurable fork-position contract.
@@ -314,6 +372,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
             issue = self._missing_cwd_issue(session, fallback_cwd=fallback_cwd)
             if issue is None:
                 return session
+            await _maybe_await(self._dispose_session(session))
             if missing_cwd != "fallback" or fallback_cwd is None:
                 raise MissingSessionCwdError(issue)
             return await self.store.restore(
@@ -324,6 +383,78 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
             )
 
         return await self._run(transition, _restore)
+
+    async def prepare_restore(
+        self,
+        session_ref: str | Path,
+        *,
+        fallback_cwd: str | None = None,
+        missing_cwd: MissingCwdPolicy = "error",
+        metadata: Mapping[str, object] | None = None,
+    ) -> PreparedSessionLifecycleOperation[SessionT, PayloadT]:
+        """Stage and validate a restore candidate without publishing it."""
+
+        transition = SessionLifecycleTransition(
+            reason="resume",
+            target_session_ref=str(session_ref),
+            metadata=metadata or {},
+        )
+
+        async def _restore(current: SessionT | None) -> SessionT:
+            try:
+                session = await self.store.restore(current, transition, session_ref)
+            except MissingSessionCwdError as exc:
+                if missing_cwd != "fallback" or fallback_cwd is None:
+                    raise _with_fallback_cwd(exc, fallback_cwd) from exc
+                return await self.store.restore(
+                    current,
+                    transition,
+                    session_ref,
+                    cwd_override=fallback_cwd,
+                )
+            issue = self._missing_cwd_issue(session, fallback_cwd=fallback_cwd)
+            if issue is None:
+                return session
+            await _maybe_await(self._dispose_session(session))
+            if missing_cwd != "fallback" or fallback_cwd is None:
+                raise MissingSessionCwdError(issue)
+            return await self.store.restore(
+                current,
+                transition,
+                session_ref,
+                cwd_override=fallback_cwd,
+            )
+
+        async with self._host.transition():
+            previous = self._host.current
+            decision = await _maybe_await(
+                self.hooks.before_transition(previous, transition)
+                if self.hooks.before_transition is not None
+                else None
+            )
+            if decision is not None and decision.cancelled:
+                raise SessionLifecyclePreparationCancelledError(
+                    "session lifecycle preparation was cancelled"
+                )
+            session = await _maybe_await(_restore(previous))
+
+            async def _rollback() -> None:
+                await _maybe_await(self._dispose_session(session))
+
+            candidate = SessionOperationCandidate[
+                SessionT,
+                PayloadT | None,
+            ](
+                session=session,
+                payload=None,
+                rollback=_rollback,
+            )
+        return PreparedSessionLifecycleOperation(
+            runtime=self,
+            transition=transition,
+            previous=previous,
+            candidate=candidate,
+        )
 
     async def fork(
         self,
@@ -484,6 +615,42 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
                 rollback=_rollback,
             )
 
+        return await self._coordinate(
+            transition,
+            _prepare,
+        )
+
+    async def _consume_prepared(
+        self,
+        *,
+        transition: SessionLifecycleTransition,
+        previous: SessionT | None,
+        candidate: SessionOperationCandidate[SessionT, PayloadT | None],
+    ) -> SessionOperationResult[SessionT, PayloadT | None]:
+        async def _prepared(
+            current: SessionT | None,
+        ) -> SessionOperationCandidate[SessionT, PayloadT | None]:
+            if current is not previous:
+                if candidate.rollback is not None:
+                    await _maybe_await(candidate.rollback())
+                raise PreparedSessionOperationStateError(
+                    "active session changed after the candidate was prepared"
+                )
+            return candidate
+
+        return await self._coordinate(transition, _prepared)
+
+    async def _coordinate(
+        self,
+        transition: SessionLifecycleTransition,
+        prepare: Callable[
+            [SessionT | None],
+            Awaitable[
+                SessionOperationCandidate[SessionT, PayloadT | None]
+                | CancelledSessionOperation[PayloadT | None]
+            ],
+        ],
+    ) -> SessionOperationResult[SessionT, PayloadT | None]:
         async def _after_commit(
             result: SessionOperationResult[SessionT, PayloadT | None],
         ) -> None:
@@ -497,7 +664,7 @@ class SessionLifecycleRuntime(Generic[SessionT, PayloadT]):
         prepare_session = self.hooks.prepare_session
         activate_session = self.hooks.activate_session
         return await self._operations.run(
-            _prepare,
+            prepare,
             prepare_session=(
                 None
                 if prepare_session is None

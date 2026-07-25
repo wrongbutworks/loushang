@@ -5,7 +5,7 @@
 Implemented and first adopted by Coding. `loushang.harness.runtime.profile`
 provides the product-neutral profile contract, resolver, snapshot, registry,
 and binding lifecycle. The optional
-`loushang.harness.agent_transcript.runtime_profile` composes those primitives
+`loushang.harness.transcript.runtime_profile` composes those primitives
 with existing transcript/store/compaction owners. `loushang.coding.product_plan`
 now only declares Coding's current selections.
 
@@ -50,7 +50,7 @@ identifiers:
 | Slot | Shape | Refresh | Intended contract owner |
 | --- | --- | --- | --- |
 | `conversation.store` | single | sealed | `harness.storage` |
-| `agent.transcript_profile` | single | sealed | `harness.agent_transcript` |
+| `agent.transcript_profile` | single | sealed | `harness.transcript` |
 | `context.compaction` | single | turn | `harness.context` |
 
 The vocabulary does not import or prescribe an implementation. A Product can
@@ -128,7 +128,7 @@ add a process-global cache or automatic cross-tenant reuse.
 
 ## Coding Adoption
 
-`loushang.harness.agent_transcript.AgentTranscriptProfileRuntime` is the
+`loushang.harness.transcript.AgentTranscriptProfileRuntime` is the
 reusable optional Agent-profile adapter. A Product supplies stable identities
 and defaults through `AgentTranscriptRuntimeSpec`; the shared runtime declares
 the `ProductRuntimePlan` and registers exact factories for:
@@ -169,7 +169,7 @@ rejection, and factory rollback. Existing runtime binding tests retain the
 generation-lease contract. Neutral Harness core has no imports from Coding,
 Agent, AI, extensions, or concrete store implementations.
 
-`tests/harness/agent_transcript/test_runtime_profile.py` binds a fake Research
+`tests/harness/transcript/test_runtime_profile.py` binds a fake Research
 Product through the optional Agent/AI-aware profile, validates its snapshot,
 and proves that cross-Product resume is rejected. This optional integration
 package may depend on stable Agent/AI value and codec contracts; it does not

@@ -48,8 +48,8 @@ planning, work event persistence, or AI provider behavior.
   shared parser owner, legacy compatibility paths, and product-owned resource
   semantics that remain outside harness.
 - [Resource Provenance Boundary](resource-provenance-boundary.md) defines
-  shared source metadata and resource diagnostic ownership while preserving
-  coding path representations and public compatibility imports.
+  shared source metadata and the resource-to-diagnostic-draft factory while
+  preserving coding path representations.
 - [Platform Resource Layout Boundary](platform-resource-layout-boundary.md)
   records the implemented Harness-owned platform roots, resource/package
   runtime, standard resource scopes, `AGENTS.md` conventions, and built-in
@@ -99,19 +99,20 @@ planning, work event persistence, or AI provider behavior.
   branch delta, command execution records, and turn-aware compaction planning
   while preserving Product prompts, domain payloads, and storage policy.
 - [Conversation Persistence Refactor](conversation-persistence-refactor.md)
-  proposes the follow-on consolidation of journal, conversation storage,
-  Agent transcript composition, backend-neutral catalogs/indexes, and
-  project-aware resume without changing the Native JSONL format.
+  records the implemented journal/conversation/Agent persistence consolidation,
+  provider-bound catalogs, and revision-aware rebuildable indexes without
+  changing the Conversation JSONL format; project-aware picker work remains a
+  follow-on.
 - [Agent Transcript Profile Boundary](agent-transcript-profile-boundary.md)
   defines the optional common Agent/AI transcript schema and codec profile,
   opaque preservation, Native v3 migration, idempotent application-message
   commit, Product extension points, and its narrow AI/Agent import allowlist.
 - [Agent Transcript File Store Boundary](agent-transcript-file-store-boundary.md)
-  defines the current Native JSONL provider, file layout and lock ownership,
+  defines the Conversation JSONL provider, file layout and lock ownership,
   Product store selection, and the separation between native loading and
   external importers.
 - [Agent Transcript Catalog Boundary](agent-transcript-catalog-boundary.md)
-  defines the common Native transcript discovery, summary/query, projection
+  defines the common Conversation JSONL transcript discovery, summary/query, projection
   index, and branch-label read model while Products retain roots and
   presentation policy.
 - [Agent Transcript Lifecycle Boundary](agent-transcript-lifecycle-boundary.md)
@@ -191,7 +192,10 @@ planning, work event persistence, or AI provider behavior.
   projection ownership.
 - [Runtime Event Projection And Channel Boundary](runtime-event-projection-channel-boundary.md)
   defines strict transport-ready RuntimeEvent views, the narrow Channel value
-  dependency, Coding's Pi projection ownership, and the separate Work path.
+  dependency, Session projection ownership, and the separate Work path.
+- [Runtime And Event Dependency Direction](runtime-event-dependency-direction.md)
+  defines the acyclic Events/Runtime/AgentTranscript/Session/Host ownership
+  order and the executable strongly-connected-component guard.
 - [Session Lifecycle Runtime Boundary](session-lifecycle-runtime-boundary.md)
   defines active Product-session replacement, Product-selected store/hooks,
   staged import, configurable fork profiles, and Harness's conservative
@@ -211,8 +215,8 @@ planning, work event persistence, or AI provider behavior.
   strict JSON ownership, Agent raw-result projection targets, failure timing,
   Harness journal/presentation adoption, and Product wire-schema ownership.
 - [Diagnostics Core Boundary](diagnostics-core-boundary.md) defines shared
-  diagnostic records, queries, summaries, startup checks, and in-memory engine
-  ownership while keeping checks and presentation in product adapters.
+  diagnostic drafts, records, queries, summaries, startup checks, and in-memory
+  engine ownership while keeping checks and presentation in product adapters.
 - [Host Runtime Boundary](host-runtime-boundary.md) defines product-neutral host
   lifecycle, input-queue ledger, and ordered event ownership while preserving
   Agent loop and product session responsibilities.
@@ -225,6 +229,11 @@ planning, work event persistence, or AI provider behavior.
   assembly/preflight and template expansion, and tool activation coordination
   while preserving only Product-exclusive content, policy, side effects, and
   presentation.
+- [Capability, Domain, Presentation, And Continuity Architecture](capability-domain-presentation-continuity-architecture.md)
+  records the implemented V1 separation of runtime capabilities, Product
+  domains, OEM experiences, and resumable continuity units, including
+  federated summary/index and common-versus-Product presentation boundaries
+  with `/resume` as the first reference workflow.
 - [OEM And Extension Architecture](oem-extension-architecture.md) describes how
   OEM customisation, extension contributions, and harness upgrades interact,
   including override mechanisms, extension categories, surface-type gaps, and
@@ -274,7 +283,7 @@ Accepted decisions that govern this directory:
 Harness may depend on stable `loushang.agent` primitives and the existing agent
 loop. `loushang.agent` must not depend on harness. The neutral
 `loushang.harness.conversation` core imports neither Agent nor AI. The optional
-`loushang.harness.agent_transcript` and the optional
+`loushang.harness.transcript` and the optional
 `loushang.harness.session` profile have narrow, separately tested Agent/AI data
 dependencies. The exact allowlists are recorded in the
 [Agent Transcript Profile Boundary](agent-transcript-profile-boundary.md) and

@@ -14,7 +14,6 @@ from typing import Protocol, cast
 from loushang.agent import AbortSignal
 from loushang.agent.types import AgentEvent, AgentMessage
 from loushang.ai.types import AssistantMessage, ImagePart
-from loushang.harness.agent_transcript import ApplicationMessage, CommitResult
 from loushang.harness.events import (
     OrderedEventBus,
     QueueChanged,
@@ -26,7 +25,7 @@ from loushang.harness.events import (
     TranscriptRecordCommitted,
     session_runtime_event_kind,
 )
-from loushang.harness.host.runtime import HostRuntime
+from loushang.harness.runtime.execution import HostRuntime
 from loushang.harness.session.agent_event_router import (
     AgentEventRouter,
     CompactionRouterPort,
@@ -37,6 +36,7 @@ from loushang.harness.session.agent_event_router import (
 from loushang.harness.session.application_input import ApplicationInputRuntime
 from loushang.harness.session.prompt_controller import AgentPort, PromptController
 from loushang.harness.session.queue_controller import AgentQueuePort, QueueController
+from loushang.harness.transcript import ApplicationMessage, CommitResult
 
 AppendMessage = Callable[[object], Awaitable[str]]
 CommitApplicationMessage = Callable[[ApplicationMessage], Awaitable[CommitResult]]

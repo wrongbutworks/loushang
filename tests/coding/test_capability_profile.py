@@ -79,6 +79,7 @@ def test_coding_capability_snapshot_is_separate_from_other_header_metadata() -> 
         "skill.activation",
         "tool.packs",
         "command.packs",
+        "continuity.provider_packs",
     }
     assert all(
         slot.allowed_sources == frozenset({"product"})

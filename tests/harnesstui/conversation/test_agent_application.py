@@ -15,10 +15,12 @@ from loushang.harnesstui.conversation.agent_application import (
     build_agent_screen_surface_workflow_ports,
     current_agent_runtime_session,
     handle_agent_screen_approval,
+    refresh_agent_screen_session,
 )
 from loushang.harnesstui.conversation.host import (
     ConversationScreenRunProfile,
 )
+from loushang.harnesstui.conversation.run_context import RebindableEventSource
 from loushang.harnesstui.conversation.startup import ConversationStartupView
 from loushang.harnesstui.surface.controller import ApprovalSurfaceDecision
 
@@ -238,6 +240,9 @@ def test_agent_screen_approval_binding_uses_structural_product_ports() -> None:
             subscriptions.append(callback)
             return lambda: subscriptions.append("unsubscribed")
 
+        def set_rebind_session(self, callback: object | None) -> None:
+            self.rebind = callback
+
     session = Session()
     surface = Surface()
     runtime = Runtime(session)
@@ -246,7 +251,15 @@ def test_agent_screen_approval_binding_uses_structural_product_ports() -> None:
         surface,
         default_action="Approve operation",
     )
-    unbind_transition = bind_agent_screen_session_transition(runtime, surface)
+
+    def on_rebind(_session: object) -> None:
+        return None
+
+    unbind_transition = bind_agent_screen_session_transition(
+        runtime,
+        surface,
+        on_rebind=on_rebind,
+    )
 
     assert callable(session.presenter)
     session.presenter({"action_id": "approval-1"})  # type: ignore[operator]
@@ -260,13 +273,68 @@ def test_agent_screen_approval_binding_uses_structural_product_ports() -> None:
     assert asyncio.run(handle_agent_screen_approval(session, {"approved": True}))
     assert current_agent_runtime_session(runtime, object()) is session
     assert callable(subscriptions[0])
+    assert runtime.rebind is on_rebind
     subscriptions[0]()  # type: ignore[operator]
     assert cleared == ["cleared"]
 
     unbind_transition()
     unbind_presenter()
     assert subscriptions[-1] == "unsubscribed"
+    assert runtime.rebind is None
     assert session.presenter is None
+
+
+def test_refresh_agent_screen_session_replaces_history_and_event_source(
+    tmp_path,
+) -> None:
+    from loushang.coding.ui.screen_app import ScreenCodingTuiApp
+
+    class Manager:
+        def get_branch(self) -> tuple[object, ...]:
+            return ()
+
+        def get_cwd(self) -> str:
+            return str(tmp_path)
+
+    class Session:
+        session_id = "resumed-session"
+        session_name = "Resumed"
+        session_manager = Manager()
+
+        def get_model_selection(self) -> ModelSelection:
+            return ModelSelection(provider="openai", model_id="gpt-5.4")
+
+    class Runtime:
+        def get_cwd(self) -> str:
+            return str(tmp_path)
+
+    old_source = SimpleNamespace(subscribe=lambda _listener: lambda: None)
+    event_source = RebindableEventSource(old_source)
+    app = ScreenCodingTuiApp(
+        model_label="old/model",
+        cwd="/old",
+        branch=None,
+        session_label="old",
+    )
+    render_requests: list[str] = []
+    app.render_requester = render_requests.append
+    session = Session()
+
+    asyncio.run(
+        refresh_agent_screen_session(
+            runtime=Runtime(),
+            app=app,
+            session=session,
+            event_source=event_source,
+        )
+    )
+
+    assert event_source.source is session
+    assert app.state.cwd == str(tmp_path)
+    assert app.state.model_label == "openai/gpt-5.4"
+    assert app.state.session_label == "Resumed"
+    assert app.state.records == []
+    assert render_requests == ["product"]
 
 
 def test_agent_plain_application_binding_prepares_projection_and_header() -> None:

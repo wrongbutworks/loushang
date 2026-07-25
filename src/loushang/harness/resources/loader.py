@@ -9,8 +9,9 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.resources.builtin import BuiltInResourceRegistry
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.diagnostics import resource_diagnostic
 from loushang.harness.resources.frontmatter import (
     FrontmatterParseError,
     parse_frontmatter,
@@ -103,7 +104,7 @@ class _SourceDiscovery:
     skills: list[SkillDescriptor] = field(default_factory=list)
     extensions: list[ExtensionDescriptor] = field(default_factory=list)
     themes: list[ThemeDescriptor] = field(default_factory=list)
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
 
 
 class ResourceLoader:
@@ -330,7 +331,7 @@ class ResourceLoader:
             )
         return self._snapshot
 
-    def get_diagnostics(self) -> list[ResourceDiagnostic]:
+    def get_diagnostics(self) -> list[DiagnosticDraft]:
         return list(self.get_resource_snapshot().diagnostics)
 
     def get_resource_diagnostics(
@@ -339,19 +340,19 @@ class ResourceLoader:
         source_kind: ResourceSourceKind | None = None,
         resource_type: str | None = None,
         code: str | None = None,
-    ) -> list[ResourceDiagnostic]:
+    ) -> list[DiagnosticDraft]:
         diagnostics = list(self.get_resource_snapshot().diagnostics)
         if source_kind is not None:
             diagnostics = [
                 diagnostic
                 for diagnostic in diagnostics
-                if diagnostic.source_kind == source_kind
+                if diagnostic.details.get("source_kind") == source_kind
             ]
         if resource_type is not None:
             diagnostics = [
                 diagnostic
                 for diagnostic in diagnostics
-                if diagnostic.resource_type == resource_type
+                if diagnostic.details.get("resource_type") == resource_type
             ]
         if code is not None:
             diagnostics = [
@@ -672,14 +673,14 @@ def _discover_user_global_resources(
     skills: list[SkillDescriptor] = []
     extensions: list[ExtensionDescriptor] = []
     themes: list[ThemeDescriptor] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     explicit = explicit_roots or set()
 
     for index, root in enumerate(user_resource_roots):
         if not root.exists():
             if root in explicit:
                 diagnostics.append(
-                    ResourceDiagnostic(
+                    resource_diagnostic(
                         code="missing_user_resource_root",
                         message=f"User resource root does not exist: {root}",
                         source_path=root,
@@ -692,7 +693,7 @@ def _discover_user_global_resources(
         if not root.is_dir():
             if root in explicit:
                 diagnostics.append(
-                    ResourceDiagnostic(
+                    resource_diagnostic(
                         code="invalid_user_resource_root",
                         message=f"User resource root must be a directory: {root}",
                         source_path=root,
@@ -780,7 +781,7 @@ def _discover_external_package_resources(
     skills: list[SkillDescriptor] = []
     extensions: list[ExtensionDescriptor] = []
     themes: list[ThemeDescriptor] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
 
     for index, root in enumerate(package_roots):
         if not root.exists():
@@ -903,7 +904,7 @@ def _discover_temporary_resources(
     skills: list[SkillDescriptor] = []
     extensions: list[ExtensionDescriptor] = []
     themes: list[ThemeDescriptor] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
 
     for index, raw_path in enumerate(prompt_paths):
         loaded, loaded_diagnostics = _discover_temporary_prompts_from_path(
@@ -942,7 +943,7 @@ def _discover_temporary_resources(
 def _discover_temporary_prompts_from_path(
     path: Path,
     source_root_order: int,
-) -> tuple[list[PromptFragmentDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[PromptFragmentDescriptor], list[DiagnosticDraft]]:
     if not path.exists():
         return [], [_temporary_missing_path_diagnostic(path, resource_type="prompt")]
     if path.is_file():
@@ -986,7 +987,7 @@ def _discover_temporary_prompts_from_path(
 def _discover_temporary_skills_from_path(
     path: Path,
     source_root_order: int,
-) -> tuple[list[SkillDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[SkillDescriptor], list[DiagnosticDraft]]:
     if not path.exists():
         return [], [_temporary_missing_path_diagnostic(path, resource_type="skill")]
     if path.is_file():
@@ -1031,7 +1032,7 @@ def _discover_temporary_skills_from_path(
 def _discover_temporary_extensions_from_path(
     path: Path,
     source_root_order: int,
-) -> tuple[list[ExtensionDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[ExtensionDescriptor], list[DiagnosticDraft]]:
     if not path.exists():
         return [], [_temporary_missing_path_diagnostic(path, resource_type="extension")]
     if path.is_file():
@@ -1083,7 +1084,7 @@ def _discover_temporary_extensions_from_path(
 def _discover_temporary_themes_from_path(
     path: Path,
     source_root_order: int,
-) -> tuple[list[ThemeDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[ThemeDescriptor], list[DiagnosticDraft]]:
     if not path.exists():
         return [], [_temporary_missing_path_diagnostic(path, resource_type="theme")]
     if path.is_file():
@@ -1121,8 +1122,8 @@ def _discover_temporary_themes_from_path(
 
 def _temporary_missing_path_diagnostic(
     path: Path, *, resource_type: str
-) -> ResourceDiagnostic:
-    return ResourceDiagnostic(
+) -> DiagnosticDraft:
+    return resource_diagnostic(
         code=f"missing_{resource_type}_path",
         message=f"{resource_type.title()} path does not exist: {path}",
         source_path=path,
@@ -1134,8 +1135,8 @@ def _temporary_missing_path_diagnostic(
 
 def _temporary_unsupported_path_diagnostic(
     path: Path, *, resource_type: str, message: str
-) -> ResourceDiagnostic:
-    return ResourceDiagnostic(
+) -> DiagnosticDraft:
+    return resource_diagnostic(
         code=f"unsupported_{resource_type}_path",
         message=message,
         source_path=path,
@@ -1152,7 +1153,7 @@ def _discover_built_in_resources(
     skills: list[SkillDescriptor] = []
     extensions: list[ExtensionDescriptor] = []
     themes: list[ThemeDescriptor] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     for index, resource_package in enumerate(resource_packages):
         package_prompts, prompt_diagnostics = _discover_built_in_prompts(
             resource_package,
@@ -1199,10 +1200,10 @@ def _discover_context_descriptors(
 ) -> tuple[
     list[PromptFragmentDescriptor],
     PromptFragmentDescriptor | None,
-    list[ResourceDiagnostic],
+    list[DiagnosticDraft],
 ]:
     descriptors: list[PromptFragmentDescriptor] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
 
     for index, root in enumerate(user_resource_roots):
         if not root.is_dir():
@@ -1248,7 +1249,7 @@ def _discover_context_descriptor_from_dir(
     source_kind: ResourceSourceKind,
     source_root_order: int,
     context_file_names: tuple[str, ...],
-) -> tuple[PromptFragmentDescriptor | None, list[ResourceDiagnostic]]:
+) -> tuple[PromptFragmentDescriptor | None, list[DiagnosticDraft]]:
     for filename in context_file_names:
         candidate = root / filename
         if not candidate.is_file():
@@ -1310,7 +1311,7 @@ def _nearest_context_descriptor(
 
 def _discover_prompts(
     root: Path,
-) -> tuple[list[PromptFragmentDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[PromptFragmentDescriptor], list[DiagnosticDraft]]:
     return _discover_prompts_from_dir(
         root / "prompts",
         source_kind="project_local",
@@ -1321,7 +1322,7 @@ def _discover_prompts(
 
 def _discover_skills(
     root: Path,
-) -> tuple[list[SkillDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[SkillDescriptor], list[DiagnosticDraft]]:
     return _discover_skills_from_dir(
         root / "skills",
         source_kind="project_local",
@@ -1332,7 +1333,7 @@ def _discover_skills(
 
 def _discover_extensions(
     root: Path,
-) -> tuple[list[ExtensionDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[ExtensionDescriptor], list[DiagnosticDraft]]:
     return _discover_extensions_from_dir(
         root / "extensions",
         source_kind="project_local",
@@ -1343,7 +1344,7 @@ def _discover_extensions(
 
 def _discover_themes(
     root: Path,
-) -> tuple[list[ThemeDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[ThemeDescriptor], list[DiagnosticDraft]]:
     return _discover_themes_from_dir(
         root / "themes",
         source_kind="project_local",
@@ -1359,12 +1360,12 @@ def _discover_prompts_from_dir(
     source_scope: str,
     source_label: str,
     source_root_order: int = 0,
-) -> tuple[list[PromptFragmentDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[PromptFragmentDescriptor], list[DiagnosticDraft]]:
     if not prompts_dir.is_dir():
         return [], []
 
     descriptors: list[PromptFragmentDescriptor] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     for entry in sorted(prompts_dir.iterdir(), key=lambda path: path.name):
         if entry.is_file() and entry.suffix == ".md":
             text, read_diagnostics = _read_text_file(
@@ -1391,7 +1392,7 @@ def _discover_prompts_from_dir(
                 descriptors.append(descriptor)
             continue
         diagnostics.append(
-            ResourceDiagnostic(
+            resource_diagnostic(
                 code="unsupported_prompt_entry",
                 message="Prompt entries must be .md files.",
                 source_path=entry,
@@ -1413,7 +1414,7 @@ def _prompt_descriptor_from_text(
     source: str,
     source_root: Path,
     source_root_order: int = 0,
-) -> tuple[PromptFragmentDescriptor | None, list[ResourceDiagnostic]]:
+) -> tuple[PromptFragmentDescriptor | None, list[DiagnosticDraft]]:
     try:
         parsed = parse_frontmatter(text)
     except FrontmatterParseError as exc:
@@ -1458,7 +1459,7 @@ def _discover_skills_from_dir(
     source_scope: str,
     source_label: str,
     source_root_order: int = 0,
-) -> tuple[list[SkillDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[SkillDescriptor], list[DiagnosticDraft]]:
     if not skills_dir.is_dir():
         return [], []
 
@@ -1482,9 +1483,9 @@ def _discover_skills_recursive(
     source_scope: str,
     source_label: str,
     source_root_order: int = 0,
-) -> tuple[list[SkillDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[SkillDescriptor], list[DiagnosticDraft]]:
     descriptors: list[SkillDescriptor] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     active_ignore_patterns = (
         *ignore_patterns,
         *_read_skill_ignore_patterns(current_dir, root_dir),
@@ -1509,7 +1510,7 @@ def _discover_skills_recursive(
         if entry.is_file():
             if current_dir == root_dir and entry.name not in _IGNORE_FILE_NAMES:
                 diagnostics.append(
-                    ResourceDiagnostic(
+                    resource_diagnostic(
                         code="unsupported_skill_entry",
                         message="Skill entries must be directories.",
                         source_path=entry,
@@ -1547,7 +1548,7 @@ def _skill_descriptor_from_file(
     source_scope: str,
     source_label: str,
     source_root_order: int,
-) -> tuple[SkillDescriptor | None, list[ResourceDiagnostic]]:
+) -> tuple[SkillDescriptor | None, list[DiagnosticDraft]]:
     content, diagnostics = _read_text_file(
         skill_file,
         diagnostic_code="unreadable_skill_entry",
@@ -1670,12 +1671,12 @@ def _discover_extensions_from_dir(
     source_scope: str,
     source_label: str,
     source_root_order: int = 0,
-) -> tuple[list[ExtensionDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[ExtensionDescriptor], list[DiagnosticDraft]]:
     if not extensions_dir.is_dir():
         return [], []
 
     descriptors: list[ExtensionDescriptor] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     for entry in sorted(
         extensions_dir.iterdir(),
         key=lambda path: (0 if path.is_dir() else 1, path.name),
@@ -1699,7 +1700,7 @@ def _discover_extensions_from_dir(
             entry_path = _find_extension_entry(entry)
             if entry_path is None:
                 diagnostics.append(
-                    ResourceDiagnostic(
+                    resource_diagnostic(
                         code="missing_extension_entry",
                         message="Extension directories must contain extension.py or __init__.py.",
                         source_path=entry,
@@ -1723,7 +1724,7 @@ def _discover_extensions_from_dir(
             )
             continue
         diagnostics.append(
-            ResourceDiagnostic(
+            resource_diagnostic(
                 code="unsupported_extension_entry",
                 message="Extension entries must be .py files or directories.",
                 source_path=entry,
@@ -1741,16 +1742,16 @@ def _discover_themes_from_dir(
     source_scope: str,
     source_label: str,
     source_root_order: int = 0,
-) -> tuple[list[ThemeDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[ThemeDescriptor], list[DiagnosticDraft]]:
     if not themes_dir.is_dir():
         return [], []
 
     descriptors: list[ThemeDescriptor] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     for entry in sorted(themes_dir.iterdir(), key=lambda path: path.name):
         if entry.is_file() and not entry.name.endswith(".json"):
             diagnostics.append(
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code="unsupported_theme_entry",
                     message="Theme file entries must be .json files.",
                     source_path=entry,
@@ -1781,11 +1782,11 @@ def _discover_themes_from_dir(
 
 def _theme_json_diagnostic(
     path: Path, *, source_kind: ResourceSourceKind
-) -> ResourceDiagnostic | None:
+) -> DiagnosticDraft | None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        return ResourceDiagnostic(
+        return resource_diagnostic(
             code="invalid_theme_json",
             message=f"Theme JSON is invalid: {exc.msg}",
             source_path=path,
@@ -1793,7 +1794,7 @@ def _theme_json_diagnostic(
             source_kind=source_kind,
         )
     except Exception as exc:
-        return ResourceDiagnostic(
+        return resource_diagnostic(
             code="unreadable_theme_entry",
             message=f"Failed to read theme entry: {exc}",
             source_path=path,
@@ -1801,7 +1802,7 @@ def _theme_json_diagnostic(
             source_kind=source_kind,
         )
     if not isinstance(payload, dict):
-        return ResourceDiagnostic(
+        return resource_diagnostic(
             code="invalid_theme_schema",
             message="Theme JSON must be an object.",
             source_path=path,
@@ -1815,13 +1816,13 @@ def _discover_built_in_prompts(
     resource_package: str,
     *,
     source_root_order: int,
-) -> tuple[list[PromptFragmentDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[PromptFragmentDescriptor], list[DiagnosticDraft]]:
     prompts_root = _built_in_category_root(resource_package, "prompts")
     if prompts_root is None:
         return [], []
 
     descriptors: list[PromptFragmentDescriptor] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     for entry in _iter_built_in_entries(prompts_root):
         if entry.is_file() and entry.name.endswith(".md"):
             text, read_diagnostics = _read_text_resource(
@@ -1852,7 +1853,7 @@ def _discover_built_in_prompts(
                 descriptors.append(descriptor)
             continue
         diagnostics.append(
-            ResourceDiagnostic(
+            resource_diagnostic(
                 code="unsupported_prompt_entry",
                 message="Built-in prompt entries must be .md files.",
                 source_path=_package_resource_path(
@@ -1869,17 +1870,17 @@ def _discover_built_in_skills(
     resource_package: str,
     *,
     source_root_order: int,
-) -> tuple[list[SkillDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[SkillDescriptor], list[DiagnosticDraft]]:
     skills_root = _built_in_category_root(resource_package, "skills")
     if skills_root is None:
         return [], []
 
     descriptors: list[SkillDescriptor] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     for entry in _iter_built_in_entries(skills_root):
         if not entry.is_dir():
             diagnostics.append(
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code="unsupported_skill_entry",
                     message="Built-in skill entries must be directories.",
                     source_path=_package_resource_path(
@@ -1894,7 +1895,7 @@ def _discover_built_in_skills(
         skill_file = entry / "SKILL.md"
         if not skill_file.is_file():
             diagnostics.append(
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code="missing_skill_entry",
                     message="Built-in skill directories must contain SKILL.md.",
                     source_path=_package_resource_path(
@@ -1975,13 +1976,13 @@ def _discover_built_in_extensions(
     resource_package: str,
     *,
     source_root_order: int,
-) -> tuple[list[ExtensionDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[ExtensionDescriptor], list[DiagnosticDraft]]:
     extensions_root = _built_in_category_root(resource_package, "extensions")
     if extensions_root is None:
         return [], []
 
     descriptors: list[ExtensionDescriptor] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     for entry in _iter_built_in_entries(extensions_root):
         if entry.is_file() and entry.name.endswith(".py"):
             entry_path = _package_resource_path(
@@ -2007,7 +2008,7 @@ def _discover_built_in_extensions(
             entry_name = _find_extension_entry_name(entry)
             if entry_name is None:
                 diagnostics.append(
-                    ResourceDiagnostic(
+                    resource_diagnostic(
                         code="missing_extension_entry",
                         message="Built-in extension directories must contain extension.py or __init__.py.",
                         source_path=_package_resource_path(
@@ -2040,7 +2041,7 @@ def _discover_built_in_extensions(
             )
             continue
         diagnostics.append(
-            ResourceDiagnostic(
+            resource_diagnostic(
                 code="unsupported_extension_entry",
                 message="Built-in extension entries must be .py files or directories.",
                 source_path=_package_resource_path(
@@ -2057,7 +2058,7 @@ def _discover_built_in_themes(
     resource_package: str,
     *,
     source_root_order: int,
-) -> tuple[list[ThemeDescriptor], list[ResourceDiagnostic]]:
+) -> tuple[list[ThemeDescriptor], list[DiagnosticDraft]]:
     themes_root = _built_in_category_root(resource_package, "themes")
     if themes_root is None:
         return [], []
@@ -2121,14 +2122,14 @@ def _read_text_file(
     *,
     diagnostic_code: str,
     message_prefix: str,
-) -> tuple[str | None, list[ResourceDiagnostic]]:
+) -> tuple[str | None, list[DiagnosticDraft]]:
     try:
         return path.read_text(encoding="utf-8").strip(), []
     except OSError as exc:
         return (
             None,
             [
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code=diagnostic_code,
                     message=f"{message_prefix}: {exc}",
                     source_path=path,
@@ -2143,8 +2144,8 @@ def _invalid_frontmatter_diagnostic(
     source_path: Path,
     resource_type: str,
     source_kind: ResourceSourceKind,
-) -> ResourceDiagnostic:
-    return ResourceDiagnostic(
+) -> DiagnosticDraft:
+    return resource_diagnostic(
         code=f"invalid_{resource_type}_frontmatter",
         message=str(error),
         source_path=source_path,
@@ -2160,10 +2161,10 @@ def _skill_frontmatter_diagnostics(
     parent_name: str,
     source_path: Path,
     source_kind: ResourceSourceKind,
-) -> list[ResourceDiagnostic]:
+) -> list[DiagnosticDraft]:
     if not frontmatter:
         return []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     description = _frontmatter_string(frontmatter.get("description"))
     if description is None:
         diagnostics.append(
@@ -2225,8 +2226,8 @@ def _skill_validation_diagnostic(
     source_path: Path,
     source_kind: ResourceSourceKind,
     field: str,
-) -> ResourceDiagnostic:
-    return ResourceDiagnostic(
+) -> DiagnosticDraft:
+    return resource_diagnostic(
         code=code,
         message=message,
         source_path=source_path,
@@ -2256,7 +2257,7 @@ def _read_text_resource(
     relative_path: str,
     diagnostic_code: str,
     message_prefix: str,
-) -> tuple[str | None, list[ResourceDiagnostic]]:
+) -> tuple[str | None, list[DiagnosticDraft]]:
     logical_path = _package_resource_path(resource_package, relative_path)
     try:
         return resource.read_text(encoding="utf-8").strip(), []
@@ -2264,7 +2265,7 @@ def _read_text_resource(
         return (
             None,
             [
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code=diagnostic_code,
                     message=f"{message_prefix}: {exc}",
                     source_path=logical_path,
@@ -2376,8 +2377,8 @@ def _descriptor_match_values(descriptor: DescriptorT, *, root: Path) -> tuple[st
     return tuple(value for value in values if value)
 
 
-def _package_root_diagnostic(code: str, message: str, root: Path) -> ResourceDiagnostic:
-    return ResourceDiagnostic(
+def _package_root_diagnostic(code: str, message: str, root: Path) -> DiagnosticDraft:
+    return resource_diagnostic(
         code=code,
         message=message,
         source_path=root,
@@ -2396,15 +2397,16 @@ def _count_package_descriptors(descriptors: tuple[DescriptorT, ...], root: Path)
 
 
 def _count_package_diagnostics(
-    diagnostics: tuple[ResourceDiagnostic, ...], root: Path
+    diagnostics: tuple[DiagnosticDraft, ...], root: Path
 ) -> int:
     return sum(
         1 for diagnostic in diagnostics if _diagnostic_belongs_to_root(diagnostic, root)
     )
 
 
-def _diagnostic_belongs_to_root(diagnostic: ResourceDiagnostic, root: Path) -> bool:
-    package_root = diagnostic.metadata.get("package_root")
+def _diagnostic_belongs_to_root(diagnostic: DiagnosticDraft, root: Path) -> bool:
+    metadata = diagnostic.details.get("metadata")
+    package_root = metadata.get("package_root") if isinstance(metadata, dict) else None
     if package_root == str(root):
         return True
     if diagnostic.source_path is None:
@@ -2487,13 +2489,13 @@ def _resolve_candidates(
     candidates: list[DescriptorT],
     *,
     resource_type: str,
-) -> tuple[list[DescriptorT], list[ResourceDiagnostic], list[ResourceMergeDecision]]:
+) -> tuple[list[DescriptorT], list[DiagnosticDraft], list[ResourceMergeDecision]]:
     grouped: dict[str, list[DescriptorT]] = {}
     for candidate in candidates:
         grouped.setdefault(candidate.id or candidate.name, []).append(candidate)
 
     active: list[DescriptorT] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     decisions: list[ResourceMergeDecision] = []
     for logical_id, group_members in grouped.items():
         group = sorted(group_members, key=_candidate_sort_key)
@@ -2510,7 +2512,7 @@ def _resolve_candidates(
             if candidate.enabled:
                 continue
             diagnostics.append(
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code="resource_disabled",
                     message=f"{resource_type} resource '{logical_id}' is disabled.",
                     source_path=candidate.source_path,
@@ -2531,7 +2533,7 @@ def _resolve_candidates(
                     f"candidate '{winner.id}' over lower-priority or later-tiebreak candidates."
                 )
             diagnostics.append(
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code="resource_collision",
                     message=message,
                     source_path=winner.source_path
@@ -2583,13 +2585,13 @@ def _resolve_strict_named_candidates(
     candidates: list[DescriptorT],
     *,
     resource_type: str,
-) -> tuple[list[DescriptorT], list[ResourceDiagnostic], list[ResourceMergeDecision]]:
+) -> tuple[list[DescriptorT], list[DiagnosticDraft], list[ResourceMergeDecision]]:
     grouped: dict[str, list[DescriptorT]] = {}
     for candidate in candidates:
         grouped.setdefault(candidate.id or candidate.name, []).append(candidate)
 
     active: list[DescriptorT] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     decisions: list[ResourceMergeDecision] = []
     for logical_id, group_members in grouped.items():
         group = sorted(group_members, key=_candidate_sort_key)
@@ -2599,7 +2601,7 @@ def _resolve_strict_named_candidates(
             if candidate.enabled:
                 continue
             diagnostics.append(
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code="resource_disabled",
                     message=f"{resource_type} resource '{logical_id}' is disabled.",
                     source_path=candidate.source_path,
@@ -2618,7 +2620,7 @@ def _resolve_strict_named_candidates(
                     candidate.source_kind for candidate in group
                 )
                 diagnostics.append(
-                    ResourceDiagnostic(
+                    resource_diagnostic(
                         code="resource_collision",
                         message=f"{resource_type} resource '{logical_id}' has no enabled candidates.",
                         source_path=group[0].source_path,
@@ -2658,7 +2660,7 @@ def _resolve_strict_named_candidates(
 
         if len(top_tier) > 1:
             diagnostics.append(
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code="resource_collision",
                     message=f"{resource_type} resource '{logical_id}' has conflicting same-precedence candidates.",
                     source_path=top_tier[0].source_path,
@@ -2689,7 +2691,7 @@ def _resolve_strict_named_candidates(
         active.append(winner)
         if len(group) > 1:
             diagnostics.append(
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code="resource_collision",
                     message=(
                         f"{resource_type} resource '{logical_id}' selected {winner.source_kind} "
@@ -2758,11 +2760,11 @@ def _resolve_extension_candidates(
     *,
     resource_type: str,
 ) -> tuple[
-    list[ExtensionDescriptor], list[ResourceDiagnostic], list[ResourceMergeDecision]
+    list[ExtensionDescriptor], list[DiagnosticDraft], list[ResourceMergeDecision]
 ]:
     ordered = sorted(candidates, key=_candidate_sort_key)
     active: list[ExtensionDescriptor] = []
-    diagnostics: list[ResourceDiagnostic] = []
+    diagnostics: list[DiagnosticDraft] = []
     decisions: list[ResourceMergeDecision] = []
 
     grouped: dict[str, list[ExtensionDescriptor]] = {}
@@ -2772,7 +2774,7 @@ def _resolve_extension_candidates(
             active.append(candidate)
             continue
         diagnostics.append(
-            ResourceDiagnostic(
+            resource_diagnostic(
                 code="resource_disabled",
                 message=f"{resource_type} resource '{candidate.id or candidate.name}' is disabled.",
                 source_path=candidate.source_path,

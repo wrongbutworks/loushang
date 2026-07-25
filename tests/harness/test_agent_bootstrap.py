@@ -191,7 +191,7 @@ def test_agent_product_construction_runtime_composes_existing_owners(
         enabled_models=("research/*",),
     )
     diagnostics = SimpleNamespace(
-        record_resource_diagnostics=lambda values, **kwargs: actions.append(
+        record_drafts=lambda values, **kwargs: actions.append(
             ("diagnostics", tuple(values), kwargs)
         )
     )

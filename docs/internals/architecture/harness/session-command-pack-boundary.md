@@ -22,7 +22,7 @@ The existing owners remain canonical:
 | Ordered dynamic command-source composition | `harness.session.SessionCommandRuntime` | Admit Product, extension, and resource sources with priorities. |
 | Typed prompt, maintenance, identity, retry, queue, and abort operations | `harness.session.SessionOperationRuntime` | Choose the admitted capability groups and project results. |
 | Session creation, restore, fork, replacement, and disposal transactions | `harness.session.SessionLifecycleRuntime` | Bind store/CWD policy, Product session construction, and transition projection. |
-| Transcript branch navigation and optional branch summaries | `harness.agent_transcript.AgentTranscriptNavigationRuntime` | Bind Product summary runner, hook policy, and event projection. |
+| Transcript branch navigation and optional branch summaries | `harness.transcript.AgentTranscriptNavigationRuntime` | Bind Product summary runner, hook policy, and event projection. |
 | Workspace command-tool execution, cancellation, transcript result commit, and context refresh | `harness.session.SessionCommandExecutionRuntime` | Bind tool, workspace, approval, prompt, and result-presentation ports. |
 | Standard session command descriptors, argument parsing, and typed result adaptation | `harness.session.command_pack` | Bind existing session/lifecycle/navigation/runtime ports and Product presentation ports. |
 | Extension/resource command source projection and dispatch | `harness.session.command_sources` | Bind extension runtime, resource bundle, Coding diagnostics, and Product result projection. |

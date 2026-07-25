@@ -4,7 +4,7 @@
 
 Implemented on the semantic branch `harness/store-event-protocol-runtime`.
 
-This wave depends on the Native Conversation and Agent Transcript profile from
+This wave depends on the Conversation JSONL and Agent Transcript profile from
 `harness/agent-transcript-profile`. It refines the earlier inventory decision
 that left concrete Product stores and all session events in Coding. The refined
 boundary is:
@@ -26,7 +26,7 @@ implement the protocols, but their features do not belong in this migration.
 `coding.session_manager.SessionManager` remains a high-fan-in Product facade over several
 mechanisms that are already neutral:
 
-- Native Conversation load and append;
+- Conversation JSONL load and append;
 - Agent transcript record writing and replay;
 - active branch, tree, fork, and context construction;
 - file persistence and locking;
@@ -60,7 +60,7 @@ after the Store commit succeeds.
 3. Move reusable Agent transcript persistence mechanics out of Coding.
 4. Establish one common runtime-event envelope and ordered in-process bus.
 5. Publish transcript-commit events only after durable append succeeds.
-6. Preserve current Coding behavior and current Native Conversation format.
+6. Preserve current Coding behavior and Conversation JSONL format.
 7. Leave Product storage policy and Product event projections in Product code.
 
 ## Ownership Boundary
@@ -74,7 +74,7 @@ loushang.harness.storage
   types.py          neutral keys, snapshots, revisions, and receipts
   protocols.py      ConversationStore protocol
   memory.py         deterministic in-memory reference implementation
-  file.py           Native Conversation File implementation
+  file.py           Conversation JSONL File implementation
 ```
 
 The reusable provider contract probes live in the Harness storage test suite;
@@ -83,7 +83,7 @@ they are test contracts, not a production registration or discovery API.
 Add a focused application service to the existing optional Agent profile:
 
 ```text
-loushang.harness.agent_transcript.store
+loushang.harness.transcript.store
   AgentTranscriptSessionStore
 ```
 
@@ -250,7 +250,7 @@ Required value semantics:
   runtime state;
 - `scan(namespace)` enumerates keys for catalog rebuild without defining a
   universal Product query language.
-- Coding path identity resolution strictly reads the current Native header. It
+- Coding path identity resolution strictly reads the Conversation JSONL header. It
   never invokes an importer, migrates a file, or rewrites data during scan,
   resolve, or delete.
 
@@ -418,7 +418,7 @@ The branch should remain green through these capability-sized commits:
 - add one focused journal compare-and-append primitive that counts records,
   verifies `expected_revision`, and appends under the same exclusive lock;
 - keep headers immutable after create and derive revision from record count;
-- keep the current Native Conversation schema and load policy unchanged;
+- keep the Conversation JSONL schema and load policy unchanged;
 - prove File and Memory behavior through the same contract tests;
 - add import gates preventing storage protocols from importing Products,
   Work, Method, Channel, TUI, or AI.
@@ -581,7 +581,7 @@ This migration does not:
 - add an Extension manifest storage surface or runtime Store replacement;
 - define plugin discovery, signing, trust, secrets, or marketplace behavior;
 - support Store hot swapping or backend-to-backend migration;
-- redesign Native Conversation schema or support older Loushang formats;
+- redesign Conversation JSONL schema or support older Loushang formats;
 - redesign AgentEvent, WorkEvent, ChannelEnvelope, extension hooks, approval,
   policy, workflow, artifacts, or UI;
 - move Product paths, summaries, retention, recovery decisions, wire formats, or
@@ -593,7 +593,7 @@ This migration does not:
 The wave is complete only when:
 
 - Coding uses an injected Store protocol and no session runtime assumes File;
-- the default Coding composition still uses the current Native File format;
+- the default Coding composition still uses the Conversation JSONL File format;
 - common transcript/session persistence mechanics no longer live in Coding;
 - common runtime and Work observers no longer require the Coding event union;
 - Product event and storage policies remain visibly outside Harness;

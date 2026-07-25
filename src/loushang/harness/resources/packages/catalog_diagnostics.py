@@ -8,7 +8,7 @@ from pathlib import Path
 
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticRecord
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
+from loushang.harness.resources.diagnostics import resource_diagnostic
 from loushang.harness.resources.packages.catalog import (
     PackageCatalogDiagnostic,
     PackageCatalogEntry,
@@ -95,8 +95,8 @@ class PackageCatalogDiagnosticsRecorder:
         }
         if details:
             diagnostic_details.update(details)
-        return self.diagnostics_service.normalize_resource_diagnostic(
-            ResourceDiagnostic(
+        return self.diagnostics_service.normalize_diagnostic(
+            resource_diagnostic(
                 code=code,
                 message=message,
                 source_path=Path(path) if isinstance(path, str) else None,
@@ -122,15 +122,16 @@ def record_package_lockfile_diagnostics(
         diagnostics_service.capture_failure(
             code=str(diagnostic.get("code") or "package_lockfile_unreadable"),
             error=str(
-                diagnostic.get("message")
-                or "Package lockfile could not be read."
+                diagnostic.get("message") or "Package lockfile could not be read."
             ),
             phase="startup",
             source="bootstrap",
             level="warning",
             session_id=session_id,
             source_path=(
-                Path(path) if isinstance((path := diagnostic.get("path")), str) else None
+                Path(path)
+                if isinstance((path := diagnostic.get("path")), str)
+                else None
             ),
             details={
                 key: value

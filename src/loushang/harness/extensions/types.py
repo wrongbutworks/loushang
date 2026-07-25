@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 from loushang.harness.contributions import ExtensionSurfaceDescriptor
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.routing_types import (
     ExtensionHandler,
     RegisteredExtensionHandler,
 )
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.source import SourceInfo
 from loushang.harness.resources.types import (
     ExtensionDescriptor,
@@ -46,14 +46,15 @@ class BeforeAgentStartResult:
     system_prompt_append: str = ""
     system_prompt: str | None = None
     extra_messages: list[object] = field(default_factory=list)
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
     block: bool = False
     reason: str | None = None
+
 
 @dataclass(frozen=True)
 class ContextResult:
     messages: list[object] | None = None
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -62,13 +63,13 @@ class ToolCallDecision:
     reason: str | None = None
     tool_name: str | None = None
     arguments: dict[str, Any] | None = None
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class ToolResultDecision:
     result: object | None = None
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -160,7 +161,7 @@ class LoadedExtension:
     message_renderers: dict[str, Callable[[object, object, object], object | None]] = (
         field(default_factory=dict)
     )
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
     metadata: dict[str, object] = field(default_factory=dict)
     api: object | None = None
     manifest: object | None = None
@@ -200,7 +201,7 @@ class ExtensionResourceContribution:
     extensions: list[ExtensionDescriptor] = field(default_factory=list)
     prompts: list[PromptFragmentDescriptor] = field(default_factory=list)
     themes: list[ThemeDescriptor] = field(default_factory=list)
-    diagnostics: list[ResourceDiagnostic] = field(default_factory=list)
+    diagnostics: list[DiagnosticDraft] = field(default_factory=list)
 
 
 def _is_async_callable(value: object) -> bool:

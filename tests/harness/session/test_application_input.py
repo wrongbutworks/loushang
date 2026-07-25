@@ -4,11 +4,11 @@ import asyncio
 
 import pytest
 
-from loushang.harness.agent_transcript import (
+from loushang.harness.session import ApplicationInputRuntime
+from loushang.harness.transcript import (
     ApplicationMessage,
     CommitResult,
 )
-from loushang.harness.session import ApplicationInputRuntime
 
 
 class _Committer:

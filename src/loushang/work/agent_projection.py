@@ -9,8 +9,8 @@ from loushang.agent.json_codec import serialize_tool_result
 from loushang.agent.types import AgentToolResult
 from loushang.ai.json_codec import serialize_assistant_message_event, serialize_message
 from loushang.ai.types import AssistantMessageEvent, Message
-from loushang.harness.agent_transcript import create_agent_transcript_message_codec
 from loushang.harness.events import RuntimeEvent, project_session_runtime_event
+from loushang.harness.transcript import create_agent_transcript_message_codec
 from loushang.protocol import JsonValueError, require_json_mapping, require_json_value
 from loushang.work.event_log import EventLogBackend
 from loushang.work.session import (

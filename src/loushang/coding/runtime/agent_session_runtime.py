@@ -45,3 +45,15 @@ class AgentSessionRuntime(
             session_index_refresh_interval=session_index_refresh_interval,
             session_index_flush_delay=session_index_flush_delay,
         )
+
+    async def dispose_session_runtime(
+        self,
+        *,
+        metadata: dict[str, object] | None = None,
+    ) -> None:
+        from loushang.coding.continuity import shutdown_coding_continuity
+
+        try:
+            await super().dispose_session_runtime(metadata=metadata)
+        finally:
+            await shutdown_coding_continuity(self)

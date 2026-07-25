@@ -88,21 +88,22 @@ through one Runtime publisher and one ordered bus.
 
 `AgentSession.subscribe_runtime_events()` exposes the common stream directly.
 The accepted `AgentSession.subscribe()` API installs a listener adapter on that
-same bus and converts observable Agent/Session payloads into the existing
-Coding event dictionary. Transcript commit events are intentionally invisible
-to this Product projection.
+same bus and converts observable Agent/Session payloads into the standard
+`harness.session.event_types.AgentSessionEvent` dictionary. Transcript commit
+events are intentionally invisible to this projection.
 
-Coding continues to own:
+Products continue to own:
 
 - RPC, print, TUI, and extension filtering;
-- tool-render enrichment and Product artifact display;
-- Product-specific event payloads and exports.
+- Product artifact display and genuinely Product-specific event payloads;
+- final output policy and Product exports.
 
 Harness additionally owns `RuntimeEventView`: a strict-JSON, source-preserving
 transport view and generic exact/trailing-wildcard selector. Products create a
-view only after applying their own event mapping and render policy. The shared
-view payload uses snake_case; Coding retains event names, tool render
-enrichment, and Product stream policy without alias expansion.
+view only after applying the standard Session mapping and any Product policy.
+The shared view payload uses snake_case; `harness.session` owns the standard
+event names and tool-render enrichment, while Products retain final stream
+policy without alias expansion.
 
 `loushang.channel` may carry an already-created `RuntimeEventView`; it depends
 only on this value contract, while Harness never imports Channel. This neither
@@ -114,7 +115,7 @@ documented separately in [Session Runtime Core](product-runtime-injection/compon
 They remain optional Agent/AI profile code and do not make the neutral event
 core depend on Agent or AI.
 
-`AgentSessionEvent` is therefore a Coding projection contract, not a runtime
+`AgentSessionEvent` is therefore a Session projection contract, not a runtime
 control or storage model. The removed `coding.session.SessionEventBus` must not
 be recreated.
 

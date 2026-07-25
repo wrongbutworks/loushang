@@ -6,6 +6,7 @@ from dataclasses import replace
 import pytest
 
 from loushang.ai.model import Capabilities, Model
+from loushang.ai.types import UserMessage
 from loushang.coding.bootstrap import create_agent_session
 from loushang.coding.product_plan import (
     CODING_CAPABILITY_PROFILE,
@@ -13,17 +14,17 @@ from loushang.coding.product_plan import (
     CODING_RUNTIME_PROFILE_METADATA_KEY,
 )
 from loushang.coding.session_manager import SessionManager
-from loushang.harness.agent_transcript import (
+from loushang.harness.conversation import FileConversationStore, MemoryConversationStore
+from loushang.harness.runtime import RuntimeProfileSnapshot
+from loushang.harness.transcript import (
     TURN_AWARE_SUMMARY_IMPLEMENTATION,
     TURN_AWARE_SUMMARY_VERSION,
     AgentTranscriptCompactionCapability,
     AgentTranscriptProfile,
 )
-from loushang.harness.agent_transcript.file_store import (
-    write_agent_transcript_file as write_session_file,
+from loushang.harness.transcript.jsonl_file import (
+    write_agent_transcript_export as write_session_file,
 )
-from loushang.harness.runtime import RuntimeProfileSnapshot
-from loushang.harness.storage import FileConversationStore, MemoryConversationStore
 
 
 def _model() -> Model:
@@ -93,10 +94,11 @@ def test_persistent_session_resumes_the_snapshotted_file_profile(tmp_path) -> No
             manager.get_runtime_capability("conversation.store"),
             FileConversationStore,
         )
-        expected_snapshot = manager.runtime_profile.snapshot().to_json()
-        expected_capability_snapshot = (
-            CODING_CAPABILITY_PROFILE.snapshot().to_json()
+        await manager.append_message(
+            UserMessage(role="user", content="materialize", timestamp=0.0)
         )
+        expected_snapshot = manager.runtime_profile.snapshot().to_json()
+        expected_capability_snapshot = CODING_CAPABILITY_PROFILE.snapshot().to_json()
 
         resumed = await SessionManager.load(manager.session_file, persist=True)
 
@@ -165,6 +167,9 @@ def test_nonpersistent_open_uses_memory_without_rewriting_file_profile(
         persisted_snapshot = manager.header.metadata[
             CODING_RUNTIME_PROFILE_METADATA_KEY
         ]
+        await manager.append_message(
+            UserMessage(role="user", content="materialize", timestamp=0.0)
+        )
 
         transient = await SessionManager.load(manager.session_file, persist=False)
 

@@ -32,9 +32,9 @@
 
 已核对的 harness 复用点：
 
-- `harness.host.queue.HostInputQueue`：原生支持 `QueueKind =
+- `harness.runtime.input_queue.HostInputQueue`：原生支持 `QueueKind =
   steering | follow_up` 两种入队模式与快照——AgentInputFacade 以它为底层机制
-- `harness.host.runtime.HostRuntime`：run/abort/wait_for_idle/dispose
+- `harness.runtime.execution.HostRuntime`：run/abort/wait_for_idle/dispose
   生命周期与事件订阅——子 agent 运行载体的编排参照
 - `harness.approval.ApprovalRequest`：审批请求值对象与既有管道——审批
   冒泡复用此管道，不新建组件

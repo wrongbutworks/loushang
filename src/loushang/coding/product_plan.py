@@ -1,11 +1,11 @@
 """Coding's declarative selections for shared Product runtimes."""
 
-from loushang.harness.agent_transcript import (
+from loushang.harness.capabilities import standard_capability_composition_plan
+from loushang.harness.runtime import RuntimeProfileResolver
+from loushang.harness.transcript import (
     AgentTranscriptProfileRuntime,
     AgentTranscriptRuntimeSpec,
 )
-from loushang.harness.capabilities import standard_capability_composition_plan
-from loushang.harness.runtime import RuntimeProfileResolver
 
 CODING_PRODUCT_ID = "coding"
 CODING_RUNTIME_PROFILE_METADATA_KEY = "runtimeProfile"

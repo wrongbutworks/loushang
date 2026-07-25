@@ -2335,7 +2335,7 @@ def test_run_cli_lists_all_sessions_when_requested(tmp_path) -> None:
 
 def test_run_cli_list_sessions_supports_query_filters(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.harness.agent_transcript import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     records = [
         SimpleNamespace(
@@ -2399,7 +2399,7 @@ def test_run_cli_list_sessions_supports_query_filters(tmp_path) -> None:
 
 def test_run_cli_list_sessions_supports_no_diagnostics_filter(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.harness.agent_transcript import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     runtime = FakeRuntime(FakeSession("unused"), records=[])
     stdout = StringIO()
@@ -2428,7 +2428,7 @@ def test_run_cli_list_sessions_supports_all_sessions_with_query_filters(
     tmp_path,
 ) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.harness.agent_transcript import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     runtime = FakeRuntime(
         FakeSession("unused"),
@@ -2477,7 +2477,7 @@ def test_run_cli_list_sessions_supports_all_sessions_with_query_filters(
 
 def test_run_cli_list_sessions_can_use_session_index(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.harness.agent_transcript import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     runtime = FakeRuntime(
         FakeSession("unused"),
@@ -2528,7 +2528,7 @@ def test_run_cli_list_sessions_can_use_session_index(tmp_path) -> None:
 
 def test_run_cli_list_sessions_can_refresh_all_session_indexes(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.harness.agent_transcript import SessionQuery
+    from loushang.harness.transcript import SessionQuery
 
     runtime = FakeRuntime(FakeSession("unused"), records=[])
     stdout = StringIO()
@@ -4178,10 +4178,7 @@ def test_run_cli_dispatches_continue_by_restoring_latest_session(tmp_path) -> No
     assert print_runner.calls[0]["user_input"] == "hello"
 
 
-@pytest.mark.parametrize("resume_flag", ["--continue", "--resume"])
-def test_run_cli_dispatches_restore_by_latest_session_for_resume_mode(
-    tmp_path, resume_flag
-) -> None:
+def test_run_cli_rejects_bare_resume_without_interactive_tui(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
 
     latest = Path(tmp_path / ".loushang" / "sessions" / "latest.jsonl")
@@ -4192,30 +4189,30 @@ def test_run_cli_dispatches_restore_by_latest_session_for_resume_mode(
         records=[SimpleNamespace(session_file=latest)],
     )
     print_runner = FakeRunner()
+    stderr = StringIO()
 
     def runtime_builder(**kwargs):
         return runtime
 
     async def scenario() -> None:
         exit_code = await run_cli(
-            [resume_flag, "hello"]
-            if resume_flag == "--continue"
-            else [resume_flag, "--message", "hello"],
+            ["--resume", "--message", "hello"],
             stdin=StringIO(""),
             stdout=StringIO(),
-            stderr=StringIO(),
+            stderr=stderr,
             cwd=tmp_path,
             services=_fake_services(),
             runtime_builder=runtime_builder,
             print_runner=print_runner,
         )
-        assert exit_code == 0
+        assert exit_code == 1
 
     asyncio.run(scenario())
 
-    assert runtime.list_sessions_calls == 1
-    assert runtime.restore_session_calls == [str(latest)]
-    assert print_runner.calls[0]["user_input"] == "hello"
+    assert runtime.list_sessions_calls == 0
+    assert runtime.restore_session_calls == []
+    assert print_runner.calls == []
+    assert "requires an interactive TUI" in stderr.getvalue()
 
 
 def test_run_cli_dispatches_restore_by_resume_session_reference(tmp_path) -> None:
@@ -4269,72 +4266,6 @@ def test_run_cli_reports_continue_without_existing_sessions(tmp_path) -> None:
     asyncio.run(scenario())
 
     assert "No existing session found" in stderr.getvalue()
-
-
-@pytest.mark.parametrize("resume_flag", ["--continue", "--resume"])
-def test_run_cli_reports_restore_errors_when_list_sessions_fails(
-    tmp_path, resume_flag
-) -> None:
-    from loushang.coding.cli.__main__ import run_cli
-
-    class BrokenListSessionsRuntime(FakeRuntime):
-        def list_sessions(self):
-            raise RuntimeError("session listing failed")
-
-    runtime = BrokenListSessionsRuntime(FakeSession("session-1"))
-    stderr = StringIO()
-
-    async def scenario() -> None:
-        exit_code = await run_cli(
-            [resume_flag, "hello"]
-            if resume_flag == "--continue"
-            else [resume_flag, "--message", "hello"],
-            stdin=StringIO(""),
-            stdout=StringIO(),
-            stderr=stderr,
-            cwd=tmp_path,
-            services=_fake_services(),
-            runtime_builder=lambda **kwargs: runtime,
-            print_runner=FakeRunner(),
-        )
-        assert exit_code == 1
-
-    asyncio.run(scenario())
-
-    assert "session listing failed" in stderr.getvalue()
-
-
-@pytest.mark.parametrize("resume_flag", ["--continue", "--resume"])
-def test_run_cli_reports_restore_invalid_list_sessions_payload(
-    tmp_path, resume_flag
-) -> None:
-    from loushang.coding.cli.__main__ import run_cli
-
-    class BrokenListSessionsRuntime(FakeRuntime):
-        def list_sessions(self):
-            return {"sessions": []}
-
-    runtime = BrokenListSessionsRuntime(FakeSession("session-1"))
-    stderr = StringIO()
-
-    async def scenario() -> None:
-        exit_code = await run_cli(
-            [resume_flag, "hello"]
-            if resume_flag == "--continue"
-            else [resume_flag, "--message", "hello"],
-            stdin=StringIO(""),
-            stdout=StringIO(),
-            stderr=stderr,
-            cwd=tmp_path,
-            services=_fake_services(),
-            runtime_builder=lambda **kwargs: runtime,
-            print_runner=FakeRunner(),
-        )
-        assert exit_code == 1
-
-    asyncio.run(scenario())
-
-    assert "session listing returned an invalid response." in stderr.getvalue()
 
 
 def test_run_cli_reports_continue_errors_when_list_sessions_fails(tmp_path) -> None:
@@ -5764,7 +5695,6 @@ def test_run_cli_defaults_to_tui_for_interactive_bare_startup(tmp_path) -> None:
     ("argv", "expected_restore"),
     [
         (["--resume", "abcd1234"], "abcd1234"),
-        (["--resume"], "/tmp/latest-session.jsonl"),
         (["--continue"], "/tmp/latest-session.jsonl"),
     ],
 )
@@ -5796,6 +5726,131 @@ def test_run_cli_defaults_to_tui_for_interactive_resume_flows(
     assert runtime.restore_session_calls == [expected_restore]
     assert len(tui_runner.calls) == 1
     assert print_runner.calls == []
+
+
+def test_run_cli_bare_resume_cancels_before_creating_placeholder_session(
+    tmp_path,
+) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("placeholder"))
+    tui_runner = FakeRunner()
+    picker_calls: list[dict[str, object]] = []
+
+    async def cancel_picker(**kwargs):
+        picker_calls.append(kwargs)
+        return None
+
+    exit_code = asyncio.run(
+        run_cli(
+            ["--resume"],
+            stdin=TtyStringIO(),
+            stdout=TtyStringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=tui_runner,
+            continuity_runner=cancel_picker,
+        )
+    )
+
+    assert exit_code == 0
+    assert len(picker_calls) == 1
+    assert runtime.restore_session_calls == []
+    assert tui_runner.calls == []
+
+
+def test_run_cli_bare_resume_activates_selection_before_starting_main_tui(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from loushang.coding.cli import __main__ as cli_main
+    from loushang.harness.continuity import (
+        CallbackPreparedActivationLease,
+        ContinuityTarget,
+    )
+    from loushang.harnesstui.continuity import ContinuityPickerSelection
+
+    runtime = FakeRuntime(FakeSession("selected"))
+    tui_runner = FakeRunner()
+    target = ContinuityTarget(
+        provider_id="coding.sessions",
+        opaque_id="picked-session",
+        revision="7",
+    )
+
+    class _Hub:
+        async def prepare(self, selected_target):
+            assert selected_target == target
+            return CallbackPreparedActivationLease(
+                target=target,
+                disposition="in_place",
+                consume=lambda: runtime.restore_session_operation("picked-session"),
+            )
+
+    class _Composition:
+        hub = _Hub()
+
+        async def dispose(self) -> None:
+            return None
+
+    async def select_and_activate(**kwargs):
+        result = await kwargs["activate"](target)
+        return ContinuityPickerSelection(target=target, activation_result=result)
+
+    monkeypatch.setattr(
+        cli_main,
+        "bind_coding_continuity",
+        lambda _runtime: _Composition(),
+    )
+
+    exit_code = asyncio.run(
+        cli_main.run_cli(
+            ["--resume"],
+            stdin=TtyStringIO(),
+            stdout=TtyStringIO(),
+            stderr=StringIO(),
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=tui_runner,
+            continuity_runner=select_and_activate,
+        )
+    )
+
+    assert exit_code == 0
+    assert runtime.restore_session_calls == ["picked-session"]
+    assert len(tui_runner.calls) == 1
+    assert tui_runner.calls[0]["session"] is runtime.get_current_session()
+
+
+def test_run_cli_bare_resume_rejects_noninteractive_channel_before_resolution(
+    tmp_path,
+) -> None:
+    from loushang.coding.cli.__main__ import run_cli
+
+    runtime = FakeRuntime(FakeSession("unresolved"))
+    stderr = StringIO()
+    tui_runner = FakeRunner()
+
+    exit_code = asyncio.run(
+        run_cli(
+            ["--resume"],
+            stdin=StringIO(),
+            stdout=StringIO(),
+            stderr=stderr,
+            cwd=tmp_path,
+            services=_fake_services(),
+            runtime_builder=lambda **kwargs: runtime,
+            tui_runner=tui_runner,
+        )
+    )
+
+    assert exit_code == 1
+    assert "requires an interactive TUI" in stderr.getvalue()
+    assert runtime.restore_session_calls == []
+    assert tui_runner.calls == []
 
 
 def test_run_cli_no_tui_keeps_interactive_bare_startup_in_text_mode(tmp_path) -> None:
@@ -6815,7 +6870,7 @@ def test_run_cli_lists_diagnostics_as_tsv_and_returns_early(tmp_path) -> None:
 
 def test_run_cli_lists_skills_as_json(tmp_path) -> None:
     from loushang.coding.cli.__main__ import run_cli
-    from loushang.harness.resources.diagnostics import ResourceDiagnostic
+    from loushang.harness.resources.diagnostics import resource_diagnostic
     from loushang.harness.resources.types import SkillDescriptor
 
     session = FakeSession("session-1")
@@ -6832,7 +6887,7 @@ def test_run_cli_lists_skills_as_json(tmp_path) -> None:
             canonical_name="debug/SKILL.md",
             source_root=Path("/tmp/project/skills"),
             diagnostics=(
-                ResourceDiagnostic(
+                resource_diagnostic(
                     code="invalid_skill_description",
                     message="Skill frontmatter description is required.",
                     source_path=Path("/tmp/project/skills/debug/SKILL.md"),

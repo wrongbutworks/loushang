@@ -22,8 +22,8 @@ the neutrality of these foundations.
 
 | Concern | Harness ownership | Product or subsystem ownership |
 | --- | --- | --- |
-| Transcript state | Parent-linked repository, active leaf, append, path, tree, fork, optional journal persistence | Header and record schemas, codec, lifecycle, naming, location, retention, query, rebuild, and UI |
-| Projection index | Versioned atomic JSON index, typed projection codec, validation, stale detection, corrupt-file preservation, rebuild callback, sorting | Projection schema, source scan, freshness predicate, query semantics, index path, and refresh policy |
+| Transcript state | Parent-linked in-memory repository, active leaf, validation, tree, fork, and Store contracts/providers | Header and record schemas, codec, lifecycle, naming, provider binding, retention, query, and UI |
+| Projection index | Revision-aware rebuildable index contract plus Memory/JSON adapters, tombstones, corrupt-file preservation, and atomic generations | Projection schema, Store provider set, query semantics, index selection, and refresh policy |
 | Configuration | Ordered layers, patch merge, persistence adapter, composition codec, reload preservation, issues, snapshots, and subscriptions | Fields, validation, defaults, layer names/paths, credentials, auth/model semantics, CLI, and UI |
 | Salience | Explainable signals, structural weighted scorer, stable ranking, and a custom scorer protocol | Content interpretation, weights, pinning, grouping, selection threshold, and compaction policy |
 | Summary profile | Profile and section records, tagged prompt composition, mode selection, prompt override, and structural validation | System/user prompt text, serialized content, required sections, placeholder rules, model call, and artifact projection |
@@ -37,32 +37,33 @@ transcript profile serializes Agent messages through its exact codec allowlist.
 
 ## Transcript Repository
 
-`loushang.harness.journal.TranscriptRepository[H, R]` composes the existing
-profiled `JsonlJournal` and `BranchGraph`. A Product supplies only two
-structural accessors: record id and parent id. The repository provides:
+The follow-on persistence consolidation replaces this historical placement
+with `loushang.harness.conversation.ConversationRepository[H, R]`, a pure
+in-memory repository composed with conversation-owned `BranchGraph`. A Product
+supplies record-id and parent-id accessors. The repository provides:
 
-- create and load over an optional Product-configured journal;
-- validate-before-persist append so failed records do not mutate memory;
+- candidate-state validation before a Store commit;
 - active-leaf selection and reset;
 - record lookup, roots, children, and root-to-leaf paths;
-- fork into another Product header and journal;
-- header replacement and explicit rewrite;
-- accumulated journal-load and compatible-graph diagnostics;
-- detached read-only loading when a Product must not mutate the source file.
+- pure in-memory fork and fold operations;
+- compatible-graph diagnostics without a physical source locator.
+
+Durable create/load/append/delete and revisions now belong only to
+`ConversationStore`; JSONL composition is isolated in its file adapter.
 
 Coding's `SessionManager` is still the Product facade, now asynchronous for
 create/load/mutation/delete. It keeps labels, summary/query relevance, recovery
 wording, file naming, retention, public APIs, and backend composition. It
 delegates open transcript state, graph traversal, revision-checked append,
 replay, context rebuild, and fork materialization through
-`AgentTranscriptSessionStore` over an injected `ConversationStore`; catalog and
+`AgentTranscriptUnitOfWork` over an injected `ConversationStore`; catalog and
 index projection remain separate Product concerns.
 
 The follow-on Conversation Runtime Core now wraps this lower-level repository
 with `loushang.harness.conversation.ConversationRepository`, catalog/query,
 checkpoint replay, LCA/branch delta, and opaque-record compaction planning. New
 Product adapters should depend on the conversation owner rather than importing
-`TranscriptRepository` or `BranchGraph` directly; see
+the journal package for repository or branch semantics; see
 [Conversation Runtime Core Boundary](conversation-runtime-core-boundary.md).
 
 This foundation introduced no concrete message schema. Stable base AI message
@@ -73,7 +74,8 @@ only for its domain-specific transcript records.
 
 ## Projection Index
 
-`JsonProjectionIndex[P]` owns the mechanics proven by Coding's session index:
+`JsonConversationIndex[P, Q]` now owns the revision-aware, rebuildable
+projection mechanics proven by Coding's session index:
 
 - a caller-selected positive version and item key;
 - a typed functional or object codec;

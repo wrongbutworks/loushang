@@ -19,14 +19,14 @@ from loushang.ai import (
 )
 from loushang.ai.model import ModelSelection
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
-from loushang.harness.agent_transcript import (
+from loushang.harness.conversation import ConversationRecord
+from loushang.harness.transcript import (
     AGENT_MESSAGE_KIND,
     CONTEXT_COMPACTION_CHECKPOINT_KIND,
     AgentTranscriptContext,
     AgentTranscriptState,
     ContextCompactionCheckpoint,
 )
-from loushang.harness.conversation import ConversationRecord
 from loushang.harnesstui.conversation import agent_application as tui_policy
 from loushang.harnesstui.conversation.control import ConversationTextAction
 from loushang.harnesstui.testing.performance import (

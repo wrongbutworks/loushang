@@ -6,12 +6,10 @@ from loushang.agent import Agent
 from loushang.coding.session import RunState as CodingRunState
 from loushang.coding.session.agent_session import AgentSession
 from loushang.coding.session_manager import SessionManager
-from loushang.harness.host.queue import HostInputQueue
-from loushang.harness.host.runtime import HostRuntime
-from loushang.harness.host.types import (
-    HostLifecycleEvent,
-    RunState,
-)
+from loushang.harness.events.host import HostLifecycleEvent
+from loushang.harness.runtime.execution import HostRuntime
+from loushang.harness.runtime.input_queue import HostInputQueue
+from loushang.harness.runtime.types import RunState
 from loushang.harness.session import (
     AgentEventRouter,
     PromptController,

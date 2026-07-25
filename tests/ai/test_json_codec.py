@@ -157,7 +157,7 @@ def test_assistant_event_codec_uses_the_message_codec() -> None:
 
 
 def test_agent_transcript_codec_reuses_ai_message_wire_format() -> None:
-    from loushang.harness.agent_transcript import create_agent_transcript_message_codec
+    from loushang.harness.transcript import create_agent_transcript_message_codec
 
     codec = create_agent_transcript_message_codec()
     message = _assistant_message()

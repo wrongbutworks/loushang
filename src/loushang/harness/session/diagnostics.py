@@ -15,6 +15,7 @@ from loushang.agent.types import AgentToolResult
 from loushang.ai.types import AssistantMessage
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import (
+    DiagnosticDraft,
     DiagnosticLevel,
     DiagnosticPhase,
     DiagnosticRecord,
@@ -24,7 +25,6 @@ from loushang.harness.diagnostics.types import (
     ErrorReport,
 )
 from loushang.harness.extensions.types import ResolvedCommand
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.protocol import require_json_value
 
 _EXTENSION_ERROR_DIAGNOSTIC_CODES: frozenset[str] = frozenset(
@@ -49,7 +49,7 @@ class SessionDiagnosticScope:
 class ExtensionDiagnosticsPort(Protocol):
     """Minimal extension observation required for diagnostic syncing."""
 
-    def get_diagnostics(self) -> Sequence[ResourceDiagnostic]: ...
+    def get_diagnostics(self) -> Sequence[DiagnosticDraft]: ...
 
 
 SessionDiagnosticScopeProvider = Callable[[], SessionDiagnosticScope]
@@ -132,14 +132,12 @@ class SessionDiagnosticsRuntime:
             details=dict(details) if details is not None else None,
         )
 
-    def record_extension_runtime_diagnostic(
-        self, diagnostic: ResourceDiagnostic
-    ) -> None:
+    def record_extension_runtime_diagnostic(self, diagnostic: DiagnosticDraft) -> None:
         if self.diagnostics_service is None:
             return
         scope = self.get_scope()
         self.diagnostics_service.record(
-            self.diagnostics_service.normalize_resource_diagnostic(
+            self.diagnostics_service.normalize_diagnostic(
                 diagnostic,
                 phase="runtime",
                 source="extensions",
@@ -167,7 +165,7 @@ class SessionDiagnosticsRuntime:
         )
 
     def record_preflight_diagnostics(
-        self, diagnostics: Sequence[ResourceDiagnostic]
+        self, diagnostics: Sequence[DiagnosticDraft]
     ) -> None:
         """Persist resource preflight diagnostics with the current session scope."""
 
@@ -175,7 +173,7 @@ class SessionDiagnosticsRuntime:
             return
         scope = self.get_scope()
         self.diagnostics_service.record_many(
-            self.diagnostics_service.normalize_resource_diagnostic(
+            self.diagnostics_service.normalize_diagnostic(
                 diagnostic,
                 phase="runtime",
                 source="session",
@@ -230,7 +228,7 @@ class SessionDiagnosticsRuntime:
         scope = self.get_scope()
         new_diagnostics = diagnostics[self.recorded_extension_diagnostics :]
         self.diagnostics_service.record_many(
-            self.diagnostics_service.normalize_resource_diagnostic(
+            self.diagnostics_service.normalize_diagnostic(
                 diagnostic,
                 phase=phase,
                 source="extensions",

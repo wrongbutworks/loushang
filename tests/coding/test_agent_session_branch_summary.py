@@ -357,7 +357,7 @@ def test_navigate_tree_with_summary_appends_branch_summary_and_emits_events(
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
-    from loushang.harness.agent_transcript import BranchSummaryOutput
+    from loushang.harness.transcript import BranchSummaryOutput
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -455,12 +455,12 @@ def test_navigate_tree_uses_extension_before_tree_summary_override(
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
-    from loushang.harness.agent_transcript import BranchSummaryOutput
     from loushang.harness.extensions.agent import (
         ExtensionRunner,
         LoadedExtension,
         SessionBeforeTreeResult,
     )
+    from loushang.harness.transcript import BranchSummaryOutput
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -570,7 +570,7 @@ def test_abort_branch_summary_cancels_inflight_navigation(
     from loushang.agent import Agent
     from loushang.coding.session import AgentSession
     from loushang.coding.session_manager import SessionManager
-    from loushang.harness.agent_transcript import BranchSummaryOutput
+    from loushang.harness.transcript import BranchSummaryOutput
 
     manager = asyncio.run(
         SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)

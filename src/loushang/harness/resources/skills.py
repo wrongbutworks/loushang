@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -150,17 +151,18 @@ def project_skill_diagnostic(diagnostic: object) -> dict[str, object] | None:
     code = _safe_skill_getattr(diagnostic, "code", None)
     if not isinstance(code, str) or not code:
         return None
+    raw_details = _safe_skill_getattr(diagnostic, "details", {})
+    details = raw_details if isinstance(raw_details, Mapping) else {}
+    metadata = details.get("metadata")
     return {
         "code": code,
         "message": _safe_skill_getattr(diagnostic, "message", "") or "",
         "path": _safe_skill_string(
             _safe_skill_getattr(diagnostic, "source_path", "")
         ),
-        "resource_type": _safe_skill_getattr(diagnostic, "resource_type", None),
-        "source_kind": _safe_skill_getattr(diagnostic, "source_kind", None),
-        "metadata": _json_safe_skill_value(
-            _safe_skill_getattr(diagnostic, "metadata", {})
-        ),
+        "resource_type": details.get("resource_type"),
+        "source_kind": details.get("source_kind"),
+        "metadata": _json_safe_skill_value(metadata if metadata is not None else {}),
     }
 
 

@@ -123,7 +123,9 @@ kind = "observe"
         "unsupported_extension_hook_event",
         "unsupported_extension_hook_event",
     ]
-    assert [diagnostic.metadata["event"] for diagnostic in result.diagnostics] == [
+    assert [
+        diagnostic.details["metadata"]["event"] for diagnostic in result.diagnostics
+    ] == [
         "before_provider_request",
         "after_provider_response",
     ]
@@ -213,7 +215,7 @@ level = "root"
         "invalid_extension_permission_level"
     ]
     assert result.diagnostics[0].source_path == manifest_path
-    assert result.diagnostics[0].resource_type == "extension"
+    assert result.diagnostics[0].details["resource_type"] == "extension"
 
 
 def test_extension_manifest_parser_keeps_manifest_for_partial_surface_declaration_errors(
@@ -340,6 +342,7 @@ kind = "augment"
 def test_extension_runner_lists_extension_visibility_snapshot() -> None:
     from pathlib import Path
 
+    from loushang.harness.diagnostics.types import DiagnosticDraft
     from loushang.harness.extensions.agent import (
         ExtensionManifest,
         ExtensionPermissionDeclaration,
@@ -348,7 +351,6 @@ def test_extension_runner_lists_extension_visibility_snapshot() -> None:
         ExtensionSurfaceDescriptor,
         LoadedExtension,
     )
-    from loushang.harness.resources.diagnostics import ResourceDiagnostic
 
     manifest = ExtensionManifest(
         id="acme.review",
@@ -383,7 +385,7 @@ def test_extension_runner_lists_extension_visibility_snapshot() -> None:
             ),
         ],
         diagnostics=[
-            ResourceDiagnostic(
+            DiagnosticDraft(
                 code="missing_extension_hook_event",
                 message="Extension manifest hook declaration requires an event.",
                 source_path=Path(

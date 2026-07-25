@@ -20,6 +20,7 @@ from loushang.harness.diagnostics.service import (
     run_standard_startup_checks,
 )
 from loushang.harness.diagnostics.types import (
+    DiagnosticDraft,
     DiagnosticLevel,
     DiagnosticPhase,
     DiagnosticRecord,
@@ -33,6 +34,7 @@ from loushang.harness.diagnostics.types import (
 )
 
 __all__ = [
+    "DiagnosticDraft",
     "DiagnosticLevel",
     "DiagnosticBundleProfile",
     "DiagnosticPhase",

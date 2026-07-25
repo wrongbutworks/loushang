@@ -7,11 +7,11 @@ Implementation complete for integration into `lane/harness` on
 
 ## Decision
 
-`loushang.harness.agent_transcript.export` owns portable export of the current
+`loushang.harness.transcript.export` owns portable export of the current
 Native Agent transcript profile:
 
 - standalone JSONL export of a selected branch, with parent links linearized;
-- self-contained HTML document composition, current Native header/record
+- self-contained HTML document composition, Conversation JSONL header/record
   encoding, transcript tree, standard transcript-kind rendering, ANSI and
   Markdown rendering, and default tool-call/result presentation;
 - `TranscriptExportRequest`, the strict snapshot contract between a live
@@ -46,14 +46,16 @@ This keeps an export runnable for another Product without an `AgentSession`,
 may omit all hooks and receive the standard HTML document and fallback tool
 rendering.
 
-## Coding Adapter
+## Session Adapter
 
-`loushang.coding.session.export` is now a thin Product adapter. It selects the
-existing Coding filenames, gathers its live session snapshot, passes Coding's
-extension message renderer and tool resolver as profile hooks, and retains
-Coding command/API behavior. It no longer owns JSONL encoding, HTML assets,
-record-kind disposition tables, ANSI/Markdown conversion, transcript-tree
-rendering, or default tool-result markup.
+`loushang.harness.session.export` is the live-session adapter. It selects
+default filenames, gathers a `SessionFacade` snapshot, and passes the bound
+theme, extension message renderer, and tool resolver as profile hooks.
+`loushang.harness.transcript.export` remains independent of
+`harness.session` and owns JSONL encoding, HTML assets, record-kind disposition
+tables, ANSI/Markdown conversion, transcript-tree rendering, and default
+tool-result markup. Coding inherits the standard session methods and retains
+only its command/API presentation.
 
 The prior `coding.session.export_html` package and
 `coding.session.export_jsonl` implementation have been removed. This is an

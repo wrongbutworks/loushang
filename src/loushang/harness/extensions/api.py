@@ -7,6 +7,7 @@ from typing import Literal, cast
 
 from loushang.agent.types import AgentTool, ensure_agent_tool, is_agent_tool_like
 from loushang.harness.contributions import ExtensionSurfaceDescriptor
+from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.extensions.events import VALID_EXTENSION_EVENTS
 from loushang.harness.extensions.routing import RegisteredExtensionHandler
 from loushang.harness.extensions.types import (
@@ -17,7 +18,6 @@ from loushang.harness.extensions.types import (
     RegisteredFlag,
     RegisteredShortcut,
 )
-from loushang.harness.resources.diagnostics import ResourceDiagnostic
 from loushang.harness.resources.source import SourceInfo
 from loushang.harness.tools.core import DecoratedTool, ToolDefinition
 from loushang.harness.tools.workspace.normalize import tool_to_definition
@@ -48,7 +48,7 @@ class ExtensionContributionAPI:
         self._message_renderers: dict[
             str, Callable[[object, object, object], object | None]
         ] = {}
-        self._diagnostics: list[ResourceDiagnostic] = []
+        self._diagnostics: list[DiagnosticDraft] = []
         self._runtime_state: object | None = None
 
     def on(

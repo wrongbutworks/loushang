@@ -21,27 +21,27 @@ from loushang.coding.compaction.profiles import (
     CODING_COMPACTION_SUMMARY_PROFILE,
 )
 from loushang.coding.session_manager import SessionManager
-from loushang.harness.agent_transcript import (
+from loushang.harness.context import SummaryValidationReport, validate_summary
+from loushang.harness.context.budget import calculate_compaction_budget
+from loushang.harness.transcript import (
     BranchSummaryOutput,
     CompactionPreparation,
     CompactionResult,
     calculate_context_tokens,
     estimate_context_tokens,
 )
-from loushang.harness.agent_transcript import (
+from loushang.harness.transcript import (
     plan_turn_aware_compaction as plan_compaction,
 )
-from loushang.harness.agent_transcript import (
+from loushang.harness.transcript import (
     prepare_turn_aware_compaction as prepare_compaction,
 )
-from loushang.harness.context import SummaryValidationReport, validate_summary
-from loushang.harness.context.budget import calculate_compaction_budget
 
 
 @pytest.mark.anyio
 async def test_complete_text_calls_root_complete_with_options(monkeypatch) -> None:
     from loushang.ai import Context
-    from loushang.harness.agent_transcript import summarization as summary_module
+    from loushang.harness.transcript import summarization as summary_module
 
     captured: dict[str, object] = {}
 
@@ -763,10 +763,10 @@ def test_plan_compaction_partitions_do_not_overlap_when_all_context_is_kept(
 
 
 def test_harness_exports_turn_aware_compaction_surface() -> None:
-    from loushang.harness.agent_transcript import (
+    from loushang.harness.transcript import (
         CompactionResult as HarnessCompactionResult,
     )
-    from loushang.harness.agent_transcript import (
+    from loushang.harness.transcript import (
         prepare_turn_aware_compaction,
     )
 
@@ -872,10 +872,10 @@ Try a branch-specific refactor.
 
 def test_top_level_package_exports_branch_summary_surface() -> None:
     import loushang.coding as coding
-    from loushang.harness.agent_transcript import (
+    from loushang.harness.transcript import (
         BranchSummaryOutput as HarnessBranchSummaryOutput,
     )
-    from loushang.harness.agent_transcript import (
+    from loushang.harness.transcript import (
         execute_branch_summary,
     )
 

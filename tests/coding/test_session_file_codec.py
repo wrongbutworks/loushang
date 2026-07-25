@@ -1,30 +1,30 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
 import pytest
 
 from loushang.ai.types import UserMessage
-from loushang.harness.agent_transcript import AGENT_MESSAGE_KIND
-from loushang.harness.agent_transcript.file_store import (
-    AgentTranscriptFileError,
-    append_agent_transcript_record,
-    load_agent_transcript_file,
-    load_agent_transcript_repository,
-    write_agent_transcript_file,
-)
 from loushang.harness.conversation import (
     ConversationHeader,
     ConversationRecord,
-    NativeConversationHeaderCodec,
+)
+from loushang.harness.transcript import AGENT_MESSAGE_KIND
+from loushang.harness.transcript.jsonl_file import (
+    AgentTranscriptFileError,
+    AgentTranscriptFileLayout,
+    create_agent_transcript_file_store,
+    load_agent_transcript_file,
+    load_agent_transcript_repository,
+    write_agent_transcript_export,
 )
 
 SessionFileError = AgentTranscriptFileError
-append_session_entry = append_agent_transcript_record
 load_session_file = load_agent_transcript_file
 load_session_repository = load_agent_transcript_repository
-write_session_file = write_agent_transcript_file
+write_session_file = write_agent_transcript_export
 
 
 def _header() -> ConversationHeader:
@@ -56,7 +56,18 @@ def test_write_append_and_load_native_session_file(tmp_path: Path) -> None:
     second = _message_record("record-2", first.record_id)
 
     write_session_file(path, _header(), [first])
-    append_session_entry(path, second)
+    layout = AgentTranscriptFileLayout(tmp_path)
+    key = layout.bind_existing_path(path)
+    store = create_agent_transcript_file_store(layout)
+    snapshot = asyncio.run(store.load(key)).snapshot
+    asyncio.run(
+        store.append(
+            key,
+            second,
+            expected_revision=snapshot.revision,
+            operation_id=second.record_id,
+        )
+    )
     header, records = load_session_file(path)
 
     assert header == _header()
@@ -81,7 +92,7 @@ def test_native_session_load_skips_only_partial_tail(tmp_path: Path) -> None:
     assert records == [record]
 
 
-def test_writable_repository_repairs_partial_tail_before_append(
+def test_file_store_repairs_partial_tail_before_append(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "session.jsonl"
@@ -90,16 +101,23 @@ def test_writable_repository_repairs_partial_tail_before_append(
     with path.open("a", encoding="utf-8") as stream:
         stream.write('{"type":"record"')
 
-    repository = load_session_repository(path)
-    repository.append(_message_record("record-2", "record-1"))
+    layout = AgentTranscriptFileLayout(tmp_path)
+    key = layout.bind_existing_path(path)
+    store = create_agent_transcript_file_store(layout)
+    snapshot = asyncio.run(store.load(key)).snapshot
+    asyncio.run(
+        store.append(
+            key,
+            _message_record("record-2", "record-1"),
+            expected_revision=snapshot.revision,
+            operation_id="record-2",
+        )
+    )
     reloaded = load_session_repository(path)
 
     assert [record.record_id for record in reloaded.records] == [
         "record-1",
         "record-2",
-    ]
-    assert [diagnostic.code for diagnostic in repository.diagnostics] == [
-        "partial_journal_tail"
     ]
 
 
@@ -175,13 +193,17 @@ def test_unsupported_input_is_rejected_without_rewrite(
     assert path.read_text(encoding="utf-8") == contents
 
 
-def test_read_only_repository_rejects_append(tmp_path: Path) -> None:
+def test_loaded_repository_append_is_detached_from_source(tmp_path: Path) -> None:
     path = tmp_path / "session.jsonl"
     write_session_file(path, _header(), [_message_record()])
-    repository = load_session_repository(path, writable=False)
+    original = path.read_bytes()
+    repository = load_session_repository(path)
 
-    with pytest.raises(RuntimeError, match="read-only"):
-        repository.append(_message_record("record-2", "record-1"))
+    repository.append(_message_record("record-2", "record-1"))
+
+    assert len(repository.records) == 2
+    assert path.read_bytes() == original
+    assert len(load_session_repository(path).records) == 1
 
 
 def test_read_only_repository_rejects_session_v3_without_rewriting_source(
@@ -212,25 +234,27 @@ def test_read_only_repository_rejects_session_v3_without_rewriting_source(
     original = path.read_bytes()
 
     with pytest.raises(SessionFileError) as error:
-        load_session_repository(path, writable=False)
+        load_session_repository(path)
 
     assert error.value.code == "unsupported_session_format"
     assert path.read_bytes() == original
 
 
 @pytest.mark.parametrize("loader", [load_session_file, load_session_repository])
-def test_native_future_version_is_rejected(tmp_path: Path, loader) -> None:
+def test_conversation_jsonl_future_version_is_rejected(tmp_path: Path, loader) -> None:
     path = tmp_path / "session.jsonl"
     header = _header()
-    future_header = ConversationHeader(
-        conversation_id=header.conversation_id,
-        version=2,
-        created_at=header.created_at,
-        metadata=header.metadata,
-    )
-    native_codec = NativeConversationHeaderCodec()
     path.write_text(
-        json.dumps(native_codec.encode_header(future_header)) + "\n",
+        json.dumps(
+            {
+                "type": "conversation",
+                "conversationId": header.conversation_id,
+                "version": 2,
+                "createdAt": header.created_at,
+                "metadata": dict(header.metadata),
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
 

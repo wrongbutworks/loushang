@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
@@ -34,6 +35,7 @@ ScreenSurfaceCommandKind = Literal[
     "list_models",
     "select_command",
     "list_commands",
+    "resume_session",
     "terminal_diagnostics",
     "hotkeys",
     "settings",
@@ -130,6 +132,11 @@ class ScreenSurfaceWorkflowPorts:
     terminal_diagnostics: Callable[[], str]
     hotkeys: Callable[[], str]
     decide_approval: ApprovalDecisionHandler | None = None
+    normalize_interactive_command: (
+        Callable[[str], ScreenSurfaceCommand | None] | None
+    ) = None
+    build_resume_surface: Callable[[], ScreenSurfaceView] | None = None
+    activate_continuity: Callable[[object], Awaitable[str]] | None = None
 
 
 @dataclass(slots=True)
@@ -141,6 +148,16 @@ class ScreenSurfaceWorkflow:
     copy: ScreenSurfaceWorkflowCopy
     request_render_reason: RenderRequestKind = "product"
     coordinator: ScreenSurfaceCoordinator = field(init=False)
+    _surface_task: asyncio.Task[None] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+    _session_activation_task: asyncio.Task[None] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         self.coordinator = ScreenSurfaceCoordinator(
@@ -149,6 +166,7 @@ class ScreenSurfaceWorkflow:
                 "model": self._handle_model_submit,
                 "command": self._handle_command_submit,
                 "settings": self._handle_settings_submit,
+                "session": self._handle_session_submit,
                 "dialog": self._handle_dialog_submit,
                 "approval": self._handle_approval_submit,
             },
@@ -194,6 +212,16 @@ class ScreenSurfaceWorkflow:
                 text=await self.ports.format_commands(command.query),
                 presentation="bottom",
             )
+        elif (
+            command.kind == "resume_session"
+            and self.ports.build_resume_surface is not None
+        ):
+            try:
+                picker = self.ports.build_resume_surface()
+            except Exception as error:
+                self.app.set_status(self.copy.recoverable_error(error))
+            else:
+                self.open(picker)
         elif command.kind == "terminal_diagnostics":
             self.open_info(
                 title=self.copy.terminal_title,
@@ -235,7 +263,11 @@ class ScreenSurfaceWorkflow:
             self.close()
 
     def open(self, view: ScreenSurfaceView) -> None:
+        self._close_surface_content()
         self.coordinator.open(view)
+        starter = getattr(view.content, "start", None)
+        if callable(starter):
+            self._surface_task = asyncio.create_task(self._run_surface_starter(starter))
 
     def open_info(
         self,
@@ -272,6 +304,7 @@ class ScreenSurfaceWorkflow:
         )
 
     def close(self) -> None:
+        self._close_surface_content()
         self.coordinator.close()
 
     def close_surface(self) -> None:
@@ -331,6 +364,74 @@ class ScreenSurfaceWorkflow:
             await self.ports.refresh_model_label()
         self.app.request_render(self.request_render_reason)
 
+    async def _handle_session_submit(self, payload: object) -> None:
+        if self.ports.activate_continuity is None:
+            return
+        surface = self.current
+        content = surface.content if isinstance(surface, ScreenSurfaceView) else None
+        begin_activation = getattr(content, "begin_activation", None)
+        if isinstance(surface, ScreenSurfaceView) and callable(begin_activation):
+            if not begin_activation():
+                return
+            self._session_activation_task = asyncio.create_task(
+                self._run_session_activation(payload, surface)
+            )
+            return
+        await self._activate_session(payload, surface)
+
+    async def _run_session_activation(
+        self,
+        payload: object,
+        surface: ScreenSurfaceView,
+    ) -> None:
+        try:
+            await self._activate_session(payload, surface)
+        finally:
+            if self._session_activation_task is asyncio.current_task():
+                self._session_activation_task = None
+
+    async def _activate_session(
+        self,
+        payload: object,
+        surface: ScreenSurfaceView | object | None,
+    ) -> None:
+        activate = self.ports.activate_continuity
+        if activate is None:  # pragma: no cover - guarded by submit handler
+            return
+        try:
+            message = await activate(payload)
+        except Exception as error:
+            if isinstance(surface, ScreenSurfaceView) and self.current is surface:
+                fail_activation = getattr(surface.content, "fail_activation", None)
+                if callable(fail_activation):
+                    fail_activation(error)
+            self.app.set_status(self.copy.recoverable_error(error))
+            return
+        if self.current is surface:
+            self.close()
+        self.app.set_status(message)
+        self.app.request_render(self.request_render_reason)
+
+    async def _run_surface_starter(self, starter: Callable[[], object]) -> None:
+        try:
+            result = starter()
+            if hasattr(result, "__await__"):
+                await result
+        except asyncio.CancelledError:
+            return
+        except Exception as error:
+            self.app.set_status(self.copy.recoverable_error(error))
+
+    def _close_surface_content(self) -> None:
+        surface = self.current
+        if isinstance(surface, ScreenSurfaceView):
+            close = getattr(surface.content, "close", None)
+            if callable(close):
+                close()
+        if self._surface_task is not None and not self._surface_task.done():
+            self._surface_task.cancel()
+        self._surface_task = None
+
     async def _handle_dialog_submit(self, _payload: Any | None = None) -> None:
         self.close()
 
@@ -348,6 +449,10 @@ class ScreenSurfaceWorkflow:
             self.app.set_status(self.copy.approval_rejected)
 
     def _resolve_command(self, text: str) -> ScreenSurfaceCommand | None:
+        if self.ports.normalize_interactive_command is not None:
+            interactive = self.ports.normalize_interactive_command(text)
+            if interactive is not None:
+                return interactive
         command = self.ports.command_catalog.lookup(text)
         if command is None or command.kind is not CommandKind.LOCAL_UI:
             return None
@@ -388,6 +493,16 @@ def normalize_standard_conversation_surface_command(
     return None
 
 
+def normalize_standard_conversation_interactive_command(
+    text: str,
+) -> ScreenSurfaceCommand | None:
+    """Recognize standard commands whose empty form requires screen interaction."""
+
+    if text.strip() == "/resume":
+        return ScreenSurfaceCommand("resume_session")
+    return None
+
+
 def strip_available_models_heading(text: str) -> str:
     prefix = "Available models:\n"
     return text[len(prefix) :] if text.startswith(prefix) else text
@@ -406,6 +521,7 @@ __all__ = [
     "ScreenSurfaceComposerPort",
     "ScreenSurfaceWorkflowAppPort",
     "STANDARD_SCREEN_SURFACE_WORKFLOW_COPY",
+    "normalize_standard_conversation_interactive_command",
     "normalize_standard_conversation_surface_command",
     "strip_available_models_heading",
 ]

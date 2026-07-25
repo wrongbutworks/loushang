@@ -22,10 +22,6 @@ from loushang.channel import (
     RemoteUiContext,
     project_channel_value,
 )
-from loushang.harness.agent_transcript import (
-    SessionQuery,
-    create_agent_transcript_message_codec,
-)
 from loushang.harness.commands import complete_slash_commands
 from loushang.harness.diagnostics.serialization import (
     serialize_diagnostic,
@@ -34,9 +30,17 @@ from loushang.harness.diagnostics.serialization import (
 )
 from loushang.harness.diagnostics.types import DiagnosticsQuery
 from loushang.harness.events import (
-    SUPPORTED_JSON_EVENT_VIEWS,
     RuntimeEvent,
     normalize_event_select,
+)
+from loushang.harness.host.mode import ModeAdapter, ModeState
+from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
+from loushang.harness.session import (
+    SUPPORTED_JSON_EVENT_VIEWS,
+    SessionLifecycleOperationPorts,
+    SessionOperationRuntime,
+    SessionPromptRequest,
+    SessionRpcOperationBinding,
     project_runtime_event_to_json_views,
     project_session_event,
     shape_runtime_event_view,
@@ -44,13 +48,9 @@ from loushang.harness.events import (
     should_emit_projected_event,
     should_emit_runtime_event_view,
 )
-from loushang.harness.host.mode import ModeAdapter, ModeState
-from loushang.harness.presentation import ToolDefinitionResolver, ToolRenderRuntime
-from loushang.harness.session import (
-    SessionLifecycleOperationPorts,
-    SessionOperationRuntime,
-    SessionPromptRequest,
-    SessionRpcOperationBinding,
+from loushang.harness.transcript import (
+    SessionQuery,
+    create_agent_transcript_message_codec,
 )
 
 _THINKING_LEVEL_ORDER: tuple[str, ...] = (

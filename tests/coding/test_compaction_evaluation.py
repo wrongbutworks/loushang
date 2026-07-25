@@ -12,7 +12,6 @@ from loushang.coding.compaction.profiles import (
     CODING_BRANCH_SUMMARY_PROFILE,
     CODING_COMPACTION_SUMMARY_PROFILE,
 )
-from loushang.harness.agent_transcript import CompactionPreparation
 from loushang.harness.context import (
     SummaryEvaluationCase,
     SummaryResourceOperations,
@@ -21,6 +20,7 @@ from loushang.harness.context import (
     evaluate_summary_fixture,
     load_summary_evaluation_cases,
 )
+from loushang.harness.transcript import CompactionPreparation
 
 
 def _usage() -> Usage:

@@ -5,8 +5,9 @@
 Status: implementation complete for integration into `lane/harness`.
 
 This document defines the product-neutral host lifecycle and input-queue ledger
-owned by `loushang.harness.host`, composed with ordered event-dispatch
-mechanisms from `loushang.harness.events`.
+owned by `loushang.harness.runtime`, composed with event facts and ordered
+dispatch from `loushang.harness.events`. `loushang.harness.host` is the outer
+RPC/channel/mode adapter and does not own the reusable execution mechanism.
 Coding remains responsible for Product input semantics, session persistence,
 controller policy and adapters, commands, resource activation, extension
 policy, and presentation. Reusable controller state machines are defined by
@@ -18,7 +19,8 @@ The runtime control stack is:
 
 ```text
 product adapter
-  -> loushang.harness.host       # host state, scheduling boundary, feedback
+  -> loushang.harness.host       # RPC/channel/mode adapter
+  -> loushang.harness.runtime    # host state and scheduling mechanism
   -> loushang.harness.run_agent  # prepared run facade
   -> loushang.agent              # agent task, cancellation, LLM/tool loop
 ```
@@ -35,14 +37,17 @@ the prepared-run facade behind those callbacks.
 
 ## Harness-Owned Types
 
-`loushang.harness.host.types` owns:
+The records are split by meaning:
 
-- `HostStatus` for idle, running, aborting, disposing, and disposed states;
-- `HostSnapshot` for the current status and active run identity;
-- `RunState`, the accepted idle/running compatibility projection;
-- `QueueKind` and `QueueMode`;
-- `QueuedMessageSnapshot` and `QueueSnapshot`;
-- neutral host lifecycle event records.
+- `loushang.harness.events.host` owns `HostStatus` and
+  `HostLifecycleEvent`;
+- `loushang.harness.events.session` owns `QueueKind`,
+  `QueuedMessageSnapshot`, `QueueSnapshot`, `RetryAttempt`, and
+  `RetryOutcome`;
+- `loushang.harness.runtime.types` owns `HostSnapshot`, `RunState`, and
+  `QueueMode`;
+- `loushang.harness.host.types` owns only `HostActionResult`, an adapter
+  result.
 
 The broader Host status is not projected directly into Coding UI state.
 Coding maps running, aborting, and disposing to its accepted running view when
@@ -50,7 +55,7 @@ needed.
 
 ## Host Runtime
 
-`loushang.harness.host.runtime.HostRuntime` owns:
+`loushang.harness.runtime.execution.HostRuntime` owns:
 
 - legal host state transitions;
 - one-active-run enforcement;
@@ -72,7 +77,7 @@ and records the run as aborted when the delegated operation completes.
 
 ## Input Queue Ledger
 
-`loushang.harness.host.queue.HostInputQueue` owns:
+`loushang.harness.runtime.input_queue.HostInputQueue` owns:
 
 - stable queue ids;
 - steering and follow-up ordering;
@@ -86,7 +91,7 @@ parse commands, run preflight policy, select visible text, or deliver messages
 to Agent. Coding's queue controller remains the adapter that performs those
 actions and mirrors Agent delivery in the Harness ledger.
 
-`loushang.harness.host.turn.TurnInputQueue` composes that ledger with injected
+`loushang.harness.runtime.turn.TurnInputQueue` composes that ledger with injected
 delivery, notification, and continue-turn callbacks. `TurnOrchestrator` owns
 the neutral interception, preflight, active-run queue, before-run, start-hook,
 and delegated execution order. Coding still supplies every message and policy
@@ -104,8 +109,9 @@ callback.
 
 The bus is generic over its event payload. `RuntimeEventPublisher` owns one
 stream's event id, timestamp, and monotonic sequence. Harness owns common
-Session runtime payloads; Coding continues to own `AgentSessionEvent` only as a
-Product projection, UI interpretation, and extension event mapping. Common
+Session runtime payloads. `harness.session.event_types` owns
+`AgentSessionEvent` as the standard Agent-session projection contract; Product
+UI interpretation and extension event mapping remain outside `events`. Common
 observers subscribe to `RuntimeEvent`.
 Transcript commit observations are scheduled from exact Store receipts after
 durable success, so Product projection failure cannot roll back or repeat the
@@ -162,7 +168,8 @@ without waiting for another production product:
   Coding runtime objects or vocabulary;
 - generic queue payload tests use non-Coding objects;
 - generic event tests use neutral event records;
-- architecture tests forbid product imports from `loushang.harness.host`;
+- architecture tests forbid product imports from `loushang.harness.host` and
+  reject strongly connected components between Harness subpackages;
 - no host symbols are added to top-level `loushang.harness.__all__`.
 
 ## Validation
