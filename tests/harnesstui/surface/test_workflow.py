@@ -10,6 +10,7 @@ from loushang.harnesstui.surface.controller import ApprovalSurfaceDecision
 from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.harnesstui.surface.workflow import (
     ScreenSurfaceCommand,
+    ScreenSurfaceForkResult,
     ScreenSurfaceWorkflow,
     ScreenSurfaceWorkflowCopy,
     ScreenSurfaceWorkflowPorts,
@@ -33,6 +34,7 @@ class _Catalog:
                 "terminal",
                 "hotkeys",
                 "settings",
+                "btw",
             )
         }
 
@@ -51,6 +53,8 @@ class _State:
     model_values: list[str] = field(default_factory=list)
     approvals: list[ApprovalSurfaceDecision | None] = field(default_factory=list)
     resumed_sessions: list[str] = field(default_factory=list)
+    forked_entries: list[str] = field(default_factory=list)
+    side_questions: list[str] = field(default_factory=list)
     statusline_visible: list[bool] = field(default_factory=list)
     statusline_settings: list[StatusLineSettings] = field(default_factory=list)
     model_refreshes: int = 0
@@ -121,6 +125,7 @@ def _normalize(text: str, command: CommandDef) -> ScreenSurfaceCommand:
         "terminal": "terminal_diagnostics",
         "hotkeys": "hotkeys",
         "settings": "settings",
+        "btw": "side_question",
     }
     if command.name == "command" and query:
         query = f"/{query.removeprefix('/')}"
@@ -162,11 +167,26 @@ def _workflow(*, state: _State | None = None) -> tuple[ScreenSurfaceWorkflow, _S
         state.resumed_sessions.append(reference)
         return f"resumed:{reference}"
 
+    def fork_surface() -> ScreenSurfaceView:
+        return _surface("Fork prompt", "fork")
+
+    async def fork_session(target: object) -> ScreenSurfaceForkResult:
+        entry_id = str(target)
+        state.forked_entries.append(entry_id)
+        return ScreenSurfaceForkResult(
+            status=f"forked:{entry_id}",
+            composer_text="selected prompt",
+        )
+
     async def decide_approval(
         decision: ApprovalSurfaceDecision | None,
     ) -> bool | None:
         state.approvals.append(decision)
         return state.accept_approval
+
+    def side_question_surface(question: str) -> ScreenSurfaceView:
+        state.side_questions.append(question)
+        return _surface("BTW", "dialog")
 
     workflow = ScreenSurfaceWorkflow(
         app=_App(state),
@@ -187,10 +207,17 @@ def _workflow(*, state: _State | None = None) -> tuple[ScreenSurfaceWorkflow, _S
             normalize_interactive_command=lambda text: (
                 ScreenSurfaceCommand("resume_session")
                 if text.strip() == "/resume"
-                else None
+                else (
+                    ScreenSurfaceCommand("fork_session")
+                    if text.strip() == "/fork"
+                    else None
+                )
             ),
             build_resume_surface=resume_surface,
             activate_continuity=activate_continuity,
+            build_fork_surface=fork_surface,
+            fork_session=fork_session,
+            build_side_question_surface=side_question_surface,
         ),
         copy=ScreenSurfaceWorkflowCopy(
             recoverable_error=lambda error: f"recoverable:{error}",
@@ -299,6 +326,45 @@ def test_surface_workflow_opens_resume_picker_and_submits_reference() -> None:
     assert workflow.current is None
 
 
+def test_surface_workflow_routes_btw_as_an_immediate_side_question() -> None:
+    workflow, state = _workflow()
+
+    assert workflow.is_local_command("/btw why now?") is True
+    asyncio.run(workflow.handle_text("/btw why now?"))
+
+    surface = workflow.current
+    assert isinstance(surface, ScreenSurfaceView)
+    assert surface.title == "BTW"
+    assert state.side_questions == ["why now?"]
+
+    workflow.close()
+    asyncio.run(workflow.handle_text("/btw"))
+    assert state.statuses[-1] == "Usage: /btw <question>"
+
+
+def test_surface_workflow_opens_fork_picker_and_restores_selected_prompt() -> None:
+    workflow, state = _workflow()
+
+    assert workflow.is_local_command("/fork") is True
+    assert workflow.is_local_command("/fork entry-1 before") is False
+    asyncio.run(workflow.handle_text("/fork"))
+
+    picker = workflow.current
+    assert isinstance(picker, ScreenSurfaceView)
+    assert picker.purpose == "fork"
+
+    asyncio.run(
+        workflow.handle_surface_intent(
+            InputIntent(kind="select", text="entry-1")
+        )
+    )
+
+    assert state.forked_entries == ["entry-1"]
+    assert state.command_texts == ["selected prompt"]
+    assert state.statuses == ["forked:entry-1"]
+    assert workflow.current is None
+
+
 def test_surface_workflow_runs_continuity_activation_without_freezing_page() -> None:
     class _ActivationContent:
         selected_target = "typed-target"
@@ -399,6 +465,49 @@ def test_surface_workflow_keeps_continuity_failure_visible_on_page() -> None:
         assert workflow.current is picker
         assert isinstance(content.failure, RuntimeError)
         assert state.statuses == ["recoverable:restore failed"]
+
+    asyncio.run(scenario())
+
+
+def test_surface_workflow_keeps_fork_failure_visible_on_page() -> None:
+    class _ActivationContent:
+        selected_entry_id = "entry-1"
+
+        def __init__(self) -> None:
+            self.failure: Exception | None = None
+
+        def begin_activation(self) -> bool:
+            return True
+
+        def fail_activation(self, error: Exception) -> None:
+            self.failure = error
+
+    async def scenario() -> None:
+        workflow, state = _workflow()
+
+        async def fail(_target: object) -> ScreenSurfaceForkResult:
+            raise RuntimeError("fork failed")
+
+        workflow.ports = replace(workflow.ports, fork_session=fail)
+        content = _ActivationContent()
+        picker = ScreenSurfaceView(
+            title="Fork",
+            purpose="fork",
+            content=content,
+            presentation="page",
+        )
+        workflow.open(picker)
+
+        await workflow.handle_surface_intent(
+            InputIntent(kind="select", text="opaque-render-value")
+        )
+        task = workflow._fork_activation_task
+        assert task is not None
+        await task
+
+        assert workflow.current is picker
+        assert isinstance(content.failure, RuntimeError)
+        assert state.statuses == ["recoverable:fork failed"]
 
     asyncio.run(scenario())
 

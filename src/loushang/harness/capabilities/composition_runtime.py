@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
-from typing import TypeVar
+from typing import TypeVar, cast
 
 from loushang.harness.capabilities.packs import (
     CapabilityPack,
@@ -28,6 +28,7 @@ from loushang.harness.runtime import (
     COMMAND_PACKS_SLOT,
     PROMPT_SECTIONS_SLOT,
     RESOURCE_RUNTIME_SLOT,
+    SIDE_QUESTION_PROVIDER_SLOT,
     SKILL_ACTIVATION_SLOT,
     TOOL_PACKS_SLOT,
     ProductRuntimePlan,
@@ -38,6 +39,8 @@ from loushang.harness.runtime import (
     RuntimeProfileBinder,
     RuntimeProfileBinding,
     RuntimeProfileSource,
+    SessionSideQuestionProviderFactory,
+    SideQuestionProviderFactory,
     standard_capability_composition_slots,
 )
 
@@ -45,6 +48,7 @@ RESOURCE_ACTIVATION_IMPLEMENTATION = "harness.resource_activation"
 PROMPT_SECTIONS_IMPLEMENTATION = "harness.prompt_sections"
 DISABLED_SKILL_ACTIVATION_IMPLEMENTATION = "harness.disabled_skill_activation"
 ORDERED_CAPABILITY_PACKS_IMPLEMENTATION = "harness.ordered_capability_packs"
+AGENT_SIDE_QUESTION_IMPLEMENTATION = "harness.agent_side_question"
 CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION = 1
 
 T = TypeVar("T")
@@ -55,13 +59,26 @@ def standard_capability_composition_plan(
     *,
     product_id: str,
     allowed_sources: frozenset[RuntimeProfileSource] = frozenset({"product"}),
+    slot_allowed_sources: Mapping[str, frozenset[RuntimeProfileSource]] | None = None,
     prompt_separator: str = "\n\n",
     strip_prompt_sections: bool = True,
 ) -> ProductRuntimePlan:
     """Declare the standard composition mechanisms for one Product."""
 
+    source_overrides = dict(slot_allowed_sources or {})
+    unknown_overrides = source_overrides.keys() - {
+        slot.key for slot in standard_capability_composition_slots()
+    }
+    if unknown_overrides:
+        raise ValueError(
+            "unknown capability-composition source override: "
+            + ", ".join(sorted(unknown_overrides))
+        )
     slots = tuple(
-        replace(slot, allowed_sources=allowed_sources)
+        replace(
+            slot,
+            allowed_sources=source_overrides.get(slot.key, allowed_sources),
+        )
         for slot in standard_capability_composition_slots()
     )
     return ProductRuntimePlan(
@@ -95,6 +112,11 @@ def standard_capability_composition_plan(
             RuntimeCapabilitySelection(
                 slot=COMMAND_PACKS_SLOT.key,
                 implementation=ORDERED_CAPABILITY_PACKS_IMPLEMENTATION,
+                implementation_version=CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION,
+            ),
+            RuntimeCapabilitySelection(
+                slot=SIDE_QUESTION_PROVIDER_SLOT.key,
+                implementation=AGENT_SIDE_QUESTION_IMPLEMENTATION,
                 implementation_version=CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION,
             ),
         ),
@@ -183,6 +205,18 @@ class CapabilityCompositionRuntime:
             COMMAND_PACKS_SLOT.key,
         )
 
+    @property
+    def side_question_provider_factory(self) -> SideQuestionProviderFactory | None:
+        value = self.binding.values().get(SIDE_QUESTION_PROVIDER_SLOT.key)
+        if value is None:
+            return None
+        if not callable(getattr(value, "bind", None)):
+            raise TypeError(
+                f"runtime slot {SIDE_QUESTION_PROVIDER_SLOT.key!r} returned "
+                "an invalid side-question Provider factory"
+            )
+        return cast(SideQuestionProviderFactory, value)
+
     def dispose(self) -> None:
         self._binder.dispose_sync(self.binding)
 
@@ -244,6 +278,12 @@ def standard_capability_composition_implementations() -> tuple[
             implementation_version=CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION,
             create=_create_capability_pack_composer,
         ),
+        RuntimeCapabilityImplementation(
+            slot=SIDE_QUESTION_PROVIDER_SLOT.key,
+            implementation=AGENT_SIDE_QUESTION_IMPLEMENTATION,
+            implementation_version=CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION,
+            create=_create_agent_side_question_provider_factory,
+        ),
     )
 
 
@@ -293,6 +333,15 @@ def _create_capability_pack_composer(
     return CapabilityPackComposer()
 
 
+def _create_agent_side_question_provider_factory(
+    selection: RuntimeCapabilitySelection,
+    context: object | None,
+) -> SideQuestionProviderFactory:
+    del context
+    _require_exact_config(selection, expected=set())
+    return SessionSideQuestionProviderFactory()
+
+
 def _require_exact_config(
     selection: RuntimeCapabilitySelection,
     *,
@@ -327,6 +376,7 @@ def _require_value(
 
 
 __all__ = [
+    "AGENT_SIDE_QUESTION_IMPLEMENTATION",
     "CAPABILITY_COMPOSITION_IMPLEMENTATION_VERSION",
     "CapabilityCompositionRuntime",
     "DISABLED_SKILL_ACTIVATION_IMPLEMENTATION",

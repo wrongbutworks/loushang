@@ -126,6 +126,46 @@ def test_persistent_session_resumes_the_snapshotted_file_profile(tmp_path) -> No
     asyncio.run(scenario())
 
 
+def test_persistent_session_accepts_snapshot_without_auxiliary_side_question(
+    tmp_path,
+) -> None:
+    async def scenario() -> None:
+        manager = await SessionManager.new(
+            session_dir=tmp_path,
+            cwd="/tmp/project",
+            persist=True,
+        )
+        assert manager.session_file is not None
+        await manager.append_message(
+            UserMessage(role="user", content="materialize", timestamp=0.0)
+        )
+        capability_snapshot = dict(
+            manager.header.metadata[CODING_CAPABILITY_PROFILE_METADATA_KEY]
+        )
+        capabilities = capability_snapshot["capabilities"]
+        assert isinstance(capabilities, list)
+        capability_snapshot["capabilities"] = [
+            capability
+            for capability in capabilities
+            if isinstance(capability, dict)
+            and capability.get("slot") != "interaction.side_question"
+        ]
+        header = replace(
+            manager.header,
+            metadata={
+                **manager.header.metadata,
+                CODING_CAPABILITY_PROFILE_METADATA_KEY: capability_snapshot,
+            },
+        )
+        write_session_file(manager.session_file, header, manager.get_entries())
+        await manager.dispose_runtime_profile()
+
+        resumed = await SessionManager.load(manager.session_file, persist=True)
+        await resumed.dispose_runtime_profile()
+
+    asyncio.run(scenario())
+
+
 def test_persistent_session_rejects_a_different_capability_profile(tmp_path) -> None:
     async def scenario() -> None:
         manager = await SessionManager.new(

@@ -36,6 +36,8 @@ ScreenSurfaceCommandKind = Literal[
     "select_command",
     "list_commands",
     "resume_session",
+    "fork_session",
+    "side_question",
     "terminal_diagnostics",
     "hotkeys",
     "settings",
@@ -81,6 +83,14 @@ class ScreenSurfaceCommand:
 
     kind: ScreenSurfaceCommandKind
     query: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ScreenSurfaceForkResult:
+    """Effects produced after a Product forks one selected prompt."""
+
+    status: str
+    composer_text: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +147,13 @@ class ScreenSurfaceWorkflowPorts:
     ) = None
     build_resume_surface: Callable[[], ScreenSurfaceView] | None = None
     activate_continuity: Callable[[object], Awaitable[str]] | None = None
+    build_fork_surface: Callable[[], ScreenSurfaceView] | None = None
+    fork_session: (
+        Callable[[object], Awaitable[ScreenSurfaceForkResult]] | None
+    ) = None
+    build_side_question_surface: (
+        Callable[[str], ScreenSurfaceView] | None
+    ) = None
 
 
 @dataclass(slots=True)
@@ -158,6 +175,11 @@ class ScreenSurfaceWorkflow:
         init=False,
         repr=False,
     )
+    _fork_activation_task: asyncio.Task[None] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         self.coordinator = ScreenSurfaceCoordinator(
@@ -167,6 +189,7 @@ class ScreenSurfaceWorkflow:
                 "command": self._handle_command_submit,
                 "settings": self._handle_settings_submit,
                 "session": self._handle_session_submit,
+                "fork": self._handle_fork_submit,
                 "dialog": self._handle_dialog_submit,
                 "approval": self._handle_approval_submit,
             },
@@ -222,6 +245,29 @@ class ScreenSurfaceWorkflow:
                 self.app.set_status(self.copy.recoverable_error(error))
             else:
                 self.open(picker)
+        elif (
+            command.kind == "fork_session"
+            and self.ports.build_fork_surface is not None
+        ):
+            try:
+                picker = self.ports.build_fork_surface()
+            except Exception as error:
+                self.app.set_status(self.copy.recoverable_error(error))
+            else:
+                self.open(picker)
+        elif command.kind == "side_question":
+            question = command.query.strip()
+            if not question:
+                self.app.set_status("Usage: /btw <question>")
+            elif self.ports.build_side_question_surface is None:
+                self.app.set_status("Side questions are not available.")
+            else:
+                try:
+                    surface = self.ports.build_side_question_surface(question)
+                except Exception as error:
+                    self.app.set_status(self.copy.recoverable_error(error))
+                else:
+                    self.open(surface)
         elif command.kind == "terminal_diagnostics":
             self.open_info(
                 title=self.copy.terminal_title,
@@ -317,6 +363,9 @@ class ScreenSurfaceWorkflow:
         risk: str = "",
         action_id: str | None = None,
     ) -> None:
+        current = self.current
+        if isinstance(current, ScreenSurfaceView) and current.purpose != "approval":
+            self._close_surface_content()
         self.coordinator.present_approval(
             action=action,
             risk=risk,
@@ -389,6 +438,56 @@ class ScreenSurfaceWorkflow:
         finally:
             if self._session_activation_task is asyncio.current_task():
                 self._session_activation_task = None
+
+    async def _handle_fork_submit(self, payload: object) -> None:
+        if self.ports.fork_session is None:
+            return
+        surface = self.current
+        content = surface.content if isinstance(surface, ScreenSurfaceView) else None
+        begin_activation = getattr(content, "begin_activation", None)
+        if isinstance(surface, ScreenSurfaceView) and callable(begin_activation):
+            if not begin_activation():
+                return
+            self._fork_activation_task = asyncio.create_task(
+                self._run_fork_activation(payload, surface)
+            )
+            return
+        await self._activate_fork(payload, surface)
+
+    async def _run_fork_activation(
+        self,
+        payload: object,
+        surface: ScreenSurfaceView,
+    ) -> None:
+        try:
+            await self._activate_fork(payload, surface)
+        finally:
+            if self._fork_activation_task is asyncio.current_task():
+                self._fork_activation_task = None
+
+    async def _activate_fork(
+        self,
+        payload: object,
+        surface: ScreenSurfaceView | object | None,
+    ) -> None:
+        fork_session = self.ports.fork_session
+        if fork_session is None:  # pragma: no cover - guarded by submit handler
+            return
+        try:
+            result = await fork_session(payload)
+        except Exception as error:
+            if isinstance(surface, ScreenSurfaceView) and self.current is surface:
+                fail_activation = getattr(surface.content, "fail_activation", None)
+                if callable(fail_activation):
+                    fail_activation(error)
+            self.app.set_status(self.copy.recoverable_error(error))
+            return
+        if self.current is surface:
+            self.close()
+        if result.composer_text is not None:
+            self.app.composer.set_text(result.composer_text)
+        self.app.set_status(result.status)
+        self.app.request_render(self.request_render_reason)
 
     async def _activate_session(
         self,
@@ -478,6 +577,11 @@ def normalize_standard_conversation_surface_command(
         )
     if command.name == "commands" and isinstance(intent, CommandsIntent):
         return ScreenSurfaceCommand("list_commands", intent.query)
+    if command.name == "btw":
+        stripped = text.strip()
+        parts = stripped.split(maxsplit=1)
+        query = parts[1] if len(parts) == 2 else ""
+        return ScreenSurfaceCommand("side_question", query)
     if command.name == "terminal" and isinstance(
         intent,
         TerminalDiagnosticsIntent,
@@ -500,6 +604,8 @@ def normalize_standard_conversation_interactive_command(
 
     if text.strip() == "/resume":
         return ScreenSurfaceCommand("resume_session")
+    if text.strip() == "/fork":
+        return ScreenSurfaceCommand("fork_session")
     return None
 
 
@@ -519,6 +625,7 @@ __all__ = [
     "ScreenSurfaceCommandCatalog",
     "ScreenSurfaceCommandKind",
     "ScreenSurfaceComposerPort",
+    "ScreenSurfaceForkResult",
     "ScreenSurfaceWorkflowAppPort",
     "STANDARD_SCREEN_SURFACE_WORKFLOW_COPY",
     "normalize_standard_conversation_interactive_command",

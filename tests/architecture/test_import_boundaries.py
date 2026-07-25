@@ -81,6 +81,7 @@ def test_core_runtime_packages_do_not_import_product_layers() -> None:
                     "src/loushang/harness/session/agent_product.py",
                     "src/loushang/harness/session/composition.py",
                     "src/loushang/harness/session/operations_runtime.py",
+                    "src/loushang/harness/session/side_question.py",
                 }
             ),
         ),

@@ -31,7 +31,12 @@ from loushang.harness.resources.packages.catalog import PackageSummaryProvider
 from loushang.harness.resources.packages.materializer import PackageMaterializer
 from loushang.harness.resources.packages.session import SessionPackageController
 from loushang.harness.resources.types import ResourceBundle
-from loushang.harness.runtime import CancellationSignal
+from loushang.harness.runtime import (
+    CancellationSignal,
+    SideQuestionAnswer,
+    SideQuestionCoordinator,
+    SideQuestionUpdate,
+)
 from loushang.harness.session.agent_adapter import (
     AgentSessionAdapterMixin,
     initialize_composed_session,
@@ -48,6 +53,10 @@ from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
 from loushang.harness.session.facade import SessionFacade
 from loushang.harness.session.operations_runtime import SessionOperationsPorts
 from loushang.harness.session.settings import SessionSettingsBinding
+from loushang.harness.session.side_question import (
+    SIDE_QUESTION_BOUNDARY_PROMPT,
+    AgentSideQuestionProvider,
+)
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import (
     BranchSummaryOutput,
@@ -123,6 +132,12 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
         self._package_materializer = package_materializer
         self._exec_service = exec_service or ExecService()
         self._capability_runtime = capability_runtime
+        side_question_factory = capability_runtime.side_question_provider_factory
+        self._side_question = (
+            SideQuestionCoordinator(side_question_factory.bind(self))
+            if side_question_factory is not None
+            else None
+        )
         self.footer_data_provider = footer_data_provider
         self._base_prompt = (
             base_prompt if base_prompt is not None else self.agent.system_prompt
@@ -365,7 +380,29 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
     def get_context_usage(self):
         return serialize_context_usage_payload(super().get_context_usage())
 
+    async def ask_side_question(
+        self,
+        question: str,
+        *,
+        on_update: SideQuestionUpdate | None = None,
+    ) -> SideQuestionAnswer:
+        coordinator = self._side_question
+        if coordinator is None:
+            raise RuntimeError("Side questions are not available for this session.")
+        return await coordinator.ask(question, on_update=on_update)
+
+    def create_side_question_provider(self) -> AgentSideQuestionProvider:
+        return AgentSideQuestionProvider(
+            session=self,
+            boundary_prompt=SIDE_QUESTION_BOUNDARY_PROMPT,
+        )
+
+    def cancel_side_question(self) -> bool:
+        coordinator = self._side_question
+        return coordinator.cancel() if coordinator is not None else False
+
     def _finalize_after_session_shutdown(self) -> None:
+        self.cancel_side_question()
         self._close_session_approvals()
         if self._extension_runner is not None:
             self._invalidate_extension_contexts(

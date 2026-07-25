@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 from loushang.coding.continuity import bind_coding_continuity
@@ -14,6 +14,13 @@ from loushang.harnesstui.conversation.agent_application import (
     build_agent_screen_surface_workflow_ports,
     current_agent_runtime_session,
 )
+from loushang.harnesstui.conversation.fork import (
+    ForkPromptCandidate,
+    build_fork_prompt_surface_view,
+)
+from loushang.harnesstui.conversation.side_question import (
+    build_side_question_surface_view,
+)
 from loushang.harnesstui.selection.binding import (
     SessionModelSelectorSurfaceProfile,
 )
@@ -21,6 +28,7 @@ from loushang.harnesstui.status.provider import StatusProvider
 from loushang.harnesstui.surface.workflow import (
     STANDARD_SCREEN_SURFACE_WORKFLOW_COPY,
     ScreenSurfaceCommandCatalog,
+    ScreenSurfaceForkResult,
     ScreenSurfaceWorkflow,
 )
 
@@ -72,6 +80,13 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             activate_continuity=(
                 self._activate_continuity if runtime is not None else None
             ),
+            build_fork_surface=(
+                self._build_fork_surface if runtime is not None else None
+            ),
+            fork_session=(
+                self._fork_session if runtime is not None else None
+            ),
+            build_side_question_surface=self._build_side_question_surface,
             command_catalog=command_catalog,
             model_selector_profile=_CODING_MODEL_SELECTOR_PROFILE,
         )
@@ -130,6 +145,48 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             raise RuntimeError("Session resume was cancelled")
         return f"Resumed session {target.opaque_id}"
 
+    def _build_fork_surface(self):
+        session = self._current_session()
+        getter = getattr(session, "get_user_messages_for_forking", None)
+        if not callable(getter):
+            raise RuntimeError("Prompt history is not available for this session")
+        candidates: list[ForkPromptCandidate] = []
+        for value in getter():
+            if not isinstance(value, Mapping):
+                raise TypeError("Fork prompt candidates must be mappings")
+            entry_id = value.get("entry_id")
+            text = value.get("text")
+            if not isinstance(entry_id, str) or not entry_id.strip():
+                raise TypeError("Fork prompt candidates require an entry_id")
+            if not isinstance(text, str) or not text.strip():
+                continue
+            candidates.append(
+                ForkPromptCandidate(entry_id=entry_id, text=text)
+            )
+        return build_fork_prompt_surface_view(
+            candidates=candidates,
+            request_render=lambda: self.coding_app.request_render("product"),
+        )
+
+    async def _fork_session(self, target: object) -> ScreenSurfaceForkResult:
+        if self.runtime is None:
+            raise RuntimeError("Session runtime is not available")
+        if not isinstance(target, str) or not target.strip():
+            raise TypeError("Fork requires a selected prompt")
+        operation = getattr(self.runtime, "fork_session_operation", None)
+        if not callable(operation):
+            raise RuntimeError("Session forking is not available")
+        result = await operation(target, position="before")
+        if getattr(result, "cancelled", False):
+            raise RuntimeError("Session fork was cancelled")
+        selected_text = getattr(result, "payload", None)
+        if not isinstance(selected_text, str):
+            raise RuntimeError("Forked session did not return the selected prompt")
+        return ScreenSurfaceForkResult(
+            status="Forked from selected prompt",
+            composer_text=selected_text,
+        )
+
     async def _build_settings_content(self) -> object:
         session = self._current_session()
         return await build_coding_settings_page(
@@ -137,6 +194,19 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             status_provider=self.status_provider,
             settings_manager=getattr(session, "settings_manager", None),
             statusline_preview=self.coding_app.statusline_preview_snapshot,
+        )
+
+    def _build_side_question_surface(self, question: str):
+        session = self._current_session()
+        ask = getattr(session, "ask_side_question", None)
+        cancel = getattr(session, "cancel_side_question", None)
+        if not callable(ask) or not callable(cancel):
+            raise RuntimeError("Side questions are not available for this session.")
+        return build_side_question_surface_view(
+            question=question,
+            ask=ask,
+            cancel=cancel,
+            request_render=lambda: self.coding_app.request_render("product"),
         )
 
 

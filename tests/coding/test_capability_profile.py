@@ -13,7 +13,10 @@ from loushang.harness.capabilities import (
 from loushang.harness.capabilities.prompt import PromptSection
 from loushang.harness.conversation import ConversationHeader
 from loushang.harness.resources.types import ResourceBundle, SkillDescriptor
-from loushang.harness.runtime import RuntimeProfileSnapshot
+from loushang.harness.runtime import (
+    SIDE_QUESTION_PROVIDER_SLOT,
+    RuntimeProfileSnapshot,
+)
 
 
 def test_coding_capability_profile_binds_all_default_capabilities(tmp_path) -> None:
@@ -79,9 +82,15 @@ def test_coding_capability_snapshot_is_separate_from_other_header_metadata() -> 
         "skill.activation",
         "tool.packs",
         "command.packs",
+        "interaction.side_question",
         "continuity.provider_packs",
     }
     assert all(
         slot.allowed_sources == frozenset({"product"})
         for slot in CODING_CAPABILITY_PLAN.slots
+        if slot.key != SIDE_QUESTION_PROVIDER_SLOT.key
+    )
+    assert (
+        CODING_CAPABILITY_PLAN.slot(SIDE_QUESTION_PROVIDER_SLOT.key).allowed_sources
+        == frozenset({"product", "oem", "extension"})
     )

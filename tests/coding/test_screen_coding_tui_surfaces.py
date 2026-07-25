@@ -8,6 +8,7 @@ from loushang.ai import Model
 from loushang.ai.model import ModelSelection
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
+from loushang.harnesstui.conversation.fork import ForkPromptSurface
 from loushang.harnesstui.selection.model import (
     ModelSelectorSurface as SharedModelSelectorSurface,
 )
@@ -366,6 +367,61 @@ def test_screen_surface_manager_opens_resume_as_full_screen_continuity_page() ->
     assert surface.presentation == "page"
     assert isinstance(surface.renderable, ScreenSurfaceView)
     assert surface.renderable.purpose == "session"
+
+
+def test_screen_surface_manager_forks_selected_prompt_and_restores_composer() -> None:
+    session = _Session()
+    session.fork_messages = [
+        {"entry_id": "entry-1", "text": "first prompt"},
+        {"entry_id": "entry-2", "text": "latest prompt"},
+    ]
+
+    class Runtime:
+        def __init__(self) -> None:
+            self.current_session = session
+            self.calls: list[tuple[str, str]] = []
+
+        async def fork_session_operation(self, entry_id: str, *, position: str):
+            self.calls.append((entry_id, position))
+            return SimpleNamespace(
+                cancelled=False,
+                current=self.current_session,
+                payload="latest prompt",
+            )
+
+    async def scenario() -> None:
+        runtime = Runtime()
+        app = _app()
+        app.surface_host = SurfaceHost()
+        manager = ScreenSurfaceManager(
+            app=app,
+            session=session,
+            runtime=runtime,
+            status_provider=_status_provider(app),
+        )
+
+        assert manager.is_local_command("/fork")
+        assert not manager.is_local_command("/fork entry-2 before")
+        await manager.handle_text("/fork")
+
+        view = _only_overlay_view(app)
+        assert view.purpose == "fork"
+        assert isinstance(view.content, ForkPromptSurface)
+        assert view.content.selected_entry_id == "entry-2"
+        intent = view.handle_input(InputEvent(kind="key", key="enter"))
+        assert intent == InputIntent(kind="select", text="entry-2")
+
+        await manager.handle_surface_intent(intent)
+        task = manager._fork_activation_task
+        assert task is not None
+        await task
+
+        assert runtime.calls == [("entry-2", "before")]
+        assert app.composer.value == "latest prompt"
+        assert app.state.status_message == "Forked from selected prompt"
+        assert app.surface_host.entries == []
+
+    asyncio.run(scenario())
 
 
 def test_screen_surface_manager_opens_models_info_in_bottom_frame_with_runtime_overlay_host() -> (
@@ -1248,6 +1304,7 @@ class _Session:
         self.commands: list[object] = []
         self.model_details: list[Model] = []
         self.scoped_models: list[object] = []
+        self.fork_messages: list[dict[str, str]] = []
 
     def get_model_selection(self) -> object:
         return self.current_model
@@ -1276,6 +1333,9 @@ class _Session:
 
     def list_commands(self) -> list[object]:
         return self.commands
+
+    def get_user_messages_for_forking(self) -> list[dict[str, str]]:
+        return list(self.fork_messages)
 
 
 class _FailingModelSession(_Session):

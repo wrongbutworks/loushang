@@ -16,6 +16,7 @@ from loushang.harness.capabilities.composition_runtime import (
 from loushang.harness.capabilities.prompt import PromptSection
 from loushang.harness.resources.types import ResourceBundle, SkillDescriptor
 from loushang.harness.runtime import (
+    SIDE_QUESTION_PROVIDER_SLOT,
     ProductRuntimePlan,
     RuntimeCapabilityBindingError,
     RuntimeCapabilitySelection,
@@ -114,6 +115,27 @@ def test_standard_composition_plan_is_reusable_by_another_product() -> None:
     assert all(
         slot.allowed_sources == frozenset({"product", "oem"}) for slot in plan.slots
     )
+    runtime.dispose()
+
+
+def test_standard_composition_plan_supports_per_slot_source_boundaries() -> None:
+    plan = standard_capability_composition_plan(
+        product_id="coding",
+        slot_allowed_sources={
+            SIDE_QUESTION_PROVIDER_SLOT.key: frozenset(
+                {"product", "oem", "extension"}
+            )
+        },
+    )
+    profile = RuntimeProfileResolver().resolve(plan)
+    runtime = bind_capability_composition_runtime(profile)
+    slots = {slot.key: slot for slot in plan.slots}
+
+    assert slots["resource.runtime"].allowed_sources == frozenset({"product"})
+    assert slots[SIDE_QUESTION_PROVIDER_SLOT.key].allowed_sources == frozenset(
+        {"product", "oem", "extension"}
+    )
+    assert runtime.side_question_provider_factory is not None
     runtime.dispose()
 
 
