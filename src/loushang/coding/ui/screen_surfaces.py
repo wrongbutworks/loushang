@@ -18,6 +18,9 @@ from loushang.harnesstui.conversation.fork import (
     ForkPromptCandidate,
     build_fork_prompt_surface_view,
 )
+from loushang.harnesstui.conversation.rename import (
+    build_session_rename_surface_view,
+)
 from loushang.harnesstui.conversation.side_question import (
     build_side_question_surface_view,
 )
@@ -86,6 +89,8 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             fork_session=(
                 self._fork_session if runtime is not None else None
             ),
+            build_rename_surface=self._build_rename_surface,
+            rename_session=self._rename_session,
             build_side_question_surface=self._build_side_question_surface,
             command_catalog=command_catalog,
             model_selector_profile=_CODING_MODEL_SELECTOR_PROFILE,
@@ -186,6 +191,24 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             status="Forked from selected prompt",
             composer_text=selected_text,
         )
+
+    def _build_rename_surface(self):
+        session = self._current_session()
+        name = getattr(session, "session_name", None)
+        return build_session_rename_surface_view(
+            current_name=name if isinstance(name, str) else None
+        )
+
+    async def _rename_session(self, name: str | None) -> str:
+        session = self._current_session()
+        rename = getattr(session, "set_session_name", None)
+        if not callable(rename):
+            raise RuntimeError("Session renaming is not available")
+        await rename(name)
+        self.coding_app.state.session_label = (
+            name or getattr(session, "session_id", None)
+        )
+        return f"Session renamed to {name}" if name else "Session name cleared"
 
     async def _build_settings_content(self) -> object:
         session = self._current_session()

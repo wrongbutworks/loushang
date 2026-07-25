@@ -34,8 +34,8 @@ def test_classifies_local_and_session_commands() -> None:
     catalog = ConversationCommandCatalog(
         session_commands=lambda: [
             _command(
-                "name",
-                description="Set session display name",
+                "rename",
+                description="Rename the current session",
                 source="builtin",
                 argument_hint="<name>",
             )
@@ -48,16 +48,16 @@ def test_classifies_local_and_session_commands() -> None:
     assert settings_effect.command.kind is CommandKind.LOCAL_UI
     assert settings_effect.command.id == "harness.ui.settings"
 
-    name_effect = catalog.effect_for_route(
+    rename_effect = catalog.effect_for_route(
         ConversationHostRoute.DISPATCH,
-        PromptIntent("/name Project Alpha"),
+        PromptIntent("/rename Project Alpha"),
     )
-    assert name_effect is not None
-    assert name_effect.kind is CommandEffectKind.SESSION
-    assert name_effect.command.kind is CommandKind.SESSION
-    assert name_effect.command.name == "name"
-    assert name_effect.payload == {
-        "invocation_name": "name",
+    assert rename_effect is not None
+    assert rename_effect.kind is CommandEffectKind.SESSION
+    assert rename_effect.command.kind is CommandKind.SESSION
+    assert rename_effect.command.name == "rename"
+    assert rename_effect.payload == {
+        "invocation_name": "rename",
         "args": "Project Alpha",
     }
 

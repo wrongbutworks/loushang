@@ -66,7 +66,7 @@ def _run_commands_info_session_command() -> object:
 
     result.assert_exit_code(0)
     result.assert_text_contains("Commands")
-    result.assert_text_contains("/name <name> - Set session display name (builtin)")
+    result.assert_text_contains("/rename <name> - Rename the current session (builtin)")
     result.assert_text_not_contains("/terminal - Show terminal diagnostics (local)")
     result.assert_no_clear_screen()
     assert session.commands == []
@@ -117,8 +117,8 @@ def _run_command_palette_session_command() -> object:
     )
 
     result.assert_exit_code(0)
-    result.assert_composer_text("/name ")
-    result.assert_text_contains("Command selected: /name")
+    result.assert_composer_text("/rename ")
+    result.assert_text_contains("Command selected: /rename")
     result.assert_no_clear_screen()
     assert session.commands == []
     assert session.prompts == []

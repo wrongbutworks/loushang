@@ -40,7 +40,7 @@ def _run_local_command() -> ScreenTuiInputPlaybackResult:
     return result
 
 
-def _run_session_name_command() -> object:
+def _run_session_rename_command() -> object:
     playback = ScreenTuiLoopPlayback(
         width=100, height=18, model_label="moonshot/kimi-for-coding"
     )
@@ -49,7 +49,7 @@ def _run_session_name_command() -> object:
     manager = _surface_manager(playback.app, session=session)
 
     result = playback.run(
-        (0.00, "/name Project Alpha\r"),
+        (0.00, "/rename Project Alpha\r"),
         (0.03, ""),
         handle_prompt=coding_screen_prompt_handler(
             presenter=playback.app,
@@ -63,9 +63,9 @@ def _run_session_name_command() -> object:
 
     result.assert_exit_code(0)
     result.assert_idle()
-    assert session.commands == [("name", "Project Alpha")]
+    assert session.commands == [("rename", "Project Alpha")]
     assert session.prompts == []
-    result.assert_text_contains("› /name Project Alpha")
+    result.assert_text_contains("› /rename Project Alpha")
     result.assert_text_contains("Session name set: Project Alpha")
     result.assert_no_clear_screen()
     return result
@@ -196,9 +196,9 @@ COMMAND_ROUTING_SCENARIOS = (
         tags=("command", "local"),
     ),
     ScreenPlaybackScenarioSpec(
-        name="session-name-command",
-        description="Dispatch /name through the screen session command path without prompting the agent.",
-        run=_run_session_name_command,
+        name="session-rename-command",
+        description="Dispatch /rename through the screen session command path without prompting the agent.",
+        run=_run_session_rename_command,
         tags=("command", "session"),
     ),
     ScreenPlaybackScenarioSpec(

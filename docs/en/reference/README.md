@@ -78,7 +78,7 @@ loushang --command <command-name> --command-result-format json
 Built-in interactive commands include:
 
 ```text
-/settings /model /scoped-models /export /import /share /copy /name
+/settings /model /scoped-models /export /import /share /copy /rename
 /session /terminal /tools /changelog /hotkeys /fork /clone /tree
 /new /compact /resume /reload /quit
 ```

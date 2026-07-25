@@ -357,6 +357,7 @@ class SessionConversationEventAdapter:
     tool_projection: ToolTranscriptProjectionBinding[Mapping[str, Any], object]
     read_pending_steers: StringQueueReader = tuple
     read_pending_followups: StringQueueReader = tuple
+    on_session_info_changed: Callable[[], None] | None = None
     is_cancelled_error: CancellationErrorPredicate = is_cancelled_error_message
     recover_tool_updates: bool = True
     project_tool_result_messages: bool = True
@@ -379,6 +380,10 @@ class SessionConversationEventAdapter:
                     steers=tuple(self.read_pending_steers()),
                     followups=tuple(self.read_pending_followups()),
                 )
+            return
+        if event_type == "session_info_changed":
+            if self.on_session_info_changed is not None:
+                self.on_session_info_changed()
             return
         if event_type == "message_start":
             self._handle_message_start(event)
