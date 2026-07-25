@@ -43,6 +43,8 @@ def resume_hint_for_session(
 ) -> ConversationResumeHint | None:
     """Resolve the stable resume reference from standard Product session shapes."""
 
+    if not _has_resumable_messages(session):
+        return None
     session_file = _session_file_for_resume(session)
     if session_file is None:
         return None
@@ -73,6 +75,20 @@ def _session_file_for_resume(session: object) -> object | None:
         except Exception:
             return None
     return getattr(session, "session_file", None)
+
+
+def _has_resumable_messages(session: object) -> bool:
+    """Suppress hints for known-empty sessions without imposing a Product type."""
+
+    manager = getattr(session, "session_manager", None)
+    get_summary = getattr(manager, "get_session_summary", None)
+    if not callable(get_summary):
+        return True
+    try:
+        message_count = getattr(get_summary(), "message_count", None)
+    except Exception:
+        return True
+    return not isinstance(message_count, int) or message_count > 0
 
 
 __all__ = [

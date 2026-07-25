@@ -2950,6 +2950,36 @@ async def test_runtime_new_session_reuses_current_cwd_and_disposes_previous_sess
 
 
 @_async_test
+async def test_builtin_new_command_replaces_current_session_without_materializing_empty_files(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime
+
+    session_dir = tmp_path / "sessions"
+    runtime = create_agent_session_runtime(
+        session_dir=session_dir,
+        model=_model(),
+        persist=True,
+    )
+    first = await runtime.create_session(cwd=str(tmp_path))
+
+    execution = await first.execute_command_async("new", "")
+    current = runtime.get_current_session()
+
+    assert execution.result == {
+        "source": "builtin",
+        "command": "new",
+        "status": "ok",
+        "result": {"cancelled": False},
+        "message": "Started a new session.",
+    }
+    assert current is not None
+    assert current is not first
+    assert current.session_manager.get_cwd() == str(tmp_path.resolve())
+    assert list(session_dir.glob("*.jsonl")) == []
+
+
+@_async_test
 async def test_runtime_session_replacement_keeps_shared_approval_presenter(
     tmp_path,
 ) -> None:

@@ -9,7 +9,6 @@ and the binding input to reuse for a fork.
 
 from __future__ import annotations
 
-import asyncio
 import builtins
 from pathlib import Path
 from typing import Generic, Self, TypeVar
@@ -109,16 +108,14 @@ class ProductTranscriptSession(
         if not catalog.index_path.exists():
             return
         try:
-            summaries = await asyncio.to_thread(catalog.repair_index)
+            await catalog.upsert_summary(
+                self.get_session_summary(),
+                source_revision=revision,
+            )
         except Exception:
             # The index is an auxiliary cache; the durable transcript already won.
             return
-        if any(
-            summary.session_id == self.header.conversation_id
-            and summary.entry_count == revision
-            for summary in summaries
-        ):
-            self._published_index_revision = revision
+        self._published_index_revision = revision
 
     @classmethod
     async def new(
@@ -268,7 +265,9 @@ class ProductTranscriptSession(
         return await self.append_custom_entry("diagnostic", payload)
 
     async def append_session_info(self, name: str | None) -> str:
-        return await self.append_conversation_name(name)
+        record_id = await self.append_conversation_name(name)
+        await self.publish_index_summary()
+        return record_id
 
     async def fork(self, leaf_id: str) -> Self:
         lifecycle_session = await self._session_factory().fork(
@@ -296,7 +295,6 @@ class ProductTranscriptSession(
             summary = manager.get_session_summary()
         finally:
             await manager.dispose_runtime_profile()
-        cls._refresh_index_if_present(Path(session_file).expanduser().parent)
         return summary
 
     @classmethod
@@ -312,14 +310,14 @@ class ProductTranscriptSession(
             current_session_file=current_session_file,
         )
         if deleted:
-            cls._refresh_index_if_present(target.parent)
+            cls._repair_index_if_present(target.parent)
         return deleted
 
     @classmethod
-    def _refresh_index_if_present(cls, session_dir: Path) -> None:
+    def _repair_index_if_present(cls, session_dir: Path) -> None:
         if cls.index_file(session_dir).exists():
             try:
-                cls.refresh_index(session_dir)
+                AgentTranscriptSessionCatalog(session_dir).repair_index()
             except Exception:
                 # Indexes are auxiliary caches; primary transcript writes won.
                 return

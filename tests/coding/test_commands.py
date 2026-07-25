@@ -35,7 +35,7 @@ def test_standard_session_commands_have_shared_metadata() -> None:
         "export": "Export session (HTML default, or specify path: .html/.jsonl)",
         "import": "Import and resume a session from a JSONL file",
         "copy": "Copy an assistant message to clipboard",
-        "name": "Set session display name",
+        "rename": "Rename the current session",
         "session": "Show session info and stats",
         "changelog": "Show changelog entries",
         "fork": "Create a new fork from a previous user message",
@@ -43,9 +43,10 @@ def test_standard_session_commands_have_shared_metadata() -> None:
         "tree": "Navigate session tree (switch branches)",
         "tools": "Show or update active tools for this session",
         "extensions": "Show loaded extensions and diagnostics",
-        "new": "Start a new session",
+        "new": "Start a new session in the current context",
         "compact": "Manually compact the session context",
         "resume": "Resume a different session",
+        "delete": "Delete a previous session",
         "reload": "Reload keybindings, extensions, skills, prompts, and themes",
     }
 

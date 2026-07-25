@@ -251,7 +251,7 @@ class ProductSessionRuntime(
             if inspect.isawaitable(deleted):
                 deleted = await deleted
             if deleted and self.auto_refresh_session_index:
-                self.request_session_index_refresh()
+                self.request_session_index_repair()
             return deleted
         except Exception as exc:
             self._record_operation_failure(

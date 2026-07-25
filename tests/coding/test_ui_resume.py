@@ -62,3 +62,15 @@ def test_coding_resume_hint_requires_a_session_file() -> None:
     )
 
     assert _coding_resume_hint(session) is None
+
+
+def test_coding_resume_hint_suppresses_a_known_empty_session() -> None:
+    session = SimpleNamespace(
+        session_id="empty-session",
+        session_manager=SimpleNamespace(
+            get_session_file=lambda: Path("/tmp/empty-session.jsonl"),
+            get_session_summary=lambda: SimpleNamespace(message_count=0),
+        ),
+    )
+
+    assert _coding_resume_hint(session) is None

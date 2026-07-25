@@ -82,8 +82,8 @@ class SessionCommandPlaybackSession:
     def list_commands(self) -> list[object]:
         return [
             SimpleNamespace(
-                name="name",
-                description="Set session display name",
+                name="rename",
+                description="Rename the current session",
                 source="builtin",
                 argument_hint="<name>",
             ),

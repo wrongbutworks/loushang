@@ -48,4 +48,15 @@ class ContinuityProvider(Protocol):
     async def prepare(self, target: ContinuityTarget) -> PreparedActivationLease: ...
 
 
-__all__ = ["ContinuityProvider", "PreparedActivationLease"]
+@runtime_checkable
+class ContinuityDeletionProvider(Protocol):
+    """Optional Product-owned deletion operation for a continuity target."""
+
+    async def delete(self, target: ContinuityTarget) -> bool: ...
+
+
+__all__ = [
+    "ContinuityDeletionProvider",
+    "ContinuityProvider",
+    "PreparedActivationLease",
+]

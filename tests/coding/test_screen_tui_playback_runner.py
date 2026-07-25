@@ -52,7 +52,7 @@ def test_screen_tui_playback_fake_session_lists_command_sources() -> None:
     commands = session.list_commands()
 
     assert [(command.name, command.source) for command in commands] == [
-        ("name", "builtin"),
+        ("rename", "builtin"),
         ("export", "builtin"),
         ("review", "prompt"),
         ("debugging", "skill"),
@@ -62,7 +62,7 @@ def test_screen_tui_playback_fake_session_lists_command_sources() -> None:
 def test_screen_tui_playback_command_scenarios_live_in_command_module() -> None:
     assert [scenario.name for scenario in COMMAND_ROUTING_SCENARIOS] == [
         "local-command",
-        "session-name-command",
+        "session-rename-command",
         "session-command-error",
         "unknown-slash-prompt",
         "non-executable-session-command",
@@ -175,7 +175,7 @@ def test_screen_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "idle-escape-pops-pending-steer" in captured.out
     assert "escape-pending-steer-fifo" in captured.out
     assert "escape-pending-steer-preserves-draft" in captured.out
-    assert "session-name-command" in captured.out
+    assert "session-rename-command" in captured.out
     assert "session-command-error" in captured.out
     assert "unknown-slash-prompt" in captured.out
     assert "non-executable-session-command" in captured.out
@@ -220,7 +220,7 @@ def test_screen_tui_playback_runner_runs_tagged_command_scenarios(capsys) -> Non
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "PASS session-name-command" in captured.out
+    assert "PASS session-rename-command" in captured.out
     assert "PASS command-palette-session-command" in captured.out
     assert "PASS commands-info-session-command" in captured.out
     assert "PASS model-select" not in captured.out
@@ -243,7 +243,7 @@ def test_screen_tui_playback_runner_lists_tagged_command_scenarios(capsys) -> No
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "session-name-command" in captured.out
+    assert "session-rename-command" in captured.out
     assert "command-palette-session-command" in captured.out
     assert "model-select" not in captured.out
     assert "long-transcript-input" not in captured.out
@@ -371,11 +371,11 @@ def test_screen_tui_playback_runner_runs_lifecycle_scenario(capsys) -> None:
 
 
 def test_screen_tui_playback_runner_runs_session_name_command_scenario(capsys) -> None:
-    exit_code = run_playback_cli(["session-name-command"])
+    exit_code = run_playback_cli(["session-rename-command"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "PASS session-name-command" in captured.out
+    assert "PASS session-rename-command" in captured.out
 
 
 def test_screen_tui_playback_runner_runs_session_command_error_scenario(capsys) -> None:

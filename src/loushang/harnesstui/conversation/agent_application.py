@@ -175,6 +175,10 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
             reader = getattr(active_session(), method_name, None)
             return reader() if callable(reader) else ()
 
+        def refresh_session_label() -> None:
+            self.app.state.session_label = session_label(active_session())
+            self.app.request_render("product")
+
         status_provider = StatusProvider(
             model_label=self.startup.model_label,
             cwd=self.startup.cwd,
@@ -206,6 +210,7 @@ class AgentScreenConversationApplicationBinding(Generic[SurfaceT]):
                     read_pending_followups=stable_string_queue_reader(
                         lambda: read_pending("get_follow_up_messages")
                     ),
+                    on_session_info_changed=refresh_session_label,
                     now=self.now,
                 ).handle
             ),
@@ -253,10 +258,14 @@ def build_agent_screen_surface_workflow_ports(
     on_approval: AgentScreenApprovalHandler | None = None,
     build_resume_surface: Callable[[], ScreenSurfaceView] | None = None,
     activate_continuity: Callable[[object], Awaitable[str]] | None = None,
+    build_delete_surface: Callable[[], ScreenSurfaceView] | None = None,
+    delete_continuity: Callable[[object], Awaitable[str]] | None = None,
     build_fork_surface: Callable[[], ScreenSurfaceView] | None = None,
     fork_session: (
         Callable[[object], Awaitable[ScreenSurfaceForkResult]] | None
     ) = None,
+    build_rename_surface: Callable[[], ScreenSurfaceView] | None = None,
+    rename_session: Callable[[str | None], Awaitable[str]] | None = None,
     build_side_question_surface: Callable[[str], ScreenSurfaceView] | None = None,
     command_catalog: ScreenSurfaceCommandCatalog | None = None,
     model_selector_profile: SessionModelSelectorSurfaceProfile = (
@@ -324,13 +333,22 @@ def build_agent_screen_surface_workflow_ports(
         decide_approval=decide_approval,
         normalize_interactive_command=(
             normalize_standard_conversation_interactive_command
-            if build_resume_surface is not None or build_fork_surface is not None
+            if (
+                build_resume_surface is not None
+                or build_delete_surface is not None
+                or build_fork_surface is not None
+                or build_rename_surface is not None
+            )
             else None
         ),
         build_resume_surface=build_resume_surface,
         activate_continuity=activate_continuity,
+        build_delete_surface=build_delete_surface,
+        delete_continuity=delete_continuity,
         build_fork_surface=build_fork_surface,
         fork_session=fork_session,
+        build_rename_surface=build_rename_surface,
+        rename_session=rename_session,
         build_side_question_surface=build_side_question_surface,
     )
 

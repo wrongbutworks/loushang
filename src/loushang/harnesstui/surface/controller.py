@@ -15,7 +15,15 @@ from loushang.tui import (
 
 SurfaceEventKind = Literal["surface_submit", "surface_close"]
 SurfaceEventSource = Literal[
-    "model", "command", "settings", "session", "fork", "dialog", "approval"
+    "model",
+    "command",
+    "settings",
+    "session",
+    "delete",
+    "fork",
+    "rename",
+    "dialog",
+    "approval",
 ]
 SurfaceSubmitHandler = Callable[[Any], Awaitable[None]]
 
@@ -253,6 +261,16 @@ def normalize_surface_intent(
             source="session",
             payload=selected_target if selected_target is not None else intent.text,
         )
+    if surface.purpose == "delete" and intent.kind in {"select", "dialog_confirm"}:
+        selected_target = getattr(surface.content, "selected_target", None)
+        target = selected_target
+        if target is None:
+            target = getattr(surface.content, "target", None)
+        return SurfaceEvent(
+            kind="surface_submit",
+            source="delete",
+            payload=target if target is not None else intent.text,
+        )
     if surface.purpose == "fork" and intent.kind == "select":
         selected_entry_id = getattr(surface.content, "selected_entry_id", None)
         return SurfaceEvent(
@@ -263,6 +281,12 @@ def normalize_surface_intent(
                 if selected_entry_id is not None
                 else intent.text
             ),
+        )
+    if surface.purpose == "rename" and intent.kind == "select":
+        return SurfaceEvent(
+            kind="surface_submit",
+            source="rename",
+            payload=intent.text,
         )
     if surface.purpose == "dialog" and intent.kind == "dialog_confirm":
         return SurfaceEvent(kind="surface_submit", source="dialog")

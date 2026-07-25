@@ -18,6 +18,9 @@ from loushang.harnesstui.conversation.fork import (
     ForkPromptCandidate,
     build_fork_prompt_surface_view,
 )
+from loushang.harnesstui.conversation.rename import (
+    build_session_rename_surface_view,
+)
 from loushang.harnesstui.conversation.side_question import (
     build_side_question_surface_view,
 )
@@ -80,12 +83,20 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             activate_continuity=(
                 self._activate_continuity if runtime is not None else None
             ),
+            build_delete_surface=(
+                self._build_delete_surface if runtime is not None else None
+            ),
+            delete_continuity=(
+                self._delete_continuity if runtime is not None else None
+            ),
             build_fork_surface=(
                 self._build_fork_surface if runtime is not None else None
             ),
             fork_session=(
                 self._fork_session if runtime is not None else None
             ),
+            build_rename_surface=self._build_rename_surface,
+            rename_session=self._rename_session,
             build_side_question_surface=self._build_side_question_surface,
             command_catalog=command_catalog,
             model_selector_profile=_CODING_MODEL_SELECTOR_PROFILE,
@@ -145,6 +156,30 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             raise RuntimeError("Session resume was cancelled")
         return f"Resumed session {target.opaque_id}"
 
+    def _build_delete_surface(self):
+        if self.continuity is None:
+            raise RuntimeError("Session runtime is not available")
+        current = self._current_session()
+        current_id = getattr(current, "session_id", None)
+        return build_continuity_surface_view(
+            hub=self.continuity.hub,
+            request_render=self.coding_app.request_render,
+            include_summary=lambda summary: summary.target.opaque_id != current_id,
+            title="Delete a previous session",
+            selection_action="delete",
+            purpose="delete",
+        )
+
+    async def _delete_continuity(self, target: object) -> str:
+        if self.continuity is None:
+            raise RuntimeError("Session runtime is not available")
+        if not isinstance(target, ContinuityTarget):
+            raise TypeError("Delete requires a provider-qualified continuity target")
+        deleted = await self.continuity.hub.delete(target)
+        if not deleted:
+            raise RuntimeError("The selected session was already deleted")
+        return f"Deleted session {target.opaque_id}"
+
     def _build_fork_surface(self):
         session = self._current_session()
         getter = getattr(session, "get_user_messages_for_forking", None)
@@ -186,6 +221,24 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             status="Forked from selected prompt",
             composer_text=selected_text,
         )
+
+    def _build_rename_surface(self):
+        session = self._current_session()
+        name = getattr(session, "session_name", None)
+        return build_session_rename_surface_view(
+            current_name=name if isinstance(name, str) else None
+        )
+
+    async def _rename_session(self, name: str | None) -> str:
+        session = self._current_session()
+        rename = getattr(session, "set_session_name", None)
+        if not callable(rename):
+            raise RuntimeError("Session renaming is not available")
+        await rename(name)
+        self.coding_app.state.session_label = (
+            name or getattr(session, "session_id", None)
+        )
+        return f"Session renamed to {name}" if name else "Session name cleared"
 
     async def _build_settings_content(self) -> object:
         session = self._current_session()

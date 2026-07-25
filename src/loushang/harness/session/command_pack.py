@@ -23,13 +23,14 @@ class StandardSessionCommandId(str, Enum):
     """Stable identifiers for shared session command mechanics."""
 
     SESSION = "session"
-    NAME = "name"
+    RENAME = "rename"
     EXPORT = "export"
     IMPORT = "import"
     COMPACT = "compact"
     RELOAD = "reload"
     NEW = "new"
     RESUME = "resume"
+    DELETE = "delete"
     FORK = "fork"
     CLONE = "clone"
     TREE = "tree"
@@ -45,6 +46,7 @@ class StandardSessionCommandDefinition:
 
     command_id: StandardSessionCommandId
     description: str
+    argument_hint: str | None = None
 
     @property
     def name(self) -> str:
@@ -64,7 +66,11 @@ STANDARD_SESSION_COMMANDS: tuple[StandardSessionCommandDefinition, ...] = (
         StandardSessionCommandId.COPY,
         "Copy an assistant message to clipboard",
     ),
-    StandardSessionCommandDefinition(StandardSessionCommandId.NAME, "Set session display name"),
+    StandardSessionCommandDefinition(
+        StandardSessionCommandId.RENAME,
+        "Rename the current session",
+        "<name>",
+    ),
     StandardSessionCommandDefinition(StandardSessionCommandId.SESSION, "Show session info and stats"),
     StandardSessionCommandDefinition(StandardSessionCommandId.CHANGELOG, "Show changelog entries"),
     StandardSessionCommandDefinition(StandardSessionCommandId.FORK, "Create a new fork from a previous user message"),
@@ -72,9 +78,16 @@ STANDARD_SESSION_COMMANDS: tuple[StandardSessionCommandDefinition, ...] = (
     StandardSessionCommandDefinition(StandardSessionCommandId.TREE, "Navigate session tree (switch branches)"),
     StandardSessionCommandDefinition(StandardSessionCommandId.TOOLS, "Show or update active tools for this session"),
     StandardSessionCommandDefinition(StandardSessionCommandId.EXTENSIONS, "Show loaded extensions and diagnostics"),
-    StandardSessionCommandDefinition(StandardSessionCommandId.NEW, "Start a new session"),
+    StandardSessionCommandDefinition(
+        StandardSessionCommandId.NEW,
+        "Start a new session in the current context",
+    ),
     StandardSessionCommandDefinition(StandardSessionCommandId.COMPACT, "Manually compact the session context"),
     StandardSessionCommandDefinition(StandardSessionCommandId.RESUME, "Resume a different session"),
+    StandardSessionCommandDefinition(
+        StandardSessionCommandId.DELETE,
+        "Delete a previous session",
+    ),
     StandardSessionCommandDefinition(StandardSessionCommandId.RELOAD, "Reload keybindings, extensions, skills, prompts, and themes"),
 )
 
@@ -89,6 +102,7 @@ def list_standard_session_command_descriptors() -> list[SessionCommandDescriptor
             description=definition.description,
             source="builtin",
             source_info=source_info,
+            argument_hint=definition.argument_hint,
         )
         for definition in STANDARD_SESSION_COMMANDS
     ]
@@ -247,7 +261,7 @@ async def execute_standard_session_command_async(
             return StandardSessionCommandResult.completed(
                 command_id, ports.get_session_info()
             )
-        case StandardSessionCommandId.NAME:
+        case StandardSessionCommandId.RENAME:
             if ports.set_session_name is None:
                 return StandardSessionCommandResult.unavailable(command_id)
             name = args.strip() or None
@@ -301,13 +315,13 @@ async def execute_standard_session_command_async(
         case StandardSessionCommandId.NEW:
             if ports.new_session is None:
                 return StandardSessionCommandResult.unavailable(command_id)
-            tokens = _split_args(args)
-            options: dict[str, object] = {}
-            if tokens:
-                options["cwd"] = tokens[0]
+            if args.strip():
+                return StandardSessionCommandResult.invalid_arguments(
+                    command_id, "unexpected_arguments"
+                )
             return StandardSessionCommandResult.completed(
                 command_id,
-                await _resolve(ports.new_session(options or None)),
+                await _resolve(ports.new_session()),
             )
         case StandardSessionCommandId.RESUME:
             if ports.resume_session is None:
@@ -321,6 +335,12 @@ async def execute_standard_session_command_async(
                 command_id,
                 await _resolve(ports.resume_session(tokens[0], None)),
             )
+        case StandardSessionCommandId.DELETE:
+            if args.strip():
+                return StandardSessionCommandResult.invalid_arguments(
+                    command_id, "unexpected_arguments"
+                )
+            return StandardSessionCommandResult.unavailable(command_id)
         case StandardSessionCommandId.FORK:
             if ports.fork_session is None:
                 return StandardSessionCommandResult.unavailable(command_id)
@@ -686,8 +706,17 @@ def project_standard_session_command_result(
             if isinstance(session, Mapping):
                 session = dict(session)
             return _ok_command_result(command, session=session)
-        case StandardSessionCommandId.NAME:
-            return _ok_command_result(command, name=result.value)
+        case StandardSessionCommandId.RENAME:
+            name = result.value
+            return _ok_command_result(
+                command,
+                name=name,
+                message=(
+                    f"Session renamed to {name}"
+                    if isinstance(name, str)
+                    else "Session name cleared"
+                ),
+            )
         case StandardSessionCommandId.EXPORT:
             export = result.value
             if not isinstance(export, StandardSessionExport):
@@ -697,9 +726,20 @@ def project_standard_session_command_result(
             return _ok_command_result(command, result=_to_plain_data(result.value))
         case StandardSessionCommandId.RELOAD:
             return _ok_command_result(command, reloaded=True)
+        case StandardSessionCommandId.NEW:
+            value = _to_plain_data(result.value)
+            cancelled = isinstance(value, Mapping) and value.get("cancelled") is True
+            return _ok_command_result(
+                command,
+                result=value,
+                message=(
+                    "New session creation cancelled."
+                    if cancelled
+                    else "Started a new session."
+                ),
+            )
         case (
-            StandardSessionCommandId.NEW
-            | StandardSessionCommandId.RESUME
+            StandardSessionCommandId.RESUME
             | StandardSessionCommandId.FORK
             | StandardSessionCommandId.CLONE
             | StandardSessionCommandId.TREE
@@ -816,6 +856,10 @@ def _standard_argument_error(result: StandardSessionCommandResult) -> str:
             return "Unknown tool"
         case StandardSessionCommandId.RESUME, "missing_reference":
             return "Usage: /resume <session-id-or-path>"
+        case StandardSessionCommandId.NEW, "unexpected_arguments":
+            return "Usage: /new"
+        case StandardSessionCommandId.DELETE, "unexpected_arguments":
+            return "Usage: /delete"
         case StandardSessionCommandId.FORK, "missing_record_id":
             return "Usage: /fork <entry-id> [before|at]"
         case StandardSessionCommandId.FORK, "invalid_fork_position":

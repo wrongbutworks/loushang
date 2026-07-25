@@ -12,6 +12,8 @@ from loushang.harness.session.command_pack import (
     StandardSessionExport,
     execute_standard_session_command_async,
     is_standard_session_command,
+    list_standard_session_command_descriptors,
+    project_standard_session_command_result,
 )
 
 
@@ -29,6 +31,18 @@ def test_standard_session_command_profile_selects_and_removes_commands() -> None
 
     with pytest.raises(ValueError, match="unknown standard session command"):
         profile.select({"not-a-command"})
+
+
+def test_standard_session_commands_expose_rename_without_name_alias() -> None:
+    descriptors = {
+        descriptor.name: descriptor
+        for descriptor in list_standard_session_command_descriptors()
+    }
+
+    assert "name" not in descriptors
+    assert descriptors["rename"].argument_hint == "<name>"
+    assert is_standard_session_command("/rename")
+    assert not is_standard_session_command("/name")
 
 
 def test_standard_session_command_pack_delegates_common_operations() -> None:
@@ -79,7 +93,7 @@ def test_standard_session_command_pack_delegates_identity_and_transcript_operati
     calls: list[tuple[str, object]] = []
 
     async def _set_name(name: str | None) -> None:
-        calls.append(("name", name))
+        calls.append(("rename", name))
 
     def _export_jsonl(path: str | None) -> str:
         calls.append(("export", ("jsonl", path)))
@@ -95,7 +109,9 @@ def test_standard_session_command_pack_delegates_identity_and_transcript_operati
         import_session=_import,
     )
 
-    name = asyncio.run(execute_standard_session_command_async("name", "Alpha", ports))
+    renamed = asyncio.run(
+        execute_standard_session_command_async("rename", "Alpha", ports)
+    )
     export = asyncio.run(
         execute_standard_session_command_async("export", "saved.jsonl", ports)
     )
@@ -108,8 +124,8 @@ def test_standard_session_command_pack_delegates_identity_and_transcript_operati
         execute_standard_session_command_async("import", "", ports)
     )
 
-    assert name is not None
-    assert name.value == "Alpha"
+    assert renamed is not None
+    assert renamed.value == "Alpha"
     assert export is not None
     assert export.value == StandardSessionExport(
         format="jsonl", path="/tmp/session.jsonl"
@@ -119,7 +135,7 @@ def test_standard_session_command_pack_delegates_identity_and_transcript_operati
     assert invalid_import is not None
     assert invalid_import.error_code == "missing_import_path"
     assert calls == [
-        ("name", "Alpha"),
+        ("rename", "Alpha"),
         ("export", ("jsonl", "saved.jsonl")),
         ("import", ("saved.jsonl", "/tmp/project")),
     ]
@@ -146,7 +162,7 @@ def test_standard_session_command_pack_requires_the_selected_export_port() -> No
 def test_standard_session_command_pack_parses_lifecycle_and_tree_arguments() -> None:
     calls: list[tuple[str, object]] = []
 
-    async def _new(options: object) -> dict[str, object]:
+    async def _new(options: object | None = None) -> dict[str, object]:
         calls.append(("new", options))
         return {"cancelled": False}
 
@@ -175,7 +191,7 @@ def test_standard_session_command_pack_parses_lifecycle_and_tree_arguments() -> 
     )
 
     results = [
-        asyncio.run(execute_standard_session_command_async("new", "/next", ports)),
+        asyncio.run(execute_standard_session_command_async("new", "", ports)),
         asyncio.run(
             execute_standard_session_command_async("resume", "session-2", ports)
         ),
@@ -194,6 +210,9 @@ def test_standard_session_command_pack_parses_lifecycle_and_tree_arguments() -> 
     missing_resume = asyncio.run(
         execute_standard_session_command_async("resume", "", ports)
     )
+    invalid_new = asyncio.run(
+        execute_standard_session_command_async("new", "/next", ports)
+    )
     invalid_fork = asyncio.run(
         execute_standard_session_command_async("fork", "entry-1 elsewhere", ports)
     )
@@ -204,12 +223,15 @@ def test_standard_session_command_pack_parses_lifecycle_and_tree_arguments() -> 
     assert missing_resume is not None
     assert missing_resume.disposition == "invalid_arguments"
     assert missing_resume.error_code == "missing_reference"
+    assert invalid_new is not None
+    assert invalid_new.disposition == "invalid_arguments"
+    assert invalid_new.error_code == "unexpected_arguments"
     assert invalid_fork is not None
     assert invalid_fork.disposition == "invalid_arguments"
     assert invalid_fork.error_code == "invalid_fork_position"
     assert invalid_fork.value == "elsewhere"
     assert calls == [
-        ("new", {"cwd": "/next"}),
+        ("new", None),
         ("resume", ("session-2", None)),
         ("fork", ("entry-1", {"position": "before"})),
         ("clone", None),
@@ -225,6 +247,27 @@ def test_standard_session_command_pack_parses_lifecycle_and_tree_arguments() -> 
             ),
         ),
     ]
+
+
+def test_standard_new_command_projects_cancelled_operation_explicitly() -> None:
+    result = asyncio.run(
+        execute_standard_session_command_async(
+            "new",
+            "",
+            StandardSessionCommandPorts(
+                new_session=lambda: {"cancelled": True},
+            ),
+        )
+    )
+
+    assert result is not None
+    assert project_standard_session_command_result(result) == {
+        "source": "builtin",
+        "command": "new",
+        "status": "ok",
+        "result": {"cancelled": True},
+        "message": "New session creation cancelled.",
+    }
 
 
 def test_standard_session_command_pack_manages_tools_without_coding() -> None:

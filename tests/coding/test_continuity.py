@@ -49,6 +49,7 @@ class _Runtime(AgentTranscriptDirectoryRuntime):
         )
         self.prepared: list[str] = []
         self.restored: list[str] = []
+        self.deleted: list[str] = []
         self.current_session: object | None = None
         self.current_session_ref: str | None = None
 
@@ -76,6 +77,12 @@ class _Runtime(AgentTranscriptDirectoryRuntime):
                 return None
 
         return _Candidate()
+
+    async def delete_session(self, session_id: str | Path) -> bool:
+        reference = str(session_id)
+        self.deleted.append(reference)
+        Path(reference).unlink()
+        return True
 
 
 def test_coding_provider_projects_common_summary_preview_and_activation(
@@ -144,6 +151,49 @@ def test_coding_prepare_treats_current_session_as_noop(tmp_path: Path) -> None:
         assert result.changed is False
         assert runtime.prepared == []
         assert runtime.restored == []
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_coding_provider_deletes_only_a_fresh_noncurrent_target(tmp_path: Path) -> None:
+    runtime = _Runtime(tmp_path)
+    transcript = tmp_path / "session-1.jsonl"
+    write_agent_transcript_export(
+        transcript,
+        _header("session-1"),
+        [_record("record-1", "Delete this session")],
+    )
+    runtime.refresh_session_index()
+    composition = bind_coding_continuity(runtime)
+
+    async def scenario() -> None:
+        page = await composition.hub.query(ContinuityQuery(page_size=10))
+        assert await composition.hub.delete(page.items[0].target) is True
+        assert runtime.deleted == [str(transcript)]
+        assert transcript.exists() is False
+        await shutdown_coding_continuity(runtime)
+
+    asyncio.run(scenario())
+
+
+def test_coding_provider_refuses_to_delete_current_session(tmp_path: Path) -> None:
+    runtime = _Runtime(tmp_path)
+    transcript = tmp_path / "session-1.jsonl"
+    write_agent_transcript_export(
+        transcript,
+        _header("session-1"),
+        [_record("record-1", "Keep this session")],
+    )
+    runtime.refresh_session_index()
+    runtime.current_session_ref = str(transcript)
+    composition = bind_coding_continuity(runtime)
+
+    async def scenario() -> None:
+        page = await composition.hub.query(ContinuityQuery(page_size=10))
+        with pytest.raises(ValueError, match="currently active"):
+            await composition.hub.delete(page.items[0].target)
+        assert transcript.exists() is True
         await shutdown_coding_continuity(runtime)
 
     asyncio.run(scenario())

@@ -1098,13 +1098,16 @@ def test_screen_tui_projector_failure_still_unbinds_presenter(
     assert resolver._broker.pending_requests() == ()
 
 
-def test_screen_session_transition_binding_clears_approval_surfaces() -> None:
+def test_screen_session_transition_binding_clears_approval_surfaces_and_rebinds() -> None:
 
     subscribers: list[Callable[[], None]] = []
     primary_calls = 0
     clears = 0
+    rebound: list[object] = []
 
     class Runtime:
+        rebind = None
+
         def subscribe_before_session_invalidate(self, callback):
             subscribers.append(callback)
 
@@ -1119,6 +1122,14 @@ def test_screen_session_transition_binding_clears_approval_surfaces() -> None:
             for callback in tuple(subscribers):
                 callback()
 
+        def set_rebind_session(self, callback) -> None:
+            self.rebind = callback
+
+        def replace(self, next_session: object) -> None:
+            self.invalidate()
+            if self.rebind is not None:
+                self.rebind(next_session)
+
     class SurfaceManager:
         def clear_approval_surfaces(self) -> None:
             nonlocal clears
@@ -1128,13 +1139,17 @@ def test_screen_session_transition_binding_clears_approval_surfaces() -> None:
     unbind = tui_policy.bind_agent_screen_session_transition(
         runtime,
         SurfaceManager(),  # type: ignore[arg-type]
+        on_rebind=rebound.append,
     )
-    runtime.invalidate()
+    next_session = object()
+    runtime.replace(next_session)
     unbind()
     runtime.invalidate()
 
     assert clears == 1
     assert primary_calls == 2
+    assert rebound == [next_session]
+    assert runtime.rebind is None
     assert subscribers == []
 
 
