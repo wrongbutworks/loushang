@@ -1,7 +1,7 @@
-"""Product-composed factory for current Native Agent transcript sessions.
+"""Product-composed factory for Conversation JSONL Agent transcript sessions.
 
 The factory owns the repeated session assembly sequence: conversation identity,
-header construction, native file context, runtime binding, restore, recent
+header construction, Conversation JSONL file context, runtime binding, restore, recent
 resume, and branch/fork creation.  Products supply the binding input, their
 header metadata, and resume validation without reimplementing that sequence.
 """
@@ -14,13 +14,15 @@ from pathlib import Path
 from typing import Generic, TypeVar
 from uuid import uuid4
 
-from loushang.harness.conversation import ConversationHeader
+from loushang.harness.conversation import (
+    CURRENT_CONVERSATION_FORMAT_VERSION,
+    ConversationHeader,
+)
 from loushang.harness.transcript.lifecycle import (
     AgentTranscriptLifecycle,
     AgentTranscriptLifecycleContext,
     AgentTranscriptLifecycleSession,
 )
-from loushang.harness.transcript.migration import NATIVE_CONVERSATION_VERSION
 from loushang.harness.transcript.session_catalog import (
     AgentTranscriptSessionCatalog,
 )
@@ -43,7 +45,7 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
     """Compose one Product's standard Agent transcript session lifecycle.
 
     ``AgentTranscriptLifecycle`` remains the low-level store and lease owner.
-    This factory adds the reusable create, Native restore, recent-resume, and
+    This factory adds the reusable create, Conversation JSONL restore, recent-resume, and
     fork orchestration that Products previously repeated in their facades.
     A Product callback remains the sole owner of runtime/profile selection,
     header metadata, and compatibility validation.
@@ -57,7 +59,7 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
         header_metadata: HeaderMetadataFactory,
         validate_restored_header: RestoredHeaderValidator | None = None,
         session_file_factory: SessionFileFactory | None = None,
-        conversation_version: int = NATIVE_CONVERSATION_VERSION,
+        conversation_version: int = CURRENT_CONVERSATION_FORMAT_VERSION,
         clock: Clock | None = None,
         conversation_id_factory: IdFactory | None = None,
     ) -> None:
@@ -102,9 +104,9 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
         session_dir: str | Path | None = None,
         cwd_override: str | Path | None = None,
     ) -> AgentTranscriptLifecycleSession[ProductBindingT]:
-        """Restore one current Native transcript through the selected binding."""
+        """Restore one Conversation JSONL transcript through the selected binding."""
 
-        context = self._lifecycle.current_native_context(
+        context = self._lifecycle.conversation_jsonl_context(
             session_file,
             persist=persist,
             session_dir=session_dir,
@@ -138,7 +140,7 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
         cwd: str | Path,
         persist: bool = True,
     ) -> AgentTranscriptLifecycleSession[ProductBindingT]:
-        """Resume the most recent Native transcript or create a new one."""
+        """Resume the most recent Conversation JSONL transcript or create a new one."""
 
         resolved_session_dir = Path(session_dir)
         for summary in AgentTranscriptSessionCatalog(
@@ -180,7 +182,7 @@ class AgentTranscriptSessionFactory(Generic[BindingInputT, ProductBindingT]):
         session_dir: str | Path,
         persist: bool = True,
     ) -> AgentTranscriptLifecycleSession[ProductBindingT]:
-        """Copy a current Native transcript into a new Product-selected session."""
+        """Copy a Conversation JSONL transcript into a new Product-selected session."""
 
         source = await self.load(source_file, persist=False)
         try:

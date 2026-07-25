@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from loushang.harness.commands import CommandDef, CommandKind
 from loushang.harnesstui.settings.workflow import SettingsApplyResult
@@ -50,6 +50,7 @@ class _State:
     command_texts: list[str] = field(default_factory=list)
     model_values: list[str] = field(default_factory=list)
     approvals: list[ApprovalSurfaceDecision | None] = field(default_factory=list)
+    resumed_sessions: list[str] = field(default_factory=list)
     statusline_visible: list[bool] = field(default_factory=list)
     statusline_settings: list[StatusLineSettings] = field(default_factory=list)
     model_refreshes: int = 0
@@ -153,6 +154,14 @@ def _workflow(*, state: _State | None = None) -> tuple[ScreenSurfaceWorkflow, _S
     async def settings_content() -> object:
         return _SettingsPage()
 
+    def resume_surface() -> ScreenSurfaceView:
+        return _surface("Resume session", "session")
+
+    async def activate_continuity(target: object) -> str:
+        reference = str(target)
+        state.resumed_sessions.append(reference)
+        return f"resumed:{reference}"
+
     async def decide_approval(
         decision: ApprovalSurfaceDecision | None,
     ) -> bool | None:
@@ -175,6 +184,13 @@ def _workflow(*, state: _State | None = None) -> tuple[ScreenSurfaceWorkflow, _S
             terminal_diagnostics=lambda: "terminal body",
             hotkeys=lambda: "hotkeys body",
             decide_approval=decide_approval,
+            normalize_interactive_command=lambda text: (
+                ScreenSurfaceCommand("resume_session")
+                if text.strip() == "/resume"
+                else None
+            ),
+            build_resume_surface=resume_surface,
+            activate_continuity=activate_continuity,
         ),
         copy=ScreenSurfaceWorkflowCopy(
             recoverable_error=lambda error: f"recoverable:{error}",
@@ -259,6 +275,132 @@ def test_surface_workflow_applies_settings_effects_without_closing_page() -> Non
     assert state.statusline_settings == [StatusLineSettings(style="muted")]
     assert state.model_refreshes == 1
     assert state.renders == 1
+
+
+def test_surface_workflow_opens_resume_picker_and_submits_reference() -> None:
+    workflow, state = _workflow()
+
+    assert workflow.is_local_command("/resume") is True
+    assert workflow.is_local_command("/resume abc123") is False
+    asyncio.run(workflow.handle_text("/resume"))
+
+    picker = workflow.current
+    assert isinstance(picker, ScreenSurfaceView)
+    assert picker.purpose == "session"
+
+    asyncio.run(
+        workflow.handle_surface_intent(
+            InputIntent(kind="select", text="/tmp/session.jsonl")
+        )
+    )
+
+    assert state.resumed_sessions == ["/tmp/session.jsonl"]
+    assert state.statuses == ["resumed:/tmp/session.jsonl"]
+    assert workflow.current is None
+
+
+def test_surface_workflow_runs_continuity_activation_without_freezing_page() -> None:
+    class _ActivationContent:
+        selected_target = "typed-target"
+
+        def __init__(self) -> None:
+            self.activating = False
+            self.closed = False
+            self.failure: Exception | None = None
+
+        def begin_activation(self) -> bool:
+            if self.activating:
+                return False
+            self.activating = True
+            return True
+
+        def fail_activation(self, error: Exception) -> None:
+            self.activating = False
+            self.failure = error
+
+        def close(self) -> None:
+            self.closed = True
+
+    async def scenario() -> None:
+        workflow, state = _workflow()
+        gate = asyncio.Event()
+
+        async def activate(target: object) -> str:
+            assert target == "typed-target"
+            await gate.wait()
+            return "resumed:typed-target"
+
+        workflow.ports = replace(workflow.ports, activate_continuity=activate)
+        content = _ActivationContent()
+        picker = ScreenSurfaceView(
+            title="Resume",
+            purpose="session",
+            content=content,
+            presentation="page",
+        )
+        workflow.open(picker)
+
+        await workflow.handle_surface_intent(
+            InputIntent(kind="select", text="opaque-render-value")
+        )
+
+        assert workflow.current is picker
+        assert content.activating is True
+        assert state.statuses == []
+
+        gate.set()
+        task = workflow._session_activation_task
+        assert task is not None
+        await task
+
+        assert workflow.current is None
+        assert content.closed is True
+        assert state.statuses == ["resumed:typed-target"]
+
+    asyncio.run(scenario())
+
+
+def test_surface_workflow_keeps_continuity_failure_visible_on_page() -> None:
+    class _ActivationContent:
+        selected_target = "typed-target"
+
+        def __init__(self) -> None:
+            self.failure: Exception | None = None
+
+        def begin_activation(self) -> bool:
+            return True
+
+        def fail_activation(self, error: Exception) -> None:
+            self.failure = error
+
+    async def scenario() -> None:
+        workflow, state = _workflow()
+
+        async def fail(_target: object) -> str:
+            raise RuntimeError("restore failed")
+
+        workflow.ports = replace(workflow.ports, activate_continuity=fail)
+        content = _ActivationContent()
+        picker = ScreenSurfaceView(
+            title="Resume",
+            purpose="session",
+            content=content,
+            presentation="page",
+        )
+        workflow.open(picker)
+
+        await workflow.handle_surface_intent(
+            InputIntent(kind="select", text="opaque-render-value")
+        )
+        task = workflow._session_activation_task
+        assert task is not None
+        await task
+
+        assert workflow.current is picker
+        assert isinstance(content.failure, RuntimeError)
+        assert state.statuses == ["recoverable:restore failed"]
+
+    asyncio.run(scenario())
 
 
 def test_surface_workflow_adapts_approval_decision_and_product_status_copy() -> None:

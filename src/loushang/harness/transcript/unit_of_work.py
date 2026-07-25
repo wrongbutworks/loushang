@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
-from loushang.ai.types import Message
+from loushang.ai.types import Message, UserMessage
 from loushang.harness.conversation import (
     CommitReceipt,
     ConversationDiagnostic,
     ConversationKey,
     ConversationSourceDiagnostic,
     ConversationStore,
+    StoreCommitOutcomeUnknown,
 )
 from loushang.harness.conversation.repository import ConversationRepository
 from loushang.harness.conversation.types import (
@@ -56,20 +58,23 @@ from loushang.protocol import JSONValue
 
 @dataclass(frozen=True)
 class AgentTranscriptCommit:
-    """One record paired with the backend receipt that durably committed it."""
+    """One accepted record and its receipt once it has reached authority."""
 
     record: AgentTranscriptRecord
-    receipt: CommitReceipt
+    receipt: CommitReceipt | None
     diagnostics: tuple[ConversationSourceDiagnostic, ...] = ()
 
+    @property
+    def durable(self) -> bool:
+        return self.receipt is not None
 
-AgentTranscriptOpenDiagnostic = (
-    ConversationSourceDiagnostic | ConversationDiagnostic
-)
+
+AgentTranscriptOpenDiagnostic = ConversationSourceDiagnostic | ConversationDiagnostic
+MaterializationPolicy = Callable[[AgentTranscriptRecord], bool]
 
 
 class AgentTranscriptUnitOfWork:
-    """One durable Agent transcript stream and its journal-free runtime view."""
+    """One Agent transcript stream with optional deferred materialization."""
 
     def __init__(
         self,
@@ -84,6 +89,9 @@ class AgentTranscriptUnitOfWork:
         record_factory: AgentTranscriptRecordFactory | None = None,
         profile: AgentTranscriptProfile | None = None,
         diagnostics: Sequence[AgentTranscriptOpenDiagnostic] = (),
+        materialized: bool = True,
+        materialization_policy: MaterializationPolicy | None = None,
+        clock: Clock | None = None,
     ) -> None:
         if revision != len(repository.records):
             raise ValueError("transcript store revision must equal its record count")
@@ -96,6 +104,11 @@ class AgentTranscriptUnitOfWork:
         self._record_factory = record_factory or AgentTranscriptRecordFactory()
         self._profile = profile or AgentTranscriptProfile.default()
         self._diagnostics = tuple(diagnostics)
+        self._materialized = materialized
+        self._materialization_policy = (
+            materialization_policy or _default_materialization_policy
+        )
+        self._clock = clock or _utc_now
         self._commit_lock = asyncio.Lock()
 
     @classmethod
@@ -111,14 +124,37 @@ class AgentTranscriptUnitOfWork:
         id_factory: IdFactory | None = None,
         record_factory: AgentTranscriptRecordFactory | None = None,
         profile: AgentTranscriptProfile | None = None,
+        defer_materialization: bool = False,
+        materialization_policy: MaterializationPolicy | None = None,
     ) -> AgentTranscriptUnitOfWork:
         _require_matching_identity(key, header)
         initial_records = tuple(records)
-        _create_repository(
+        repository = _create_repository(
             header=header,
             records=initial_records,
             leaf_id=leaf_id,
         )
+        resolved_clock = clock or _utc_now
+        if defer_materialization:
+            if initial_records:
+                raise ValueError(
+                    "deferred transcript materialization requires no initial records"
+                )
+            return cls(
+                backend=backend,
+                key=key,
+                repository=repository,
+                revision=0,
+                record_factory=record_factory
+                or AgentTranscriptRecordFactory(
+                    clock=resolved_clock,
+                    id_factory=id_factory,
+                ),
+                profile=profile,
+                materialized=False,
+                materialization_policy=materialization_policy,
+                clock=resolved_clock,
+            )
         snapshot = await backend.create(
             key,
             header,
@@ -137,9 +173,14 @@ class AgentTranscriptUnitOfWork:
             repository=repository,
             revision=snapshot.revision,
             record_factory=record_factory
-            or AgentTranscriptRecordFactory(clock=clock, id_factory=id_factory),
+            or AgentTranscriptRecordFactory(
+                clock=resolved_clock,
+                id_factory=id_factory,
+            ),
             profile=profile,
             diagnostics=repository.diagnostics,
+            materialization_policy=materialization_policy,
+            clock=resolved_clock,
         )
 
     @classmethod
@@ -154,6 +195,7 @@ class AgentTranscriptUnitOfWork:
         record_factory: AgentTranscriptRecordFactory | None = None,
         profile: AgentTranscriptProfile | None = None,
     ) -> AgentTranscriptUnitOfWork:
+        resolved_clock = clock or _utc_now
         load_result = await backend.load(key)
         _require_matching_identity(key, load_result.snapshot.header)
         open_result = ConversationRepository.open(
@@ -169,9 +211,13 @@ class AgentTranscriptUnitOfWork:
             repository=repository,
             revision=load_result.snapshot.revision,
             record_factory=record_factory
-            or AgentTranscriptRecordFactory(clock=clock, id_factory=id_factory),
+            or AgentTranscriptRecordFactory(
+                clock=resolved_clock,
+                id_factory=id_factory,
+            ),
             profile=profile,
             diagnostics=open_result.diagnostics,
+            clock=resolved_clock,
         )
 
     @property
@@ -187,6 +233,10 @@ class AgentTranscriptUnitOfWork:
     @property
     def revision(self) -> int:
         return self._revision
+
+    @property
+    def is_materialized(self) -> bool:
+        return self._materialized
 
     @property
     def header(self) -> ConversationHeader:
@@ -388,6 +438,12 @@ class AgentTranscriptUnitOfWork:
             records=(*self.records, record),
             leaf_id=record.record_id,
         )
+        if not self._materialized:
+            if not self._materialization_policy(record):
+                self._repository = candidate
+                self._revision += 1
+                return AgentTranscriptCommit(record=record, receipt=None)
+            return await self._materialize_locked(record, candidate)
         commit_result = await self._backend.append(
             self._key,
             record,
@@ -412,6 +468,54 @@ class AgentTranscriptUnitOfWork:
             record=record,
             receipt=receipt,
             diagnostics=commit_result.diagnostics,
+        )
+
+    async def _materialize_locked(
+        self,
+        record: AgentTranscriptRecord,
+        candidate: ConversationRepository[
+            ConversationHeader,
+            AgentTranscriptRecord,
+        ],
+    ) -> AgentTranscriptCommit:
+        diagnostics: tuple[ConversationSourceDiagnostic, ...] = ()
+        try:
+            snapshot = await self._backend.create(
+                self._key,
+                self.header,
+                candidate.records,
+                operation_id=_create_operation_id(self._key),
+            )
+        except StoreCommitOutcomeUnknown as error:
+            try:
+                loaded = await self._backend.load(self._key)
+            except Exception:
+                raise error
+            snapshot = loaded.snapshot
+            diagnostics = loaded.diagnostics
+            if snapshot.header != self.header or snapshot.records != candidate.records:
+                raise error
+        if (
+            snapshot.header != self.header
+            or snapshot.records != candidate.records
+            or snapshot.revision != len(candidate.records)
+        ):
+            raise RuntimeError(
+                "conversation backend returned an invalid materialized snapshot"
+            )
+        receipt = CommitReceipt(
+            revision=snapshot.revision,
+            committed_at=self._clock(),
+            record_id=record.record_id,
+        )
+        self._repository = candidate
+        self._revision = snapshot.revision
+        self._materialized = True
+        self._diagnostics = (*self._diagnostics, *diagnostics)
+        return AgentTranscriptCommit(
+            record=record,
+            receipt=receipt,
+            diagnostics=diagnostics,
         )
 
     def _require_idle_commit(self, operation: str) -> None:
@@ -446,8 +550,19 @@ def _create_operation_id(key: ConversationKey) -> str:
     return f"create:{key.namespace}:{key.conversation_id}"
 
 
+def _default_materialization_policy(record: AgentTranscriptRecord) -> bool:
+    if record.kind == APPLICATION_MESSAGE_KIND:
+        return True
+    return record.kind == AGENT_MESSAGE_KIND and isinstance(record.payload, UserMessage)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
 __all__ = [
     "AgentTranscriptCommit",
     "AgentTranscriptOpenDiagnostic",
     "AgentTranscriptUnitOfWork",
+    "MaterializationPolicy",
 ]

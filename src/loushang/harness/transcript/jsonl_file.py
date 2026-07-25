@@ -1,34 +1,33 @@
-"""Current Native Agent transcript file composition over ``ConversationStore``.
+"""Agent transcript composition over the Conversation JSONL format.
 
-This optional Agent/AI profile owns the current Loushang transcript file
-format. Product code chooses a root directory and a storage provider; it does
-not own JSONL codecs, locking, or native-file discovery.
+Product code chooses a root directory and a storage provider; it does not own
+JSONL codecs, locking, or file discovery.
 """
 
 from __future__ import annotations
 
 import hashlib
 import importlib
+import json
 import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, NoReturn, cast
 
 from loushang.harness.conversation import (
     ConversationHeader,
+    ConversationJsonlHeaderCodec,
+    ConversationJsonlRecordCodec,
     ConversationKey,
     ConversationRepository,
     FileConversationStore,
-    NativeConversationHeaderCodec,
-    NativeConversationRecordCodec,
 )
 from loushang.harness.journal import (
     DEFAULT_JSONL_FORMAT,
     DURABLE_LOCKED_JOURNAL,
-    JournalCodecError,
     JournalFileError,
     JournalLoadPolicy,
     JournalRecordCodec,
@@ -37,13 +36,12 @@ from loushang.harness.journal import (
     LockMode,
     journal_file_lock,
 )
-from loushang.harness.transcript.migration import NATIVE_CONVERSATION_VERSION
 from loushang.harness.transcript.profile import AgentTranscriptProfile
 from loushang.harness.transcript.types import AgentTranscriptRecord
 
 
 class AgentTranscriptFileError(ValueError):
-    """A current Native Agent transcript file could not be read safely."""
+    """An Agent transcript JSONL file could not be read safely."""
 
     def __init__(self, message: str, *, path: Path, code: str) -> None:
         super().__init__(message)
@@ -52,24 +50,10 @@ class AgentTranscriptFileError(ValueError):
 
 
 _PROFILE = AgentTranscriptProfile.default()
-_NATIVE_HEADER_CODEC = NativeConversationHeaderCodec()
-
-
-class _CurrentConversationHeaderCodec:
-    def encode_header(self, header: ConversationHeader):
-        _require_current_native_version(header)
-        return _NATIVE_HEADER_CODEC.encode_header(header)
-
-    def decode_header(self, value):
-        header = _NATIVE_HEADER_CODEC.decode_header(value)
-        _require_current_native_version(header)
-        return header
-
-
-_HEADER_CODEC = _CurrentConversationHeaderCodec()
+_HEADER_CODEC = ConversationJsonlHeaderCodec()
 _RECORD_CODEC = cast(
     JournalRecordCodec[AgentTranscriptRecord],
-    NativeConversationRecordCodec(_PROFILE.payload_codecs),
+    ConversationJsonlRecordCodec(_PROFILE.payload_codecs),
 )
 _READ_LOAD_POLICY = JournalLoadPolicy(
     header="required",
@@ -102,7 +86,7 @@ def agent_transcript_journal(
     *,
     repair_partial_tail: bool = False,
 ) -> JsonlJournal[ConversationHeader, AgentTranscriptRecord]:
-    """Open a current Native transcript journal without legacy migration."""
+    """Open one Conversation JSONL transcript journal."""
 
     return JsonlJournal(
         path,
@@ -122,7 +106,7 @@ def write_agent_transcript_export(
     header: ConversationHeader,
     records: list[AgentTranscriptRecord],
 ) -> None:
-    """Write a derived Native JSONL artifact, never an active Store stream."""
+    """Write a derived Conversation JSONL artifact, never an active Store stream."""
 
     agent_transcript_journal(path).rewrite(records, header=header)
 
@@ -144,7 +128,7 @@ def create_agent_transcript_repository(
 def load_agent_transcript_repository(
     path: Path,
 ) -> ConversationRepository[ConversationHeader, AgentTranscriptRecord]:
-    """Load a detached current Native transcript without mutating its source."""
+    """Load a detached Conversation JSONL transcript without mutating its source."""
 
     try:
         snapshot = agent_transcript_journal(path).load()
@@ -180,20 +164,54 @@ def load_agent_transcript_file(
     return snapshot.header, list(snapshot.records)
 
 
-def load_current_agent_transcript_header(path: Path) -> ConversationHeader:
-    """Read one current Native header without migration or file mutation."""
+def load_agent_transcript_header(path: Path) -> ConversationHeader:
+    """Read only the Conversation JSONL header without scanning the transcript."""
 
+    target = Path(path)
     try:
-        snapshot = agent_transcript_journal(path).load()
-    except JournalFileError as exc:
-        raise _agent_transcript_file_error(exc) from exc
-    if snapshot.header is None:
+        with agent_transcript_file_lock(target, "shared"):
+            with target.open("r", encoding=DEFAULT_JSONL_FORMAT.encoding) as handle:
+                line = next((line for line in handle if line.strip()), "")
+    except OSError as exc:
         raise AgentTranscriptFileError(
-            "Transcript file must start with a conversation header",
-            path=path,
-            code="missing_conversation_header",
+            "Transcript file could not be read",
+            path=target,
+            code="session_file_read_failed",
+        ) from exc
+    if not line:
+        raise AgentTranscriptFileError(
+            "Transcript file is empty",
+            path=target,
+            code="empty_session_file",
         )
-    return snapshot.header
+    try:
+        value = json.loads(
+            line,
+            parse_constant=_reject_json_constant,
+        )
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise AgentTranscriptFileError(
+            "Transcript file header is not valid JSON",
+            path=target,
+            code="invalid_session_header_json",
+        ) from exc
+    try:
+        if not isinstance(value, dict):
+            raise TypeError("conversation header must be a JSON object")
+        return _HEADER_CODEC.decode_header(value)
+    except Exception as exc:
+        code = getattr(exc, "code", "invalid_session_header")
+        mapped = {
+            "invalid_envelope_type": "unsupported_session_format",
+            "unsupported_conversation_format_version": "unsupported_session_format",
+        }.get(code, code)
+        raise AgentTranscriptFileError(
+            "Transcript file format is not supported"
+            if mapped == "unsupported_session_format"
+            else "Transcript file header is invalid",
+            path=target,
+            code=mapped,
+        ) from exc
 
 
 FilenameForKey = Callable[[ConversationKey], str]
@@ -201,7 +219,7 @@ FilenameForKey = Callable[[ConversationKey], str]
 
 @dataclass
 class AgentTranscriptFileLayout:
-    """Map transcript identities to current Native JSONL paths.
+    """Map transcript identities to Conversation JSONL paths.
 
     Products own the root they select. OEMs can provide a filename function
     without replacing the codec or storage semantics.
@@ -264,12 +282,37 @@ class AgentTranscriptFileLayout:
             path
             for path in sorted(self.root.glob("*.jsonl"))
             if not path.name.endswith("-export.jsonl")
+            and _is_conversation_jsonl_candidate(path)
         )
+
+    def has_transcript_modified_after(self, modified_at_ns: int) -> bool:
+        """Check local authority freshness without decoding transcript bodies."""
+
+        return bool(self.transcript_paths_modified_after(modified_at_ns))
+
+    def transcript_paths_modified_after(
+        self,
+        modified_at_ns: int,
+    ) -> tuple[Path, ...]:
+        """List changed authority candidates using directory metadata only."""
+
+        if not self.root.is_dir():
+            return ()
+        changed: list[Path] = []
+        for path in self.root.glob("*.jsonl"):
+            if path.name.endswith("-export.jsonl"):
+                continue
+            try:
+                if path.is_file() and path.stat().st_mtime_ns > modified_at_ns:
+                    changed.append(path)
+            except OSError:
+                continue
+        return tuple(sorted(changed))
 
     def key_for_path(self, namespace: str, path: Path) -> ConversationKey:
         if namespace != self.namespace:
             raise ValueError("conversation key does not belong to this layout")
-        key = self.key(load_current_agent_transcript_header(path).conversation_id)
+        key = self.key(load_agent_transcript_header(path).conversation_id)
         self.bind_path(key, path)
         return key
 
@@ -297,7 +340,7 @@ class AgentTranscriptFileLayout:
 def create_agent_transcript_file_store(
     layout: AgentTranscriptFileLayout,
 ) -> FileConversationStore[ConversationHeader, AgentTranscriptRecord]:
-    """Build the current Native file provider for an Agent transcript profile."""
+    """Build the Conversation JSONL provider for an Agent transcript profile."""
 
     return FileConversationStore(
         create_path=layout.create_path,
@@ -328,21 +371,13 @@ def _create_detached_repository(
     )
 
 
-def _require_current_native_version(header: ConversationHeader) -> None:
-    if header.version != NATIVE_CONVERSATION_VERSION:
-        raise JournalCodecError(
-            "Native Conversation version is unsupported",
-            code="unsupported_native_conversation_version",
-        )
-
-
 def _agent_transcript_file_error(error: JournalFileError) -> AgentTranscriptFileError:
     code = {
         "empty_journal": "empty_session_file",
         "invalid_header_json": "invalid_session_header_json",
         "invalid_header_shape": "invalid_session_header",
         "invalid_envelope_type": "unsupported_session_format",
-        "unsupported_native_conversation_version": "unsupported_session_format",
+        "unsupported_conversation_format_version": "unsupported_session_format",
     }.get(error.code, error.code)
     message = {
         "empty_session_file": "Transcript file is empty",
@@ -354,6 +389,22 @@ def _agent_transcript_file_error(error: JournalFileError) -> AgentTranscriptFile
         "unsupported_session_format": "Transcript file format is not supported",
     }.get(code, "Transcript file is invalid")
     return AgentTranscriptFileError(message, path=error.path, code=code)
+
+
+def _is_conversation_jsonl_candidate(path: Path) -> bool:
+    """Exclude other JSONL families; malformed Conversation files stay visible."""
+
+    try:
+        with path.open("r", encoding=DEFAULT_JSONL_FORMAT.encoding) as handle:
+            line = next((line for line in handle if line.strip()), "")
+        value = json.loads(line)
+    except Exception:
+        return True
+    return not isinstance(value, dict) or value.get("type") == "conversation"
+
+
+def _reject_json_constant(token: str) -> NoReturn:
+    raise ValueError(f"invalid JSON constant {token!r}")
 
 
 def _default_filename(key: ConversationKey) -> str:
@@ -390,6 +441,6 @@ __all__ = [
     "create_agent_transcript_repository",
     "load_agent_transcript_file",
     "load_agent_transcript_repository",
-    "load_current_agent_transcript_header",
+    "load_agent_transcript_header",
     "write_agent_transcript_export",
 ]

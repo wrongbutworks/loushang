@@ -24,6 +24,8 @@ from loushang.harness.transcript.compaction import (
 from loushang.harness.transcript.directory import (
     AgentTranscriptDirectoryRuntime,
     IndexRefreshFailureRecorder,
+    SessionIndexPage,
+    SessionIndexPageItem,
 )
 from loushang.harness.transcript.export import (
     HTML_TRANSCRIPT_DISPOSITIONS,
@@ -53,6 +55,19 @@ from loushang.harness.transcript.interaction import (
     user_message_text,
     validate_model,
 )
+from loushang.harness.transcript.jsonl_file import (
+    AgentTranscriptFileError,
+    AgentTranscriptFileLayout,
+    FilenameForKey,
+    agent_transcript_file_lock,
+    agent_transcript_journal,
+    create_agent_transcript_file_store,
+    create_agent_transcript_repository,
+    load_agent_transcript_file,
+    load_agent_transcript_header,
+    load_agent_transcript_repository,
+    write_agent_transcript_export,
+)
 from loushang.harness.transcript.kinds import (
     AGENT_MESSAGE_KIND,
     APPLICATION_MESSAGE_KIND,
@@ -71,7 +86,7 @@ from loushang.harness.transcript.lifecycle import (
     AgentTranscriptLifecycleContext,
     AgentTranscriptLifecycleSession,
     AgentTranscriptRuntimeBinding,
-    delete_current_native_agent_transcript,
+    delete_agent_transcript_jsonl,
 )
 from loushang.harness.transcript.maintenance import (
     AgentTranscriptCompactionRuntime,
@@ -100,28 +115,14 @@ from loushang.harness.transcript.maintenance import (
 from loushang.harness.transcript.migration import (
     CURRENT_SESSION_VERSION,
     LEGACY_SESSION_OPAQUE_KIND,
-    NATIVE_CONVERSATION_VERSION,
     MigrationDisposition,
     SessionV3ImportResult,
     SessionV3MigrationError,
     SessionV3MigrationResult,
     convert_session_v3_snapshot,
     import_session_v3_file,
-    is_native_conversation_file,
+    is_conversation_jsonl_file,
     read_session_v3_file,
-)
-from loushang.harness.transcript.native_file import (
-    AgentTranscriptFileError,
-    AgentTranscriptFileLayout,
-    FilenameForKey,
-    agent_transcript_file_lock,
-    agent_transcript_journal,
-    create_agent_transcript_file_store,
-    create_agent_transcript_repository,
-    load_agent_transcript_file,
-    load_agent_transcript_repository,
-    load_current_agent_transcript_header,
-    write_agent_transcript_export,
 )
 from loushang.harness.transcript.product_session import (
     ProductTranscriptSession,
@@ -238,7 +239,6 @@ __all__ = [
     "HTML_TRANSCRIPT_DISPOSITIONS",
     "MODEL_SELECTION_KIND",
     "LEGACY_SESSION_OPAQUE_KIND",
-    "NATIVE_CONVERSATION_VERSION",
     "RECORD_ANNOTATION_PATCH_KIND",
     "STANDARD_AGENT_TRANSCRIPT_KINDS",
     "STANDARD_PAYLOAD_VERSION",
@@ -247,6 +247,8 @@ __all__ = [
     "TURN_AWARE_SUMMARY_VERSION",
     "AgentTranscriptContext",
     "AgentTranscriptDirectoryRuntime",
+    "SessionIndexPage",
+    "SessionIndexPageItem",
     "AgentTranscriptCommit",
     "AgentTranscriptOpenDiagnostic",
     "AgentTranscriptCompactionCapability",
@@ -356,7 +358,7 @@ __all__ = [
     "create_agent_transcript_compaction_capability",
     "create_agent_transcript_file_store",
     "create_agent_transcript_repository",
-    "delete_current_native_agent_transcript",
+    "delete_agent_transcript_jsonl",
     "build_context_usage_snapshot",
     "build_threshold_compaction_decision",
     "calculate_context_tokens",
@@ -375,7 +377,7 @@ __all__ = [
     "find_all_agent_transcript_session_summaries",
     "find_all_indexed_agent_transcript_session_summaries",
     "import_session_v3_file",
-    "is_native_conversation_file",
+    "is_conversation_jsonl_file",
     "is_compaction_aborted",
     "is_retryable_assistant_error",
     "list_all_agent_transcript_session_summaries",
@@ -383,7 +385,7 @@ __all__ = [
     "load_agent_transcript_session_metadata",
     "load_agent_transcript_file",
     "load_agent_transcript_repository",
-    "load_current_agent_transcript_header",
+    "load_agent_transcript_header",
     "model_selection_from_model",
     "model_context_window",
     "normalize_branch_summary_output",

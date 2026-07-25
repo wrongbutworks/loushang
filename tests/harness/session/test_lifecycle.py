@@ -184,6 +184,63 @@ def test_lifecycle_restore_uses_configured_fallback_cwd(tmp_path: Path) -> None:
     ]
 
 
+def test_lifecycle_prepared_restore_stages_before_atomic_publish(
+    tmp_path: Path,
+) -> None:
+    store = _Store(restored_cwd=str(tmp_path))
+    disposed: list[str] = []
+    current = _Session("current", str(tmp_path))
+    lifecycle = SessionLifecycleRuntime[_Session, object](
+        store=store,
+        current_session=current,
+        hooks=SessionLifecycleHooks(
+            dispose_session=lambda session: disposed.append(session.ref)
+        ),
+    )
+
+    async def scenario() -> None:
+        prepared = await lifecycle.prepare_restore("saved.jsonl")
+
+        assert lifecycle.current_session is current
+        assert prepared.consumed is False
+        assert disposed == []
+
+        result = await prepared.consume()
+
+        assert result.previous is current
+        assert result.current == _Session("saved.jsonl", str(tmp_path))
+        assert prepared.consumed is True
+        assert disposed == ["current"]
+
+    asyncio.run(scenario())
+
+
+def test_lifecycle_prepared_restore_abort_releases_unpublished_candidate(
+    tmp_path: Path,
+) -> None:
+    store = _Store(restored_cwd=str(tmp_path))
+    disposed: list[str] = []
+    current = _Session("current", str(tmp_path))
+    lifecycle = SessionLifecycleRuntime[_Session, object](
+        store=store,
+        current_session=current,
+        hooks=SessionLifecycleHooks(
+            dispose_session=lambda session: disposed.append(session.ref)
+        ),
+    )
+
+    async def scenario() -> None:
+        prepared = await lifecycle.prepare_restore("saved.jsonl")
+        await prepared.abort()
+        await prepared.abort()
+
+        assert lifecycle.current_session is current
+        assert prepared.consumed is False
+        assert disposed == ["saved.jsonl"]
+
+    asyncio.run(scenario())
+
+
 def test_lifecycle_reports_missing_cwd_without_fallback() -> None:
     lifecycle = SessionLifecycleRuntime[_Session, object](
         store=_Store(restored_cwd="/missing"),

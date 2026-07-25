@@ -7,7 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from loushang.harness.conversation import ConversationHeader
-from loushang.harness.transcript.native_file import write_agent_transcript_export
+from loushang.harness.transcript.jsonl_file import write_agent_transcript_export
 from loushang.harness.transcript.types import AgentTranscriptRecord
 
 
@@ -16,7 +16,7 @@ def export_agent_transcript_to_jsonl(
     branch_entries: Sequence[AgentTranscriptRecord],
     output_path: str | Path,
 ) -> str:
-    """Write the selected branch as a standalone linear current-Native transcript."""
+    """Write the selected branch as a standalone linear Conversation JSONL transcript."""
 
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, TextIO
 
-from loushang.harness.conversation import NativeConversationHeaderCodec
+from loushang.harness.conversation import ConversationJsonlHeaderCodec
 from loushang.harness.events import RuntimeEvent
 from loushang.harness.events.projection import RuntimeEventView
 from loushang.harness.host.mode import ModeAdapter, ModeState, dispose_host
@@ -17,7 +17,7 @@ from loushang.harnesstui.conversation.plain_prompt_host import (
 )
 from loushang.protocol import require_json_value
 
-_HEADER_CODEC = NativeConversationHeaderCodec()
+_HEADER_CODEC = ConversationJsonlHeaderCodec()
 
 
 class PlainHostFailure(RuntimeError):
@@ -244,9 +244,7 @@ class PlainHost(ModeAdapter):
         def unsubscribe() -> None:
             return None
 
-        async def after_turn(
-            turn: object, turn_index: int, turn_count: int
-        ) -> None:
+        async def after_turn(turn: object, turn_index: int, turn_count: int) -> None:
             del turn, turn_index, turn_count
             assistant_failure = last_assistant_failure_message(self.session)
             if assistant_failure is not None:
@@ -312,7 +310,9 @@ class PlainHost(ModeAdapter):
         return self.session.subscribe(self._handle_event)
 
     def _handle_runtime_event(self, event: RuntimeEvent[object]) -> None:
-        for projected_event in self._event_projection.project_runtime_event_to_json_views(
+        for (
+            projected_event
+        ) in self._event_projection.project_runtime_event_to_json_views(
             event,
             event_view=self.event_view,
             tool_render_runtime=self._tool_render_runtime,

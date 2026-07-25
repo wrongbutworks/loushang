@@ -344,6 +344,30 @@ def test_screen_surface_manager_opens_non_model_surfaces_in_runtime_overlay_host
         assert app.surface_host.entries == []
 
 
+def test_screen_surface_manager_opens_resume_as_full_screen_continuity_page() -> None:
+    session = _Session()
+    runtime = SimpleNamespace(current_session=session)
+    app = _app()
+    app.surface_host = SurfaceHost()
+    manager = ScreenSurfaceManager(
+        app=app,
+        session=session,
+        runtime=runtime,
+        status_provider=_status_provider(app),
+    )
+
+    assert manager.is_local_command("/resume")
+    assert not manager.is_local_command("/resume explicit")
+    asyncio.run(manager.handle_text("/resume"))
+
+    assert app.active_surface is None
+    assert len(app.surface_host.entries) == 1
+    surface = app.surface_host.entries[0].surface
+    assert surface.presentation == "page"
+    assert isinstance(surface.renderable, ScreenSurfaceView)
+    assert surface.renderable.purpose == "session"
+
+
 def test_screen_surface_manager_opens_models_info_in_bottom_frame_with_runtime_overlay_host() -> (
     None
 ):

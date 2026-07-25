@@ -74,8 +74,7 @@ def _paths_from_git_path(repo_dir: Path, git_path: Path) -> GitPaths | None:
             common_dir_path = git_dir / "commondir"
             common_git_dir = (
                 (
-                    git_dir
-                    / common_dir_path.read_text(encoding="utf-8").strip()
+                    git_dir / common_dir_path.read_text(encoding="utf-8").strip()
                 ).resolve()
                 if common_dir_path.exists()
                 else git_dir
@@ -97,6 +96,34 @@ def _paths_from_git_path(repo_dir: Path, git_path: Path) -> GitPaths | None:
     except OSError:
         return None
     return None
+
+
+def list_git_worktree_paths(
+    cwd: str | Path,
+    *,
+    runner: CommandRunner | None = None,
+) -> tuple[Path, ...]:
+    """List canonical worktree roots for the repository containing ``cwd``."""
+
+    git_paths = find_git_paths(cwd)
+    if git_paths is None:
+        return ()
+    command_runner = _run_command if runner is None else runner
+    result = command_runner(
+        "git",
+        ("--no-optional-locks", "worktree", "list", "--porcelain"),
+        cwd=git_paths.repo_dir,
+    )
+    if not result.ok:
+        return (git_paths.repo_dir,)
+    roots: list[Path] = []
+    for line in result.stdout.splitlines():
+        if not line.startswith("worktree "):
+            continue
+        root = Path(line.removeprefix("worktree ").strip()).resolve(strict=False)
+        if root not in roots:
+            roots.append(root)
+    return tuple(roots) or (git_paths.repo_dir,)
 
 
 def _resolve_branch_with_git(
@@ -134,4 +161,10 @@ def _run_command(
     return CommandResult(ok=result.returncode == 0, stdout=result.stdout)
 
 
-__all__ = ["CommandResult", "GitPaths", "find_git_paths", "get_git_branch"]
+__all__ = [
+    "CommandResult",
+    "GitPaths",
+    "find_git_paths",
+    "get_git_branch",
+    "list_git_worktree_paths",
+]

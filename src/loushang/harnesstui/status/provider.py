@@ -42,6 +42,19 @@ class StatusProvider:
     def statusline_settings(self) -> StatusLineSettings:
         return self._statusline_settings
 
+    def update_context(
+        self,
+        *,
+        model_label: str | None,
+        cwd: str,
+        branch: str | None,
+    ) -> None:
+        """Refresh session-bound display facts after an in-process switch."""
+
+        self._model_label = model_label
+        self._cwd = cwd
+        self._branch = branch
+
     def snapshot(self) -> StatusSnapshot:
         return StatusSnapshot(
             model_label=self._model_label,

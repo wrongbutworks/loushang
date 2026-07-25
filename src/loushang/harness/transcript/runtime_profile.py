@@ -1,4 +1,4 @@
-"""Runtime-profile binding for current Native Agent transcripts.
+"""Runtime-profile binding for Conversation JSONL Agent transcripts.
 
 The runtime composes the existing profile resolver, capability binder,
 conversation stores, transcript profile, and compaction capability. Products
@@ -13,6 +13,7 @@ from dataclasses import dataclass, field, replace
 from typing import cast
 
 from loushang.harness.conversation import (
+    CURRENT_CONVERSATION_FORMAT_VERSION,
     ConversationHeader,
     ConversationKey,
     ConversationStore,
@@ -36,13 +37,13 @@ from loushang.harness.transcript.compaction import (
     AgentTranscriptCompactionCapability,
     create_agent_transcript_compaction_capability,
 )
+from loushang.harness.transcript.jsonl_file import (
+    AgentTranscriptFileLayout,
+    create_agent_transcript_file_store,
+)
 from loushang.harness.transcript.lifecycle import (
     AgentTranscriptLifecycleContext,
     AgentTranscriptRuntimeBinding,
-)
-from loushang.harness.transcript.native_file import (
-    AgentTranscriptFileLayout,
-    create_agent_transcript_file_store,
 )
 from loushang.harness.transcript.profile import AgentTranscriptProfile
 from loushang.harness.transcript.types import AgentTranscriptRecord
@@ -135,7 +136,10 @@ class AgentTranscriptProfileRuntime:
                     slot=_TRANSCRIPT_SLOT,
                     implementation=self.spec.transcript_profile_implementation,
                     implementation_version=1,
-                    config={"format": "current"},
+                    config={
+                        "format": "conversation-jsonl",
+                        "formatVersion": CURRENT_CONVERSATION_FORMAT_VERSION,
+                    },
                 ),
                 RuntimeCapabilitySelection(
                     slot=_COMPACTION_SLOT,
@@ -178,12 +182,49 @@ class AgentTranscriptProfileRuntime:
         require_current: bool,
     ) -> RuntimeProfileSnapshot | None:
         snapshot = self.read_snapshot(metadata)
-        if require_current and snapshot is not None and snapshot != profile.snapshot():
+        if (
+            require_current
+            and snapshot is not None
+            and self._normalize_snapshot(snapshot)
+            != self._normalize_snapshot(profile.snapshot())
+        ):
             raise ValueError(
                 f"{self.spec.product_name} cannot resume a session with an "
                 "unsupported runtime profile"
             )
         return snapshot
+
+    def _normalize_snapshot(
+        self,
+        snapshot: RuntimeProfileSnapshot,
+    ) -> RuntimeProfileSnapshot:
+        """Canonicalize pre-release aliases without weakening profile checks."""
+
+        capabilities = []
+        for capability in snapshot.capabilities:
+            if capability.slot != _TRANSCRIPT_SLOT:
+                capabilities.append(capability)
+                continue
+            selections = []
+            for selection in capability.selections:
+                if (
+                    selection.implementation
+                    == self.spec.transcript_profile_implementation
+                    and selection.implementation_version == 1
+                    and selection.config == {"format": "current"}
+                ):
+                    selection = replace(
+                        selection,
+                        config={
+                            "format": "conversation-jsonl",
+                            "formatVersion": CURRENT_CONVERSATION_FORMAT_VERSION,
+                        },
+                    )
+                selections.append(selection)
+            capabilities.append(
+                replace(capability, selections=tuple(selections))
+            )
+        return replace(snapshot, capabilities=tuple(capabilities))
 
     async def bind_lifecycle(
         self,

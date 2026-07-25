@@ -109,6 +109,59 @@ def test_subscribe_events_uses_returned_hook_or_safe_noop() -> None:
     assert subscribe_events(object(), listener)() is None
 
 
+def test_rebindable_event_source_moves_existing_listener_and_cleans_up() -> None:
+    from loushang.harnesstui.conversation.run_context import RebindableEventSource
+
+    calls: list[str] = []
+
+    class Source:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def subscribe(self, _listener: object):
+            calls.append(f"subscribe:{self.name}")
+            return lambda: calls.append(f"unsubscribe:{self.name}")
+
+    first = Source("first")
+    second = Source("second")
+    source = RebindableEventSource(first)
+    unsubscribe = source.subscribe(object())
+
+    source.rebind(second)
+    unsubscribe()
+
+    assert source.source is second
+    assert calls == [
+        "subscribe:first",
+        "unsubscribe:first",
+        "subscribe:second",
+        "unsubscribe:second",
+    ]
+
+
+def test_rebindable_event_source_contains_rebind_subscription_failure() -> None:
+    from loushang.harnesstui.conversation.run_context import RebindableEventSource
+
+    class Source:
+        def __init__(self, *, fail: bool = False) -> None:
+            self.fail = fail
+
+        def subscribe(self, _listener: object):
+            if self.fail:
+                raise RuntimeError("subscribe failed")
+            return lambda: None
+
+    source = RebindableEventSource(Source())
+    unsubscribe = source.subscribe(object())
+    failed = Source(fail=True)
+
+    source.rebind(failed)
+    unsubscribe()
+
+    assert source.source is failed
+    assert isinstance(source.last_rebind_error, RuntimeError)
+
+
 def test_open_interaction_run_context_enters_wraps_and_closes_in_order() -> None:
     from loushang.harnesstui.conversation.run_context import (
         open_interaction_run_context,

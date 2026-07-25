@@ -101,18 +101,18 @@ planning, work event persistence, or AI provider behavior.
 - [Conversation Persistence Refactor](conversation-persistence-refactor.md)
   records the implemented journal/conversation/Agent persistence consolidation,
   provider-bound catalogs, and revision-aware rebuildable indexes without
-  changing the Native JSONL format; project-aware picker work remains a
+  changing the Conversation JSONL format; project-aware picker work remains a
   follow-on.
 - [Agent Transcript Profile Boundary](agent-transcript-profile-boundary.md)
   defines the optional common Agent/AI transcript schema and codec profile,
   opaque preservation, Native v3 migration, idempotent application-message
   commit, Product extension points, and its narrow AI/Agent import allowlist.
 - [Agent Transcript File Store Boundary](agent-transcript-file-store-boundary.md)
-  defines the current Native JSONL provider, file layout and lock ownership,
+  defines the Conversation JSONL provider, file layout and lock ownership,
   Product store selection, and the separation between native loading and
   external importers.
 - [Agent Transcript Catalog Boundary](agent-transcript-catalog-boundary.md)
-  defines the common Native transcript discovery, summary/query, projection
+  defines the common Conversation JSONL transcript discovery, summary/query, projection
   index, and branch-label read model while Products retain roots and
   presentation policy.
 - [Agent Transcript Lifecycle Boundary](agent-transcript-lifecycle-boundary.md)
@@ -229,6 +229,11 @@ planning, work event persistence, or AI provider behavior.
   assembly/preflight and template expansion, and tool activation coordination
   while preserving only Product-exclusive content, policy, side effects, and
   presentation.
+- [Capability, Domain, Presentation, And Continuity Architecture](capability-domain-presentation-continuity-architecture.md)
+  records the implemented V1 separation of runtime capabilities, Product
+  domains, OEM experiences, and resumable continuity units, including
+  federated summary/index and common-versus-Product presentation boundaries
+  with `/resume` as the first reference workflow.
 - [OEM And Extension Architecture](oem-extension-architecture.md) describes how
   OEM customisation, extension contributions, and harness upgrades interact,
   including override mechanisms, extension categories, surface-type gaps, and

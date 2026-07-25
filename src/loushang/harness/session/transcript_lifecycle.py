@@ -26,6 +26,7 @@ from loushang.harness.session.diagnostics import SessionDiagnosticsRuntime
 from loushang.harness.session.lifecycle import (
     MissingCwdPolicy,
     MissingSessionCwdError,
+    PreparedSessionLifecycleOperation,
     SessionCwdIssue,
     SessionLifecycleRuntime,
     SessionLifecycleTransition,
@@ -276,7 +277,7 @@ class AgentTranscriptSessionRuntime(
     Products configure the lifecycle store, fork profile, lifecycle hooks, and
     metadata on the supplied ``SessionLifecycleRuntime``. This facade only
     delegates standard new, restore, fork, import, replacement, and disposal
-    operations, together with current Native session-reference resolution.
+    operations, together with Conversation JSONL session-reference resolution.
     """
 
     def __init__(
@@ -367,6 +368,21 @@ class AgentTranscriptSessionRuntime(
             metadata=metadata,
         )
 
+    async def prepare_restore_session_operation(
+        self,
+        session_ref: str | Path,
+        *,
+        fallback_cwd: str | None = None,
+        missing_cwd: MissingCwdPolicy = "error",
+        metadata: dict[str, object] | None = None,
+    ) -> PreparedSessionLifecycleOperation[SessionT, PayloadT]:
+        return await self._lifecycle.prepare_restore(
+            session_ref,
+            fallback_cwd=fallback_cwd,
+            missing_cwd=missing_cwd,
+            metadata=metadata,
+        )
+
     async def fork_session_operation(
         self,
         entry_id: str | None,
@@ -412,6 +428,12 @@ class AgentTranscriptSessionRuntime(
 
     def get_current_session(self) -> SessionT | None:
         return self.current_session
+
+    def get_current_session_ref(self) -> str | None:
+        current = self.current_session
+        if current is None:
+            return None
+        return self._lifecycle.store.get_session_ref(current)
 
     def _session_diagnostics(self) -> SessionDiagnosticsRuntime | None:
         if self._diagnostics_runtime is None:

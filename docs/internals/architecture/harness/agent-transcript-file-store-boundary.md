@@ -24,7 +24,7 @@ configured file provider.
 ## Binding Contract
 
 `AgentTranscriptFileLayout` maps a selected root to `ConversationKey` values
-and current Native JSONL paths. A Product chooses the root and may inject a
+and Conversation JSONL paths. A Product chooses the root and may inject a
 filename function. `create_agent_transcript_file_store()` then produces the
 standard `ConversationStore[ConversationHeader, AgentTranscriptRecord]`.
 
@@ -37,7 +37,7 @@ commit. It does not create a second repository or own Product lifecycle.
 
 Coding supplies its runtime-profile selection, session root, persist decision,
 display naming, retention, CLI/TUI behavior, and diagnostic wording. The
-standard Native transcript catalog, summary projection, query, JSON index,
+standard Conversation JSONL transcript catalog, summary projection, query, JSON index,
 and branch-label read model live beside this provider in
 `harness.transcript.session_catalog`. `SessionManager` is a Coding facade over
 the Harness transcript session and catalog rather than the owner of native
@@ -67,10 +67,10 @@ outbox delivery, or extension-owned persistence providers.
 
 ## Verification
 
-- Harness tests cover current Native file creation, discovery, custom filename
+- Harness tests cover Conversation JSONL file creation, discovery, custom filename
   selection, and future-format rejection without rewrite.
 - Coding file/session tests exercise the same Harness provider through Coding
   compatibility exports and runtime-profile assembly.
 - Import-boundary tests require codec and lock ownership in
-  `harness.transcript.native_file` and prohibit Coding from recreating
+  `harness.transcript.jsonl_file` and prohibit Coding from recreating
   them.

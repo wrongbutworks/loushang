@@ -18,7 +18,7 @@ from loushang.ai.types import (
     ToolResultMessage,
     UserMessage,
 )
-from loushang.harness.conversation.native_codec import (
+from loushang.harness.conversation.jsonl_codec import (
     ConversationPayloadCodecRegistry,
     FunctionalConversationPayloadCodec,
 )

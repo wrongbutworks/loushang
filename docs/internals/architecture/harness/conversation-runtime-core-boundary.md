@@ -75,7 +75,7 @@ prompt, artifact, and presentation policy remain Coding-owned.
 
 Coding now uses `AgentTranscriptUnitOfWork` as the single open-session commit
 owner over an injected `ConversationStore`. The optional Agent transcript
-profile owns the current Native codec, journal factory, file locking, revision
+profile owns the Conversation JSONL codec, journal factory, file locking, revision
 CAS, and durable append; Coding chooses the storage root and runtime binding.
 Successful Agent transcript mutations return the record paired with the
 backend's exact `CommitReceipt`; Product event projection does not infer
@@ -102,7 +102,7 @@ summary presentation.
 
 ## Baseline Compatibility Invariants
 
-- Current Native Coding JSONL files decode with the same Product codec and
+- Conversation JSONL Coding JSONL files decode with the same Product codec and
   remain writable without schema migration. Older Loushang and external formats
   require an explicit importer and are never rewritten by Product load or scan.
 - Harness replay and compaction planning reject missing or future retained-record

@@ -188,7 +188,7 @@ def test_transcript_session_runtime_delegates_lifecycle_operations(tmp_path) -> 
     asyncio.run(scenario())
 
 
-def test_transcript_session_runtime_resolves_current_native_session_id(
+def test_transcript_session_runtime_resolves_conversation_jsonl_session_id(
     tmp_path,
 ) -> None:
     session_file = tmp_path / "2026-07-20_demo-session.jsonl"

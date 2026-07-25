@@ -62,9 +62,7 @@ class AgentTranscriptSession:
     ) -> None:
         self._transcript = transcript
         self.labels_by_target_id = dict(labels_by_target_id or {})
-        self.label_timestamps_by_target_id = dict(
-            label_timestamps_by_target_id or {}
-        )
+        self.label_timestamps_by_target_id = dict(label_timestamps_by_target_id or {})
         self._application_message_id_factory = (
             application_message_id_factory or _default_id
         )
@@ -76,6 +74,10 @@ class AgentTranscriptSession:
         """Observe durable commits without participating in commit success."""
 
         self._commit_observer = observer
+
+    @property
+    def is_materialized(self) -> bool:
+        return self._transcript.is_materialized
 
     @property
     def header(self) -> ConversationHeader:
@@ -318,10 +320,11 @@ class AgentTranscriptSession:
     def _complete_commit(self, commit: AgentTranscriptCommit) -> str:
         result = CommitResult(
             record_id=commit.record.record_id,
-            disposition="committed",
+            disposition="committed" if commit.receipt is not None else "staged",
             receipt=commit.receipt,
         )
-        self._notify_commit(result)
+        if result.disposition == "committed":
+            self._notify_commit(result)
         return result.record_id
 
     def _complete_application_commit(self, result: CommitResult) -> str:

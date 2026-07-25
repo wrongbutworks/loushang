@@ -18,6 +18,8 @@ from loushang.harness.conversation.diagnostics import (
 )
 from loushang.harness.conversation.index import (
     ConversationIndex,
+    ConversationIndexSnapshot,
+    ConversationIndexState,
     IndexedProjection,
     MemoryConversationIndex,
 )
@@ -28,14 +30,16 @@ from loushang.harness.conversation.indexes import (
     ProjectionCodec,
     ProjectionIndexSnapshot,
 )
-from loushang.harness.conversation.native_codec import (
+from loushang.harness.conversation.jsonl_codec import (
     CONVERSATION_ENVELOPE_TYPE,
     CONVERSATION_RECORD_TYPE,
+    CURRENT_CONVERSATION_FORMAT_VERSION,
+    MIN_CONVERSATION_FORMAT_VERSION,
+    ConversationJsonlHeaderCodec,
+    ConversationJsonlRecordCodec,
     ConversationPayloadCodec,
     ConversationPayloadCodecRegistry,
     FunctionalConversationPayloadCodec,
-    NativeConversationHeaderCodec,
-    NativeConversationRecordCodec,
 )
 from loushang.harness.conversation.ports import (
     ConversationFolder,
@@ -102,6 +106,7 @@ __all__ = [
     "CommandExecutionRecord",
     "CONVERSATION_ENVELOPE_TYPE",
     "CONVERSATION_RECORD_TYPE",
+    "CURRENT_CONVERSATION_FORMAT_VERSION",
     "ConversationCatalog",
     "ConversationCatalogDiagnostic",
     "ConversationCatalogResult",
@@ -113,6 +118,8 @@ __all__ = [
     "ConversationHeader",
     "ConversationHeaderCodec",
     "ConversationIndex",
+    "ConversationIndexSnapshot",
+    "ConversationIndexState",
     "ConversationProjector",
     "ConversationPayloadCodec",
     "ConversationPayloadCodecRegistry",
@@ -147,8 +154,9 @@ __all__ = [
     "MissingCheckpointPolicy",
     "MemoryConversationStore",
     "MemoryConversationIndex",
-    "NativeConversationHeaderCodec",
-    "NativeConversationRecordCodec",
+    "MIN_CONVERSATION_FORMAT_VERSION",
+    "ConversationJsonlHeaderCodec",
+    "ConversationJsonlRecordCodec",
     "OpaquePayload",
     "JsonProjectionIndex",
     "ProjectionCodec",

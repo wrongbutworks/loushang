@@ -11,6 +11,7 @@ from loushang.harness.runtime import (
     ResolvedRuntimeProfile,
     RuntimeProfileBinding,
     RuntimeProfileSnapshot,
+    RuntimeProfileSnapshotCapability,
 )
 from loushang.harness.transcript import (
     AgentTranscriptLifecycle,
@@ -56,18 +57,37 @@ def _validate_coding_restored_header(
             "Coding cannot resume a session with a capability profile for Product "
             f"{capability_snapshot.product_id!r}"
         )
-    if persist and capability_snapshot != CODING_CAPABILITY_PROFILE.snapshot():
+    current_capability_snapshot = CODING_CAPABILITY_PROFILE.snapshot()
+    if persist and _selected_capabilities(
+        capability_snapshot
+    ) != _selected_capabilities(current_capability_snapshot):
         raise ValueError(
             "Coding cannot resume a session with an unsupported capability profile"
         )
 
 
+def _selected_capabilities(
+    snapshot: RuntimeProfileSnapshot,
+) -> tuple[RuntimeProfileSnapshotCapability, ...]:
+    """Compare only slots that bind behavior; empty slots are additive."""
+
+    return tuple(
+        capability
+        for capability in snapshot.capabilities
+        if capability.selections
+    )
+
+
+def _resolve_coding_binding_input(persist: bool) -> ResolvedRuntimeProfile:
+    return CODING_TRANSCRIPT_RUNTIME.resolve(persist=persist)
+
+
 _FACTORY = AgentTranscriptSessionFactory(
     lifecycle=_LIFECYCLE,
-    resolve_binding_input=CODING_TRANSCRIPT_RUNTIME.resolve,
+    resolve_binding_input=_resolve_coding_binding_input,
     header_metadata=_coding_header_metadata,
     validate_restored_header=_validate_coding_restored_header,
-    session_file_factory=_LIFECYCLE.default_native_session_file,
+    session_file_factory=_LIFECYCLE.default_jsonl_session_file,
 )
 
 

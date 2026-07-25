@@ -55,7 +55,7 @@ def test_session_factory_composes_native_create_restore_and_fork(
             validate_restored_header=lambda header, binding, persist: (
                 validations.append((header.conversation_id, binding, persist))
             ),
-            session_file_factory=lifecycle.default_native_session_file,
+            session_file_factory=lifecycle.default_jsonl_session_file,
             clock=lambda: datetime(2026, 7, 19, tzinfo=UTC),
             conversation_id_factory=lambda: "generated-session",
         )
@@ -66,7 +66,7 @@ def test_session_factory_composes_native_create_restore_and_fork(
             session_id="source-session",
         )
         assert created.context.session_file is not None
-        assert created.context.session_file.is_file()
+        assert created.context.session_file.is_file() is False
         assert created.context.header.metadata == {
             "cwd": "/workspace",
             "productBinding": "persistent",
@@ -74,6 +74,7 @@ def test_session_factory_composes_native_create_restore_and_fork(
         await created.transcript.append_agent_message(
             UserMessage(role="user", content="hello", timestamp=1.0)
         )
+        assert created.context.session_file.is_file()
 
         restored = await factory.open(
             created.context.session_file,

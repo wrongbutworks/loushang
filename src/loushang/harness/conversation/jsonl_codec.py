@@ -17,6 +17,8 @@ PayloadT = TypeVar("PayloadT")
 
 CONVERSATION_ENVELOPE_TYPE = "conversation"
 CONVERSATION_RECORD_TYPE = "record"
+MIN_CONVERSATION_FORMAT_VERSION = 1
+CURRENT_CONVERSATION_FORMAT_VERSION = 1
 
 
 class ConversationPayloadCodec(Protocol, Generic[PayloadT]):
@@ -40,7 +42,7 @@ class FunctionalConversationPayloadCodec(Generic[PayloadT]):
 
 
 class ConversationPayloadCodecRegistry:
-    """Versioned payload codecs used by the native conversation envelope."""
+    """Versioned payload codecs used by the Conversation JSONL envelope."""
 
     def __init__(self) -> None:
         self._codecs: dict[
@@ -132,10 +134,11 @@ class ConversationPayloadCodecRegistry:
             ) from exc
 
 
-class NativeConversationHeaderCodec:
-    """Strict codec for the native conversation header envelope."""
+class ConversationJsonlHeaderCodec:
+    """Codec for every supported Conversation JSONL header version."""
 
     def encode_header(self, header: ConversationHeader) -> Mapping[str, object]:
+        _require_supported_format_version(header.version)
         return {
             "type": CONVERSATION_ENVELOPE_TYPE,
             "conversationId": header.conversation_id,
@@ -153,7 +156,7 @@ class NativeConversationHeaderCodec:
             name="conversation header",
         )
         try:
-            return ConversationHeader(
+            header = ConversationHeader(
                 conversation_id=_require_text_field(envelope, "conversationId"),
                 version=_require_positive_integer_field(envelope, "version"),
                 created_at=_require_text_field(envelope, "createdAt"),
@@ -163,6 +166,8 @@ class NativeConversationHeaderCodec:
                 ),
                 metadata=_require_metadata_field(envelope),
             )
+            _require_supported_format_version(header.version)
+            return header
         except JournalCodecError:
             raise
         except (TypeError, ValueError) as exc:
@@ -172,8 +177,8 @@ class NativeConversationHeaderCodec:
             ) from exc
 
 
-class NativeConversationRecordCodec:
-    """Strict native record envelope backed by versioned payload codecs."""
+class ConversationJsonlRecordCodec:
+    """Conversation JSONL record envelope backed by versioned payload codecs."""
 
     def __init__(self, registry: ConversationPayloadCodecRegistry) -> None:
         if not isinstance(registry, ConversationPayloadCodecRegistry):
@@ -251,6 +256,17 @@ def _payload_key(kind: str, payload_version: int) -> tuple[str, int]:
     return kind, payload_version
 
 
+def _require_supported_format_version(version: int) -> None:
+    if (
+        version < MIN_CONVERSATION_FORMAT_VERSION
+        or version > CURRENT_CONVERSATION_FORMAT_VERSION
+    ):
+        raise JournalCodecError(
+            "Conversation JSONL version is unsupported",
+            code="unsupported_conversation_format_version",
+        )
+
+
 def _require_envelope(
     value: Mapping[str, object],
     *,
@@ -293,7 +309,7 @@ def _require_optional_text_field(
     value: Mapping[str, JSONValue],
     name: str,
 ) -> str | None:
-    field = _require_field(value, name)
+    field = value.get(name)
     if field is None:
         return None
     if type(field) is not str or not field.strip():
@@ -325,7 +341,7 @@ def _require_positive_integer_field(
 def _require_metadata_field(
     value: Mapping[str, JSONValue],
 ) -> dict[str, JSONValue]:
-    field = _require_field(value, "metadata")
+    field = value.get("metadata", {})
     try:
         return require_json_mapping(field, name="conversation envelope metadata")
     except JsonValueError as exc:
@@ -352,9 +368,11 @@ def _require_discriminator(
 __all__ = [
     "CONVERSATION_ENVELOPE_TYPE",
     "CONVERSATION_RECORD_TYPE",
+    "CURRENT_CONVERSATION_FORMAT_VERSION",
+    "MIN_CONVERSATION_FORMAT_VERSION",
+    "ConversationJsonlHeaderCodec",
+    "ConversationJsonlRecordCodec",
     "ConversationPayloadCodec",
     "ConversationPayloadCodecRegistry",
     "FunctionalConversationPayloadCodec",
-    "NativeConversationHeaderCodec",
-    "NativeConversationRecordCodec",
 ]

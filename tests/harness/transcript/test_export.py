@@ -45,7 +45,7 @@ def _record(
     )
 
 
-def test_html_export_is_product_neutral_and_embeds_current_native_records(
+def test_html_export_is_product_neutral_and_embeds_conversation_jsonl_records(
     tmp_path: Path,
 ) -> None:
     record = _record("record-1", None, "hello export")

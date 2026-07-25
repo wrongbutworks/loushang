@@ -118,6 +118,27 @@ def test_status_provider_reloads_dynamic_snapshot_values() -> None:
     )
 
 
+def test_status_provider_updates_session_bound_context() -> None:
+    provider = _provider()
+
+    provider.update_context(
+        model_label="openai/gpt-5.4",
+        cwd="/next",
+        branch="feature/resume",
+    )
+
+    snapshot = provider.snapshot()
+    assert (
+        snapshot.model_label,
+        snapshot.cwd,
+        snapshot.branch,
+    ) == (
+        "openai/gpt-5.4",
+        "/next",
+        "feature/resume",
+    )
+
+
 def test_status_provider_applies_full_statusline_settings() -> None:
     saved: list[StatusLineSettings] = []
     provider = _provider(on_changed=saved)

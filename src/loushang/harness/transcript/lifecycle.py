@@ -2,7 +2,7 @@
 
 Products provide the selected store/profile binding and their own header
 policy. This module owns the durable create, restore, detached restore, fork,
-and disposal mechanics shared by current Native Agent transcripts.
+and disposal mechanics shared by Conversation JSONL Agent transcripts.
 """
 
 from __future__ import annotations
@@ -19,11 +19,11 @@ from loushang.harness.conversation import (
     ConversationStore,
     StoreNotFoundError,
 )
-from loushang.harness.transcript.native_file import (
+from loushang.harness.transcript.jsonl_file import (
     AgentTranscriptFileLayout,
     create_agent_transcript_file_store,
     load_agent_transcript_file,
-    load_current_agent_transcript_header,
+    load_agent_transcript_header,
 )
 from loushang.harness.transcript.profile import AgentTranscriptProfile
 from loushang.harness.transcript.session_catalog import (
@@ -109,7 +109,7 @@ SnapshotLoader = Callable[
 
 
 class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
-    """Bind and construct current Native transcript sessions through ports.
+    """Bind and construct Conversation JSONL transcript sessions through ports.
 
     The lifecycle deliberately does not resolve a Product profile, construct
     Product header metadata, select a root, or validate Product resume policy.
@@ -121,7 +121,7 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
         self,
         *,
         bind_runtime: RuntimeBinder[BindingInputT, ProductBindingT],
-        header_loader: HeaderLoader = load_current_agent_transcript_header,
+        header_loader: HeaderLoader = load_agent_transcript_header,
         snapshot_loader: SnapshotLoader = load_agent_transcript_file,
         id_factory: IdFactory | None = None,
     ) -> None:
@@ -149,16 +149,16 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
             session_file=Path(session_file) if session_file is not None else None,
         )
 
-    def default_native_session_file(
+    def default_jsonl_session_file(
         self,
         session_dir: str | Path,
         header: ConversationHeader,
     ) -> Path:
-        """Return the current Native filename without selecting a Product root."""
+        """Return the Conversation JSONL filename without selecting a Product root."""
 
         return Path(session_dir) / _default_session_filename(header)
 
-    def current_native_context(
+    def conversation_jsonl_context(
         self,
         session_file: str | Path,
         *,
@@ -166,7 +166,7 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
         session_dir: str | Path | None = None,
         cwd_override: str | Path | None = None,
     ) -> AgentTranscriptLifecycleContext:
-        """Read a current Native header and build a Product-bindable context."""
+        """Read a Conversation JSONL header and build a Product-bindable context."""
 
         path = Path(session_file).expanduser().resolve(strict=False)
         header = self._header_loader(path)
@@ -202,6 +202,7 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
                 leaf_id=leaf_id,
                 id_factory=self._id_factory,
                 profile=runtime_binding.profile,
+                defer_materialization=context.persist and not records,
             )
         except BaseException:
             await runtime_binding.dispose()
@@ -215,7 +216,7 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
     ) -> AgentTranscriptLifecycleSession[ProductBindingT]:
         """Restore a bound session or create a detached writable copy.
 
-        A non-persistent restore reads the current Native source but always
+        A non-persistent restore reads the Conversation JSONL source but always
         creates the resulting session through the selected Product store. It
         therefore never mutates the source transcript.
         """
@@ -269,12 +270,12 @@ class AgentTranscriptLifecycle(Generic[BindingInputT, ProductBindingT]):
         )
 
 
-async def delete_current_native_agent_transcript(
+async def delete_agent_transcript_jsonl(
     session_file: str | Path,
     *,
     current_session_file: str | Path | None = None,
 ) -> bool:
-    """Delete one current Native file after protecting the active transcript."""
+    """Delete one Conversation JSONL file after protecting the active transcript."""
 
     target = Path(session_file).expanduser()
     if current_session_file is not None and same_agent_transcript_session_path(
@@ -329,5 +330,5 @@ __all__ = [
     "AgentTranscriptLifecycleContext",
     "AgentTranscriptLifecycleSession",
     "AgentTranscriptRuntimeBinding",
-    "delete_current_native_agent_transcript",
+    "delete_agent_transcript_jsonl",
 ]

@@ -10,10 +10,9 @@ from loushang.ai.types import UserMessage
 from loushang.harness.conversation import (
     ConversationHeader,
     ConversationRecord,
-    NativeConversationHeaderCodec,
 )
 from loushang.harness.transcript import AGENT_MESSAGE_KIND
-from loushang.harness.transcript.native_file import (
+from loushang.harness.transcript.jsonl_file import (
     AgentTranscriptFileError,
     AgentTranscriptFileLayout,
     create_agent_transcript_file_store,
@@ -242,18 +241,20 @@ def test_read_only_repository_rejects_session_v3_without_rewriting_source(
 
 
 @pytest.mark.parametrize("loader", [load_session_file, load_session_repository])
-def test_native_future_version_is_rejected(tmp_path: Path, loader) -> None:
+def test_conversation_jsonl_future_version_is_rejected(tmp_path: Path, loader) -> None:
     path = tmp_path / "session.jsonl"
     header = _header()
-    future_header = ConversationHeader(
-        conversation_id=header.conversation_id,
-        version=2,
-        created_at=header.created_at,
-        metadata=header.metadata,
-    )
-    native_codec = NativeConversationHeaderCodec()
     path.write_text(
-        json.dumps(native_codec.encode_header(future_header)) + "\n",
+        json.dumps(
+            {
+                "type": "conversation",
+                "conversationId": header.conversation_id,
+                "version": 2,
+                "createdAt": header.created_at,
+                "metadata": dict(header.metadata),
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
 

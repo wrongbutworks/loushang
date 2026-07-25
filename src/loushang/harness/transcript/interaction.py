@@ -177,7 +177,9 @@ class AgentTranscriptInspector:
         record = self.session.get_entry(record_id)
         if record is None:
             return None
-        if record.kind == AGENT_MESSAGE_KIND and isinstance(record.payload, UserMessage):
+        if record.kind == AGENT_MESSAGE_KIND and isinstance(
+            record.payload, UserMessage
+        ):
             return user_message_text(record.payload) or None
         if record.kind == APPLICATION_MESSAGE_KIND and isinstance(
             record.payload, ApplicationMessage
@@ -257,7 +259,9 @@ class AgentTranscriptSelectionRuntime:
         )
         self.set_model(validated)
 
-    def cycle_model_selection(self, direction: str = "forward") -> ModelSelection | None:
+    def cycle_model_selection(
+        self, direction: str = "forward"
+    ) -> ModelSelection | None:
         models = self.get_available_models()
         if not isinstance(models, list):
             raise TypeError("Model catalog returned an invalid response.")
@@ -313,14 +317,12 @@ class AgentTranscriptSelectionRuntime:
             return model_selection_from_model(model)
         if not isinstance(model, dict):
             return None
-        provider = model.get("provider") or model.get("provider_id") or model.get(
-            "providerId"
+        provider = (
+            model.get("provider") or model.get("provider_id") or model.get("providerId")
         )
         model_id = model.get("model_id") or model.get("modelId") or model.get("id")
         endpoint_id = (
-            model.get("endpoint_id")
-            or model.get("endpointId")
-            or model.get("endpoint")
+            model.get("endpoint_id") or model.get("endpointId") or model.get("endpoint")
         )
         if isinstance(provider, str) and isinstance(model_id, str):
             return ModelSelection(
@@ -387,7 +389,9 @@ class AgentTranscriptNavigationRuntime:
         target = self.session.get_entry(target_id)
         if target is None:
             raise ValueError(f"Entry {target_id} not found")
-        if target.kind == AGENT_MESSAGE_KIND and isinstance(target.payload, UserMessage):
+        if target.kind == AGENT_MESSAGE_KIND and isinstance(
+            target.payload, UserMessage
+        ):
             new_leaf_id = target.parent_id
             editor_text = user_message_text(target.payload)
         elif target.kind == APPLICATION_MESSAGE_KIND and isinstance(
@@ -519,7 +523,9 @@ class AgentTranscriptNavigationRuntime:
                     target_id=plan.target_id,
                     old_leaf_id=plan.old_leaf_id,
                     new_leaf_id=(
-                        plan.old_leaf_id if result.aborted else self.session.get_leaf_id()
+                        plan.old_leaf_id
+                        if result.aborted
+                        else self.session.get_leaf_id()
                     ),
                     summary_record_id=result.summary_entry_id,
                     cancelled=result.cancelled,

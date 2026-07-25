@@ -62,7 +62,7 @@ def test_product_transcript_session_owns_standard_session_operations(
             lifecycle=lifecycle,
             resolve_binding_input=lambda persist: "persistent" if persist else "memory",
             header_metadata=lambda binding: {"productBinding": binding},
-            session_file_factory=lifecycle.default_native_session_file,
+            session_file_factory=lifecycle.default_jsonl_session_file,
         )
 
         session = await _ExampleProductSession.new(
@@ -101,5 +101,53 @@ def test_product_transcript_session_owns_standard_session_operations(
         await session.dispose_runtime_profile()
         await forked.dispose_runtime_profile()
         assert disposed == ["persistent", "persistent", "persistent"]
+
+    asyncio.run(scenario())
+
+
+def test_product_transcript_session_discards_provisional_authority(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        async def bind_runtime(context, binding: str):
+            layout = AgentTranscriptFileLayout(context.session_dir)
+            key = layout.key(context.header.conversation_id)
+            assert context.session_file is not None
+            layout.bind_create_path(key, context.session_file)
+
+            async def dispose() -> None:
+                return None
+
+            return AgentTranscriptRuntimeBinding(
+                store=create_agent_transcript_file_store(layout),
+                key=key,
+                profile=AgentTranscriptProfile.default(),
+                product_binding=binding,
+                dispose=dispose,
+            )
+
+        lifecycle = AgentTranscriptLifecycle(bind_runtime=bind_runtime)
+        _ExampleProductSession._factory = AgentTranscriptSessionFactory(
+            lifecycle=lifecycle,
+            resolve_binding_input=lambda persist: "persistent",
+            header_metadata=lambda binding: {"productBinding": binding},
+            session_file_factory=lifecycle.default_jsonl_session_file,
+        )
+        session = await _ExampleProductSession.new(
+            session_dir=tmp_path,
+            cwd="/workspace",
+            session_id="provisional",
+        )
+        planned_path = session.session_file
+
+        assert planned_path is not None
+        assert session.is_persisted() is False
+        assert session.get_session_file() == planned_path
+        assert not planned_path.exists()
+
+        await session.dispose_runtime_profile()
+
+        assert not planned_path.exists()
+        assert list(tmp_path.glob("*.jsonl")) == []
 
     asyncio.run(scenario())

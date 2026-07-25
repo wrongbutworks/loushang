@@ -11,6 +11,7 @@ from loushang.harnesstui.conversation.input import (
     ConversationInputRouter,
     ConversationScreenInputPort,
 )
+from loushang.harnesstui.surface.controller import promote_pending_page_surface
 from loushang.tui import _runner_utils
 from loushang.tui.core import RenderConstraints, RenderResult
 from loushang.tui.framework import SurfaceHost
@@ -191,6 +192,7 @@ async def run_conversation_screen(
         ),
     )
     app.surface_host = runtime.overlay_host()
+    promote_pending_page_surface(app)
     mode_factory = terminal_mode_factory or (
         lambda input_stream, output_stream: TerminalSession(
             stdin=input_stream,
@@ -213,8 +215,8 @@ async def run_conversation_screen(
     app.render_requester = request_app_render
     try:
         with mode_factory(stdin, stdout) as terminal_context:
-            app.terminal_diagnostics_provider = (
-                lambda context=terminal_context: format_terminal_diagnostics(context)
+            app.terminal_diagnostics_provider = lambda context=terminal_context: (
+                format_terminal_diagnostics(context)
             )
             configure_runtime_for_terminal_context(runtime, app, terminal_context)
             write_startup_welcome(app=app, runtime=runtime, stdout=stdout)
@@ -351,10 +353,7 @@ async def run_conversation_screen(
                                 stdout=stdout,
                                 exit_code=exit_code,
                             )
-                    if (
-                        result.followup_text is not None
-                        and handle_followup is not None
-                    ):
+                    if result.followup_text is not None and handle_followup is not None:
                         exit_code = await run_text_handler(
                             handle_followup,
                             result.followup_text,
@@ -535,8 +534,7 @@ def supports_keyword(method: Any, keyword: str) -> bool:
     except (TypeError, ValueError):
         return False
     return any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD
-        or parameter.name == keyword
+        parameter.kind is inspect.Parameter.VAR_KEYWORD or parameter.name == keyword
         for parameter in signature.parameters.values()
     )
 

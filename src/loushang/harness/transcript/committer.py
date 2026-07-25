@@ -22,7 +22,7 @@ class ApplicationMessageIdentityConflictError(ValueError):
 @dataclass(frozen=True)
 class CommitResult:
     record_id: str
-    disposition: Literal["committed", "already_committed"]
+    disposition: Literal["staged", "committed", "already_committed"]
     receipt: CommitReceipt | None
 
 
@@ -62,6 +62,10 @@ class TranscriptCommitter:
                 )
 
             commit = await self._store.append_application_message(message)
+            if commit.receipt is None:
+                raise RuntimeError(
+                    "application messages must materialize a provisional transcript"
+                )
             record = commit.record
             self._committed[message.application_message_id] = (
                 _CommittedApplicationMessage(

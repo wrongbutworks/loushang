@@ -368,16 +368,16 @@ CompactionPolicyProvider = Callable[[], TranscriptCompactionPolicy]
 ModelProvider = Callable[[], object | None]
 ContextMessagesProvider = Callable[[], list[AgentMessage]]
 ContextRefresher = Callable[[], None]
-PreparationProvider = Callable[[list[AgentTranscriptRecord], int], CompactionPreparation]
+PreparationProvider = Callable[
+    [list[AgentTranscriptRecord], int], CompactionPreparation
+]
 CompactionExecutor = Callable[
     [CompactionPreparation, str | None], Awaitable[CompactionResult]
 ]
 CompactionHook = Callable[
     [CompactionHookRequest], Awaitable[CompactionHookDecision | None]
 ]
-CompactionCommitObserver = Callable[
-    [CompactionResult, str, bool], Awaitable[None]
-]
+CompactionCommitObserver = Callable[[CompactionResult, str, bool], Awaitable[None]]
 CompactionRunner = Callable[..., Awaitable[CompactionResult | None]]
 HasQueuedMessages = Callable[[], bool]
 
@@ -464,9 +464,8 @@ class AgentTranscriptCompactionRuntime:
             return None
 
         run_compact = compact_internal_fn or self.compact
-        if (
-            is_context_overflow_fn is not None
-            and is_context_overflow_fn(assistant_message, context_window)
+        if is_context_overflow_fn is not None and is_context_overflow_fn(
+            assistant_message, context_window
         ):
             if self._overflow_recovery_attempted:
                 message = (
@@ -511,7 +510,11 @@ class AgentTranscriptCompactionRuntime:
         result = await run_compact(
             reason="threshold", will_retry=False, raise_on_error=False
         )
-        if result is not None and continue_run_fn is not None and self._has_queued_messages():
+        if (
+            result is not None
+            and continue_run_fn is not None
+            and self._has_queued_messages()
+        ):
             asyncio.ensure_future(continue_run_fn())
         return result
 
@@ -669,8 +672,7 @@ def estimate_context_tokens(messages: Sequence[AgentMessage]) -> ContextUsageEst
     usage, usage_index = last_usage
     usage_tokens = calculate_context_tokens(usage)
     trailing_tokens = sum(
-        estimate_message_tokens(message)
-        for message in sequence[usage_index + 1 :]
+        estimate_message_tokens(message) for message in sequence[usage_index + 1 :]
     )
     return ContextUsageEstimate(
         tokens=usage_tokens + trailing_tokens,
@@ -835,7 +837,10 @@ def has_post_compaction_usage(
     except ValueError:
         return False
     for entry in reversed(entries[compaction_index + 1 :]):
-        if not isinstance(entry, ConversationRecord) or entry.kind != AGENT_MESSAGE_KIND:
+        if (
+            not isinstance(entry, ConversationRecord)
+            or entry.kind != AGENT_MESSAGE_KIND
+        ):
             continue
         message = entry.payload
         if not isinstance(message, AssistantMessage):
@@ -847,7 +852,9 @@ def has_post_compaction_usage(
 
 
 def is_compaction_aborted(exc: Exception) -> bool:
-    return str(exc) == "Compaction cancelled" or getattr(exc, "name", None) == "AbortError"
+    return (
+        str(exc) == "Compaction cancelled" or getattr(exc, "name", None) == "AbortError"
+    )
 
 
 def _message_is_before_or_at_entry(
@@ -859,7 +866,9 @@ def _message_is_before_or_at_entry(
 
 def _entry_timestamp_ms(timestamp: str) -> float | None:
     try:
-        return datetime.fromisoformat(timestamp.replace("Z", "+00:00")).timestamp() * 1000
+        return (
+            datetime.fromisoformat(timestamp.replace("Z", "+00:00")).timestamp() * 1000
+        )
     except ValueError:
         return None
 
@@ -903,9 +912,14 @@ def is_retryable_assistant_error(
         return False
     if is_context_overflow_fn(message, context_window):
         return False
-    if any(pattern.search(message.error_message) for pattern in _NON_RETRYABLE_ERROR_PATTERNS):
+    if any(
+        pattern.search(message.error_message)
+        for pattern in _NON_RETRYABLE_ERROR_PATTERNS
+    ):
         return False
-    return any(pattern.search(message.error_message) for pattern in _RETRYABLE_ERROR_PATTERNS)
+    return any(
+        pattern.search(message.error_message) for pattern in _RETRYABLE_ERROR_PATTERNS
+    )
 
 
 def _usage_value(usage: object, *keys: str) -> object | None:
