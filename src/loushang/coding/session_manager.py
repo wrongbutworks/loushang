@@ -8,6 +8,7 @@ from loushang.coding.product_plan import (
 )
 from loushang.harness.conversation import ConversationHeader
 from loushang.harness.runtime import (
+    SIDE_QUESTION_PROVIDER_SLOT,
     ResolvedRuntimeProfile,
     RuntimeProfileBinding,
     RuntimeProfileSnapshot,
@@ -69,12 +70,13 @@ def _validate_coding_restored_header(
 def _selected_capabilities(
     snapshot: RuntimeProfileSnapshot,
 ) -> tuple[RuntimeProfileSnapshotCapability, ...]:
-    """Compare only slots that bind behavior; empty slots are additive."""
+    """Compare continuity-critical slots; auxiliary interaction is additive."""
 
     return tuple(
         capability
         for capability in snapshot.capabilities
         if capability.selections
+        and capability.slot != SIDE_QUESTION_PROVIDER_SLOT.key
     )
 
 

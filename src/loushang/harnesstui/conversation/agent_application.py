@@ -84,6 +84,7 @@ from loushang.harnesstui.surface.factory import command_catalog_surface_view
 from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.harnesstui.surface.workflow import (
     ScreenSurfaceCommandCatalog,
+    ScreenSurfaceForkResult,
     ScreenSurfaceWorkflowPorts,
     normalize_standard_conversation_interactive_command,
     normalize_standard_conversation_surface_command,
@@ -252,6 +253,11 @@ def build_agent_screen_surface_workflow_ports(
     on_approval: AgentScreenApprovalHandler | None = None,
     build_resume_surface: Callable[[], ScreenSurfaceView] | None = None,
     activate_continuity: Callable[[object], Awaitable[str]] | None = None,
+    build_fork_surface: Callable[[], ScreenSurfaceView] | None = None,
+    fork_session: (
+        Callable[[object], Awaitable[ScreenSurfaceForkResult]] | None
+    ) = None,
+    build_side_question_surface: Callable[[str], ScreenSurfaceView] | None = None,
     command_catalog: ScreenSurfaceCommandCatalog | None = None,
     model_selector_profile: SessionModelSelectorSurfaceProfile = (
         SessionModelSelectorSurfaceProfile()
@@ -318,11 +324,14 @@ def build_agent_screen_surface_workflow_ports(
         decide_approval=decide_approval,
         normalize_interactive_command=(
             normalize_standard_conversation_interactive_command
-            if build_resume_surface is not None
+            if build_resume_surface is not None or build_fork_surface is not None
             else None
         ),
         build_resume_surface=build_resume_surface,
         activate_continuity=activate_continuity,
+        build_fork_surface=build_fork_surface,
+        fork_session=fork_session,
+        build_side_question_surface=build_side_question_surface,
     )
 
 
@@ -416,7 +425,7 @@ def bind_agent_screen_session_transition(
     *,
     on_rebind: Callable[[object], object | Awaitable[object]] | None = None,
 ) -> Cleanup:
-    """Clear approval surfaces before or after a runtime session transition."""
+    """Close transient surfaces before or after a runtime session transition."""
 
     subscribe = getattr(runtime, "subscribe_after_session_invalidate", None)
     if not callable(subscribe):
@@ -424,7 +433,7 @@ def bind_agent_screen_session_transition(
     if not callable(subscribe):
         unsubscribe = _no_cleanup
     else:
-        subscribed = subscribe(surface.clear_approval_surfaces)
+        subscribed = subscribe(lambda: _clear_agent_screen_surfaces(surface))
         unsubscribe = subscribed if callable(subscribed) else _no_cleanup
 
     set_rebind = getattr(runtime, "set_rebind_session", None)
@@ -478,6 +487,13 @@ def _unbind_agent_screen_approval_presenter(session: object) -> None:
     setter = getattr(session, "set_approval_presenter", None)
     if callable(setter):
         setter(None)
+
+
+def _clear_agent_screen_surfaces(surface: AgentScreenApprovalSurface) -> None:
+    close = getattr(surface, "close_surface", None)
+    if callable(close):
+        close()
+    surface.clear_approval_surfaces()
 
 
 PlainAppFactory = Callable[

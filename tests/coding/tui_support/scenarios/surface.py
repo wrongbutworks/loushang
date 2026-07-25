@@ -83,7 +83,7 @@ def _run_command_palette_select() -> object:
 
     result = playback.run(
         (0.00, "/command\r"),
-        (0.01, "ter"),
+        (0.01, "term"),
         (0.03, "\r"),
         (0.05, ""),
         handle_local=manager.handle_text,

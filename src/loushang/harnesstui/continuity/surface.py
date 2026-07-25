@@ -199,7 +199,7 @@ class ContinuitySurface:
     @property
     def footer_help(self) -> str:
         if self._activating:
-            return "Resuming selected item…"
+            return ""
         hints = [
             f"{self._key_label('tui.select.confirm')} resume",
             f"{self._key_label('tui.select.cancel')} exit",

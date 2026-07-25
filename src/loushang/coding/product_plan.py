@@ -1,7 +1,10 @@
 """Coding's declarative selections for shared Product runtimes."""
 
 from loushang.harness.capabilities import standard_capability_composition_plan
-from loushang.harness.runtime import RuntimeProfileResolver
+from loushang.harness.runtime import (
+    SIDE_QUESTION_PROVIDER_SLOT,
+    RuntimeProfileResolver,
+)
 from loushang.harness.transcript import (
     AgentTranscriptProfileRuntime,
     AgentTranscriptRuntimeSpec,
@@ -25,6 +28,11 @@ CODING_TRANSCRIPT_RUNTIME = AgentTranscriptProfileRuntime(
 
 CODING_CAPABILITY_PLAN = standard_capability_composition_plan(
     product_id=CODING_PRODUCT_ID,
+    slot_allowed_sources={
+        SIDE_QUESTION_PROVIDER_SLOT.key: frozenset(
+            {"product", "oem", "extension"}
+        )
+    },
 )
 CODING_CAPABILITY_PROFILE = RuntimeProfileResolver().resolve(CODING_CAPABILITY_PLAN)
 

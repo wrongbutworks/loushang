@@ -626,8 +626,9 @@ def test_common_resume_surface_shows_activation_progress_and_inline_failure() ->
         )
         activating = view.render(RenderConstraints(width=80, max_height=12))
         assert (
-            sum("Resuming selected item" in line.text for line in activating.lines) == 2
+            sum("Resuming selected item" in line.text for line in activating.lines) == 1
         )
+        assert surface.footer_help == ""
 
         surface.fail_activation(RuntimeError("restore failed"))
         failed = view.render(RenderConstraints(width=80, max_height=12))

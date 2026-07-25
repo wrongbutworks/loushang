@@ -56,6 +56,7 @@ def _recording_handlers(
             "command",
             "settings",
             "session",
+            "fork",
             "dialog",
             "approval",
         )
@@ -83,6 +84,12 @@ def _recording_handlers(
             InputIntent(kind="select", text="/tmp/session.jsonl"),
             "session",
             "/tmp/session.jsonl",
+        ),
+        (
+            "fork",
+            InputIntent(kind="select", text="entry-1"),
+            "fork",
+            "entry-1",
         ),
         ("dialog", InputIntent(kind="dialog_confirm"), "dialog", None),
     ),

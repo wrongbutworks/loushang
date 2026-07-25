@@ -18,7 +18,14 @@ from loushang.tui.input import InputIntentKind
 from loushang.tui.theme import ThemeResolver, apply_theme_style
 
 ScreenSurfacePurpose = Literal[
-    "info", "model", "command", "settings", "session", "dialog", "approval"
+    "info",
+    "model",
+    "command",
+    "settings",
+    "session",
+    "fork",
+    "dialog",
+    "approval",
 ]
 ScreenSurfacePresentation = Literal["bottom", "bottom-exclusive", "page"]
 

@@ -243,6 +243,14 @@ DEFAULT_LOCAL_COMMANDS_PROFILE = LocalCommandCatalogProfile(
             description="Show terminal diagnostics",
             source="local",
         ),
+        "btw": CommandDef(
+            id="harness.ui.btw",
+            name="btw",
+            kind=CommandKind.LOCAL_UI,
+            description="Ask a quick side question without interrupting the main task",
+            source="local",
+            argument_hint="<question>",
+        ),
     },
     local_command_names_by_route={
         "model_select": "model",
@@ -255,7 +263,7 @@ DEFAULT_LOCAL_COMMANDS_PROFILE = LocalCommandCatalogProfile(
         "terminal": "terminal",
     },
     local_commands_accepting_args=frozenset(
-        {"command", "commands", "model", "models"}
+        {"btw", "command", "commands", "model", "models"}
     ),
 )
 

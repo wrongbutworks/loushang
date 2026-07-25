@@ -12,6 +12,7 @@ from loushang.harness.runtime import (
     CONVERSATION_STORE_SLOT,
     PROMPT_SECTIONS_SLOT,
     RESOURCE_RUNTIME_SLOT,
+    SIDE_QUESTION_PROVIDER_SLOT,
     SKILL_ACTIVATION_SLOT,
     TOOL_PACKS_SLOT,
     ProductRuntimePlan,
@@ -514,6 +515,7 @@ def test_capability_composition_slots_have_deliberate_source_boundaries() -> Non
         "skill.activation",
         "tool.packs",
         "command.packs",
+        "interaction.side_question",
         "continuity.provider_packs",
     }
     assert slots == {
@@ -522,6 +524,7 @@ def test_capability_composition_slots_have_deliberate_source_boundaries() -> Non
         "skill.activation": SKILL_ACTIVATION_SLOT,
         "tool.packs": TOOL_PACKS_SLOT,
         "command.packs": COMMAND_PACKS_SLOT,
+        "interaction.side_question": SIDE_QUESTION_PROVIDER_SLOT,
         "continuity.provider_packs": CONTINUITY_PROVIDER_PACKS_SLOT,
     }
     assert slots["resource.runtime"].allowed_sources == frozenset({"product", "oem"})
@@ -531,6 +534,10 @@ def test_capability_composition_slots_have_deliberate_source_boundaries() -> Non
     assert slots["command.packs"].allowed_sources == frozenset(
         {"product", "oem", "extension"}
     )
+    assert slots["interaction.side_question"].allowed_sources == frozenset(
+        {"product", "oem", "extension"}
+    )
+    assert slots["interaction.side_question"].required is False
     assert "session" not in slots["tool.packs"].allowed_sources
     assert slots["continuity.provider_packs"].scope == "process"
     assert slots["continuity.provider_packs"].refresh_boundary == "sealed"

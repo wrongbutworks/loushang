@@ -23,6 +23,7 @@ from loushang.harness.runtime.profile import (
     CONVERSATION_STORE_SLOT,
     PROMPT_SECTIONS_SLOT,
     RESOURCE_RUNTIME_SLOT,
+    SIDE_QUESTION_PROVIDER_SLOT,
     SKILL_ACTIVATION_SLOT,
     TOOL_PACKS_SLOT,
     ProductRuntimePlan,
@@ -70,6 +71,14 @@ from loushang.harness.runtime.session_operations import (
     copy_file_exclusive,
     run_replacement_callbacks,
     stage_file_import,
+)
+from loushang.harness.runtime.side_question import (
+    SessionSideQuestionProviderFactory,
+    SideQuestionAnswer,
+    SideQuestionCoordinator,
+    SideQuestionProvider,
+    SideQuestionProviderFactory,
+    SideQuestionUpdate,
 )
 from loushang.harness.runtime.transition import SessionTransitionHost
 from loushang.harness.runtime.turn import (
@@ -134,6 +143,7 @@ __all__ = [
     "RetryPolicy",
     "RunState",
     "RESOURCE_RUNTIME_SLOT",
+    "SIDE_QUESTION_PROVIDER_SLOT",
     "SKILL_ACTIVATION_SLOT",
     "SessionOperationCandidate",
     "SessionOperationCoordinator",
@@ -141,6 +151,12 @@ __all__ = [
     "SessionOperationPhase",
     "SessionOperationPreparation",
     "SessionOperationResult",
+    "SessionSideQuestionProviderFactory",
+    "SideQuestionAnswer",
+    "SideQuestionCoordinator",
+    "SideQuestionProvider",
+    "SideQuestionProviderFactory",
+    "SideQuestionUpdate",
     "SessionTransitionHost",
     "StreamingBehavior",
     "StagedFileImport",

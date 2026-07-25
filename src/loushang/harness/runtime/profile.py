@@ -1491,6 +1491,14 @@ COMMAND_PACKS_SLOT = RuntimeCapabilitySlot(
     refresh_boundary="turn",
     allowed_sources=frozenset({"product", "oem", "extension"}),
 )
+SIDE_QUESTION_PROVIDER_SLOT = RuntimeCapabilitySlot(
+    key="interaction.side_question",
+    shape="single",
+    scope="session",
+    refresh_boundary="sealed",
+    allowed_sources=frozenset({"product", "oem", "extension"}),
+    required=False,
+)
 CONTINUITY_PROVIDER_PACKS_SLOT = RuntimeCapabilitySlot(
     key="continuity.provider_packs",
     shape="ordered",
@@ -1520,6 +1528,7 @@ def standard_capability_composition_slots() -> tuple[RuntimeCapabilitySlot, ...]
         SKILL_ACTIVATION_SLOT,
         TOOL_PACKS_SLOT,
         COMMAND_PACKS_SLOT,
+        SIDE_QUESTION_PROVIDER_SLOT,
         CONTINUITY_PROVIDER_PACKS_SLOT,
     )
 
@@ -1557,6 +1566,7 @@ __all__ = [
     "RuntimeProfileSnapshotSelection",
     "RuntimeProfileSource",
     "RuntimeRefreshBoundary",
+    "SIDE_QUESTION_PROVIDER_SLOT",
     "SealedRuntimeCapabilityError",
     "RESOURCE_RUNTIME_SLOT",
     "SKILL_ACTIVATION_SLOT",
