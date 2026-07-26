@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Generic, TypeVar, cast
 
 from loushang.harness.events import EventListener, OrderedEventBus
@@ -24,6 +25,27 @@ class HostStateError(RuntimeError):
     pass
 
 
+@dataclass(frozen=True, slots=True)
+class HostTaskHandle(Generic[T]):
+    """Address and control one deferred Host run without exposing its task."""
+
+    run_id: str
+    _task: asyncio.Task[T]
+    _cancel: Callable[[], bool]
+
+    def cancel(self) -> bool:
+        return self._cancel()
+
+    async def wait(self) -> T:
+        return await asyncio.shield(self._task)
+
+    def done(self) -> bool:
+        return self._task.done()
+
+    def cancelled(self) -> bool:
+        return self._task.cancelled()
+
+
 class HostRuntime(Generic[T]):
     def __init__(
         self,
@@ -43,9 +65,12 @@ class HostRuntime(Generic[T]):
         self._active_task: asyncio.Task[object] | None = None
         self._abort_requested = False
         self._next_run_id = 1
+        self._idle_event = asyncio.Event()
+        self._idle_event.set()
         self._dispose_lock = asyncio.Lock()
         self._deferred_tasks: set[asyncio.Task[object]] = set()
-        self._deferred_by_key: dict[str, asyncio.Task[object]] = {}
+        self._deferred_by_key: dict[str, HostTaskHandle[object]] = {}
+        self._driver_idle_task: asyncio.Task[None] | None = None
 
     @property
     def status(self) -> HostStatus:
@@ -79,19 +104,29 @@ class HostRuntime(Generic[T]):
         *,
         run_id: str | None = None,
     ) -> T:
+        resolved_run_id = self._reserve_run_id(run_id)
+        return await self._run_resolved(operation, run_id=resolved_run_id)
+
+    async def _run_resolved(
+        self,
+        operation: RunOperation[T],
+        *,
+        run_id: str,
+    ) -> T:
         self._ensure_can_run()
-        resolved_run_id = run_id or f"run-{self._next_run_id}"
-        self._next_run_id += 1
+        self._idle_event.clear()
         self._status = "running"
-        self._active_run_id = resolved_run_id
+        self._active_run_id = run_id
         self._active_task = asyncio.current_task()
         self._abort_requested = False
         try:
-            await self._publish("run_started", run_id=resolved_run_id)
+            await self._publish("run_started", run_id=run_id)
         except (Exception, asyncio.CancelledError):
-            self._status = "idle"
+            if self._status not in {"disposing", "disposed"}:
+                self._status = "idle"
             self._active_run_id = None
             self._active_task = None
+            self._idle_event.set()
             raise
 
         try:
@@ -102,21 +137,21 @@ class HostRuntime(Generic[T]):
             )
             await self._finish_run(
                 event_kind,
-                run_id=resolved_run_id,
+                run_id=run_id,
                 error=type(error).__name__,
             )
             raise
         except Exception as error:
             await self._finish_run(
                 "run_failed",
-                run_id=resolved_run_id,
+                run_id=run_id,
                 error=str(error),
             )
             raise
 
         await self._finish_run(
             "run_aborted" if self._abort_requested else "run_completed",
-            run_id=resolved_run_id,
+            run_id=run_id,
         )
         return result
 
@@ -134,6 +169,18 @@ class HostRuntime(Generic[T]):
         yielding between the idle check and the state transition.
         """
 
+        resolved_run_id = self._reserve_run_id(run_id)
+        return await self._run_after_idle_resolved(
+            operation,
+            run_id=resolved_run_id,
+        )
+
+    async def _run_after_idle_resolved(
+        self,
+        operation: RunOperation[T],
+        *,
+        run_id: str,
+    ) -> T:
         current_task = asyncio.current_task()
         while True:
             active_task = self._active_task
@@ -142,7 +189,7 @@ class HostRuntime(Generic[T]):
                     "cannot run after idle from the active host run"
                 )
             if active_task is not None:
-                await active_task
+                await self._idle_event.wait()
                 continue
 
             if self._status in {"running", "aborting"} or self._driver_is_running():
@@ -152,7 +199,7 @@ class HostRuntime(Generic[T]):
             # There is no await between the final idle check above and the
             # state transition performed by run(), so another asyncio task
             # cannot claim the host in between.
-            return await self.run(operation, run_id=run_id)
+            return await self._run_resolved(operation, run_id=run_id)
 
     def defer_run(
         self,
@@ -169,25 +216,68 @@ class HostRuntime(Generic[T]):
         operations, such as retry and compaction requests for one continuation.
         """
 
+        return self.defer_run_handle(
+            operation,
+            key=key,
+            run_id=run_id,
+        )._task
+
+    def defer_run_handle(
+        self,
+        operation: RunOperation[T],
+        *,
+        key: str | None = None,
+        run_id: str | None = None,
+    ) -> HostTaskHandle[T]:
+        """Schedule a deferred run and return its stable identity and controls."""
+
         if key is not None:
             existing = self._deferred_by_key.get(key)
             if existing is not None:
                 if not existing.done():
-                    return cast(asyncio.Task[T], existing)
+                    return cast(HostTaskHandle[T], existing)
                 self._deferred_by_key.pop(key, None)
 
-        task = asyncio.create_task(self.run_after_idle(operation, run_id=run_id))
+        resolved_run_id = self._reserve_run_id(run_id)
+        task = asyncio.create_task(
+            self._run_after_idle_resolved(
+                operation,
+                run_id=resolved_run_id,
+            )
+        )
         task_object = cast(asyncio.Task[object], task)
+        handle = HostTaskHandle(
+            run_id=resolved_run_id,
+            _task=task,
+            _cancel=lambda: self._cancel_deferred(
+                task_object,
+                run_id=resolved_run_id,
+            ),
+        )
         self._deferred_tasks.add(task_object)
         if key is not None:
-            self._deferred_by_key[key] = task_object
+            self._deferred_by_key[key] = cast(HostTaskHandle[object], handle)
         task.add_done_callback(self._observe_deferred_task)
-        return task
+        return handle
+
+    def _cancel_deferred(
+        self,
+        task: asyncio.Task[object],
+        *,
+        run_id: str,
+    ) -> bool:
+        if task.done():
+            return False
+        if task is self._active_task:
+            if run_id != self._active_run_id:
+                raise HostStateError("active run identity mismatch")
+            return self.abort()
+        return task.cancel()
 
     def _observe_deferred_task(self, task: asyncio.Task[object]) -> None:
         self._deferred_tasks.discard(task)
         for key, pending in tuple(self._deferred_by_key.items()):
-            if pending is task:
+            if pending._task is task:
                 self._deferred_by_key.pop(key, None)
         if not task.cancelled():
             task.exception()
@@ -204,14 +294,16 @@ class HostRuntime(Generic[T]):
         return True
 
     async def wait_for_idle(self) -> None:
-        active_task = self._active_task
         current_task = asyncio.current_task()
-        if active_task is not None and active_task is current_task:
-            raise HostStateError("cannot wait for idle from the active host run")
-        if active_task is not None:
-            await active_task
+        while True:
+            active_task = self._active_task
+            if active_task is None:
+                break
+            if active_task is current_task:
+                raise HostStateError("cannot wait for idle from the active host run")
+            await self._idle_event.wait()
         if self._wait_for_idle_driver is not None:
-            await self._await_driver(self._wait_for_idle_driver)
+            await self._wait_for_external_idle()
         if self._active_task is None and self._status in {"running", "aborting"}:
             self._status = "idle"
             self._active_run_id = None
@@ -224,11 +316,24 @@ class HostRuntime(Generic[T]):
             if self.is_active:
                 self.abort()
             self._status = "disposing"
+            active_task = self._active_task
+            queued_tasks = tuple(
+                task
+                for task in self._deferred_tasks
+                if task is not active_task and not task.done()
+            )
+            for task in queued_tasks:
+                task.cancel()
             await self._publish("host_disposing", run_id=self._active_run_id)
             try:
                 try:
                     await self.wait_for_idle()
                 finally:
+                    if queued_tasks:
+                        await asyncio.gather(
+                            *queued_tasks,
+                            return_exceptions=True,
+                        )
                     if self._dispose_driver is not None:
                         await self._await_driver(self._dispose_driver)
             finally:
@@ -248,7 +353,16 @@ class HostRuntime(Generic[T]):
             self._status = "idle"
         self._active_run_id = None
         self._active_task = None
-        await self._publish(kind, run_id=run_id, error=error)
+        try:
+            await self._publish(kind, run_id=run_id, error=error)
+        finally:
+            if self._active_task is None:
+                self._idle_event.set()
+
+    def _reserve_run_id(self, run_id: str | None) -> str:
+        resolved_run_id = run_id or f"run-{self._next_run_id}"
+        self._next_run_id += 1
+        return resolved_run_id
 
     def _ensure_can_run(self) -> None:
         if self._status in {"disposing", "disposed"}:
@@ -260,6 +374,23 @@ class HostRuntime(Generic[T]):
         return bool(
             self._is_running_driver is not None and self._is_running_driver()
         )
+
+    async def _wait_for_external_idle(self) -> None:
+        callback = self._wait_for_idle_driver
+        if callback is None:
+            return
+        task = self._driver_idle_task
+        if task is None or task.done():
+            task = asyncio.create_task(self._await_driver(callback))
+            self._driver_idle_task = task
+            task.add_done_callback(self._observe_driver_idle_task)
+        await asyncio.shield(task)
+
+    def _observe_driver_idle_task(self, task: asyncio.Task[None]) -> None:
+        if self._driver_idle_task is task:
+            self._driver_idle_task = None
+        if not task.cancelled():
+            task.exception()
 
     async def _publish(
         self,

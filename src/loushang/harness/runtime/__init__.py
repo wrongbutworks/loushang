@@ -7,7 +7,11 @@ from loushang.harness.runtime.context import (
     BoundProductRuntimeContext,
     UnboundProductRuntimeContext,
 )
-from loushang.harness.runtime.execution import HostRuntime, HostStateError
+from loushang.harness.runtime.execution import (
+    HostRuntime,
+    HostStateError,
+    HostTaskHandle,
+)
 from loushang.harness.runtime.input_queue import HostInputQueue
 from loushang.harness.runtime.navigation import (
     CancellationController,
@@ -105,6 +109,7 @@ __all__ = [
     "HostRuntime",
     "HostSnapshot",
     "HostStateError",
+    "HostTaskHandle",
     "PROMPT_SECTIONS_SLOT",
     "NavigationFailure",
     "NavigationTransactionCoordinator",
