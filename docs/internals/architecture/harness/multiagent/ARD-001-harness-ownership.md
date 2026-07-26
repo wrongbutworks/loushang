@@ -33,23 +33,27 @@ Multi-agent 运行能力（子 agent 派生、隔离、通信与生命周期管�
 **采用 A：multi-agent 作为 `loushang.harness` 的子模块
 `loushang.harness.multiagent`。**
 
-目标模块形态（ownership markers，不要求一次落地）：
+收敛后的模块形态（责任边界，不按候选组件 1:1 造文件）：
 
 ```text
 loushang.harness.multiagent
-  __init__      # 公开面：spawn / send / wait 契约、AgentPath、状态机类型
-  control       # 控制面：spawn 流水线、消息路由、interrupt、close
-  registry      # agent path 寻址、两阶段 reservation、树拓扑、path↔handle 映射
-  run_handle    # 运行载体：多轮 run 驱动、cancel token、事件转接、恢复入口
-  context       # SubagentContextFactory：隔离 fork、历史过滤、审批冒泡装配
-  input_facade  # 通知合成与 wait 唤醒（基于 harness.host.HostInputQueue）
-  limits        # 并发闸门、depth 上限、驻留 / 回收
-  projection    # 生命周期状态机推导与技术事实发射
-  tools         # ToolSurfaceAdapter：spawn / send / wait 工具封装
-  types         # SpawnRequest / SpawnHandle / SubagentStatus / AgentTypeRecord
+  types         # AgentPath / AgentRef / 事实、通知、进度与策略契约
+  registry      # 两阶段 reservation、树拓扑、incarnation 与寻址
+  context       # watermark fork 规划、工具裁剪、审批冒泡
+  control       # 权限、状态机、路由、关闭计划与事实发布
+  run_handle    # 单任务所有权、多轮、interrupt/close
+
+  # 技术内核之上的可选、即时协作层；不属于 durable Work 调度器
+  recipes       # 有界角色/副本声明与 catalog collision admission
+  executor      # session-owned fan-out/fan-in，失败清理，不持久化
+
+loushang.harness.session.multiagent
+  # HostInputQueue/HostRuntime 适配、session-owned handles、notice policy、
+  # before_release hook composition
 ```
 
-模块边界复用 harness 既有机制：`input_facade` 以 `HostInputQueue` 为底层；
+模块边界复用 harness 既有机制：session adapter 中的 input facade 以
+`HostInputQueue` 为底层；
 审批冒泡复用 `harness.approval` 的 `ApprovalRequest` 管道（不单列审批
 组件）；`run_handle` 参照 `HostRuntime` 生命周期编排。
 

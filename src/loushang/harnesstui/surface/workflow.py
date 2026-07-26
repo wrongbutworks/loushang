@@ -39,6 +39,7 @@ ScreenSurfaceCommandKind = Literal[
     "delete_session",
     "fork_session",
     "rename_session",
+    "agent_tree",
     "side_question",
     "terminal_diagnostics",
     "hotkeys",
@@ -152,14 +153,11 @@ class ScreenSurfaceWorkflowPorts:
     build_delete_surface: Callable[[], ScreenSurfaceView] | None = None
     delete_continuity: Callable[[object], Awaitable[str]] | None = None
     build_fork_surface: Callable[[], ScreenSurfaceView] | None = None
-    fork_session: (
-        Callable[[object], Awaitable[ScreenSurfaceForkResult]] | None
-    ) = None
+    fork_session: Callable[[object], Awaitable[ScreenSurfaceForkResult]] | None = None
     build_rename_surface: Callable[[], ScreenSurfaceView] | None = None
     rename_session: Callable[[str | None], Awaitable[str]] | None = None
-    build_side_question_surface: (
-        Callable[[str], ScreenSurfaceView] | None
-    ) = None
+    build_agent_tree_surface: Callable[[], ScreenSurfaceView] | None = None
+    build_side_question_surface: Callable[[str], ScreenSurfaceView] | None = None
 
 
 @dataclass(slots=True)
@@ -264,8 +262,7 @@ class ScreenSurfaceWorkflow:
             else:
                 self.open(picker)
         elif (
-            command.kind == "fork_session"
-            and self.ports.build_fork_surface is not None
+            command.kind == "fork_session" and self.ports.build_fork_surface is not None
         ):
             try:
                 picker = self.ports.build_fork_surface()
@@ -283,6 +280,16 @@ class ScreenSurfaceWorkflow:
                 self.app.set_status(self.copy.recoverable_error(error))
             else:
                 self.open(surface)
+        elif command.kind == "agent_tree":
+            if self.ports.build_agent_tree_surface is None:
+                self.app.set_status("Agent collaboration is not available.")
+            else:
+                try:
+                    surface = self.ports.build_agent_tree_surface()
+                except Exception as error:
+                    self.app.set_status(self.copy.recoverable_error(error))
+                else:
+                    self.open(surface)
         elif command.kind == "side_question":
             question = command.query.strip()
             if not question:
@@ -669,6 +676,8 @@ def normalize_standard_conversation_surface_command(
         parts = stripped.split(maxsplit=1)
         query = parts[1] if len(parts) == 2 else ""
         return ScreenSurfaceCommand("side_question", query)
+    if command.name == "agents":
+        return ScreenSurfaceCommand("agent_tree")
     if command.name == "terminal" and isinstance(
         intent,
         TerminalDiagnosticsIntent,

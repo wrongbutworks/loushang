@@ -266,6 +266,7 @@ def build_agent_screen_surface_workflow_ports(
     ) = None,
     build_rename_surface: Callable[[], ScreenSurfaceView] | None = None,
     rename_session: Callable[[str | None], Awaitable[str]] | None = None,
+    build_agent_tree_surface: Callable[[], ScreenSurfaceView] | None = None,
     build_side_question_surface: Callable[[str], ScreenSurfaceView] | None = None,
     command_catalog: ScreenSurfaceCommandCatalog | None = None,
     model_selector_profile: SessionModelSelectorSurfaceProfile = (
@@ -349,6 +350,7 @@ def build_agent_screen_surface_workflow_ports(
         fork_session=fork_session,
         build_rename_surface=build_rename_surface,
         rename_session=rename_session,
+        build_agent_tree_surface=build_agent_tree_surface,
         build_side_question_surface=build_side_question_surface,
     )
 

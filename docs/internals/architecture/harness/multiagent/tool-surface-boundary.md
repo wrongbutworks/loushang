@@ -1,16 +1,17 @@
 # Multi-Agent Tool Surface Boundary
 
-> Status: **draft proposal**（目标设计，未经接受）。本文定义
-> `loushang.harness.multiagent` 的模型可见工具面边界：`spawn_agent` /
-> `send_message` / `wait_agent` 三件套的参数、结果与提示纪律。不描述
-> 当前实现状态。
+> Status: **draft boundary, implementation aligned in part**。本文保留
+> spawn / send / wait 三个核心交互的参数、结果与提示纪律；一期公共
+> tool pack 另含 `list_agents` / `interrupt_agent` / `close_agent`，
+> 其当前实施状态以
+> [Temporary Implementation Plan](implementation-plan.md) 为准。
 
 ## Scope
 
-`ToolSurfaceAdapter` 是 multiagent 内部**唯一**依赖 agent 工具框架的
-位置：它把 Control / AgentInputFacade / Registry 的能力封装为模型可
-调用的工具，并承载提示纪律（briefing 要求、通知纪律）这一模型行为
-的关键杠杆。
+`loushang.harness.tools.multiagent.MultiAgentToolPack` 是公共
+multiagent 内核之外唯一依赖 agent 工具框架的位置：它把
+Control / AgentInputFacade / Registry 的能力封装为模型可调用工具，
+并承载提示纪律（briefing 要求、通知纪律）这一模型行为的关键杠杆。
 
 本文定义：
 
@@ -33,12 +34,10 @@
 
 ```json
 {
-  "task_name": "research_auth",        // 必填；小写字母/数字/下划线
-  "message": "调查 src/auth/ 的 token 刷新逻辑，找出竞态。不写代码，200 字内报告。",
+  "name": "research_auth",             // 必填；小写字母/数字/下划线/连字符
+  "prompt": "调查 src/auth/ 的 token 刷新逻辑，找出竞态。不写代码，200 字内报告。",
                                        // 必填；完整简报（fresh spawn 零上下文）
-  "agent_type": "Explore",             // 可选；缺省用产品默认类型
-  "fork": "none",                      // 可选；none（默认）| all | last_N
-  "model": "..."                       // 可选；仅 fork=none 可覆盖
+  "agent_type": "explorer"             // 必填；必须是产品准入类型
 }
 ```
 
@@ -46,9 +45,13 @@
 
 ```json
 {
-  "status": "spawned",
-  "agent_path": "/root/research_auth",
-  "task_name": "research_auth"
+  "path": "/root/research_auth",
+  "incarnation": 1,
+  "agent_type": "explorer",
+  "status": "running",
+  "round_id": 1,
+  "workspace_ref": null,
+  "change_set_ref": null
 }
 ```
 
@@ -100,7 +103,7 @@ spawn 立即返回（ARD-002 全异步）；子 agent 的结果**不在此返回
 
 ## Validation And Error Semantics
 
-- 所有参数严格校验（task_name 形态、fork 档位、target 解析、类型
+- 所有参数严格校验（name 形态、target 解析、类型
   白名单）；校验失败返回**结构化工具错误**，不抛异常。
 - 错误结果带稳定 `code`，供模型与测试依赖；消息文本人可读，
   不作为程序契约。底层组件的错误经工具面统一映射：

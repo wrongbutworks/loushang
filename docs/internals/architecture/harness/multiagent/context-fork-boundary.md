@@ -14,7 +14,7 @@ tools）与运行配置，是 multi-agent 中最复杂、安全问题最集中�
 
 - 默认隔离模型（什么隔离、什么可共享）
 - fork 三档语义与历史过滤规则
-- 字节级 prompt cache 一致性约束
+- 语义确定性约束与可选的 prompt-cache 字节前缀
 - 审批冒泡装配（复用 `ApprovalRequest` 管道）
 - AgentRunSpec 的最终组装
 
@@ -58,7 +58,7 @@ spawn 的 `fork` 参数决定子 agent 的消息历史来源：
 | 档 | 语义 | messages | system_prompt | model 可覆盖 |
 |---|---|---|---|---|
 | `none` | 零上下文 | 空 | 类型系统提示 | ✅ |
-| `all` | 全量 fork | 父历史（过滤后） | 父前缀 + 子追加 | ❌（cache 硬约束） |
+| `all` | 全量 fork | 父历史（过滤后） | 父前缀 + 子追加 | ❌（保持父执行配置） |
 | `last N` | 最近 N 轮 | 父历史末尾 N 轮（过滤后） | 父前缀 + 子追加 | ❌ |
 
 - `none` 是默认档：子 agent 是"刚进门的同事"，简报（spawn prompt）
@@ -86,7 +86,7 @@ fork 档的父历史**以 harness transcript 为源**，不从内存
 | 历史读取 | `TranscriptRepository.path_to` / `fork_plan` | **复用同一机制** |
 | 选择粒度 | entry_id + `fork_position` | 轮数（none/all/last N） |
 | 内容处理 | 全量保留 | **过滤重建**（下节，独有） |
-| 一致性约束 | branch 图完整性 | **字节级 cache 前缀**（独有） |
+| 一致性约束 | branch 图完整性 | **watermark + 确定性映射/过滤** |
 | 产出 | 新 TranscriptRepository（持久化分支） | 子 AgentRunSpec.messages（内存） |
 | 驱动者 | 用户/产品 | agent |
 
@@ -144,38 +144,38 @@ fork_history(
   cache_prefix: RenderedPrefix | None,  # fork 档透传的父已渲染前缀
 ) -> ForkedHistory
   # ForkedHistory:
-  #   messages: [AgentMessage]     # 过滤重建后的历史（含占位 tool_result 配对）
-  #   prefix_bytes: bytes | None   # 透传的前缀（cache 约束，fork 档非空）
+  #   messages: [AgentMessage]     # 过滤重建后的历史
+  #   prefix_bytes: bytes | None   # 可用时透传；缺失只影响 cache 命中
   #   diagnostics: [Diagnostic]    # 降级与过滤记录（如历史为空降 none）
 ```
 
 约束：
 
-- **纯函数**：同一输入必产生字节级相同的输出（cache 硬约杘）；
+- **纯函数**：同一 watermark、档位、mapper 与 filter 必产生语义相同
+  的输出；
   不得依赖时间、随机数、可变全局状态。
 - **参数化**：过滤规则、记录映射、前缀透传均为参数，不内嵌
   产品逻辑；产品/OEM 经参数定制，不修改函数本体。
-- 调用方不得绕过它直接拼装 fork 历史——cache 约束的维护
+- 调用方不得绕过它直接拼装 fork 历史——确定性约束的维护
   集中在此函数。
 
 这与 harness 现有的 `ForkProfile` / `ForkTargetResolver`模式一致：
 harness 提供保守默认，产品通过注入扩展位置与解析器。
 
-## Byte-Level Cache Constraint（fork 档硬约束）
+## Determinism And Optional Cache Prefix
 
-`all` / `last N` 档存在的理由主要是 **prompt cache 共享**：同一父
-fork 出的多个子 agent，其首轮 API 请求的前缀必须**字节级一致**，
-只有末尾的子追加部分不同。因此：
+`all` / `last N` 首先保证的是**可重建的语义历史**。当父运行时还能
+提供已渲染请求前缀时，同一父 fork 出的多个子 agent 可以额外共享
+prompt cache；前缀缺失不得让 spawn 失败。因此：
 
-1. **透传父已渲染的 system prompt 字节**，不重新组装（cc 的
+1. **优先透传父已渲染的 system prompt 字节**，不重新组装（cc 的
    `renderedSystemPrompt` 透传教训：重组装可能因状态变化产生字节
-   偏差，击穿 cache）。
+   偏差，击穿 cache）；无法取得时记录诊断并按确定性规则重建。
 2. **历史过滤是确定性的**：同一父上下文 + 同一档位，过滤结果逐字节
    相同；过滤规则不得依赖运行时状态（时间、随机数、可变配置）。
-3. **占位 tool_result**：若过滤后父历史的末尾 assistant 消息仍带
-   tool_call（如父在 fork 时正处于工具调用中），为其配字节级一致的
-   占位 tool_result（cc 的 `FORK_PLACEHOLDER_RESULT` 模式），保证
-   消息配对完整且所有 fork 孩子前缀一致。
+3. **watermark 先于映射**：只读取 `records_to(watermark)`；父在
+   spawn 之后提交的新记录不进入该子上下文。产品 mapper 若保留
+   tool-call 结构，必须在 mapper 内保证消息配对完整。
 4. **fork 档禁止 model 覆盖**：不同 model 的请求参数不同，前缀
    无法共享（cc 的 "Don't set `model` on a fork" 纪律）。
 
@@ -187,7 +187,8 @@ fork 出的多个子 agent，其首轮 API 请求的前缀必须**字节级一�
 闭包**：
 
 1. 子 agent 的高风险工具操作产生 `ApprovalRequest`（harness 既有
-   值对象），附加**冒泡链**：`agent_path`（发起者）与父链。
+   值对象）；`SubagentApprovalResolver` 用独立 envelope 附加
+   `AgentRef` 发起者与父链，不篡改原工具参数。
 2. 请求经管道直达 **root 交互出口**——子 agent 无自己的交互出口，
    不得自行弹窗/询问（呈现由装配层决定：TUI 弹窗 / RPC
    interaction）。
@@ -196,15 +197,17 @@ fork 出的多个子 agent，其首轮 API 请求的前缀必须**字节级一�
    **重置**：子 agent 不继承父的"本会话已批准"状态（cc 的
    `localDenialTracking` 隔离）。
 
-## AgentRunSpec Assembly
+## Context Plan And Initial Delivery
 
-工厂的最终产出是给 RunHandle 的 `AgentRunSpec` 初值：
+工厂的最终产出是给产品 child factory 的不可变 context plan；spawn
+简报不放进 plan，而由 session runtime 经 RunHandle 的 `deliver()`
+统一投递，避免同一 prompt 同时进入 context 与 queue：
 
 ```text
-AgentRunSpec
+SubagentContextPlan
   context:
     system_prompt = 类型系统提示（none 档）或 父前缀 + 子追加（fork 档）
-    messages      = []（none）或 过滤重建后的父历史 + 简报（fork 档）
+    messages      = []（none）或 过滤重建后的父历史（fork 档）
     tools         = 类型裁剪后的工具集
   config:
     model         = spawn 覆盖（none 档）或 父继承（fork 档）
@@ -212,7 +215,8 @@ AgentRunSpec
     signal        = handle 自有 AbortController（异步不链接）
     get_steering_messages / get_follow_up_messages
                   = AgentInputFacade 队列适配（由 RunHandle 接线）
-  mode = "prompt"（首轮）
+SessionMultiAgentRuntime
+  deliver(spawn 简报) -> RunHandle round 1 / mode="prompt"
 ```
 
 后续轮由 RunHandle 以 `mode="continue"` 驱动，context.messages 在

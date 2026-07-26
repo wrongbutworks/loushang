@@ -557,6 +557,71 @@ def test_create_agent_session_runtime_builds_working_default_sessions(tmp_path) 
     asyncio.run(scenario())
 
 
+def test_coding_multiagent_child_uses_the_product_stream_and_read_only_tools(
+    tmp_path,
+) -> None:
+    from loushang.coding.bootstrap import create_agent_session_runtime
+    from loushang.coding.tool_pack import register_coding_builtin_tools
+    from loushang.harness.multiagent import AgentPath
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+
+    calls: list[tuple[str, str]] = []
+
+    async def stream_fn(model, context, options=None):
+        del options
+        calls.append((model.id, context.messages[-1].content[0].text))
+        return _stream_with_final_message(_assistant_message("child complete"))
+
+    async def scenario() -> None:
+        project = tmp_path / "project"
+        project.mkdir()
+        registry = WorkspaceToolRegistry()
+        register_coding_builtin_tools(registry)
+        runtime = create_agent_session_runtime(
+            session_dir=tmp_path / "sessions",
+            model=_model(),
+            stream_fn=stream_fn,
+            tool_registry=registry,
+            persist=False,
+            enable_multiagent=True,
+        )
+
+        session = await runtime.create_session(cwd=str(project))
+        collaboration = session.multiagent_runtime
+        spawn = session.get_tool_definition("spawn_agent")
+        wait = session.get_tool_definition("wait_agent")
+        assert spawn is not None
+        assert wait is not None
+        spawned = await spawn.execute(
+            "spawn-1",
+            {
+                "name": "reviewer-1",
+                "agent_type": "reviewer",
+                "prompt": "Review this change.",
+            },
+            None,
+            None,
+        )
+        waited = await wait.execute(
+            "wait-1",
+            {"timeout_seconds": 2},
+            None,
+            None,
+        )
+        terminal = collaboration.control.registry.current(
+            AgentPath.parse(str(spawned.details["path"]))
+        )
+
+        assert waited.details["wait_expired"] is False
+        assert terminal is not None
+        assert terminal.status == "completed", collaboration.control.notices()
+        assert terminal.progress.summary == "child complete"
+        assert calls == [("faux-model", "Review this change.")]
+        await runtime.dispose_session_runtime()
+
+    asyncio.run(scenario())
+
+
 def test_create_agent_session_injects_settings_and_agents_md_into_system_prompt(
     tmp_path,
 ) -> None:
