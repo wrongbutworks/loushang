@@ -138,6 +138,27 @@ def test_conversation_input_router_keeps_exit_and_local_policy_injected() -> Non
     assert app.state.running is False
 
 
+def test_conversation_input_router_handles_local_command_while_run_is_active() -> None:
+    app = _ConversationApp()
+    app.start_prompt("question")
+    router = ConversationInputRouter(
+        app=app,
+        should_exit=lambda _text: False,
+        is_local_command=lambda text: text == "/agents",
+    )
+    app.composer.set_text("/agents")
+
+    result = router.handle(InputEvent(kind="key", key="enter"))
+
+    assert result.local_text == "/agents"
+    assert result.steer_text is None
+    assert result.followup_text is None
+    assert app.state.running is True
+    assert app.state.pending_steers == []
+    assert app.state.pending_followups == []
+    assert app.composer.value == ""
+
+
 def test_conversation_input_router_restores_pending_messages() -> None:
     app = _ConversationApp()
     app.state.queue_steer("first")

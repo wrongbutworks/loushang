@@ -36,6 +36,7 @@ class _Catalog:
                 "terminal",
                 "hotkeys",
                 "settings",
+                "agents",
                 "btw",
             )
         }
@@ -129,6 +130,7 @@ def _normalize(text: str, command: CommandDef) -> ScreenSurfaceCommand:
         "terminal": "terminal_diagnostics",
         "hotkeys": "hotkeys",
         "settings": "settings",
+        "agents": "agent_tree",
         "btw": "side_question",
     }
     if command.name == "command" and query:
@@ -225,6 +227,9 @@ def _workflow(
         state.side_questions.append(question)
         return _surface("BTW", "dialog")
 
+    def agent_tree_surface() -> ScreenSurfaceView:
+        return _surface("Agents", "agent_tree")
+
     workflow = workflow_type(
         app=_App(state),
         ports=ScreenSurfaceWorkflowPorts(
@@ -266,6 +271,7 @@ def _workflow(
             fork_session=fork_session,
             build_rename_surface=rename_surface,
             rename_session=rename_session,
+            build_agent_tree_surface=agent_tree_surface,
             build_side_question_surface=side_question_surface,
         ),
         copy=ScreenSurfaceWorkflowCopy(
@@ -324,7 +330,9 @@ def test_surface_workflow_opens_and_submits_session_rename() -> None:
     assert isinstance(surface, ScreenSurfaceView)
     assert surface.purpose == "rename"
 
-    asyncio.run(workflow.handle_intent(InputIntent(kind="select", text="Project Alpha")))
+    asyncio.run(
+        workflow.handle_intent(InputIntent(kind="select", text="Project Alpha"))
+    )
 
     assert workflow.current is None
     assert state.renamed_sessions == ["Project Alpha"]
@@ -438,6 +446,18 @@ def test_surface_workflow_routes_btw_as_an_immediate_side_question() -> None:
     assert state.statuses[-1] == "Usage: /btw <question>"
 
 
+def test_surface_workflow_opens_agent_tree_page() -> None:
+    workflow, _ = _workflow()
+
+    assert workflow.is_local_command("/agents") is True
+    asyncio.run(workflow.handle_text("/agents"))
+
+    surface = workflow.current
+    assert isinstance(surface, ScreenSurfaceView)
+    assert surface.title == "Agents"
+    assert surface.purpose == "agent_tree"
+
+
 def test_surface_workflow_opens_fork_picker_and_restores_selected_prompt() -> None:
     workflow, state = _workflow()
 
@@ -450,9 +470,7 @@ def test_surface_workflow_opens_fork_picker_and_restores_selected_prompt() -> No
     assert picker.purpose == "fork"
 
     asyncio.run(
-        workflow.handle_surface_intent(
-            InputIntent(kind="select", text="entry-1")
-        )
+        workflow.handle_surface_intent(InputIntent(kind="select", text="entry-1"))
     )
 
     assert state.forked_entries == ["entry-1"]

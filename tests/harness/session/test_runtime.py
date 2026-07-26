@@ -185,6 +185,49 @@ def test_session_runtime_publishes_transcript_commit_receipts_in_order() -> None
     asyncio.run(scenario())
 
 
+def test_session_runtime_removes_queued_application_message_when_agent_consumes_it() -> (
+    None
+):
+    async def scenario() -> None:
+        agent = Agent()
+        runtime = SessionRuntime(
+            agent=agent,
+            transcript=TranscriptRuntimePort(
+                session_id="session-queued-application",
+                append_message=lambda message: _append_message(message),
+                commit_application_message=lambda message: _commit_application_message(
+                    message
+                ),
+                refresh_context=lambda: None,
+                set_commit_observer=lambda observer: None,
+            ),
+            turn_policy=_turn_policy(),
+            after_turn_policy=_after_turn_policy(),
+        )
+        message = ApplicationMessage(
+            application_message_id="completion-1",
+            custom_type="harness.multiagent.completion_notice",
+            content="/root/reviewer completed (round 1).",
+            timestamp=0.0,
+            display=False,
+            delivery_mode="steering",
+        )
+
+        await runtime.application_inputs.deliver(message)
+        assert runtime.queue.get_steering_messages() == [message.content]
+
+        await runtime.handle_agent_event(
+            {"type": "message_start", "message": message},
+            object(),
+        )
+
+        assert runtime.queue.get_steering_messages() == []
+        assert runtime.queue.pending_message_count == 0
+        await runtime.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_session_runtime_defers_continue_until_host_is_idle() -> None:
     async def scenario() -> None:
         agent = Agent()

@@ -14,7 +14,7 @@ ToolExecutionErrorRecorder = Callable[[AgentEvent], None]
 ExtensionDiagnosticsSync = Callable[..., None]
 AssistantResponseErrorRecorder = Callable[[AssistantMessage], None]
 AutoCompactionChecker = Callable[[AssistantMessage], Awaitable[object | None]]
-UserMessageConsumer = Callable[[object], bool]
+QueuedMessageConsumer = Callable[[object], bool]
 
 
 class RetryRouterPort(Protocol):
@@ -48,7 +48,7 @@ class AgentEventRouter:
     sync_extension_diagnostics: ExtensionDiagnosticsSync
     record_assistant_response_error: AssistantResponseErrorRecorder
     check_auto_compaction: AutoCompactionChecker
-    consume_user_message: UserMessageConsumer | None = None
+    consume_queued_message: QueuedMessageConsumer | None = None
     _committed_messages: dict[int, tuple[object, str]] = field(
         default_factory=dict,
         init=False,
@@ -59,10 +59,10 @@ class AgentEventRouter:
         del signal
         if (
             event["type"] == "message_start"
-            and getattr(event["message"], "role", None) == "user"
-            and self.consume_user_message is not None
+            and getattr(event["message"], "role", None) in {"user", "application"}
+            and self.consume_queued_message is not None
         ):
-            self.consume_user_message(event["message"])
+            self.consume_queued_message(event["message"])
         source_record_id: str | None = None
         committed_message: object | None = None
         if event["type"] == "message_end":

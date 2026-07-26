@@ -10,6 +10,7 @@ from loushang.harness.events.session import (
     QueueKind,
     QueueSnapshot,
 )
+from loushang.harness.runtime.input_queue import HostInputQueue
 from loushang.harness.runtime.turn import TurnInputQueue
 from loushang.harness.runtime.types import QueueMode
 from loushang.observability import get_log
@@ -59,6 +60,12 @@ class QueueController:
     @property
     def pending_message_count(self) -> int:
         return self._queue.pending_count
+
+    @property
+    def input_queue(self) -> HostInputQueue[object]:
+        """Expose the existing queue to Product-neutral input facades."""
+
+        return self._queue
 
     def get_steering_messages(self) -> list[str]:
         return self._queue.texts("steering")

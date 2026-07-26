@@ -91,6 +91,7 @@ def test_coding_top_level_exposes_sdk_surface_snapshot() -> None:
         "persist",
         "append_system_prompt",
         "approval_resolver",
+        "enable_multiagent",
     )
     assert snapshot.to_dict()["missing_exports"] == []
 
@@ -179,6 +180,7 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "append_system_prompt",
         "extension_flag_values",
         "approval_resolver",
+        "enable_multiagent",
     )
     assert tuple(
         inspect.signature(coding.create_agent_session_result).parameters
@@ -202,6 +204,7 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "package_materializer",
         "append_system_prompt",
         "approval_resolver",
+        "enable_multiagent",
     )
     assert tuple(inspect.signature(coding.create_agent_session_runtime).parameters) == (
         "session_dir",
@@ -220,6 +223,7 @@ def test_coding_top_level_sdk_entry_signatures_are_stable() -> None:
         "persist",
         "append_system_prompt",
         "approval_resolver",
+        "enable_multiagent",
     )
 
 

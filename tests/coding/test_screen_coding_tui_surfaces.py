@@ -8,7 +8,15 @@ from loushang.ai import Model
 from loushang.ai.model import ModelSelection
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
+from loushang.harness.multiagent import (
+    AgentPath,
+    AgentTypeRegistry,
+    AgentTypeSpec,
+    HostCaller,
+    MultiAgentControl,
+)
 from loushang.harnesstui.conversation.fork import ForkPromptSurface
+from loushang.harnesstui.multiagent import AgentTreeSurface
 from loushang.harnesstui.selection.model import (
     ModelSelectorSurface as SharedModelSelectorSurface,
 )
@@ -367,6 +375,45 @@ def test_screen_surface_manager_opens_resume_as_full_screen_continuity_page() ->
     assert surface.presentation == "page"
     assert isinstance(surface.renderable, ScreenSurfaceView)
     assert surface.renderable.purpose == "session"
+
+
+def test_screen_surface_manager_opens_live_agent_tree_page() -> None:
+    async def scenario() -> None:
+        session = _Session()
+        control = MultiAgentControl(
+            agent_types=AgentTypeRegistry(
+                (AgentTypeSpec(name="reviewer", maximum_children=2),)
+            )
+        )
+        session.multiagent_runtime = SimpleNamespace(
+            control=control,
+            list_agents=lambda *, caller: control.list_agents(caller=caller),
+        )
+        app = _app()
+        manager = _manager(app, session)
+
+        assert manager.is_local_command("/agents")
+        await manager.handle_text("/agents")
+        await asyncio.sleep(0)
+
+        surface = app.active_surface
+        assert isinstance(surface, ScreenSurfaceView)
+        assert surface.purpose == "agent_tree"
+        assert surface.presentation == "page"
+        assert isinstance(surface.content, AgentTreeSurface)
+
+        control.spawn(
+            caller=HostCaller(),
+            parent_path=AgentPath.root(),
+            name="reviewer",
+            agent_type="reviewer",
+        )
+        plain = _surface_plain_lines(surface)
+        assert any("reviewer  idle · reviewer" in line for line in plain)
+
+        manager.close()
+
+    asyncio.run(scenario())
 
 
 def test_screen_surface_manager_forks_selected_prompt_and_restores_composer() -> None:

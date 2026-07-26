@@ -100,15 +100,20 @@ send_message(request) -> DeliveryReceipt | DeliveryError
 
 ```text
  1. 寻址解析
- 2. 子树枚举    registry.subtree(target)——含全部后代
- 3. 自底向上    对每个后代（深到浅）执行 handle.close()：
-                interrupt 当前轮（若有）→ 释放 → registry 注销 → limits.release()
- 4. 目标自身 close；返回关闭前状态
+ 2. 关闭计划    plan_close_tree(target)——鉴权并按深到浅返回不可变快照，
+                不提前修改 registry
+ 3. 自底向上    tree/session owner 对每个快照调用对应 handle.close()：
+                interrupt → await task → dispose → commit_closed(ref)
+ 4. 目标自身最后 close；返回每个 HandleCloseResult
 ```
 
 规则：
 
 - **close 递归**：关闭父必须递归关闭后代（不留孤儿 agent 占用名额）。
+- **物理释放先于逻辑关闭**：`plan_close_tree()` 无副作用；
+  `commit_closed(ref)` 只能在该 ref 的 owned task 终止且 driver dispose
+  完成后调用。Control 不提供可绕过 RunHandle 的直接 `close_tree()`
+  状态突变入口。
 - **interrupt 不递归**：中断只作用于目标自身（子 agent 的后代继续
   运行，除非显式逐个中断）。
 - **幂等**：重复 close / interrupt 返回当前状态，不报错。
@@ -126,7 +131,10 @@ Control 触发时机）：
 | close 完成 | agent_closed（path、关闭前状态） |
 
 装配层消费者：UI 面板、审计日志、（经装配层投影的）work 业务事件。
-Control 不知道消费者的形态，只保证事实按序、不丢。
+Control 不知道消费者的形态。它保证同一 agent 的事实按状态转移顺序
+产生；一期消费者是 best-effort，单个消费者失败会被诊断并跳过，不得
+中断其他消费者或回滚控制面状态。需要跨进程不丢失时由 Work 的 durable
+event log 承担。
 
 ## Assembly Injection Points
 

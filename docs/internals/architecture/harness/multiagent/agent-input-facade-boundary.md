@@ -6,7 +6,7 @@
 
 ## Scope
 
-AgentInputFacade 是 multi-agent 的统一同步原语：子 agent 完成通知、其他 agent
+AgentInputFacade 是 session adapter 的统一同步原语：子 agent 完成通知、其他 agent
 的消息、用户 steer 都经同一机制进入目标 agent 的运行，而 `wait_agent`
 以"等待自己 input activity"为唯一等待语义。
 
@@ -50,7 +50,7 @@ AgentInputFacade 是 HostInputQueue 之上的 **multiagent 门面**，新增的�
 ```text
 AgentInputMessage
   sender: AgentPath | "user" | "system"
-  kind:   "follow_up" | "steering" | "completion_notice"
+  kind:   "follow_up" | "steering"
   text:   str                    # 消息正文（user-role 注入）
   payload: AgentInputPayload        # 结构化附加（终态摘要、usage 等）
 ```
@@ -61,7 +61,7 @@ AgentInputMessage
 |---|---|---|
 | `follow_up` | 入 follow_up 队列，本轮结束后消费 | 驱动新一轮 run（ARD-002 唤醒） |
 | `steering` | 入 steering 队列，下一工具边界注入 | 驱动新一轮 run（作为首条输入） |
-| `completion_notice` | 入 follow_up 队列（`trigger_turn=false`，不抢轮） | 入队列；是否驱动新轮由接收方策略决定 |
+| 独立 `AgentCompletionNotice` | adapter 转成 follow_up 并入队（默认不抢轮） | 入队列；是否驱动新轮由显式 notice policy 决定 |
 
 默认规则来自两家参考实现的对齐：
 
@@ -75,7 +75,8 @@ loushang 统一为：**消息的 kind 决定排队语义，目标状态决定是
 
 ## Completion Notice Synthesis
 
-子 agent 终态时，由 AgentInputFacade 合成完成通知投递到父 input：
+子 agent 终态时，Control 先发布独立的 `AgentCompletionNotice`；随后
+AgentInputFacade 合成父 input 文本：
 
 ```text
 completion_notice
@@ -100,6 +101,9 @@ completion_notice
    通知内容，不反转状态。
 3. 通知进入父 input 后，父的 wait（若在等待）以 `AgentInputActivity`
    唤醒——**唤醒不等于消费**，父 agent 在自己的后续 turn 读到通知。
+4. 默认 policy 是 `queue_only`；`wake_if_idle` 必须显式启用，且 root
+   session 需提供自己的 wake callback。recipe 直接等待 terminal 时不得
+   同时启用隐式父轮次。
 
 ## Wait Primitive
 

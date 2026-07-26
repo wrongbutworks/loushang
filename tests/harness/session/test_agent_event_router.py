@@ -4,6 +4,7 @@ import asyncio
 
 from loushang.ai.types import AssistantMessage, TextPart, Usage
 from loushang.harness.session import AgentEventRouter
+from loushang.harness.transcript import ApplicationMessage
 
 
 def _usage() -> Usage:
@@ -122,6 +123,41 @@ def test_agent_event_router_preserves_assistant_message_end_ordering() -> None:
         "retry_finish_success",
         "compaction_clear_overflow",
     ]
+
+
+def test_agent_event_router_consumes_queued_application_message_on_start() -> None:
+    consumed: list[object] = []
+    message = ApplicationMessage(
+        application_message_id="completion-1",
+        custom_type="multiagent.completion",
+        content="/root/reviewer completed (round 1).",
+        timestamp=0.0,
+        display=False,
+        delivery_mode="steering",
+    )
+
+    async def scenario() -> None:
+        router = AgentEventRouter(
+            append_message=lambda value: _append_async([], value),
+            dispatch_event=lambda event, **kwargs: _record_async([], "dispatch"),
+            emit_extension_agent_event=lambda event: _record_async([], "extension"),
+            record_tool_execution_error=lambda event: None,
+            retry_controller=_RetryRecorder([]),
+            compaction_controller=_CompactionRecorder([]),
+            sync_extension_diagnostics=lambda **kwargs: None,
+            record_assistant_response_error=lambda value: None,
+            check_auto_compaction=lambda value: _record_async([], "compact"),
+            consume_queued_message=lambda value: consumed.append(value) or True,
+        )
+
+        await router.handle(
+            {"type": "message_start", "message": message},
+            object(),
+        )
+
+    asyncio.run(scenario())
+
+    assert consumed == [message]
 
 
 def test_agent_event_router_does_not_dispatch_after_append_failure() -> None:

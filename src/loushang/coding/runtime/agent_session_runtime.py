@@ -8,6 +8,7 @@ from loushang.coding.session_manager import SessionManager
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.runtime import copy_file_exclusive
 from loushang.harness.session import AgentProductSessionRuntime
+from loushang.harness.session.multiagent import compose_multiagent_before_release
 
 SessionFactory = Callable[..., AgentSession]
 _copy_import_file = copy_file_exclusive
@@ -40,6 +41,13 @@ class AgentSessionRuntime(
             copy_file=lambda source, destination: _copy_import_file(
                 source,
                 destination,
+            ),
+            before_release=compose_multiagent_before_release(
+                resolve_runtime=lambda session: getattr(
+                    session,
+                    "multiagent_runtime",
+                    None,
+                )
             ),
             auto_refresh_session_index=auto_refresh_session_index,
             session_index_refresh_interval=session_index_refresh_interval,
