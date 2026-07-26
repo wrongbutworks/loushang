@@ -160,6 +160,11 @@ def test_anthropic_messages_adapter_round_trip() -> None:
             "fineGrainedTools": True,
             "interleavedThinking": False,
             "longCacheRetention": False,
+            "reasoningEffortMap": {
+                "high": "high",
+                "xhigh": "max",
+            },
+            "thinkingMode": "adaptive",
         }
     )
     endpoint = Endpoint(
@@ -175,6 +180,11 @@ def test_anthropic_messages_adapter_round_trip() -> None:
         "longCacheRetention": False,
         "fineGrainedTools": True,
         "interleavedThinking": False,
+        "reasoningEffortMap": {
+            "high": "high",
+            "xhigh": "max",
+        },
+        "thinkingMode": "adaptive",
     }
     assert AnthropicMessagesConfig.from_raw(raw) == adapter
 
@@ -182,6 +192,12 @@ def test_anthropic_messages_adapter_round_trip() -> None:
 def test_anthropic_messages_adapter_rejects_invalid_values() -> None:
     with pytest.raises(ValueError, match="adapter config field must be a boolean"):
         AnthropicMessagesConfig(long_cache_retention="yes")
+    with pytest.raises(ValueError, match="unsupported Anthropic thinkingMode"):
+        AnthropicMessagesConfig(thinking_mode="automatic")
+    with pytest.raises(ValueError, match="unsupported keys"):
+        AnthropicMessagesConfig(reasoning_effort_map={"future": "high"})
+    with pytest.raises(ValueError, match="unsupported .*values"):
+        AnthropicMessagesConfig(reasoning_effort_map={"high": "extreme"})
     with pytest.raises(ValueError, match="adapter config has unknown keys"):
         AnthropicMessagesConfig.from_raw({"developerRole": False})
 
