@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from loushang.ai.model.domain import AnthropicMessagesConfig
 from loushang.ai.options import CacheRetention
@@ -17,39 +17,24 @@ class AnthropicMessagesProtocol:
     """
 
     @staticmethod
-    def supports_adaptive_thinking(model_id: str) -> bool:
-        return any(
-            tag in model_id
-            for tag in (
-                "opus-4-8",
-                "opus-4.8",
-                "opus-4-6",
-                "opus-4.6",
-                "sonnet-4-6",
-                "sonnet-4.6",
-            )
+    def supports_adaptive_thinking(
+        adapter_config: AnthropicMessagesConfig | None,
+    ) -> bool:
+        return (
+            adapter_config is not None
+            and adapter_config.thinking_mode == "adaptive"
         )
 
     @staticmethod
     def map_thinking_level_to_effort(
-        level: str | None, model_id: str
+        level: str | None,
+        adapter_config: AnthropicMessagesConfig | None,
     ) -> Literal["low", "medium", "high", "xhigh", "max"] | None:
-        if level is None:
+        if level is None or adapter_config is None:
             return None
-        if level in ("minimal", "low"):
-            return "low"
-        if level == "medium":
-            return "medium"
-        if level == "high":
-            return "high"
-        if level == "max":
-            return "max"
-        if level == "xhigh":
-            if any(tag in model_id for tag in ("opus-4-8", "opus-4.8")):
-                return "xhigh"
-            if any(tag in model_id for tag in ("opus-4-6", "opus-4.6")):
-                return "max"
-            return "high"
+        effort = adapter_config.reasoning_effort_map.get(level)
+        if effort in ("low", "medium", "high", "xhigh", "max"):
+            return cast(Literal["low", "medium", "high", "xhigh", "max"], effort)
         return None
 
     @staticmethod
@@ -135,7 +120,6 @@ class AnthropicMessagesProtocol:
     def should_inject_interleaved_thinking(
         cls,
         *,
-        model_id: str,
         reasoning_enabled: bool | None,
         adapter_config: AnthropicMessagesConfig | None,
     ) -> bool:
@@ -143,7 +127,7 @@ class AnthropicMessagesProtocol:
             return False
         if reasoning_enabled is not True:
             return False
-        if cls.supports_adaptive_thinking(model_id):
+        if cls.supports_adaptive_thinking(adapter_config):
             return False
         return True
 

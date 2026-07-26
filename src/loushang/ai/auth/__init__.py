@@ -33,6 +33,12 @@ from loushang.ai.auth.oauth import (
     OAuthLoginSession,
     OAuthProvider,
 )
+from loushang.ai.auth.registry import (
+    AuthRegistry,
+    AuthRoute,
+    get_auth_registry,
+    register_auth_adapter,
+)
 from loushang.ai.auth.resolver import resolve_auth
 from loushang.ai.auth.sources import (
     AuthExtensionRegistry,
@@ -66,6 +72,8 @@ __all__ = [
     "AuthenticationRequiredError",
     "AuthAction",
     "AuthExtensionRegistry",
+    "AuthRegistry",
+    "AuthRoute",
     "AuthError",
     "AuthConfig",
     "AuthCredential",
@@ -94,6 +102,7 @@ __all__ = [
     "credential_status",
     "get_auth",
     "get_auth_extension_registry",
+    "get_auth_registry",
     "get_credential_source",
     "get_oauth_provider",
     "load_codex_credential",
@@ -101,6 +110,7 @@ __all__ = [
     "login",
     "logout",
     "normalize_auth_kind",
+    "register_auth_adapter",
     "register_credential_source",
     "register_oauth_provider",
     "resolve_auth",

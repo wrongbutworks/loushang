@@ -19,9 +19,9 @@ from loushang.ai.auth.oauth.client import (
     OAuthClientConfig,
     OAuthLoginSession,
 )
+from loushang.ai.auth.registry import AuthRegistry, get_auth_registry
 from loushang.ai.auth.sources import (
     AuthExtensionRegistry,
-    get_auth_extension_registry,
     get_credential_source,
 )
 from loushang.ai.auth.store import FileCredentialStore
@@ -94,6 +94,7 @@ async def get_auth(
     *,
     store: FileCredentialStore | None = None,
     env: Mapping[str, str] | None = None,
+    auth_registry: AuthRegistry | None = None,
     extensions: AuthExtensionRegistry | None = None,
     refresh_window_seconds: float = 60.0,
     now: float | None = None,
@@ -102,12 +103,12 @@ async def get_auth(
 
     from loushang.ai.auth.resolver import resolve_auth
 
-    registry = extensions or get_auth_extension_registry()
+    registry = _resolve_auth_registry(auth_registry, extensions)
     try:
         return await resolve_auth(
             model,
             store=store,
-            sources=registry.credential_sources,
+            auth_registry=registry,
             env=env,
             refresh_window_seconds=refresh_window_seconds,
             now=now,
@@ -133,13 +134,14 @@ async def login(
     model,
     *,
     store: FileCredentialStore | None = None,
+    auth_registry: AuthRegistry | None = None,
     extensions: AuthExtensionRegistry | None = None,
 ) -> OAuthLoginSession:
     """Start configured OAuth login without opening a browser or waiting for it."""
 
     provider = _generic_oauth_provider(model)
     if provider is None:
-        registry = extensions or get_auth_extension_registry()
+        registry = _resolve_auth_registry(auth_registry, extensions)
         raise AuthenticationRequiredError(
             "Model does not provide a generic OAuth login flow.",
             provider=getattr(model, "provider_id", None),
@@ -158,6 +160,7 @@ async def status(
     *,
     store: FileCredentialStore | None = None,
     env: Mapping[str, str] | None = None,
+    auth_registry: AuthRegistry | None = None,
     extensions: AuthExtensionRegistry | None = None,
     refresh_window_seconds: float = 60.0,
     now: float | None = None,
@@ -168,7 +171,7 @@ async def status(
     kind = normalize_auth_kind(getattr(declaration, "kind", None))
     if declaration is None or kind == "none":
         return AuthStatus(authenticated=True, auth_kind="none")
-    registry = extensions or get_auth_extension_registry()
+    registry = _resolve_auth_registry(auth_registry, extensions)
     if kind == "api_key":
         try:
             resolve_api_key_auth(
@@ -197,11 +200,11 @@ async def status(
             details={"auth_kind": str(kind), "recovery": "reconfigure"},
         )
 
-    provider_id = _oauth_provider_id(model)
+    source = registry.find_credential_source(model)
+    provider_id = source.id if source is not None else _oauth_provider_id(model)
     resolved_store = store or FileCredentialStore()
     credential = resolved_store.load(provider_id)
     source_name: str | None = "default_store" if credential is not None else None
-    source = registry.find_credential_source(model)
     if credential is None and source is not None:
         credential = source.load()
         if credential is not None:
@@ -263,7 +266,8 @@ async def logout(
                 model=getattr(provider, "id", None),
                 details={"recovery": "reconfigure"},
             )
-        provider_id = _oauth_provider_id(provider)
+        source = get_auth_registry().resolve_auth_adapter(provider)
+        provider_id = source.id if source is not None else _oauth_provider_id(provider)
         adapter = get_oauth_provider(provider_id) or _generic_oauth_provider(provider)
     resolved_store = store or FileCredentialStore()
     credential = resolved_store.load(provider_id)
@@ -364,7 +368,7 @@ def _generic_oauth_provider(model) -> AuthlibOAuthProvider | None:
 
 def _available_actions(
     model,
-    registry: AuthExtensionRegistry,
+    registry: AuthRegistry,
 ) -> tuple[AuthAction, ...]:
     declaration = getattr(model, "auth", None)
     kind = normalize_auth_kind(getattr(declaration, "kind", None))
@@ -378,6 +382,15 @@ def _available_actions(
     if registry.find_credential_source(model) is not None:
         actions.append("external_credential")
     return tuple(actions)
+
+
+def _resolve_auth_registry(
+    auth_registry: AuthRegistry | None,
+    extensions: AuthExtensionRegistry | None,
+) -> AuthRegistry:
+    if auth_registry is not None and extensions is not None:
+        raise TypeError("auth_registry and extensions cannot both be provided")
+    return auth_registry or extensions or get_auth_registry()
 
 
 def _credential_state(
