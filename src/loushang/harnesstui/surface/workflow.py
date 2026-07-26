@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from loushang.harness.commands import CommandDef, CommandKind
+from loushang.harness.continuity import ContinuityTarget
 from loushang.harnesstui.conversation.intents import (
     CommandSelectIntent,
     CommandsIntent,
@@ -498,21 +499,22 @@ class ScreenSurfaceWorkflow:
             await self._perform_continuity_deletion(payload, surface)
             return
         target = payload
+        if not isinstance(target, ContinuityTarget):
+            return
         summary = getattr(content, "selected_summary", None)
         title = getattr(summary, "title", None)
         if not isinstance(title, str) or not title:
-            title = getattr(target, "opaque_id", "selected session")
+            title = target.opaque_id
         from loushang.harnesstui.continuity import (
             build_delete_continuity_confirmation_surface,
         )
 
-        if hasattr(target, "provider_id") and hasattr(target, "opaque_id"):
-            self.open(
-                build_delete_continuity_confirmation_surface(
-                    target=target,
-                    title=title,
-                )
+        self.open(
+            build_delete_continuity_confirmation_surface(
+                target=target,
+                title=title,
             )
+        )
 
     async def _handle_rename_submit(self, payload: object) -> None:
         rename = self.ports.rename_session
