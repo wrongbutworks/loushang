@@ -991,6 +991,17 @@ def test_default_runtime_builder_maps_tools_to_allowed_and_active_tools(
         "read",
         "grep",
     ]
+    assert session.multiagent_runtime is not None
+    assert session.multiagent_runtime.control.agent_type("explorer") is not None
+    assert session.multiagent_runtime.control.agent_type("reviewer") is not None
+    assert not {
+        "spawn_agent",
+        "send_message",
+        "wait_agent",
+        "list_agents",
+        "interrupt_agent",
+        "close_agent",
+    }.intersection(session.get_active_tool_names())
 
 
 def test_default_runtime_builder_maps_no_tools_to_empty_allowed_tools(tmp_path) -> None:
@@ -1017,6 +1028,7 @@ def test_default_runtime_builder_maps_no_tools_to_empty_allowed_tools(tmp_path) 
 
     assert session.get_active_tool_names() == []
     assert session.get_all_tools() == []
+    assert session.multiagent_runtime is not None
 
 
 def test_default_runtime_builder_applies_resource_and_prompt_options(tmp_path) -> None:
@@ -1087,6 +1099,7 @@ def test_default_runtime_builder_rebuilds_project_bound_services_for_session_cwd
     from loushang.coding.tool_pack import (
         register_coding_builtin_tools as register_builtin_tools,
     )
+    from loushang.harness.tools.multiagent import MULTIAGENT_TOOL_NAMES
     from loushang.harness.tools.workspace.registry import (
         WorkspaceToolRegistry as ToolRegistry,
     )
@@ -1115,6 +1128,16 @@ def test_default_runtime_builder_rebuilds_project_bound_services_for_session_cwd
     assert first.resource_loader is not second.resource_loader
     assert second.cwd_bound_services_audit.ok is True
     assert "Project B guidance" in second.agent.system_prompt
+    assert "## Multi-agent collaboration" in second.agent.system_prompt
+    assert set(MULTIAGENT_TOOL_NAMES).issubset(second.get_active_tool_names())
+    assert not set(MULTIAGENT_TOOL_NAMES).intersection(
+        definition.name for definition in registry.list_definitions()
+    )
+    first_tools = {definition.name: definition for definition in first.get_all_tools()}
+    second_tools = {
+        definition.name: definition for definition in second.get_all_tools()
+    }
+    assert first_tools["spawn_agent"] is not second_tools["spawn_agent"]
 
 
 def test_cwd_bound_services_factory_uses_sdk_services_creation(

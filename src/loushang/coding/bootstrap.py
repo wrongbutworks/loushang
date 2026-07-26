@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from functools import partial
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -49,6 +50,7 @@ from loushang.harness.session import (
     build_agent_product_session_runtime,
     build_standard_agent_session_result,
     create_standard_agent_bootstrap_services,
+    normalize_no_tools,
     project_root_from_settings_base,
     record_default_model_unavailable,
 )
@@ -191,8 +193,33 @@ def create_agent_session(
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
+    enable_multiagent: bool = False,
 ) -> AgentSession:
+    enable_multiagent_tools = (
+        enable_multiagent
+        and allowed_tool_names is None
+        and normalize_no_tools(no_tools) is None
+    )
     services = services or create_services()
+    multiagent_types = None
+    resolved_append_system_prompt = tuple(append_system_prompt or ())
+    if enable_multiagent:
+        from loushang.coding.multiagent import (
+            coding_agent_types,
+            coding_multiagent_system_prompt,
+        )
+
+        multiagent_types = coding_agent_types()
+        if enable_multiagent_tools:
+            resolved_append_system_prompt = (
+                *resolved_append_system_prompt,
+                coding_multiagent_system_prompt(multiagent_types),
+            )
+    session_tool_registry = (
+        _clone_workspace_tool_registry(tool_registry)
+        if enable_multiagent_tools and tool_registry is not None
+        else tool_registry
+    )
     resolved_package_materializer = (
         package_materializer or _default_package_materializer(session_manager)
     )
@@ -241,11 +268,11 @@ def create_agent_session(
         cwd=session_manager.get_cwd(),
         extension_flag_values=extension_flag_values,
         explicit_system_prompt=system_prompt,
-        append_system_prompt=append_system_prompt or (),
+        append_system_prompt=resolved_append_system_prompt,
         model=model,
         thinking_level=thinking_level,
         tools=tools,
-        tool_registry=tool_registry,
+        tool_registry=session_tool_registry,
         allowed_tool_names=allowed_tool_names,
         active_tool_names=active_tool_names,
         no_tools=no_tools,
@@ -276,6 +303,36 @@ def create_agent_session(
     result.session.cwd_bound_services_audit = (
         result.configuration.cwd_bound_services_audit
     )
+    if enable_multiagent:
+        from loushang.coding.multiagent import (
+            CodingSubagentFactory,
+            install_coding_multiagent_session,
+        )
+        from loushang.coding.worktree import CodingGitWorktreeLeasePort
+
+        assert multiagent_types is not None
+        install_coding_multiagent_session(
+            result.session,
+            child_factory=CodingSubagentFactory(
+                session_dir=session_manager.get_session_dir(),
+                cwd=session_manager.get_cwd(),
+                tool_registry=(session_tool_registry or WorkspaceToolRegistry()),
+                default_model_provider=lambda: result.session.agent.model,
+                services=services,
+                approval_resolver=approval_resolver,
+                workspace_leases=CodingGitWorktreeLeasePort(
+                    cwd=session_manager.get_cwd(),
+                    exec_service=services.exec_service,
+                ),
+                runtime_builder=partial(
+                    create_agent_session_runtime,
+                    stream_fn=stream_fn,
+                    agent_factory=agent_factory,
+                ),
+            ),
+            agent_types=multiagent_types,
+            register_tools=enable_multiagent_tools,
+        )
     return result.session
 
 
@@ -297,6 +354,7 @@ def create_agent_session_from_services(
     package_materializer: PackageMaterializer | None = None,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
+    enable_multiagent: bool = False,
 ) -> CreateAgentSessionResult:
     extension_flag_values = (
         agent_services.extension_runner.get_flag_values()
@@ -321,6 +379,7 @@ def create_agent_session_from_services(
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,
         approval_resolver=approval_resolver,
+        enable_multiagent=enable_multiagent,
     )
 
 
@@ -343,6 +402,7 @@ def create_agent_session_result(
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     extension_flag_values: ExtensionFlagValues | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
+    enable_multiagent: bool = False,
 ) -> CreateAgentSessionResult:
     resolved_services = services or create_services()
     session = create_agent_session(
@@ -363,6 +423,7 @@ def create_agent_session_result(
         append_system_prompt=append_system_prompt,
         extension_flag_values=extension_flag_values,
         approval_resolver=approval_resolver,
+        enable_multiagent=enable_multiagent,
     )
     return build_standard_agent_session_result(
         session,
@@ -437,6 +498,7 @@ def create_agent_session_runtime(
     persist: bool = True,
     append_system_prompt: list[str] | tuple[str, ...] | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
+    enable_multiagent: bool = False,
 ) -> AgentSessionRuntime:
     fixed_services = services if services is not None else create_services()
     return build_agent_product_session_runtime(
@@ -460,6 +522,7 @@ def create_agent_session_runtime(
                 session_start_event=cast(SessionStartEvent | None, start_event),
                 append_system_prompt=append_system_prompt,
                 approval_resolver=approval_resolver,
+                enable_multiagent=enable_multiagent,
             )
         ),
         session_cwd=lambda manager: cast(SessionManager, manager).get_cwd(),
@@ -472,3 +535,18 @@ def create_agent_session_runtime(
             None,
         ),
     )
+
+
+def _clone_workspace_tool_registry(
+    registry: WorkspaceToolRegistry,
+) -> WorkspaceToolRegistry:
+    """Keep session-bound tool closures out of a shared Product registry."""
+
+    cloned = WorkspaceToolRegistry()
+    for contribution in registry.list_contributions():
+        cloned.register_tool(
+            contribution.definition,
+            enabled=contribution.enabled,
+            source_info=contribution.source_info,
+        )
+    return cloned

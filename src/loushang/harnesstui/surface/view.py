@@ -26,6 +26,7 @@ ScreenSurfacePurpose = Literal[
     "delete",
     "fork",
     "rename",
+    "agent_tree",
     "dialog",
     "approval",
 ]
