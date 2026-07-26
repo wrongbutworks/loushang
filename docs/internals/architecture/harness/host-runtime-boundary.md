@@ -60,11 +60,21 @@ needed.
 - legal host state transitions;
 - one-active-run enforcement;
 - run identity tracking;
+- state-based idle notification that does not couple deferred callers to the
+  result or cancellation of the preceding run;
 - delegation to an injected async operation;
 - abort requests and wait-for-idle coordination;
+- host-owned deferred-task settlement during disposal;
 - idempotent disposal;
 - ordered lifecycle event publication;
 - rejection of new work after disposal.
+
+`defer_run_handle()` returns a `HostTaskHandle` for one deferred run. The
+handle exposes its reserved `run_id`, observational `wait()` semantics, and
+runtime-routed cancellation without exposing the underlying task. Its
+`wait()` shields the hosted operation from cancellation of a waiter.
+`defer_run()` continues to return the underlying `asyncio.Task` for accepted
+compatibility callers.
 
 The injected driver still owns the actual task and cancellation mechanics.
 Host Runtime does not inspect prompts, messages, models, tools, diagnostics,
