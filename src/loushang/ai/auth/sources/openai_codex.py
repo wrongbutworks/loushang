@@ -31,12 +31,13 @@ class OpenAICodexCredentialSource:
     def matches(self, model: object) -> bool:
         declaration = getattr(model, "auth", None)
         kind = getattr(declaration, "kind", None)
-        provider = getattr(declaration, "provider", None)
-        return (
-            isinstance(kind, str)
-            and kind.strip().lower() == "oauth"
-            and provider == self.id
-        )
+        if not isinstance(kind, str) or kind.strip().lower() != "oauth":
+            return False
+        provider_id = getattr(model, "provider_id", None)
+        endpoint_id = getattr(model, "endpoint_id", None)
+        if provider_id == "openai" and endpoint_id == "coding-responses":
+            return True
+        return getattr(declaration, "provider", None) == self.id
 
     def load(self) -> OAuthCredential | None:
         if not self.auth_path.exists():

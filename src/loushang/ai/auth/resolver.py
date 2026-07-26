@@ -18,7 +18,11 @@ from loushang.ai.auth.errors import (
     RefreshFailedError,
 )
 from loushang.ai.auth.oauth.base import OAuthProvider
-from loushang.ai.auth.sources import CredentialSource, get_credential_source
+from loushang.ai.auth.registry import AuthRegistry, get_auth_registry
+from loushang.ai.auth.sources import (
+    CredentialSource,
+    get_credential_source,
+)
 from loushang.ai.auth.store import (
     FileCredentialStore,
     load_credential_file,
@@ -43,6 +47,7 @@ async def resolve_auth(
     store: FileCredentialStore | None = None,
     providers: Mapping[str, OAuthProvider] | None = None,
     sources: Mapping[str, CredentialSource] | None = None,
+    auth_registry: AuthRegistry | None = None,
     env: Mapping[str, str] | None = None,
     refresh_window_seconds: float = 60.0,
     now: float | None = None,
@@ -89,20 +94,29 @@ async def resolve_auth(
             details={"auth_kind": str(kind), "recovery": "reconfigure"},
         )
 
-    provider_id = _oauth_provider_id(model, declaration)
+    registry = auth_registry or get_auth_registry()
+    source_adapter = registry.resolve_auth_adapter(model)
+    legacy_provider_id = _oauth_provider_id(model, declaration)
+    if source_adapter is None:
+        source_adapter = _legacy_source_for(
+            legacy_provider_id,
+            sources,
+            registry=registry,
+            model=model,
+        )
+    elif sources is not None and source_adapter.id in sources:
+        source_adapter = sources[source_adapter.id]
+    provider_id = source_adapter.id if source_adapter is not None else legacy_provider_id
     resolved = _load_oauth_credential(
         provider_id,
-        model=model,
         credential=explicit_credential,
         credential_file=explicit_file,
         store=store,
-        sources=sources,
+        source_adapter=source_adapter,
     )
     if resolved is None:
         recovery, source_id = _credential_recovery(
-            provider_id,
-            sources,
-            model=model,
+            source_adapter,
         )
         details = {
             "oauth_provider": provider_id,
@@ -124,7 +138,7 @@ async def resolve_auth(
         provider_id=provider_id,
         store=store,
         providers=providers,
-        sources=sources,
+        source_adapter=source_adapter,
         refresh_window_seconds=refresh_window_seconds,
         now=timestamp,
         model=model,
@@ -135,11 +149,10 @@ async def resolve_auth(
 def _load_oauth_credential(
     provider_id: str,
     *,
-    model,
     credential: OAuthCredential | None,
     credential_file: str | Path | None,
     store: FileCredentialStore | None,
-    sources: Mapping[str, CredentialSource] | None,
+    source_adapter: CredentialSource | None,
 ) -> _ResolvedCredential | None:
     if credential is not None:
         if not isinstance(credential, OAuthCredential):
@@ -150,7 +163,6 @@ def _load_oauth_credential(
         return _ResolvedCredential(credential=credential, source="explicit")
     if credential_file is not None:
         path = Path(credential_file).expanduser()
-        source_adapter = _source_for(provider_id, sources, model=model)
         if source_adapter is not None:
             return _ResolvedCredential(
                 credential=source_adapter.load_file(path),
@@ -166,7 +178,6 @@ def _load_oauth_credential(
     stored = resolved_store.load(provider_id)
     if stored is not None:
         return _ResolvedCredential(credential=stored, source="default_store")
-    source_adapter = _source_for(provider_id, sources, model=model)
     if source_adapter is not None:
         external = source_adapter.load()
         if external is not None:
@@ -183,16 +194,14 @@ async def _refresh_if_needed(
     provider_id: str,
     store: FileCredentialStore | None,
     providers: Mapping[str, OAuthProvider] | None,
-    sources: Mapping[str, CredentialSource] | None,
+    source_adapter: CredentialSource | None,
     refresh_window_seconds: float,
     now: float,
     model,
 ) -> OAuthCredential:
     credential = resolved.credential
     recovery, source_id = _credential_recovery(
-        provider_id,
-        sources,
-        model=model,
+        source_adapter,
     )
     recovery_details = {
         "oauth_provider": provider_id,
@@ -202,16 +211,20 @@ async def _refresh_if_needed(
         recovery_details["credential_source"] = source_id
     if not credential.expires_within(refresh_window_seconds, now=now):
         return credential
-    if resolved.source in {"credential_source", "credential_source_file"}:
-        source = _source_for(provider_id, sources, model=model)
-        if source is None or getattr(source, "supports_refresh", False) is not True:
-            raise CredentialExpiredError(
-                "OAuth credential source does not support refresh.",
-                provider=getattr(model, "provider_id", None),
-                endpoint=getattr(model, "endpoint_id", None),
-                model=getattr(model, "id", None),
-                details=recovery_details,
-            )
+    if resolved.source in {
+        "credential_source",
+        "credential_source_file",
+    } and (
+        source_adapter is None
+        or getattr(source_adapter, "supports_refresh", False) is not True
+    ):
+        raise CredentialExpiredError(
+            "OAuth credential source does not support refresh.",
+            provider=getattr(model, "provider_id", None),
+            endpoint=getattr(model, "endpoint_id", None),
+            model=getattr(model, "id", None),
+            details=recovery_details,
+        )
     if credential.refresh_token is None:
         raise CredentialExpiredError(
             "OAuth credential is expired or near expiry and has no refresh token.",
@@ -288,29 +301,28 @@ def _provider_for(
     return _generic_oauth_provider(model)
 
 
-def _source_for(
+def _legacy_source_for(
     provider_id: str,
     sources: Mapping[str, CredentialSource] | None,
     *,
+    registry: AuthRegistry,
     model,
 ) -> CredentialSource | None:
     source: CredentialSource | None
     if sources is not None and provider_id in sources:
         source = sources[provider_id]
     else:
-        source = get_credential_source(provider_id)
+        source = registry.get_credential_source(provider_id)
+        if source is None:
+            source = get_credential_source(provider_id)
     if source is None or not source.matches(model):
         return None
     return source
 
 
 def _credential_recovery(
-    provider_id: str,
-    sources: Mapping[str, CredentialSource] | None,
-    *,
-    model,
+    source: CredentialSource | None,
 ) -> tuple[str, str | None]:
-    source = _source_for(provider_id, sources, model=model)
     if source is None:
         return "login", None
     recovery = getattr(source, "recovery", "external_login")

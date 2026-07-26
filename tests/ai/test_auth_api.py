@@ -141,6 +141,68 @@ def test_status_and_get_auth_use_extension_registry_metadata() -> None:
     assert missing.to_dict()["source_recovery_hint"] == source.recovery_hint
 
 
+def test_auth_registry_prefers_model_route_then_endpoint_fallback() -> None:
+    endpoint_source = _ExternalSource(id="endpoint-oauth")
+    model_source = _ExternalSource(id="model-oauth")
+    registry = auth.AuthRegistry()
+    endpoint_route = auth.AuthRoute(" oauth ", " example ", " oauth ")
+    model_route = auth.AuthRoute(
+        "oauth",
+        "example",
+        "oauth",
+        model_id="auth-api-model",
+    )
+
+    registry.register_auth_adapter(endpoint_route, endpoint_source)
+    registry.register_auth_adapter(model_route, model_source)
+
+    assert endpoint_route == auth.AuthRoute("oauth", "example", "oauth")
+    assert registry.resolve_auth_adapter(_model(Auth(kind="oauth"))) is model_source
+    assert (
+        registry.resolve_auth_adapter(
+            Model(
+                id="other-model",
+                provider="example",
+                endpoint="oauth",
+                api="openai-responses",
+                base_url="https://model.test/v1",
+                auth=Auth(kind="oauth"),
+            )
+        )
+        is endpoint_source
+    )
+    assert registry.resolve_auth_adapter(object()) is None
+    assert registry.find_credential_source(_model(Auth(kind="oauth"))) is model_source
+    assert dict(registry.credential_sources) == {
+        endpoint_source.id: endpoint_source,
+        model_source.id: model_source,
+    }
+    with pytest.raises(TypeError, match="route must be AuthRoute"):
+        registry.register_auth_adapter("oauth:example:oauth", endpoint_source)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="Auth adapter already registered"):
+        registry.register_auth_adapter(endpoint_route, endpoint_source)
+    with pytest.raises(ValueError, match="Credential source already registered"):
+        registry.register_auth_adapter(
+            auth.AuthRoute("oauth", "example", "other-endpoint"),
+            _ExternalSource(id=endpoint_source.id),
+        )
+
+
+def test_public_auth_registry_helpers_share_the_default_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = auth.AuthRegistry()
+    monkeypatch.setattr("loushang.ai.auth.registry._default_registry", registry)
+    source = _ExternalSource(id="route-oauth")
+    route = auth.AuthRoute("oauth", "example", "oauth")
+
+    auth.register_auth_adapter(route, source)
+
+    assert auth.get_auth_registry() is registry
+    assert auth.get_auth_extension_registry() is registry
+    assert registry.get_auth_adapter(route) is source
+
+
 def test_source_only_model_cannot_be_treated_as_generic_login() -> None:
     model = _model(Auth(kind="oauth", provider="openai-codex"))
 

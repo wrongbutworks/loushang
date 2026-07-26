@@ -114,7 +114,17 @@ ANTHROPIC_MESSAGES_ADAPTER_KEYS = frozenset(
         "fineGrainedTools",
         "interleavedThinking",
         "longCacheRetention",
+        "reasoningEffortMap",
+        "thinkingMode",
     }
+)
+
+_ANTHROPIC_THINKING_MODES = frozenset({"adaptive", "budgeted"})
+_ANTHROPIC_REASONING_LEVELS = frozenset(
+    {"minimal", "low", "medium", "high", "xhigh"}
+)
+_ANTHROPIC_REASONING_EFFORTS = frozenset(
+    {"low", "medium", "high", "xhigh", "max"}
 )
 
 
@@ -136,6 +146,34 @@ def _string_or_none_dict_from_raw(
                 f"adapter config field must be a string-or-null map: {key}"
             )
         result[entry_key] = entry_value
+    return result
+
+
+def _anthropic_reasoning_effort_map_from_raw(
+    raw: Mapping[str, object],
+) -> dict[str, str | None]:
+    return _validate_anthropic_reasoning_effort_map(
+        _string_or_none_dict_from_raw(raw, "reasoningEffortMap")
+    )
+
+
+def _validate_anthropic_reasoning_effort_map(
+    value: Mapping[str, str | None],
+) -> dict[str, str | None]:
+    result = dict(value)
+    invalid_keys = sorted(set(result).difference(_ANTHROPIC_REASONING_LEVELS))
+    invalid_values = sorted(
+        {
+            value
+            for value in result.values()
+            if value is not None and value not in _ANTHROPIC_REASONING_EFFORTS
+        }
+    )
+    if invalid_keys or invalid_values:
+        raise ValueError(
+            "adapter config reasoningEffortMap contains unsupported "
+            f"keys={invalid_keys} values={invalid_values}"
+        )
     return result
 
 
@@ -228,11 +266,15 @@ _ANTHROPIC_MESSAGES_ATTR_TO_KEY = {
     "fine_grained_tools": "fineGrainedTools",
     "interleaved_thinking": "interleavedThinking",
     "long_cache_retention": "longCacheRetention",
+    "reasoning_effort_map": "reasoningEffortMap",
+    "thinking_mode": "thinkingMode",
 }
-_ANTHROPIC_MESSAGES_DEFAULTS = {
+_ANTHROPIC_MESSAGES_DEFAULTS: dict[str, object] = {
     "fineGrainedTools": None,
     "interleavedThinking": None,
     "longCacheRetention": True,
+    "reasoningEffortMap": {},
+    "thinkingMode": "budgeted",
 }
 
 
@@ -403,6 +445,8 @@ class AnthropicMessagesConfig:
     fine_grained_tools: bool | None = None
     interleaved_thinking: bool | None = None
     long_cache_retention: bool = True
+    reasoning_effort_map: Mapping[str, str | None] = field(default_factory=dict)
+    thinking_mode: Literal["adaptive", "budgeted"] = "budgeted"
     _explicit_keys: frozenset[str] | None = field(
         default=None,
         compare=False,
@@ -416,6 +460,18 @@ class AnthropicMessagesConfig:
             "fine_grained_tools",
             "interleaved_thinking",
             "long_cache_retention",
+        )
+        if self.thinking_mode not in _ANTHROPIC_THINKING_MODES:
+            raise ValueError(
+                f"unsupported Anthropic thinkingMode: {self.thinking_mode!r}"
+            )
+        reasoning_effort_map = _validate_anthropic_reasoning_effort_map(
+            self.reasoning_effort_map
+        )
+        object.__setattr__(
+            self,
+            "reasoning_effort_map",
+            MappingProxyType(reasoning_effort_map),
         )
         _set_explicit_adapter_keys(
             self,
@@ -440,6 +496,15 @@ class AnthropicMessagesConfig:
                 "longCacheRetention",
                 cls.long_cache_retention,
             ),
+            reasoning_effort_map=_anthropic_reasoning_effort_map_from_raw(raw),
+            thinking_mode=cast(
+                Literal["adaptive", "budgeted"],
+                (
+                    _optional_str_from_raw(raw, "thinkingMode")
+                    if "thinkingMode" in raw
+                    else cls.thinking_mode
+                ),
+            ),
             _explicit_keys=frozenset(raw),
         )
 
@@ -449,6 +514,9 @@ class AnthropicMessagesConfig:
         }
         _with_raw_value(raw, "fineGrainedTools", self.fine_grained_tools)
         _with_raw_value(raw, "interleavedThinking", self.interleaved_thinking)
+        _with_raw_value(raw, "reasoningEffortMap", dict(self.reasoning_effort_map))
+        if self._explicit_keys and "thinkingMode" in self._explicit_keys:
+            raw["thinkingMode"] = self.thinking_mode
         return raw
 
 
