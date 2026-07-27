@@ -1194,6 +1194,13 @@ Exit gate:
   backend is available.
 - Revalidate immediately before execution.
 
+Implementation checkpoint (2026-07-27): Bash, read, write, and edit now enter a
+shared Workspace authorization gateway which freezes canonical arguments and a
+deterministic action fingerprint before invoking the current Policy/Approval
+adapter. This removes four independent entry paths. The next slice must move the
+executor callback and per-action `EffectiveExecutionProfile` into that gateway;
+until then the legacy adapter remains the decision backend.
+
 Exit gate:
 
 - no migrated effectful tool bypasses the gateway;

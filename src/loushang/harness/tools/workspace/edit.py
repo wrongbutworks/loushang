@@ -9,6 +9,7 @@ from loushang.harness.workspace.mutation_queue import with_file_mutation_queue
 from loushang.harness.workspace.operations import EditOperations, resolve_operation
 
 from .authoring import tool
+from .authorization import authorize_workspace_tool_action
 from .builtin_renderers import render_edit_call, render_edit_result
 from .context import ToolContext
 from .edit_diff import (
@@ -23,7 +24,7 @@ from .operations import (
     raise_if_operation_aborted,
 )
 from .path_utils import resolve_tool_path
-from .policy import ToolPolicyEvaluator, enforce_tool_policy
+from .policy import ToolPolicyEvaluator
 from .runtime import prepare_tool_arguments
 from .types import ToolDefinition
 
@@ -81,7 +82,7 @@ def create_edit_tool_definition(
     ) -> AgentToolResult[dict[str, Any]]:
         resolved = resolve_tool_path(path, cwd=ctx.cwd)
         validated_edits = _validate_edits(edits)
-        await enforce_tool_policy(
+        await authorize_workspace_tool_action(
             resolved_policy_engine,
             tool_name="edit",
             arguments={"path": str(resolved), "edits": validated_edits},

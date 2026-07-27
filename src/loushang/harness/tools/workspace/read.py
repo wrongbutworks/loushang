@@ -10,6 +10,7 @@ from loushang.harness.approval import ApprovalResolver
 from loushang.harness.workspace.operations import ReadOperations, resolve_operation
 
 from .authoring import tool
+from .authorization import authorize_workspace_tool_action
 from .builtin_renderers import render_read_call, render_read_result
 from .context import ToolContext
 from .normalize import tool_to_definition
@@ -18,7 +19,7 @@ from .operations import (
     raise_if_operation_aborted,
 )
 from .path_utils import resolve_tool_path
-from .policy import ToolPolicyEvaluator, enforce_tool_policy
+from .policy import ToolPolicyEvaluator
 from .runtime import (
     MaybeAwaitable,
     coerce_int_parameter,
@@ -139,7 +140,7 @@ def create_read_tool_definition(
     ) -> AgentToolResult[dict[str, Any]]:
         raise_if_operation_aborted(ctx.signal)
         resolved = await _resolve_path(path, ctx, operations=ops)
-        await enforce_tool_policy(
+        await authorize_workspace_tool_action(
             resolved_policy_engine,
             tool_name="read",
             arguments={"path": str(resolved)},

@@ -20,11 +20,11 @@ from loushang.harness.workspace.exec import (
     materialize_exec_request,
 )
 
+from .authorization import authorize_workspace_tool_action
 from .builtin_renderers import render_bash_call, render_bash_result
 from .context import ToolContextProvider
 from .policy import (
     ToolPolicyEvaluator,
-    enforce_tool_policy,
     evaluate_legacy_policy_method,
     get_policy_method,
 )
@@ -418,7 +418,7 @@ async def _enforce_bash_policy(
             cwd=exec_request.cwd,
             command=command_subject,
         )
-        await enforce_tool_policy(
+        await authorize_workspace_tool_action(
             policy_engine,
             tool_name="bash",
             arguments=effective_arguments,

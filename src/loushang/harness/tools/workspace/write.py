@@ -8,6 +8,7 @@ from loushang.harness.workspace.mutation_queue import with_file_mutation_queue
 from loushang.harness.workspace.operations import WriteOperations, resolve_operation
 
 from .authoring import tool
+from .authorization import authorize_workspace_tool_action
 from .builtin_renderers import render_write_call, render_write_result
 from .context import ToolContext
 from .normalize import tool_to_definition
@@ -16,7 +17,7 @@ from .operations import (
     raise_if_operation_aborted,
 )
 from .path_utils import resolve_tool_path
-from .policy import ToolPolicyEvaluator, enforce_tool_policy
+from .policy import ToolPolicyEvaluator
 from .runtime import prepare_tool_arguments
 from .types import ToolDefinition
 
@@ -71,7 +72,7 @@ def create_write_tool_definition(
     ) -> AgentToolResult[dict[str, Any]]:
         resolved = resolve_tool_path(path, cwd=ctx.cwd)
         _validate_content(content)
-        await enforce_tool_policy(
+        await authorize_workspace_tool_action(
             resolved_policy_engine,
             tool_name="write",
             arguments={"path": str(resolved), "content": content},
