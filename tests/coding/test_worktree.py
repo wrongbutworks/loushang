@@ -5,31 +5,17 @@ from pathlib import Path
 
 import pytest
 
-from loushang.coding.worktree import CodingGitWorktreeLeasePort
+from loushang.coding.worktree import (
+    CodingGitWorktreeLeasePort,
+    create_coding_git_workspace_manager,
+)
 from loushang.harness.multiagent import (
     AgentPath,
     AgentRef,
     WorkspaceLeaseRequest,
 )
+from loushang.harness.workspace import GitWorkspaceError
 from loushang.harness.workspace.exec import ExecRequest, ExecResult, ExecService
-
-
-class _GitBackend:
-    def __init__(self, *, status: str = "") -> None:
-        self.status = status
-        self.commands: list[tuple[str, ...]] = []
-
-    def __call__(self, request, **_kwargs) -> ExecResult:
-        self.commands.append(request.command)
-        if "status" in request.command:
-            return ExecResult(exit_code=0, stdout=self.status)
-        return ExecResult(exit_code=0)
-
-
-def _git_repo(path: Path) -> None:
-    git_dir = path / ".git"
-    git_dir.mkdir(parents=True)
-    (git_dir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
 
 
 def _request() -> WorkspaceLeaseRequest:
@@ -40,172 +26,230 @@ def _request() -> WorkspaceLeaseRequest:
     )
 
 
-def test_unchanged_worktree_is_removed_with_its_temporary_branch(
+async def _git(service: ExecService, cwd: Path, *args: str) -> ExecResult:
+    result = await service.execute(
+        ExecRequest(command=("git", *args), cwd=str(cwd))
+    )
+    assert result.exit_code == 0, result.stderr
+    return result
+
+
+async def _repository(path: Path) -> ExecService:
+    path.mkdir()
+    service = ExecService()
+    await _git(service, path, "init")
+    await _git(service, path, "config", "user.email", "multiagent@example.invalid")
+    await _git(service, path, "config", "user.name", "Multi Agent Test")
+    (path / "README.md").write_text("base\n", encoding="utf-8")
+    await _git(service, path, "add", "README.md")
+    await _git(service, path, "commit", "-m", "initial")
+    return service
+
+
+def _port(
+    repo: Path,
     tmp_path: Path,
-) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git_repo(repo)
-    backend = _GitBackend()
-    port = CodingGitWorktreeLeasePort(
+    service: ExecService,
+    *,
+    nonce: str,
+) -> CodingGitWorktreeLeasePort:
+    return CodingGitWorktreeLeasePort(
         cwd=repo,
-        exec_service=ExecService(backend=backend),
-        uuid_factory=lambda: "lease-123",
-    )
-
-    async def scenario() -> None:
-        lease = await port.acquire(_request())
-        snapshot = await port.snapshot(lease)
-        released = await port.release(lease)
-
-        assert lease.workspace_ref == (
-            "coding-worktree:loushang-agent/root-worker-1-lease123"
-        )
-        assert lease.execution_ref.endswith(
-            ".loushang/worktrees/root-worker-1-lease123"
-        )
-        assert snapshot.changed is False
-        assert released.workspace_ref is None
-        with pytest.raises(RuntimeError, match="unknown or released"):
-            await port.release(lease)
-
-    asyncio.run(scenario())
-
-    assert [command[2] for command in backend.commands] == [
-        "worktree",
-        "status",
-        "status",
-        "worktree",
-        "branch",
-    ]
-    assert backend.commands[-1][-2:] == (
-        "-D",
-        "loushang-agent/root-worker-1-lease123",
+        exec_service=service,
+        state_root=tmp_path / "state",
+        lease_root=tmp_path / "checkouts",
+        uuid_factory=lambda: nonce,
     )
 
 
-def test_changed_worktree_is_retained_and_reported(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git_repo(repo)
-    backend = _GitBackend(status=" M src/example.py\n")
-    port = CodingGitWorktreeLeasePort(
-        cwd=repo,
-        exec_service=ExecService(backend=backend),
-        uuid_factory=lambda: "changed",
-    )
-
-    async def scenario() -> None:
-        lease = await port.acquire(_request())
-        snapshot = await port.snapshot(lease)
-        released = await port.release(lease)
-
-        assert snapshot.changed is True
-        assert snapshot.change_set_ref == (
-            "git-branch:loushang-agent/root-worker-1-changed"
-        )
-        assert released.retained is True
-        assert released.workspace_ref == lease.workspace_ref
-
-    asyncio.run(scenario())
-
-    assert all(command[2] != "branch" for command in backend.commands)
-
-
-def test_real_git_worktree_round_trip_releases_an_unchanged_lease(
+def test_unchanged_detached_worktree_is_removed_without_a_branch(
     tmp_path: Path,
 ) -> None:
     async def scenario() -> None:
         repo = tmp_path / "repo"
-        repo.mkdir()
-        service = ExecService()
+        service = await _repository(repo)
+        port = _port(repo, tmp_path, service, nonce="clean")
 
-        async def git(*args: str) -> ExecResult:
-            result = await service.execute(
-                ExecRequest(command=("git", *args), cwd=str(repo))
-            )
-            assert result.exit_code == 0, result.stderr
-            return result
-
-        await git("init")
-        await git("config", "user.email", "multiagent@example.invalid")
-        await git("config", "user.name", "Multi Agent Test")
-        (repo / "README.md").write_text("test\n", encoding="utf-8")
-        await git("add", "README.md")
-        await git("commit", "-m", "initial")
-
-        port = CodingGitWorktreeLeasePort(
-            cwd=repo,
-            exec_service=service,
-            uuid_factory=lambda: "actual",
-        )
         lease = await port.acquire(_request())
         worktree = Path(lease.execution_ref)
-        assert worktree.is_dir()
-        assert (worktree / "README.md").read_text(encoding="utf-8") == "test\n"
+        record = port.manager.get(lease.workspace_ref)
 
+        assert record.status == "active"
+        assert record.base_oid
+        assert worktree.is_dir()
+        symbolic = await service.execute(
+            ExecRequest(
+                command=("git", "symbolic-ref", "--quiet", "HEAD"),
+                cwd=str(worktree),
+            )
+        )
+        assert symbolic.exit_code != 0
+
+        snapshot = await port.snapshot(lease)
         released = await port.release(lease)
+
+        assert snapshot.changed is False
+        assert snapshot.artifact_refs == ()
         assert released.workspace_ref is None
         assert worktree.exists() is False
-        branches = await git(
-            "branch",
-            "--list",
-            "loushang-agent/root-worker-1-actual",
-        )
-        assert branches.stdout.strip() == ""
+        assert port.manager.get(lease.workspace_ref).status == "discarded"
 
     asyncio.run(scenario())
 
 
-def test_real_git_worktree_retains_a_changed_lease_and_branch(
+def test_changed_worktree_captures_applies_and_discards_an_immutable_artifact(
     tmp_path: Path,
 ) -> None:
     async def scenario() -> None:
         repo = tmp_path / "repo"
-        repo.mkdir()
-        service = ExecService()
+        service = await _repository(repo)
+        port = _port(repo, tmp_path, service, nonce="changed")
 
-        async def git(*args: str) -> ExecResult:
-            result = await service.execute(
-                ExecRequest(command=("git", *args), cwd=str(repo))
-            )
-            assert result.exit_code == 0, result.stderr
-            return result
+        lease = await port.acquire(_request())
+        worktree = Path(lease.execution_ref)
+        (worktree / "README.md").write_text("changed\n", encoding="utf-8")
+        (worktree / "result.bin").write_bytes(b"\x00agent-output\xff")
 
-        await git("init")
-        await git("config", "user.email", "multiagent@example.invalid")
-        await git("config", "user.name", "Multi Agent Test")
-        (repo / "README.md").write_text("test\n", encoding="utf-8")
-        await git("add", "README.md")
-        await git("commit", "-m", "initial")
+        snapshot = await port.snapshot(lease)
+        assert snapshot.changed is True
+        assert snapshot.change_set_ref is None
+        assert len(snapshot.artifact_refs) == 1
+        assert snapshot.artifact_refs[0].startswith("git-artifact:")
+        assert "result.bin" in port.manager.artifact_diff(lease.workspace_ref)
 
+        released = await port.release(lease)
+        record = port.manager.get(lease.workspace_ref)
+        assert released.retained is True
+        assert released.artifact_refs == record.artifact_refs
+        assert record.status == "retained"
+        assert record.runtime_owned is False
+        assert worktree.is_dir()
+
+        plan = await port.manager.plan_apply_workspace(
+            lease.workspace_ref,
+            target=repo,
+        )
+        applied = await port.manager.apply(plan)
+        assert applied.applied is True
+        assert (repo / "README.md").read_text(encoding="utf-8") == "changed\n"
+        assert (repo / "result.bin").read_bytes() == b"\x00agent-output\xff"
+        assert applied.record.status == "applied"
+
+        discarded = await port.manager.discard(lease.workspace_ref)
+        assert discarded.discarded is True
+        assert discarded.record.status == "discarded"
+        assert worktree.exists() is False
+        assert port.manager.artifact_diff(lease.workspace_ref)
+
+    asyncio.run(scenario())
+
+
+def test_capture_failure_preserves_the_workspace_and_model_result_channel(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        repo = tmp_path / "repo"
+        service = await _repository(repo)
+        port = _port(repo, tmp_path, service, nonce="inspect")
+
+        lease = await port.acquire(_request())
+        worktree = Path(lease.execution_ref)
+        await _git(service, repo, "worktree", "remove", "--force", str(worktree))
+
+        snapshot = await port.snapshot(lease)
+        record = port.manager.get(lease.workspace_ref)
+
+        assert snapshot.workspace_ref == lease.workspace_ref
+        assert snapshot.artifact_refs == ()
+        assert snapshot.changed is True
+        assert snapshot.retained is True
+        assert record.status == "needs_inspection"
+        assert record.last_error
+
+        released = await port.release(lease)
+        assert released.workspace_ref == lease.workspace_ref
+        assert port.manager.get(lease.workspace_ref).runtime_owned is False
+
+    asyncio.run(scenario())
+
+
+def test_apply_rejects_touched_target_dirt_and_artifact_tampering(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        repo = tmp_path / "repo"
+        service = await _repository(repo)
+        port = _port(repo, tmp_path, service, nonce="tamper")
+        lease = await port.acquire(_request())
+        worktree = Path(lease.execution_ref)
+        (worktree / "README.md").write_text("worker\n", encoding="utf-8")
+        snapshot = await port.snapshot(lease)
+        await port.release(lease)
+
+        (repo / "README.md").write_text("parent\n", encoding="utf-8")
+        with pytest.raises(GitWorkspaceError, match="artifact path"):
+            await port.manager.plan_apply_workspace(lease.workspace_ref, target=repo)
+        (repo / "README.md").write_text("base\n", encoding="utf-8")
+
+        artifact_ref = snapshot.artifact_refs[0]
+        descriptor_digest = artifact_ref.rsplit(":", 1)[-1]
+        descriptor_path = (
+            tmp_path
+            / "state"
+            / "workspaces"
+            / port.manager.repository_id
+            / "descriptors"
+            / f"{descriptor_digest}.json"
+        )
+        descriptor_path.write_text("{}\n", encoding="utf-8")
+        with pytest.raises(GitWorkspaceError, match="descriptor digest mismatch"):
+            await port.manager.plan_apply_workspace(lease.workspace_ref, target=repo)
+
+    asyncio.run(scenario())
+
+
+def test_managed_roots_must_not_overlap_a_registered_worktree(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        repo = tmp_path / "repo"
+        service = await _repository(repo)
         port = CodingGitWorktreeLeasePort(
             cwd=repo,
             exec_service=service,
-            uuid_factory=lambda: "retained",
+            state_root=repo / ".loushang" / "state",
+            lease_root=repo / ".loushang" / "worktrees",
         )
-        lease = await port.acquire(_request())
-        worktree = Path(lease.execution_ref)
-        (worktree / "result.txt").write_text("agent output\n", encoding="utf-8")
 
-        snapshot = await port.snapshot(lease)
-        released = await port.release(lease)
+        with pytest.raises(GitWorkspaceError, match="overlaps"):
+            await port.acquire(_request())
 
-        assert snapshot.changed is True
-        assert released.retained is True
-        assert released.workspace_ref == lease.workspace_ref
-        assert released.change_set_ref == (
-            "git-branch:loushang-agent/root-worker-1-retained"
+    asyncio.run(scenario())
+
+
+def test_standalone_workspace_manager_uses_the_bounded_cli_backend(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        repo = tmp_path / "repo"
+        await _repository(repo)
+        manager = create_coding_git_workspace_manager(
+            cwd=repo,
+            state_root=tmp_path / "state",
+            managed_root=tmp_path / "checkouts",
+            uuid_factory=lambda: "standalone",
         )
-        assert worktree.is_dir()
-        branches = await git(
-            "branch",
-            "--list",
-            "loushang-agent/root-worker-1-retained",
-        )
-        assert "loushang-agent/root-worker-1-retained" in branches.stdout
 
-        await git("worktree", "remove", "--force", str(worktree))
-        await git("branch", "-D", "loushang-agent/root-worker-1-retained")
+        record = await manager.acquire(owner_ref="/root/worker#1")
+        (Path(record.path) / "README.md").write_text(
+            "standalone\n",
+            encoding="utf-8",
+        )
+        capture = await manager.capture(record.workspace_ref)
+        released = await manager.release(record.workspace_ref)
+
+        assert capture.changed is True
+        assert released.runtime_owned is False
+        assert released.status == "retained"
 
     asyncio.run(scenario())

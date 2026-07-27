@@ -478,10 +478,15 @@ class SessionMultiAgentRuntime:
 
     async def drain_notice_deliveries(self) -> None:
         while self._notice_tasks:
+            tasks = tuple(self._notice_tasks)
             await asyncio.gather(
-                *(asyncio.shield(task) for task in tuple(self._notice_tasks)),
+                *(asyncio.shield(task) for task in tasks),
                 return_exceptions=True,
             )
+            # A gather over already-finished tasks may return without yielding
+            # long enough for their done callbacks to run. Remove the observed
+            # snapshot directly so draining cannot spin on completed tasks.
+            self._notice_tasks.difference_update(tasks)
 
     async def _close_plan(
         self,

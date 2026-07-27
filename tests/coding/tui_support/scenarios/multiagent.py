@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import subprocess
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -13,6 +15,7 @@ from typing import Any
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
 from loushang.coding.multiagent import CodingSubagentFactory, coding_agent_types
+from loushang.coding.worktree import CodingGitWorktreeLeasePort
 from loushang.harness.multiagent import (
     AgentCaller,
     AgentCompletionNotice,
@@ -23,6 +26,7 @@ from loushang.harness.multiagent import (
     AgentTypeSpec,
     ImmediateRecipeExecutor,
     MultiAgentControl,
+    MultiAgentError,
     RecipeRunRequest,
     SubagentRoundResult,
     core_recipe_catalog,
@@ -36,12 +40,16 @@ from loushang.harness.session.multiagent import (
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.multiagent import MultiAgentToolPack
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
-from loushang.tui import PlaybackResult, strip_control_sequences
+from loushang.harness.workspace.exec import ExecRequest, ExecResult, ExecService
+from loushang.harnesstui.multiagent import build_agent_tree_surface_view
+from loushang.tui import PlaybackResult, Surface, strip_control_sequences
 from loushang.tui.playback_suite import PlaybackScenarioSpec
 from loushang.tui.transcript import ToolExecutionRecord
 from tests.coding.tui_support.playback import ScreenTuiScenario
 
 _PROMPT = "派生3个子agent，每个计算1到100之间的随机值，主agent计算平均值"
+_PRIOR_PROMPT = "MULTIAGENT_PLAYBACK_PRIOR_PROMPT"
+_PRIOR_RESPONSE = "MULTIAGENT_PLAYBACK_PRIOR_RESPONSE"
 _RESULTS = {
     "random-1": "95",
     "random-2": "51",
@@ -56,6 +64,7 @@ class MultiAgentPlaybackArtifacts:
     events: Path
     render: Path
     screen: Path
+    terminal: Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +86,7 @@ class MultiAgentPlaybackResult:
         events_path = output_dir / f"{basename}-events.jsonl"
         render_path = output_dir / f"{basename}-render.jsonl"
         screen_path = output_dir / f"{basename}-screen.txt"
+        terminal_path = output_dir / f"{basename}-terminal.txt"
         with events_path.open("w", encoding="utf-8") as stream:
             for event in self.events:
                 stream.write(json.dumps(event, ensure_ascii=False))
@@ -84,16 +94,25 @@ class MultiAgentPlaybackResult:
         if self.playback is None:
             render_path.write_text("", encoding="utf-8")
             screen_path.write_text(_event_summary(self.events), encoding="utf-8")
+            terminal_path.write_text(
+                _event_summary(self.events),
+                encoding="utf-8",
+            )
         else:
             self.playback.write_jsonl(
                 render_path,
                 include_frames=include_frames,
             )
             screen_path.write_text(self.playback.visible_text, encoding="utf-8")
+            terminal_path.write_text(
+                self.playback.terminal_text,
+                encoding="utf-8",
+            )
         return MultiAgentPlaybackArtifacts(
             events=events_path,
             render=render_path,
             screen=screen_path,
+            terminal=terminal_path,
         )
 
 
@@ -583,6 +602,111 @@ def _lifecycle_playback() -> MultiAgentPlaybackResult:
     return asyncio.run(scenario())
 
 
+def _quota_recovery_playback() -> MultiAgentPlaybackResult:
+    async def scenario() -> MultiAgentPlaybackResult:
+        recorder = _Recorder()
+        fixture = _fixture(recorder)
+        root_caller = AgentCaller(fixture.control.root_ref)
+        replacement = AgentPath.root().child("random-4")
+        try:
+            await fixture.spawn_three()
+            for name in _COMPLETION_ORDER:
+                await fixture.complete_and_wait(name)
+
+            try:
+                await fixture.tools["spawn_agent"].execute(
+                    "spawn:random-4:blocked",
+                    {
+                        "name": "random-4",
+                        "agent_type": "explorer",
+                        "prompt": "Generate one more deterministic value.",
+                    },
+                    None,
+                    None,
+                )
+            except MultiAgentError as error:
+                error_details = dict(error.tool_result_details)
+            else:
+                raise AssertionError("the fourth open explorer must exceed its quota")
+
+            listed = await fixture.tools["list_agents"].execute(
+                "list:quota-blocked",
+                {},
+                None,
+                None,
+            )
+            open_children = list(error_details["open_children"])
+            recorder.add(
+                "topology",
+                "quota.blocked",
+                code=error_details["code"],
+                open_children=open_children,
+                listed_agents=list(listed.details["agents"]),
+                failed_spawn_created_child=(
+                    fixture.control.registry.current(replacement) is not None
+                ),
+                wait_skipped=True,
+            )
+
+            assert error_details["code"] == "agent_type_limit_reached"
+            assert [item["status"] for item in open_children] == [
+                "completed",
+                "completed",
+                "completed",
+            ]
+            assert fixture.control.registry.current(replacement) is None
+
+            closed = await fixture.tools["close_agent"].execute(
+                "close:random-1:quota-recovery",
+                {"target": "/root/random-1"},
+                None,
+                None,
+            )
+            spawned = await fixture.tools["spawn_agent"].execute(
+                "spawn:random-4:retry",
+                {
+                    "name": "random-4",
+                    "agent_type": "explorer",
+                    "prompt": "Generate one more deterministic value.",
+                },
+                None,
+                None,
+            )
+            await _yield_until(
+                lambda: fixture.factory.drivers["random-4"].pending is not None
+            )
+            fixture.factory.drivers["random-4"].complete("44")
+            waited = await fixture.tools["wait_agent"].execute(
+                "wait:random-4",
+                {"timeout_seconds": 1},
+                None,
+                None,
+            )
+            record = fixture.control.registry.current(replacement)
+            recorder.add(
+                "topology",
+                "quota.recovered",
+                closed=list(closed.details["agents"]),
+                spawned=dict(spawned.details),
+                wait=dict(waited.details),
+                replacement_status=record.status if record is not None else None,
+                open_agents=[
+                    str(item.path)
+                    for item in fixture.control.list_agents(caller=root_caller)
+                ],
+            )
+
+            assert spawned.details["path"] == "/root/random-4"
+            assert waited.details["wait_expired"] is False
+            assert record is not None
+            assert record.status == "completed"
+            return MultiAgentPlaybackResult(recorder.events)
+        finally:
+            await fixture.runtime.dispose()
+
+    return asyncio.run(scenario())
+
+
 class _ImmediateDriver:
     def __init__(self, path: AgentPath) -> None:
         self.path = path
@@ -655,7 +779,12 @@ class _SharedSession:
                 UserMessage(role="user", content=text, timestamp=0),
                 AssistantMessage(
                     role="assistant",
-                    content=[TextPart(type="text", text="Updated shared.txt.")],
+                    content=[
+                        TextPart(
+                            type="text",
+                            text=f"Updated {self.target.name}.",
+                        )
+                    ],
                     api="playback",
                     provider="scripted",
                     model="shared-worker",
@@ -696,6 +825,39 @@ class _SharedRuntime:
         self.disposed = True
 
 
+class _IsolatedRuntime:
+    def __init__(self) -> None:
+        self.session: _SharedSession | None = None
+        self.create_cwds: list[str] = []
+        self.disposed = False
+
+    async def create_session(self, *, cwd: str) -> _SharedSession:
+        self.create_cwds.append(cwd)
+        self.session = _SharedSession(Path(cwd) / "isolated.txt")
+        return self.session
+
+    async def dispose_session_runtime(self) -> None:
+        self.disposed = True
+
+
+class _ParallelSharedSession(_SharedSession):
+    def __init__(
+        self,
+        target: Path,
+        *,
+        started: asyncio.Event,
+        release: asyncio.Event,
+    ) -> None:
+        super().__init__(target)
+        self._started = started
+        self._release = release
+
+    async def prompt(self, text: str, *, source: str | None = None) -> None:
+        self._started.set()
+        await self._release.wait()
+        await super().prompt(text, source=source)
+
+
 def _shared_tool_registry(names: tuple[str, ...]) -> WorkspaceToolRegistry:
     async def unused_execute(*_args: object) -> AgentToolResult[None]:
         raise AssertionError("the scripted shared worker does not invoke tools")
@@ -712,6 +874,29 @@ def _shared_tool_registry(names: tuple[str, ...]) -> WorkspaceToolRegistry:
             )
         )
     return registry
+
+
+def _playback_exec_backend(
+    request: ExecRequest,
+    **_kwargs: object,
+) -> ExecResult:
+    environment = dict(request.effective_environment or os.environ.items())
+    result = subprocess.run(
+        request.command,
+        cwd=request.cwd,
+        env=environment,
+        input=request.stdin,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=request.timeout_seconds,
+    )
+    return ExecResult(
+        exit_code=result.returncode,
+        stdout=result.stdout,
+        stderr=result.stderr,
+    )
 
 
 def _shared_workspace_playback() -> MultiAgentPlaybackResult:
@@ -801,6 +986,314 @@ def _shared_workspace_playback() -> MultiAgentPlaybackResult:
             finally:
                 await runtime.dispose()
                 assert child_runtime.disposed is True
+
+    return asyncio.run(scenario())
+
+
+def _isolated_artifact_playback() -> MultiAgentPlaybackResult:
+    async def scenario() -> MultiAgentPlaybackResult:
+        recorder = _Recorder()
+        with TemporaryDirectory(
+            prefix="loushang-isolated-artifact-",
+            dir="/tmp",
+        ) as directory:
+            root = Path(directory).resolve()
+            repo = root / "repo"
+            repo.mkdir()
+            service = ExecService(backend=_playback_exec_backend)
+
+            async def git(*args: str) -> None:
+                result = await service.execute(
+                    ExecRequest(command=("git", *args), cwd=str(repo))
+                )
+                assert result.exit_code == 0, result.stderr
+
+            await git("init")
+            await git("config", "user.email", "playback@example.invalid")
+            await git("config", "user.name", "Playback")
+            (repo / "README.md").write_text("base\n", encoding="utf-8")
+            await git("add", "README.md")
+            await git("commit", "-m", "base")
+
+            spec = coding_agent_types().resolve("implementation_worker")
+            assert spec is not None
+            child_runtime = _IsolatedRuntime()
+            leases = CodingGitWorktreeLeasePort(
+                cwd=repo,
+                exec_service=service,
+                state_root=root / "state",
+                lease_root=root / "checkouts",
+                uuid_factory=lambda: "playback",
+            )
+            control = MultiAgentControl(
+                agent_types=AgentTypeRegistry((spec,)),
+                clock=lambda: _NOW,
+            )
+            caller = AgentCaller(control.root_ref)
+            root_queue: HostInputQueue[AgentInputMessage] = HostInputQueue()
+            runtime = SessionMultiAgentRuntime(
+                control=control,
+                child_factory=CodingSubagentFactory(
+                    session_dir=root / "sessions",
+                    cwd=repo,
+                    tool_registry=_shared_tool_registry(spec.allowed_tools),
+                    runtime_builder=lambda **_kwargs: child_runtime,
+                    workspace_leases=leases,
+                ),
+                root_input=AgentInputFacade(
+                    queue=root_queue,
+                    build_payload=lambda message: message,
+                    submit_mailbox=root_queue.append_next_turn,
+                ),
+            )
+            tools = {
+                definition.name: definition
+                for definition in MultiAgentToolPack(
+                    runtime=runtime,
+                    caller=caller,
+                    default_wait_seconds=1,
+                ).definitions()
+            }
+            target = AgentPath.root().child("isolated-writer")
+            try:
+                await tools["spawn_agent"].execute(
+                    "spawn:isolated-writer",
+                    {
+                        "name": "isolated-writer",
+                        "agent_type": "implementation_worker",
+                        "prompt": "Create only isolated.txt.",
+                    },
+                    None,
+                    None,
+                )
+                notice = await runtime.await_completion(
+                    caller=caller,
+                    target=target,
+                    timeout=2,
+                )
+                assert notice.workspace_ref is not None
+                assert len(notice.artifact_refs) == 1
+                recorder.add(
+                    "topology",
+                    "isolated_workspace.completed",
+                    workspace_ref=notice.workspace_ref,
+                    artifact_refs=list(notice.artifact_refs),
+                    child_cwd=child_runtime.create_cwds,
+                )
+
+                await runtime.close_agent(caller=caller, target=target)
+                patch = leases.manager.artifact_diff(notice.workspace_ref)
+                recorder.add(
+                    "workspace",
+                    "artifact.reviewed",
+                    contains_isolated_txt="isolated.txt" in patch,
+                )
+                plan = await leases.manager.plan_apply_workspace(
+                    notice.workspace_ref,
+                    target=repo,
+                )
+                recorder.add(
+                    "approval",
+                    "apply.approved",
+                    touched_paths=list(plan.touched_paths),
+                )
+                await leases.manager.apply(plan)
+                recorder.add(
+                    "workspace",
+                    "artifact.applied",
+                    content=(repo / "isolated.txt").read_text(encoding="utf-8"),
+                )
+                source = Path(leases.manager.get(notice.workspace_ref).path)
+                await leases.manager.discard(notice.workspace_ref)
+                recorder.add(
+                    "workspace",
+                    "workspace.discarded",
+                    source_exists=source.exists(),
+                    artifact_retained=bool(
+                        leases.manager.artifact_diff(notice.workspace_ref)
+                    ),
+                )
+
+                assert (repo / "isolated.txt").read_text(encoding="utf-8") == "after\n"
+                assert source.exists() is False
+                return MultiAgentPlaybackResult(recorder.events)
+            finally:
+                await runtime.dispose()
+
+    return asyncio.run(scenario())
+
+
+def _shared_parallel_writers_playback() -> MultiAgentPlaybackResult:
+    async def scenario() -> MultiAgentPlaybackResult:
+        recorder = _Recorder()
+        with TemporaryDirectory(
+            prefix="loushang-shared-parallel-workers-",
+            dir="/tmp",
+        ) as directory:
+            root = Path(directory).resolve()
+            targets = {
+                "writer-a": root / "left.txt",
+                "writer-b": root / "right.txt",
+            }
+            for target in targets.values():
+                target.write_text("before\n", encoding="utf-8")
+            spec = coding_agent_types(
+                maximum_children=2
+            ).resolve("shared_implementation_worker")
+            assert spec is not None
+            release = asyncio.Event()
+            started = {name: asyncio.Event() for name in targets}
+            child_runtimes = [
+                _SharedRuntime(
+                    _ParallelSharedSession(
+                        target,
+                        started=started[name],
+                        release=release,
+                    )
+                )
+                for name, target in targets.items()
+            ]
+            captured: list[dict[str, object]] = []
+
+            def build_runtime(**kwargs: object) -> _SharedRuntime:
+                runtime = child_runtimes[len(captured)]
+                captured.append(dict(kwargs))
+                return runtime
+
+            def record_fact(fact: AgentFact) -> None:
+                recorder.add("control", "fact", fact=_fact_data(fact))
+
+            def record_notice(notice: AgentCompletionNotice) -> None:
+                recorder.add(
+                    "mailbox",
+                    "completion.notice",
+                    notice=_notice_data(notice),
+                )
+
+            control = MultiAgentControl(
+                agent_types=AgentTypeRegistry((spec,)),
+                fact_consumers=(record_fact,),
+                notice_consumers=(record_notice,),
+                clock=lambda: _NOW,
+            )
+            caller = AgentCaller(control.root_ref)
+            root_queue: HostInputQueue[AgentInputMessage] = HostInputQueue()
+            runtime = SessionMultiAgentRuntime(
+                control=control,
+                child_factory=CodingSubagentFactory(
+                    session_dir=root / "sessions",
+                    cwd=root,
+                    tool_registry=_shared_tool_registry(spec.allowed_tools),
+                    runtime_builder=build_runtime,
+                ),
+                root_input=AgentInputFacade(
+                    queue=root_queue,
+                    build_payload=lambda message: message,
+                    submit_mailbox=root_queue.append_next_turn,
+                ),
+            )
+            tools = {
+                definition.name: definition
+                for definition in MultiAgentToolPack(
+                    runtime=runtime,
+                    caller=caller,
+                    default_wait_seconds=1,
+                ).definitions()
+            }
+            paths = tuple(
+                AgentPath.root().child(name) for name in targets
+            )
+            try:
+                await asyncio.gather(
+                    *(
+                        tools["spawn_agent"].execute(
+                            f"spawn:{name}",
+                            {
+                                "name": name,
+                                "agent_type": "shared_implementation_worker",
+                                "prompt": (
+                                    f"Own and update only {target.name}. Other "
+                                    "workers are active; preserve their edits."
+                                ),
+                            },
+                            None,
+                            None,
+                        )
+                        for name, target in targets.items()
+                    )
+                )
+                await _yield_until(
+                    lambda: all(event.is_set() for event in started.values())
+                )
+                running = {
+                    str(record.path): record.status
+                    for record in runtime.list_agents(caller=caller)
+                    if record.path != AgentPath.root()
+                }
+                recorder.add(
+                    "topology",
+                    "shared_parallel.running",
+                    agents=running,
+                    ownership={
+                        name: [target.name] for name, target in targets.items()
+                    },
+                    maximum_children=spec.maximum_children,
+                )
+                assert running == {
+                    "/root/writer-a": "running",
+                    "/root/writer-b": "running",
+                }
+
+                release.set()
+                notices = await asyncio.gather(
+                    *(
+                        runtime.await_completion(
+                            caller=caller,
+                            target=path,
+                            timeout=1,
+                        )
+                        for path in paths
+                    )
+                )
+                await runtime.drain_notice_deliveries()
+                mailbox = root_queue.drain_next_turn()
+                recorder.add(
+                    "topology",
+                    "shared_parallel.completed",
+                    cwd=[
+                        child_runtime.create_cwds
+                        for child_runtime in child_runtimes
+                    ],
+                    files={
+                        target.name: target.read_text(encoding="utf-8")
+                        for target in targets.values()
+                    },
+                    notice_paths=[
+                        str(notice.sender_ref.path) for notice in notices
+                    ],
+                    mailbox=[message.text for message in mailbox],
+                )
+
+                assert spec.maximum_children == 2
+                assert [runtime.create_cwds for runtime in child_runtimes] == [
+                    [str(root)],
+                    [str(root)],
+                ]
+                assert {
+                    target.name: target.read_text(encoding="utf-8")
+                    for target in targets.values()
+                } == {
+                    "left.txt": "after\n",
+                    "right.txt": "after\n",
+                }
+                assert len(mailbox) == 2
+                return MultiAgentPlaybackResult(recorder.events)
+            finally:
+                release.set()
+                await runtime.dispose()
+                assert all(
+                    child_runtime.disposed for child_runtime in child_runtimes
+                )
 
     return asyncio.run(scenario())
 
@@ -969,6 +1462,14 @@ def _render_playback() -> MultiAgentPlaybackResult:
                 for line in step.diagnostics.current_logical_lines
             )
             visible = screen.visible_text()
+            terminal = strip_control_sequences(
+                "\n".join(
+                    (
+                        *screen.port.screen.scrollback_lines,
+                        *screen.port.screen.visible_lines,
+                    )
+                )
+            )
             recorder.add(
                 "render",
                 stage,
@@ -980,10 +1481,14 @@ def _render_playback() -> MultiAgentPlaybackResult:
                 viewport_top=step.diagnostics.viewport_top,
                 prompt_in_logical=logical.count(_PROMPT),
                 prompt_in_visible=visible.count(_PROMPT),
+                prompt_in_terminal=terminal.count(_PROMPT),
                 pending_followups=len(screen.app.state.pending_followups),
                 pending_steers=len(screen.app.state.pending_steers),
             )
             assert logical.count(_PROMPT) <= 1
+            assert terminal.count(_PROMPT) <= 1
+            assert terminal.count(_PRIOR_PROMPT) <= 1
+            assert terminal.count(_PRIOR_RESPONSE) <= 1
 
         def assistant(text: str) -> None:
             screen.app.begin_assistant()
@@ -991,6 +1496,11 @@ def _render_playback() -> MultiAgentPlaybackResult:
             screen.app.end_assistant()
 
         try:
+            screen.app.start_prompt(_PRIOR_PROMPT, started_at=0.0)
+            assistant(_PRIOR_RESPONSE)
+            screen.app.complete_run(elapsed_seconds=0.25)
+            render("history.completed")
+
             screen.app.start_prompt(_PROMPT, started_at=0.0)
             assistant("好的，我先派生 3 个 explorer 子 agent。")
             render("prompt.started")
@@ -1091,6 +1601,27 @@ def _render_playback() -> MultiAgentPlaybackResult:
             screen.app.complete_run(elapsed_seconds=1.23)
             render("run.completed")
 
+            screen.app.surface_host = screen.runtime.overlay_host()
+            agent_tree = build_agent_tree_surface_view(
+                records=fixture.runtime.list_agents(
+                    caller=AgentCaller(fixture.control.root_ref)
+                ),
+                subscribe_facts=fixture.control.subscribe_facts,
+                request_render=lambda: None,
+            )
+            agent_tree_handle = screen.app.surface_host.open_surface(
+                Surface(
+                    renderable=agent_tree,
+                    focus_target=agent_tree,
+                    presentation="page",
+                    width="100%",
+                    max_height="100%",
+                )
+            )
+            render("agents.opened")
+            agent_tree_handle.close("playback")
+            render("agents.closed")
+
             playback = PlaybackResult(steps=tuple(steps), port=screen.port)
             mailbox = fixture.root_queue.drain_next_turn()
             assert screen.app.state.pending_steers == []
@@ -1098,6 +1629,9 @@ def _render_playback() -> MultiAgentPlaybackResult:
             assert len(mailbox) == 3
             assert "Queued follow-up inputs" not in playback.visible_text
             assert "queued=" not in playback.visible_text
+            assert playback.terminal_text.count(_PROMPT) == 1
+            assert playback.terminal_text.count(_PRIOR_PROMPT) == 1
+            assert playback.terminal_text.count(_PRIOR_RESPONSE) == 1
             return MultiAgentPlaybackResult(
                 recorder.events,
                 playback=playback,
@@ -1178,6 +1712,15 @@ MULTIAGENT_SCENARIOS = (
         tags=("multiagent", "topology", "lifecycle"),
     ),
     PlaybackScenarioSpec(
+        name="multiagent-quota-recovery",
+        description=(
+            "Validate completed-open capacity, structured spawn failure, explicit "
+            "cleanup, and successful retry without waiting on a nonexistent child."
+        ),
+        run=_quota_recovery_playback,
+        tags=("multiagent", "topology", "lifecycle", "tools"),
+    ),
+    PlaybackScenarioSpec(
         name="multiagent-parallel-review",
         description="Replay reviewer fan-out, full-result fan-in, and synthesis cleanup.",
         run=_parallel_review_playback,
@@ -1194,6 +1737,24 @@ MULTIAGENT_SCENARIOS = (
         description="Validate a bounded writer editing the parent's exact cwd directly.",
         run=_shared_workspace_playback,
         tags=("multiagent", "topology", "workspace"),
+    ),
+    PlaybackScenarioSpec(
+        name="multiagent-isolated-artifact",
+        description=(
+            "Validate detached spawn, immutable artifact review, approved apply, "
+            "and explicit discard."
+        ),
+        run=_isolated_artifact_playback,
+        tags=("multiagent", "topology", "workspace", "git"),
+    ),
+    PlaybackScenarioSpec(
+        name="multiagent-shared-parallel-writers",
+        description=(
+            "Validate two concurrent workers editing disjoint files in the "
+            "parent's exact cwd."
+        ),
+        run=_shared_parallel_writers_playback,
+        tags=("multiagent", "topology", "workspace", "concurrency"),
     ),
     PlaybackScenarioSpec(
         name="multiagent-render",

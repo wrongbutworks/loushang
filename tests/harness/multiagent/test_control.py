@@ -116,6 +116,12 @@ def test_limits_count_only_open_agents_and_close_releases_capacity() -> None:
     with pytest.raises(MultiAgentError) as error:
         _spawn(control, "second")
     assert error.value.code == "agent_limit_reached"
+    assert error.value.details["limit"] == 2
+    assert error.value.details["open_count"] == 2
+    assert [
+        occupant["path"] for occupant in error.value.details["open_agents"]
+    ] == ["/root", "/root/first"]
+    assert error.value.tool_result_details["code"] == "agent_limit_reached"
 
     _close_tree(control, first.path)
     second = _spawn(control, "second")
@@ -132,6 +138,16 @@ def test_per_type_child_limit_is_released_on_close() -> None:
         name="first",
         agent_type="reviewer",
     )
+    started = control.begin_round(first.ref)
+    assert started.record is not None
+    completed = control.finish_round(
+        first.ref,
+        round_id=started.record.round_id,
+        status="completed",
+        final_message="First task complete.",
+        duration_ms=1,
+    )
+    assert completed.record is not None
 
     with pytest.raises(MultiAgentError) as error:
         control.spawn(
@@ -141,6 +157,20 @@ def test_per_type_child_limit_is_released_on_close() -> None:
             agent_type="reviewer",
         )
     assert error.value.code == "agent_type_limit_reached"
+    assert error.value.details["parent_path"] == "/root"
+    assert error.value.details["open_count"] == 1
+    assert error.value.details["open_children"] == (
+        {
+            "path": "/root/first",
+            "agent_type": "reviewer",
+            "status": "completed",
+            "round_id": 1,
+        },
+    )
+    assert error.value.tool_result_details == {
+        "code": "agent_type_limit_reached",
+        **error.value.details,
+    }
 
     _close_tree(control, first.path)
     second = control.spawn(

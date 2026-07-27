@@ -130,9 +130,12 @@ def test_screen_tui_playback_multiagent_scenarios_are_layered() -> None:
         "multiagent-followup",
         "multiagent-nested-tree",
         "multiagent-lifecycle",
+        "multiagent-quota-recovery",
         "multiagent-parallel-review",
         "multiagent-debate",
         "multiagent-shared-workspace",
+        "multiagent-isolated-artifact",
+        "multiagent-shared-parallel-writers",
         "multiagent-render",
     ]
 
@@ -142,9 +145,12 @@ def test_screen_tui_playback_runs_multiagent_topology_matrix(tmp_path) -> None:
         "multiagent-followup",
         "multiagent-nested-tree",
         "multiagent-lifecycle",
+        "multiagent-quota-recovery",
         "multiagent-parallel-review",
         "multiagent-debate",
         "multiagent-shared-workspace",
+        "multiagent-isolated-artifact",
+        "multiagent-shared-parallel-writers",
     ]
 
     results = run_playback_scenarios(
@@ -637,6 +643,7 @@ def test_screen_tui_playback_runner_writes_json_summary(tmp_path, capsys) -> Non
                 "artifacts": [
                     str(tmp_path / "completion-tab.jsonl"),
                     str(tmp_path / "completion-tab-screen.txt"),
+                    str(tmp_path / "completion-tab-terminal.txt"),
                 ],
                 "elapsed_ms": payload["results"][0]["elapsed_ms"],
             }
@@ -731,6 +738,7 @@ def test_screen_tui_playback_runner_writes_review_artifacts_for_playback_failure
         "forced-review-failure-error.txt",
         "forced-review-failure.jsonl",
         "forced-review-failure-screen.txt",
+        "forced-review-failure-terminal.txt",
     ]
     assert "forced review failure" in (
         tmp_path / "forced-review-failure-error.txt"

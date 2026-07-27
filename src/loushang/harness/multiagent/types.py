@@ -389,6 +389,9 @@ class MultiAgentError(ValueError):
         super().__init__(message)
         self.code = code
         self.details = MappingProxyType(dict(details or {}))
+        self.tool_result_details = MappingProxyType(
+            {"code": code, **self.details}
+        )
 
 
 __all__ = [

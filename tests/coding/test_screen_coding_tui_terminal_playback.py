@@ -130,7 +130,7 @@ def test_screen_coding_tui_long_stream_keeps_pi_style_diff_without_recovery_repa
     assert all(step.diagnostics.operation_class != "baseline_repaint" for step in streaming_steps)
 
 
-def test_screen_coding_tui_long_stream_uses_protected_bottom_frame_append() -> None:
+def test_screen_coding_tui_long_stream_commits_history_without_partial_scroll_region() -> None:
     app = _app()
     runtime, port = _runtime(app, width=100, height=18)
 
@@ -147,7 +147,23 @@ def test_screen_coding_tui_long_stream_uses_protected_bottom_frame_append() -> N
 
     assert protected_steps
     assert all("Working" in _visible_text(port) for _step in protected_steps)
-    assert all(TerminalOperation.set_scroll_region(top=0, bottom=11) in step.diagnostics.operations for step in protected_steps[-1:])
+    assert all(
+        TerminalOperation.clear_from_cursor() in step.diagnostics.operations
+        for step in protected_steps[-1:]
+    )
+    assert all(
+        operation.kind not in {"set_scroll_region", "reset_scroll_region"}
+        for step in protected_steps
+        for operation in step.diagnostics.operations
+    )
+    terminal_lines = tuple(
+        strip_control_sequences(line).rstrip()
+        for line in (
+            *port.screen.scrollback_lines,
+            *port.screen.visible_lines,
+        )
+    )
+    assert terminal_lines.count("• - line 0") == 1
     assert all(TerminalOperation.clear_screen() not in step.diagnostics.operations for step in protected_steps)
 
 

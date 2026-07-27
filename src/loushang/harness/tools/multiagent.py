@@ -147,7 +147,10 @@ class MultiAgentToolPack:
         return _definition(
             name="spawn_agent",
             label="Spawn agent",
-            description="Create a bounded child agent for one focused task.",
+            description=(
+                "Create a bounded child agent for one focused task. A successful "
+                "call returns its canonical path; a failed call creates no child."
+            ),
             properties={
                 "name": _string(),
                 "agent_type": _string(),
@@ -322,7 +325,11 @@ class MultiAgentToolPack:
         return _definition(
             name="close_agent",
             label="Close agent",
-            description="Close a child agent and its descendants.",
+            description=(
+                "Close a child agent and its descendants, release their session "
+                "resources, and free open-agent capacity. Completed, failed, and "
+                "interrupted agents remain open until explicitly closed."
+            ),
             properties={"target": _string()},
             required=("target",),
             execute=execute,

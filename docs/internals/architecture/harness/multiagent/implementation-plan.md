@@ -53,7 +53,9 @@ workspace:
 notification:
   exactly one completion notification per agent incarnation and run round
   across completion/stop/cleanup races
-  notification includes workspace_ref, artifact_refs, and change_set_ref
+  notification includes workspace_ref, artifact_refs, and the nullable
+  transitional change_set_ref; Coding's target Git path leaves change_set_ref
+  empty
   terminal facts and completion notices do not travel through send_message
 
 stale callbacks:
@@ -201,10 +203,13 @@ Implementation checkpoint (2026-07-26):
   definition, including its configured policy and approval chain, for Git
   inspection, local search, Python analysis, and permitted network retrieval.
   `implementation_worker` and `test_runner` receive system-allocated isolated
-  Git worktrees. `shared_implementation_worker` is the explicit single-writer
-  exception for a bounded task that must see and directly preserve the parent
-  session's uncommitted state: it reuses the exact resolved Coding `cwd`,
-  worktree, and branch, while commit/merge/publish remain parent-owned. The
+  Git worktrees. `shared_implementation_worker` is the explicit shared-worktree
+  option for bounded tasks that must see and directly preserve the parent
+  session's uncommitted state: multiple workers may reuse the exact resolved
+  Coding `cwd`, worktree, and branch only when the parent assigns disjoint file
+  or responsibility ownership. Workers preserve and adapt to peer changes
+  rather than reverting them; overlapping or tightly coupled writes remain
+  serial or use isolated worktrees. Commit/merge/publish remain parent-owned. The
   latter four read-only roles are the built-in recipe roles. The factory maps the
   first round to the existing `prompt()` path, later rounds to the existing
   queue / `continue_run()` path, and interruption/disposal to the existing
@@ -228,11 +233,11 @@ Implementation checkpoint (2026-07-26):
   never wakes a root model to duplicate synthesis, and recursively closes
   every child on success, failure, timeout, or cancellation.
 - The Product-neutral `WorkspaceLeasePort` and Coding
-  `CodingGitWorktreeLeasePort` are implemented. A clean worktree and temporary
-  branch are removed; a changed worktree is retained and its opaque workspace
-  and change references (`workspace_ref` and `change_set_ref`) flow through
-  facts and completion notices. `change_set_ref` is a provider-interpreted
-  reference.
+  `CodingGitWorktreeLeasePort` are implemented. The current target path uses a
+  managed detached worktree at immutable `base_oid`: clean worktrees are
+  removed, changed worktrees are retained, and `workspace_ref` plus immutable
+  `artifact_refs` flow through facts and completion notices. The transitional
+  `change_set_ref` remains nullable but Coding leaves it empty.
 - `/agents` is the Product-neutral command and full-screen, read-only Agent
   Tree owned by `loushang.harnesstui.multiagent`. It initializes from
   authoritative live records, subscribes to ordered `AgentFact` updates, and
@@ -419,6 +424,90 @@ that later through Product-specific review and approval semantics.
   changed leases are retained and reported to the parent.
 - TUI shows tree state, progress/activity, usage, terminal summary, and
   workspace references.
+
+## Phase 2B — Git Workspace Handoff
+
+The detailed design is
+[Workspace Collaboration And Git Handoff](workspace-collaboration-and-git-handoff.md).
+This checkpoint completes only the two workspace profiles already needed by
+Coding:
+
+```text
+parent + current   # shared_implementation_worker
+agent + detached  # implementation_worker / isolated test execution
+```
+
+### Scope
+
+Implementation checkpoint (2026-07-27):
+
+- `GitWorkspaceManager` now owns durable allocating/active/capturing/retained/
+  applying/applied/discarding records, detached acquire, restart reconciliation,
+  immutable descriptor/patch/manifest publication, strict apply planning, and
+  fail-closed discard.
+- `CodingGitWorktreeLeasePort` is a thin adapter and uses an XDG state root
+  outside project worktrees by default.
+- `loushang workspace list|show|diff|apply|discard` provides the Product-owned
+  review path; non-interactive apply/discard require `--yes`.
+- The isolated-artifact playback covers child terminal references, diff,
+  approved apply, and discard over a real temporary Git repository.
+- Apply targets normalize to their repository root; plan fingerprints bind
+  actual staged, unstaged, and untracked content rather than porcelain labels.
+  Transient operations compensate cancellation through `needs_inspection`,
+  cross-process lock waits are bounded and cancellation-safe, atomic record
+  replacement has a Windows fallback, and Git path capture preserves POSIX
+  non-UTF-8 filenames.
+
+- Move reusable Git worktree, patch capture, catalog, preflight, apply, and
+  cleanup mechanics into focused `loushang.harness.workspace` modules.
+- Keep `CodingGitWorktreeLeasePort` as the adapter from Product-admitted
+  `WorkspaceLeaseRequest` to Git requests that contain no `AgentRef`, agent
+  type, approval, CLI, or TUI dependency.
+- Replace temporary branch identity with a detached worktree at immutable
+  `base_oid` and a content-addressed binary patch plus touched-path manifest.
+- Move Coding's managed-root default out of the repository and every
+  registered worktree; fail closed when configuration violates that boundary.
+- Persist `allocating` before Git creation and move it to `active` by revision
+  compare-and-set before returning a lease; add cross-process lock, idempotent
+  operations, and restart reconciliation for incomplete allocations.
+- Capture a bounded immutable artifact for each terminal round. Capture
+  timeout or expected Git failure preserves the model result and worktree,
+  records `needs_inspection`, and returns a snapshot with empty
+  `artifact_refs` rather than failing the child round.
+- Bind patch digest, manifest digest, `base_oid`, and repository identity in
+  the immutable descriptor addressed by each `artifact_ref`.
+- Add opaque `artifact_refs` to `WorkspaceLeaseSnapshot`; stop producing
+  `git-branch:` as Coding's change identity.
+- Expose Product-approved Coding CLI operations for list, show, diff, strict
+  apply, and discard. Apply does not use `--index`, `--3way`, or `--reject`
+  and does not commit, merge, push, publish, or automatically discard.
+- Treat apply as final handoff after runtime ownership is released; an applied
+  workspace cannot accept another child follow-up or capture round.
+- Make discard remove the live managed worktree while retaining an immutable
+  artifact and tombstone. Permanent artifact purge remains deferred.
+- Keep `release` non-destructive for changed, retained, applied, or
+  inspection-needed workspaces; only explicit confirmed discard removes their
+  live worktrees.
+
+### Explicit Deferrals
+
+- branch-backed agent or group workspaces;
+- `WorkspaceGroup`, membership, ref-counting, and group finalization;
+- durable branch ownership, commit, push, PR, or automatic merge;
+- a cross-Product retained-workspace catalog;
+- model-callable apply/discard tools;
+- a generic VCS plugin system.
+
+### Exit Criteria
+
+- Real Git tests cover complete artifact capture, strict non-overlap apply,
+  tamper/stale-plan rejection, restart reconciliation, concurrent mutations,
+  and fail-closed path cleanup.
+- One playback covers isolated spawn, terminal artifact reference, diff,
+  approved apply, and discard; concurrency and crash cases remain integration
+  tests rather than TUI simulations.
+- `harness.workspace` imports no Product, multi-agent, Work, Method, Channel,
+  AI, or TUI package; Coding remains the policy and experience owner.
 
 ## Phase 3 — Durable Work Execution
 

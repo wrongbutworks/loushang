@@ -244,6 +244,7 @@ def test_close_projects_the_released_workspace_before_closing_the_record() -> No
         driver = _Driver()
         driver.released_workspace = WorkspaceLeaseSnapshot(
             workspace_ref="coding-worktree:worker",
+            artifact_refs=("git-artifact:worker",),
             change_set_ref="git-branch:worker",
             changed=True,
             retained=True,
@@ -253,6 +254,7 @@ def test_close_projects_the_released_workspace_before_closing_the_record() -> No
         closed = await handle.close()
 
         assert closed.record.workspace_ref == "coding-worktree:worker"
+        assert closed.record.artifact_refs == ("git-artifact:worker",)
         assert closed.record.change_set_ref == "git-branch:worker"
         assert [fact.kind for fact in control.facts()][-2:] == [
             "workspace",
