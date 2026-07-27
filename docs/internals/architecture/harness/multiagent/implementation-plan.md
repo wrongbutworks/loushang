@@ -509,6 +509,52 @@ Implementation checkpoint (2026-07-27):
 - `harness.workspace` imports no Product, multi-agent, Work, Method, Channel,
   AI, or TUI package; Coding remains the policy and experience owner.
 
+### Phase 2B Release Gate
+
+The 2026-07-27 release gate passed against the integrated Harness lane.  Keep
+the gate reproducible with these layers rather than treating a rendered
+playback as proof of the Git handoff:
+
+```console
+# Control, run ownership, Product adapter, and Agent Tree projection.
+uv run pytest \
+  tests/harness/multiagent \
+  tests/harness/session/test_multiagent.py \
+  tests/coding/test_multiagent.py \
+  tests/harnesstui/multiagent -q
+
+# Git workspace mechanics and the Coding review/approval CLI.
+uv run pytest \
+  tests/harness/workspace \
+  tests/coding/test_worktree.py \
+  tests/coding/test_cli_workspace.py \
+  tests/coding/test_workspace_operation_compatibility.py \
+  tests/coding/test_workspace_path_mutation_compatibility.py \
+  tests/coding/test_workspace_tool_pack_compatibility.py -q
+
+# Durable Work regressions and the workspace dependency boundary.
+uv run pytest tests/work -q
+uv run pytest tests/architecture/test_import_boundaries.py -k workspace -q
+
+# Product-composed terminal projection and real-Git handoff playback.
+uv run python scripts/run_tui_playback.py \
+  multiagent-tools multiagent-messaging multiagent-followup \
+  multiagent-nested-tree multiagent-lifecycle multiagent-quota-recovery \
+  multiagent-parallel-review multiagent-debate \
+  multiagent-shared-workspace multiagent-isolated-artifact \
+  multiagent-shared-parallel-writers multiagent-render \
+  --artifacts /tmp/loushang-phase2b-playback \
+  --include-frames
+```
+
+`multiagent-isolated-artifact` must execute against a real temporary Git
+repository and prove, in order: detached child execution, immutable artifact
+review, an explicit apply decision, target content materialization, explicit
+discard of the live worktree, and continued artifact readability.  The
+concurrency, cancellation, tamper, stale-plan, and restart cases remain
+real-Git tests under `tests/harness/workspace`; they are not simulated as TUI
+frames.
+
 ## Phase 3 — Durable Work Execution
 
 ### Scope
