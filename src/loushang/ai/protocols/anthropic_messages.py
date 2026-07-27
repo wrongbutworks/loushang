@@ -274,7 +274,6 @@ class AnthropicMessagesAdapter(AnthropicMessagesProtocol):
         default_headers = canonicalize_sdk_headers(headers)
         # 门闸：按 typed protocol/headers 决定是否注入 beta（与 httpx 对齐）
         need_ilt = self.should_inject_interleaved_thinking(
-            model_id=model.id,
             reasoning_enabled=resolved.reasoning_enabled,
             adapter_config=adapter_config,
         )
@@ -317,7 +316,7 @@ class AnthropicMessagesAdapter(AnthropicMessagesProtocol):
         # 思考模式：自适应或预算式；与 temperature 互斥
         want_thinking = resolved.reasoning_enabled is True
         if want_thinking:
-            if self.supports_adaptive_thinking(model.id):
+            if self.supports_adaptive_thinking(adapter_config):
                 thinking_cfg = {"type": "adaptive"}
             else:
                 thinking_budget_tokens = get_reasoning_budget_tokens(options)
@@ -340,9 +339,10 @@ class AnthropicMessagesAdapter(AnthropicMessagesProtocol):
         if thinking_cfg:
             params["thinking"] = thinking_cfg
         # 若存在自适应思考的 effort，注入 output_config
-        if want_thinking and self.supports_adaptive_thinking(model.id):
+        if want_thinking and self.supports_adaptive_thinking(adapter_config):
             effort = self.map_thinking_level_to_effort(
-                resolved.reasoning_effort, model.id
+                resolved.reasoning_effort,
+                adapter_config,
             )
             if effort:
                 params["output_config"] = {"effort": effort}

@@ -66,6 +66,52 @@ def test_default_builtin_catalog_matches_curated_catalog() -> None:
     ]
 
 
+def test_curated_catalog_tracks_current_primary_model_roster() -> None:
+    raw = _load_curated_raw()
+    actual = {
+        (provider_id, endpoint_id): set(endpoint["models"])
+        for provider_id, provider in raw["providers"].items()
+        for endpoint_id, endpoint in provider["endpoints"].items()
+    }
+
+    assert actual == {
+        ("anthropic", "anthropic-messages"): {
+            "claude-fable-5",
+            "claude-opus-5",
+            "claude-sonnet-5",
+            "claude-haiku-4-5",
+        },
+        ("baidu-qianfan", "openai-completions-cn"): {"ernie-5.1"},
+        ("dashscope", "openai-responses"): {"qwen3.7-max", "qwen3.7-plus"},
+        ("deepseek", "openai-completions"): {
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+        },
+        ("minimax", "anthropic-messages"): {"MiniMax-M3", "MiniMax-M2.7"},
+        ("moonshot", "openai-completions"): {
+            "kimi-k2.6",
+            "kimi-k2.7-code",
+            "kimi-k3",
+        },
+        ("kimi-code", "kimi-code-openai"): {"k3", "kimi-for-coding"},
+        ("kimi-code", "kimi-code-anthropic"): {"k3", "kimi-for-coding"},
+        ("openai", "openai-responses"): {
+            "gpt-5.5",
+            "gpt-5.6-sol",
+            "gpt-5.4-mini",
+        },
+        ("openai", "coding-responses"): {"gpt-5.5", "gpt-5.6-sol"},
+        ("stepfun", "openai-completions"): {"step-3.7-flash"},
+        ("tencent-hunyuan", "openai-responses"): {"hy3"},
+        ("volcano-ark", "openai-completions-cn-beijing"): {
+            "doubao-seed-evolving",
+            "doubao-seed-2-1-pro-260628",
+            "doubao-seed-2-1-turbo-260628",
+        },
+        ("zai", "openai-completions"): {"glm-5.2", "glm-4.7"},
+    }
+
+
 def test_curated_catalog_has_no_removed_model_contract_fields() -> None:
     raw = _load_curated_raw()
     removed_fields = {"compat", "protocol", "dialect"}
@@ -113,6 +159,8 @@ def test_kimi_code_catalog_uses_its_own_api_key_not_moonshot_platform_key() -> N
     openai_model = registry.get_model(
         "kimi-code", "kimi-code-openai", "kimi-for-coding"
     )
+    anthropic_k3 = registry.get_model("kimi-code", "kimi-code-anthropic", "k3")
+    openai_k3 = registry.get_model("kimi-code", "kimi-code-openai", "k3")
 
     assert provider is not None
     assert anthropic_endpoint is not None
@@ -125,8 +173,13 @@ def test_kimi_code_catalog_uses_its_own_api_key_not_moonshot_platform_key() -> N
         assert model.auth.prefix == "Bearer "
         assert model.pricing is None
         assert model.supports_temperature is False
+        assert model.capabilities.input == ("text", "image")
     assert anthropic_endpoint.base_url == "https://api.kimi.com/coding"
     assert openai_endpoint.base_url == "https://api.kimi.com/coding/v1"
+    for model in (anthropic_k3, openai_k3):
+        assert model.name == "Kimi Code K3"
+        assert model.upstream_id is None
+        assert model.defaults["reasoningEffort"] == "high"
 
 
 def test_curated_openai_style_custom_base_urls_declare_adapter() -> None:
@@ -147,19 +200,70 @@ def test_curated_catalog_keeps_key_model_defaults() -> None:
     kimi_code = registry.get_model("moonshot", "openai-completions", "kimi-k2.7-code")
     minimax = registry.get_model("minimax", "anthropic-messages", "MiniMax-M3")
     gpt = registry.get_model("openai", "openai-responses", "gpt-5.5")
+    sol = registry.get_model("openai", "openai-responses", "gpt-5.6-sol")
     coding = registry.get_model("openai", "coding-responses", "gpt-5.5")
-    claude = registry.get_model("anthropic", "anthropic-messages", "claude-sonnet-4-6")
+    coding_sol = registry.get_model("openai", "coding-responses", "gpt-5.6-sol")
+    claude = registry.get_model("anthropic", "anthropic-messages", "claude-sonnet-5")
 
     assert kimi.supports_temperature is False
     assert kimi_code.defaults["maxOutputTokens"] == 32000
     assert kimi_code.defaults["reasoningEffort"] == "medium"
     assert minimax.pricing is None
-    assert gpt.capabilities.context_window == 1000000
-    assert coding.capabilities.context_window == 272000
+    assert gpt.capabilities.context_window == 1050000
+    assert sol.capabilities.context_window == 1050000
+    assert coding.capabilities.context_window == 400000
     assert coding.defaults["reasoningEffort"] == "medium"
     assert coding.pricing is None
+    assert coding_sol.pricing is None
     assert claude.pricing is not None
     assert claude.pricing.output == 15
+
+
+def test_curated_catalog_keeps_corrected_base_pricing() -> None:
+    registry = _load_curated_registry()
+    expected = {
+        ("baidu-qianfan", "openai-completions-cn", "ernie-5.1"): (
+            "CNY",
+            4,
+            18,
+            None,
+        ),
+        ("moonshot", "openai-completions", "kimi-k2.6"): ("CNY", 6.5, 27, 1.1),
+        ("moonshot", "openai-completions", "kimi-k2.7-code"): (
+            "CNY",
+            6.5,
+            27,
+            1.3,
+        ),
+        ("moonshot", "openai-completions", "kimi-k3"): ("CNY", 20, 100, 2),
+        ("tencent-hunyuan", "openai-responses", "hy3"): ("CNY", 1, 4, 0.25),
+        (
+            "volcano-ark",
+            "openai-completions-cn-beijing",
+            "doubao-seed-evolving",
+        ): ("CNY", 6, 30, 1.2),
+        (
+            "volcano-ark",
+            "openai-completions-cn-beijing",
+            "doubao-seed-2-1-pro-260628",
+        ): ("CNY", 6, 30, 1.2),
+        (
+            "volcano-ark",
+            "openai-completions-cn-beijing",
+            "doubao-seed-2-1-turbo-260628",
+        ): ("CNY", 3, 15, 0.6),
+        ("zai", "openai-completions", "glm-4.7"): ("USD", 0.6, 2.2, 0.11),
+    }
+
+    for model_ref, pricing_values in expected.items():
+        model = registry.get_model(*model_ref)
+        assert model.pricing is not None
+        assert (
+            model.pricing.currency,
+            model.pricing.input,
+            model.pricing.output,
+            model.pricing.cache_read,
+        ) == pricing_values
 
 
 def test_coding_route_is_oauth_openai_responses_without_product_adapter() -> None:
@@ -176,7 +280,7 @@ def test_coding_route_is_oauth_openai_responses_without_product_adapter() -> Non
     assert endpoint.preferred is False
     assert endpoint.auth is not None
     assert endpoint.auth.kind == "oauth"
-    assert endpoint.auth.provider == "openai-codex"
+    assert endpoint.auth.provider is None
     assert endpoint.auth.api_key_env is None
     assert endpoint.auth.api_key_envs == ()
     assert dict(endpoint.headers) == {

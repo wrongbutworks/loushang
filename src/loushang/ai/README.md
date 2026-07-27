@@ -14,6 +14,8 @@ Model
 -> resolve_auth
 -> resolve_request_for_model
 -> ProviderRequest
+-> ProviderRegistry(provider, api)
+-> APIRegistry(api)
 -> protocol adapter
 -> raw parts
 -> runtime / assembler
@@ -24,6 +26,9 @@ Model
 
 - `model/`：领域对象、严格 catalog loader、只读 registry 和 `models.json`。
 - `provider/`：请求解析、adapter 调用边界、deadline、retry、取消和错误映射。
+- `api_registry.py`：按 API 标识选择通用协议 adapter。
+- `provider_registry.py`：按 `(provider, api)` 精确选择必要的厂商特殊 adapter，
+  未命中时回退 `APIRegistry`。
 - `protocols/`：三个生产协议 adapter 与离线 faux adapter。
 - `event_stream/`：raw part 到统一事件和最终消息的组装。
 - `auth/`：API key 解析、OAuth credential 生命周期和请求 auth 转换。
@@ -95,8 +100,11 @@ from loushang.ai import (
 
 ```python
 from loushang.ai.advanced.registry import (
+    APIRegistry,
+    ProviderRegistry,
     clear_api_providers,
     register_api_provider,
+    register_provider_adapter,
 )
 
 clear_api_providers()
@@ -105,6 +113,9 @@ register_api_provider(custom_adapter)
 
 注册时一次性验证 `api`、`invoke_raw(request)` 和可选
 `validate_request(request)` 契约。重复注册同一个 API 会失败。
+`ApiProviderRegistry` 是 `APIRegistry` 的兼容别名，两者不维护平行状态。
+只有通用协议无法表达的厂商差异才使用 `ProviderRegistry`；查找键固定为
+`(provider_id, api)`，不检查模型名。
 
 ## CallOptions
 
@@ -189,9 +200,17 @@ OpenAI Codex credential import 示例直接调用：
 get_model("openai", "coding-responses", "gpt-5.5")
 ```
 
-实验 `OpenAICodexCredentialSource` 负责导入现有 `~/.codex/auth.json`；它不是
-OAuth provider，也不实现 login 或 refresh。示例和上层不读取 token 文件。完整 API、
-文件格式、credential source 与 provider 扩展方式见 `docs/auth/oauth.md`。
+`AuthResolver` 拥有标准 `apiKey`、`oauth`、`none` 能力。`AuthRegistry` 只在
+`(auth kind, model provider, endpoint, optional model)` 精确路由上追加特殊能力，
+先查 model 路由，再查 endpoint 路由，未命中就回到标准 resolver。它不支持
+provider-only、通配符、正则或模型名称匹配。
+
+实验 `OpenAICodexCredentialSource` 注册在
+`oauth/openai/coding-responses` 路由，负责导入现有 `~/.codex/auth.json`；模型
+catalog 不声明 credential source。它不是 OAuth provider，也不实现 login 或 refresh。
+示例和上层不读取 token 文件。`AuthExtensionRegistry` 是 `AuthRegistry` 的兼容名。
+完整 API、文件格式、credential source 与 provider 扩展方式见
+`docs/auth/oauth.md`。
 
 ## 正确性契约
 

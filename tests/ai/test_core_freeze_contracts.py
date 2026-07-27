@@ -172,6 +172,7 @@ def test_auth_is_owned_by_ai_package_without_top_level_auth_package() -> None:
         "core.py",
         "credentials.py",
         "errors.py",
+        "registry.py",
         "resolver.py",
         "store.py",
         "support.py",
