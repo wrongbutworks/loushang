@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
   "anthropic>=0.89.0",
   "authlib>=1.6,<2",
+  "cryptography<49; sys_platform == 'darwin' and platform_machine == 'x86_64'",
   "httpx>=0.28,<1",
   "markdown-it-py>=4.2,<5",
   "openai>=2.30.0",
