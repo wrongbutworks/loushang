@@ -117,41 +117,62 @@ def test_stop_reason_mapping_tool_use():
     assert _map_stop_reason("end_turn") == "stop"
 
 
-def test_output_config_injected_for_adaptive_thinking():
+def test_adaptive_thinking_is_declared_by_typed_adapter_config() -> None:
     from loushang.ai.protocols._anthropic import AnthropicMessagesProtocol
 
     base = AnthropicMessagesProtocol()
-    # 伪模型ID包含 opus-4-6 / opus-4-8 -> 支持自适应思考
-    assert base.supports_adaptive_thinking("claude-opus-4-6-latest") is True
-    assert base.supports_adaptive_thinking("claude-opus-4-8-latest") is True
-    # 映射 effort
-    assert base.map_thinking_level_to_effort("high", "claude-opus-4-6") == "high"
-    assert base.map_thinking_level_to_effort("xhigh", "claude-opus-4-8") == "xhigh"
-    assert base.map_thinking_level_to_effort("xhigh", "claude-opus-4-6") == "max"
-    assert base.map_thinking_level_to_effort("max", "claude-opus-4-8") == "max"
-    assert base.map_thinking_level_to_effort("future", "claude-opus-4-8") is None
+    adaptive = AnthropicMessagesConfig(
+        thinking_mode="adaptive",
+        reasoning_effort_map={
+            "high": "high",
+            "xhigh": "max",
+        },
+    )
+    budgeted = AnthropicMessagesConfig(thinking_mode="budgeted")
+
+    assert base.supports_adaptive_thinking(adaptive) is True
+    assert base.supports_adaptive_thinking(budgeted) is False
+    assert base.supports_adaptive_thinking(None) is False
+    assert base.map_thinking_level_to_effort("high", adaptive) == "high"
+    assert base.map_thinking_level_to_effort("xhigh", adaptive) == "max"
+    assert base.map_thinking_level_to_effort("future", adaptive) is None
+    assert base.map_thinking_level_to_effort("high", budgeted) is None
+    assert base.map_thinking_level_to_effort(None, adaptive) is None
 
 
-def test_anthropic_provider_sends_opus_48_xhigh_adaptive_thinking(
+def test_anthropic_provider_sends_sonnet_5_xhigh_adaptive_thinking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _fake_anthropic_module(monkeypatch, [SimpleNamespace(type="message_stop")])
     provider = AnthropicMessagesAdapter()
+    options = CallOptions(
+        auth=ApiKeyAuth("test-key"),
+        reasoning=ReasoningOptions(effort="xhigh"),
+    )
+    request = make_provider_request(
+        _Model(id="claude-sonnet-5", max_tokens=8192, reasoning=True),
+        api="anthropic-messages",
+        options=options,
+        adapter_config=AnthropicMessagesConfig(
+            thinking_mode="adaptive",
+            reasoning_effort_map={"xhigh": "xhigh"},
+        ),
+        reasoning_enabled=True,
+        reasoning_effort="xhigh",
+    )
 
     asyncio.run(
         _collect_parts(
             _invoke_raw_parts(
                 provider,
-                _Model(id="claude-opus-4-8", max_tokens=8192),
+                request.model,
                 {
                     "messages": [
                         UserMessage(role="user", content="hello", timestamp=0.0)
                     ]
                 },
-                CallOptions(
-                    auth=ApiKeyAuth("test-key"),
-                    reasoning=ReasoningOptions(effort="xhigh"),
-                ),
+                options,
+                request,
             )
         )
     )

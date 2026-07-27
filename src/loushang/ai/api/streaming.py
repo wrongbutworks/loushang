@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from loushang.ai.api_registry import get_default_api_provider_registry
+from loushang.ai.api_registry import get_default_api_registry
 from loushang.ai.auth.credentials import AuthCredential
 from loushang.ai.auth.resolver import resolve_auth
-from loushang.ai.bootstrap import register_builtin_ai_providers
+from loushang.ai.bootstrap import register_builtin_api_adapters
 from loushang.ai.context import NormalizedContext, normalize_context_result
 from loushang.ai.diagnostics import NormalizationDiagnostic
 from loushang.ai.errors import UnsupportedCapabilityError
@@ -25,6 +25,7 @@ from loushang.ai.provider.invocation import (
     call_api_provider_stream,
     validate_provider_request,
 )
+from loushang.ai.provider_registry import get_default_provider_registry
 from loushang.ai.structured import (
     StructuredOutputOptions,
     StructuredOutputResult,
@@ -184,11 +185,11 @@ def _validate_capability(
         )
 
 
-def _resolve_api_provider_registry():
-    default_registry = get_default_api_provider_registry()
-    if not default_registry.list_api_providers():
-        register_builtin_ai_providers(default_registry)
-    return default_registry
+def _resolve_provider_registry():
+    default_registry = get_default_api_registry()
+    if not default_registry.list_api_adapters():
+        register_builtin_api_adapters(default_registry)
+    return get_default_provider_registry()
 
 
 def _validate_call_options(options: object | None) -> CallOptions | None:
@@ -197,8 +198,8 @@ def _validate_call_options(options: object | None) -> CallOptions | None:
     raise TypeError("options must be CallOptions")
 
 
-def _supports_structured_output_mapping(provider: object) -> bool:
-    return bool(getattr(provider, "supports_structured_output", False))
+def _supports_structured_output_mapping(adapter: object) -> bool:
+    return bool(getattr(adapter, "supports_structured_output", False))
 
 
 def _resolve_pairing_mode(options) -> PairingMode:
@@ -291,14 +292,15 @@ async def _start_stream(
         require_stream=require_stream,
     )
     _validate_explicit_adapter_config(resolved_model, options)
-    provider = _resolve_api_provider_registry().get_api_provider(
-        resolved_model.api or ""
+    adapter = _resolve_provider_registry().resolve_api_adapter(
+        resolved_model.provider_id,
+        resolved_model.api or "",
     )
-    resolved = normalize_provider_request_for_api(provider.api, resolved)
-    validate_provider_request(provider, resolved)
+    resolved = normalize_provider_request_for_api(adapter.api, resolved)
+    validate_provider_request(adapter, resolved)
     if get_structured_output_options(
         options
-    ) is not None and not _supports_structured_output_mapping(provider):
+    ) is not None and not _supports_structured_output_mapping(adapter):
         raise UnsupportedCapabilityError(
             f"Provider API {resolved_model.api!r} does not support structured output mapping",
             provider=resolved_model.provider_id,
@@ -309,7 +311,7 @@ async def _start_stream(
                 "api": resolved_model.api,
             },
         )
-    return await call_api_provider_stream(provider, resolved)
+    return await call_api_provider_stream(adapter, resolved)
 
 
 async def stream(

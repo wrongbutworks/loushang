@@ -112,7 +112,7 @@ def test_credential_source_registry_is_independent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "loushang.ai.auth.sources.registry._default_registry",
+        "loushang.ai.auth.registry._default_registry",
         AuthExtensionRegistry(),
     )
     source = _FakeSource()

@@ -48,7 +48,7 @@ def test_builtin_catalog_includes_verified_curated_routes() -> None:
     openai = registry.get_model("openai", "openai-responses", "gpt-5.5")
     coding = registry.get_model("openai", "coding-responses", "gpt-5.5")
     anthropic = registry.get_model(
-        "anthropic", "anthropic-messages", "claude-sonnet-4-6"
+        "anthropic", "anthropic-messages", "claude-sonnet-5"
     )
     qianfan = registry.get_model("baidu-qianfan", "openai-completions-cn", "ernie-5.1")
     stepfun = registry.get_model("stepfun", "openai-completions", "step-3.7-flash")
