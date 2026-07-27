@@ -1,3 +1,9 @@
+from .authorization import (
+    AuthorizedWorkspaceAction,
+    WorkspaceActionExecutor,
+    WorkspaceActionObservation,
+    execute_workspace_tool_action,
+)
 from .bash import (
     BashOperations,
     BashSpawnContext,
@@ -137,6 +143,7 @@ __all__ = [
     "BashToolDetails",
     "BashToolInput",
     "BashToolOptions",
+    "AuthorizedWorkspaceAction",
     "DownloadingExternalToolResolver",
     "ExternalToolDownloadTransport",
     "EditEntry",
@@ -190,6 +197,8 @@ __all__ = [
     "WorkspaceToolRegistry",
     "WorkspaceToolProfile",
     "WorkspaceToolRuntimeSettings",
+    "WorkspaceActionExecutor",
+    "WorkspaceActionObservation",
     "WriteOperations",
     "EditOperations",
     "FindOperations",
@@ -228,6 +237,7 @@ __all__ = [
     "emit_tool_update",
     "enforce_tool_policy",
     "ensure_external_tool",
+    "execute_workspace_tool_action",
     "get_managed_external_tool_install",
     "get_tool_text_output",
     "is_tool_aborted",

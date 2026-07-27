@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, TypeVar, cast
 
 from loushang.harness.approval import ApprovalResolver
 from loushang.harness.authorization import (
@@ -18,6 +19,16 @@ from loushang.harness.policy import ToolPolicySubject
 
 from .policy import ToolPolicyEvaluator, enforce_tool_policy
 
+T = TypeVar("T")
+WorkspaceActionExecutor = Callable[
+    ["AuthorizedWorkspaceAction"],
+    T | Awaitable[T],
+]
+WorkspaceActionObservation = Callable[
+    ["AuthorizedWorkspaceAction"],
+    object | Awaitable[object],
+]
+
 
 @dataclass(frozen=True, slots=True)
 class AuthorizedWorkspaceAction:
@@ -28,7 +39,7 @@ class AuthorizedWorkspaceAction:
     execution_profile: EffectiveExecutionProfile | None = None
 
 
-async def authorize_workspace_tool_action(
+async def _authorize_workspace_tool_action(
     policy_engine: ToolPolicyEvaluator | object | None,
     *,
     tool_name: str,
@@ -77,6 +88,77 @@ async def authorize_workspace_tool_action(
         fingerprint=action.fingerprint,
         execution_profile=effective,
     )
+
+
+async def execute_workspace_tool_action(
+    policy_engine: ToolPolicyEvaluator | object | None,
+    *,
+    tool_name: str,
+    arguments: Mapping[str, Any],
+    executor: WorkspaceActionExecutor[T],
+    on_authorized: WorkspaceActionObservation | None = None,
+    cwd: str | None = None,
+    policy_subject: ToolPolicySubject | None = None,
+    approval_resolver: ApprovalResolver | None = None,
+    tool_call_id: str | None = None,
+    audit_sink: Any = None,
+    execution_environment: object | None = None,
+    execution_profile_ceiling: EffectiveExecutionProfile | None = None,
+) -> T:
+    """Authorize and execute one frozen action through the same gateway.
+
+    ``on_authorized`` is an observation-only presentation hook. Tool effects
+    belong exclusively in ``executor``.
+    """
+
+    action = await _authorize_workspace_tool_action(
+        policy_engine,
+        tool_name=tool_name,
+        arguments=arguments,
+        cwd=cwd,
+        policy_subject=policy_subject,
+        approval_resolver=approval_resolver,
+        tool_call_id=tool_call_id,
+        audit_sink=audit_sink,
+        execution_environment=execution_environment,
+        execution_profile_ceiling=execution_profile_ceiling,
+    )
+    _revalidate_authorized_action(action)
+    if on_authorized is not None:
+        hook_result = on_authorized(action)
+        if inspect.isawaitable(hook_result):
+            await hook_result
+    return await _execute_authorized_workspace_tool_action(action, executor=executor)
+
+
+async def _execute_authorized_workspace_tool_action(
+    action: AuthorizedWorkspaceAction,
+    *,
+    executor: WorkspaceActionExecutor[T],
+) -> T:
+    """Revalidate one immutable action immediately before invoking its executor."""
+
+    _revalidate_authorized_action(action)
+    result = executor(action)
+    if inspect.isawaitable(result):
+        return await cast(Awaitable[T], result)
+    return result
+
+
+def _revalidate_authorized_action(action: AuthorizedWorkspaceAction) -> None:
+    if not isinstance(action, AuthorizedWorkspaceAction):
+        raise TypeError("action must be an AuthorizedWorkspaceAction")
+    fingerprint = _fingerprint(action.tool_name, action.arguments, action.cwd)
+    if fingerprint != action.fingerprint:
+        raise ExecutionAuthorizationError(
+            "authorized action changed before execution"
+        )
+    if action.execution_profile is not None:
+        _validate_path_authority(
+            action.tool_name,
+            action.arguments,
+            action.execution_profile,
+        )
 
 
 def _fingerprint(
@@ -150,4 +232,9 @@ def _validate_path_authority(
         )
 
 
-__all__ = ["AuthorizedWorkspaceAction", "authorize_workspace_tool_action"]
+__all__ = [
+    "AuthorizedWorkspaceAction",
+    "WorkspaceActionExecutor",
+    "WorkspaceActionObservation",
+    "execute_workspace_tool_action",
+]

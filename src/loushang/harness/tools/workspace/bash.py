@@ -1,6 +1,6 @@
 import inspect
 import os
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from typing import Any, NotRequired, Protocol, TypedDict
 
@@ -21,7 +21,10 @@ from loushang.harness.workspace.exec import (
     materialize_exec_request,
 )
 
-from .authorization import authorize_workspace_tool_action
+from .authorization import (
+    AuthorizedWorkspaceAction,
+    execute_workspace_tool_action,
+)
 from .builtin_renderers import render_bash_call, render_bash_result
 from .context import ToolContextProvider
 from .policy import (
@@ -273,27 +276,6 @@ class _BashToolExecute:
             spawn_hook=self.spawn_hook,
         )
         exec_request = materialize_exec_request(exec_request)
-        execution_profile = await _enforce_bash_policy(
-            self.policy_engine,
-            tool_call_id=tool_call_id,
-            exec_request=exec_request,
-            arguments=request_params,
-            approval_resolver=self.approval_resolver,
-            audit_sink=getattr(context, "event_sink", None),
-            assume_shell=isinstance(request_params.get("command"), str),
-            execution_profile_ceiling=getattr(
-                getattr(context, "exec_service", None),
-                "execution_profile",
-                None,
-            ),
-        )
-        if execution_profile is not None:
-            exec_request = replace(
-                exec_request,
-                execution_profile=execution_profile,
-            )
-
-        await emit_tool_update(on_update, AgentToolResult(content=[], details=None))
         partial_output = _BashPartialOutput()
 
         async def _forward_exec_update(update: ExecOutputChunk) -> None:
@@ -303,11 +285,41 @@ class _BashToolExecute:
                 partial_result,
             )
 
-        result = await _execute_bash_operations(
-            selected_bash_operations,
-            exec_request,
-            signal=signal,
-            on_update=_forward_exec_update,
+        async def on_authorized(_action: AuthorizedWorkspaceAction) -> None:
+            await emit_tool_update(
+                on_update,
+                AgentToolResult(content=[], details=None),
+            )
+
+        def execute(action: AuthorizedWorkspaceAction) -> Awaitable[ExecResult]:
+            authorized_request = exec_request
+            if action.execution_profile is not None:
+                authorized_request = replace(
+                    authorized_request,
+                    execution_profile=action.execution_profile,
+                )
+            return _execute_bash_operations(
+                selected_bash_operations,
+                authorized_request,
+                signal=signal,
+                on_update=_forward_exec_update,
+            )
+
+        result = await _execute_bash_action(
+            self.policy_engine,
+            tool_call_id=tool_call_id,
+            exec_request=exec_request,
+            arguments=request_params,
+            approval_resolver=self.approval_resolver,
+            executor=execute,
+            on_authorized=on_authorized,
+            audit_sink=getattr(context, "event_sink", None),
+            assume_shell=isinstance(request_params.get("command"), str),
+            execution_profile_ceiling=getattr(
+                getattr(context, "exec_service", None),
+                "execution_profile",
+                None,
+            ),
         )
         if result.timed_out:
             raise TimeoutError(
@@ -380,81 +392,99 @@ def _shell_command(
     return (shell, "-lc", command)
 
 
-async def _enforce_bash_policy(
+@dataclass(frozen=True, slots=True)
+class _LegacyBashPolicyAdapter:
+    policy_engine: object
+    exec_request: ExecRequest
+
+    async def evaluate(self, _subject: object):
+        return await evaluate_legacy_policy_method(
+            self.policy_engine,
+            "evaluate_action",
+            tool_name="bash",
+            exec_request=self.exec_request,
+        )
+
+
+async def _execute_bash_action(
     policy_engine: ToolPolicyEvaluator | object | None,
     *,
     tool_call_id: str,
     exec_request: ExecRequest,
     arguments: dict[str, Any],
     approval_resolver: ApprovalResolver | None,
+    executor: Callable[
+        [AuthorizedWorkspaceAction],
+        ExecResult | Awaitable[ExecResult],
+    ],
+    on_authorized: Callable[
+        [AuthorizedWorkspaceAction],
+        object | Awaitable[object],
+    ]
+    | None = None,
     audit_sink: object | None = None,
     assume_shell: bool = False,
     execution_profile_ceiling: EffectiveExecutionProfile | None = None,
-) -> EffectiveExecutionProfile | None:
-    if policy_engine is None:
-        return execution_profile_ceiling
-    evaluate = get_policy_method(policy_engine, "evaluate")
-    if callable(evaluate) or callable(
-        get_policy_method(policy_engine, "evaluate_tool_call")
-    ):
-        execution_environment = exec_request.effective_environment
-        assert execution_environment is not None
-        command_subject = normalize_command_subject(
-            exec_request.command,
-            cwd=exec_request.cwd,
-            assume_shell=assume_shell,
-            stdin=exec_request.stdin,
-            executable_search_path=executable_search_path_from_env(
-                execution_environment,
-                default=os.defpath,
-            ),
-            environment_overrides=execution_environment,
-            environment_is_complete=True,
-        )
-        effective_arguments = dict(arguments)
-        effective_arguments["command"] = (
-            command_subject.shell_payload
-            if assume_shell and command_subject.shell_payload is not None
-            else exec_request.command
-        )
-        if not assume_shell and command_subject.shell_payload is not None:
-            effective_arguments["shell_payload"] = command_subject.shell_payload
-        effective_arguments["cwd"] = exec_request.cwd
-        if exec_request.stdin is not None:
-            effective_arguments["stdin"] = exec_request.stdin
-        if exec_request.env or "env" in arguments:
-            effective_arguments["env"] = exec_request.env
-        policy_subject = build_tool_policy_subject(
-            tool_name="bash",
-            arguments=effective_arguments,
-            cwd=exec_request.cwd,
-            command=command_subject,
-        )
-        action = await authorize_workspace_tool_action(
-            policy_engine,
-            tool_name="bash",
-            arguments=effective_arguments,
-            cwd=exec_request.cwd,
-            policy_subject=policy_subject,
-            approval_resolver=approval_resolver,
-            tool_call_id=tool_call_id,
-            audit_sink=audit_sink,
-            execution_environment=execution_environment,
-            execution_profile_ceiling=execution_profile_ceiling,
-        )
-        return action.execution_profile
-    decision = await evaluate_legacy_policy_method(
-        policy_engine,
-        "evaluate_action",
-        tool_name="bash",
-        exec_request=exec_request,
+) -> ExecResult:
+    execution_environment = exec_request.effective_environment
+    assert execution_environment is not None
+    command_subject = normalize_command_subject(
+        exec_request.command,
+        cwd=exec_request.cwd,
+        assume_shell=assume_shell,
+        stdin=exec_request.stdin,
+        executable_search_path=executable_search_path_from_env(
+            execution_environment,
+            default=os.defpath,
+        ),
+        environment_overrides=execution_environment,
+        environment_is_complete=True,
     )
-    if decision.disposition == "deny":
-        raise PermissionError(decision.reason or "Command denied by policy")
-    if decision.disposition == "ask":
-        reason = decision.reason or "Command requires approval"
-        raise PermissionError(reason)
-    return execution_profile_ceiling
+    effective_arguments = dict(arguments)
+    effective_arguments["command"] = (
+        command_subject.shell_payload
+        if assume_shell and command_subject.shell_payload is not None
+        else exec_request.command
+    )
+    if not assume_shell and command_subject.shell_payload is not None:
+        effective_arguments["shell_payload"] = command_subject.shell_payload
+    effective_arguments["cwd"] = exec_request.cwd
+    if exec_request.stdin is not None:
+        effective_arguments["stdin"] = exec_request.stdin
+    if exec_request.env or "env" in arguments:
+        effective_arguments["env"] = exec_request.env
+    policy_subject = build_tool_policy_subject(
+        tool_name="bash",
+        arguments=effective_arguments,
+        cwd=exec_request.cwd,
+        command=command_subject,
+    )
+    resolved_policy_engine = policy_engine
+    if policy_engine is not None:
+        evaluate = get_policy_method(policy_engine, "evaluate")
+        evaluate_tool_call = get_policy_method(
+            policy_engine,
+            "evaluate_tool_call",
+        )
+        if not callable(evaluate) and not callable(evaluate_tool_call):
+            resolved_policy_engine = _LegacyBashPolicyAdapter(
+                policy_engine,
+                exec_request,
+            )
+    return await execute_workspace_tool_action(
+        resolved_policy_engine,
+        tool_name="bash",
+        arguments=effective_arguments,
+        executor=executor,
+        on_authorized=on_authorized,
+        cwd=exec_request.cwd,
+        policy_subject=policy_subject,
+        approval_resolver=approval_resolver,
+        tool_call_id=tool_call_id,
+        audit_sink=audit_sink,
+        execution_environment=execution_environment,
+        execution_profile_ceiling=execution_profile_ceiling,
+    )
 
 
 def _bash_parameters() -> dict[str, Any]:

@@ -10,7 +10,7 @@ from loushang.harness.approval import ApprovalResolver
 from loushang.harness.workspace.operations import ReadOperations, resolve_operation
 
 from .authoring import tool
-from .authorization import authorize_workspace_tool_action
+from .authorization import execute_workspace_tool_action
 from .builtin_renderers import render_read_call, render_read_result
 from .context import ToolContext
 from .normalize import tool_to_definition
@@ -139,11 +139,12 @@ def create_read_tool_definition(
         ctx: ToolContext,
     ) -> AgentToolResult[dict[str, Any]]:
         raise_if_operation_aborted(ctx.signal)
-        resolved = await _resolve_path(path, ctx, operations=ops)
-        await authorize_workspace_tool_action(
+        resolved = resolve_tool_path(path, cwd=ctx.cwd)
+        payload = await execute_workspace_tool_action(
             resolved_policy_engine,
             tool_name="read",
             arguments={"path": str(resolved)},
+            executor=lambda _action: _read_file_payload(resolved, operations=ops),
             cwd=ctx.cwd,
             approval_resolver=resolved_approval_resolver,
             tool_call_id=ctx.tool_call_id,
@@ -154,7 +155,6 @@ def create_read_tool_definition(
                 None,
             ),
         )
-        payload = await resolve_operation(ops.read_bytes(resolved))
         raise_if_operation_aborted(ctx.signal)
         mime_type = await _detect_supported_image_mime_type(
             resolved, payload, operations=ops
@@ -383,15 +383,16 @@ async def _resize_image_payload(
     )
 
 
-async def _resolve_path(
-    path: str, ctx: ToolContext, *, operations: ReadOperations
-) -> Path:
-    resolved = resolve_tool_path(path, cwd=ctx.cwd)
+async def _read_file_payload(
+    resolved: Path,
+    *,
+    operations: ReadOperations,
+) -> bytes:
     if not await resolve_operation(operations.exists(resolved)):
         raise FileNotFoundError(str(resolved))
     if not await resolve_operation(operations.is_file(resolved)):
         raise IsADirectoryError(str(resolved))
-    return resolved
+    return await resolve_operation(operations.read_bytes(resolved))
 
 
 def _decode_text_payload(path: Path, payload: bytes) -> str:

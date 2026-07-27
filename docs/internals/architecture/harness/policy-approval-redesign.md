@@ -1201,9 +1201,14 @@ adapter. When a session execution ceiling is bound, the gateway resolves a
 per-action `EffectiveExecutionProfile` beneath it; read/write/edit validate the
 canonical path against that profile, and Bash carries it on the materialized
 `ExecRequest` so the Coding Sandbox intersects and enforces it. The legacy
-adapter remains the decision backend.
-The remaining slice is to make the executor callback and immediate pre-execute
-revalidation owned by the gateway itself.
+adapter remains the decision backend. The gateway now owns the executor
+callback for all four tools and revalidates the frozen fingerprint plus path
+authority immediately before invoking it. Its optional `on_authorized` hook is
+observation-only and is revalidated on both sides; tool effects belong only in
+the executor. This closes the application-level authorization/execution
+separation. Descriptor-safe filesystem operations and backend containment
+remain responsible for operating-system races after an asynchronous executor
+has begun.
 
 Exit gate:
 

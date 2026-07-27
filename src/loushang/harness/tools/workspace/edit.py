@@ -9,7 +9,7 @@ from loushang.harness.workspace.mutation_queue import with_file_mutation_queue
 from loushang.harness.workspace.operations import EditOperations, resolve_operation
 
 from .authoring import tool
-from .authorization import authorize_workspace_tool_action
+from .authorization import execute_workspace_tool_action
 from .builtin_renderers import render_edit_call, render_edit_result
 from .context import ToolContext
 from .edit_diff import (
@@ -82,10 +82,26 @@ def create_edit_tool_definition(
     ) -> AgentToolResult[dict[str, Any]]:
         resolved = resolve_tool_path(path, cwd=ctx.cwd)
         validated_edits = _validate_edits(edits)
-        await authorize_workspace_tool_action(
+
+        async def execute_edit(_action: object) -> tuple[str, str]:
+            raise_if_operation_aborted(ctx.signal)
+            async with with_file_mutation_queue(str(resolved)):
+                original = await _read_existing_text(resolved, operations=ops)
+                raise_if_operation_aborted(ctx.signal)
+                updated = apply_text_edits(
+                    original,
+                    validated_edits,
+                    path=str(resolved),
+                )
+                await _write_exact_text(resolved, updated, operations=ops)
+                raise_if_operation_aborted(ctx.signal)
+            return original, updated
+
+        original, updated = await execute_workspace_tool_action(
             resolved_policy_engine,
             tool_name="edit",
             arguments={"path": str(resolved), "edits": validated_edits},
+            executor=execute_edit,
             cwd=ctx.cwd,
             approval_resolver=resolved_approval_resolver,
             tool_call_id=ctx.tool_call_id,
@@ -96,13 +112,6 @@ def create_edit_tool_definition(
                 None,
             ),
         )
-        raise_if_operation_aborted(ctx.signal)
-        async with with_file_mutation_queue(str(resolved)):
-            original = await _read_existing_text(resolved, operations=ops)
-            raise_if_operation_aborted(ctx.signal)
-            updated = apply_text_edits(original, validated_edits, path=str(resolved))
-            await _write_exact_text(resolved, updated, operations=ops)
-            raise_if_operation_aborted(ctx.signal)
         diff = build_unified_diff(str(resolved), original, updated)
         return AgentToolResult(
             content=[

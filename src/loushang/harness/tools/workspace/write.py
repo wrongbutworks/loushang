@@ -8,7 +8,7 @@ from loushang.harness.workspace.mutation_queue import with_file_mutation_queue
 from loushang.harness.workspace.operations import WriteOperations, resolve_operation
 
 from .authoring import tool
-from .authorization import authorize_workspace_tool_action
+from .authorization import execute_workspace_tool_action
 from .builtin_renderers import render_write_call, render_write_result
 from .context import ToolContext
 from .normalize import tool_to_definition
@@ -72,10 +72,24 @@ def create_write_tool_definition(
     ) -> AgentToolResult[dict[str, Any]]:
         resolved = resolve_tool_path(path, cwd=ctx.cwd)
         _validate_content(content)
-        await authorize_workspace_tool_action(
+
+        async def execute_write(_action: object) -> tuple[str, int]:
+            raise_if_operation_aborted(ctx.signal)
+            async with with_file_mutation_queue(str(resolved)):
+                operation = await _write_text_payload(
+                    resolved,
+                    content,
+                    operations=ops,
+                )
+                raise_if_operation_aborted(ctx.signal)
+                bytes_written = len(content.encode("utf-8"))
+            return operation, bytes_written
+
+        operation, bytes_written = await execute_workspace_tool_action(
             resolved_policy_engine,
             tool_name="write",
             arguments={"path": str(resolved), "content": content},
+            executor=execute_write,
             cwd=ctx.cwd,
             approval_resolver=resolved_approval_resolver,
             tool_call_id=ctx.tool_call_id,
@@ -86,11 +100,6 @@ def create_write_tool_definition(
                 None,
             ),
         )
-        raise_if_operation_aborted(ctx.signal)
-        async with with_file_mutation_queue(str(resolved)):
-            operation = await _write_text_payload(resolved, content, operations=ops)
-            raise_if_operation_aborted(ctx.signal)
-            bytes_written = len(content.encode("utf-8"))
         return AgentToolResult(
             content=[
                 TextPart(
