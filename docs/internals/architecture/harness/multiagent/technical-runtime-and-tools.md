@@ -257,12 +257,12 @@ close_agent
 
 | Tool | Semantics |
 |---|---|
-| `spawn_agent` | Asynchronously create an admitted child task, inject its first prompt, and return its path. Results arrive later as a completion notice. |
+| `spawn_agent` | Asynchronously create an admitted child task, inject its first prompt, and return its canonical path. A failed call creates no child. Results arrive later as a completion notice. |
 | `send_message` | Deliver a message. A running target receives it at the appropriate queue boundary; an open idle or terminal target is automatically awakened for its next turn. |
 | `wait_agent` | Wait for the caller's input activity (completion notice, agent message, or user steering); it does not poll a target or return hidden partial output. |
 | `list_agents` | List the current live session tree visible to the caller's authority scope, with status, progress, and summary. |
 | `interrupt_agent` | Abort the target's current turn while retaining an open execution when policy allows. |
-| `close_agent` | Recursively close a target and its descendants; this releases session-owned resources. |
+| `close_agent` | Recursively close a target and its descendants; this releases session-owned resources and open-agent capacity. Terminal children remain open and reusable until this explicit close. |
 
 The stable core input to `spawn_agent` is deliberately small:
 
@@ -293,15 +293,37 @@ chosen by the model. A supplied `cwd` must be an existing directory under the
 Product's allowed roots. The same general request is represented by deck,
 canvas, or artifact references in non-Coding products.
 
+Workspace sharing and Git checkout identity are independent. The target model
+uses named profiles over the valid combinations:
+
+```text
+parent + current   -> children share the parent worktree
+agent + detached  -> one child owns an isolated artifact worktree
+agent + branch    -> one durable worker owns a branch-backed worktree
+group + branch    -> one child group shares a branch-backed worktree
+```
+
+A branch without a separate worktree is not isolation. Phase two implements
+only `parent + current` and `agent + detached`; the branch-backed profiles are
+reserved for later Work/group ownership and do not imply current merge, commit,
+push, PR, or group-lifecycle support. The detailed ownership, artifact, apply,
+and cleanup design is in
+[Workspace Collaboration And Git Handoff](workspace-collaboration-and-git-handoff.md).
+
 The implemented phase-two model tool does not yet accept either field
 directly. `AgentTypeSpec.workspace_mode` selects inherited or isolated policy;
 Coding's `implementation_worker` and `test_runner` force isolated managed
 worktrees. Coding's explicitly admitted `shared_implementation_worker` instead
 uses the parent session's already-authorized, resolved `cwd`, so it edits the
 same worktree and branch and can see existing uncommitted changes. It is
-single-writer per parent and must not overlap writes with the parent or another
-worker. This is not arbitrary `cwd` attachment: model-supplied paths remain
-deferred until their allowed-root policy and user-facing authority are
+bounded by the Product's normal child concurrency limit rather than a
+single-writer limit. The parent must assign explicit, disjoint file or
+responsibility ownership; workers must not revert peer changes, and the parent
+must not edit a worker-owned file while that worker is running. Same-file or
+tightly coupled changes stay serial or use isolated worktrees. This is a
+Codex-style orchestration contract, not a generic filesystem lock or automatic
+merge protocol. It is also not arbitrary `cwd` attachment: model-supplied paths
+remain deferred until their allowed-root policy and user-facing authority are
 implemented.
 
 Tool exposure is per agent type. An explorer may have no spawn or close tool;
@@ -326,7 +348,8 @@ AgentFact
   kind: spawned | started | activity | progress | terminal | closed
   agent_path, parent_path, agent_type, status
   progress: AgentProgress | None
-  workspace_ref, artifact_refs, change_set_ref
+  workspace_ref, artifact_refs
+  change_set_ref              # transitional compatibility; Coding leaves null
   terminal: {final_message, usage, duration_ms} | None
 ```
 
@@ -335,10 +358,12 @@ agent incarnation and run round. Completion, failure, explicit stop, cleanup,
 or a racing observer may all discover a terminal state, but exactly one
 structured completion notice is published for that round. The session input
 facade inserts that notice into the parent's system mailbox. The notice
-includes the retained `workspace_ref` and opaque artifact/change references,
+includes the retained `workspace_ref` and opaque artifact references,
 so a parent can locate a worker's output without reading its raw sidechain
-transcript. `change_set_ref` is a provider-interpreted reference; there is no
-additional Product-specific public type at this boundary.
+transcript. The transitional `change_set_ref` remains a nullable,
+provider-interpreted compatibility field, but Coding's target Git path leaves
+it empty and uses immutable `artifact_refs`; there is no additional
+Product-specific public type at this boundary.
 
 The phase-one cancellation policy is `link_parent_cancel = false`: an
 asynchronous background child survives cancellation of its parent turn. The

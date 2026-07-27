@@ -175,22 +175,22 @@ class _WorkspaceLeases:
     async def acquire(self, request: WorkspaceLeaseRequest) -> WorkspaceLease:
         self.acquired.append(request)
         return WorkspaceLease(
-            workspace_ref="coding-worktree:test",
+            workspace_ref="git-workspace:test",
             execution_ref=str(self.root),
         )
 
     async def snapshot(self, _lease: WorkspaceLease) -> WorkspaceLeaseSnapshot:
         return WorkspaceLeaseSnapshot(
-            workspace_ref="coding-worktree:test",
-            change_set_ref="git-branch:test" if self.changed else None,
+            workspace_ref="git-workspace:test",
+            artifact_refs=("git-artifact:test",) if self.changed else (),
             changed=self.changed,
         )
 
     async def release(self, _lease: WorkspaceLease) -> WorkspaceLeaseSnapshot:
         self.released += 1
         return WorkspaceLeaseSnapshot(
-            workspace_ref="coding-worktree:test" if self.changed else None,
-            change_set_ref="git-branch:test" if self.changed else None,
+            workspace_ref="git-workspace:test" if self.changed else None,
+            artifact_refs=("git-artifact:test",) if self.changed else (),
             changed=self.changed,
             retained=self.changed,
         )
@@ -325,7 +325,7 @@ def test_coding_phase_two_types_offer_isolated_and_shared_write_workers() -> Non
     assert shared_worker is not None
     assert shared_worker.workspace_mode == "inherit"
     assert shared_worker.allowed_tools == worker.allowed_tools
-    assert shared_worker.maximum_children == 1
+    assert shared_worker.maximum_children == 2
     assert test_runner is not None
     assert test_runner.workspace_mode == "isolated"
     assert "bash" in test_runner.allowed_tools
@@ -349,6 +349,15 @@ def test_coding_multiagent_prompt_names_the_admitted_roles_and_wait_discipline()
     assert "tools: bash, read, grep, find, ls" in prompt
     assert "`shared_implementation_worker`" in prompt
     assert "directly in the current worktree and branch" in prompt
+    assert "maximum open children" in prompt
+    assert "maximum concurrent children" not in prompt
+    assert "A failed spawn creates no child" in prompt
+    assert "do not wait for it" in prompt
+    assert "remain open, addressable, and count against open-child limits" in prompt
+    assert "After one-shot fan-out and aggregation, close children" in prompt
+    assert "explicit ownership of files or responsibility" in prompt
+    assert "write scopes are disjoint" in prompt
+    assert "must not revert others' edits" in prompt
 
 
 def test_coding_explorer_context_allows_investigative_bash_without_write_tools() -> (
@@ -598,7 +607,7 @@ def test_factory_runs_isolated_types_in_a_lease_and_reports_changes(
     async def scenario() -> None:
         request = _request(spec=spec)
         driver = await factory.create_driver(request)
-        assert driver.workspace_ref == "coding-worktree:test"
+        assert driver.workspace_ref == "git-workspace:test"
         driver.deliver(
             AgentInputMessage(
                 message_id="initial",
@@ -611,8 +620,9 @@ def test_factory_runs_isolated_types_in_a_lease_and_reports_changes(
         result = await driver.run_round(round_id=1, mode="prompt")
         await driver.dispose()
 
-        assert result.workspace_ref == "coding-worktree:test"
-        assert result.change_set_ref == "git-branch:test"
+        assert result.workspace_ref == "git-workspace:test"
+        assert result.artifact_refs == ("git-artifact:test",)
+        assert result.change_set_ref is None
         assert driver.released_workspace is not None
         assert driver.released_workspace.retained is True
 

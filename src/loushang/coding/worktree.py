@@ -1,10 +1,10 @@
-"""Coding's managed Git-worktree implementation of workspace leases."""
+"""Coding adapter for persistent Harness Git workspace handoff."""
 
 from __future__ import annotations
 
-import asyncio
+import os
+import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
@@ -14,21 +14,100 @@ from loushang.harness.multiagent import (
     WorkspaceLeaseRequest,
     WorkspaceLeaseSnapshot,
 )
-from loushang.harness.workspace.exec import ExecRequest, ExecService
-from loushang.harness.workspace.git import find_git_paths
+from loushang.harness.workspace.exec import ExecRequest, ExecResult, ExecService
+from loushang.harness.workspace.git_handoff import (
+    GitWorkspaceManager,
+    GitWorkspaceRecord,
+)
 
 _UuidFactory = Callable[[], str]
 
 
-@dataclass(frozen=True, slots=True)
-class _GitWorktreeState:
-    repo_dir: Path
-    path: Path
-    branch: str
+def default_coding_workspace_state_root() -> Path:
+    """Return Coding's durable Product state root outside project worktrees."""
+
+    configured = os.environ.get("XDG_STATE_HOME")
+    base = (
+        Path(configured).expanduser()
+        if configured
+        else Path.home() / ".local" / "state"
+    )
+    return (base / "loushang" / "coding" / "git-workspaces").resolve()
+
+
+def create_coding_git_workspace_manager(
+    *,
+    cwd: str | Path,
+    exec_service: ExecService | None = None,
+    state_root: str | Path | None = None,
+    managed_root: str | Path | None = None,
+    uuid_factory: _UuidFactory | None = None,
+    timeout_seconds: float = 60.0,
+) -> GitWorkspaceManager:
+    root = (
+        Path(state_root).expanduser().resolve()
+        if state_root is not None
+        else default_coding_workspace_state_root()
+    )
+    checkouts = (
+        Path(managed_root).expanduser().resolve()
+        if managed_root is not None
+        else root / "checkouts"
+    )
+    return GitWorkspaceManager(
+        cwd=cwd,
+        state_root=root,
+        managed_root=checkouts,
+        exec_service=exec_service or _standalone_git_exec_service(),
+        uuid_factory=uuid_factory,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def _standalone_git_exec_service() -> ExecService:
+    """Bounded backend for workspace-only CLI processes without a session host."""
+
+    def execute(request: ExecRequest, **_kwargs: object) -> ExecResult:
+        environment = dict(request.effective_environment or os.environ.items())
+        try:
+            result = subprocess.run(
+                request.command,
+                cwd=request.cwd,
+                env=environment,
+                input=(
+                    request.stdin.encode("utf-8", errors="surrogateescape")
+                    if request.stdin is not None
+                    else None
+                ),
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=request.timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as error:
+            return ExecResult(
+                exit_code=-1,
+                stdout=_subprocess_text(error.stdout),
+                stderr=_subprocess_text(error.stderr),
+                timed_out=True,
+            )
+        return ExecResult(
+            exit_code=result.returncode,
+            stdout=_subprocess_text(result.stdout),
+            stderr=_subprocess_text(result.stderr),
+        )
+
+    return ExecService(backend=execute)
+
+
+def _subprocess_text(value: str | bytes | None) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="surrogateescape")
+    return value or ""
 
 
 class CodingGitWorktreeLeasePort(WorkspaceLeasePort):
-    """Allocate isolated Coding children from the current committed HEAD."""
+    """Translate admitted Coding leases into Product-neutral Git mechanics."""
 
     def __init__(
         self,
@@ -36,6 +115,7 @@ class CodingGitWorktreeLeasePort(WorkspaceLeasePort):
         cwd: str | Path,
         exec_service: ExecService | None = None,
         lease_root: str | Path | None = None,
+        state_root: str | Path | None = None,
         uuid_factory: _UuidFactory | None = None,
         timeout_seconds: float = 60.0,
     ) -> None:
@@ -45,173 +125,77 @@ class CodingGitWorktreeLeasePort(WorkspaceLeasePort):
         if timeout_seconds <= 0:
             raise ValueError("worktree timeout_seconds must be positive")
         self._cwd = resolved_cwd
-        self._exec = exec_service or ExecService()
-        self._lease_root = (
-            Path(lease_root).expanduser().resolve()
-            if lease_root is not None
-            else resolved_cwd / ".loushang" / "worktrees"
-        )
-        self._uuid_factory = uuid_factory or (lambda: uuid4().hex[:10])
+        self._exec = exec_service
+        self._state_root = state_root
+        self._managed_root = lease_root
+        self._uuid_factory = uuid_factory or (lambda: uuid4().hex[:12])
         self._timeout_seconds = timeout_seconds
-        self._states: dict[str, _GitWorktreeState] = {}
-        self._lock = asyncio.Lock()
+        self._manager_instance: GitWorkspaceManager | None = None
+
+    @property
+    def manager(self) -> GitWorkspaceManager:
+        if self._manager_instance is None:
+            self._manager_instance = create_coding_git_workspace_manager(
+                cwd=self._cwd,
+                exec_service=self._exec,
+                state_root=self._state_root,
+                managed_root=self._managed_root,
+                uuid_factory=self._uuid_factory,
+                timeout_seconds=self._timeout_seconds,
+            )
+        return self._manager_instance
 
     async def acquire(self, request: WorkspaceLeaseRequest) -> WorkspaceLease:
         if request.mode != "isolated":
             raise ValueError("Coding worktree leases require isolated mode")
-        git_paths = find_git_paths(self._cwd)
-        if git_paths is None:
-            raise RuntimeError(
-                f"isolated Coding agents require a Git repository: {self._cwd}"
-            )
-        slug = _lease_slug(request, self._uuid_factory())
-        branch = f"loushang-agent/{slug}"
-        path = (self._lease_root / slug).resolve()
-        try:
-            path.relative_to(self._lease_root.resolve())
-        except ValueError as error:  # pragma: no cover - slug validation is structural
-            raise RuntimeError("allocated worktree escaped its managed root") from error
-        workspace_ref = f"coding-worktree:{branch}"
-        state = _GitWorktreeState(
-            repo_dir=git_paths.repo_dir,
-            path=path,
-            branch=branch,
+        record = await self.manager.acquire(
+            owner_ref=str(request.agent_ref),
+            name_hint="-".join(request.agent_ref.path.parts),
         )
-        async with self._lock:
-            if workspace_ref in self._states:
-                raise RuntimeError(f"duplicate worktree lease: {workspace_ref}")
-            self._lease_root.mkdir(parents=True, exist_ok=True)
-            result = await self._git(
-                state.repo_dir,
-                "worktree",
-                "add",
-                "-b",
-                state.branch,
-                str(state.path),
-                "HEAD",
-            )
-            if result.exit_code != 0:
-                await self._cleanup_failed_acquire(state)
-                raise RuntimeError(
-                    "failed to create Coding worktree: "
-                    + _command_error_text(result.stderr, result.stdout)
-                )
-            self._states[workspace_ref] = state
         return WorkspaceLease(
-            workspace_ref=workspace_ref,
-            execution_ref=str(path),
+            workspace_ref=record.workspace_ref,
+            execution_ref=record.path,
         )
 
     async def snapshot(self, lease: WorkspaceLease) -> WorkspaceLeaseSnapshot:
-        async with self._lock:
-            state = self._require_state(lease)
-            result = await self._git(
-                state.path,
-                "status",
-                "--porcelain=v1",
-                "--untracked-files=all",
-            )
-            if result.exit_code != 0:
-                raise RuntimeError(
-                    "failed to inspect Coding worktree: "
-                    + _command_error_text(result.stderr, result.stdout)
-                )
-            changed = bool(result.stdout.strip())
-            return WorkspaceLeaseSnapshot(
-                workspace_ref=lease.workspace_ref,
-                change_set_ref=(f"git-branch:{state.branch}" if changed else None),
-                changed=changed,
-            )
+        self._require_execution_ref(lease)
+        capture = await self.manager.capture(lease.workspace_ref)
+        return WorkspaceLeaseSnapshot(
+            workspace_ref=capture.record.workspace_ref,
+            artifact_refs=capture.artifact_refs,
+            changed=capture.changed,
+            retained=capture.changed,
+        )
 
     async def release(self, lease: WorkspaceLease) -> WorkspaceLeaseSnapshot:
-        async with self._lock:
-            state = self._require_state(lease)
-            status = await self._git(
-                state.path,
-                "status",
-                "--porcelain=v1",
-                "--untracked-files=all",
-            )
-            if status.exit_code != 0:
-                raise RuntimeError(
-                    "failed to inspect Coding worktree before release: "
-                    + _command_error_text(status.stderr, status.stdout)
-                )
-            changed = bool(status.stdout.strip())
-            if changed:
-                self._states.pop(lease.workspace_ref, None)
-                return WorkspaceLeaseSnapshot(
-                    workspace_ref=lease.workspace_ref,
-                    change_set_ref=f"git-branch:{state.branch}",
-                    changed=True,
-                    retained=True,
-                )
-            removed = await self._git(
-                state.repo_dir,
-                "worktree",
-                "remove",
-                "--force",
-                str(state.path),
-            )
-            if removed.exit_code != 0:
-                raise RuntimeError(
-                    "failed to release unchanged Coding worktree: "
-                    + _command_error_text(removed.stderr, removed.stdout)
-                )
-            deleted = await self._git(
-                state.repo_dir,
-                "branch",
-                "-D",
-                state.branch,
-            )
-            if deleted.exit_code != 0:
-                raise RuntimeError(
-                    "released worktree but failed to delete its temporary branch: "
-                    + _command_error_text(deleted.stderr, deleted.stdout)
-                )
-            self._states.pop(lease.workspace_ref, None)
+        self._require_execution_ref(lease)
+        record = await self.manager.release(lease.workspace_ref)
+        if record.status == "discarded":
             return WorkspaceLeaseSnapshot(workspace_ref=None)
+        changed = record.status in {
+            "retained",
+            "applied",
+            "needs_inspection",
+            "missing",
+        }
+        return WorkspaceLeaseSnapshot(
+            workspace_ref=record.workspace_ref,
+            artifact_refs=record.artifact_refs,
+            changed=changed,
+            retained=changed,
+        )
 
-    def _require_state(self, lease: WorkspaceLease) -> _GitWorktreeState:
-        state = self._states.get(lease.workspace_ref)
-        if state is None or str(state.path) != lease.execution_ref:
+    def _require_execution_ref(self, lease: WorkspaceLease) -> GitWorkspaceRecord:
+        record = self.manager.get(lease.workspace_ref)
+        if Path(record.path).resolve() != Path(lease.execution_ref).resolve():
             raise RuntimeError(
-                f"unknown or released worktree lease: {lease.workspace_ref}"
+                f"workspace execution reference changed: {lease.workspace_ref}"
             )
-        return state
-
-    async def _cleanup_failed_acquire(self, state: _GitWorktreeState) -> None:
-        await self._git(
-            state.repo_dir,
-            "worktree",
-            "remove",
-            "--force",
-            str(state.path),
-        )
-        await self._git(state.repo_dir, "branch", "-D", state.branch)
-
-    async def _git(self, cwd: Path, *args: str):
-        return await self._exec.execute(
-            ExecRequest(
-                command=("git", "--no-optional-locks", *args),
-                cwd=str(cwd),
-                timeout_seconds=self._timeout_seconds,
-            )
-        )
+        return record
 
 
-def _lease_slug(request: WorkspaceLeaseRequest, nonce: str) -> str:
-    normalized_nonce = "".join(
-        character for character in nonce.lower() if character.isalnum()
-    )
-    if not normalized_nonce:
-        raise ValueError("worktree nonce must contain letters or digits")
-    path = "-".join(request.agent_ref.path.parts)
-    return f"{path}-{request.agent_ref.incarnation}-{normalized_nonce}"[:100]
-
-
-def _command_error_text(stderr: str, stdout: str) -> str:
-    return stderr.strip() or stdout.strip() or "Git command failed"
-
-
-__all__ = ["CodingGitWorktreeLeasePort"]
+__all__ = [
+    "CodingGitWorktreeLeasePort",
+    "create_coding_git_workspace_manager",
+    "default_coding_workspace_state_root",
+]

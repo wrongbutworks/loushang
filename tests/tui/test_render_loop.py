@@ -29,6 +29,13 @@ from loushang.tui.core import (
     RenderLineSegmentLike,
     SegmentedRenderLines,
 )
+from loushang.tui.framework import (
+    ScreenRoot as OverlayScreenRoot,
+)
+from loushang.tui.framework import (
+    Surface,
+    SurfaceHost,
+)
 from loushang.tui.render_loop import DEFAULT_STRATEGY_ORDER, RenderPlanStrategyKind
 
 pytestmark = pytest.mark.tui_render_contract
@@ -627,7 +634,7 @@ def test_append_update_scrolls_below_visible_viewport_without_repaint() -> None:
     assert step.frame.screen_after.visible_lines == ("line 3", "line 4", "line 5")
 
 
-def test_protected_append_update_scrolls_above_cursor_suffix() -> None:
+def test_protected_append_update_commits_departing_history_once() -> None:
     previous_lines = (
         "line 1",
         "line 2",
@@ -658,8 +665,10 @@ def test_protected_append_update_scrolls_above_cursor_suffix() -> None:
     step = runtime.render_now()
 
     step.assert_operation_class("protected_append_update")
-    assert TerminalOperation.set_scroll_region(top=0, bottom=1) in step.diagnostics.operations
-    assert TerminalOperation.reset_scroll_region() in step.diagnostics.operations
+    assert all(
+        operation.kind not in {"set_scroll_region", "reset_scroll_region"}
+        for operation in step.diagnostics.operations
+    )
     assert step.diagnostics.append_start == 2
     assert step.diagnostics.appended_lines == 2
     assert step.frame is not None
@@ -675,6 +684,21 @@ def test_protected_append_update_scrolls_above_cursor_suffix() -> None:
     )
     assert step.frame.screen_after.cursor_row == 5
     assert step.frame.screen_after.cursor_column == 2
+    assert (
+        step.frame.screen_after.scrollback_lines
+        + step.frame.screen_after.visible_lines
+    ) == (
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "",
+        "working 1.00s",
+        "",
+        "›",
+        "",
+        "status running",
+    )
 
 
 def test_non_pure_protected_append_repaints_instead_of_replaying_changed_turn() -> None:
@@ -724,6 +748,44 @@ def test_non_pure_protected_append_repaints_instead_of_replaying_changed_turn() 
         "status running",
     )
     assert step.frame.screen_after.visible_lines.count("• Ran wait_agent 0.00s") == 1
+    assert (
+        step.frame.screen_after.scrollback_lines
+        + step.frame.screen_after.visible_lines
+    ) == (
+        "› calculate",
+        "• Ran wait_agent took 1.32s",
+        "• First result: 91",
+        "• Ran wait_agent 0.00s",
+        "",
+        "working 2.00s",
+        "",
+        "›",
+        "",
+        "status running",
+    )
+
+
+def test_page_surface_round_trip_does_not_replay_base_into_scrollback() -> None:
+    base_lines = tuple(f"base-{index}" for index in range(10))
+    host = SurfaceHost()
+    root = OverlayScreenRoot(base=StaticRoot(base_lines), surface_host=host)
+    port = FakeTerminalPort(size=TerminalSize(columns=30, rows=5))
+    runtime = TuiRuntime(render_loop=RenderLoop(root), terminal=port)
+    runtime.render_now()
+
+    handle = host.open_surface(
+        Surface(
+            renderable=StaticRoot(
+                tuple(f"agents-page-{index}" for index in range(5))
+            ),
+            presentation="page",
+        )
+    )
+    runtime.render_now()
+    handle.close()
+    runtime.render_now()
+
+    assert port.screen.scrollback_lines + port.screen.visible_lines == base_lines
 
 
 def test_protected_append_update_waits_until_logical_screen_is_full() -> None:
@@ -1185,6 +1247,20 @@ def test_unsafe_viewport_forces_recovery_repaint_instead_of_changed_range_update
     assert step.diagnostics.repaint_kind == "recovery"
     assert step.diagnostics.repaint_reason == "external_stdout"
     assert step.diagnostics.changed_line_range == (1, 1)
+
+
+def test_recovery_repaint_does_not_replay_existing_history_into_scrollback() -> None:
+    lines = tuple(f"history-{index}" for index in range(10))
+    root = StaticRoot(lines)
+    port = FakeTerminalPort(size=TerminalSize(columns=30, rows=5))
+    render_loop = RenderLoop(root)
+    runtime = TuiRuntime(render_loop=render_loop, terminal=port)
+    runtime.render_now()
+
+    render_loop.mark_viewport_unsafe("external_stdout")
+    runtime.render_now()
+
+    assert port.screen.scrollback_lines + port.screen.visible_lines == lines
 
 
 def test_changed_range_above_viewport_rewrites_managed_viewport_without_clearing_screen() -> None:

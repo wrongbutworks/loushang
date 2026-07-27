@@ -90,11 +90,14 @@ _ROLE_PROMPTS: Mapping[str, str] = {
     ),
     "shared_implementation_worker": (
         "You are an implementation worker sharing the parent Coding session's "
-        "current worktree and branch. Make only the requested bounded change, "
-        "preserve unrelated and uncommitted edits, run focused validation, and "
-        "report the files changed and remaining risks. Do not commit, merge, "
-        "publish, or modify files outside the assigned scope. Avoid overlapping "
-        "writes with the parent or another worker."
+        "current worktree and branch. Other agents may modify this worktree "
+        "concurrently. Make only the requested bounded change within your "
+        "explicitly assigned files or responsibility, preserve unrelated and "
+        "uncommitted edits, and adapt to changes made by others instead of "
+        "reverting them. Run focused validation and report the files changed and "
+        "remaining risks. Do not commit, merge, publish, or modify files outside "
+        "the assigned scope. Stop and report the conflict if your required write "
+        "scope overlaps the parent or another worker."
     ),
     "test_runner": (
         "You are a test runner in a system-managed isolated Git worktree. Run the "
@@ -176,7 +179,7 @@ def coding_agent_types(
                     "write",
                     "edit",
                 ),
-                maximum_children=1,
+                maximum_children=maximum_children,
                 workspace_mode="inherit",
             ),
             AgentTypeSpec(
@@ -209,15 +212,16 @@ def coding_multiagent_system_prompt(
             "implement a bounded change in a managed isolated Git worktree"
         ),
         "shared_implementation_worker": (
-            "implement one bounded change directly in the current worktree and "
-            "branch; preserve unrelated edits and avoid overlapping writers"
+            "implement a bounded change directly in the current worktree and "
+            "branch; multiple workers require explicitly assigned, disjoint "
+            "files or responsibilities"
         ),
         "test_runner": "run and diagnose checks in a managed isolated Git worktree",
     }
     type_lines = "\n".join(
         f"- `{spec.name}`: {role_descriptions.get(spec.name, 'bounded Coding task')}; "
         f"tools: {', '.join(spec.allowed_tools) or 'none'}; "
-        f"maximum concurrent children: {spec.maximum_children}"
+        f"maximum open children: {spec.maximum_children}"
         for spec in agent_types.values()
     )
     return (
@@ -228,14 +232,30 @@ def coding_multiagent_system_prompt(
         "and `send_message` for a follow-up. Use `interrupt_agent` or "
         "`close_agent` only for agents you own. Child completion notices enter "
         "your system mailbox, separate from editable follow-up and steering input "
-        "queues, and must be synthesized into your answer.\n\n"
+        "queues, and must be synthesized into your answer. A successful "
+        "`spawn_agent` call returns the canonical child path. A failed spawn "
+        "creates no child: do not claim it succeeded, do not wait for it, and do "
+        "not invent a path to close. Instead inspect the structured error and "
+        "`list_agents`.\n\n"
         "Choose an agent type whose listed tools cover the delegated task. "
         "A completed child run means that its model turn ended; it is not proof "
-        "that the requested task succeeded. Verify that each child returned the "
-        "requested evidence before aggregating it. Preserve result provenance: "
+        "that the requested task succeeded. Completed, failed, and interrupted "
+        "children remain open, addressable, and count against open-child limits "
+        "until `close_agent` releases them. Reuse an existing child with "
+        "`send_message` when continuity is useful. After one-shot fan-out and "
+        "aggregation, close children that are no longer needed. If spawning "
+        "reaches a limit, list the tree, then reuse or close an existing child "
+        "before retrying. Verify that each child returned the requested evidence "
+        "before aggregating it. Preserve result provenance: "
         "never attribute a root fallback, a different child result, or a new "
         "computation to the original child. If required results are missing, "
-        "delegate again to a capable type or report the result as incomplete.\n\n"
+        "delegate again to a capable type or report the result as incomplete. "
+        "For shared implementation work, assign each child explicit ownership "
+        "of files or responsibility and run children concurrently only when "
+        "their write scopes are disjoint. Tell each shared worker that it is not "
+        "alone in the worktree, must not revert others' edits, and must adapt to "
+        "concurrent changes. Do not edit an assigned file in the parent while "
+        "its worker is running.\n\n"
         "Admitted child types:\n"
         f"{type_lines}"
     )
@@ -467,6 +487,7 @@ class _CodingSubagentDriver:
         return replace(
             result,
             workspace_ref=snapshot.workspace_ref,
+            artifact_refs=snapshot.artifact_refs,
             change_set_ref=snapshot.change_set_ref,
         )
 

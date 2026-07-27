@@ -95,6 +95,11 @@ def test_common_tool_pack_registers_and_executes_the_live_session_surface() -> N
         )
 
         definitions = {definition.name: definition for definition in pack.definitions()}
+        assert "failed call creates no child" in definitions["spawn_agent"].description
+        assert "free open-agent capacity" in definitions["close_agent"].description
+        assert "remain open until explicitly closed" in (
+            definitions["close_agent"].description
+        )
         spawned = await definitions["spawn_agent"].execute(
             "spawn-1",
             {

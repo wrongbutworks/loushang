@@ -176,19 +176,53 @@ class MultiAgentControl:
             self._registry.open_count + self._registry.reserved_count
             >= self._limits.max_open_agents
         ):
+            open_agents = self._registry.records()
             raise MultiAgentError(
                 "agent_limit_reached",
-                f"agent tree already has {self._limits.max_open_agents} open agents",
+                f"agent tree already has {self._limits.max_open_agents} open "
+                "agents; completed, failed, and interrupted agents remain open "
+                "until close_agent releases them",
+                details={
+                    "limit": self._limits.max_open_agents,
+                    "open_count": self._registry.open_count,
+                    "reserved_count": self._registry.reserved_count,
+                    "open_agents": tuple(
+                        _capacity_occupant(record) for record in open_agents
+                    ),
+                    "recovery": (
+                        "Use list_agents, then reuse an existing child with "
+                        "send_message or close an unneeded child before retrying "
+                        "spawn_agent."
+                    ),
+                },
             )
-        same_type_children = sum(
-            record.agent_type == agent_type
+        same_type_children = tuple(
+            record
             for record in self._registry.children(parent.ref)
+            if record.agent_type == agent_type
         )
-        if same_type_children >= spec.maximum_children:
+        if len(same_type_children) >= spec.maximum_children:
             raise MultiAgentError(
                 "agent_type_limit_reached",
                 f"agent type {agent_type!r} allows at most "
-                f"{spec.maximum_children} open children below {parent.path}",
+                f"{spec.maximum_children} open children below {parent.path}; "
+                "completed, failed, and interrupted children remain open until "
+                "close_agent releases them",
+                details={
+                    "parent_path": str(parent.path),
+                    "agent_type": agent_type,
+                    "limit": spec.maximum_children,
+                    "open_count": len(same_type_children),
+                    "open_children": tuple(
+                        _capacity_occupant(record)
+                        for record in same_type_children
+                    ),
+                    "recovery": (
+                        "Use list_agents, then reuse an existing child with "
+                        "send_message or close an unneeded child before retrying "
+                        "spawn_agent."
+                    ),
+                },
             )
 
         with self._registry.reserve(
@@ -287,6 +321,7 @@ class MultiAgentControl:
         record = self._registry.update(
             ref,
             workspace_ref=snapshot.workspace_ref,
+            artifact_refs=snapshot.artifact_refs,
             change_set_ref=snapshot.change_set_ref,
             update_workspace=True,
         )
@@ -589,6 +624,15 @@ class MultiAgentControl:
                 consumer(notice)
             except Exception:
                 continue
+
+
+def _capacity_occupant(record: AgentRecord) -> dict[str, object]:
+    return {
+        "path": str(record.path),
+        "agent_type": record.agent_type,
+        "status": record.status,
+        "round_id": record.round_id,
+    }
 
 
 def _remove_consumer(

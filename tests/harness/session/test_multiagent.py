@@ -505,6 +505,23 @@ def test_completion_notice_to_child_parent_is_queue_only_by_default() -> None:
     asyncio.run(scenario())
 
 
+def test_notice_drain_removes_an_already_finished_task_without_spinning() -> None:
+    async def scenario() -> None:
+        runtime = SessionMultiAgentRuntime(
+            control=_control(),
+            child_factory=_Factory(),
+        )
+        task = asyncio.create_task(asyncio.sleep(0))
+        await task
+        runtime._notice_tasks.add(task)
+
+        await asyncio.wait_for(runtime.drain_notice_deliveries(), timeout=0.1)
+
+        assert runtime._notice_tasks == set()
+
+    asyncio.run(scenario())
+
+
 def test_follow_up_after_terminal_uses_the_same_tracked_handle() -> None:
     async def scenario() -> None:
         control = _control()

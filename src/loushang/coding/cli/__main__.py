@@ -23,6 +23,10 @@ from loushang.coding.cli.multiagent import (
     extract_multiagent_argv,
     run_coding_multiagent_command,
 )
+from loushang.coding.cli.workspace import (
+    extract_workspace_argv,
+    run_coding_workspace_command,
+)
 from loushang.coding.continuity import (
     bind_coding_continuity,
     shutdown_coding_continuity,
@@ -239,8 +243,18 @@ async def run_cli(
     tui_runner=run_coding_tui,
     continuity_runner=run_continuity_picker,
     multiagent_runner=run_coding_multiagent_command,
+    workspace_runner=run_coding_workspace_command,
 ) -> int:
     raw_argv = tuple(argv or ())
+    workspace_argv = extract_workspace_argv(raw_argv)
+    if workspace_argv is not None:
+        return await workspace_runner(
+            workspace_argv,
+            stdin=stdin or sys.stdin,
+            stdout=stdout or sys.stdout,
+            stderr=stderr or sys.stderr,
+            cwd=cwd,
+        )
     multiagent_argv = extract_multiagent_argv(raw_argv)
     if multiagent_argv is not None:
         return await multiagent_runner(

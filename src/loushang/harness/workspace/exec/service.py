@@ -92,7 +92,7 @@ class ExecService:
                 chunk = await stream.readline()
                 if not chunk:
                     break
-                text = chunk.decode()
+                text = chunk.decode("utf-8", errors="surrogateescape")
                 sink.append(text)
                 output_chunk = ExecOutputChunk(stream=stream_name, text=text)
                 output_capture.append(output_chunk)
@@ -110,7 +110,11 @@ class ExecService:
         wait_task = asyncio.create_task(process.wait())
 
         if process.stdin is not None:
-            input_bytes = request.stdin.encode() if request.stdin is not None else b""
+            input_bytes = (
+                request.stdin.encode("utf-8", errors="surrogateescape")
+                if request.stdin is not None
+                else b""
+            )
             process.stdin.write(input_bytes)
             await process.stdin.drain()
             process.stdin.close()
@@ -229,7 +233,7 @@ class _StreamCapture:
     def append(self, text: str) -> None:
         if not text:
             return
-        self._total_bytes += len(text.encode("utf-8"))
+        self._total_bytes += len(_output_bytes(text))
         self._total_lines += len(text.splitlines())
         if self.capture_full_output:
             self.chunks.append(text)
@@ -237,7 +241,7 @@ class _StreamCapture:
 
         self._ensure_artifact_handle().write(text)
         self.chunks.append(text)
-        self._chunk_bytes += len(text.encode("utf-8"))
+        self._chunk_bytes += len(_output_bytes(text))
         self._trim_rolling_chunks()
 
     def close(self) -> None:
@@ -262,13 +266,18 @@ class _StreamCapture:
             dir=self.artifact_dir,
         )
         self._artifact_path = path
-        self._artifact_handle = os.fdopen(fd, "w", encoding="utf-8")
+        self._artifact_handle = os.fdopen(
+            fd,
+            "w",
+            encoding="utf-8",
+            errors="surrogateescape",
+        )
         return self._artifact_handle
 
     def _trim_rolling_chunks(self) -> None:
         while self._chunk_bytes > self.rolling_max_bytes and len(self.chunks) > 1:
             removed = self.chunks.pop(0)
-            self._chunk_bytes -= len(removed.encode("utf-8"))
+            self._chunk_bytes -= len(_output_bytes(removed))
             self._rolled = True
         if self._chunk_bytes <= self.rolling_max_bytes or not self.chunks:
             return
@@ -279,7 +288,7 @@ class _StreamCapture:
             max_bytes=self.rolling_max_bytes,
         ).content
         self.chunks[0] = trimmed
-        self._chunk_bytes = len(trimmed.encode("utf-8"))
+        self._chunk_bytes = len(_output_bytes(trimmed))
         self._rolled = True
 
 
@@ -296,13 +305,13 @@ class _OutputCapture:
         self.chunks.append(chunk)
         if self.capture_full_output:
             return
-        self._chunk_bytes += len(chunk.text.encode("utf-8"))
+        self._chunk_bytes += len(_output_bytes(chunk.text))
         self._trim_rolling_chunks()
 
     def _trim_rolling_chunks(self) -> None:
         while self._chunk_bytes > self.rolling_max_bytes and len(self.chunks) > 1:
             removed = self.chunks.pop(0)
-            self._chunk_bytes -= len(removed.text.encode("utf-8"))
+            self._chunk_bytes -= len(_output_bytes(removed.text))
         if self._chunk_bytes <= self.rolling_max_bytes or not self.chunks:
             return
 
@@ -312,7 +321,7 @@ class _OutputCapture:
             max_bytes=self.rolling_max_bytes,
         ).content
         self.chunks[0] = ExecOutputChunk(stream=self.chunks[0].stream, text=trimmed)
-        self._chunk_bytes = len(trimmed.encode("utf-8"))
+        self._chunk_bytes = len(_output_bytes(trimmed))
 
 
 def _kill_process(process: asyncio.subprocess.Process) -> None:
@@ -384,12 +393,21 @@ def _write_output_artifact(
         prefix=f"loushang-exec-{stream_name}-", suffix=".log", dir=artifact_dir
     )
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        with os.fdopen(
+            fd,
+            "w",
+            encoding="utf-8",
+            errors="surrogateescape",
+        ) as handle:
             handle.write(content)
     except Exception:
         os.close(fd)
         raise
     return path
+
+
+def _output_bytes(content: str) -> bytes:
+    return content.encode("utf-8", errors="surrogateescape")
 
 
 __all__ = ["ExecBackend", "ExecService"]

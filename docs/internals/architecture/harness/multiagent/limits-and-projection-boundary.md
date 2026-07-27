@@ -65,7 +65,7 @@ LifecycleProjection 决定"**现在是什么状态、发生了什么**"（事实
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `max_concurrent_agents` | 保守小值（如 6，含 root） | 树级 open agent 上限 |
+| `max_open_agents` | 保守小值（如 6，含 root） | 树级 open agent 上限；终态 child 在显式 close 前仍计入 |
 | `max_spawn_depth` | 保守小值（如 3） | 递归防护兜底 |
 | `idle_eviction_timeout` | 二期 | 驻留超时 |
 | `wait_timeouts` | min 10s / max 1h / default 30s | wait 边界（Codex v2 同量级） |
@@ -84,6 +84,11 @@ pending ──首轮 run 开始──► running ──终态──► completed
 - `pending`：已注册未开跑（spawn 流水线内）；`running`：有活跃轮；
   `completed` / `failed`：终态（保持 open 可唤醒，ARD-002）；
   `interrupted`：被中断（保持 open）；`closed`：已关闭（不可寻址）。
+- `maximum_children` 和 `max_open_agents` 限制的是 **open residency**，
+  不是同时运行的 turn 数。一次性 fan-out 在汇总完成后必须显式
+  `close_agent`；需要连续上下文时则保留 child 并用 `send_message`
+  开始下一轮。失败的 `spawn_agent` 不创建 child，调用者不得等待或
+  关闭猜测出来的路径。
 - 推导来源：RunHandle 转接的 run 事件（turn_start → running；
   run result → completed/failed；interrupt → interrupted；close →
   closed）。projection 不监听模型内容，只映射 run 生命周期。
