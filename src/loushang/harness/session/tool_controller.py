@@ -20,6 +20,7 @@ from loushang.harness.tools.contribution import resolve_tool_contributions
 from loushang.harness.tools.core import ToolDefinition, project_tool_definition
 from loushang.harness.tools.workspace.context import ToolContext
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+from loushang.harness.workspace.exec import ExecService
 
 _DEFAULT_ACTIVE_TOOL_NAMES: tuple[str, ...] = (
     "read",
@@ -71,6 +72,7 @@ class SessionToolController:
     prompt_section_composer: PromptSectionComposer = field(
         default_factory=PromptSectionComposer
     )
+    get_exec_service: Callable[[], ExecService | None] | None = None
     _runtime: SessionToolRuntime = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -136,6 +138,11 @@ class SessionToolController:
             tool_call_id=tool_call_id,
             cwd=self.get_cwd(),
             diagnostics=self.get_diagnostics_service(),
+            exec_service=(
+                self.get_exec_service()
+                if self.get_exec_service is not None
+                else None
+            ),
             model=getattr(self.agent, "model", None),
             event_sink=(
                 self._emit_tool_audit_event

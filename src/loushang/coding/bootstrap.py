@@ -23,6 +23,7 @@ from loushang.coding.resource_runtime import (
     CodingResourceLoader as DefaultResourceLoader,
 )
 from loushang.coding.runtime import AgentSessionRuntime
+from loushang.coding.sandbox import bind_coding_sandbox_runtime
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
 from loushang.harness.bootstrap import (
@@ -174,7 +175,7 @@ def audit_cwd_bound_services(
     )
 
 
-def create_agent_session(
+def _create_agent_session(
     *,
     session_manager: SessionManager,
     model: Model | ModelSelection | None = None,
@@ -194,6 +195,7 @@ def create_agent_session(
     extension_flag_values: ExtensionFlagValues | None = None,
     approval_resolver: InteractiveApprovalResolver | None = None,
     enable_multiagent: bool = False,
+    sandbox_workspace_writable: bool = True,
 ) -> AgentSession:
     enable_multiagent_tools = (
         enable_multiagent
@@ -235,6 +237,15 @@ def create_agent_session(
         session_base_prompt: str,
         session_no_tools_mode: NoToolsMode | None,
     ) -> AgentSession:
+        base_exec_service = services.exec_service or ExecService()
+        sandbox_runtime = bind_coding_sandbox_runtime(
+            workspace_root=session_manager.get_cwd(),
+            writable_workspace=sandbox_workspace_writable,
+            settings=services.settings_manager.get_sandbox_settings(),
+            base_exec_service=base_exec_service,
+            diagnostics_service=services.diagnostics_service,
+            session_id=session_id,
+        )
         return AgentSession(
             agent=agent,
             session_manager=session_manager,
@@ -256,9 +267,10 @@ def create_agent_session(
             diagnostics_service=services.diagnostics_service,
             session_start_event=session_start_event,
             package_materializer=resolved_package_materializer,
-            exec_service=services.exec_service,
+            exec_service=sandbox_runtime.exec_service,
             approval_resolver=approval_resolver,
             capability_runtime=capability_runtime,
+            sandbox_runtime=sandbox_runtime,
         )
 
     result = _CODING_AGENT_PRODUCT_CONSTRUCTION.construct(
@@ -325,7 +337,7 @@ def create_agent_session(
                     exec_service=services.exec_service,
                 ),
                 runtime_builder=partial(
-                    create_agent_session_runtime,
+                    _create_agent_session_runtime,
                     stream_fn=stream_fn,
                     agent_factory=agent_factory,
                 ),
@@ -334,6 +346,50 @@ def create_agent_session(
             register_tools=enable_multiagent_tools,
         )
     return result.session
+
+
+def create_agent_session(
+    *,
+    session_manager: SessionManager,
+    model: Model | ModelSelection | None = None,
+    stream_fn: StreamFn | None = None,
+    system_prompt: str | None = None,
+    thinking_level: ThinkingLevel | None = None,
+    tools: list[AgentTool[Any]] | None = None,
+    tool_registry: WorkspaceToolRegistry | None = None,
+    allowed_tool_names: list[str] | None = None,
+    active_tool_names: list[str] | None = None,
+    no_tools: NoToolsMode | bool | None = None,
+    services: BootstrapServices | None = None,
+    agent_factory: AgentFactory = Agent,
+    session_start_event: SessionStartEvent | None = None,
+    package_materializer: PackageMaterializer | None = None,
+    append_system_prompt: list[str] | tuple[str, ...] | None = None,
+    extension_flag_values: ExtensionFlagValues | None = None,
+    approval_resolver: InteractiveApprovalResolver | None = None,
+    enable_multiagent: bool = False,
+) -> AgentSession:
+    return _create_agent_session(
+        session_manager=session_manager,
+        model=model,
+        stream_fn=stream_fn,
+        system_prompt=system_prompt,
+        thinking_level=thinking_level,
+        tools=tools,
+        tool_registry=tool_registry,
+        allowed_tool_names=allowed_tool_names,
+        active_tool_names=active_tool_names,
+        no_tools=no_tools,
+        services=services,
+        agent_factory=agent_factory,
+        session_start_event=session_start_event,
+        package_materializer=package_materializer,
+        append_system_prompt=append_system_prompt,
+        extension_flag_values=extension_flag_values,
+        approval_resolver=approval_resolver,
+        enable_multiagent=enable_multiagent,
+        sandbox_workspace_writable=True,
+    )
 
 
 def create_agent_session_from_services(
@@ -480,6 +536,65 @@ _CODING_AGENT_PRODUCT_CONSTRUCTION = AgentProductConstructionBinding[
 )
 
 
+def _create_agent_session_runtime(
+    *,
+    session_dir: Path,
+    model: Model | ModelSelection | None = None,
+    stream_fn: StreamFn | None = None,
+    system_prompt: str | None = None,
+    thinking_level: ThinkingLevel | None = None,
+    tools: list[AgentTool[Any]] | None = None,
+    tool_registry: WorkspaceToolRegistry | None = None,
+    allowed_tool_names: list[str] | None = None,
+    active_tool_names: list[str] | None = None,
+    no_tools: NoToolsMode | bool | None = None,
+    services: BootstrapServices | None = None,
+    services_factory: ServicesFactory | None = None,
+    agent_factory: AgentFactory = Agent,
+    persist: bool = True,
+    append_system_prompt: list[str] | tuple[str, ...] | None = None,
+    approval_resolver: InteractiveApprovalResolver | None = None,
+    enable_multiagent: bool = False,
+    sandbox_workspace_writable: bool = True,
+) -> AgentSessionRuntime:
+    fixed_services = services if services is not None else create_services()
+    return build_agent_product_session_runtime(
+        session_dir=Path(session_dir),
+        runtime_factory=AgentSessionRuntime,
+        fixed_services=fixed_services,
+        build_session=lambda session_manager, session_services, start_event: (
+            _create_agent_session(
+                session_manager=cast(SessionManager, session_manager),
+                model=model,
+                stream_fn=stream_fn,
+                system_prompt=system_prompt,
+                thinking_level=thinking_level,
+                tools=tools,
+                tool_registry=tool_registry,
+                allowed_tool_names=allowed_tool_names,
+                active_tool_names=active_tool_names,
+                no_tools=no_tools,
+                services=session_services,
+                agent_factory=agent_factory,
+                session_start_event=cast(SessionStartEvent | None, start_event),
+                append_system_prompt=append_system_prompt,
+                approval_resolver=approval_resolver,
+                enable_multiagent=enable_multiagent,
+                sandbox_workspace_writable=sandbox_workspace_writable,
+            )
+        ),
+        session_cwd=lambda manager: cast(SessionManager, manager).get_cwd(),
+        services_factory=services_factory,
+        persist=persist,
+        diagnostics_service=fixed_services.diagnostics_service,
+        on_non_persistent_session=lambda session: setattr(
+            session.agent,
+            "session_id",
+            None,
+        ),
+    )
+
+
 def create_agent_session_runtime(
     *,
     session_dir: Path,
@@ -500,40 +615,25 @@ def create_agent_session_runtime(
     approval_resolver: InteractiveApprovalResolver | None = None,
     enable_multiagent: bool = False,
 ) -> AgentSessionRuntime:
-    fixed_services = services if services is not None else create_services()
-    return build_agent_product_session_runtime(
-        session_dir=Path(session_dir),
-        runtime_factory=AgentSessionRuntime,
-        fixed_services=fixed_services,
-        build_session=lambda session_manager, session_services, start_event: (
-            create_agent_session(
-                session_manager=cast(SessionManager, session_manager),
-                model=model,
-                stream_fn=stream_fn,
-                system_prompt=system_prompt,
-                thinking_level=thinking_level,
-                tools=tools,
-                tool_registry=tool_registry,
-                allowed_tool_names=allowed_tool_names,
-                active_tool_names=active_tool_names,
-                no_tools=no_tools,
-                services=session_services,
-                agent_factory=agent_factory,
-                session_start_event=cast(SessionStartEvent | None, start_event),
-                append_system_prompt=append_system_prompt,
-                approval_resolver=approval_resolver,
-                enable_multiagent=enable_multiagent,
-            )
-        ),
-        session_cwd=lambda manager: cast(SessionManager, manager).get_cwd(),
+    return _create_agent_session_runtime(
+        session_dir=session_dir,
+        model=model,
+        stream_fn=stream_fn,
+        system_prompt=system_prompt,
+        thinking_level=thinking_level,
+        tools=tools,
+        tool_registry=tool_registry,
+        allowed_tool_names=allowed_tool_names,
+        active_tool_names=active_tool_names,
+        no_tools=no_tools,
+        services=services,
         services_factory=services_factory,
+        agent_factory=agent_factory,
         persist=persist,
-        diagnostics_service=fixed_services.diagnostics_service,
-        on_non_persistent_session=lambda session: setattr(
-            session.agent,
-            "session_id",
-            None,
-        ),
+        append_system_prompt=append_system_prompt,
+        approval_resolver=approval_resolver,
+        enable_multiagent=enable_multiagent,
+        sandbox_workspace_writable=True,
     )
 
 

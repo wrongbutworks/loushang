@@ -61,6 +61,7 @@ from loushang.harness.session.runtime import (
 )
 from loushang.harness.session.settings import SessionSettingsBinding
 from loushang.harness.tools.core import ToolDefinition
+from loushang.harness.tools.workspace import ExecServiceBashOperations
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.transcript import (
     AgentTranscriptCompactionCapability,
@@ -113,6 +114,7 @@ class SessionCompositionPorts:
     session_start_event: SessionStartEvent
     footer_data_provider: object
     exec_service: ExecService
+    tool_exec_service: ExecService | None
     approval_resolver: object | None
     capability_runtime: object
 
@@ -282,6 +284,11 @@ def compose_session_runtime(ports: SessionCompositionPorts) -> SessionCompositio
             append_record=session.append_message,
             refresh_context=ports.refresh_agent_messages,
             before_execute=ports.before_bash,
+            operations=(
+                ExecServiceBashOperations(ports.tool_exec_service)
+                if ports.tool_exec_service is not None
+                else None
+            ),
         )
     )
 
@@ -580,6 +587,11 @@ def _build_tool_controller(ports: SessionCompositionPorts, diagnostics: SessionD
         base_prompt=ports.base_prompt,
         get_resource_bundle=ports.get_resource_bundle,
         get_diagnostics_service=lambda: ports.diagnostics_service,
+        get_exec_service=(
+            (lambda: ports.tool_exec_service)
+            if ports.tool_exec_service is not None
+            else None
+        ),
         emit_tool_audit_event=ports.dispatch_event,
         resource_activation_runtime=ports.capability_runtime.resource_runtime,
         prompt_section_composer=ports.capability_runtime.prompt_section_composer,

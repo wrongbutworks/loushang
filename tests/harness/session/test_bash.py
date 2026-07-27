@@ -82,3 +82,35 @@ def test_bash_runtime_executes_streams_and_records_context(tmp_path) -> None:
     command = transcript.entries[-1]
     assert isinstance(command, CommandExecutionRecord)
     assert command.command == "printf hi"
+
+
+def test_bash_runtime_injects_session_owned_operations() -> None:
+    selected_operations = object()
+    executed: list[dict[str, object]] = []
+
+    async def append_record(record: object) -> None:
+        del record
+
+    class BashTool:
+        async def execute(self, tool_call_id, params, signal=None, on_update=None):
+            del tool_call_id, signal, on_update
+            executed.append(params)
+            return AgentToolResult(
+                content=[TextPart(type="text", text="ok\n")],
+                details={"exit_code": 0},
+            )
+
+    runtime = BashExecutionRuntime(
+        BashExecutionPorts(
+            get_cwd=lambda: "/tmp/project",
+            get_definition=lambda: BashTool(),
+            create_call_id=lambda: "bash-session-1",
+            append_record=append_record,
+            refresh_context=lambda: None,
+            operations=selected_operations,
+        )
+    )
+
+    asyncio.run(runtime.execute("true"))
+
+    assert executed[0]["__operations"] is selected_operations

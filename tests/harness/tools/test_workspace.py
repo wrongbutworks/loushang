@@ -34,6 +34,49 @@ def test_workspace_read_tool_executes_without_product_adapter(tmp_path: Path) ->
     assert result.details["path"] == str(target.resolve())
 
 
+def test_bash_tool_uses_the_live_session_execution_service(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.tools.workspace import (
+        ToolContext,
+        create_bash_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecResult, ExecService
+
+    calls: list[object] = []
+
+    async def unexpected_backend(request, **kwargs):
+        del request, kwargs
+        raise AssertionError("the registry-time execution service must not run")
+
+    async def session_backend(request, **kwargs):
+        del kwargs
+        calls.append(request)
+        return ExecResult(exit_code=0, stdout="session service\n")
+
+    session_service = ExecService(backend=session_backend)
+    definition = create_bash_tool_definition(
+        exec_service=ExecService(backend=unexpected_backend)
+    )
+    tool = wrap_tool_definition(
+        definition,
+        context_provider=lambda *, tool_call_id: ToolContext(
+            tool_call_id=tool_call_id,
+            cwd=str(tmp_path),
+            exec_service=session_service,
+        ),
+    )
+
+    result = asyncio.run(
+        tool.execute("bash-session-1", {"command": ["example", "--version"]})
+    )
+
+    assert result.content[0].text == "session service\n"
+    assert len(calls) == 1
+    assert calls[0].cwd == str(tmp_path)
+
+
 @dataclass(frozen=True)
 class _Decision:
     disposition: Literal["allow", "deny", "ask"]

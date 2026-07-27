@@ -5,6 +5,56 @@ import json
 from io import StringIO
 
 
+def test_prompt_steps_commands_use_the_live_session_exec_service(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import loushang.coding.workflow.command as command_module
+    from loushang.harness.workspace.exec import ExecResult
+
+    calls: list[object] = []
+
+    class ExecService:
+        async def execute(self, request, **kwargs):
+            del kwargs
+            calls.append(request)
+            return ExecResult(exit_code=0, stdout="bound\n")
+
+    class Session:
+        def get_exec_service(self):
+            return ExecService()
+
+    async def fake_run_workflow_cli(**kwargs):
+        result = await kwargs["command_runner"](
+            "printf bound",
+            cwd=tmp_path,
+            timeout_s=5,
+        )
+        assert result.stdout == "bound\n"
+        return 0
+
+    monkeypatch.setattr(
+        command_module,
+        "run_workflow_cli",
+        fake_run_workflow_cli,
+    )
+
+    exit_code = asyncio.run(
+        command_module.run_prompt_steps_workflow(
+            runtime=object(),
+            session=Session(),
+            workflow_path=tmp_path / "unused.yaml",
+            cwd=tmp_path,
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+    )
+
+    assert exit_code == 0
+    assert len(calls) == 1
+    assert calls[0].cwd == str(tmp_path)
+
+
 def test_prompt_steps_command_prints_progress_before_waiting(tmp_path) -> None:
     from loushang.coding.workflow import run_prompt_steps_workflow
 

@@ -410,6 +410,7 @@ class SessionCommandExecutionRuntime:
     append_record: AppendCommandRecord
     refresh_context: ContextRefresher
     before_execute: CommandHook | None = None
+    operations: object | None = None
     _abort_controller: AbortController | None = field(default=None, init=False)
 
     @property
@@ -433,7 +434,9 @@ class SessionCommandExecutionRuntime:
         if self._abort_controller is not None:
             raise RuntimeError(f"{self.command_name} execution already in progress")
         effective_cwd = cwd or self.get_cwd()
-        selected_operations = operations
+        selected_operations = (
+            operations if operations is not None else self.operations
+        )
         if self.before_execute is not None:
             interception = await self.before_execute(
                 UserCommandRequest(

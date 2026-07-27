@@ -34,6 +34,7 @@ class BashExecutionPorts:
     refresh_context: ContextRefresher
     before_execute: CommandHook | None = None
     build_execution_params: CommandParametersBuilder | None = None
+    operations: object | None = None
 
 
 class BashExecutionRuntime:
@@ -50,6 +51,7 @@ class BashExecutionRuntime:
             append_record=ports.append_record,
             refresh_context=ports.refresh_context,
             before_execute=ports.before_execute,
+            operations=ports.operations,
         )
 
     @property

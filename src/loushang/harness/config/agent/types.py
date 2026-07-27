@@ -6,6 +6,7 @@ from typing import Literal, TypedDict
 from loushang.agent import ThinkingLevel
 from loushang.ai.model import ModelSelection
 from loushang.harness.resources.packages.source import PackageSourceConfig
+from loushang.harness.sandbox import SandboxSettings
 
 QueueMode = Literal["all", "one-at-a-time"]
 DoubleEscapeAction = Literal["fork", "tree", "none"]
@@ -140,6 +141,7 @@ class ControlConfig:
     warnings: WarningSettings = field(default_factory=WarningSettings)
     method: MethodSettings = field(default_factory=MethodSettings)
     tools: ToolSettings = field(default_factory=ToolSettings)
+    sandbox: SandboxSettings = field(default_factory=SandboxSettings)
     statusline: StatusLineControlSettings = field(
         default_factory=StatusLineControlSettings
     )
@@ -165,6 +167,7 @@ __all__ = [
     "MethodSettings",
     "QueueMode",
     "RetrySettings",
+    "SandboxSettings",
     "StatusLineAutoValue",
     "StatusLineControlSettings",
     "StatusLineSeparator",

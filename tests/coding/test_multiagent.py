@@ -496,6 +496,7 @@ def test_factory_builds_a_non_persistent_child_and_uses_existing_session_rounds(
     asyncio.run(scenario())
 
     assert captured["persist"] is False
+    assert captured["sandbox_workspace_writable"] is False
     assert captured["model"] == ModelSelection(provider="provider", model_id="model")
     assert captured["allowed_tool_names"] == ["read", "grep", "find", "ls"]
     assert captured["active_tool_names"] == ["read", "grep", "find", "ls"]
@@ -591,6 +592,12 @@ def test_factory_runs_isolated_types_in_a_lease_and_reports_changes(
         responses=[_assistant("Implemented.", input_tokens=3, output_tokens=4)]
     )
     runtime = _Runtime(session)
+    captured: dict[str, object] = {}
+
+    def build_runtime(**kwargs: object) -> _Runtime:
+        captured.update(kwargs)
+        return runtime
+
     spec = AgentTypeSpec(
         name="implementation_worker",
         allowed_tools=("read", "write"),
@@ -600,7 +607,7 @@ def test_factory_runs_isolated_types_in_a_lease_and_reports_changes(
         session_dir=tmp_path / "sessions",
         cwd=tmp_path,
         tool_registry=_tool_registry("read", "write"),
-        runtime_builder=lambda **_kwargs: runtime,
+        runtime_builder=build_runtime,
         workspace_leases=workspace,
     )
 
@@ -629,6 +636,7 @@ def test_factory_runs_isolated_types_in_a_lease_and_reports_changes(
     asyncio.run(scenario())
 
     assert runtime.create_cwds == [str(isolated)]
+    assert captured["sandbox_workspace_writable"] is True
     assert workspace.acquired[0].agent_type == "implementation_worker"
     assert workspace.released == 1
 

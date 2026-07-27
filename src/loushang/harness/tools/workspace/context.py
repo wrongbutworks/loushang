@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.workspace.exec import ExecService
 
 ToolEventSink = Callable[[Mapping[str, object]], Awaitable[None] | None]
 
@@ -17,6 +18,7 @@ class ToolContext:
     signal: object | None = None
     model: object | None = None
     event_sink: ToolEventSink | None = None
+    exec_service: ExecService | None = None
 
 
 class ToolContextProvider(Protocol):

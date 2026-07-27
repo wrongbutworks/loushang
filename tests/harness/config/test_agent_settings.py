@@ -140,6 +140,52 @@ def test_settings_manager_persists_method_settings_updates(tmp_path) -> None:
     )
 
 
+def test_settings_manager_loads_and_persists_sandbox_settings(tmp_path) -> None:
+    from loushang.harness.config.agent import SandboxSettings, SettingsManager
+
+    settings_path = tmp_path / "settings.json"
+    manager = SettingsManager(global_settings_path=settings_path)
+
+    assert manager.get_sandbox_settings() == SandboxSettings()
+
+    manager.set_sandbox_settings(
+        SandboxSettings(enabled=True, requirement="required"),
+        scope="global",
+    )
+    reloaded = SettingsManager(global_settings_path=settings_path)
+
+    assert reloaded.get_global_settings() == {
+        "sandbox": {"enabled": True, "requirement": "required"}
+    }
+    assert reloaded.get_sandbox_settings() == SandboxSettings(
+        enabled=True,
+        requirement="required",
+    )
+
+
+def test_settings_manager_recovers_from_invalid_sandbox_settings(tmp_path) -> None:
+    from loushang.harness.config.agent import SandboxSettings, SettingsManager
+
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps(
+            {
+                "thinking_level": "high",
+                "sandbox": {"enabled": False, "requirement": "required"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    manager = SettingsManager(global_settings_path=settings_path)
+
+    assert manager.get_settings().thinking_level == "high"
+    assert manager.get_sandbox_settings() == SandboxSettings()
+    errors = manager.drain_errors()
+    assert len(errors) == 1
+    assert "cannot be disabled" in errors[0].message
+
+
 def test_settings_manager_loads_statusline_settings_with_project_precedence(
     tmp_path,
 ) -> None:

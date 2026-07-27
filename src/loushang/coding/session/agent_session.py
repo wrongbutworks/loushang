@@ -29,6 +29,7 @@ from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
 from loushang.harness.resources.types import ResourceBundle
+from loushang.harness.sandbox import SandboxExecutionRuntime, SandboxStatus
 from loushang.harness.session import AgentProductSession
 from loushang.harness.session.changelog import read_changelog_for_cwd
 from loushang.harness.session.composition import sleep_for_retry
@@ -90,7 +91,9 @@ class AgentSession(AgentProductSession):
         exec_service: ExecService | None = None,
         approval_resolver: InteractiveApprovalResolver | None = None,
         capability_runtime: CapabilityCompositionRuntime | None = None,
+        sandbox_runtime: SandboxExecutionRuntime | None = None,
     ) -> None:
+        self._sandbox_runtime = sandbox_runtime
         resolved_capability_runtime = (
             capability_runtime
             or bind_capability_composition_runtime(CODING_CAPABILITY_PROFILE)
@@ -123,5 +126,23 @@ class AgentSession(AgentProductSession):
             session_start_event=session_start_event,
             api_provider_registry=api_provider_registry,
             exec_service=exec_service,
+            tool_exec_service=(
+                exec_service
+                if sandbox_runtime is not None
+                and sandbox_runtime.status().state != "disabled"
+                else None
+            ),
             approval_resolver=approval_resolver,
         )
+
+    def get_sandbox_status(self) -> SandboxStatus:
+        if self._sandbox_runtime is None:
+            return SandboxStatus(state="disabled")
+        return self._sandbox_runtime.status()
+
+    async def _dispose_session_runtime_profile(self) -> None:
+        try:
+            await super()._dispose_session_runtime_profile()
+        finally:
+            if self._sandbox_runtime is not None:
+                await self._sandbox_runtime.close()

@@ -105,6 +105,7 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
         session_start_event: SessionStartEvent | None = None,
         api_provider_registry: ApiProviderRegistry | None = None,
         exec_service: ExecService | None = None,
+        tool_exec_service: ExecService | None = None,
         approval_resolver: object | None = None,
     ) -> None:
         self.agent = agent
@@ -131,6 +132,7 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
         self.diagnostics_service = diagnostics_service
         self._package_materializer = package_materializer
         self._exec_service = exec_service or ExecService()
+        self._tool_exec_service = tool_exec_service
         self._capability_runtime = capability_runtime
         side_question_factory = capability_runtime.side_question_provider_factory
         self._side_question = (
@@ -326,6 +328,7 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
             session_start_event=self._session_start_event,
             footer_data_provider=self.footer_data_provider,
             exec_service=self._exec_service,
+            tool_exec_service=self._tool_exec_service,
             approval_resolver=self._approval_resolver,
             capability_runtime=capability_runtime,
             apply_context=self._apply_agent_transcript_context,
@@ -379,6 +382,11 @@ class AgentProductSession(AgentSessionAdapterMixin, SessionFacade):
 
     def get_context_usage(self):
         return serialize_context_usage_payload(super().get_context_usage())
+
+    def get_exec_service(self) -> ExecService:
+        """Return the live session execution service for Product-owned runners."""
+
+        return self._exec_service
 
     async def ask_side_question(
         self,

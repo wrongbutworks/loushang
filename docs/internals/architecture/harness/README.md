@@ -68,6 +68,10 @@ planning, work event persistence, or AI provider behavior.
   deterministic extension routing, neutral policy subjects and evaluator
   composition, pending approval lifecycle, and the Product adapters that retain
   risk defaults, result semantics, and presentation.
+- [Sandbox Runtime Boundary](sandbox-runtime-boundary.md) defines the optional,
+  disabled-by-default process containment service, its cross-platform
+  Protocols, centralized host detection and backend selection, existing
+  `ExecService` integration, and session/child lifecycle.
 - [Context Budget And Accounting Boundary](context-budget-accounting-boundary.md)
   defines deterministic compaction-budget and usage-estimate record ownership
   while keeping message estimation and compaction policy in product adapters.

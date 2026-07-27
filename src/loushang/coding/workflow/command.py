@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, TextIO, cast
 
 from loushang.coding.model_selection import ensure_usable_session_model
 from loushang.harness.scenario.cli import run_workflow_cli
@@ -34,7 +35,10 @@ async def run_prompt_steps_workflow(
         default_step_timeout_s=default_step_timeout_s,
         output_mode=output_mode,
         prepare_agent_session=ensure_usable_session_model,
-        command_runner=_run_coding_scenario_command,
+        command_runner=partial(
+            _run_coding_scenario_command,
+            exec_service=_session_exec_service(session),
+        ),
     )
 
 
@@ -43,8 +47,9 @@ async def _run_coding_scenario_command(
     *,
     cwd: Path,
     timeout_s: float | None,
+    exec_service: ExecService | None = None,
 ) -> CommandRunResult:
-    result = await ExecService().execute(
+    result = await (exec_service or ExecService()).execute(
         ExecRequest(
             command=("/bin/sh", "-c", command),
             cwd=str(cwd),
@@ -59,6 +64,14 @@ async def _run_coding_scenario_command(
             f"timed out after {timeout_s}s: {command}" if result.timed_out else None
         ),
     )
+
+
+def _session_exec_service(session: object | None) -> ExecService | None:
+    get_exec_service = getattr(session, "get_exec_service", None)
+    if not callable(get_exec_service):
+        return None
+    service = get_exec_service()
+    return cast(ExecService, service)
 
 
 __all__ = ["run_prompt_steps_workflow"]

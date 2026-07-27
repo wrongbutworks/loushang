@@ -357,6 +357,9 @@ class CodingSubagentFactory(SessionSubagentFactory):
                 active_tool_names=list(allowed_tools),
                 services=self._services,
                 persist=False,
+                sandbox_workspace_writable=_sandbox_workspace_is_writable(
+                    request.agent_type.name
+                ),
                 approval_resolver=(
                     cast(Any, plan.approval_resolver)
                     if plan is not None
@@ -379,6 +382,14 @@ class CodingSubagentFactory(SessionSubagentFactory):
             workspace_lease=workspace_lease,
             workspace_leases=self._workspace_leases,
         )
+
+
+def _sandbox_workspace_is_writable(agent_type: str) -> bool:
+    return agent_type in {
+        "implementation_worker",
+        "shared_implementation_worker",
+        "test_runner",
+    }
 
 
 def install_coding_multiagent_session(

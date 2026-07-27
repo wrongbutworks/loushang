@@ -1837,12 +1837,32 @@ def test_harness_workspace_symbols_are_not_top_level_exports() -> None:
         "ExecResult",
         "ExecService",
         "ExecUpdateCallback",
+        "LocalExecBackend",
         "TruncationResult",
         "truncate_head",
         "truncate_tail",
     }
 
     assert workspace_symbols.isdisjoint(set(harness.__all__))
+
+
+def test_harness_sandbox_symbols_are_not_top_level_exports() -> None:
+    import loushang.harness as harness
+
+    sandbox_symbols = {
+        "HostEnvironment",
+        "HostEnvironmentProbe",
+        "LocalHostEnvironmentProbe",
+        "LocalSandboxService",
+        "SandboxBackend",
+        "SandboxBackendRegistry",
+        "SandboxExecBackend",
+        "SandboxScope",
+        "SandboxService",
+        "SandboxSettings",
+    }
+
+    assert sandbox_symbols.isdisjoint(set(harness.__all__))
 
 
 def test_harness_contribution_symbols_are_not_top_level_exports() -> None:

@@ -35,7 +35,7 @@ class ExecBackend(Protocol):
 
 class ExecService:
     def __init__(self, *, backend: ExecBackend | None = None) -> None:
-        self._backend = backend
+        self._backend = backend if backend is not None else LocalExecBackend()
 
     async def execute(
         self,
@@ -45,14 +45,24 @@ class ExecService:
         on_update: ExecUpdateCallback | None = None,
     ) -> ExecResult:
         request = materialize_exec_request(request)
-        if self._backend is not None:
-            result = self._backend(request, signal=signal, on_update=on_update)
-            if inspect.isawaitable(result):
-                result = await result
-            if not isinstance(result, ExecResult):
-                raise TypeError("exec backend must return ExecResult")
-            return result
+        result = self._backend(request, signal=signal, on_update=on_update)
+        if inspect.isawaitable(result):
+            result = await result
+        if not isinstance(result, ExecResult):
+            raise TypeError("exec backend must return ExecResult")
+        return result
 
+
+class LocalExecBackend:
+    """Run one already-materialized request as a local child process."""
+
+    async def __call__(
+        self,
+        request: ExecRequest,
+        *,
+        signal: object | None = None,
+        on_update: ExecUpdateCallback | None = None,
+    ) -> ExecResult:
         assert request.effective_environment is not None
         env = dict(request.effective_environment)
 
@@ -410,4 +420,4 @@ def _output_bytes(content: str) -> bytes:
     return content.encode("utf-8", errors="surrogateescape")
 
 
-__all__ = ["ExecBackend", "ExecService"]
+__all__ = ["ExecBackend", "ExecService", "LocalExecBackend"]

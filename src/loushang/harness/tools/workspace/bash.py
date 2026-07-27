@@ -255,7 +255,15 @@ class _BashToolExecute:
         request_params = dict(params)
         runtime_operations = request_params.pop("__operations", None)
         runtime_operations = request_params.pop("_operations", runtime_operations)
-        selected_bash_operations = runtime_operations or self.bash_operations
+        selected_bash_operations = runtime_operations
+        if selected_bash_operations is None and context is not None:
+            context_exec_service = getattr(context, "exec_service", None)
+            if context_exec_service is not None:
+                selected_bash_operations = ExecServiceBashOperations(
+                    exec_service=context_exec_service
+                )
+        if selected_bash_operations is None:
+            selected_bash_operations = self.bash_operations
         exec_request = _build_exec_request(
             request_params,
             default_cwd=default_cwd,

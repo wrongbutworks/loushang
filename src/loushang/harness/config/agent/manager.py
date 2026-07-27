@@ -31,6 +31,7 @@ from loushang.harness.config.agent.types import (
     MethodSettings,
     QueueMode,
     RetrySettings,
+    SandboxSettings,
     StatusLineAutoValue,
     StatusLineControlSettings,
     StatusLineSeparator,
@@ -627,6 +628,12 @@ _CONTROL_CONFIG_CODEC = SchemaConfigCodec(
             encode=encode_dataclass_diff,
         ),
         ConfigFieldSpec(
+            "sandbox",
+            decode=_decode_dataclass("sandbox"),
+            encode=encode_dataclass_diff,
+            recover_errors=(TypeError, ValueError),
+        ),
+        ConfigFieldSpec(
             "statusline",
             decode=lambda raw, current: _apply_statusline_settings_patch(
                 cast(StatusLineControlSettings, current), raw
@@ -782,6 +789,7 @@ class SettingsManager:
         warnings: WarningSettings | object = _UNSET,
         method: MethodSettings | Mapping[str, object] | object = _UNSET,
         tools: ToolSettings | Mapping[str, object] | object = _UNSET,
+        sandbox: SandboxSettings | Mapping[str, object] | object = _UNSET,
         statusline: StatusLineControlSettings | Mapping[str, object] | object = _UNSET,
         session_dir: str | None | object = _UNSET,
         resource_roots: Iterable[str] | object = _UNSET,
@@ -894,6 +902,8 @@ class SettingsManager:
             patch["method"] = _serialize_settings_slice(method)
         if tools is not _UNSET:
             patch["tools"] = _serialize_tool_settings(tools)
+        if sandbox is not _UNSET:
+            patch["sandbox"] = _serialize_settings_slice(sandbox)
         if statusline is not _UNSET:
             patch["statusline"] = _serialize_statusline_settings(statusline)
         if session_dir is not _UNSET:
@@ -1189,6 +1199,17 @@ class SettingsManager:
 
     def get_tool_settings(self) -> ToolSettings:
         return self._settings.tools
+
+    def get_sandbox_settings(self) -> SandboxSettings:
+        return self._settings.sandbox
+
+    def set_sandbox_settings(
+        self,
+        settings: SandboxSettings | Mapping[str, object],
+        *,
+        scope: SettingsScope = "global",
+    ) -> None:
+        self.update_settings(scope=scope, sandbox=settings)
 
     def get_statusline_settings(self) -> StatusLineControlSettings:
         return self._settings.statusline
