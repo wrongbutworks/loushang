@@ -68,6 +68,11 @@ planning, work event persistence, or AI provider behavior.
   deterministic extension routing, neutral policy subjects and evaluator
   composition, pending approval lifecycle, and the Product adapters that retain
   risk defaults, result semantics, and presentation.
+- [Policy And Approval Redesign](policy-approval-redesign.md) replaces the
+  current tool-shaped policy and boolean approval model with an action-based
+  authorization runtime, scoped grants, execution-time revalidation, common
+  approval coordination, and explicit Coding/TUI/Work/daemon/MCP/multi-agent
+  integration boundaries.
 - [Sandbox Runtime Boundary](sandbox-runtime-boundary.md) defines the optional,
   disabled-by-default process containment service, its cross-platform
   Protocols, centralized host detection and backend selection, existing

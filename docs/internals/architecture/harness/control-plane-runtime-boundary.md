@@ -4,6 +4,12 @@
 
 Status: implemented on `harness/control-plane-runtime`; integration pending.
 
+The extension-routing portions of this document remain current. Its
+tool-shaped Policy and boolean Approval target is superseded by
+[Policy And Approval Redesign](policy-approval-redesign.md). During cutover,
+this document describes the legacy implementation only; it must not be used to
+add new Policy/Approval APIs.
+
 This boundary closes the product-neutral control path from extension
 contribution routing through policy evaluation and asynchronous approval. It
 builds on the existing extension, approval, policy, workspace-tool, and host

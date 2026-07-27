@@ -7,6 +7,7 @@ Owner: `loushang.harness`
 Related:
 
 - [Harness Workspace Execution Boundary](workspace-execution-boundary.md)
+- [Policy And Approval Redesign](policy-approval-redesign.md)
 - [Product Runtime Injection Architecture](product-runtime-injection/README.md)
 
 ## 1. Decision
