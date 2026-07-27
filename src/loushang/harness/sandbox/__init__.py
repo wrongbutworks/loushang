@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .authorization import sandbox_scope_request_from_profile
 from .backends import LinuxBubblewrapBackend, default_sandbox_backend_registry
 from .binding import SandboxExecutionBinding, bind_sandbox_execution
 from .exec_backend import SandboxExecBackend, SandboxScopeRequestFactory
@@ -57,4 +58,5 @@ __all__ = [
     "bind_sandbox_execution",
     "bind_sandbox_execution_runtime",
     "default_sandbox_backend_registry",
+    "sandbox_scope_request_from_profile",
 ]

@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from loushang.harness.authorization import (
+    EffectiveExecutionProfile,
+    constrain_execution_profile,
+)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft
 from loushang.harness.environment import HostEnvironmentProbe
@@ -13,6 +17,7 @@ from loushang.harness.sandbox import (
     SandboxScopeRequest,
     SandboxSettings,
     bind_sandbox_execution_runtime,
+    sandbox_scope_request_from_profile,
 )
 from loushang.harness.workspace.exec import ExecRequest, ExecService
 from loushang.harness.workspace.git import find_git_paths
@@ -26,6 +31,7 @@ class CodingSandboxScopePolicy:
     writable_workspace: bool = True
     _readable_roots: tuple[Path, ...] = field(init=False, repr=False)
     _writable_roots: tuple[Path, ...] = field(init=False, repr=False)
+    execution_profile: EffectiveExecutionProfile | None = None
 
     def __post_init__(self) -> None:
         if type(self.writable_workspace) is not bool:
@@ -40,6 +46,19 @@ class CodingSandboxScopePolicy:
         )
         object.__setattr__(self, "_readable_roots", readable_roots)
         object.__setattr__(self, "_writable_roots", writable_roots)
+        ceiling = EffectiveExecutionProfile(
+            readable_roots=readable_roots,
+            writable_roots=writable_roots,
+            network="allowed",
+        )
+        object.__setattr__(
+            self,
+            "execution_profile",
+            constrain_execution_profile(
+                ceiling,
+                self.execution_profile or ceiling,
+            ),
+        )
 
     def __call__(self, request: ExecRequest) -> SandboxScopeRequest:
         if request.cwd is None:
@@ -49,11 +68,10 @@ class CodingSandboxScopePolicy:
             raise PermissionError(
                 f"process cwd is outside the Coding sandbox workspace: {cwd}"
             )
-        return SandboxScopeRequest(
+        assert self.execution_profile is not None
+        return sandbox_scope_request_from_profile(
+            self.execution_profile,
             cwd=cwd,
-            readable_roots=self._readable_roots,
-            writable_roots=self._writable_roots,
-            network="allowed",
         )
 
 
@@ -103,6 +121,7 @@ def bind_coding_sandbox_runtime(
     session_id: str | None = None,
     registry: SandboxBackendRegistry | None = None,
     environment_probe: HostEnvironmentProbe | None = None,
+    execution_profile: EffectiveExecutionProfile | None = None,
 ) -> SandboxExecutionRuntime:
     """Bind Coding's workspace policy to the Product-neutral sandbox runtime."""
 
@@ -129,6 +148,7 @@ def bind_coding_sandbox_runtime(
         CodingSandboxScopePolicy(
             workspace_root=Path(workspace_root),
             writable_workspace=writable_workspace,
+            execution_profile=execution_profile,
         )
         if settings.enabled
         else None

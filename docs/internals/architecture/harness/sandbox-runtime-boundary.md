@@ -643,6 +643,21 @@ each backend.
 - [x] expose one status/diagnostic projection without adding sandbox decisions to
   TUI.
 
+### Phase D: authorization profile binding
+
+- [x] add the Product-neutral, immutable `EffectiveExecutionProfile`;
+- [x] intersect Policy-requested authority with the managed/Product ceiling so
+  Approval cannot widen roots or network access;
+- [x] adapt the current Policy/Approval decisions into an effective profile;
+- [x] project the effective profile into `SandboxScopeRequest`;
+- [x] let Coding consume a narrower authorized profile while preserving its
+  experience-first default profile.
+
+This phase establishes the enforcement contract. Migrating every effectful tool
+to the new mandatory authorization gateway remains part of the Policy/Approval
+delivery batches; until then, tools still using the legacy policy path do not
+produce per-action profiles.
+
 macOS and Windows backends follow the same Protocol when implemented. No
 placeholder backend may report itself as enabled.
 

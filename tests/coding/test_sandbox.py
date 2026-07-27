@@ -9,6 +9,7 @@ from loushang.coding.sandbox import (
     CodingSandboxScopePolicy,
     bind_coding_sandbox_runtime,
 )
+from loushang.harness.authorization import EffectiveExecutionProfile
 from loushang.harness.diagnostics import DiagnosticsService
 from loushang.harness.environment import LocalHostEnvironmentProbe
 from loushang.harness.sandbox import (
@@ -55,6 +56,25 @@ def test_coding_scope_policy_keeps_read_only_children_non_writable(
 
     assert scope.readable_roots == (tmp_path,)
     assert scope.writable_roots == ()
+
+
+def test_coding_scope_policy_consumes_a_narrower_authorized_profile(
+    tmp_path: Path,
+) -> None:
+    policy = CodingSandboxScopePolicy(
+        workspace_root=tmp_path,
+        writable_workspace=True,
+        execution_profile=EffectiveExecutionProfile(
+            readable_roots=(tmp_path,),
+            network="denied",
+        ),
+    )
+
+    scope = policy(_materialized_request(tmp_path))
+
+    assert scope.readable_roots == (tmp_path,)
+    assert scope.writable_roots == ()
+    assert scope.network == "denied"
 
 
 def test_coding_scope_policy_exposes_linked_worktree_git_metadata(

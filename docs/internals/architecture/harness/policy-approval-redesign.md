@@ -538,6 +538,14 @@ may narrow it. Approval may select a grant within the applicable ceiling. No
 decision may widen it beyond managed, Product, parent-delegated, or executor
 constraints.
 
+Implementation checkpoint (2026-07-27): the first enforcement-facing slice is
+implemented as `harness.authorization.EffectiveExecutionProfile`. It carries
+the currently enforceable filesystem roots and network authority, intersects a
+requested profile with its ceiling, adapts current Policy/Approval decisions,
+and projects into `SandboxScopeRequest`. Secret filtering, privilege and
+external-effect permissions remain in the authorization delivery batches; they
+must not be claimed as sandbox enforcement before their gateways migrate.
+
 ### 7.5 Policy verdict
 
 ```python

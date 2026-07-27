@@ -1865,6 +1865,28 @@ def test_harness_sandbox_symbols_are_not_top_level_exports() -> None:
     assert sandbox_symbols.isdisjoint(set(harness.__all__))
 
 
+def test_harness_authorization_values_do_not_depend_on_enforcement_or_products() -> None:
+    import loushang.harness as harness
+
+    assert _find_forbidden_imports(
+        ImportBoundary(
+            name="authorization values",
+            root=Path("src/loushang/harness/authorization"),
+            forbidden_prefixes=(
+                "loushang.coding",
+                "loushang.harness.sandbox",
+                "loushang.method",
+                "loushang.tui",
+                "loushang.work",
+            ),
+        )
+    ) == []
+    assert {
+        "EffectiveExecutionProfile",
+        "ExecutionAuthorizationError",
+    }.isdisjoint(set(harness.__all__))
+
+
 def test_harness_contribution_symbols_are_not_top_level_exports() -> None:
     import loushang.harness as harness
 
