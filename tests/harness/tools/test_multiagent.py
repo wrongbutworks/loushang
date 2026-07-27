@@ -70,9 +70,11 @@ def test_common_tool_pack_registers_and_executes_the_live_session_surface() -> N
                 )
             )
         )
+        root_queue: HostInputQueue[AgentInputMessage] = HostInputQueue()
         root_input: AgentInputFacade[AgentInputMessage] = AgentInputFacade(
-            queue=HostInputQueue(),
+            queue=root_queue,
             build_payload=lambda message: message,
+            submit_mailbox=root_queue.append_next_turn,
         )
         factory = _Factory()
         runtime = SessionMultiAgentRuntime(
@@ -113,6 +115,11 @@ def test_common_tool_pack_registers_and_executes_the_live_session_surface() -> N
         )
         assert waited.details["wait_expired"] is False
         assert waited.details["activity"]["kind"] == "completion_notice"
+        assert root_input.queue.texts("steering") == []
+        assert root_input.queue.texts("follow_up") == []
+        first_mailbox = root_input.queue.drain_next_turn()
+        assert len(first_mailbox) == 1
+        assert first_mailbox[0].kind == "mailbox"
 
         sent = await definitions["send_message"].execute(
             "send-1",
@@ -133,6 +140,9 @@ def test_common_tool_pack_registers_and_executes_the_live_session_surface() -> N
             None,
         )
         assert second_wait.details["activity"]["kind"] == "completion_notice"
+        second_mailbox = root_input.queue.drain_next_turn()
+        assert len(second_mailbox) == 1
+        assert second_mailbox[0].kind == "mailbox"
 
         listed = await definitions["list_agents"].execute(
             "list-1",
@@ -163,9 +173,11 @@ def test_common_tool_pack_registers_and_executes_the_live_session_surface() -> N
 def test_wait_expiration_is_a_normal_tool_result_not_an_execution_timeout() -> None:
     async def scenario() -> None:
         control = MultiAgentControl()
+        root_queue: HostInputQueue[AgentInputMessage] = HostInputQueue()
         root_input: AgentInputFacade[AgentInputMessage] = AgentInputFacade(
-            queue=HostInputQueue(),
+            queue=root_queue,
             build_payload=lambda message: message,
+            submit_mailbox=root_queue.append_next_turn,
         )
         runtime = SessionMultiAgentRuntime(
             control=control,

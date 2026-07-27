@@ -22,7 +22,6 @@ from loushang.harness.multiagent.types import (
     AgentCaller,
     AgentCompletionNotice,
     AgentInputMessage,
-    AgentMessageKind,
     AgentPath,
     AgentRecord,
     AgentRef,
@@ -56,6 +55,7 @@ class AgentInputWaitOutcome:
 
 MessagePayloadBuilder = Callable[[AgentInputMessage], PayloadT]
 NoticeTextComposer = Callable[[AgentCompletionNotice], str]
+MailboxSubmitter = Callable[[PayloadT], object]
 
 
 class AgentInputFacade(Generic[PayloadT]):
@@ -66,11 +66,13 @@ class AgentInputFacade(Generic[PayloadT]):
         *,
         queue: HostInputQueue[PayloadT],
         build_payload: MessagePayloadBuilder[PayloadT],
+        submit_mailbox: MailboxSubmitter[PayloadT],
         compose_notice: NoticeTextComposer | None = None,
     ) -> None:
         self._queue = queue
         self._build_payload = build_payload
         self._compose_notice = compose_notice or standard_completion_notice_text
+        self._submit_mailbox = submit_mailbox
         self._sequence = 0
         self._last_activity: AgentInputActivity | None = None
         self._waiters: set[asyncio.Future[AgentInputActivity]] = set()
@@ -85,27 +87,21 @@ class AgentInputFacade(Generic[PayloadT]):
 
     def enqueue_message(self, message: AgentInputMessage) -> AgentInputActivity:
         payload = self._build_payload(message)
-        self._queue.enqueue(
-            message.kind,
-            text=message.text,
-            payload=payload,
-        )
+        if message.kind == "mailbox":
+            self._enqueue_mailbox(payload)
+            return self._publish_activity("completion_notice", message.message_id)
+        self._queue.enqueue(message.kind, text=message.text, payload=payload)
         return self._publish_activity("message", message.message_id)
 
     def enqueue_notice(
         self,
         notice: AgentCompletionNotice,
-        *,
-        kind: AgentMessageKind = "follow_up",
     ) -> AgentInputActivity:
         message = completion_notice_to_message(
             notice,
             text=self._compose_notice(notice),
-            kind=kind,
         )
-        payload = self._build_payload(message)
-        self._queue.enqueue(kind, text=message.text, payload=payload)
-        return self._publish_activity("completion_notice", message.message_id)
+        return self.enqueue_message(message)
 
     def clear(self) -> None:
         self._queue.clear()
@@ -115,6 +111,9 @@ class AgentInputFacade(Generic[PayloadT]):
         """Wake waiters when the Product's existing user-steer path is used."""
 
         return self._publish_activity("steered", message_id)
+
+    def _enqueue_mailbox(self, payload: PayloadT) -> None:
+        self._submit_mailbox(payload)
 
     async def wait_for_activity(
         self,
@@ -216,8 +215,6 @@ class RootAgentInput(Protocol):
     def enqueue_notice(
         self,
         notice: AgentCompletionNotice,
-        *,
-        kind: AgentMessageKind = "follow_up",
     ) -> object: ...
 
 
@@ -514,10 +511,7 @@ class SessionMultiAgentRuntime:
                 root_active = (
                     self._root_is_active is not None and self._root_is_active()
                 )
-                self._root_input.enqueue_notice(
-                    notice,
-                    kind="steering" if root_active else "follow_up",
-                )
+                self._root_input.enqueue_notice(notice)
                 if (
                     self._notice_wake_policy == "wake_if_idle"
                     and self._root_notice_wake is not None
@@ -533,10 +527,7 @@ class SessionMultiAgentRuntime:
         handle = self._handles.get(notice.recipient_ref)
         if handle is None:
             return
-        message = completion_notice_to_message(
-            notice,
-            kind="steering" if handle.is_running else "follow_up",
-        )
+        message = completion_notice_to_message(notice)
         operation = (
             handle.deliver(message)
             if self._notice_wake_policy == "wake_if_idle"
@@ -586,7 +577,6 @@ def completion_notice_to_message(
     notice: AgentCompletionNotice,
     *,
     text: str | None = None,
-    kind: AgentMessageKind = "follow_up",
 ) -> AgentInputMessage:
     references = tuple(
         value
@@ -601,7 +591,7 @@ def completion_notice_to_message(
         message_id=f"completion:{notice.notice_id}",
         sender=AgentCaller(notice.sender_ref),
         recipient_ref=notice.recipient_ref,
-        kind=kind,
+        kind="mailbox",
         text=text or standard_completion_notice_text(notice),
         references=references,
     )

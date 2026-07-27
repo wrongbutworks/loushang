@@ -262,6 +262,8 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         )
 
     def _build_agent_tree_surface(self):
+        """Bind Coding's current session to the shared `/agents` surface."""
+
         session = self._current_session()
         runtime = getattr(session, "multiagent_runtime", None)
         control = getattr(runtime, "control", None)

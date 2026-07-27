@@ -12,8 +12,8 @@ AgentInputFacade 是 session adapter 的统一同步原语：子 agent 完成通
 
 本文定义：
 
-- AgentInputFacade 的职责与 `HostInputQueue` 复用关系
-- 消息类型与投递语义（steering / follow_up 映射）
+- AgentInputFacade 的职责与用户队列 / system mailbox 的关系
+- 消息类型与投递语义（steering / follow_up / mailbox 映射）
 - 完成通知合成（终态 → 父 input）
 - wait 原语（activity watch、超时、唤醒源）
 - open / closed 投递规则（ARD-002）
@@ -25,32 +25,36 @@ AgentInputFacade 是 session adapter 的统一同步原语：子 agent 完成通
 - 寻址与拓扑（属 AgentRegistry）
 - 模型可见的 wait 工具参数面（属 ToolSurfaceAdapter）
 
-## Reuse Of HostInputQueue
+## User Queue And System Mailbox
 
-AgentInputFacade **不是新队列**。harness 已有 `HostInputQueue`，原生支持：
+AgentInputFacade 不复制用户队列。harness 已有 `HostInputQueue`，原生支持：
 
 - `QueueKind = steering | follow_up` 两种入队模式
 - `snapshot()` / `drain()` / `has_pending()` 等账本操作
 - 与 agent 内核挂点天然对齐：loop 在每个工具边界消费
   `get_steering_messages`，turn 结束消费 `get_follow_up_messages`
 
-AgentInputFacade 是 HostInputQueue 之上的 **multiagent 门面**，新增的只是：
+但完成通知不是用户输入，必须进入 Agent 内核的独立 system mailbox；
+不得伪装成可编辑的 steering/follow_up。AgentInputFacade 统一绑定这两条
+通道：
 
-1. **来源标注**：每条入队消息携带 sender（agent_path / user / system）
-   与 kind，供接收方区分"用户输入"与"agent 间消息"。
+1. **来源标注**：每条输入携带 sender 与内部 kind；模型工具只能创建
+   steering/follow_up，只有 Control 可创建 mailbox notice。
 2. **activity 信号**：入队、steer 注入时发出 activity 通知，供
    `wait_agent` watch（HostInputQueue 本身无 watch 语义，门面补一层
    `asyncio.Condition` / watch channel 级别的活动信号）。
-3. **通知合成**：终态事实 → 父 input 的完成通知消息。
+3. **通知合成**：终态事实 → 父 mailbox 的完成通知消息。
 
-底层排队、消费、丢弃一律复用 HostInputQueue；AgentInputFacade 不复制队列语义。
+Agent loop 在首轮采样前和每个 tool/result 安全边界优先 drain mailbox，
+再处理用户 steering；mailbox 不进入 HostInputQueue snapshot、TUI pending
+preview 或可编辑队列计数。
 
 ## Message Types And Delivery Mapping
 
 ```text
 AgentInputMessage
   sender: AgentPath | "user" | "system"
-  kind:   "follow_up" | "steering"
+  kind:   "follow_up" | "steering" | "mailbox"  # mailbox 仅内部可创建
   text:   str                    # 消息正文（user-role 注入）
   payload: AgentInputPayload        # 结构化附加（终态摘要、usage 等）
 ```
@@ -61,7 +65,7 @@ AgentInputMessage
 |---|---|---|
 | `follow_up` | 入 follow_up 队列，本轮结束后消费 | 驱动新一轮 run（ARD-002 唤醒） |
 | `steering` | 入 steering 队列，下一工具边界注入 | 驱动新一轮 run（作为首条输入） |
-| 独立 `AgentCompletionNotice` | adapter 转成 follow_up 并入队（默认不抢轮） | 入队列；是否驱动新轮由显式 notice policy 决定 |
+| 独立 `AgentCompletionNotice` | 入 system mailbox，在下一采样安全边界消费 | 留在 mailbox；是否驱动新轮由显式 notice policy 决定 |
 
 默认规则来自两家参考实现的对齐：
 
@@ -99,7 +103,7 @@ completion_notice
    `await_terminal` 的等待者立即解阻塞。
 2. **再合成通知**：通知合成与投递不得阻塞状态转移；合成失败只影响
    通知内容，不反转状态。
-3. 通知进入父 input 后，父的 wait（若在等待）以 `AgentInputActivity`
+3. 通知进入父 mailbox 后，父的 wait（若在等待）以 `AgentInputActivity`
    唤醒——**唤醒不等于消费**，父 agent 在自己的后续 turn 读到通知。
 4. 默认 policy 是 `queue_only`；`wake_if_idle` 必须显式启用，且 root
    session 需提供自己的 wake callback。recipe 直接等待 terminal 时不得
@@ -160,7 +164,7 @@ OEM 场景示例：替换 `NoticeComposer` 以本地化完成通知、或在通�
 
 拥有：
 
-- 消息类型、来源标注与排队语义（经 HostInputQueue）
+- 消息类型、来源标注，以及用户队列 / system mailbox 的通道路由
 - activity 信号与 wait 原语
 - 完成通知合成与投递
 - open / closed 投递判定（closed 拒绝）
@@ -170,7 +174,7 @@ OEM 场景示例：替换 `NoticeComposer` 以本地化完成通知、或在通�
 - 新一轮 run 的驱动（RunHandle）
 - 终态推导与事实发射（LifecycleProjection）
 - 寻址解析（AgentRegistry）
-- 队列本身的账本操作（HostInputQueue）
+- 用户队列本身的账本操作（HostInputQueue）
 - 通知的业务解释（是否构成"产物"由装配层/work 判定）
 
 ## Failure Semantics

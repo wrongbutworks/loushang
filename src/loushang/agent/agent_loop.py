@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import time
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from typing import Any
@@ -176,7 +176,7 @@ async def _run_loop(
     stream_fn: StreamFn | None,
 ) -> None:
     first_turn = True
-    pending_messages = await _maybe_call(config.get_steering_messages, default=[])
+    pending_messages = await _poll_immediate_inputs(config)
 
     while True:
         has_more_tool_calls = True
@@ -252,6 +252,19 @@ async def _run_loop(
             terminate_after_tool_batch = False
             if has_more_tool_calls:
                 if _is_aborted(signal):
+                    tool_results.extend(
+                        await _emit_aborted_tool_results(tool_calls, (), emit)
+                    )
+                    _append_tool_results(
+                        current_context,
+                        new_messages,
+                        tool_results,
+                    )
+                    await _emit_tool_turn_end(
+                        emit,
+                        assistant_message,
+                        tool_results,
+                    )
                     await _emit_aborted_turn(
                         current_context,
                         new_messages,
@@ -260,19 +273,56 @@ async def _run_loop(
                         error_message="Request aborted by user",
                     )
                     return
-                executed_tool_batch = await _execute_tool_calls(
-                    current_context,
-                    assistant_message,
-                    config,
-                    emit,
-                    signal=signal,
-                )
-                tool_results.extend(executed_tool_batch.messages)
+                finalized_tool_results: list[ToolResultMessage] = []
+                try:
+                    executed_tool_batch = await _execute_tool_calls(
+                        current_context,
+                        assistant_message,
+                        config,
+                        emit,
+                        signal=signal,
+                        finalized_messages=finalized_tool_results,
+                    )
+                except asyncio.CancelledError:
+                    tool_results.extend(finalized_tool_results)
+                    tool_results.extend(
+                        await _emit_aborted_tool_results(
+                            tool_calls,
+                            tool_results,
+                            emit,
+                        )
+                    )
+                    _append_tool_results(
+                        current_context,
+                        new_messages,
+                        tool_results,
+                    )
+                    await _emit_tool_turn_end(
+                        emit,
+                        assistant_message,
+                        tool_results,
+                    )
+                    raise
+                tool_results.extend(finalized_tool_results)
                 terminate_after_tool_batch = executed_tool_batch.terminate
                 if _is_aborted(signal):
-                    for result in tool_results:
-                        current_context.messages.append(result)
-                        new_messages.append(result)
+                    tool_results.extend(
+                        await _emit_aborted_tool_results(
+                            tool_calls,
+                            tool_results,
+                            emit,
+                        )
+                    )
+                    _append_tool_results(
+                        current_context,
+                        new_messages,
+                        tool_results,
+                    )
+                    await _emit_tool_turn_end(
+                        emit,
+                        assistant_message,
+                        tool_results,
+                    )
                     await _emit_aborted_turn(
                         current_context,
                         new_messages,
@@ -281,25 +331,24 @@ async def _run_loop(
                         error_message="Request aborted by user",
                     )
                     return
-                for result in tool_results:
-                    current_context.messages.append(result)
-                    new_messages.append(result)
+                _append_tool_results(
+                    current_context,
+                    new_messages,
+                    tool_results,
+                )
 
-            await _emit(
-                emit,
-                {
-                    "type": "turn_end",
-                    "message": assistant_message,
-                    "tool_results": tool_results,
-                },
-            )
+            await _emit_tool_turn_end(emit, assistant_message, tool_results)
             if terminate_after_tool_batch:
                 await _emit(emit, {"type": "agent_end", "messages": new_messages})
                 return
-            pending_messages = await _maybe_call(
-                config.get_steering_messages, default=[]
-            )
+            pending_messages = await _poll_immediate_inputs(config)
 
+        mailbox_messages = await _maybe_call(
+            config.get_mailbox_messages, default=[]
+        )
+        if mailbox_messages:
+            pending_messages = mailbox_messages
+            continue
         follow_up_messages = await _maybe_call(
             config.get_follow_up_messages, default=[]
         )
@@ -310,6 +359,14 @@ async def _run_loop(
         break
 
     await _emit(emit, {"type": "agent_end", "messages": new_messages})
+
+
+async def _poll_immediate_inputs(config: AgentLoopConfig) -> list[AgentMessage]:
+    """Drain system mailbox before user steering at each sampling boundary."""
+
+    mailbox = await _maybe_call(config.get_mailbox_messages, default=[])
+    steering = await _maybe_call(config.get_steering_messages, default=[])
+    return [*mailbox, *steering]
 
 
 async def _stream_assistant_response(
@@ -433,6 +490,7 @@ async def _execute_tool_calls(
     emit: AgentEventSink,
     *,
     signal: object | None,
+    finalized_messages: list[ToolResultMessage],
 ) -> "_ToolCallBatchOutcome":
     if _is_aborted(signal):
         return _ToolCallBatchOutcome(messages=[], terminate=True)
@@ -445,11 +503,76 @@ async def _execute_tool_calls(
         current_context, tool_calls
     ):
         return await _execute_tool_calls_sequential(
-            current_context, assistant_message, tool_calls, config, emit, signal=signal
+            current_context,
+            assistant_message,
+            tool_calls,
+            config,
+            emit,
+            signal=signal,
+            finalized_messages=finalized_messages,
         )
     return await _execute_tool_calls_parallel(
-        current_context, assistant_message, tool_calls, config, emit, signal=signal
+        current_context,
+        assistant_message,
+        tool_calls,
+        config,
+        emit,
+        signal=signal,
+        finalized_messages=finalized_messages,
     )
+
+
+def _append_tool_results(
+    current_context: AgentContext,
+    new_messages: list[AgentMessage],
+    tool_results: list[ToolResultMessage],
+) -> None:
+    for result in tool_results:
+        current_context.messages.append(result)
+        new_messages.append(result)
+
+
+async def _emit_tool_turn_end(
+    emit: AgentEventSink,
+    assistant_message: AssistantMessage,
+    tool_results: list[ToolResultMessage],
+) -> None:
+    await _emit(
+        emit,
+        {
+            "type": "turn_end",
+            "message": assistant_message,
+            "tool_results": tool_results,
+        },
+    )
+
+
+async def _emit_aborted_tool_results(
+    tool_calls: list[AgentToolCall],
+    finalized_messages: Sequence[ToolResultMessage],
+    emit: AgentEventSink,
+) -> list[ToolResultMessage]:
+    finalized_ids = {message.tool_call_id for message in finalized_messages}
+    aborted: list[ToolResultMessage] = []
+    for tool_call in tool_calls:
+        if tool_call.id in finalized_ids:
+            continue
+        outcome = await _emit_tool_call_outcome(
+            tool_call,
+            AgentToolResult(
+                content=[
+                    TextPart(
+                        type="text",
+                        text="Tool call aborted before completion.",
+                    )
+                ],
+                details={"code": "tool_call_aborted"},
+            ),
+            True,
+            emit,
+        )
+        aborted.append(outcome.message)
+    return aborted
 
 
 @dataclass
@@ -482,6 +605,7 @@ async def _execute_tool_calls_sequential(
     emit: AgentEventSink,
     *,
     signal: object | None,
+    finalized_messages: list[ToolResultMessage],
 ) -> _ToolCallBatchOutcome:
     finalized_results: list[_FinalizedToolCallOutcome] = []
     for tool_call in tool_calls:
@@ -502,20 +626,19 @@ async def _execute_tool_calls_sequential(
         if _is_aborted(signal):
             return _ToolCallBatchOutcome(messages=[], terminate=True)
         if preparation.kind == "immediate":
-            finalized_results.append(
-                await _emit_tool_call_outcome(
+            finalized = await _emit_tool_call_outcome(
                     preparation.tool_call,
                     preparation.result,
                     preparation.is_error,
                     emit,
                 )
-            )
+            finalized_results.append(finalized)
+            finalized_messages.append(finalized.message)
             continue
         executed = await _execute_prepared_tool_call(preparation, emit, signal=signal)
         if _is_aborted(signal):
             return _ToolCallBatchOutcome(messages=[], terminate=True)
-        finalized_results.append(
-            await _finalize_executed_tool_call(
+        finalized = await _finalize_executed_tool_call(
                 current_context,
                 assistant_message,
                 preparation,
@@ -524,7 +647,8 @@ async def _execute_tool_calls_sequential(
                 emit,
                 signal=signal,
             )
-        )
+        finalized_results.append(finalized)
+        finalized_messages.append(finalized.message)
     return _ToolCallBatchOutcome(
         messages=[result.message for result in finalized_results],
         terminate=_should_terminate_after_tool_batch(finalized_results),
@@ -539,6 +663,7 @@ async def _execute_tool_calls_parallel(
     emit: AgentEventSink,
     *,
     signal: object | None,
+    finalized_messages: list[ToolResultMessage],
 ) -> _ToolCallBatchOutcome:
     finalized_results: list[_FinalizedToolCallOutcome] = []
     runnable_calls: list[_PreparedToolCall] = []
@@ -561,14 +686,14 @@ async def _execute_tool_calls_parallel(
         if _is_aborted(signal):
             return _ToolCallBatchOutcome(messages=[], terminate=True)
         if preparation.kind == "immediate":
-            finalized_results.append(
-                await _emit_tool_call_outcome(
+            finalized = await _emit_tool_call_outcome(
                     preparation.tool_call,
                     preparation.result,
                     preparation.is_error,
                     emit,
                 )
-            )
+            finalized_results.append(finalized)
+            finalized_messages.append(finalized.message)
         else:
             runnable_calls.append(preparation)
 
@@ -581,22 +706,29 @@ async def _execute_tool_calls_parallel(
         )
         for prepared in runnable_calls
     ]
-    for prepared, execution in running_calls:
-        executed = await execution
-        if _is_aborted(signal):
-            await _cancel_pending_tool_tasks(running_calls)
-            return _ToolCallBatchOutcome(messages=[], terminate=True)
-        finalized_results.append(
-            await _finalize_executed_tool_call(
-                current_context,
-                assistant_message,
-                prepared,
-                executed,
-                config,
-                emit,
-                signal=signal,
-            )
-        )
+    try:
+        for prepared, execution in running_calls:
+            executed = await execution
+            if _is_aborted(signal):
+                await _cancel_pending_tool_tasks(running_calls)
+                return _ToolCallBatchOutcome(
+                    messages=list(finalized_messages),
+                    terminate=True,
+                )
+            finalized = await _finalize_executed_tool_call(
+                    current_context,
+                    assistant_message,
+                    prepared,
+                    executed,
+                    config,
+                    emit,
+                    signal=signal,
+                )
+            finalized_results.append(finalized)
+            finalized_messages.append(finalized.message)
+    except asyncio.CancelledError:
+        await _cancel_pending_tool_tasks(running_calls)
+        raise
     return _ToolCallBatchOutcome(
         messages=[result.message for result in finalized_results],
         terminate=_should_terminate_after_tool_batch(finalized_results),

@@ -39,6 +39,8 @@ class AgentQueuePort(Protocol):
 
     def follow_up(self, message: object) -> object: ...
 
+    def enqueue_mailbox(self, message: object) -> object: ...
+
 
 @dataclass
 class QueueController:
@@ -122,6 +124,11 @@ class QueueController:
             text=visible_text,
             payload=message,
         )
+
+    def queue_mailbox_message(self, message: object) -> None:
+        """Deliver system input without creating an editable queue snapshot."""
+
+        self.agent.enqueue_mailbox(message)
 
     def clear_queue(self) -> dict[str, list[str]]:
         steering = self.get_steering_messages()

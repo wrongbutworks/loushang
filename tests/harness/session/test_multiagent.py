@@ -133,7 +133,11 @@ async def _yield_until(predicate: Callable[[], bool]) -> None:
 def test_input_facade_reuses_host_queue_and_wakes_activity_waiters() -> None:
     async def scenario() -> None:
         queue: HostInputQueue[AgentInputMessage] = HostInputQueue()
-        facade = AgentInputFacade(queue=queue, build_payload=lambda message: message)
+        facade = AgentInputFacade(
+            queue=queue,
+            build_payload=lambda message: message,
+            submit_mailbox=queue.append_next_turn,
+        )
         observed = facade.activity_sequence
         waiting = asyncio.create_task(
             facade.wait_for_activity(after_sequence=observed, timeout=1)
@@ -161,7 +165,11 @@ def test_input_facade_reuses_host_queue_and_wakes_activity_waiters() -> None:
 def test_input_wait_times_out_normally_and_user_steer_wakes_the_next_wait() -> None:
     async def scenario() -> None:
         queue: HostInputQueue[AgentInputMessage] = HostInputQueue()
-        facade = AgentInputFacade(queue=queue, build_payload=lambda message: message)
+        facade = AgentInputFacade(
+            queue=queue,
+            build_payload=lambda message: message,
+            submit_mailbox=queue.append_next_turn,
+        )
 
         timed_out = await facade.wait_for_activity(timeout=0)
         observed = facade.activity_sequence
@@ -183,7 +191,11 @@ def test_input_wait_times_out_normally_and_user_steer_wakes_the_next_wait() -> N
 def test_session_driver_composes_the_existing_queue_and_host_runtime() -> None:
     async def scenario() -> None:
         queue: HostInputQueue[AgentInputMessage] = HostInputQueue()
-        facade = AgentInputFacade(queue=queue, build_payload=lambda message: message)
+        facade = AgentInputFacade(
+            queue=queue,
+            build_payload=lambda message: message,
+            submit_mailbox=queue.append_next_turn,
+        )
         calls: list[tuple[int, RoundMode]] = []
 
         async def run_round(
@@ -220,7 +232,7 @@ def test_session_driver_composes_the_existing_queue_and_host_runtime() -> None:
     asyncio.run(scenario())
 
 
-def test_child_completion_is_queued_for_root_without_starting_a_root_turn() -> None:
+def test_child_completion_uses_root_mailbox_without_starting_a_root_turn() -> None:
     async def scenario() -> None:
         control = _control()
         factory = _Factory()
@@ -228,6 +240,7 @@ def test_child_completion_is_queued_for_root_without_starting_a_root_turn() -> N
         root_input = AgentInputFacade(
             queue=root_queue,
             build_payload=lambda message: message,
+            submit_mailbox=root_queue.append_next_turn,
         )
         runtime = SessionMultiAgentRuntime(
             control=control,
@@ -252,14 +265,19 @@ def test_child_completion_is_queued_for_root_without_starting_a_root_turn() -> N
 
         assert terminal.status == "completed"
         assert driver.calls == [(1, "prompt")]
-        assert root_queue.pending_count == 1
-        assert "Looks safe" in root_queue.texts("follow_up")[0]
+        assert root_queue.pending_count == 0
+        assert root_queue.texts("steering") == []
+        assert root_queue.texts("follow_up") == []
+        mailbox = root_queue.drain_next_turn()
+        assert len(mailbox) == 1
+        assert mailbox[0].kind == "mailbox"
+        assert "Looks safe" in mailbox[0].text
         await runtime.dispose()
 
     asyncio.run(scenario())
 
 
-def test_child_completion_steers_an_already_running_root_turn() -> None:
+def test_child_completion_uses_mailbox_while_root_is_running() -> None:
     async def scenario() -> None:
         control = _control()
         factory = _Factory()
@@ -267,6 +285,7 @@ def test_child_completion_steers_an_already_running_root_turn() -> None:
         root_input = AgentInputFacade(
             queue=root_queue,
             build_payload=lambda message: message,
+            submit_mailbox=root_queue.append_next_turn,
         )
         runtime = SessionMultiAgentRuntime(
             control=control,
@@ -288,7 +307,11 @@ def test_child_completion_steers_an_already_running_root_turn() -> None:
         await runtime.await_terminal(caller=HOST, target=child.path)
 
         assert root_queue.texts("follow_up") == []
-        assert "Looks safe" in root_queue.texts("steering")[0]
+        assert root_queue.texts("steering") == []
+        mailbox = root_queue.drain_next_turn()
+        assert len(mailbox) == 1
+        assert mailbox[0].kind == "mailbox"
+        assert "Looks safe" in mailbox[0].text
         await runtime.dispose()
 
     asyncio.run(scenario())
@@ -402,6 +425,7 @@ def test_root_completion_wake_requires_explicit_policy_and_callback() -> None:
         root_input = AgentInputFacade(
             queue=root_queue,
             build_payload=lambda message: message,
+            submit_mailbox=root_queue.append_next_turn,
         )
         wakes = 0
 
@@ -429,7 +453,8 @@ def test_root_completion_wake_requires_explicit_policy_and_callback() -> None:
         await runtime.await_terminal(caller=HOST, target=child.path)
         await runtime.drain_notice_deliveries()
 
-        assert root_queue.pending_count == 1
+        assert root_queue.pending_count == 0
+        assert len(root_queue.drain_next_turn()) == 1
         assert wakes == 1
         await runtime.dispose()
 
@@ -474,6 +499,7 @@ def test_completion_notice_to_child_parent_is_queue_only_by_default() -> None:
 
         assert len(parent_driver.calls) == 1
         assert parent_driver.messages[-1].message_id.startswith("completion:")
+        assert parent_driver.messages[-1].kind == "mailbox"
         await runtime.dispose()
 
     asyncio.run(scenario())

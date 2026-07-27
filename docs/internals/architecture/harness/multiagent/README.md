@@ -36,7 +36,8 @@
    - [Run Handle](run-handle-boundary.md) — 子 agent 运行载体：多轮
      驱动、取消双模式、事件转接。
    - [Agent Input Facade](agent-input-facade-boundary.md) — 通知合成
-     与 wait 原语（复用 HostInputQueue）。
+     与 wait 原语（用户队列复用 HostInputQueue，系统通知走 Agent
+     mailbox）。
    - [Context Fork](context-fork-boundary.md) — 隔离矩阵、fork 档位、
      历史过滤、审批冒泡装配、可参数化 `fork_history()`。
    - [Limits And Projection](limits-and-projection-boundary.md) — 并发
@@ -65,7 +66,7 @@
 ## Relationship To Other Subsystems
 
 - `loushang.harness`：本目录归属其中；复用其 `run_agent`、
-  `HostInputQueue`、`ApprovalRequest`、transcript（fork 历史源）、
+  `HostInputQueue`、Agent mailbox、`ApprovalRequest`、transcript（fork 历史源）、
   host lifecycle 编排。
 - `loushang.agent`：提供 agent loop 与稳定原语；multiagent 不扩大其
   内核语义。
@@ -91,22 +92,60 @@ uv run loushang ma run debate \
 ```
 
 `scripted` 只替换模型流，仍走真实 Coding child session、Agent loop、
-HostInputQueue、RunHandle 和 session release。真实模型改用
+HostInputQueue、Agent mailbox、RunHandle 和 session release。真实模型改用
 `--model provider/model`；`--agent ROLE=provider/model` 可为辩论角色
 分别选择模型。recipe root 与 children 均不持久化为普通 Resume
 session。
 
 普通 Coding session 还可由根模型按准入类型调用 `spawn_agent`。
+`explorer` 可使用 Coding 现有的 `bash`、本地文件搜索和读取工具执行
+Git 检查、Python 分析以及策略允许的 curl 获取，但不获得专用的 `write`
+或 `edit`；Bash 仍服从 Product 配置的策略与审批链。
 `implementation_worker` 与 `test_runner` 会进入系统分配的隔离 Git
 worktree；无改动的 worktree 自动清理，有改动的 worktree 保留并通过完成
-通知返回 workspace/change-set 引用。用户可输入 `/agents` 打开实时、
-只读的全屏 Agent Tree，查看状态、活动、token、摘要和
-workspace/artifact 引用。
+通知返回不透明的 `workspace_ref`/`change_set_ref`。`change_set_ref`
+只是由 workspace provider 解释的通用变更引用。
+对于明确要求直接修改当前脏工作区的小型、单写者任务，Coding 另提供
+`shared_implementation_worker`：它使用父 session 已解析的同一 `cwd`、
+同一 Git worktree 和 branch，不申请 lease，也不返回隔离
+`change_set_ref`。该角色每个父节点最多一个，必须保留无关未提交修改，
+且不得与父或其他 worker 并发写入重叠文件；commit、merge 和 publish
+仍由父 Coding session 控制。
+
+`/agents` 是 `loushang.harnesstui.multiagent` 提供的跨产品命令和实时、
+只读全屏 Agent Tree。Coding 只是第一个为它绑定当前 session
+`multiagent_runtime` 的 Product；PPT、Design 和其他 Product 应复用同一
+命令与页面，并注入各自的 live records 和 facts。
+
+多 agent 的 TUI 问题应按工具、通信、渲染三层回放，避免只靠复制终端
+文本推断：
+
+```console
+uv run python scripts/run_tui_playback.py \
+  multiagent-tools multiagent-messaging \
+  multiagent-followup multiagent-nested-tree multiagent-lifecycle \
+  multiagent-parallel-review multiagent-debate \
+  multiagent-shared-workspace multiagent-render \
+  --artifacts /tmp/loushang-multiagent-playback \
+  --include-frames
+```
+
+`*-events.jsonl` 记录 spawn、终态事实、完成通知、wait activity 和输入
+投影；`*-render.jsonl` 记录每一帧的终端操作分类与恢复重绘原因；
+`*-screen.txt` 保存最终可见屏幕。排查顺序必须先确认工具注册表与通知
+恰好一次，再判断输入投影，最后检查终端重绘。
+
+新增拓扑回放分别覆盖：同一 child 的多轮 follow-up、嵌套
+root→coordinator→worker 的直接父通知、interrupt/close 后的名称复用与
+incarnation 变化、parallel-review 的 fan-out/fan-in，以及
+proposer→critic→judge 的串行证据传递；`multiagent-shared-workspace`
+还验证 child 使用父 session 的精确 `cwd` 直接修改同一工作区，而不生成
+lease 或隔离变更引用。
 
 ## Evolution Path
 
 1. **技术一期**：session-owned 控制树、异步协作 tools、消息驱动唤醒、
-   Coding Git workspace lease、事实驱动 TUI；无 LRU 回收。
+   Coding Git workspace lease、事实驱动的跨产品 TUI；无 LRU 回收。
 2. **调度一期**：Work-backed durable execution、checkpoint、orphan
    recovery 与 attach/cancel。
 3. **后续**：LRU 驻留回收、远端执行（channel 承载 transport）、Method

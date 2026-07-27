@@ -394,7 +394,7 @@ class ProtectedAppendStrategy:
         if context.first_changed is None:
             return False
         return (
-            _protected_append_plan(
+            _protected_append_candidate(
                 current_lines=context.current_lines,
                 previous_lines=context.previous_lines,
                 first_changed=context.first_changed,
@@ -417,7 +417,16 @@ class ProtectedAppendStrategy:
             size=context.size,
         )
         if protected_append is None:
-            raise AssertionError("protected append strategy planned without an admissible append")
+            return runtime.managed_viewport_repaint_diagnostics(
+                current_lines=context.current_lines,
+                previous_lines=context.previous_lines,
+                size=context.size,
+                changed_range=context.changed_range,
+                cursor=context.cursor,
+                declared_cursor=context.declared_cursor,
+                repaint_reason="non_pure_protected_append",
+                delete_kitty_image_sequences=context.previous_kitty_delete_sequences,
+            )
         inserted_start, inserted_end, protected_start = protected_append
         return runtime.diagnostics(
             current_lines=context.current_lines,
@@ -1183,6 +1192,31 @@ def _protected_append_plan(
     cursor: CursorDeclaration | None,
     size: TerminalSize,
 ) -> tuple[int, int, int] | None:
+    candidate = _protected_append_candidate(
+        current_lines=current_lines,
+        previous_lines=previous_lines,
+        first_changed=first_changed,
+        appended_lines=appended_lines,
+        cursor=cursor,
+        size=size,
+    )
+    if candidate is None:
+        return None
+    inserted_start, inserted_end, protected_start = candidate
+    if previous_lines[inserted_start:] != current_lines[inserted_end:]:
+        return None
+    return inserted_start, inserted_end, protected_start
+
+
+def _protected_append_candidate(
+    *,
+    current_lines: tuple[str, ...],
+    previous_lines: tuple[str, ...],
+    first_changed: int,
+    appended_lines: int,
+    cursor: CursorDeclaration | None,
+    size: TerminalSize,
+) -> tuple[int, int, int] | None:
     if cursor is None or appended_lines <= 0:
         return None
     if len(current_lines) < size.rows:
@@ -1198,11 +1232,6 @@ def _protected_append_plan(
     if protected_height <= 0 or protected_height >= size.rows:
         return None
     if cursor.row < protected_start:
-        return None
-    if not (
-        isinstance(previous_lines, _SegmentedTextLines)
-        and isinstance(current_lines, _SegmentedTextLines)
-    ) and previous_lines[:inserted_start] != current_lines[:inserted_start]:
         return None
     return inserted_start, inserted_end, protected_start
 

@@ -121,6 +121,7 @@ class Agent:
         self.call_options = options.call_options or CallOptions()
         self.before_tool_call = options.before_tool_call
         self.after_tool_call = options.after_tool_call
+        self.mailbox_queue = PendingMessageQueue("all")
         self.steering_queue = PendingMessageQueue(options.steering_mode)
         self.follow_up_queue = PendingMessageQueue(options.follow_up_mode)
         self._session_id = options.session_id
@@ -366,6 +367,16 @@ class Agent:
         self.follow_up_queue.enqueue(queued_message)
         return queued_message
 
+    def enqueue_mailbox(self, message: AgentMessage) -> AgentMessage:
+        """Queue system-owned input outside the editable user queues."""
+
+        queued_message = canonicalize_user_message(message)
+        self.mailbox_queue.enqueue(queued_message)
+        return queued_message
+
+    def clear_mailbox_queue(self) -> None:
+        self.mailbox_queue.clear()
+
     def clear_steering_queue(self) -> None:
         self.steering_queue.clear()
 
@@ -373,11 +384,16 @@ class Agent:
         self.follow_up_queue.clear()
 
     def clear_all_queues(self) -> None:
+        self.clear_mailbox_queue()
         self.clear_steering_queue()
         self.clear_follow_up_queue()
 
     def has_queued_messages(self) -> bool:
-        return self.steering_queue.has_items() or self.follow_up_queue.has_items()
+        return (
+            self.mailbox_queue.has_items()
+            or self.steering_queue.has_items()
+            or self.follow_up_queue.has_items()
+        )
 
     def abort(self) -> None:
         if self._active_abort_controller is not None:
@@ -433,6 +449,11 @@ class Agent:
             raise RuntimeError("No messages to continue from")
 
         if getattr(last_message, "role", None) == "assistant":
+            queued_mailbox = self.mailbox_queue.drain()
+            if queued_mailbox:
+                await self._run_prompt_messages(queued_mailbox)
+                return
+
             queued_steering = self.steering_queue.drain()
             if queued_steering:
                 await self._run_prompt_messages(
@@ -492,6 +513,9 @@ class Agent:
     ) -> AgentLoopConfig:
         local_skip = skip_initial_steering_poll
 
+        async def get_mailbox_messages() -> list[AgentMessage]:
+            return self.mailbox_queue.drain()
+
         async def get_steering_messages() -> list[AgentMessage]:
             nonlocal local_skip
             if local_skip:
@@ -520,6 +544,7 @@ class Agent:
             after_tool_call=self.after_tool_call,
             convert_to_llm=self.convert_to_llm,
             transform_context=self.transform_context,
+            get_mailbox_messages=get_mailbox_messages,
             get_steering_messages=get_steering_messages,
             get_follow_up_messages=get_follow_up_messages,
         )

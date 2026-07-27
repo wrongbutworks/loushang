@@ -53,7 +53,7 @@ workspace:
 notification:
   exactly one completion notification per agent incarnation and run round
   across completion/stop/cleanup races
-  notification includes workspace, artifact, and change-set references
+  notification includes workspace_ref, artifact_refs, and change_set_ref
   terminal facts and completion notices do not travel through send_message
 
 stale callbacks:
@@ -190,16 +190,22 @@ Implementation checkpoint (2026-07-26):
 - Phase 1B is implemented by the single-owner `SubagentRunHandle`.
 - Phase 1C's Product-neutral substrate is implemented: deterministic
   watermark history planning, approval provenance bubbling, the
-  `HostInputQueue` facade, the `HostRuntime` round adapter, session-owned tree
-  operations, queue-only completion notices, recursive release, and the
-  lifecycle hook composer.
+  `HostInputQueue` user-input facade, the Agent system mailbox, the
+  `HostRuntime` round adapter, session-owned tree operations, queue-only
+  completion notices, recursive release, and the lifecycle hook composer.
 - Phase 2A Product integration is implemented: normal Coding CLI root sessions
   explicitly install a non-persistent Coding child-session factory and a
   bounded type catalog. `explorer`, `reviewer`, `synthesizer`, `proposer`,
-  `critic`, and `judge` inherit the root workspace with read-only tools.
+  `critic`, and `judge` inherit the root workspace without dedicated `write`
+  or `edit` tools; `explorer` additionally receives Coding's existing `bash`
+  definition, including its configured policy and approval chain, for Git
+  inspection, local search, Python analysis, and permitted network retrieval.
   `implementation_worker` and `test_runner` receive system-allocated isolated
-  Git worktrees. The latter four read-only roles are the built-in recipe
-  roles. The factory maps the
+  Git worktrees. `shared_implementation_worker` is the explicit single-writer
+  exception for a bounded task that must see and directly preserve the parent
+  session's uncommitted state: it reuses the exact resolved Coding `cwd`,
+  worktree, and branch, while commit/merge/publish remain parent-owned. The
+  latter four read-only roles are the built-in recipe roles. The factory maps the
   first round to the existing `prompt()` path, later rounds to the existing
   queue / `continue_run()` path, and interruption/disposal to the existing
   Coding session runtime. It follows the root session's current model and
@@ -224,11 +230,16 @@ Implementation checkpoint (2026-07-26):
 - The Product-neutral `WorkspaceLeasePort` and Coding
   `CodingGitWorktreeLeasePort` are implemented. A clean worktree and temporary
   branch are removed; a changed worktree is retained and its opaque workspace
-  and change-set references flow through facts and completion notices.
-- `/agents` opens the shared full-screen, read-only Agent Tree. It initializes
-  from authoritative live records, subscribes to ordered `AgentFact` updates,
-  and displays status, activity, usage, summaries, and workspace/artifact
-  references. The surface unsubscribes when closed.
+  and change references (`workspace_ref` and `change_set_ref`) flow through
+  facts and completion notices. `change_set_ref` is a provider-interpreted
+  reference.
+- `/agents` is the Product-neutral command and full-screen, read-only Agent
+  Tree owned by `loushang.harnesstui.multiagent`. It initializes from
+  authoritative live records, subscribes to ordered `AgentFact` updates, and
+  displays status, activity, usage, summaries, and workspace/artifact
+  references. Coding is its first Product adapter: it supplies the current
+  session runtime, while other Products reuse the command and surface with
+  their own runtime bindings. The surface unsubscribes when closed.
 
 ### Phase 1A — Pure Control Core
 
@@ -295,15 +306,16 @@ src/loushang/harness/session/multiagent.py
 
 - Implement fresh/fork context construction with transcript watermark and
   deterministic history filtering.
-- Directly compose existing `HostRuntime`, `HostInputQueue`, transcript
-  access, approval handling, and the control fact stream. A Product factory
+- Directly compose existing `HostRuntime`, `HostInputQueue`, Agent mailbox,
+  transcript access, approval handling, and the control fact stream. A Product factory
   adapts its already-prepared session/`run_agent()` round through the narrow
   `SubagentRoundDriver`; do not introduce a phase-one attachable
   `AgentExecutionPort` abstraction.
 - Implement session-owned spawn, send, wait, list, interrupt, and close.
-- Translate completion notices through `AgentInputFacade`; its policy decides
-  whether an idle parent is awakened.  Recipe executors may await terminal
-  facts directly and must not also synthesize a parent turn.
+- Translate completion notices through `AgentInputFacade` into the hidden
+  system mailbox; its policy decides whether an idle parent is awakened.
+  Recipe executors may await terminal facts directly and must not also
+  synthesize a parent turn.
 - Provide a `before_release` hook composer that closes session-owned children
   before the existing Product release hook. Product composition installs this
   when it supplies its concrete child factory; the generic lifecycle
@@ -355,14 +367,22 @@ src/loushang/harnesstui/multiagent/
 - Implement a Coding Git-worktree lease. A policy-checked explicit `cwd`
   attachment remains a separate future Product option; it is not accepted by
   the model-callable phase-two spawn schema.
-- Project `AgentFact` into a TUI agent tree by reusing existing screen
-  surfaces, status line, Markdown rendering, scrolling, and approval UI.
+- Project `AgentFact` into the shared `harnesstui.multiagent` agent tree by
+  reusing existing screen surfaces, status line, Markdown rendering,
+  scrolling, and approval UI. Product adapters only bind their current live
+  runtime; they do not own or reimplement `/agents`.
 
-The first Product slice installs read-only `explorer`, `reviewer`,
-`synthesizer`, `proposer`, `critic`, and `judge` types with `read`, `grep`,
-`find`, and `ls`. It also admits `implementation_worker` with Coding's normal
-write tools and `test_runner` with shell/read tools, but both are forced into
-system-managed isolated Git worktrees by `AgentTypeSpec.workspace_mode`.
+The first Product slice installs non-writing `explorer`, `reviewer`,
+`synthesizer`, `proposer`, `critic`, and `judge` types. All receive `read`,
+`grep`, `find`, and `ls`; `explorer` also receives Coding's existing `bash`
+definition for investigative commands, Python analysis, and permitted
+retrieval. It does not receive dedicated `write` or `edit` tools, and its role
+prompt forbids using shell redirection or in-place editing to bypass that role
+constraint. Bash still follows the Product's configured policy and approval
+chain; the role prompt is not a filesystem sandbox. The Product also admits
+`implementation_worker` with Coding's normal write tools and `test_runner`
+with shell/read tools, but both are forced into system-managed isolated Git
+worktrees by `AgentTypeSpec.workspace_mode`.
 The model selects the admitted type, never the physical worktree path or
 branch. The Product factory remains explicit; a generic Harness default
 factory is not part of this phase.
@@ -378,7 +398,7 @@ uv run pytest \
   tests/coding/test_worktree.py \
   tests/harnesstui/multiagent -q
 
-# Interactive Product smoke test.
+# Interactive smoke test through the first Product adapter (Coding).
 uv run loushang
 # Ask the root model to spawn an explorer/reviewer/implementation_worker,
 # then enter:

@@ -42,10 +42,12 @@ def test_queue_controller_owns_steering_follow_up_and_next_turn_messages() -> No
 
     controller.steer("first")
     controller.follow_up("later")
+    controller.queue_mailbox_message("system")
     controller.append_next_turn_message("next")
 
     assert agent.steering_queue._messages[0].timestamp == 0.0
     assert agent.follow_up_queue._messages[0].timestamp == 0.0
+    assert agent.mailbox_queue._messages == ["system"]
     assert controller.get_steering_messages() == ["first"]
     assert controller.get_follow_up_messages() == ["later"]
     assert controller.drain_next_turn_messages() == ["next"]

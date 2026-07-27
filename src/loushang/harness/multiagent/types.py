@@ -27,6 +27,7 @@ AgentFactKind = Literal[
     "closed",
 ]
 AgentMessageKind = Literal["follow_up", "steering"]
+AgentInputKind = Literal["follow_up", "steering", "mailbox"]
 TransitionReason = Literal[
     "applied",
     "duplicate",
@@ -325,15 +326,17 @@ class AgentInputMessage:
     message_id: str
     sender: ControlCaller
     recipient_ref: AgentRef
-    kind: AgentMessageKind
+    kind: AgentInputKind
     text: str
     references: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.text.strip():
             raise ValueError("agent message text must be non-empty")
-        if self.kind not in {"follow_up", "steering"}:
-            raise ValueError("agent message kind must be follow_up or steering")
+        if self.kind not in {"follow_up", "steering", "mailbox"}:
+            raise ValueError(
+                "agent input kind must be follow_up, steering, or mailbox"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -394,6 +397,7 @@ __all__ = [
     "AgentCompletionNotice",
     "AgentFact",
     "AgentFactKind",
+    "AgentInputKind",
     "AgentInputMessage",
     "AgentMessageKind",
     "AgentPath",

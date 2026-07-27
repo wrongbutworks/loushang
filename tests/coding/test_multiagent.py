@@ -148,6 +148,10 @@ class _RootInputQueue(HostInputQueue[object]):
 class _RootQueue:
     def __init__(self) -> None:
         self.input_queue = _RootInputQueue()
+        self.mailbox: list[object] = []
+
+    def queue_mailbox_message(self, message: object) -> None:
+        self.mailbox.append(message)
 
 
 class _RootRuntime:
@@ -271,7 +275,7 @@ def _request(
     )
 
 
-def test_coding_read_only_agent_types_are_bounded_and_have_no_write_tools() -> None:
+def test_coding_analysis_agent_types_are_bounded_and_have_no_write_tools() -> None:
     registry = coding_read_only_agent_types(
         default_model="provider/model",
         maximum_children=2,
@@ -287,16 +291,23 @@ def test_coding_read_only_agent_types_are_bounded_and_have_no_write_tools() -> N
     ]
     for spec in registry.values():
         assert spec.default_model == "provider/model"
-        assert spec.allowed_tools == ("read", "grep", "find", "ls")
+        assert spec.allowed_tools == (
+            ("bash", "read", "grep", "find", "ls")
+            if spec.name == "explorer"
+            else ("read", "grep", "find", "ls")
+        )
+        assert "write" not in spec.allowed_tools
+        assert "edit" not in spec.allowed_tools
         assert spec.maximum_children == (
             2 if spec.name in {"explorer", "reviewer"} else 1
         )
         assert spec.can_spawn is False
 
 
-def test_coding_phase_two_types_keep_write_access_in_isolated_worktrees() -> None:
+def test_coding_phase_two_types_offer_isolated_and_shared_write_workers() -> None:
     registry = coding_agent_types(maximum_children=2)
     worker = registry.resolve("implementation_worker")
+    shared_worker = registry.resolve("shared_implementation_worker")
     test_runner = registry.resolve("test_runner")
 
     assert worker is not None
@@ -311,6 +322,10 @@ def test_coding_phase_two_types_keep_write_access_in_isolated_worktrees() -> Non
         "edit",
     )
     assert worker.maximum_children == 2
+    assert shared_worker is not None
+    assert shared_worker.workspace_mode == "inherit"
+    assert shared_worker.allowed_tools == worker.allowed_tools
+    assert shared_worker.maximum_children == 1
     assert test_runner is not None
     assert test_runner.workspace_mode == "isolated"
     assert "bash" in test_runner.allowed_tools
@@ -320,13 +335,71 @@ def test_coding_phase_two_types_keep_write_access_in_isolated_worktrees() -> Non
 def test_coding_multiagent_prompt_names_the_admitted_roles_and_wait_discipline() -> (
     None
 ):
-    prompt = coding_multiagent_system_prompt(coding_read_only_agent_types())
+    prompt = coding_multiagent_system_prompt(coding_agent_types())
 
     assert "`explorer`" in prompt
     assert "`reviewer`" in prompt
     assert "`spawn_agent`" in prompt
     assert "`wait_agent`" in prompt
-    assert "completion notices enter your normal input queue" in prompt
+    assert "completion notices enter your system mailbox" in prompt
+    assert "separate from editable follow-up and steering input queues" in prompt
+    assert "whose listed tools cover the delegated task" in prompt
+    assert "not proof that the requested task succeeded" in prompt
+    assert "Preserve result provenance" in prompt
+    assert "tools: bash, read, grep, find, ls" in prompt
+    assert "`shared_implementation_worker`" in prompt
+    assert "directly in the current worktree and branch" in prompt
+
+
+def test_coding_explorer_context_allows_investigative_bash_without_write_tools() -> (
+    None
+):
+    registry = coding_read_only_agent_types()
+
+    plan = coding_recipe_context_plan(
+        agent_type="explorer",
+        model=None,
+        agent_types=registry,
+    )
+
+    assert plan.allowed_tools == ("bash", "read", "grep", "find", "ls")
+    assert "Python analysis" in plan.system_prompt
+    assert "curl-based network retrieval" in plan.system_prompt
+    assert "Do not modify product files" in plan.system_prompt
+
+
+def test_factory_projects_explorer_bash_into_the_child_runtime(tmp_path: Path) -> None:
+    session = _Session(
+        responses=[_assistant("Exploration complete.", input_tokens=1, output_tokens=1)]
+    )
+    runtime = _Runtime(session)
+    captured: dict[str, object] = {}
+
+    def build_runtime(**kwargs: object) -> _Runtime:
+        captured.update(kwargs)
+        return runtime
+
+    spec = coding_read_only_agent_types().resolve("explorer")
+    assert spec is not None
+    factory = CodingSubagentFactory(
+        session_dir=tmp_path / "sessions",
+        cwd=tmp_path,
+        tool_registry=_tool_registry("bash", "read", "grep", "find", "ls"),
+        runtime_builder=build_runtime,
+    )
+
+    async def scenario() -> None:
+        driver = await factory.create_driver(_request(spec=spec))
+        await driver.dispose()
+
+    asyncio.run(scenario())
+
+    expected = ["bash", "read", "grep", "find", "ls"]
+    assert captured["allowed_tool_names"] == expected
+    assert captured["active_tool_names"] == expected
+    assert [
+        definition.name for definition in captured["tool_registry"].list_definitions()
+    ] == expected
 
 
 def test_coding_recipe_context_is_fresh_read_only_and_role_specific() -> None:
@@ -550,6 +623,58 @@ def test_factory_runs_isolated_types_in_a_lease_and_reports_changes(
     assert workspace.released == 1
 
 
+def test_factory_runs_shared_write_worker_in_the_exact_parent_worktree(
+    tmp_path: Path,
+) -> None:
+    session = _Session(
+        responses=[_assistant("Updated the copy.", input_tokens=3, output_tokens=4)]
+    )
+    runtime = _Runtime(session)
+    captured: dict[str, object] = {}
+
+    def build_runtime(**kwargs: object) -> _Runtime:
+        captured.update(kwargs)
+        return runtime
+
+    spec = coding_agent_types().resolve("shared_implementation_worker")
+    assert spec is not None
+    factory = CodingSubagentFactory(
+        session_dir=tmp_path / "sessions",
+        cwd=tmp_path,
+        tool_registry=_tool_registry(*spec.allowed_tools),
+        runtime_builder=build_runtime,
+        workspace_leases=None,
+    )
+
+    async def scenario() -> None:
+        request = _request(spec=spec)
+        driver = await factory.create_driver(request)
+        assert driver.workspace_ref is None
+        driver.deliver(
+            AgentInputMessage(
+                message_id="initial",
+                sender=HostCaller(),
+                recipient_ref=request.record.ref,
+                kind="follow_up",
+                text="Fix one sentence without touching unrelated edits.",
+            )
+        )
+        result = await driver.run_round(round_id=1, mode="prompt")
+        await driver.dispose()
+
+        assert result.final_message == "Updated the copy."
+        assert result.workspace_ref is None
+        assert result.change_set_ref is None
+
+    asyncio.run(scenario())
+
+    assert runtime.create_cwds == [str(tmp_path.resolve())]
+    assert captured["allowed_tool_names"] == list(spec.allowed_tools)
+    assert "sharing the parent Coding session's current worktree" in str(
+        captured["system_prompt"]
+    )
+
+
 def test_factory_rejects_an_admitted_tool_missing_from_the_product_registry(
     tmp_path: Path,
 ) -> None:
@@ -634,3 +759,37 @@ def test_installation_binds_root_input_to_the_existing_queue() -> None:
     assert payload.display is False
     assert session.multiagent_runtime is runtime
     assert session.multiagent_input.queue is session.runtime.queue.input_queue
+
+
+def test_coding_completion_notice_uses_hidden_agent_mailbox() -> None:
+    session = _RootSession()
+    runtime = install_coding_multiagent_session(
+        session,  # type: ignore[arg-type]
+        child_factory=_UnusedFactory(),
+        agent_types=coding_read_only_agent_types(),
+    )
+    child = runtime.control.spawn(
+        caller=HostCaller(),
+        parent_path=AgentPath.root(),
+        name="reviewer",
+        agent_type="reviewer",
+    )
+    transition = runtime.control.begin_round(child.ref)
+    assert transition.record is not None
+
+    runtime.control.finish_round(
+        child.ref,
+        round_id=transition.record.round_id,
+        status="completed",
+        final_message="No blockers.",
+        duration_ms=0,
+    )
+
+    assert session.runtime.queue.input_queue.texts("steering") == []
+    assert session.runtime.queue.input_queue.texts("follow_up") == []
+    assert len(session.runtime.queue.mailbox) == 1
+    payload = session.runtime.queue.mailbox[0]
+    assert isinstance(payload, ApplicationMessage)
+    assert payload.custom_type == "harness.multiagent.completion_notice"
+    assert payload.delivery_mode == "next_turn"
+    assert payload.display is False

@@ -166,13 +166,13 @@ binding therefore fails closed. A shared callback-driven factory may be
 extracted only after at least two Product implementations demonstrate the same
 stable construction seam.
 
-Completion notices default to `queue_only`: the immutable notice is converted
-to application-owned parent input, but an idle parent is not unexpectedly
-started. A running parent receives the notice through its steering boundary so
-the current turn sees the result before it synthesizes; an idle parent receives
-it as a follow-up. The notice is hidden from user-prompt presentation in both
-cases. `wake_if_idle` is an explicit policy. Any async notice delivery task is
-owned and drained by the session runtime.
+Completion notices default to `queue_only`: the immutable notice enters the
+parent Agent's system mailbox, but an idle parent is not unexpectedly started.
+The Agent loop drains that mailbox before sampling at the next safe boundary,
+including immediately after a tool result. The notice never enters the
+editable steering/follow-up queues or their TUI preview. `wake_if_idle` is an
+explicit policy. Any async notice delivery task is owned and drained by the
+session runtime.
 
 When a session is replaced or disposed, its `before_release` hook closes only
 session-owned executions. A durable Work operation is detached, not cancelled;
@@ -205,8 +205,9 @@ best-effort and ordered per agent; they are not a durable event log.
 There are two non-interchangeable paths:
 
 ```text
-agent message      -> target AgentInputMessage -> target HostInputQueue -> next turn
-agent fact/progress -> AgentFact event stream  -> TUI / Work / audit consumers
+agent message       -> target AgentInputMessage -> target HostInputQueue
+completion notice   -> target system mailbox -> next model sampling boundary
+agent fact/progress -> AgentFact event stream -> TUI / Work / audit consumers
 ```
 
 `AgentInputMessage` carries a message id, sender path, recipient path,
@@ -231,8 +232,8 @@ target queues the message for the relevant boundary.
 The completion notice is not a model-authored message. Control generates its
 immutable payload from the terminal fact and publishes it through a dedicated
 notice sink; it does **not** implement the notice by recursively calling
-`send_message`. `AgentInputFacade` later decides how to enqueue the notice and
-whether an idle parent should start a turn. A recipe executor may instead
+`send_message`. `AgentInputFacade` later submits the notice to the system
+mailbox and decides whether an idle parent should start a turn. A recipe executor may instead
 await terminal facts directly. These two consumers must not both trigger a
 parent model turn.
 
@@ -295,8 +296,13 @@ canvas, or artifact references in non-Coding products.
 The implemented phase-two model tool does not yet accept either field
 directly. `AgentTypeSpec.workspace_mode` selects inherited or isolated policy;
 Coding's `implementation_worker` and `test_runner` force isolated managed
-worktrees. Explicit `cwd` attachment remains deferred until its allowed-root
-policy and user-facing authority are implemented.
+worktrees. Coding's explicitly admitted `shared_implementation_worker` instead
+uses the parent session's already-authorized, resolved `cwd`, so it edits the
+same worktree and branch and can see existing uncommitted changes. It is
+single-writer per parent and must not overlap writes with the parent or another
+worker. This is not arbitrary `cwd` attachment: model-supplied paths remain
+deferred until their allowed-root policy and user-facing authority are
+implemented.
 
 Tool exposure is per agent type. An explorer may have no spawn or close tool;
 a coordinator can manage its descendants; a worker can be required to use an
@@ -328,10 +334,11 @@ The control/registry owns an atomic terminal-notification marker keyed by
 agent incarnation and run round. Completion, failure, explicit stop, cleanup,
 or a racing observer may all discover a terminal state, but exactly one
 structured completion notice is published for that round. The session input
-facade may insert that notice into the parent's input queue. The notice
-includes the retained `workspace_ref` and artifact/change-set references, so a
-parent can locate a worker's output without reading its raw sidechain
-transcript.
+facade inserts that notice into the parent's system mailbox. The notice
+includes the retained `workspace_ref` and opaque artifact/change references,
+so a parent can locate a worker's output without reading its raw sidechain
+transcript. `change_set_ref` is a provider-interpreted reference; there is no
+additional Product-specific public type at this boundary.
 
 The phase-one cancellation policy is `link_parent_cancel = false`: an
 asynchronous background child survives cancellation of its parent turn. The
@@ -378,7 +385,8 @@ runtime today.
 
 ## Presentation
 
-`loushang.harnesstui.multiagent` is a fact consumer only:
+`loushang.harnesstui.multiagent` owns the Product-neutral `/agents` command
+surface and is a fact consumer only:
 
 ```text
 AgentFact -> AgentTreeViewModel -> AgentTreeSurface
@@ -390,8 +398,11 @@ the approval surface. The multi-agent core never imports it.
 
 The first implemented `/agents` surface is deliberately read-only. It
 initializes from the Host-authorized live registry snapshot, then updates only
-through `AgentFact` subscription. Interrupt and close remain normal
-authority-checked collaboration tools rather than TUI-specific control paths.
+through `AgentFact` subscription. Coding is the first Product adapter and only
+binds its current session runtime; PPT, Design, and other Products reuse the
+same command and surface with their own bindings. Interrupt and close remain
+normal authority-checked collaboration tools rather than TUI-specific control
+paths.
 
 ## Claude Code Qualities To Preserve
 

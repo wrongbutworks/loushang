@@ -150,6 +150,8 @@ round 2: deliver(消息)  ──run_agent(continue)──► ...
 1. **初始轮**由 Control 在 spawn 流水线末尾触发（`deliver(初始简报)`）。
 2. **后续轮**只在实体 idle（无活跃 run）时由 `deliver` 触发；实体
    running 时 deliver 不新起 run，而是：
+   - system `mailbox`：在下一模型采样安全边界优先注入，不进入用户
+     pending-input UI
    - `steering` 语义：经 `AgentLoopConfig.get_steering_messages` 挂点
      注入当前 turn 的下一工具边界（harness host queue 的既有语义）
    - `follow_up` 语义：排队，当前 run 结束后作为下一轮输入
@@ -162,8 +164,10 @@ round 2: deliver(消息)  ──run_agent(continue)──► ...
    incarnation 或新 round 发生后，旧 task 的迟到回调只得到 stale
    transition，不得更新状态或再次投递通知。
 
-这一模型直接复用 agent 内核已有的挂点（`get_steering_messages` /
-`get_follow_up_messages` / `mode="continue"`），不新增 loop 语义。
+这一模型复用并补齐 agent 内核的三个输入挂点
+（`get_mailbox_messages` / `get_steering_messages` /
+`get_follow_up_messages` / `mode="continue"`）；mailbox 是系统输入通道，
+不是第二套 agent loop。
 
 ## Cancellation Semantics（ARD-002 双模式）
 

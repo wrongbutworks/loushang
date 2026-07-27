@@ -53,9 +53,13 @@ _ALLOWED_HISTORY_TYPES = (UserMessage, AssistantMessage, ToolResultMessage)
 
 _ROLE_PROMPTS: Mapping[str, str] = {
     "explorer": (
-        "You are a read-only coding explorer. Inspect the requested code and "
-        "report concrete evidence, paths, and relevant constraints. Do not "
-        "modify files or execute shell commands."
+        "You are a non-writing coding explorer. Inspect the requested code and "
+        "report concrete evidence, paths, commands, and relevant constraints. "
+        "You may run investigative shell commands, including Git inspection, "
+        "local searches, Python analysis, and curl-based network retrieval when "
+        "policy permits it. Do not modify product files, install software, "
+        "publish changes, or use shell redirection and in-place editing to "
+        "bypass the absence of write/edit tools."
     ),
     "reviewer": (
         "You are an independent read-only code reviewer. Identify correctness, "
@@ -84,6 +88,14 @@ _ROLE_PROMPTS: Mapping[str, str] = {
         "worktree. Make the requested bounded change, run focused validation, and "
         "report the files changed and remaining risks. Do not merge branches."
     ),
+    "shared_implementation_worker": (
+        "You are an implementation worker sharing the parent Coding session's "
+        "current worktree and branch. Make only the requested bounded change, "
+        "preserve unrelated and uncommitted edits, run focused validation, and "
+        "report the files changed and remaining risks. Do not commit, merge, "
+        "publish, or modify files outside the assigned scope. Avoid overlapping "
+        "writes with the parent or another worker."
+    ),
     "test_runner": (
         "You are a test runner in a system-managed isolated Git worktree. Run the "
         "requested checks, diagnose failures, and report reproducible evidence. "
@@ -97,13 +109,17 @@ def coding_read_only_agent_types(
     default_model: str | None = None,
     maximum_children: int = 3,
 ) -> AgentTypeRegistry:
-    """Return Coding's initial admitted, read-only child roles."""
+    """Return Coding's initial admitted, non-writing analysis roles."""
 
     return AgentTypeRegistry(
         AgentTypeSpec(
             name=name,
             default_model=default_model,
-            allowed_tools=("read", "grep", "find", "ls"),
+            allowed_tools=(
+                ("bash", "read", "grep", "find", "ls")
+                if name == "explorer"
+                else ("read", "grep", "find", "ls")
+            ),
             maximum_children=(
                 maximum_children if name in {"explorer", "reviewer"} else 1
             ),
@@ -149,6 +165,21 @@ def coding_agent_types(
                 workspace_mode="isolated",
             ),
             AgentTypeSpec(
+                name="shared_implementation_worker",
+                default_model=default_model,
+                allowed_tools=(
+                    "bash",
+                    "read",
+                    "grep",
+                    "find",
+                    "ls",
+                    "write",
+                    "edit",
+                ),
+                maximum_children=1,
+                workspace_mode="inherit",
+            ),
+            AgentTypeSpec(
                 name="test_runner",
                 default_model=default_model,
                 allowed_tools=("bash", "read", "grep", "find", "ls"),
@@ -165,7 +196,10 @@ def coding_multiagent_system_prompt(
     """Describe the admitted Coding collaboration surface to the root model."""
 
     role_descriptions = {
-        "explorer": "inspect code and report evidence without modifying files",
+        "explorer": (
+            "inspect code, run investigative commands, and report evidence "
+            "without modifying product files"
+        ),
         "reviewer": "independently review correctness, lifecycle, security, and tests",
         "synthesizer": "reconcile independent reviews into one recommendation",
         "proposer": "make an evidence-based case for a proposal",
@@ -173,6 +207,10 @@ def coding_multiagent_system_prompt(
         "judge": "compare both sides and give an impartial decision",
         "implementation_worker": (
             "implement a bounded change in a managed isolated Git worktree"
+        ),
+        "shared_implementation_worker": (
+            "implement one bounded change directly in the current worktree and "
+            "branch; preserve unrelated edits and avoid overlapping writers"
         ),
         "test_runner": "run and diagnose checks in a managed isolated Git worktree",
     }
@@ -189,7 +227,15 @@ def coding_multiagent_system_prompt(
         "new collaboration activity, `list_agents` to inspect the visible tree, "
         "and `send_message` for a follow-up. Use `interrupt_agent` or "
         "`close_agent` only for agents you own. Child completion notices enter "
-        "your normal input queue and must be synthesized into your answer.\n\n"
+        "your system mailbox, separate from editable follow-up and steering input "
+        "queues, and must be synthesized into your answer.\n\n"
+        "Choose an agent type whose listed tools cover the delegated task. "
+        "A completed child run means that its model turn ended; it is not proof "
+        "that the requested task succeeded. Verify that each child returned the "
+        "requested evidence before aggregating it. Preserve result provenance: "
+        "never attribute a root fallback, a different child result, or a new "
+        "computation to the original child. If required results are missing, "
+        "delegate again to a capable type or report the result as incomplete.\n\n"
         "Admitted child types:\n"
         f"{type_lines}"
     )
@@ -329,6 +375,7 @@ def install_coding_multiagent_session(
     input_facade: AgentInputFacade[object] = AgentInputFacade(
         queue=session.runtime.queue.input_queue,
         build_payload=_coding_input_payload,
+        submit_mailbox=_mailbox_submitter(session),
     )
     runtime = SessionMultiAgentRuntime(
         control=MultiAgentControl(agent_types=agent_types),
@@ -369,6 +416,7 @@ class _CodingSubagentDriver:
         self.input_facade: AgentInputFacade[object] = AgentInputFacade(
             queue=session.runtime.queue.input_queue,
             build_payload=_coding_input_payload,
+            submit_mailbox=_mailbox_submitter(session),
         )
         self._initial_message: AgentInputMessage | None = None
         self._rounds_started = 0
@@ -507,8 +555,16 @@ def _coding_input_payload(message: AgentInputMessage) -> ApplicationMessage:
             "references": list(message.references),
         },
         origin="harness.multiagent",
-        delivery_mode=message.kind,
+        delivery_mode=("next_turn" if message.kind == "mailbox" else message.kind),
     )
+
+
+def _mailbox_submitter(session: AgentSession) -> Callable[[object], object]:
+    queue = session.runtime.queue
+    submit = getattr(queue, "queue_mailbox_message", None)
+    if callable(submit):
+        return cast(Callable[[object], object], submit)
+    return queue.input_queue.append_next_turn
 
 
 def _install_forked_history(

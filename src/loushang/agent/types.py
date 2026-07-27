@@ -544,6 +544,7 @@ class AgentLoopConfig:
     convert_to_llm: ConvertToLlmFn
     call_options: CallOptions = field(default_factory=CallOptions)
     transform_context: TransformContextFn | None = None
+    get_mailbox_messages: Callable[[], Awaitable[list[AgentMessage]]] | None = None
     get_steering_messages: Callable[[], Awaitable[list[AgentMessage]]] | None = None
     get_follow_up_messages: Callable[[], Awaitable[list[AgentMessage]]] | None = None
     tool_execution: ToolExecutionMode = "parallel"

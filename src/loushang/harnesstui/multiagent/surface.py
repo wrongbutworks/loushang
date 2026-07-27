@@ -1,4 +1,4 @@
-"""Live, read-only full-screen projection of a technical agent tree."""
+"""Product-neutral `/agents` projection of a live technical agent tree."""
 
 from __future__ import annotations
 
@@ -223,7 +223,7 @@ def build_agent_tree_surface_view(
     subscribe_facts: AgentFactSubscriber,
     request_render: Callable[[], object],
 ) -> ScreenSurfaceView:
-    """Build the shared live full-screen Agent Tree page."""
+    """Build the shared cross-Product live full-screen Agent Tree page."""
 
     return ScreenSurfaceView(
         title="Agents",

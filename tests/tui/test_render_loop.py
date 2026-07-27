@@ -644,7 +644,7 @@ def test_protected_append_update_scrolls_above_cursor_suffix() -> None:
         "line 3",
         "line 4",
         "",
-        "working 1.10s",
+        "working 1.00s",
         "",
         f"› {CURSOR_MARKER}",
         "",
@@ -667,7 +667,7 @@ def test_protected_append_update_scrolls_above_cursor_suffix() -> None:
         "line 3",
         "line 4",
         "",
-        "working 1.10s",
+        "working 1.00s",
         "",
         "›",
         "",
@@ -675,6 +675,55 @@ def test_protected_append_update_scrolls_above_cursor_suffix() -> None:
     )
     assert step.frame.screen_after.cursor_row == 5
     assert step.frame.screen_after.cursor_column == 2
+
+
+def test_non_pure_protected_append_repaints_instead_of_replaying_changed_turn() -> None:
+    previous_lines = (
+        "› calculate",
+        "• Ran wait_agent 0.00s",
+        "",
+        "working 1.00s",
+        "",
+        f"› {CURSOR_MARKER}",
+        "",
+        "status running",
+    )
+    current_lines = (
+        "› calculate",
+        "• Ran wait_agent took 1.32s",
+        "• First result: 91",
+        "• Ran wait_agent 0.00s",
+        "",
+        "working 2.00s",
+        "",
+        f"› {CURSOR_MARKER}",
+        "",
+        "status running",
+    )
+    root = TextRoot("\n".join(previous_lines))
+    runtime = TuiRuntime(
+        render_loop=RenderLoop(root),
+        terminal=FakeTerminalPort(size=TerminalSize(columns=40, rows=8)),
+    )
+    runtime.render_now()
+    root.text = "\n".join(current_lines)
+
+    step = runtime.render_now()
+
+    step.assert_operation_class("managed_viewport_repaint")
+    assert step.diagnostics.repaint_reason == "non_pure_protected_append"
+    assert step.frame is not None
+    assert step.frame.screen_after.visible_lines == (
+        "• First result: 91",
+        "• Ran wait_agent 0.00s",
+        "",
+        "working 2.00s",
+        "",
+        "›",
+        "",
+        "status running",
+    )
+    assert step.frame.screen_after.visible_lines.count("• Ran wait_agent 0.00s") == 1
 
 
 def test_protected_append_update_waits_until_logical_screen_is_full() -> None:
