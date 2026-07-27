@@ -189,7 +189,7 @@ class SessionRuntime:
                 self.after_turn_policy.record_assistant_response_error
             ),
             check_auto_compaction=self.after_turn_policy.check_auto_compaction,
-            consume_user_message=self._queue_controller.mark_message_consumed,
+            consume_queued_message=self._queue_controller.mark_message_consumed,
         )
         self.transcript.set_commit_observer(self._schedule_transcript_commit)
         self._unsubscribe_agent = self.agent.subscribe(self.handle_agent_event)

@@ -18,6 +18,7 @@ from loushang.tui.playback_suite import (
 from tests.coding.tui_support.scenarios.command import COMMAND_ROUTING_SCENARIOS
 from tests.coding.tui_support.scenarios.composer import COMPOSER_SCENARIOS
 from tests.coding.tui_support.scenarios.lifecycle import LIFECYCLE_SCENARIOS
+from tests.coding.tui_support.scenarios.multiagent import MULTIAGENT_SCENARIOS
 from tests.coding.tui_support.scenarios.product import PRODUCT_SCENARIOS
 from tests.coding.tui_support.scenarios.surface import SURFACE_SCENARIOS
 from tests.coding.tui_support.scenarios.terminal import TERMINAL_SCENARIOS
@@ -27,6 +28,7 @@ DEFAULT_SUITE = ScreenPlaybackSuite(
     (
         *COMPOSER_SCENARIOS,
         *LIFECYCLE_SCENARIOS,
+        *MULTIAGENT_SCENARIOS,
         *PRODUCT_SCENARIOS,
         *COMMAND_ROUTING_SCENARIOS,
         *SURFACE_SCENARIOS,

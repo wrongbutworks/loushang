@@ -777,7 +777,7 @@ def test_command_controller_executes_builtin_runtime_session_commands(tmp_path) 
     )
 
     results = [
-        asyncio.run(controller.execute_command_async("/new", "/tmp/next")),
+        asyncio.run(controller.execute_command_async("/new", "")),
         asyncio.run(controller.execute_command_async("/resume", "/tmp/session.jsonl")),
         asyncio.run(controller.execute_command_async("/fork", "entry-1 before")),
         asyncio.run(controller.execute_command_async("/clone", "")),
@@ -799,6 +799,7 @@ def test_command_controller_executes_builtin_runtime_session_commands(tmp_path) 
             "command": "new",
             "status": "ok",
             "result": {"cancelled": False},
+            "message": "Started a new session.",
         },
         {
             "source": "builtin",
@@ -832,7 +833,7 @@ def test_command_controller_executes_builtin_runtime_session_commands(tmp_path) 
         },
     ]
     assert calls == [
-        ("new", {"cwd": "/tmp/next"}),
+        ("new", None),
         ("resume", ("/tmp/session.jsonl", None)),
         ("fork", ("entry-1", {"position": "before"})),
         ("clone", None),
@@ -858,6 +859,10 @@ def test_command_controller_projects_standard_session_argument_errors(tmp_path) 
         del target_id, options
         return {"cancelled": False}
 
+    async def _new_session(options: object | None = None) -> dict[str, object]:
+        del options
+        return {"cancelled": False}
+
     controller = CommandController(
         session_manager=asyncio.run(
             SessionManager.new(session_dir=tmp_path, cwd="/tmp/project", persist=False)
@@ -866,6 +871,7 @@ def test_command_controller_projects_standard_session_argument_errors(tmp_path) 
         get_resource_bundle=lambda: None,
         get_diagnostics_service=lambda: None,
         standard_ports=StandardSessionCommandPorts(
+            new_session=_new_session,
             resume_session=_resume,
             fork_session=_fork,
             navigate_tree=_navigate_tree,
@@ -873,6 +879,7 @@ def test_command_controller_projects_standard_session_argument_errors(tmp_path) 
     )
 
     resume = asyncio.run(controller.execute_command_async("/resume", ""))
+    new = asyncio.run(controller.execute_command_async("/new", "/tmp/project"))
     fork = asyncio.run(controller.execute_command_async("/fork", "entry elsewhere"))
     tree = asyncio.run(controller.execute_command_async("/tree", ""))
 
@@ -882,6 +889,13 @@ def test_command_controller_projects_standard_session_argument_errors(tmp_path) 
         "command": "resume",
         "status": "error",
         "message": "Usage: /resume <session-id-or-path>",
+    }
+    assert new is not None
+    assert new.result == {
+        "source": "builtin",
+        "command": "new",
+        "status": "error",
+        "message": "Usage: /new",
     }
     assert fork is not None
     assert fork.result == {

@@ -243,6 +243,13 @@ DEFAULT_LOCAL_COMMANDS_PROFILE = LocalCommandCatalogProfile(
             description="Show terminal diagnostics",
             source="local",
         ),
+        "agents": CommandDef(
+            id="harness.ui.agents",
+            name="agents",
+            kind=CommandKind.LOCAL_UI,
+            description="Show live agent collaboration",
+            source="local",
+        ),
         "btw": CommandDef(
             id="harness.ui.btw",
             name="btw",

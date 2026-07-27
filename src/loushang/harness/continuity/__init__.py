@@ -11,6 +11,7 @@ from loushang.harness.continuity.composition import (
 )
 from loushang.harness.continuity.hub import ContinuityHub, InvalidContinuityCursor
 from loushang.harness.continuity.provider import (
+    ContinuityDeletionProvider,
     ContinuityProvider,
     PreparedActivationLease,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "ContinuityArtifactReference",
     "ContinuityCompositionError",
     "ContinuityDiagnostic",
+    "ContinuityDeletionProvider",
     "ContinuityIndexState",
     "ContinuityHub",
     "ContinuityPage",

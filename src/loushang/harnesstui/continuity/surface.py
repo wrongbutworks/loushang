@@ -80,10 +80,14 @@ class ContinuitySurface:
         page_size: int = 25,
         keybindings: KeybindingManager | KeybindingConfig | None = None,
         theme: ThemeResolver | None = None,
+        include_summary: Callable[[ContinuitySummary], bool] | None = None,
+        selection_action: str = "resume",
     ) -> None:
         self._hub = hub
         self._request_render = request_render
         self._theme = theme if theme is not None else CONTINUITY_PAGE_THEME
+        self._include_summary = include_summary or (lambda _summary: True)
+        self._selection_action = selection_action
         self._keybindings = (
             keybindings
             if isinstance(keybindings, KeybindingManager)
@@ -117,6 +121,16 @@ class ContinuitySurface:
         if selected is None:
             return None
         return self._targets.get(selected.selected_value)
+
+    @property
+    def selected_summary(self) -> ContinuitySummary | None:
+        target = self.selected_target
+        if target is None:
+            return None
+        return next(
+            (summary for summary in self._summaries if summary.target == target),
+            None,
+        )
 
     @property
     def query(self) -> ContinuityQuery:
@@ -201,7 +215,7 @@ class ContinuitySurface:
         if self._activating:
             return ""
         hints = [
-            f"{self._key_label('tui.select.confirm')} resume",
+            f"{self._key_label('tui.select.confirm')} {self._selection_action}",
             f"{self._key_label('tui.select.cancel')} exit",
         ]
         if len(self._domain_options) > 1:
@@ -300,7 +314,9 @@ class ContinuitySurface:
         previous_page = self._page
         previous_summaries = tuple(self._summaries)
         if reset:
-            self._summaries = list(page.items)
+            self._summaries = [
+                item for item in page.items if self._include_summary(item)
+            ]
         else:
             existing = {
                 (item.target.provider_id, item.target.opaque_id)
@@ -309,6 +325,7 @@ class ContinuitySurface:
             self._summaries.extend(
                 item
                 for item in page.items
+                if self._include_summary(item)
                 if (item.target.provider_id, item.target.opaque_id) not in existing
             )
         self._page = page
@@ -629,7 +646,19 @@ class ContinuitySurface:
 
     def _state_lines(self, *, width: int) -> list[RenderLine]:
         if self._activating:
-            return [RenderLine(""), RenderLine("Resuming selected item…")]
+            action = (
+                "Resuming"
+                if self._selection_action == "resume"
+                else (
+                    f"{self._selection_action[:-1].capitalize()}ing"
+                    if self._selection_action.endswith("e")
+                    else f"{self._selection_action.capitalize()}ing"
+                )
+            )
+            return [
+                RenderLine(""),
+                RenderLine(f"{action} selected item…"),
+            ]
         if self._error:
             return [
                 RenderLine(""),
@@ -719,6 +748,10 @@ def build_continuity_surface_view(
     request_render: Callable[[str], None],
     keybindings: KeybindingManager | KeybindingConfig | None = None,
     theme: ThemeResolver | None = None,
+    include_summary: Callable[[ContinuitySummary], bool] | None = None,
+    title: str = "Resume a previous session",
+    selection_action: str = "resume",
+    purpose: Literal["session", "delete"] = "session",
 ) -> ScreenSurfaceView:
     resolved_theme = theme if theme is not None else CONTINUITY_PAGE_THEME
     content = ContinuitySurface(
@@ -726,10 +759,12 @@ def build_continuity_surface_view(
         request_render=request_render,
         keybindings=keybindings,
         theme=resolved_theme,
+        include_summary=include_summary,
+        selection_action=selection_action,
     )
     return ScreenSurfaceView(
-        title="Resume a previous session",
-        purpose="session",
+        title=title,
+        purpose=purpose,
         content=content,
         footer=content.footer_help,
         presentation="page",

@@ -23,6 +23,7 @@ from loushang.tui import (
 )
 from loushang.tui._runner_utils import finish_tui_exit
 from loushang.tui.theme import ThemeResolver
+from loushang.tui.transcript import ToolExecutionRecord
 from tests.coding.tui_support.playback import ScreenTuiScenario
 
 pytestmark = pytest.mark.tui_render_contract
@@ -317,6 +318,70 @@ def test_screen_coding_tui_resize_repaints_without_replaying_working_or_composer
     assert resize_step.diagnostics.operation_class == "resize_repaint"
     assert visible.count("› resize me") == 1
     assert visible.count("Working") == 1
+
+
+def test_screen_coding_tui_tool_completion_and_append_do_not_replay_active_turn() -> None:
+    now = [1.0]
+    app = ScreenCodingTuiApp(
+        model_label="kimi",
+        cwd="/repo",
+        branch="main",
+        session_label="abcd",
+        now=lambda: now[0],
+    )
+    runtime, _port = _runtime(app, width=80, height=16)
+
+    app.start_prompt("wait for three agents", started_at=0.0)
+    app.state.upsert_tool_record(
+        "wait-1",
+        ToolExecutionRecord(
+            name="wait_agent",
+            state="running",
+            elapsed_seconds=0.0,
+        ),
+    )
+    runtime.render_now()
+
+    now[0] = 2.0
+    app.state.upsert_tool_record(
+        "wait-1",
+        ToolExecutionRecord(
+            name="wait_agent",
+            state="completed",
+            elapsed_seconds=1.32,
+        ),
+    )
+    app.begin_assistant()
+    app.append_assistant_chunk(
+        "\n".join(
+            (
+                "First result: 91.",
+                "Continue waiting for the remaining agents.",
+                "This active turn must remain singular.",
+                "No prior prompt should be replayed.",
+            )
+        )
+    )
+    app.end_assistant()
+    app.state.upsert_tool_record(
+        "wait-2",
+        ToolExecutionRecord(
+            name="wait_agent",
+            state="running",
+            elapsed_seconds=0.0,
+        ),
+    )
+    step = runtime.render_now()
+
+    assert step.diagnostics.operation_class == "managed_viewport_repaint"
+    assert step.diagnostics.repaint_reason == "non_pure_protected_append"
+    logical = "\n".join(
+        strip_control_sequences(line)
+        for line in step.diagnostics.current_logical_lines
+    )
+    assert logical.count("wait for three agents") == 1
+    assert logical.count("First result: 91.") == 1
+    assert logical.count("Working") == 1
 
 
 def test_screen_coding_tui_starts_below_existing_shell_output() -> None:

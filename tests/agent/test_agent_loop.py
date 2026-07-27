@@ -741,6 +741,105 @@ def test_agent_loop_snapshots_partial_update_before_callback_returns() -> None:
     assert update["partial_result"].event_details() == {"progress": "first"}
 
 
+def test_agent_loop_drains_system_mailbox_before_user_steering() -> None:
+    from loushang.agent.agent_loop import run_agent_loop
+
+    mailbox_polls = 0
+    captured: list[list[str]] = []
+
+    async def get_mailbox_messages():
+        nonlocal mailbox_polls
+        mailbox_polls += 1
+        if mailbox_polls == 1:
+            return [UserMessage(role="user", content="system result", timestamp=0.0)]
+        return []
+
+    async def get_steering_messages():
+        if mailbox_polls == 1:
+            return [UserMessage(role="user", content="user steer", timestamp=0.0)]
+        return []
+
+    async def stream_fn(model, context: Context, options=None):
+        del model, options
+        captured.append(
+            [
+                str(message.content)
+                for message in context.messages
+                if isinstance(message, UserMessage)
+            ]
+        )
+        return _stream_with_final_message(_assistant_text_message("done"))
+
+    async def emit(event):
+        del event
+
+    config = replace(
+        _config(stream_fn),
+        get_mailbox_messages=get_mailbox_messages,
+        get_steering_messages=get_steering_messages,
+    )
+    asyncio.run(
+        run_agent_loop(
+            [UserMessage(role="user", content="start", timestamp=0.0)],
+            AgentContext(system_prompt="system", messages=[], tools=[]),
+            config,
+            emit,
+            stream_fn=stream_fn,
+        )
+    )
+
+    assert captured[0] == ["start", "system result", "user steer"]
+
+
+def test_agent_loop_drains_mailbox_after_tool_result_before_next_sample() -> None:
+    from loushang.agent.agent_loop import run_agent_loop
+
+    mailbox_polls = 0
+    captured_roles: list[list[str | None]] = []
+
+    async def get_mailbox_messages():
+        nonlocal mailbox_polls
+        mailbox_polls += 1
+        if mailbox_polls == 2:
+            return [UserMessage(role="user", content="child completed", timestamp=0.0)]
+        return []
+
+    async def stream_fn(model, context: Context, options=None):
+        del model, options
+        captured_roles.append(
+            [getattr(message, "role", None) for message in context.messages]
+        )
+        if any(
+            getattr(message, "role", None) == "toolResult"
+            for message in context.messages
+        ):
+            return _stream_with_final_message(_assistant_text_message("done"))
+        return _stream_with_final_message(_assistant_tool_call_message())
+
+    async def emit(event):
+        del event
+
+    config = replace(
+        _config(stream_fn),
+        get_mailbox_messages=get_mailbox_messages,
+    )
+    asyncio.run(
+        run_agent_loop(
+            [UserMessage(role="user", content="wait for child", timestamp=0.0)],
+            AgentContext(
+                system_prompt="system",
+                messages=[],
+                tools=[FakeTool()],
+            ),
+            config,
+            emit,
+            stream_fn=stream_fn,
+        )
+    )
+
+    assert captured_roles[1][-2:] == ["toolResult", "user"]
+
+
 def test_run_agent_loop_abort_during_tool_does_not_continue_to_next_model_call() -> (
     None
 ):
@@ -788,13 +887,15 @@ def test_run_agent_loop_abort_during_tool_does_not_continue_to_next_model_call()
     event_types = [event["type"] for event in emitted]
     assert stream_calls == 1
     assert "tool_execution_start" in event_types
-    assert "tool_execution_end" not in event_types
+    assert "tool_execution_end" in event_types
     assert event_types[-1] == "agent_end"
     assert [getattr(message, "role", None) for message in new_messages] == [
         "user",
         "assistant",
+        "toolResult",
         "assistant",
     ]
+    assert new_messages[-2].details == {"code": "tool_call_aborted"}
     assert getattr(new_messages[-1], "stop_reason", None) == "aborted"
 
 
@@ -967,14 +1068,80 @@ def test_run_agent_loop_abort_before_tool_execution_skips_tool_and_next_model_ca
     assert stream_calls == 1
     assert executed is False
     assert "tool_execution_start" in event_types
-    assert "tool_execution_end" not in event_types
+    assert "tool_execution_end" in event_types
     assert event_types[-1] == "agent_end"
     assert [getattr(message, "role", None) for message in new_messages] == [
         "user",
         "assistant",
+        "toolResult",
         "assistant",
     ]
+    assert new_messages[-2].details == {"code": "tool_call_aborted"}
     assert getattr(new_messages[-1], "stop_reason", None) == "aborted"
+
+
+def test_run_agent_loop_force_cancel_closes_the_active_tool_call() -> None:
+    from loushang.agent import AbortSignal
+    from loushang.agent.agent_loop import run_agent_loop
+
+    signal = AbortSignal()
+    started = asyncio.Event()
+    emitted: list[dict[str, Any]] = []
+
+    class BlockingTool(FakeTool):
+        async def execute(
+            self,
+            tool_call_id: str,
+            params: dict[str, Any],
+            signal=None,
+            on_update=None,
+        ) -> AgentToolResult[dict[str, Any]]:
+            del tool_call_id, params, signal, on_update
+            started.set()
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+
+    async def emit(event):
+        emitted.append(event)
+
+    async def stream_fn(model, context: Context, options=None):
+        del model, context, options
+        return _stream_with_final_message(_assistant_tool_call_message())
+
+    async def scenario() -> None:
+        task = asyncio.create_task(
+            run_agent_loop(
+                [UserMessage(role="user", content="use tool", timestamp=0.0)],
+                AgentContext(
+                    system_prompt="system",
+                    messages=[],
+                    tools=[BlockingTool()],
+                ),
+                _config(stream_fn),
+                emit,
+                signal=signal,
+                stream_fn=stream_fn,
+            )
+        )
+        await started.wait()
+        signal.aborted = True
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(scenario())
+
+    ended = [event for event in emitted if event["type"] == "tool_execution_end"]
+    assert len(ended) == 1
+    assert ended[0]["tool_call_id"] == "tc_1"
+    assert ended[0]["is_error"] is True
+    assert ended[0]["result"].details == {"code": "tool_call_aborted"}
+    message_roles = [
+        getattr(event.get("message"), "role", None)
+        for event in emitted
+        if event["type"] == "message_end"
+    ]
+    assert message_roles[-1] == "toolResult"
 
 
 def test_tool_exception_can_project_structured_error_details() -> None:

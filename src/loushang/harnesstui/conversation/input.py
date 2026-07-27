@@ -332,12 +332,12 @@ class ConversationInputRouter:
             self.app.composer.clear()
             self._clear_prompt_attachments()
             return ConversationInputResult(exit_code=0)
-        if self.app.state.running:
-            return self._submit_running(mode=self.running_submit_mode)
         if self.is_local_command(text.strip()):
             self.app.composer.clear()
             self._clear_prompt_attachments()
             return ConversationInputResult(local_text=text.strip())
+        if self.app.state.running:
+            return self._submit_running(mode=self.running_submit_mode)
         attachments = self._prompt_attachments_for_text(text)
         self.app.start_prompt(text)
         self._clear_prompt_attachments()

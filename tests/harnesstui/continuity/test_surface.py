@@ -124,6 +124,36 @@ def test_common_resume_view_is_a_real_page_and_renders_loading_first() -> None:
     assert renders
 
 
+def test_continuity_surface_can_exclude_non_selectable_summaries() -> None:
+    hub = _Hub()
+    surface = ContinuitySurface(
+        hub=hub,  # type: ignore[arg-type]
+        request_render=lambda _kind: None,
+        include_summary=lambda _summary: False,
+        selection_action="delete",
+    )
+
+    async def scenario() -> None:
+        await surface.start()
+        assert surface.selected_target is None
+        assert "delete" in surface.footer_help
+        surface.close()
+
+    asyncio.run(scenario())
+
+
+def test_delete_continuity_view_uses_the_delete_surface_purpose() -> None:
+    view = build_continuity_surface_view(
+        hub=_Hub(),  # type: ignore[arg-type]
+        request_render=lambda _kind: None,
+        title="Delete a previous session",
+        selection_action="delete",
+        purpose="delete",
+    )
+
+    assert view.purpose == "delete"
+
+
 def test_common_resume_requeries_after_background_index_rebuild() -> None:
     class _RebuildingHub(_Hub):
         async def query(self, request: ContinuityQuery) -> ContinuityPage:

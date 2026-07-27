@@ -80,8 +80,11 @@ Built-in interactive commands include:
 ```text
 /settings /model /scoped-models /export /import /share /copy /rename
 /session /terminal /tools /changelog /hotkeys /fork /clone /tree
-/new /compact /resume /reload /quit
+/new /compact /resume /delete /reload /quit
 ```
+
+`/new` starts an empty session in the current context and accepts no arguments.
+`/delete` opens a confirmed picker for deleting a previous session; it never deletes the active session.
 
 ## Authentication Migration
 

@@ -281,6 +281,33 @@ def test_continue_prefers_queued_steering_then_follow_up_when_last_message_is_as
     asyncio.run(scenario())
 
 
+def test_continue_consumes_system_mailbox_from_an_idle_assistant_boundary() -> None:
+    from loushang.agent import Agent
+
+    calls: list[str] = []
+
+    async def stream_fn(model, context, options=None):
+        del model, options
+        last = context.messages[-1]
+        if isinstance(last, UserMessage):
+            calls.append(_user_text_content(last))
+        return _stream_with_final_message(_assistant_text_message("ok"))
+
+    async def scenario() -> None:
+        agent = Agent(stream_fn=stream_fn)
+        agent.state.messages.append(_assistant_text_message("done"))
+        agent.enqueue_mailbox(
+            UserMessage(role="user", content="system result", timestamp=0.0)
+        )
+
+        await agent.continue_run()
+
+        assert calls == ["system result"]
+        assert agent.mailbox_queue.has_items() is False
+
+    asyncio.run(scenario())
+
+
 def test_wait_for_idle_waits_for_agent_end_listener_settlement() -> None:
     from loushang.agent import Agent
 
@@ -403,6 +430,9 @@ def test_clear_all_queues_removes_steering_and_follow_up_messages() -> None:
     from loushang.agent import Agent
 
     agent = Agent()
+    agent.enqueue_mailbox(
+        UserMessage(role="user", content="system", timestamp=0.0)
+    )
     agent.steer(UserMessage(role="user", content="steer", timestamp=0.0))
     agent.follow_up(UserMessage(role="user", content="follow", timestamp=0.0))
 

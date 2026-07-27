@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from loushang.harness.commands import CommandDef, CommandKind
+from loushang.harness.continuity import ContinuityTarget
 from loushang.harnesstui.conversation.intents import (
     CommandSelectIntent,
     CommandsIntent,
@@ -36,8 +37,10 @@ ScreenSurfaceCommandKind = Literal[
     "select_command",
     "list_commands",
     "resume_session",
+    "delete_session",
     "fork_session",
     "rename_session",
+    "agent_tree",
     "side_question",
     "terminal_diagnostics",
     "hotkeys",
@@ -148,15 +151,14 @@ class ScreenSurfaceWorkflowPorts:
     ) = None
     build_resume_surface: Callable[[], ScreenSurfaceView] | None = None
     activate_continuity: Callable[[object], Awaitable[str]] | None = None
+    build_delete_surface: Callable[[], ScreenSurfaceView] | None = None
+    delete_continuity: Callable[[object], Awaitable[str]] | None = None
     build_fork_surface: Callable[[], ScreenSurfaceView] | None = None
-    fork_session: (
-        Callable[[object], Awaitable[ScreenSurfaceForkResult]] | None
-    ) = None
+    fork_session: Callable[[object], Awaitable[ScreenSurfaceForkResult]] | None = None
     build_rename_surface: Callable[[], ScreenSurfaceView] | None = None
     rename_session: Callable[[str | None], Awaitable[str]] | None = None
-    build_side_question_surface: (
-        Callable[[str], ScreenSurfaceView] | None
-    ) = None
+    build_agent_tree_surface: Callable[[], ScreenSurfaceView] | None = None
+    build_side_question_surface: Callable[[str], ScreenSurfaceView] | None = None
 
 
 @dataclass(slots=True)
@@ -192,6 +194,7 @@ class ScreenSurfaceWorkflow:
                 "command": self._handle_command_submit,
                 "settings": self._handle_settings_submit,
                 "session": self._handle_session_submit,
+                "delete": self._handle_delete_submit,
                 "fork": self._handle_fork_submit,
                 "rename": self._handle_rename_submit,
                 "dialog": self._handle_dialog_submit,
@@ -250,8 +253,17 @@ class ScreenSurfaceWorkflow:
             else:
                 self.open(picker)
         elif (
-            command.kind == "fork_session"
-            and self.ports.build_fork_surface is not None
+            command.kind == "delete_session"
+            and self.ports.build_delete_surface is not None
+        ):
+            try:
+                picker = self.ports.build_delete_surface()
+            except Exception as error:
+                self.app.set_status(self.copy.recoverable_error(error))
+            else:
+                self.open(picker)
+        elif (
+            command.kind == "fork_session" and self.ports.build_fork_surface is not None
         ):
             try:
                 picker = self.ports.build_fork_surface()
@@ -269,6 +281,16 @@ class ScreenSurfaceWorkflow:
                 self.app.set_status(self.copy.recoverable_error(error))
             else:
                 self.open(surface)
+        elif command.kind == "agent_tree":
+            if self.ports.build_agent_tree_surface is None:
+                self.app.set_status("Agent collaboration is not available.")
+            else:
+                try:
+                    surface = self.ports.build_agent_tree_surface()
+                except Exception as error:
+                    self.app.set_status(self.copy.recoverable_error(error))
+                else:
+                    self.open(surface)
         elif command.kind == "side_question":
             question = command.query.strip()
             if not question:
@@ -468,6 +490,32 @@ class ScreenSurfaceWorkflow:
             return
         await self._activate_fork(payload, surface)
 
+    async def _handle_delete_submit(self, payload: object) -> None:
+        if self.ports.delete_continuity is None:
+            return
+        surface = self.current
+        content = surface.content if isinstance(surface, ScreenSurfaceView) else None
+        if getattr(content, "target", None) is not None:
+            await self._perform_continuity_deletion(payload, surface)
+            return
+        target = payload
+        if not isinstance(target, ContinuityTarget):
+            return
+        summary = getattr(content, "selected_summary", None)
+        title = getattr(summary, "title", None)
+        if not isinstance(title, str) or not title:
+            title = target.opaque_id
+        from loushang.harnesstui.continuity import (
+            build_delete_continuity_confirmation_surface,
+        )
+
+        self.open(
+            build_delete_continuity_confirmation_surface(
+                target=target,
+                title=title,
+            )
+        )
+
     async def _handle_rename_submit(self, payload: object) -> None:
         rename = self.ports.rename_session
         if rename is None:
@@ -535,6 +583,26 @@ class ScreenSurfaceWorkflow:
             self.app.set_status(self.copy.recoverable_error(error))
             return
         if self.current is surface:
+            self.close()
+        self.app.set_status(message)
+        self.app.request_render(self.request_render_reason)
+
+    async def _perform_continuity_deletion(
+        self,
+        payload: object,
+        surface: ScreenSurfaceView | object | None,
+    ) -> None:
+        delete = self.ports.delete_continuity
+        if delete is None:  # pragma: no cover - guarded by submit handler
+            return
+        try:
+            message = await delete(payload)
+        except Exception as error:
+            self.app.set_status(self.copy.recoverable_error(error))
+            return
+        if self.current is surface and self.ports.build_delete_surface is not None:
+            self.open(self.ports.build_delete_surface())
+        elif self.current is surface:
             self.close()
         self.app.set_status(message)
         self.app.request_render(self.request_render_reason)
@@ -610,6 +678,8 @@ def normalize_standard_conversation_surface_command(
         parts = stripped.split(maxsplit=1)
         query = parts[1] if len(parts) == 2 else ""
         return ScreenSurfaceCommand("side_question", query)
+    if command.name == "agents":
+        return ScreenSurfaceCommand("agent_tree")
     if command.name == "terminal" and isinstance(
         intent,
         TerminalDiagnosticsIntent,
@@ -632,6 +702,8 @@ def normalize_standard_conversation_interactive_command(
 
     if text.strip() == "/resume":
         return ScreenSurfaceCommand("resume_session")
+    if text.strip() == "/delete":
+        return ScreenSurfaceCommand("delete_session")
     if text.strip() == "/fork":
         return ScreenSurfaceCommand("fork_session")
     if text.strip() == "/rename":

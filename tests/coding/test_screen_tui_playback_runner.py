@@ -26,6 +26,7 @@ from tests.coding.tui_support.runner import (
 from tests.coding.tui_support.scenarios.command import COMMAND_ROUTING_SCENARIOS
 from tests.coding.tui_support.scenarios.composer import COMPOSER_SCENARIOS
 from tests.coding.tui_support.scenarios.lifecycle import LIFECYCLE_SCENARIOS
+from tests.coding.tui_support.scenarios.multiagent import MULTIAGENT_SCENARIOS
 from tests.coding.tui_support.scenarios.product import PRODUCT_SCENARIOS
 from tests.coding.tui_support.scenarios.surface import SURFACE_SCENARIOS
 from tests.coding.tui_support.scenarios.terminal import TERMINAL_SCENARIOS
@@ -122,6 +123,112 @@ def test_screen_tui_playback_lifecycle_scenarios_live_in_lifecycle_module() -> N
     ]
 
 
+def test_screen_tui_playback_multiagent_scenarios_are_layered() -> None:
+    assert [scenario.name for scenario in MULTIAGENT_SCENARIOS] == [
+        "multiagent-tools",
+        "multiagent-messaging",
+        "multiagent-followup",
+        "multiagent-nested-tree",
+        "multiagent-lifecycle",
+        "multiagent-parallel-review",
+        "multiagent-debate",
+        "multiagent-shared-workspace",
+        "multiagent-render",
+    ]
+
+
+def test_screen_tui_playback_runs_multiagent_topology_matrix(tmp_path) -> None:
+    names = [
+        "multiagent-followup",
+        "multiagent-nested-tree",
+        "multiagent-lifecycle",
+        "multiagent-parallel-review",
+        "multiagent-debate",
+        "multiagent-shared-workspace",
+    ]
+
+    results = run_playback_scenarios(
+        names,
+        artifacts_dir=tmp_path,
+    )
+
+    assert [result.ok for result in results] == [True] * len(names)
+    for name in names:
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / f"{name}-events.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        ]
+        assert any(row["layer"] == "topology" for row in rows)
+
+
+def test_screen_tui_playback_runner_writes_layered_multiagent_diagnostics(
+    tmp_path,
+) -> None:
+    results = run_playback_scenarios(
+        [
+            "multiagent-tools",
+            "multiagent-messaging",
+            "multiagent-render",
+        ],
+        artifacts_dir=tmp_path,
+        include_frames=True,
+    )
+
+    assert [result.ok for result in results] == [True, True, True]
+    messaging_rows = [
+        json.loads(line)
+        for line in (tmp_path / "multiagent-messaging-events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    classifications = [
+        row
+        for row in messaging_rows
+        if row["event"] == "completion.classified"
+    ]
+    assert classifications == [
+        {
+            "sequence": 29,
+            "layer": "projection",
+            "event": "completion.classified",
+            "data": {
+                "expected_channel": "system_mailbox",
+                "actual_channel": "system_mailbox",
+                "editable": False,
+                "triggers_queue_preview": False,
+                "verdict": "correct_input_boundary",
+            },
+        }
+    ]
+    render_rows = [
+        json.loads(line)
+        for line in (tmp_path / "multiagent-render-render.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert render_rows
+    render_events = [
+        json.loads(line)
+        for line in (tmp_path / "multiagent-render-events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    queue_syncs = [row for row in render_events if row["event"] == "queue.synced"]
+    assert len(queue_syncs) == 3
+    assert all(row["data"]["pending_followups"] == [] for row in queue_syncs)
+    assert all(row["data"]["pending_steers"] == [] for row in queue_syncs)
+    final_screen = (tmp_path / "multiagent-render-screen.txt").read_text(
+        encoding="utf-8"
+    )
+    assert "Queued follow-up inputs" not in final_screen
+    assert "queued=" not in final_screen
+    assert "/root/random-1 completed (round 1)." not in final_screen
+    assert "/root/random-2 completed (round 1)." not in final_screen
+    assert "/root/random-3 completed (round 1)." not in final_screen
+
+
 def test_screen_tui_playback_product_scenarios_live_in_product_module() -> None:
     assert [scenario.name for scenario in PRODUCT_SCENARIOS] == [
         "product-composed-interaction",
@@ -204,6 +311,9 @@ def test_screen_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "screen-loop-ctrl-c-abort-running" in captured.out
     assert "product-composed-interaction" in captured.out
     assert "product-streaming-control-flow" in captured.out
+    assert "multiagent-tools" in captured.out
+    assert "multiagent-messaging" in captured.out
+    assert "multiagent-render" in captured.out
 
 
 def test_screen_tui_playback_runner_runs_named_scenario(capsys) -> None:

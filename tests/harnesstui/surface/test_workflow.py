@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field, replace
+from types import SimpleNamespace
 
 from loushang.harness.commands import CommandDef, CommandKind
+from loushang.harness.continuity import ContinuityTarget
 from loushang.harnesstui.settings.workflow import SettingsApplyResult
 from loushang.harnesstui.status.line import StatusLineSettings
 from loushang.harnesstui.surface.controller import ApprovalSurfaceDecision
@@ -34,6 +36,7 @@ class _Catalog:
                 "terminal",
                 "hotkeys",
                 "settings",
+                "agents",
                 "btw",
             )
         }
@@ -53,6 +56,7 @@ class _State:
     model_values: list[str] = field(default_factory=list)
     approvals: list[ApprovalSurfaceDecision | None] = field(default_factory=list)
     resumed_sessions: list[str] = field(default_factory=list)
+    deleted_sessions: list[str] = field(default_factory=list)
     forked_entries: list[str] = field(default_factory=list)
     renamed_sessions: list[str | None] = field(default_factory=list)
     side_questions: list[str] = field(default_factory=list)
@@ -126,6 +130,7 @@ def _normalize(text: str, command: CommandDef) -> ScreenSurfaceCommand:
         "terminal": "terminal_diagnostics",
         "hotkeys": "hotkeys",
         "settings": "settings",
+        "agents": "agent_tree",
         "btw": "side_question",
     }
     if command.name == "command" and query:
@@ -133,7 +138,11 @@ def _normalize(text: str, command: CommandDef) -> ScreenSurfaceCommand:
     return ScreenSurfaceCommand(kinds[command.name], query)  # type: ignore[arg-type]
 
 
-def _workflow(*, state: _State | None = None) -> tuple[ScreenSurfaceWorkflow, _State]:
+def _workflow(
+    *,
+    state: _State | None = None,
+    workflow_type: type[ScreenSurfaceWorkflow] = ScreenSurfaceWorkflow,
+) -> tuple[ScreenSurfaceWorkflow, _State]:
     state = state or _State()
 
     async def select_model(value: str) -> str:
@@ -168,6 +177,28 @@ def _workflow(*, state: _State | None = None) -> tuple[ScreenSurfaceWorkflow, _S
         state.resumed_sessions.append(reference)
         return f"resumed:{reference}"
 
+    delete_target = ContinuityTarget(
+        provider_id="coding.sessions",
+        opaque_id="session-1",
+        revision="1",
+    )
+
+    def delete_surface() -> ScreenSurfaceView:
+        return ScreenSurfaceView(
+            title="Delete session",
+            purpose="delete",
+            content=SimpleNamespace(
+                selected_target=delete_target,
+                selected_summary=SimpleNamespace(title="Parser review"),
+            ),
+            presentation="bottom-exclusive",
+        )
+
+    async def delete_continuity(target: object) -> str:
+        reference = str(getattr(target, "opaque_id", target))
+        state.deleted_sessions.append(reference)
+        return f"deleted:{reference}"
+
     def fork_surface() -> ScreenSurfaceView:
         return _surface("Fork prompt", "fork")
 
@@ -196,7 +227,10 @@ def _workflow(*, state: _State | None = None) -> tuple[ScreenSurfaceWorkflow, _S
         state.side_questions.append(question)
         return _surface("BTW", "dialog")
 
-    workflow = ScreenSurfaceWorkflow(
+    def agent_tree_surface() -> ScreenSurfaceView:
+        return _surface("Agents", "agent_tree")
+
+    workflow = workflow_type(
         app=_App(state),
         ports=ScreenSurfaceWorkflowPorts(
             select_model=select_model,
@@ -221,16 +255,23 @@ def _workflow(*, state: _State | None = None) -> tuple[ScreenSurfaceWorkflow, _S
                     else (
                         ScreenSurfaceCommand("rename_session")
                         if text.strip() == "/rename"
-                        else None
+                        else (
+                            ScreenSurfaceCommand("delete_session")
+                            if text.strip() == "/delete"
+                            else None
+                        )
                     )
                 )
             ),
             build_resume_surface=resume_surface,
             activate_continuity=activate_continuity,
+            build_delete_surface=delete_surface,
+            delete_continuity=delete_continuity,
             build_fork_surface=fork_surface,
             fork_session=fork_session,
             build_rename_surface=rename_surface,
             rename_session=rename_session,
+            build_agent_tree_surface=agent_tree_surface,
             build_side_question_surface=side_question_surface,
         ),
         copy=ScreenSurfaceWorkflowCopy(
@@ -249,6 +290,38 @@ def _workflow(*, state: _State | None = None) -> tuple[ScreenSurfaceWorkflow, _S
     return workflow, state
 
 
+def test_surface_workflow_confirms_before_deleting_a_continuity_item() -> None:
+    workflow, state = _workflow()
+
+    asyncio.run(workflow.handle_text("/delete"))
+    assert isinstance(workflow.current, ScreenSurfaceView)
+    assert workflow.current.purpose == "delete"
+
+    asyncio.run(workflow.handle_intent(InputIntent(kind="select")))
+    assert isinstance(workflow.current, ScreenSurfaceView)
+    assert workflow.current.title == "Delete session"
+
+    asyncio.run(workflow.handle_intent(InputIntent(kind="dialog_confirm")))
+    assert state.deleted_sessions == ["session-1"]
+    assert state.statuses[-1] == "deleted:session-1"
+    assert isinstance(workflow.current, ScreenSurfaceView)
+    assert workflow.current.purpose == "delete"
+
+
+def test_delete_workflow_does_not_collide_with_a_product_delete_callback() -> None:
+    class _ProductWorkflow(ScreenSurfaceWorkflow):
+        async def _delete_continuity(self, _target: object) -> str:
+            return "product deletion callback"
+
+    workflow, state = _workflow(workflow_type=_ProductWorkflow)
+
+    asyncio.run(workflow.handle_text("/delete"))
+    asyncio.run(workflow.handle_intent(InputIntent(kind="select")))
+    asyncio.run(workflow.handle_intent(InputIntent(kind="dialog_confirm")))
+
+    assert state.deleted_sessions == ["session-1"]
+
+
 def test_surface_workflow_opens_and_submits_session_rename() -> None:
     workflow, state = _workflow()
 
@@ -257,7 +330,9 @@ def test_surface_workflow_opens_and_submits_session_rename() -> None:
     assert isinstance(surface, ScreenSurfaceView)
     assert surface.purpose == "rename"
 
-    asyncio.run(workflow.handle_intent(InputIntent(kind="select", text="Project Alpha")))
+    asyncio.run(
+        workflow.handle_intent(InputIntent(kind="select", text="Project Alpha"))
+    )
 
     assert workflow.current is None
     assert state.renamed_sessions == ["Project Alpha"]
@@ -371,6 +446,18 @@ def test_surface_workflow_routes_btw_as_an_immediate_side_question() -> None:
     assert state.statuses[-1] == "Usage: /btw <question>"
 
 
+def test_surface_workflow_opens_agent_tree_page() -> None:
+    workflow, _ = _workflow()
+
+    assert workflow.is_local_command("/agents") is True
+    asyncio.run(workflow.handle_text("/agents"))
+
+    surface = workflow.current
+    assert isinstance(surface, ScreenSurfaceView)
+    assert surface.title == "Agents"
+    assert surface.purpose == "agent_tree"
+
+
 def test_surface_workflow_opens_fork_picker_and_restores_selected_prompt() -> None:
     workflow, state = _workflow()
 
@@ -383,9 +470,7 @@ def test_surface_workflow_opens_fork_picker_and_restores_selected_prompt() -> No
     assert picker.purpose == "fork"
 
     asyncio.run(
-        workflow.handle_surface_intent(
-            InputIntent(kind="select", text="entry-1")
-        )
+        workflow.handle_surface_intent(InputIntent(kind="select", text="entry-1"))
     )
 
     assert state.forked_entries == ["entry-1"]

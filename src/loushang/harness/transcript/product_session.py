@@ -310,14 +310,14 @@ class ProductTranscriptSession(
             current_session_file=current_session_file,
         )
         if deleted:
-            cls._refresh_index_if_present(target.parent)
+            cls._repair_index_if_present(target.parent)
         return deleted
 
     @classmethod
-    def _refresh_index_if_present(cls, session_dir: Path) -> None:
+    def _repair_index_if_present(cls, session_dir: Path) -> None:
         if cls.index_file(session_dir).exists():
             try:
-                cls.refresh_index(session_dir)
+                AgentTranscriptSessionCatalog(session_dir).repair_index()
             except Exception:
                 # Indexes are auxiliary caches; primary transcript writes won.
                 return

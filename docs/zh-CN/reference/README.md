@@ -80,8 +80,11 @@ loushang --command <command-name> --command-result-format json
 ```text
 /settings /model /scoped-models /export /import /share /copy /rename
 /session /terminal /tools /changelog /hotkeys /fork /clone /tree
-/new /compact /resume /reload /quit
+/new /compact /resume /delete /reload /quit
 ```
+
+`/new` 会在当前上下文中新建空会话，不接受参数。
+`/delete` 会打开带确认步骤的历史会话选择器；它不会删除当前活跃会话。
 
 ## 认证迁移
 

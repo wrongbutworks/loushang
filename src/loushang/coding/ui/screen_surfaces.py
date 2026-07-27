@@ -9,6 +9,7 @@ from loushang.coding.ui.hotkeys import format_hotkeys
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.settings_page import build_coding_settings_page
 from loushang.harness.continuity import ContinuityTarget
+from loushang.harness.multiagent import HostCaller
 from loushang.harnesstui.continuity import build_continuity_surface_view
 from loushang.harnesstui.conversation.agent_application import (
     build_agent_screen_surface_workflow_ports,
@@ -24,6 +25,7 @@ from loushang.harnesstui.conversation.rename import (
 from loushang.harnesstui.conversation.side_question import (
     build_side_question_surface_view,
 )
+from loushang.harnesstui.multiagent import build_agent_tree_surface_view
 from loushang.harnesstui.selection.binding import (
     SessionModelSelectorSurfaceProfile,
 )
@@ -83,14 +85,19 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             activate_continuity=(
                 self._activate_continuity if runtime is not None else None
             ),
+            build_delete_surface=(
+                self._build_delete_surface if runtime is not None else None
+            ),
+            delete_continuity=(
+                self._delete_continuity if runtime is not None else None
+            ),
             build_fork_surface=(
                 self._build_fork_surface if runtime is not None else None
             ),
-            fork_session=(
-                self._fork_session if runtime is not None else None
-            ),
+            fork_session=(self._fork_session if runtime is not None else None),
             build_rename_surface=self._build_rename_surface,
             rename_session=self._rename_session,
+            build_agent_tree_surface=self._build_agent_tree_surface,
             build_side_question_surface=self._build_side_question_surface,
             command_catalog=command_catalog,
             model_selector_profile=_CODING_MODEL_SELECTOR_PROFILE,
@@ -150,6 +157,30 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             raise RuntimeError("Session resume was cancelled")
         return f"Resumed session {target.opaque_id}"
 
+    def _build_delete_surface(self):
+        if self.continuity is None:
+            raise RuntimeError("Session runtime is not available")
+        current = self._current_session()
+        current_id = getattr(current, "session_id", None)
+        return build_continuity_surface_view(
+            hub=self.continuity.hub,
+            request_render=self.coding_app.request_render,
+            include_summary=lambda summary: summary.target.opaque_id != current_id,
+            title="Delete a previous session",
+            selection_action="delete",
+            purpose="delete",
+        )
+
+    async def _delete_continuity(self, target: object) -> str:
+        if self.continuity is None:
+            raise RuntimeError("Session runtime is not available")
+        if not isinstance(target, ContinuityTarget):
+            raise TypeError("Delete requires a provider-qualified continuity target")
+        deleted = await self.continuity.hub.delete(target)
+        if not deleted:
+            raise RuntimeError("The selected session was already deleted")
+        return f"Deleted session {target.opaque_id}"
+
     def _build_fork_surface(self):
         session = self._current_session()
         getter = getattr(session, "get_user_messages_for_forking", None)
@@ -165,9 +196,7 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
                 raise TypeError("Fork prompt candidates require an entry_id")
             if not isinstance(text, str) or not text.strip():
                 continue
-            candidates.append(
-                ForkPromptCandidate(entry_id=entry_id, text=text)
-            )
+            candidates.append(ForkPromptCandidate(entry_id=entry_id, text=text))
         return build_fork_prompt_surface_view(
             candidates=candidates,
             request_render=lambda: self.coding_app.request_render("product"),
@@ -205,8 +234,8 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
         if not callable(rename):
             raise RuntimeError("Session renaming is not available")
         await rename(name)
-        self.coding_app.state.session_label = (
-            name or getattr(session, "session_id", None)
+        self.coding_app.state.session_label = name or getattr(
+            session, "session_id", None
         )
         return f"Session renamed to {name}" if name else "Session name cleared"
 
@@ -229,6 +258,20 @@ class ScreenSurfaceManager(ScreenSurfaceWorkflow):
             question=question,
             ask=ask,
             cancel=cancel,
+            request_render=lambda: self.coding_app.request_render("product"),
+        )
+
+    def _build_agent_tree_surface(self):
+        """Bind Coding's current session to the shared `/agents` surface."""
+
+        session = self._current_session()
+        runtime = getattr(session, "multiagent_runtime", None)
+        control = getattr(runtime, "control", None)
+        if runtime is None or control is None:
+            raise RuntimeError("Agent collaboration is not enabled for this session")
+        return build_agent_tree_surface_view(
+            records=runtime.list_agents(caller=HostCaller()),
+            subscribe_facts=control.subscribe_facts,
             request_render=lambda: self.coding_app.request_render("product"),
         )
 

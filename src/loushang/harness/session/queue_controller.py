@@ -10,6 +10,7 @@ from loushang.harness.events.session import (
     QueueKind,
     QueueSnapshot,
 )
+from loushang.harness.runtime.input_queue import HostInputQueue
 from loushang.harness.runtime.turn import TurnInputQueue
 from loushang.harness.runtime.types import QueueMode
 from loushang.observability import get_log
@@ -38,6 +39,8 @@ class AgentQueuePort(Protocol):
 
     def follow_up(self, message: object) -> object: ...
 
+    def enqueue_mailbox(self, message: object) -> object: ...
+
 
 @dataclass
 class QueueController:
@@ -59,6 +62,12 @@ class QueueController:
     @property
     def pending_message_count(self) -> int:
         return self._queue.pending_count
+
+    @property
+    def input_queue(self) -> HostInputQueue[object]:
+        """Expose the existing queue to Product-neutral input facades."""
+
+        return self._queue
 
     def get_steering_messages(self) -> list[str]:
         return self._queue.texts("steering")
@@ -115,6 +124,11 @@ class QueueController:
             text=visible_text,
             payload=message,
         )
+
+    def queue_mailbox_message(self, message: object) -> None:
+        """Deliver system input without creating an editable queue snapshot."""
+
+        self.agent.enqueue_mailbox(message)
 
     def clear_queue(self) -> dict[str, list[str]]:
         steering = self.get_steering_messages()

@@ -19,6 +19,10 @@ from loushang.coding.bootstrap import (
     create_services,
 )
 from loushang.coding.cli.args import CliArgs, ExtensionFlag, help_text, parse_args
+from loushang.coding.cli.multiagent import (
+    extract_multiagent_argv,
+    run_coding_multiagent_command,
+)
 from loushang.coding.continuity import (
     bind_coding_continuity,
     shutdown_coding_continuity,
@@ -213,6 +217,7 @@ def default_runtime_builder(
         active_tool_names=active_tool_names,
         persist=not args.no_session,
         approval_resolver=approval_resolver,
+        enable_multiagent=True,
     )
 
 
@@ -233,7 +238,21 @@ async def run_cli(
     channel_runner=run_coding_work_channel,
     tui_runner=run_coding_tui,
     continuity_runner=run_continuity_picker,
+    multiagent_runner=run_coding_multiagent_command,
 ) -> int:
+    raw_argv = tuple(argv or ())
+    multiagent_argv = extract_multiagent_argv(raw_argv)
+    if multiagent_argv is not None:
+        return await multiagent_runner(
+            multiagent_argv,
+            stdin=stdin or sys.stdin,
+            stdout=stdout or sys.stdout,
+            stderr=stderr or sys.stderr,
+            cwd=cwd,
+            services=services,
+            build_services=build_default_services,
+            build_tool_registry=build_builtin_tool_registry,
+        )
     host_lifecycle = ProductHostLifecycle.resolve(
         stdin=stdin,
         stdout=stdout,
@@ -313,7 +332,7 @@ async def run_cli(
         ),
     )
     return await run_agent_cli_application(
-        tuple(argv or ()),
+        raw_argv,
         binding=binding,
         cwd=cwd,
     )

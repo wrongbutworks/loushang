@@ -154,7 +154,7 @@ async def _run_screen_interactive_tui(
                 getattr(next_session, "session_id", None)
             )
             app.add_error(
-                "Session resumed, but the TUI could not refresh its history.",
+                "Session changed, but the TUI could not refresh its history.",
                 str(refresh_error) or refresh_error.__class__.__name__,
             )
             log.problem(
@@ -168,7 +168,7 @@ async def _run_screen_interactive_tui(
         if event_source.last_rebind_error is not None:
             rebind_error = event_source.last_rebind_error
             app.add_error(
-                "Session resumed, but event subscription could not be rebound.",
+                "Session changed, but event subscription could not be rebound.",
                 str(rebind_error) or rebind_error.__class__.__name__,
             )
             log.problem(

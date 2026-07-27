@@ -7,8 +7,9 @@ operation plumbing; Product subclasses retain their policies and content.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
+from dataclasses import replace
 from pathlib import Path
 from typing import Generic, TypeVar, cast
 
@@ -73,6 +74,7 @@ from loushang.harness.session.product_runtime import (
 from loushang.harness.session.transcript_lifecycle import (
     ProductTranscriptSessionBinding,
 )
+from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.workspace.protocol import (
     normalize_bash_result_from_protocol,
 )
@@ -110,6 +112,36 @@ class AgentSessionAdapterMixin:
 
     async def set_active_tools(self, tool_names: list[str]) -> None:
         await self._operations.set_active_tools(tool_names, emit_refresh=True)
+
+    def register_runtime_tools(
+        self,
+        tools: Iterable[object],
+        *,
+        activate: bool = False,
+        source_info: object | None = None,
+    ) -> tuple[ToolDefinition, ...]:
+        """Register live-bound tools without exposing composition internals."""
+
+        definitions = tuple(
+            self._tool_controller.register_runtime_tool(
+                tool,
+                source_info=source_info,
+            )
+            for tool in tools
+        )
+        if activate:
+            active = self._tool_controller.get_active_tool_names()
+            self._tool_controller.apply_active_tools(
+                [
+                    *active,
+                    *(
+                        definition.name
+                        for definition in definitions
+                        if definition.name not in active
+                    ),
+                ]
+            )
+        return definitions
 
     def _apply_agent_transcript_context(
         self, session_context: AgentTranscriptContext
@@ -941,6 +973,11 @@ def build_agent_product_session_runtime_ports(
     diagnostics_runtime: Callable[[SessionT | None], SessionDiagnosticsRuntime] | None,
     record_shutdown_failure: Callable[[object, SessionShutdownEvent, Exception], None],
     copy_file: Callable[[Path, Path], None],
+    before_release: Callable[
+        [SessionT, SessionT | None, SessionLifecycleTransition],
+        Awaitable[None] | None,
+    ]
+    | None = None,
     translate_missing_cwd_error: Callable[[MissingSessionCwdError], Exception]
     | None = None,
 ) -> ProductSessionRuntimePorts[SessionT, TranscriptT, str]:
@@ -983,6 +1020,35 @@ def build_agent_product_session_runtime_ports(
             position,
         )
 
+    hooks = cast(
+        SessionLifecycleHooks[SessionT, str],
+        build_agent_session_lifecycle_hooks(
+            runtime_host=runtime_host,
+            record_shutdown_failure=record_shutdown_failure,
+        ),
+    )
+    if before_release is not None:
+        existing_before_release = hooks.before_release
+
+        async def composed_before_release(
+            session: SessionT,
+            target_session: SessionT | None,
+            transition: SessionLifecycleTransition,
+        ) -> None:
+            result = before_release(session, target_session, transition)
+            if result is not None:
+                await result
+            if existing_before_release is not None:
+                result = existing_before_release(
+                    session,
+                    target_session,
+                    transition,
+                )
+                if result is not None:
+                    await result
+
+        hooks = replace(hooks, before_release=composed_before_release)
+
     return ProductSessionRuntimePorts(
         session_factory=session_factory,
         persist=persist,
@@ -1008,13 +1074,7 @@ def build_agent_product_session_runtime_ports(
         ),
         fork_target_resolver=fork_target,
         copy_file=copy_file,
-        hooks=cast(
-            SessionLifecycleHooks[SessionT, str],
-            build_agent_session_lifecycle_hooks(
-                runtime_host=runtime_host,
-                record_shutdown_failure=record_shutdown_failure,
-            ),
-        ),
+        hooks=hooks,
         diagnostics_runtime=diagnostics_runtime,
         rename_transcript=transcript.rename,
         delete_transcript=transcript.delete,
@@ -1040,6 +1100,11 @@ class AgentProductSessionRuntime(
         current_session: SessionT | None = None,
         diagnostics_service: DiagnosticsService | None = None,
         copy_file: Callable[[Path, Path], None] = copy_file_exclusive,
+        before_release: Callable[
+            [SessionT, SessionT | None, SessionLifecycleTransition],
+            Awaitable[None] | None,
+        ]
+        | None = None,
         auto_refresh_session_index: bool = False,
         session_index_refresh_interval: float = 0.5,
         session_index_flush_delay: float = 0.25,
@@ -1056,6 +1121,7 @@ class AgentProductSessionRuntime(
                 copy_file=copy_file,
                 diagnostics_runtime=self._agent_session_diagnostics_runtime,
                 record_shutdown_failure=self._record_agent_shutdown_failure,
+                before_release=before_release,
             ),
             current_session=current_session,
             auto_refresh_session_index=auto_refresh_session_index,
