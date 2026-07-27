@@ -67,6 +67,12 @@ class ExecRequest:
         compare=False,
         kw_only=True,
     )
+    execution_profile: object | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+        kw_only=True,
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(

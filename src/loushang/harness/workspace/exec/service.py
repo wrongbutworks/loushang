@@ -34,8 +34,14 @@ class ExecBackend(Protocol):
 
 
 class ExecService:
-    def __init__(self, *, backend: ExecBackend | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        backend: ExecBackend | None = None,
+        execution_profile: object | None = None,
+    ) -> None:
         self._backend = backend if backend is not None else LocalExecBackend()
+        self.execution_profile = execution_profile
 
     async def execute(
         self,

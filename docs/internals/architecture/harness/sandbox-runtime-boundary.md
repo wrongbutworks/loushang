@@ -655,8 +655,12 @@ each backend.
 
 This phase establishes the enforcement contract. Migrating every effectful tool
 to the new mandatory authorization gateway remains part of the Policy/Approval
-delivery batches; until then, tools still using the legacy policy path do not
-produce per-action profiles.
+delivery batches. The first core-tool slice is now bound for sessions with an
+execution ceiling: Bash, read, write, and edit receive per-action profiles,
+file tools validate profile roots, and Bash passes the profile through
+`ExecRequest` for Sandbox enforcement. Gateway-owned executor callbacks and
+immediate pre-execute revalidation remain to close the
+time-of-check/time-of-use boundary.
 
 macOS and Windows backends follow the same Protocol when implemented. No
 placeholder backend may report itself as enabled.

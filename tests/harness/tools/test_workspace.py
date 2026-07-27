@@ -37,6 +37,7 @@ def test_workspace_read_tool_executes_without_product_adapter(tmp_path: Path) ->
 def test_bash_tool_uses_the_live_session_execution_service(
     tmp_path: Path,
 ) -> None:
+    from loushang.harness.authorization import EffectiveExecutionProfile
     from loushang.harness.tools.workspace import (
         ToolContext,
         create_bash_tool_definition,
@@ -55,7 +56,15 @@ def test_bash_tool_uses_the_live_session_execution_service(
         calls.append(request)
         return ExecResult(exit_code=0, stdout="session service\n")
 
-    session_service = ExecService(backend=session_backend)
+    execution_profile = EffectiveExecutionProfile(
+        readable_roots=(tmp_path,),
+        writable_roots=(tmp_path,),
+        network="restricted",
+    )
+    session_service = ExecService(
+        backend=session_backend,
+        execution_profile=execution_profile,
+    )
     definition = create_bash_tool_definition(
         exec_service=ExecService(backend=unexpected_backend)
     )
@@ -75,6 +84,7 @@ def test_bash_tool_uses_the_live_session_execution_service(
     assert result.content[0].text == "session service\n"
     assert len(calls) == 1
     assert calls[0].cwd == str(tmp_path)
+    assert calls[0].execution_profile == execution_profile
 
 
 @dataclass(frozen=True)
@@ -108,6 +118,62 @@ def test_workspace_policy_accepts_product_neutral_evaluator(tmp_path: Path) -> N
         asyncio.run(tool.execute("read-2", {"path": "notes.txt"}))
 
     assert exc_info.value.tool_result_details["policy_code"] == "disabled"
+
+
+def test_file_tools_enforce_the_live_session_execution_profile(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.authorization import (
+        EffectiveExecutionProfile,
+        ExecutionAuthorizationError,
+    )
+    from loushang.harness.tools.workspace import (
+        ToolContext,
+        create_edit_tool_definition,
+        create_read_tool_definition,
+        create_write_tool_definition,
+    )
+    from loushang.harness.tools.workspace.wrapper import wrap_tool_definition
+    from loushang.harness.workspace.exec import ExecService
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("old", encoding="utf-8")
+    service = ExecService(
+        execution_profile=EffectiveExecutionProfile(
+            readable_roots=(workspace,),
+            writable_roots=(workspace,),
+        )
+    )
+
+    def context(*, tool_call_id: str) -> ToolContext:
+        return ToolContext(
+            tool_call_id=tool_call_id,
+            cwd=str(workspace),
+            exec_service=service,
+        )
+
+    calls = (
+        (create_read_tool_definition(), {"path": str(outside)}),
+        (
+            create_write_tool_definition(),
+            {"path": str(outside), "content": "new"},
+        ),
+        (
+            create_edit_tool_definition(),
+            {
+                "path": str(outside),
+                "edits": [{"oldText": "old", "newText": "new"}],
+            },
+        ),
+    )
+    for definition, arguments in calls:
+        tool = wrap_tool_definition(definition, context_provider=context)
+        with pytest.raises(ExecutionAuthorizationError, match="outside"):
+            asyncio.run(tool.execute("outside-root", arguments))
+
+    assert outside.read_text(encoding="utf-8") == "old"
 
 
 def test_workspace_factory_uses_product_neutral_metadata() -> None:

@@ -1197,9 +1197,13 @@ Exit gate:
 Implementation checkpoint (2026-07-27): Bash, read, write, and edit now enter a
 shared Workspace authorization gateway which freezes canonical arguments and a
 deterministic action fingerprint before invoking the current Policy/Approval
-adapter. This removes four independent entry paths. The next slice must move the
-executor callback and per-action `EffectiveExecutionProfile` into that gateway;
-until then the legacy adapter remains the decision backend.
+adapter. When a session execution ceiling is bound, the gateway resolves a
+per-action `EffectiveExecutionProfile` beneath it; read/write/edit validate the
+canonical path against that profile, and Bash carries it on the materialized
+`ExecRequest` so the Coding Sandbox intersects and enforces it. The legacy
+adapter remains the decision backend.
+The remaining slice is to make the executor callback and immediate pre-execute
+revalidation owned by the gateway itself.
 
 Exit gate:
 

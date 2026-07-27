@@ -6,6 +6,7 @@ from typing import Any, NotRequired, Protocol, TypedDict
 
 from loushang.agent.types import AgentToolResult, TextPart
 from loushang.harness.approval import ApprovalResolver
+from loushang.harness.authorization import EffectiveExecutionProfile
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.policy import (
     build_tool_policy_subject,
@@ -272,7 +273,7 @@ class _BashToolExecute:
             spawn_hook=self.spawn_hook,
         )
         exec_request = materialize_exec_request(exec_request)
-        await _enforce_bash_policy(
+        execution_profile = await _enforce_bash_policy(
             self.policy_engine,
             tool_call_id=tool_call_id,
             exec_request=exec_request,
@@ -280,7 +281,17 @@ class _BashToolExecute:
             approval_resolver=self.approval_resolver,
             audit_sink=getattr(context, "event_sink", None),
             assume_shell=isinstance(request_params.get("command"), str),
+            execution_profile_ceiling=getattr(
+                getattr(context, "exec_service", None),
+                "execution_profile",
+                None,
+            ),
         )
+        if execution_profile is not None:
+            exec_request = replace(
+                exec_request,
+                execution_profile=execution_profile,
+            )
 
         await emit_tool_update(on_update, AgentToolResult(content=[], details=None))
         partial_output = _BashPartialOutput()
@@ -378,9 +389,10 @@ async def _enforce_bash_policy(
     approval_resolver: ApprovalResolver | None,
     audit_sink: object | None = None,
     assume_shell: bool = False,
-) -> None:
+    execution_profile_ceiling: EffectiveExecutionProfile | None = None,
+) -> EffectiveExecutionProfile | None:
     if policy_engine is None:
-        return
+        return execution_profile_ceiling
     evaluate = get_policy_method(policy_engine, "evaluate")
     if callable(evaluate) or callable(
         get_policy_method(policy_engine, "evaluate_tool_call")
@@ -418,7 +430,7 @@ async def _enforce_bash_policy(
             cwd=exec_request.cwd,
             command=command_subject,
         )
-        await authorize_workspace_tool_action(
+        action = await authorize_workspace_tool_action(
             policy_engine,
             tool_name="bash",
             arguments=effective_arguments,
@@ -428,8 +440,9 @@ async def _enforce_bash_policy(
             tool_call_id=tool_call_id,
             audit_sink=audit_sink,
             execution_environment=execution_environment,
+            execution_profile_ceiling=execution_profile_ceiling,
         )
-        return
+        return action.execution_profile
     decision = await evaluate_legacy_policy_method(
         policy_engine,
         "evaluate_action",
@@ -441,6 +454,7 @@ async def _enforce_bash_policy(
     if decision.disposition == "ask":
         reason = decision.reason or "Command requires approval"
         raise PermissionError(reason)
+    return execution_profile_ceiling
 
 
 def _bash_parameters() -> dict[str, Any]:

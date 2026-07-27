@@ -148,6 +148,11 @@ def create_read_tool_definition(
             approval_resolver=resolved_approval_resolver,
             tool_call_id=ctx.tool_call_id,
             audit_sink=ctx.event_sink,
+            execution_profile_ceiling=getattr(
+                ctx.exec_service,
+                "execution_profile",
+                None,
+            ),
         )
         payload = await resolve_operation(ops.read_bytes(resolved))
         raise_if_operation_aborted(ctx.signal)

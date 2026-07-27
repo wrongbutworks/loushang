@@ -4,10 +4,16 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
 from loushang.harness.approval import ApprovalResolver
+from loushang.harness.authorization import (
+    EffectiveExecutionProfile,
+    ExecutionAuthorizationError,
+    resolve_effective_execution_profile,
+)
 from loushang.harness.policy import ToolPolicySubject
 
 from .policy import ToolPolicyEvaluator, enforce_tool_policy
@@ -19,6 +25,7 @@ class AuthorizedWorkspaceAction:
     arguments: Mapping[str, Any]
     cwd: str | None
     fingerprint: str
+    execution_profile: EffectiveExecutionProfile | None = None
 
 
 async def authorize_workspace_tool_action(
@@ -32,6 +39,7 @@ async def authorize_workspace_tool_action(
     tool_call_id: str | None = None,
     audit_sink: Any = None,
     execution_environment: object | None = None,
+    execution_profile_ceiling: EffectiveExecutionProfile | None = None,
 ) -> AuthorizedWorkspaceAction:
     """Freeze one action before routing it through Policy and Approval."""
 
@@ -42,7 +50,7 @@ async def authorize_workspace_tool_action(
         cwd=cwd,
         fingerprint=_fingerprint(tool_name, frozen_arguments, cwd),
     )
-    await enforce_tool_policy(
+    authorization = await enforce_tool_policy(
         policy_engine,
         tool_name=action.tool_name,
         arguments=action.arguments,
@@ -53,7 +61,22 @@ async def authorize_workspace_tool_action(
         audit_sink=audit_sink,
         execution_environment=execution_environment,
     )
-    return action
+    if execution_profile_ceiling is None:
+        return action
+    effective = resolve_effective_execution_profile(
+        ceiling=execution_profile_ceiling,
+        decision=authorization.decision,
+        approval=authorization.approval,
+        approval_action_id=authorization.approval_action_id,
+    )
+    _validate_path_authority(tool_name, frozen_arguments, effective)
+    return AuthorizedWorkspaceAction(
+        tool_name=action.tool_name,
+        arguments=action.arguments,
+        cwd=action.cwd,
+        fingerprint=action.fingerprint,
+        execution_profile=effective,
+    )
 
 
 def _fingerprint(
@@ -99,6 +122,32 @@ def _json_value(value: Any) -> Any:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     return repr(value)
+
+
+def _validate_path_authority(
+    tool_name: str,
+    arguments: Mapping[str, Any],
+    profile: EffectiveExecutionProfile,
+) -> None:
+    path_value = arguments.get("path")
+    if not isinstance(path_value, str):
+        return
+    path = Path(path_value).resolve(strict=False)
+    if any(path == root or path.is_relative_to(root) for root in profile.denied_roots):
+        raise ExecutionAuthorizationError(f"path is denied by execution profile: {path}")
+    roots = (
+        profile.readable_roots
+        if tool_name == "read"
+        else profile.writable_roots
+        if tool_name in {"write", "edit"}
+        else ()
+    )
+    if roots and any(path == root or path.is_relative_to(root) for root in roots):
+        return
+    if tool_name in {"read", "write", "edit"}:
+        raise ExecutionAuthorizationError(
+            f"path is outside the authorized {tool_name} roots: {path}"
+        )
 
 
 __all__ = ["AuthorizedWorkspaceAction", "authorize_workspace_tool_action"]

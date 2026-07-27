@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import os
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from typing import Any, Literal, Protocol, cast
 
 from loushang.harness.approval import (
@@ -48,6 +49,13 @@ class PolicyEnforcementError(PermissionError):
         self.tool_result_details = dict(tool_result_details)
 
 
+@dataclass(frozen=True, slots=True)
+class ToolPolicyAuthorization:
+    decision: PolicyDecision
+    approval: ApprovalDecision | None = None
+    approval_action_id: str | None = None
+
+
 async def enforce_tool_policy(
     policy_engine: ToolPolicyEvaluator | object | None,
     *,
@@ -59,9 +67,9 @@ async def enforce_tool_policy(
     tool_call_id: str | None = None,
     audit_sink: Any = None,
     execution_environment: object | None = None,
-) -> None:
+) -> ToolPolicyAuthorization:
     if policy_engine is None:
-        return
+        return ToolPolicyAuthorization(PolicyDecision.allow())
     execution_subject = build_tool_policy_subject(
         tool_name=tool_name,
         arguments=arguments,
@@ -101,7 +109,7 @@ async def enforce_tool_policy(
         },
     )
     if decision.disposition == "allow":
-        return
+        return ToolPolicyAuthorization(decision)
     if decision.disposition == "deny":
         message = decision.reason or f"Tool {tool_name} denied by policy"
         raise PolicyEnforcementError(
@@ -161,7 +169,11 @@ async def enforce_tool_policy(
             },
         )
         if approval.disposition == "allow":
-            return
+            return ToolPolicyAuthorization(
+                decision,
+                approval=approval,
+                approval_action_id=action_id,
+            )
         message = (
             approval.reason or decision.reason or f"Tool {tool_name} requires approval"
         )

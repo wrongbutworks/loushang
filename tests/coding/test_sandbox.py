@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -75,6 +76,27 @@ def test_coding_scope_policy_consumes_a_narrower_authorized_profile(
     assert scope.readable_roots == (tmp_path,)
     assert scope.writable_roots == ()
     assert scope.network == "denied"
+
+
+def test_coding_scope_policy_constrains_a_per_execution_profile(
+    tmp_path: Path,
+) -> None:
+    policy = CodingSandboxScopePolicy(
+        workspace_root=tmp_path,
+        writable_workspace=True,
+    )
+    request = replace(
+        _materialized_request(tmp_path),
+        execution_profile=EffectiveExecutionProfile(
+            readable_roots=(tmp_path,),
+            network="restricted",
+        ),
+    )
+
+    scope = policy(request)
+
+    assert scope.writable_roots == ()
+    assert scope.network == "restricted"
 
 
 def test_coding_scope_policy_exposes_linked_worktree_git_metadata(

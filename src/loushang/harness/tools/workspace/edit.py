@@ -90,6 +90,11 @@ def create_edit_tool_definition(
             approval_resolver=resolved_approval_resolver,
             tool_call_id=ctx.tool_call_id,
             audit_sink=ctx.event_sink,
+            execution_profile_ceiling=getattr(
+                ctx.exec_service,
+                "execution_profile",
+                None,
+            ),
         )
         raise_if_operation_aborted(ctx.signal)
         async with with_file_mutation_queue(str(resolved)):

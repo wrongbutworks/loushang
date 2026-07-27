@@ -68,9 +68,18 @@ class CodingSandboxScopePolicy:
             raise PermissionError(
                 f"process cwd is outside the Coding sandbox workspace: {cwd}"
             )
+        requested_profile = request.execution_profile
+        if requested_profile is not None and not isinstance(
+            requested_profile,
+            EffectiveExecutionProfile,
+        ):
+            raise TypeError("execution profile must be an EffectiveExecutionProfile")
         assert self.execution_profile is not None
         return sandbox_scope_request_from_profile(
-            self.execution_profile,
+            constrain_execution_profile(
+                self.execution_profile,
+                requested_profile or self.execution_profile,
+            ),
             cwd=cwd,
         )
 
@@ -144,7 +153,7 @@ def bind_coding_sandbox_runtime(
         )
         diagnostics_service.record(record)
 
-    scope_request_factory = (
+    scope_policy = (
         CodingSandboxScopePolicy(
             workspace_root=Path(workspace_root),
             writable_workspace=writable_workspace,
@@ -156,10 +165,13 @@ def bind_coding_sandbox_runtime(
     return bind_sandbox_execution_runtime(
         base_exec_service=base_exec_service,
         settings=settings,
-        scope_request_factory=scope_request_factory,
+        scope_request_factory=scope_policy,
         registry=registry,
         environment_probe=environment_probe,
         diagnostic_sink=record_diagnostic,
+        execution_profile=(
+            scope_policy.execution_profile if scope_policy is not None else None
+        ),
     )
 
 

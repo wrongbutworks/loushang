@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from loushang.harness.authorization import EffectiveExecutionProfile
 from loushang.harness.environment import HostEnvironmentProbe
 from loushang.harness.workspace.exec import (
     ExecRequest,
@@ -42,6 +43,7 @@ def bind_sandbox_execution_runtime(
     registry: SandboxBackendRegistry | None = None,
     environment_probe: HostEnvironmentProbe | None = None,
     diagnostic_sink: SandboxDiagnosticSink | None = None,
+    execution_profile: EffectiveExecutionProfile | None = None,
 ) -> SandboxExecutionRuntime:
     """Wrap one existing execution service without creating a bypass path."""
 
@@ -59,7 +61,10 @@ def bind_sandbox_execution_runtime(
         exec_service=(
             base_exec_service
             if binding.status().state == "disabled"
-            else ExecService(backend=binding.exec_backend)
+            else ExecService(
+                backend=binding.exec_backend,
+                execution_profile=execution_profile,
+            )
         ),
     )
 
