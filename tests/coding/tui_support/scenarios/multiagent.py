@@ -14,7 +14,17 @@ from typing import Any
 
 from loushang.agent.types import AgentToolResult
 from loushang.ai.types import AssistantMessage, TextPart, Usage, UserMessage
-from loushang.coding.multiagent import CodingSubagentFactory, coding_agent_types
+from loushang.coding.multiagent import (
+    CodingSubagentFactory,
+    coding_agent_types,
+)
+from loushang.coding.policy import (
+    HeadlessApprovalResolver,
+    InteractiveApprovalResolver,
+    PolicyEngine,
+)
+from loushang.coding.tool_pack import register_coding_builtin_tools
+from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
 from loushang.coding.worktree import CodingGitWorktreeLeasePort
 from loushang.harness.multiagent import (
     AgentCaller,
@@ -39,13 +49,18 @@ from loushang.harness.session.multiagent import (
 )
 from loushang.harness.tools.core import ToolDefinition
 from loushang.harness.tools.multiagent import MultiAgentToolPack
+from loushang.harness.tools.workspace import ToolContext
 from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import ExecRequest, ExecResult, ExecService
 from loushang.harnesstui.multiagent import build_agent_tree_surface_view
+from loushang.harnesstui.status.provider import StatusProvider
 from loushang.tui import PlaybackResult, Surface, strip_control_sequences
 from loushang.tui.playback_suite import PlaybackScenarioSpec
 from loushang.tui.transcript import ToolExecutionRecord
-from tests.coding.tui_support.playback import ScreenTuiScenario
+from tests.coding.tui_support.playback import (
+    ScreenTuiLoopPlayback,
+    ScreenTuiScenario,
+)
 
 _PROMPT = "派生3个子agent，每个计算1到100之间的随机值，主agent计算平均值"
 _PRIOR_PROMPT = "MULTIAGENT_PLAYBACK_PRIOR_PROMPT"
@@ -1642,6 +1657,325 @@ def _render_playback() -> MultiAgentPlaybackResult:
     return asyncio.run(scenario())
 
 
+class _ApprovalPlaybackState:
+    def __init__(self) -> None:
+        self.messages: list[object] = []
+
+    def set_messages(self, messages: list[object]) -> None:
+        self.messages = list(messages)
+
+
+class _ApprovalPlaybackSession:
+    def __init__(
+        self,
+        *,
+        cwd: str,
+        commands: tuple[str, ...],
+        registry: WorkspaceToolRegistry,
+        approval_resolver: object,
+        exec_service: ExecService,
+        audit_events: list[dict[str, object]],
+    ) -> None:
+        self._cwd = cwd
+        self._commands = list(commands)
+        self._registry = registry
+        self._approval_resolver = approval_resolver
+        self._exec_service = exec_service
+        self._audit_events = audit_events
+        self.agent = SimpleNamespace(state=_ApprovalPlaybackState())
+        self.runtime = SimpleNamespace(
+            queue=SimpleNamespace(input_queue=HostInputQueue())
+        )
+
+    async def prompt(self, text: str, *, source: str | None = None) -> None:
+        del source
+        await self._run_command(text)
+
+    async def continue_run(self) -> None:
+        await self._run_command("follow-up")
+
+    def abort(self) -> bool:
+        return True
+
+    async def _run_command(self, prompt: str) -> None:
+        if not self._commands:
+            raise AssertionError("approval playback child has no command left")
+        command = self._commands.pop(0)
+
+        async def emit_event(event: dict[str, object]) -> None:
+            self._audit_events.append(dict(event))
+
+        tool = self._registry.materialize_tool(
+            "bash",
+            context_provider=lambda *, tool_call_id: ToolContext(
+                tool_call_id=tool_call_id,
+                cwd=self._cwd,
+                exec_service=self._exec_service,
+                approval_resolver=self._approval_resolver,
+                event_sink=emit_event,
+            ),
+        )
+        result = await tool.execute(
+            f"approval-playback:{len(self.agent.state.messages)}",
+            {"command": command, "cwd": self._cwd},
+        )
+        self.agent.state.messages.extend(
+            (
+                UserMessage(role="user", content=prompt, timestamp=0),
+                AssistantMessage(
+                    role="assistant",
+                    content=[
+                        TextPart(
+                            type="text",
+                            text=f"{command}: {result.content[0].text}",
+                        )
+                    ],
+                    api="playback",
+                    provider="scripted",
+                    model="approval-child",
+                    response_id=None,
+                    usage=Usage(
+                        input=10,
+                        output=3,
+                        cache_read=0,
+                        cache_write=0,
+                        total_tokens=13,
+                        cost=None,
+                    ),
+                    stop_reason="stop",
+                    error_message=None,
+                    timestamp=0,
+                ),
+            )
+        )
+
+
+class _ApprovalPlaybackRuntime:
+    def __init__(self, session: _ApprovalPlaybackSession) -> None:
+        self._session = session
+        self.disposed = False
+
+    async def create_session(self, *, cwd: str) -> _ApprovalPlaybackSession:
+        assert cwd == self._session._cwd
+        return self._session
+
+    async def dispose_session_runtime(self) -> None:
+        self.disposed = True
+
+
+def _child_approval_playback() -> object:
+    """Exercise a real Coding child factory through the common approval surface."""
+
+    with TemporaryDirectory(
+        prefix="loushang-child-approval-",
+        dir="/tmp",
+    ) as directory:
+        cwd = Path(directory).resolve()
+        playback = ScreenTuiLoopPlayback(
+            width=112,
+            height=22,
+            model_label="playback/child-approval",
+            cwd=str(cwd),
+            branch="lane/harness",
+        )
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+        audit_events: list[dict[str, object]] = []
+        executed: list[tuple[str, str]] = []
+        profiles: dict[str, object] = {}
+        child_runtimes: list[_ApprovalPlaybackRuntime] = []
+
+        def exec_backend(
+            request: ExecRequest,
+            **_kwargs: object,
+        ) -> ExecResult:
+            command = request.command[-1]
+            executed.append((request.cwd or "", command))
+            return ExecResult(exit_code=0, stdout="published\n")
+
+        root_registry = WorkspaceToolRegistry()
+        register_coding_builtin_tools(
+            root_registry,
+            policy_engine=PolicyEngine(),
+            approval_resolver=resolver,
+            exec_service=ExecService(backend=exec_backend),
+        )
+
+        def build_runtime(**kwargs: object) -> _ApprovalPlaybackRuntime:
+            profile = kwargs["delegated_execution_profile"]
+            actor_id = str(getattr(profile, "actor_ref"))
+            profiles[actor_id] = profile
+            commands = (
+                ("git push origin main", "git push origin release")
+                if "/reusable@" in actor_id
+                else ("git push origin main",)
+            )
+            exec_service = ExecService(
+                backend=exec_backend,
+                execution_profile=getattr(profile, "execution_profile_ceiling"),
+            )
+            session = _ApprovalPlaybackSession(
+                cwd=str(cwd),
+                commands=commands,
+                registry=kwargs["tool_registry"],
+                approval_resolver=kwargs["approval_resolver"],
+                exec_service=exec_service,
+                audit_events=audit_events,
+            )
+            runtime = _ApprovalPlaybackRuntime(session)
+            child_runtimes.append(runtime)
+            return runtime
+
+        factory = CodingSubagentFactory(
+            session_dir=cwd / ".sessions",
+            cwd=cwd,
+            tool_registry=root_registry,
+            runtime_builder=build_runtime,
+            approval_resolver=resolver,
+        )
+        types = coding_agent_types(maximum_children=3)
+        control = MultiAgentControl(agent_types=types)
+        runtime = SessionMultiAgentRuntime(
+            control=control,
+            child_factory=factory,
+        )
+        caller = AgentCaller(control.root_ref)
+        approval_payloads: list[dict[str, object]] = []
+
+        async def on_approval(payload: dict[str, object]) -> bool:
+            action_id = payload.get("action_id")
+            assert isinstance(action_id, str)
+            return await resolver.handle_result(
+                action_id,
+                approved=bool(payload["approved"]),
+                scope=str(payload["scope"]),
+            )
+
+        manager = ScreenSurfaceManager(
+            app=playback.app,
+            session=object(),
+            status_provider=_approval_status_provider(playback.app),
+            on_approval=on_approval,
+        )
+
+        def present(payload: dict[str, object]) -> None:
+            approval_payloads.append(dict(payload))
+            options = payload.get("approval_options")
+            manager.open_approval(
+                action=str(payload.get("action") or "Approve child tool call"),
+                risk=str(payload.get("risk") or ""),
+                requester=str(payload.get("actor_id") or "root"),
+                cwd=str(payload.get("cwd") or ""),
+                environment=str(payload.get("environment") or ""),
+                grant_summary=str(payload.get("grant_summary") or ""),
+                action_id=str(payload["action_id"]),
+                allow_session=isinstance(options, (tuple, list))
+                and "allow_session" in options,
+            )
+
+        resolver.set_request_presenter(
+            present,
+            dismisser=manager.dismiss_approval,
+        )
+
+        async def handle_prompt(_text: str) -> None:
+            reusable = await runtime.spawn_child(
+                caller=caller,
+                parent_path=AgentPath.root(),
+                name="reusable",
+                agent_type="explorer",
+                initial_prompt="Publish main.",
+            )
+            await runtime.await_completion(
+                caller=caller,
+                target=reusable.path,
+                timeout=2,
+            )
+            await runtime.send_message(
+                caller=caller,
+                target=reusable.path,
+                text="Publish release with the same non-force remote permission.",
+            )
+            await runtime.await_completion(
+                caller=caller,
+                target=reusable.path,
+                timeout=2,
+            )
+            sibling = await runtime.spawn_child(
+                caller=caller,
+                parent_path=AgentPath.root(),
+                name="sibling",
+                agent_type="explorer",
+                initial_prompt="Publish main independently.",
+            )
+            await runtime.await_terminal(
+                caller=caller,
+                target=sibling.path,
+                timeout=2,
+            )
+
+            reusable_actor = str(reusable.ref)
+            sibling_actor = str(sibling.ref)
+            assert [payload.get("actor_id") for payload in approval_payloads] == [
+                reusable_actor,
+                sibling_actor,
+            ]
+            assert len(executed) == 2
+            assert [command for _cwd, command in executed] == [
+                "git push origin main",
+                "git push origin release",
+            ]
+            assert set(profiles) == {reusable_actor, sibling_actor}
+            assert {
+                getattr(profile, "approval_actor_id")
+                for profile in profiles.values()
+            } == {reusable_actor, sibling_actor}
+            grants = resolver.permissions_snapshot().grants
+            assert [(grant.actor_id, grant.capability) for grant in grants] == [
+                (reusable_actor, "git.publish_refs")
+            ]
+
+            await runtime.close_agent(caller=caller, target=reusable.path)
+            assert resolver.permissions_snapshot().grants == ()
+            await runtime.close_agent(caller=caller, target=sibling.path)
+            await runtime.dispose()
+
+        result = playback.run(
+            (0.00, "run child approval\r"),
+            (0.10, "a"),
+            (0.25, "\x1b"),
+            (0.40, ""),
+            handle_prompt=handle_prompt,
+            handle_surface_intent=manager.handle_surface_intent,
+        )
+
+        result.assert_exit_code(0)
+        result.assert_text_contains("Approval")
+        result.assert_text_contains("/root/sibling@1")
+        result.assert_no_clear_screen()
+        assert result.app.active_surface is None
+        assert all(child_runtime.disposed for child_runtime in child_runtimes)
+        assert {
+            event.get("actor_id")
+            for event in audit_events
+            if event.get("type") == "tool_policy_evaluated"
+        } == {"/root/reusable@1", "/root/sibling@1"}
+        return result
+
+
+def _approval_status_provider(app: object) -> StatusProvider:
+    state = getattr(app, "state")
+    return StatusProvider(
+        model_label=state.model_label,
+        cwd=state.cwd,
+        branch=state.branch,
+        session_label=lambda: state.session_label,
+        thinking_level=lambda: None,
+        running=lambda: state.running,
+    )
+
+
 async def _yield_until(predicate: Callable[[], bool]) -> None:
     for _ in range(50):
         if predicate():
@@ -1755,6 +2089,15 @@ MULTIAGENT_SCENARIOS = (
         ),
         run=_shared_parallel_writers_playback,
         tags=("multiagent", "topology", "workspace", "concurrency"),
+    ),
+    PlaybackScenarioSpec(
+        name="multiagent-child-approval",
+        description=(
+            "Replay child-scoped approval presentation, same-child grant reuse, "
+            "sibling isolation, and close-time grant cleanup."
+        ),
+        run=_child_approval_playback,
+        tags=("multiagent", "approval", "surface", "gateway"),
     ),
     PlaybackScenarioSpec(
         name="multiagent-render",

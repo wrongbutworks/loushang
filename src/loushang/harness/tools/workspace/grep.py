@@ -13,7 +13,7 @@ from loushang.harness.workspace.operations import GrepOperations, resolve_operat
 
 from .authoring import tool
 from .builtin_renderers import render_grep_call, render_grep_result
-from .context import ToolContext
+from .context import ToolContext, context_approval_resolver
 from .external_tools import (
     ExternalToolDownloader,
     ExternalToolPolicy,
@@ -166,7 +166,10 @@ def create_grep_tool_definition(
             tool_name="grep",
             arguments={"path": str(search_path), "pattern": pattern},
             cwd=ctx.cwd,
-            approval_resolver=resolved_approval_resolver,
+            approval_resolver=context_approval_resolver(
+                ctx,
+                resolved_approval_resolver,
+            ),
             tool_call_id=ctx.tool_call_id,
             audit_sink=ctx.event_sink,
         )

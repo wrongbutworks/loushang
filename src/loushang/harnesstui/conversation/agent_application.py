@@ -393,6 +393,10 @@ class AgentScreenApprovalSurface(Protocol):
         *,
         action: str,
         risk: str = "",
+        requester: str = "",
+        cwd: str = "",
+        environment: str = "",
+        grant_summary: str = "",
         action_id: str | None = None,
         allow_session: bool = False,
     ) -> None: ...
@@ -433,6 +437,10 @@ def bind_agent_screen_approval_presenter(
     def present(payload: dict[str, object]) -> None:
         action = payload.get("action")
         risk = payload.get("risk")
+        actor_id = payload.get("actor_id")
+        cwd = payload.get("cwd")
+        environment = payload.get("environment")
+        grant_summary = payload.get("grant_summary")
         action_id = payload.get("action_id")
         approval_options = payload.get("approval_options")
         allow_session = isinstance(approval_options, (list, tuple)) and (
@@ -441,6 +449,12 @@ def bind_agent_screen_approval_presenter(
         surface.open_approval(
             action=action if isinstance(action, str) else default_action,
             risk=risk if isinstance(risk, str) else "",
+            requester=actor_id if isinstance(actor_id, str) else "",
+            cwd=cwd if isinstance(cwd, str) else "",
+            environment=environment if isinstance(environment, str) else "",
+            grant_summary=(
+                grant_summary if isinstance(grant_summary, str) else ""
+            ),
             action_id=action_id if isinstance(action_id, str) else None,
             allow_session=allow_session,
         )

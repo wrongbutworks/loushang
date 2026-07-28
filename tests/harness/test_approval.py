@@ -1495,3 +1495,107 @@ def test_interactive_approval_can_represent_a_dismissed_pending_request() -> Non
         assert not await resolver.represent_request("delete-build")
 
     asyncio.run(run())
+
+
+def test_actor_bound_resolver_releases_only_its_child_incarnation() -> None:
+    from dataclasses import replace
+
+    from loushang.harness.approval import (
+        ActorBoundApprovalResolver,
+        ApprovalGrantProposal,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+        resolve_approval,
+    )
+
+    async def run() -> None:
+        presented = asyncio.Event()
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+        resolver.set_request_presenter(lambda _payload: presented.set())
+        child_a = ActorBoundApprovalResolver(
+            resolver=resolver,
+            actor_id="/root/reviewer-a#1",
+        )
+        child_b = ActorBoundApprovalResolver(
+            resolver=resolver,
+            actor_id="/root/reviewer-b#1",
+        )
+        proposal = ApprovalGrantProposal(
+            capability="git.publish_refs",
+            constraints=(("remote", "origin"),),
+            summary="Publish non-force refs to origin",
+        )
+        request_a = ApprovalRequest(
+            tool_name="bash",
+            arguments={"command": "git push origin main"},
+            action_id="grant-a",
+            session_grant=proposal,
+        )
+        request_b = ApprovalRequest(
+            tool_name="bash",
+            arguments={"command": "git push origin main"},
+            action_id="grant-b",
+            session_grant=proposal,
+        )
+        grant_a = resolver.grant_store.issue(
+            replace(request_a, actor_id=child_a.actor_id)
+        )
+        grant_b = resolver.grant_store.issue(
+            replace(request_b, actor_id=child_b.actor_id)
+        )
+
+        pending_a = asyncio.create_task(
+            resolve_approval(
+                child_a,
+                ApprovalRequest(
+                    tool_name="bash",
+                    arguments={"command": "rm -rf build"},
+                    action_id="pending-a",
+                ),
+            )
+        )
+        await presented.wait()
+        presented.clear()
+        pending_b = asyncio.create_task(
+            resolve_approval(
+                child_b,
+                ApprovalRequest(
+                    tool_name="bash",
+                    arguments={"command": "rm -rf dist"},
+                    action_id="pending-b",
+                ),
+            )
+        )
+        await presented.wait()
+
+        assert child_a.end_session("reviewer-a closed") == 1
+        assert (await pending_a).disposition == "deny"
+        assert (await pending_a).reason == "reviewer-a closed"
+        snapshot = resolver.permissions_snapshot()
+        assert [item.actor_id for item in snapshot.pending] == [child_b.actor_id]
+        assert [item.permission_id for item in snapshot.grants] == [grant_b.grant_id]
+        assert resolver.grant_store.find(
+            replace(request_a, actor_id=child_a.actor_id)
+        ) is None
+        assert resolver.grant_store.find(
+            replace(request_b, actor_id=child_b.actor_id)
+        ) == grant_b
+        assert grant_a.grant_id != grant_b.grant_id
+
+        assert await resolver.handle_result("pending-b", approved=True)
+        assert (await pending_b).disposition == "allow"
+        denied_after_close = await resolve_approval(
+            child_a,
+            ApprovalRequest(
+                tool_name="bash",
+                arguments={"command": "git push origin release"},
+                action_id="late-a",
+            ),
+        )
+        assert denied_after_close.disposition == "deny"
+        assert denied_after_close.reason == "reviewer-a closed"
+
+    asyncio.run(run())

@@ -12,7 +12,7 @@ from loushang.harness.workspace.operations import ReadOperations, resolve_operat
 from .authoring import tool
 from .authorization import execute_workspace_tool_action
 from .builtin_renderers import render_read_call, render_read_result
-from .context import ToolContext
+from .context import ToolContext, context_approval_resolver
 from .normalize import tool_to_definition
 from .operations import (
     normalize_read_operations,
@@ -146,7 +146,10 @@ def create_read_tool_definition(
             arguments={"path": str(resolved)},
             executor=lambda _action: _read_file_payload(resolved, operations=ops),
             cwd=ctx.cwd,
-            approval_resolver=resolved_approval_resolver,
+            approval_resolver=context_approval_resolver(
+                ctx,
+                resolved_approval_resolver,
+            ),
             tool_call_id=ctx.tool_call_id,
             audit_sink=ctx.event_sink,
             execution_profile_ceiling=getattr(

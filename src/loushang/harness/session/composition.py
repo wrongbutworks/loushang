@@ -592,6 +592,7 @@ def _build_tool_controller(ports: SessionCompositionPorts, diagnostics: SessionD
             if ports.tool_exec_service is not None
             else None
         ),
+        get_approval_resolver=lambda: ports.approval_resolver,
         emit_tool_audit_event=ports.dispatch_event,
         resource_activation_runtime=ports.capability_runtime.resource_runtime,
         prompt_section_composer=ports.capability_runtime.prompt_section_composer,

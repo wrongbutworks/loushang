@@ -9,7 +9,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, TypeVar, cast
 
-from loushang.harness.approval import ApprovalResolver
+from loushang.harness.approval import ApprovalResolver, approval_actor_id
 from loushang.harness.authorization import (
     EffectiveExecutionProfile,
     ExecutionAuthorizationError,
@@ -42,6 +42,7 @@ class AuthorizedWorkspaceAction:
     arguments: Mapping[str, Any]
     cwd: str | None
     fingerprint: str
+    actor_id: str = "root"
     execution_profile: EffectiveExecutionProfile | None = None
     policy_code: str | None = None
     approval_action_id: str | None = None
@@ -80,6 +81,7 @@ async def _authorize_workspace_tool_action(
         arguments=frozen_arguments,
         cwd=cwd,
         fingerprint=_fingerprint(tool_name, frozen_arguments, cwd),
+        actor_id=approval_actor_id(approval_resolver),
         audit_details=audit_details,
     )
     audit_context = _action_audit_context(
@@ -119,6 +121,7 @@ async def _authorize_workspace_tool_action(
         arguments=action.arguments,
         cwd=action.cwd,
         fingerprint=action.fingerprint,
+        actor_id=action.actor_id,
         execution_profile=effective,
         policy_code=authorization.decision.code,
         approval_action_id=authorization.approval_action_id,
@@ -267,6 +270,7 @@ def _action_audit_context(
     details: dict[str, object] = {
         "tool_name": action.tool_name,
         "action_fingerprint": action.fingerprint,
+        "actor_id": action.actor_id,
         **cast(dict[str, object], _json_value(action.audit_details)),
     }
     if tool_call_id is not None:

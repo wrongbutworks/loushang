@@ -729,6 +729,9 @@ def _create_context_provider(
             cwd=cwd,
             diagnostics=diagnostics,
             model=model,
+            approval_resolver=(
+                options.approval_resolver if options is not None else None
+            ),
         )
 
     return _context_provider

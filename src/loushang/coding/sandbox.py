@@ -46,10 +46,9 @@ class CodingSandboxScopePolicy:
         )
         object.__setattr__(self, "_readable_roots", readable_roots)
         object.__setattr__(self, "_writable_roots", writable_roots)
-        ceiling = EffectiveExecutionProfile(
-            readable_roots=readable_roots,
-            writable_roots=writable_roots,
-            network="allowed",
+        ceiling = coding_workspace_execution_profile(
+            root,
+            writable=self.writable_workspace,
         )
         object.__setattr__(
             self,
@@ -103,6 +102,27 @@ def _coding_workspace_roots(
         if writable:
             _append_uncovered_root(writable_roots, metadata_root)
     return tuple(readable), tuple(writable_roots)
+
+
+def coding_workspace_execution_profile(
+    workspace_root: str | Path,
+    *,
+    writable: bool,
+) -> EffectiveExecutionProfile:
+    """Freeze Coding's filesystem/network ceiling for one materialized workspace."""
+
+    root = Path(workspace_root).expanduser().resolve(strict=False)
+    if not root.is_dir():
+        raise NotADirectoryError(20, "Not a directory", str(root))
+    readable_roots, writable_roots = _coding_workspace_roots(
+        root,
+        writable=writable,
+    )
+    return EffectiveExecutionProfile(
+        readable_roots=readable_roots,
+        writable_roots=writable_roots,
+        network="allowed",
+    )
 
 
 def _append_uncovered_root(roots: list[Path], candidate: Path) -> None:
@@ -175,4 +195,8 @@ def bind_coding_sandbox_runtime(
     )
 
 
-__all__ = ["CodingSandboxScopePolicy", "bind_coding_sandbox_runtime"]
+__all__ = [
+    "CodingSandboxScopePolicy",
+    "bind_coding_sandbox_runtime",
+    "coding_workspace_execution_profile",
+]

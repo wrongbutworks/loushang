@@ -28,6 +28,7 @@ from loushang.harness.events import RuntimeEvent
 from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
 from loushang.harness.model_catalog import ModelCatalog as ModelRegistry
+from loushang.harness.multiagent import DelegatedExecutionProfile
 from loushang.harness.resources.types import ResourceBundle
 from loushang.harness.sandbox import SandboxExecutionRuntime, SandboxStatus
 from loushang.harness.session import AgentProductSession
@@ -92,8 +93,10 @@ class AgentSession(AgentProductSession):
         approval_resolver: InteractiveApprovalResolver | None = None,
         capability_runtime: CapabilityCompositionRuntime | None = None,
         sandbox_runtime: SandboxExecutionRuntime | None = None,
+        delegated_execution_profile: DelegatedExecutionProfile | None = None,
     ) -> None:
         self._sandbox_runtime = sandbox_runtime
+        self.delegated_execution_profile = delegated_execution_profile
         resolved_capability_runtime = (
             capability_runtime
             or bind_capability_composition_runtime(CODING_CAPABILITY_PROFILE)
@@ -128,8 +131,11 @@ class AgentSession(AgentProductSession):
             exec_service=exec_service,
             tool_exec_service=(
                 exec_service
-                if sandbox_runtime is not None
-                and sandbox_runtime.status().state != "disabled"
+                if (
+                    sandbox_runtime is not None
+                    and sandbox_runtime.status().state != "disabled"
+                )
+                or getattr(exec_service, "execution_profile", None) is not None
                 else None
             ),
             approval_resolver=approval_resolver,

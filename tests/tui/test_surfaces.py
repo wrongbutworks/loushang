@@ -470,10 +470,15 @@ def test_command_surface_searches_from_typed_text() -> None:
 def test_approval_surface_returns_explicit_approval_or_rejection() -> None:
     surface = ApprovalSurface(action="Run command", risk="writes files")
 
-    assert rendered_text(surface, width=40, height=4) == (
-        "Run command",
-        "writes files",
-        "[y] allow once  [n] deny",
+    assert rendered_text(surface, width=56, height=10) == (
+        "Action",
+        "  Run command",
+        "",
+        "Risk",
+        "  writes files",
+        "",
+        "› 1. Allow this action once (y)",
+        "  2. Deny (n)",
     )
     assert surface.handle_input(InputEvent(kind="key", key="y")) == InputIntent(
         kind="approve"
@@ -482,13 +487,43 @@ def test_approval_surface_returns_explicit_approval_or_rejection() -> None:
         kind="reject"
     )
     assert surface.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(
-        kind="surface_close"
+        kind="reject"
     )
     assert surface.handle_input(InputEvent(kind="text", text="y")) == InputIntent(
         kind="approve"
     )
     assert surface.handle_input(InputEvent(kind="text", text="n")) == InputIntent(
         kind="reject"
+    )
+    assert surface.handle_input(InputEvent(kind="text", text="1")) == InputIntent(
+        kind="approve"
+    )
+    assert surface.handle_input(InputEvent(kind="text", text="2")) == InputIntent(
+        kind="reject"
+    )
+
+
+def test_approval_surface_renders_child_requester_provenance() -> None:
+    surface = ApprovalSurface(
+        action="Publish release",
+        requester="/root/reviewer#2",
+        risk="writes remote refs",
+        cwd="/repo",
+        environment="local",
+    )
+
+    assert rendered_text(surface, width=60, height=12) == (
+        "Action",
+        "  Publish release",
+        "Requested by /root/reviewer#2",
+        "Environment  local",
+        "Directory    /repo",
+        "",
+        "Risk",
+        "  writes remote refs",
+        "",
+        "› 1. Allow this action once (y)",
+        "  2. Deny (n)",
     )
 
 
@@ -499,19 +534,121 @@ def test_approval_surface_exposes_session_choice_only_when_policy_admits_it() ->
         action="Publish main to origin",
         action_id="git:push",
         allow_session=True,
+        grant_summary="Allow non-force pushes to origin",
     )
 
-    assert rendered_text(surface, width=80, height=4) == (
-        "Publish main to origin",
-        "[y] allow once  [a] allow for session  [n] deny",
+    assert rendered_text(surface, width=80, height=8) == (
+        "Action",
+        "  Publish main to origin",
+        "",
+        "› 1. Allow this action once (y)",
+        "  2. Allow non-force pushes to origin (a)",
+        "  3. Deny (n)",
     )
     assert surface.handle_input(InputEvent(kind="key", key="a")) == InputIntent(
         kind="approve_session",
         note="git:push",
     )
+    assert surface.handle_input(InputEvent(kind="key", key="2")) == InputIntent(
+        kind="approve_session",
+        note="git:push",
+    )
+    assert surface.handle_input(InputEvent(kind="key", key="3")) == InputIntent(
+        kind="reject",
+        note="git:push",
+    )
     assert ApprovalSurface(action="Delete cache").handle_input(
         InputEvent(kind="key", key="a")
     ) is None
+
+
+def test_approval_surface_supports_arrow_selection_and_enter() -> None:
+    surface = ApprovalSurface(
+        action="Publish main",
+        action_id="git:push",
+        allow_session=True,
+    )
+
+    assert surface.handle_input(InputEvent(kind="key", key="down")) == InputIntent(
+        kind="consumed",
+        note="approval_selection",
+    )
+    assert surface.selected_index == 1
+    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(
+        kind="approve_session",
+        note="git:push",
+    )
+    surface.handle_input(InputEvent(kind="key", key="end"))
+    assert surface.handle_input(InputEvent(kind="key", key="enter")) == InputIntent(
+        kind="reject",
+        note="git:push",
+    )
+
+
+def test_approval_surface_keeps_shortcuts_visible_when_grant_summary_is_long() -> None:
+    surface = ApprovalSurface(
+        action="git push origin main",
+        allow_session=True,
+        grant_summary=(
+            "Allow non-force refs to origin from this repository for this child session"
+        ),
+    )
+
+    lines = rendered_text(surface, width=42, height=8)
+
+    assert lines[4].endswith("(a)")
+    assert len(strip_control_sequences(lines[4])) <= 41
+
+
+def test_approval_surface_applies_semantic_theme_tokens() -> None:
+    surface = ApprovalSurface(
+        action="rm -rf -- /tmp/build",
+        risk="Filesystem content would be deleted",
+        theme=ThemeResolver(
+            defaults={
+                "approval.action.label": {"color": "yellow"},
+                "approval.action": {"color": "white"},
+                "approval.risk.label": {"color": "bright_red", "bold": True},
+                "approval.risk": {"color": "red"},
+                "approval.choice.allow": {"color": "green"},
+                "approval.choice.deny": {"color": "red"},
+                "approval.choice.selected": {"reverse": True, "bold": True},
+            }
+        ),
+    )
+
+    raw = rendered_text(surface, width=64, height=10)
+
+    assert tuple(strip_control_sequences(line) for line in raw)[0:5] == (
+        "Action",
+        "  rm -rf -- /tmp/build",
+        "",
+        "Risk",
+        "  Filesystem content would be deleted",
+    )
+    assert raw[0].startswith("\x1b[33mAction")
+    assert raw[3].startswith("\x1b[1;91mRisk")
+    assert "\x1b[1;7;32m› 1." in raw[6]
+    assert raw[7].startswith("\x1b[31m  2. Deny")
+
+
+def test_approval_primary_text_uses_terminal_adaptive_foreground() -> None:
+    surface = ApprovalSurface(
+        action="rm -r /tmp/approval-test",
+        theme=ThemeResolver(
+            defaults={
+                "approval.action.label": {"bold": True},
+                "approval.action": {"color": "default", "bold": True},
+            }
+        ),
+    )
+
+    raw = rendered_text(surface, width=64, height=6)
+
+    assert raw[0].startswith("\x1b[1mAction")
+    assert raw[1].startswith("\x1b[1;39m  rm -r /tmp/approval-test")
+    assert "\x1b[93m" not in "".join(raw)
+    assert "\x1b[97m" not in "".join(raw)
 
 
 def test_approval_surface_handle_input_carries_action_id() -> None:
@@ -521,6 +658,9 @@ def test_approval_surface_handle_input_carries_action_id() -> None:
         kind="approve", note="cache:delete"
     )
     assert surface.handle_input(InputEvent(kind="key", key="n")) == InputIntent(
+        kind="reject", note="cache:delete"
+    )
+    assert surface.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(
         kind="reject", note="cache:delete"
     )
 

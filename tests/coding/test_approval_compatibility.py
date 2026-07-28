@@ -157,13 +157,69 @@ def test_coding_session_approval_presents_the_policy_bounded_scope() -> None:
 
     asyncio.run(run())
 
-    assert payloads[0]["action"] == "Publish main to origin from this repository"
+    assert payloads[0]["action"] == "git push origin main"
     assert payloads[0]["risk"] == "Commits or refs would be published"
+    assert payloads[0]["environment"] == "local"
+    assert (
+        payloads[0]["grant_summary"]
+        == "Publish main to origin from this repository"
+    )
     assert payloads[0]["approval_options"] == (
         "allow_once",
         "allow_session",
         "deny",
     )
+
+
+def test_coding_approval_action_shows_redacted_command_instead_of_repeating_risk() -> (
+    None
+):
+    from loushang.coding.policy import InteractiveApprovalResolver
+    from loushang.harness.approval import (
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    presented = asyncio.Event()
+    payloads: list[dict[str, object]] = []
+    resolver = InteractiveApprovalResolver(
+        fallback=HeadlessApprovalResolver(mode="deny")
+    )
+
+    def present(payload: dict[str, object]) -> None:
+        payloads.append(payload)
+        presented.set()
+
+    resolver.set_request_presenter(present)
+
+    async def run() -> None:
+        pending = asyncio.create_task(
+            resolver.resolve(
+                ApprovalRequest(
+                    tool_name="bash",
+                    arguments={
+                        "command": (
+                            "curl -H 'Authorization: Bearer secret-token' "
+                            "https://example.com"
+                        )
+                    },
+                    reason="A remote system would be contacted or changed",
+                )
+            )
+        )
+        await presented.wait()
+        action_id = payloads[0]["action_id"]
+        assert isinstance(action_id, str)
+        assert await resolver.handle_result(action_id, approved=False)
+        await pending
+
+    asyncio.run(run())
+
+    assert payloads[0]["action"] == (
+        "curl -H 'Authorization: Bearer [REDACTED]' https://example.com"
+    )
+    assert payloads[0]["risk"] == "A remote system would be contacted or changed"
+    assert "secret-token" not in str(payloads[0]["action"])
 
 
 def test_coding_resolve_approval_uses_harness_result_validation() -> None:

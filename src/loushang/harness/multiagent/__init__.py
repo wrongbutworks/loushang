@@ -13,6 +13,7 @@ from .context import (
     TranscriptWatermark,
 )
 from .control import DefaultAgentAuthorityPolicy, MultiAgentControl
+from .delegation import DelegatedExecutionProfile
 from .executor import (
     ImmediateRecipeExecutor,
     RecipeExecutionError,
@@ -87,6 +88,7 @@ __all__ = [
     "CollaborationRecipe",
     "CollaborationRecipeCatalog",
     "DefaultAgentAuthorityPolicy",
+    "DelegatedExecutionProfile",
     "DeliveryIntent",
     "ForkHistoryDiagnostic",
     "ForkTier",

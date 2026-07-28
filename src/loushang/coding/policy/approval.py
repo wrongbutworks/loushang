@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Mapping
 
 from loushang.harness.approval import (
@@ -18,6 +19,7 @@ from loushang.harness.approval import (
 from loushang.harness.approval import (
     InteractiveApprovalResolver as _InteractiveApprovalResolver,
 )
+from loushang.harness.diagnostics.export import redact_text
 from loushang.harness.tools.workspace.policy import PolicyEnforcementError
 
 
@@ -28,13 +30,35 @@ def _coding_approval_payload(request: ApprovalRequest) -> Mapping[str, object]:
     )
     return {
         **projection,
-        "action": (
-            grant_summary
-            or request.reason
-            or f"Approve {request.tool_name} tool call"
-        ),
+        "action": _approval_action(request),
         "risk": request.reason or "Tool call requires approval",
+        "environment": "local",
+        "grant_summary": grant_summary,
     }
+
+
+def _approval_action(request: ApprovalRequest) -> str:
+    command = request.arguments.get("command")
+    if isinstance(command, str) and command.strip():
+        return _approval_display_text(command)
+    if isinstance(command, (tuple, list)) and command and all(
+        isinstance(part, str) for part in command
+    ):
+        return _approval_display_text(shlex.join(command))
+    path = request.arguments.get("path")
+    if isinstance(path, str) and path.strip():
+        return f"{request.tool_name} {_approval_display_text(path)}"
+    return f"{request.tool_name} tool call"
+
+
+def _approval_display_text(value: str) -> str:
+    redacted = redact_text(value.strip())
+    flattened = " ⏎ ".join(redacted.splitlines())
+    safe = "".join(
+        character if character.isprintable() else "�"
+        for character in flattened
+    )
+    return safe[:2048]
 
 
 class InteractiveApprovalResolver(_InteractiveApprovalResolver):

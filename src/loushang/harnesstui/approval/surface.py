@@ -16,7 +16,10 @@ def build_permissions_surface_view(
         SelectItem(
             label=f"Pending · {permission.capability}",
             value=f"reopen:{permission.permission_id}",
-            description=permission.summary,
+            description=_permission_description(
+                actor_id=permission.actor_id,
+                summary=permission.summary,
+            ),
         )
         for permission in snapshot.pending
     ]
@@ -24,7 +27,10 @@ def build_permissions_surface_view(
         SelectItem(
             label=f"Session · {permission.capability}",
             value=f"revoke:{permission.permission_id}",
-            description=permission.summary,
+            description=_permission_description(
+                actor_id=permission.actor_id,
+                summary=permission.summary,
+            ),
         )
         for permission in snapshot.grants
     )
@@ -43,6 +49,11 @@ def build_permissions_surface_view(
         footer="Enter reopen/revoke · Esc close",
         presentation="page",
     )
+
+
+def _permission_description(*, actor_id: str, summary: str) -> str:
+    requester = "Root" if actor_id == "root" else actor_id
+    return f"{requester} · {summary}"
 
 
 __all__ = ["build_permissions_surface_view"]
