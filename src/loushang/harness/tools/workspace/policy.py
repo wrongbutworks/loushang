@@ -25,6 +25,8 @@ from loushang.harness.policy import (
     normalize_command_subject,
 )
 
+from .audit import snapshot_audit_event
+
 
 class PolicyDecisionLike(Protocol):
     @property
@@ -66,10 +68,26 @@ async def enforce_tool_policy(
     approval_resolver: ApprovalResolver | None = None,
     tool_call_id: str | None = None,
     audit_sink: Any = None,
+    audit_context: Mapping[str, object] | None = None,
     execution_environment: object | None = None,
 ) -> ToolPolicyAuthorization:
     if policy_engine is None:
-        return ToolPolicyAuthorization(PolicyDecision.allow())
+        decision = PolicyDecision.allow()
+        if audit_context is not None:
+            await _emit_policy_audit_event(
+                audit_sink,
+                {
+                    "type": "tool_policy_evaluated",
+                    **_policy_audit_details(
+                        tool_name=tool_name,
+                        decision=decision,
+                        approval_required=False,
+                        tool_call_id=tool_call_id,
+                        audit_context=audit_context,
+                    ),
+                },
+            )
+        return ToolPolicyAuthorization(decision)
     execution_subject = build_tool_policy_subject(
         tool_name=tool_name,
         arguments=arguments,
@@ -100,11 +118,10 @@ async def enforce_tool_policy(
             "type": "tool_policy_evaluated",
             **_policy_audit_details(
                 tool_name=tool_name,
-                arguments=arguments,
-                cwd=cwd,
                 decision=decision,
                 approval_required=decision.disposition == "ask",
                 tool_call_id=tool_call_id,
+                audit_context=audit_context,
             ),
         },
     )
@@ -141,11 +158,10 @@ async def enforce_tool_policy(
                 "type": "tool_approval_requested",
                 **_approval_audit_details(
                     tool_name=tool_name,
-                    arguments=arguments,
-                    cwd=cwd,
                     decision=decision,
                     action_id=action_id,
                     tool_call_id=tool_call_id,
+                    audit_context=audit_context,
                 ),
             },
         )
@@ -159,12 +175,11 @@ async def enforce_tool_policy(
                 "type": "tool_approval_resolved",
                 **_approval_audit_details(
                     tool_name=tool_name,
-                    arguments=arguments,
-                    cwd=cwd,
                     decision=decision,
                     action_id=action_id,
                     tool_call_id=tool_call_id,
                     approval=approval,
+                    audit_context=audit_context,
                 ),
             },
         )
@@ -472,19 +487,21 @@ def _policy_error_details(
 def _policy_audit_details(
     *,
     tool_name: str,
-    arguments: Mapping[str, Any],
-    cwd: str | None,
     decision: PolicyDecisionLike,
     approval_required: bool,
     tool_call_id: str | None,
+    audit_context: Mapping[str, object] | None,
 ) -> dict[str, Any]:
-    details = _policy_error_details(
-        tool_name=tool_name,
-        arguments=arguments,
-        cwd=cwd,
-        decision=decision,
-        approval_required=approval_required,
+    details: dict[str, Any] = dict(audit_context or ())
+    details.update(
+        {
+            "tool_name": tool_name,
+            "policy_disposition": decision.disposition,
+            "approval_required": approval_required,
+        }
     )
+    if decision.code is not None:
+        details["policy_code"] = decision.code
     if tool_call_id is not None:
         details["tool_call_id"] = tool_call_id
     return details
@@ -493,46 +510,26 @@ def _policy_audit_details(
 def _approval_audit_details(
     *,
     tool_name: str,
-    arguments: Mapping[str, Any],
-    cwd: str | None,
     decision: PolicyDecisionLike,
     action_id: str,
     tool_call_id: str | None,
     approval: ApprovalDecision | None = None,
+    audit_context: Mapping[str, object] | None,
 ) -> dict[str, Any]:
-    details: dict[str, Any] = {
-        "tool_name": tool_name,
-        "action_id": action_id,
-        "argument_keys": sorted(str(key) for key in arguments.keys()),
-    }
+    details: dict[str, Any] = dict(audit_context or ())
+    details.update({"tool_name": tool_name, "action_id": action_id})
     if tool_call_id is not None:
         details["tool_call_id"] = tool_call_id
-    if cwd is not None:
-        details["cwd"] = cwd
     if decision.code is not None:
         details["policy_code"] = decision.code
-    if decision.reason is not None:
-        details["policy_reason"] = decision.reason
     if approval is not None:
         details["approval_decision"] = approval.disposition
-        if approval.reason is not None:
-            details["approval_reason"] = approval.reason
-    for key in ("path", "file_path", "command"):
-        value = arguments.get(key)
-        if isinstance(value, str):
-            details[key] = value
-        elif (
-            key == "command"
-            and isinstance(value, (list, tuple))
-            and all(isinstance(part, str) for part in value)
-        ):
-            details[key] = tuple(value)
     return details
 
 
 async def _emit_policy_audit_event(audit_sink: Any, event: Mapping[str, Any]) -> None:
     if audit_sink is None:
         return
-    result = audit_sink(dict(event))
+    result = audit_sink(snapshot_audit_event(event))
     if inspect.isawaitable(result):
         await result

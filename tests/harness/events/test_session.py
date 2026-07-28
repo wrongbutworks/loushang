@@ -57,6 +57,13 @@ from loushang.harness.events.session import QueueSnapshot, RetryAttempt, RetryOu
             ),
             "session.tool_policy_evaluated",
         ),
+        (
+            ToolPolicyAuditEvent(
+                "tool_execution_completed",
+                {"tool_name": "write", "outcome": "completed"},
+            ),
+            "session.tool_execution_completed",
+        ),
     ],
 )
 def test_session_runtime_payloads_have_stable_kinds(payload: object, kind: str) -> None:

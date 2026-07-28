@@ -851,6 +851,23 @@ environment, symlinks, MCP schemas, workspace identity, or command material.
 Tools retain their executors. They no longer each implement their own approval
 algorithm.
 
+The current Workspace gateway publishes the following concrete Session event
+sequence:
+
+```text
+tool_action_frozen
+tool_policy_evaluated
+[tool_approval_requested -> tool_approval_resolved]
+tool_execution_started
+tool_execution_completed | tool_execution_failed
+```
+
+A denial ends after the policy or approval event because execution never
+started. A pre-execution revalidation or observation-hook failure publishes
+`tool_execution_failed` with `phase=pre_execution`; an executor failure uses
+`phase=execution`. All events for one attempt carry the same action
+fingerprint.
+
 ## 12. Runtime Components And Ports
 
 ```text
@@ -953,8 +970,18 @@ Each event carries stable references:
 - redacted resource claims;
 - sequence and timestamp.
 
-Full commands, secret values, tokens, and sensitive file content are not copied
-blindly into audit events.
+The common event stream records only a structurally redacted action summary:
+the action fingerprint, capability classification, safe command form and
+recognized executable/operation names, argument and command counts, Policy
+code, Approval ID, execution-profile counts/network mode, and outcome. It does
+not contain the complete command, cwd, path or filename, file contents, stdin,
+environment names or values, Policy/Approval free-form reasons, exception
+messages, tokens, or credentials.
+
+If a deployment needs the original complete command as evidence, it must bind
+an explicitly enabled restricted evidence store with separate access,
+retention, and redaction policy. The generic Session/Work event stream is not
+that store and must never be used as a convenient copy of raw evidence.
 
 Session, Work, daemon, CLI, TUI, and diagnostics project these events rather
 than inventing separate approval lifecycles.
@@ -1208,7 +1235,12 @@ observation-only and is revalidated on both sides; tool effects belong only in
 the executor. This closes the application-level authorization/execution
 separation. Descriptor-safe filesystem operations and backend containment
 remain responsible for operating-system races after an asynchronous executor
-has begun.
+has begun. The same gateway now emits the ordered audit sequence documented in
+section 11. Its common payload contains a deterministic fingerprint, safe
+action/command structure, primary capability classification, Policy code,
+Approval ID, execution-profile summary, and terminal outcome. Raw commands,
+paths, contents, environment values, reasons, and exception text are excluded;
+complete raw evidence requires a separately enabled restricted evidence store.
 
 Exit gate:
 

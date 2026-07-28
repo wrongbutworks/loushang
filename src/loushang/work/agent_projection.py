@@ -215,20 +215,30 @@ def project_agent_event_to_work_facts(
                 payload=payload,
             )
         ]
+    audit_identity_fields = (
+        "tool_call_id",
+        "tool_name",
+        "action_fingerprint",
+        "capability",
+        "action_summary",
+        "command_summary",
+    )
+    if source_type == "tool_action_frozen":
+        return [
+            _event(
+                context,
+                kind="ToolActionFrozen",
+                delivery_hint="immediate",
+                payload=_payload(event, *audit_identity_fields),
+            )
+        ]
     if source_type == "tool_policy_evaluated":
         payload = _payload(
             event,
-            "tool_call_id",
-            "tool_name",
-            "cwd",
+            *audit_identity_fields,
             "policy_disposition",
             "policy_code",
-            "policy_reason",
             "approval_required",
-            "argument_keys",
-            "path",
-            "file_path",
-            "command",
         )
         return [
             _event(
@@ -241,16 +251,9 @@ def project_agent_event_to_work_facts(
     if source_type == "tool_approval_requested":
         payload = _payload(
             event,
-            "tool_call_id",
-            "tool_name",
-            "cwd",
+            *audit_identity_fields,
             "action_id",
             "policy_code",
-            "policy_reason",
-            "argument_keys",
-            "path",
-            "file_path",
-            "command",
         )
         return [
             _event(
@@ -263,23 +266,42 @@ def project_agent_event_to_work_facts(
     if source_type == "tool_approval_resolved":
         payload = _payload(
             event,
-            "tool_call_id",
-            "tool_name",
-            "cwd",
+            *audit_identity_fields,
             "action_id",
             "approval_decision",
-            "approval_reason",
             "policy_code",
-            "policy_reason",
-            "argument_keys",
-            "path",
-            "file_path",
-            "command",
         )
         return [
             _event(
                 context,
                 kind="ToolApprovalResolved",
+                delivery_hint="immediate",
+                payload=payload,
+            )
+        ]
+    if source_type in {
+        "tool_execution_started",
+        "tool_execution_completed",
+        "tool_execution_failed",
+    }:
+        kind = {
+            "tool_execution_started": "ToolExecutionStarted",
+            "tool_execution_completed": "ToolExecutionCompleted",
+            "tool_execution_failed": "ToolExecutionFailed",
+        }[source_type]
+        payload = _payload(
+            event,
+            *audit_identity_fields,
+            "policy_code",
+            "approval_action_id",
+            "execution_profile",
+            "outcome",
+            "phase",
+        )
+        return [
+            _event(
+                context,
+                kind=kind,
                 delivery_hint="immediate",
                 payload=payload,
             )

@@ -130,7 +130,7 @@ async def test_session_uses_one_runtime_stream_with_product_projection(
 
 
 @_async_test
-async def test_session_normalizes_tool_policy_audit_into_runtime_stream(
+async def test_session_normalizes_gateway_audit_sequence_into_runtime_stream(
     tmp_path,
 ) -> None:
     from loushang.coding.bootstrap import create_agent_session_runtime
@@ -147,26 +147,41 @@ async def test_session_normalizes_tool_policy_audit_into_runtime_stream(
     session.subscribe_runtime_events(runtime_events.append)
     session.subscribe(product_events.append)
 
-    await session._dispatch_event(
-        {
-            "type": "tool_policy_evaluated",
-            "tool_name": "write",
-            "decision": "allow",
-        }
-    )
-
-    assert len(runtime_events) == 1
-    assert runtime_events[0].kind == "session.tool_policy_evaluated"
-    assert runtime_events[0].payload == ToolPolicyAuditEvent(
+    event_types = (
+        "tool_action_frozen",
         "tool_policy_evaluated",
-        {"tool_name": "write", "decision": "allow"},
+        "tool_approval_requested",
+        "tool_approval_resolved",
+        "tool_execution_started",
+        "tool_execution_completed",
+        "tool_execution_failed",
     )
+    for event_type in event_types:
+        await session._dispatch_event(
+            {
+                "type": event_type,
+                "tool_name": "write",
+                "action_fingerprint": "f" * 64,
+            }
+        )
+
+    assert [event.kind for event in runtime_events] == [
+        f"session.{event_type}" for event_type in event_types
+    ]
+    assert [event.payload for event in runtime_events] == [
+        ToolPolicyAuditEvent(
+            event_type,
+            {"tool_name": "write", "action_fingerprint": "f" * 64},
+        )
+        for event_type in event_types
+    ]
     assert product_events == [
         {
-            "type": "tool_policy_evaluated",
+            "type": event_type,
             "tool_name": "write",
-            "decision": "allow",
+            "action_fingerprint": "f" * 64,
         }
+        for event_type in event_types
     ]
 
 

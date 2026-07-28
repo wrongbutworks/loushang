@@ -466,12 +466,20 @@ duck-typed `evaluate_tool_call` and `evaluate_action` implementations, preservin
 their call order and results; unknown objects are rejected rather than treated
 as no policy. New implementations use only `evaluate(subject)`.
 
-The reusable workspace enforcement path owns a neutral audit vocabulary for
-policy evaluation and approval request/resolution, including final command argv
-and correlation ids. Products inject the sink and own redaction, projection into
-their session/event schemas, persistence, RPC/UI presentation, and compatibility
-field aliases. This keeps the mechanism observable without making Coding's
-event protocol a Harness contract.
+The reusable workspace enforcement path owns a neutral audit vocabulary from
+action freeze through policy, approval, execution start, and terminal outcome.
+It emits correlation IDs, one stable action fingerprint, capability and
+structurally redacted action/command summaries, Policy code, Approval ID,
+execution-profile summary, and result status. It never emits final command
+argv, cwd/path values, contents, environment data, free-form reasons, or
+exception text into the common event stream.
+
+Products inject the sink and own projection into their session/event schemas,
+persistence, RPC/UI presentation, and compatibility field aliases. A
+deployment that needs complete raw evidence must explicitly bind a separate
+restricted evidence store; Product projection is not permission to copy raw
+arguments into common audit events. This keeps the mechanism observable
+without making Coding's event protocol a Harness contract.
 
 ## Approval Broker
 

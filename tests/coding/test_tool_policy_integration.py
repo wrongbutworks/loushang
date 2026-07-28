@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 
@@ -241,47 +242,30 @@ def test_ask_policy_allow_emits_tool_approval_audit_events(tmp_path) -> None:
     )
 
     assert [event["type"] for event in events] == [
+        "tool_action_frozen",
         "tool_policy_evaluated",
         "tool_approval_requested",
         "tool_approval_resolved",
+        "tool_execution_started",
+        "tool_execution_completed",
     ]
-    assert events[0] == {
-        "type": "tool_policy_evaluated",
-        "tool_call_id": "call-write-approval-audit",
-        "tool_name": "write",
-        "cwd": str(tmp_path),
-        "policy_disposition": "ask",
-        "policy_code": "tool_requires_approval",
-        "policy_reason": "Tool write requires approval",
-        "approval_required": True,
-        "argument_keys": ["content", "path"],
-        "path": str(tmp_path / "approved-audit.txt"),
+    assert {event["action_fingerprint"] for event in events} == {
+        events[0]["action_fingerprint"]
     }
-    action_id = events[1].get("action_id")
+    assert all(event["capability"] == "filesystem.write" for event in events)
+    assert events[1]["policy_disposition"] == "ask"
+    assert events[1]["policy_code"] == "tool_requires_approval"
+    assert events[1]["approval_required"] is True
+    action_id = events[2].get("action_id")
     assert isinstance(action_id, str)
-    assert events[1] == {
-        "type": "tool_approval_requested",
-        "tool_call_id": "call-write-approval-audit",
-        "tool_name": "write",
-        "cwd": str(tmp_path),
-        "action_id": action_id,
-        "policy_code": "tool_requires_approval",
-        "policy_reason": "Tool write requires approval",
-        "argument_keys": ["content", "path"],
-        "path": str(tmp_path / "approved-audit.txt"),
-    }
-    assert events[2] == {
-        "type": "tool_approval_resolved",
-        "tool_call_id": "call-write-approval-audit",
-        "tool_name": "write",
-        "cwd": str(tmp_path),
-        "action_id": action_id,
-        "approval_decision": "allow",
-        "policy_code": "tool_requires_approval",
-        "policy_reason": "Tool write requires approval",
-        "argument_keys": ["content", "path"],
-        "path": str(tmp_path / "approved-audit.txt"),
-    }
+    assert events[3]["action_id"] == action_id
+    assert events[3]["approval_decision"] == "allow"
+    assert events[4]["approval_action_id"] == action_id
+    assert events[5]["approval_action_id"] == action_id
+    serialized = json.dumps(events)
+    assert str(tmp_path) not in serialized
+    assert "approved-audit.txt" not in serialized
+    assert '"approved"' not in serialized
 
 
 def test_deny_policy_emits_tool_policy_evaluated_audit_event(tmp_path) -> None:
@@ -313,20 +297,17 @@ def test_deny_policy_emits_tool_policy_evaluated_audit_event(tmp_path) -> None:
             )
         )
 
-    assert events == [
-        {
-            "type": "tool_policy_evaluated",
-            "tool_call_id": "call-write-deny-audit",
-            "tool_name": "write",
-            "cwd": str(tmp_path),
-            "policy_disposition": "deny",
-            "policy_code": "tool_blocked",
-            "policy_reason": "Tool write is blocked by policy",
-            "approval_required": False,
-            "argument_keys": ["content", "path"],
-            "path": str(tmp_path / "blocked-audit.txt"),
-        }
+    assert [event["type"] for event in events] == [
+        "tool_action_frozen",
+        "tool_policy_evaluated",
     ]
+    assert events[1]["policy_disposition"] == "deny"
+    assert events[1]["policy_code"] == "tool_blocked"
+    assert events[1]["approval_required"] is False
+    serialized = json.dumps(events)
+    assert str(tmp_path) not in serialized
+    assert "blocked-audit.txt" not in serialized
+    assert '"blocked"' not in serialized
 
 
 def test_async_approval_resolver_can_deny_ask_policy_for_write(tmp_path) -> None:

@@ -273,71 +273,115 @@ def test_work_projection_rejects_malformed_tool_result_content() -> None:
     assert exc_info.value.path == "tool_output.content[0].type"
 
 
-def test_project_tool_policy_and_approval_events_to_audit_work_events() -> None:
+def test_project_gateway_audit_sequence_to_safe_work_events() -> None:
     from loushang.work import project_agent_event_to_work_events
 
+    common = {
+        "tool_call_id": "tool-1",
+        "tool_name": "write",
+        "action_fingerprint": "f" * 64,
+        "capability": "filesystem.write",
+        "action_summary": {
+            "argument_count": 2,
+            "resource": {"kind": "file", "scope": "workspace"},
+        },
+    }
+    frozen = project_agent_event_to_work_events(
+        {
+            "type": "tool_action_frozen",
+            **common,
+        },
+        context=_context(5),
+    )
     evaluated = project_agent_event_to_work_events(
         {
             "type": "tool_policy_evaluated",
-            "tool_call_id": "tool-1",
-            "tool_name": "write",
+            **common,
             "policy_disposition": "ask",
             "policy_code": "tool_requires_approval",
-            "policy_reason": "Tool write requires approval",
             "approval_required": True,
-            "argument_keys": ["content", "path"],
-            "path": "/repo/approved.txt",
         },
         context=_context(6),
     )
     requested = project_agent_event_to_work_events(
         {
             "type": "tool_approval_requested",
-            "tool_call_id": "tool-1",
-            "tool_name": "write",
+            **common,
             "action_id": "approval-1",
             "policy_code": "tool_requires_approval",
-            "policy_reason": "Tool write requires approval",
-            "argument_keys": ["content", "path"],
-            "path": "/repo/approved.txt",
         },
         context=_context(7),
     )
     resolved = project_agent_event_to_work_events(
         {
             "type": "tool_approval_resolved",
-            "tool_call_id": "tool-1",
-            "tool_name": "write",
+            **common,
             "action_id": "approval-1",
             "approval_decision": "allow",
             "policy_code": "tool_requires_approval",
-            "policy_reason": "Tool write requires approval",
         },
         context=_context(8),
     )
+    started = project_agent_event_to_work_events(
+        {
+            "type": "tool_execution_started",
+            **common,
+            "execution_profile": {"configured": False},
+            "outcome": "running",
+            "phase": "execution",
+        },
+        context=_context(9),
+    )
+    completed = project_agent_event_to_work_events(
+        {
+            "type": "tool_execution_completed",
+            **common,
+            "execution_profile": {"configured": False},
+            "outcome": "completed",
+            "phase": "execution",
+        },
+        context=_context(10),
+    )
+    failed = project_agent_event_to_work_events(
+        {
+            "type": "tool_execution_failed",
+            **common,
+            "execution_profile": {"configured": False},
+            "outcome": "error",
+            "phase": "execution",
+        },
+        context=_context(11),
+    )
+    projected = [
+        *frozen,
+        *evaluated,
+        *requested,
+        *resolved,
+        *started,
+        *completed,
+        *failed,
+    ]
 
-    assert [event.kind for event in [*evaluated, *requested, *resolved]] == [
+    assert [event.kind for event in projected] == [
+        "ToolActionFrozen",
         "ToolPolicyEvaluated",
         "ToolApprovalRequested",
         "ToolApprovalResolved",
+        "ToolExecutionStarted",
+        "ToolExecutionCompleted",
+        "ToolExecutionFailed",
     ]
-    assert all(
-        event.delivery_hint == "immediate"
-        for event in [*evaluated, *requested, *resolved]
-    )
+    assert all(event.delivery_hint == "immediate" for event in projected)
     assert evaluated[0].payload == {
         "source_type": "tool_policy_evaluated",
-        "tool_call_id": "tool-1",
-        "tool_name": "write",
+        **common,
         "policy_disposition": "ask",
         "policy_code": "tool_requires_approval",
-        "policy_reason": "Tool write requires approval",
         "approval_required": True,
-        "argument_keys": ["content", "path"],
-        "path": "/repo/approved.txt",
     }
     assert requested[0].payload["action_id"] == "approval-1"
     assert resolved[0].payload["approval_decision"] == "allow"
+    assert completed[0].payload["outcome"] == "completed"
 
 
 def test_project_queue_update_to_coalesced_queue_metadata_event() -> None:
@@ -380,9 +424,9 @@ def test_work_event_bridge_rejects_non_json_payloads() -> None:
                 "type": "tool_policy_evaluated",
                 "tool_call_id": "call-1",
                 "tool_name": "read",
-                "path": Path("notes.txt"),
+                "action_summary": {"unsafe": Path("notes.txt")},
             },
-            "work_event.payload.path",
+            "work_event.payload.action_summary.unsafe",
         ),
         (
             {"type": "product_event", "unsafe": Path("notes.txt")},

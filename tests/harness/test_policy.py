@@ -1007,9 +1007,8 @@ def test_workspace_policy_uses_one_snapshot_across_async_evaluation() -> None:
     assert requests[0].arguments["path"] == "before.txt"
     assert requests[0].arguments["nested"]["value"] == "before"  # type: ignore[index]
     assert error.tool_result_details["path"] == "before.txt"
-    assert {event["path"] for event in audit_events if "path" in event} == {
-        "before.txt"
-    }
+    assert all("path" not in event for event in audit_events)
+    assert all("before.txt" not in repr(event) for event in audit_events)
 
 
 def test_workspace_policy_adapter_rejects_unknown_evaluator() -> None:

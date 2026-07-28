@@ -1145,12 +1145,19 @@ def test_bash_approval_and_audit_use_effective_spawned_command(tmp_path) -> None
     )
     assert approval_requests[0].arguments["timeout"] == 3
     assert [event["type"] for event in events] == [
+        "tool_action_frozen",
         "tool_policy_evaluated",
         "tool_approval_requested",
         "tool_approval_resolved",
+        "tool_execution_started",
+        "tool_execution_completed",
     ]
-    assert all(event["command"] == effective_command for event in events)
-    assert all(event["cwd"] == str(effective_cwd) for event in events)
+    assert all("command" not in event for event in events)
+    assert all("cwd" not in event for event in events)
+    assert all(effective_command not in repr(event) for event in events)
+    assert all(str(effective_cwd) not in repr(event) for event in events)
+    assert all("/tmp/injected.so" not in repr(event) for event in events)
+    assert all(event["capability"] == "git.remote_write" for event in events)
 
 
 def test_bash_approval_and_audit_preserve_direct_wrapper_argv(tmp_path) -> None:
@@ -1215,7 +1222,10 @@ def test_bash_approval_and_audit_preserve_direct_wrapper_argv(tmp_path) -> None:
     assert exec_requests[0].command == command
     assert approval_requests[0].arguments["command"] == command
     assert approval_requests[0].arguments["shell_payload"] == "git push origin review"
-    assert all(event["command"] == command for event in events)
+    assert all("command" not in event for event in events)
+    assert all("LD_PRELOAD" not in repr(event) for event in events)
+    assert all("/tmp/injected.so" not in repr(event) for event in events)
+    assert all(event["capability"] == "git.remote_write" for event in events)
 
 
 def test_bash_policy_and_execution_share_frozen_path_and_cwd(

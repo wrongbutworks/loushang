@@ -393,9 +393,13 @@ _AGENT_EVENT_TYPES = {
     "tool_execution_end",
 }
 _TOOL_POLICY_AUDIT_EVENT_TYPES = {
+    "tool_action_frozen",
     "tool_policy_evaluated",
     "tool_approval_requested",
     "tool_approval_resolved",
+    "tool_execution_started",
+    "tool_execution_completed",
+    "tool_execution_failed",
 }
 
 

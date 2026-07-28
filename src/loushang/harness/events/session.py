@@ -11,9 +11,13 @@ PackageProgressAction: TypeAlias = Literal[
 ]
 QueueKind: TypeAlias = Literal["steering", "follow_up"]
 ToolPolicyAuditEventType: TypeAlias = Literal[
+    "tool_action_frozen",
     "tool_policy_evaluated",
     "tool_approval_requested",
     "tool_approval_resolved",
+    "tool_execution_started",
+    "tool_execution_completed",
+    "tool_execution_failed",
 ]
 
 

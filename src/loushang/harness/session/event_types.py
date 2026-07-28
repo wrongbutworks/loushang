@@ -84,24 +84,29 @@ class PackageProgressSessionEvent(TypedDict):
 
 class ToolPolicyAuditSessionEvent(TypedDict):
     type: Literal[
+        "tool_action_frozen",
         "tool_policy_evaluated",
         "tool_approval_requested",
         "tool_approval_resolved",
+        "tool_execution_started",
+        "tool_execution_completed",
+        "tool_execution_failed",
     ]
     tool_name: NotRequired[str]
     tool_call_id: NotRequired[str]
+    action_fingerprint: NotRequired[str]
+    capability: NotRequired[str]
+    action_summary: NotRequired[dict[str, object]]
+    command_summary: NotRequired[dict[str, object]]
     action_id: NotRequired[str]
-    cwd: NotRequired[str]
+    approval_action_id: NotRequired[str]
     policy_disposition: NotRequired[str]
     policy_code: NotRequired[str]
-    policy_reason: NotRequired[str]
     approval_required: NotRequired[bool]
     approval_decision: NotRequired[str]
-    approval_reason: NotRequired[str]
-    argument_keys: NotRequired[list[str]]
-    path: NotRequired[str]
-    file_path: NotRequired[str]
-    command: NotRequired[str | tuple[str, ...]]
+    execution_profile: NotRequired[dict[str, object]]
+    outcome: NotRequired[str]
+    phase: NotRequired[str]
 
 
 AgentSessionEvent: TypeAlias = (

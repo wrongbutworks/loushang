@@ -45,7 +45,7 @@ Harness owns immutable payloads for:
 - branch summary start and completion;
 - conversation metadata changes;
 - package materialization progress;
-- tool policy evaluation and approval audit observations;
+- tool action, policy, approval, and execution audit observations;
 - transcript record commits.
 
 The payloads compose existing Harness values where an owner already exists:
@@ -65,9 +65,13 @@ session.branch_summary_start
 session.branch_summary_end
 session.session_info_changed
 session.package_progress
+session.tool_action_frozen
 session.tool_policy_evaluated
 session.tool_approval_requested
 session.tool_approval_resolved
+session.tool_execution_started
+session.tool_execution_completed
+session.tool_execution_failed
 transcript.record_committed
 ```
 
@@ -75,10 +79,17 @@ Raw Agent events keep their Agent-owned payload and use `agent.<type>` kinds.
 Harness does not duplicate the `AgentEvent` union.
 
 Workspace tools retain their narrow mapping-based `ToolEventSink` protocol.
-The Session Host recognizes only the three public tool policy audit event
-types and normalizes each mapping into `ToolPolicyAuditEvent` before
-publication. Unknown mappings fail instead of silently entering the common
-runtime stream.
+The Session Host recognizes only the seven public Gateway audit event types
+and normalizes each mapping into `ToolPolicyAuditEvent` before publication.
+The retained type name covers the existing compatibility surface; the payload
+now spans action freeze through terminal execution. Unknown mappings fail
+instead of silently entering the common runtime stream.
+
+These mappings contain structurally redacted action and command summaries.
+They do not carry raw commands, cwd/path values, contents, stdin, environment
+data, free-form decision reasons, or exception text. A restricted raw-evidence
+store, when explicitly enabled by a deployment, is a separate sink rather than
+another Session event projection.
 
 ## Coding Adapter
 
@@ -157,7 +168,7 @@ Those capabilities require separate persistence and delivery contracts.
 - Coding controllers do not import `loushang.coding.event`.
 - `AgentSession` contains one Runtime event bus and no Product event bus.
 - common payloads map to stable runtime kinds;
-- tool policy audit mappings become typed payloads at the Session boundary;
+- Gateway audit mappings become typed payloads at the Session boundary;
 - Coding projection preserves its accepted dictionaries and wire fields;
 - transcript commit and later Session facts share one monotonic sequence;
 - Work observes the Runtime stream rather than subscribing to the Product API.

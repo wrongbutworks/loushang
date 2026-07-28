@@ -4,7 +4,7 @@ import hashlib
 import inspect
 import json
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, TypeVar, cast
@@ -17,6 +17,12 @@ from loushang.harness.authorization import (
 )
 from loushang.harness.policy import ToolPolicySubject
 
+from .audit import (
+    build_action_audit_details,
+    execution_failure_outcome,
+    execution_profile_audit_summary,
+    snapshot_audit_event,
+)
 from .policy import ToolPolicyEvaluator, enforce_tool_policy
 
 T = TypeVar("T")
@@ -37,6 +43,12 @@ class AuthorizedWorkspaceAction:
     cwd: str | None
     fingerprint: str
     execution_profile: EffectiveExecutionProfile | None = None
+    policy_code: str | None = None
+    approval_action_id: str | None = None
+    audit_details: Mapping[str, object] = field(
+        default_factory=lambda: MappingProxyType({}),
+        repr=False,
+    )
 
 
 async def _authorize_workspace_tool_action(
@@ -55,11 +67,28 @@ async def _authorize_workspace_tool_action(
     """Freeze one action before routing it through Policy and Approval."""
 
     frozen_arguments = _freeze_mapping(arguments)
+    audit_details = _freeze_mapping(
+        build_action_audit_details(
+            tool_name=tool_name,
+            arguments=frozen_arguments,
+            cwd=cwd,
+            policy_subject=policy_subject,
+        )
+    )
     action = AuthorizedWorkspaceAction(
         tool_name=tool_name,
         arguments=frozen_arguments,
         cwd=cwd,
         fingerprint=_fingerprint(tool_name, frozen_arguments, cwd),
+        audit_details=audit_details,
+    )
+    audit_context = _action_audit_context(
+        action,
+        tool_call_id=tool_call_id,
+    )
+    await _emit_audit_event(
+        audit_sink,
+        {"type": "tool_action_frozen", **audit_context},
     )
     authorization = await enforce_tool_policy(
         policy_engine,
@@ -70,23 +99,30 @@ async def _authorize_workspace_tool_action(
         approval_resolver=approval_resolver,
         tool_call_id=tool_call_id,
         audit_sink=audit_sink,
+        audit_context=audit_context,
         execution_environment=execution_environment,
     )
-    if execution_profile_ceiling is None:
-        return action
-    effective = resolve_effective_execution_profile(
-        ceiling=execution_profile_ceiling,
-        decision=authorization.decision,
-        approval=authorization.approval,
-        approval_action_id=authorization.approval_action_id,
+    effective = (
+        resolve_effective_execution_profile(
+            ceiling=execution_profile_ceiling,
+            decision=authorization.decision,
+            approval=authorization.approval,
+            approval_action_id=authorization.approval_action_id,
+        )
+        if execution_profile_ceiling is not None
+        else None
     )
-    _validate_path_authority(tool_name, frozen_arguments, effective)
+    if effective is not None:
+        _validate_path_authority(tool_name, frozen_arguments, effective)
     return AuthorizedWorkspaceAction(
         tool_name=action.tool_name,
         arguments=action.arguments,
         cwd=action.cwd,
         fingerprint=action.fingerprint,
         execution_profile=effective,
+        policy_code=authorization.decision.code,
+        approval_action_id=authorization.approval_action_id,
+        audit_details=action.audit_details,
     )
 
 
@@ -123,12 +159,74 @@ async def execute_workspace_tool_action(
         execution_environment=execution_environment,
         execution_profile_ceiling=execution_profile_ceiling,
     )
-    _revalidate_authorized_action(action)
-    if on_authorized is not None:
-        hook_result = on_authorized(action)
-        if inspect.isawaitable(hook_result):
-            await hook_result
-    return await _execute_authorized_workspace_tool_action(action, executor=executor)
+    try:
+        _revalidate_authorized_action(action)
+        if on_authorized is not None:
+            hook_result = on_authorized(action)
+            if inspect.isawaitable(hook_result):
+                await hook_result
+        _revalidate_authorized_action(action)
+    except BaseException as error:
+        await _emit_audit_event(
+            audit_sink,
+            {
+                "type": "tool_execution_failed",
+                **_execution_audit_details(
+                    action,
+                    tool_call_id=tool_call_id,
+                    outcome=execution_failure_outcome(error),
+                    phase="pre_execution",
+                ),
+            },
+        )
+        raise
+    await _emit_audit_event(
+        audit_sink,
+        {
+            "type": "tool_execution_started",
+            **_execution_audit_details(
+                action,
+                tool_call_id=tool_call_id,
+                outcome="running",
+                phase="execution",
+            ),
+        },
+    )
+    try:
+        result = await _execute_authorized_workspace_tool_action(
+            action,
+            executor=executor,
+        )
+    except BaseException as error:
+        try:
+            await _emit_audit_event(
+                audit_sink,
+                {
+                    "type": "tool_execution_failed",
+                    **_execution_audit_details(
+                        action,
+                        tool_call_id=tool_call_id,
+                        outcome=execution_failure_outcome(error),
+                        phase="execution",
+                    ),
+                },
+            )
+        except BaseException as audit_error:
+            error.add_note(f"terminal audit emission failed: {audit_error}")
+        raise
+    await _emit_audit_event(
+        audit_sink,
+        {
+            "type": "tool_execution_completed",
+            **_execution_audit_details(
+                action,
+                tool_call_id=tool_call_id,
+                outcome="completed",
+                phase="execution",
+            ),
+        },
+    )
+    return result
 
 
 async def _execute_authorized_workspace_tool_action(
@@ -159,6 +257,51 @@ def _revalidate_authorized_action(action: AuthorizedWorkspaceAction) -> None:
             action.arguments,
             action.execution_profile,
         )
+
+
+def _action_audit_context(
+    action: AuthorizedWorkspaceAction,
+    *,
+    tool_call_id: str | None,
+) -> dict[str, object]:
+    details: dict[str, object] = {
+        "tool_name": action.tool_name,
+        "action_fingerprint": action.fingerprint,
+        **cast(dict[str, object], _json_value(action.audit_details)),
+    }
+    if tool_call_id is not None:
+        details["tool_call_id"] = tool_call_id
+    return details
+
+
+def _execution_audit_details(
+    action: AuthorizedWorkspaceAction,
+    *,
+    tool_call_id: str | None,
+    outcome: str,
+    phase: str,
+) -> dict[str, object]:
+    details = _action_audit_context(action, tool_call_id=tool_call_id)
+    details.update({"outcome": outcome, "phase": phase})
+    details["execution_profile"] = execution_profile_audit_summary(
+        action.execution_profile
+    )
+    if action.policy_code is not None:
+        details["policy_code"] = action.policy_code
+    if action.approval_action_id is not None:
+        details["approval_action_id"] = action.approval_action_id
+    return details
+
+
+async def _emit_audit_event(
+    audit_sink: Any,
+    event: Mapping[str, object],
+) -> None:
+    if audit_sink is None:
+        return
+    result = audit_sink(snapshot_audit_event(event))
+    if inspect.isawaitable(result):
+        await result
 
 
 def _fingerprint(
