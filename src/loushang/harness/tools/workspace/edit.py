@@ -11,7 +11,7 @@ from loushang.harness.workspace.operations import EditOperations, resolve_operat
 from .authoring import tool
 from .authorization import execute_workspace_tool_action
 from .builtin_renderers import render_edit_call, render_edit_result
-from .context import ToolContext
+from .context import ToolContext, context_approval_resolver
 from .edit_diff import (
     EditEntry,
     apply_text_edits,
@@ -103,7 +103,10 @@ def create_edit_tool_definition(
             arguments={"path": str(resolved), "edits": validated_edits},
             executor=execute_edit,
             cwd=ctx.cwd,
-            approval_resolver=resolved_approval_resolver,
+            approval_resolver=context_approval_resolver(
+                ctx,
+                resolved_approval_resolver,
+            ),
             tool_call_id=ctx.tool_call_id,
             audit_sink=ctx.event_sink,
             execution_profile_ceiling=getattr(

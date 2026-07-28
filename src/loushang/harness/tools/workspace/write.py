@@ -10,7 +10,7 @@ from loushang.harness.workspace.operations import WriteOperations, resolve_opera
 from .authoring import tool
 from .authorization import execute_workspace_tool_action
 from .builtin_renderers import render_write_call, render_write_result
-from .context import ToolContext
+from .context import ToolContext, context_approval_resolver
 from .normalize import tool_to_definition
 from .operations import (
     normalize_write_operations,
@@ -91,7 +91,10 @@ def create_write_tool_definition(
             arguments={"path": str(resolved), "content": content},
             executor=execute_write,
             cwd=ctx.cwd,
-            approval_resolver=resolved_approval_resolver,
+            approval_resolver=context_approval_resolver(
+                ctx,
+                resolved_approval_resolver,
+            ),
             tool_call_id=ctx.tool_call_id,
             audit_sink=ctx.event_sink,
             execution_profile_ceiling=getattr(

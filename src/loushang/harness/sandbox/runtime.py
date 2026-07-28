@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from loushang.harness.authorization import EffectiveExecutionProfile
+from loushang.harness.authorization import (
+    EffectiveExecutionProfile,
+    constrain_execution_profile,
+)
 from loushang.harness.environment import HostEnvironmentProbe
 from loushang.harness.workspace.exec import (
     ExecRequest,
@@ -47,6 +50,17 @@ def bind_sandbox_execution_runtime(
 ) -> SandboxExecutionRuntime:
     """Wrap one existing execution service without creating a bypass path."""
 
+    base_profile = getattr(base_exec_service, "execution_profile", None)
+    if base_profile is not None and not isinstance(
+        base_profile,
+        EffectiveExecutionProfile,
+    ):
+        raise TypeError("base execution profile must be an EffectiveExecutionProfile")
+    effective_profile = (
+        constrain_execution_profile(base_profile, execution_profile)
+        if base_profile is not None and execution_profile is not None
+        else execution_profile or base_profile
+    )
     local_backend = _ExecServiceBackend(base_exec_service)
     binding = bind_sandbox_execution(
         settings=settings,
@@ -60,10 +74,10 @@ def bind_sandbox_execution_runtime(
         binding=binding,
         exec_service=(
             base_exec_service
-            if binding.status().state == "disabled"
+            if binding.status().state == "disabled" and effective_profile is None
             else ExecService(
                 backend=binding.exec_backend,
-                execution_profile=execution_profile,
+                execution_profile=effective_profile,
             )
         ),
     )

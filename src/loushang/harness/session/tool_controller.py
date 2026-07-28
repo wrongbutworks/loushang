@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from loushang.agent.types import AgentTool
+from loushang.harness.approval import ApprovalResolver
 from loushang.harness.capabilities.prompt import PromptSectionComposer
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.resources.activation import ResourceActivationRuntime
@@ -73,6 +74,7 @@ class SessionToolController:
         default_factory=PromptSectionComposer
     )
     get_exec_service: Callable[[], ExecService | None] | None = None
+    get_approval_resolver: Callable[[], ApprovalResolver | None] | None = None
     _runtime: SessionToolRuntime = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -147,6 +149,11 @@ class SessionToolController:
             event_sink=(
                 self._emit_tool_audit_event
                 if self.emit_tool_audit_event is not None
+                else None
+            ),
+            approval_resolver=(
+                self.get_approval_resolver()
+                if self.get_approval_resolver is not None
                 else None
             ),
         )

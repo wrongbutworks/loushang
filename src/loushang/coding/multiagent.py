@@ -19,13 +19,15 @@ from loushang.ai.types import (
 from loushang.coding.policy import InteractiveApprovalResolver
 from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
 from loushang.coding.runtime import AgentSessionRuntime
+from loushang.coding.sandbox import coding_workspace_execution_profile
 from loushang.coding.session import AgentSession
-from loushang.harness.approval import ActorBoundApprovalResolver
+from loushang.harness.approval import ActorBoundApprovalResolver, DenyApprovalResolver
 from loushang.harness.multiagent import (
     AgentCaller,
     AgentInputMessage,
     AgentTypeRegistry,
     AgentTypeSpec,
+    DelegatedExecutionProfile,
     ForkedHistory,
     ForkTier,
     MultiAgentControl,
@@ -321,6 +323,7 @@ class CodingSubagentFactory(SessionSubagentFactory):
         workspace_lease: WorkspaceLease | None = None
         runtime: AgentSessionRuntime | None = None
         child_approval_resolver: ActorBoundApprovalResolver | None = None
+        delegated_execution_profile: DelegatedExecutionProfile | None = None
         child_cwd = self._cwd
         try:
             if request.agent_type.workspace_mode == "isolated":
@@ -350,13 +353,28 @@ class CodingSubagentFactory(SessionSubagentFactory):
             approval_resolver = (
                 plan.approval_resolver
                 if plan is not None and plan.approval_resolver is not None
-                else self._approval_resolver
+                else self._approval_resolver or DenyApprovalResolver()
             )
-            if approval_resolver is not None:
-                child_approval_resolver = ActorBoundApprovalResolver(
-                    resolver=approval_resolver,
-                    actor_id=str(request.record.ref),
-                )
+            child_approval_resolver = ActorBoundApprovalResolver(
+                resolver=approval_resolver,
+                actor_id=str(request.record.ref),
+            )
+            delegated_execution_profile = DelegatedExecutionProfile(
+                actor_ref=request.record.ref,
+                allowed_tools=allowed_tools,
+                execution_profile_ceiling=coding_workspace_execution_profile(
+                    child_cwd,
+                    writable=_sandbox_workspace_is_writable(
+                        request.agent_type.name
+                    ),
+                ),
+                approval_actor_id=str(request.record.ref),
+                workspace_ref=(
+                    workspace_lease.workspace_ref
+                    if workspace_lease is not None
+                    else None
+                ),
+            )
             runtime = self._runtime_builder(
                 session_dir=self._session_dir,
                 model=model,
@@ -373,6 +391,7 @@ class CodingSubagentFactory(SessionSubagentFactory):
                     request.agent_type.name
                 ),
                 approval_resolver=cast(Any, child_approval_resolver),
+                delegated_execution_profile=delegated_execution_profile,
             )
             session = await runtime.create_session(cwd=str(child_cwd))
             _install_forked_history(session, request)
@@ -397,6 +416,7 @@ class CodingSubagentFactory(SessionSubagentFactory):
             runtime=runtime,
             session=session,
             approval_resolver=child_approval_resolver,
+            delegated_execution_profile=delegated_execution_profile,
             workspace_lease=workspace_lease,
             workspace_leases=self._workspace_leases,
         )
@@ -458,6 +478,7 @@ class _CodingSubagentDriver:
         runtime: AgentSessionRuntime,
         session: AgentSession,
         approval_resolver: ActorBoundApprovalResolver | None = None,
+        delegated_execution_profile: DelegatedExecutionProfile | None = None,
         workspace_lease: WorkspaceLease | None = None,
         workspace_leases: WorkspaceLeasePort | None = None,
     ) -> None:
@@ -471,6 +492,7 @@ class _CodingSubagentDriver:
         self._initial_message: AgentInputMessage | None = None
         self._rounds_started = 0
         self._approval_resolver = approval_resolver
+        self.delegated_execution_profile = delegated_execution_profile
         self._workspace_lease = workspace_lease
         self._workspace_leases = workspace_leases
         self.released_workspace: WorkspaceLeaseSnapshot | None = None

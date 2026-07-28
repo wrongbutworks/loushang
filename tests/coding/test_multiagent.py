@@ -29,6 +29,7 @@ from loushang.harness.multiagent import (
     AgentPath,
     AgentTypeRegistry,
     AgentTypeSpec,
+    DelegatedExecutionProfile,
     ForkedHistory,
     ForkTier,
     HostCaller,
@@ -449,6 +450,16 @@ def test_factory_binds_shared_approval_resolver_to_child_incarnation(
     assert isinstance(bound, ActorBoundApprovalResolver)
     assert bound.resolver is root_resolver
     assert bound.actor_id == str(request.record.ref)
+    delegated = captured["delegated_execution_profile"]
+    assert isinstance(delegated, DelegatedExecutionProfile)
+    assert delegated.actor_ref == request.record.ref
+    assert delegated.allowed_tools == ("read",)
+    assert delegated.approval_actor_id == bound.actor_id
+    assert delegated.execution_profile_ceiling.readable_roots == (
+        tmp_path.resolve(),
+    )
+    assert delegated.execution_profile_ceiling.writable_roots == ()
+    assert driver.delegated_execution_profile is delegated
     grant = root_resolver.grant_store.issue(
         ApprovalRequest(
             tool_name="bash",
@@ -702,6 +713,12 @@ def test_factory_runs_isolated_types_in_a_lease_and_reports_changes(
 
     assert runtime.create_cwds == [str(isolated)]
     assert captured["sandbox_workspace_writable"] is True
+    delegated = captured["delegated_execution_profile"]
+    assert isinstance(delegated, DelegatedExecutionProfile)
+    assert delegated.workspace_ref == "git-workspace:test"
+    assert delegated.execution_profile_ceiling.writable_roots == (
+        isolated.resolve(),
+    )
     assert workspace.acquired[0].agent_type == "implementation_worker"
     assert workspace.released == 1
 
@@ -753,6 +770,12 @@ def test_factory_runs_shared_write_worker_in_the_exact_parent_worktree(
 
     assert runtime.create_cwds == [str(tmp_path.resolve())]
     assert captured["allowed_tool_names"] == list(spec.allowed_tools)
+    delegated = captured["delegated_execution_profile"]
+    assert isinstance(delegated, DelegatedExecutionProfile)
+    assert delegated.workspace_ref is None
+    assert delegated.execution_profile_ceiling.writable_roots == (
+        tmp_path.resolve(),
+    )
     assert "sharing the parent Coding session's current worktree" in str(
         captured["system_prompt"]
     )

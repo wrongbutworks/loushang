@@ -207,6 +207,63 @@ def test_sync_approval_resolver_can_allow_ask_policy_for_write(tmp_path) -> None
     assert "approved.txt" in str(resolver.requests[0].arguments["path"])
 
 
+def test_live_child_context_overrides_the_root_definition_approval_actor(
+    tmp_path,
+) -> None:
+    from loushang.coding.policy import ApprovalDecision, PolicyEngine
+    from loushang.coding.tool_pack import (
+        register_coding_builtin_tools as register_builtin_tools,
+    )
+    from loushang.harness.approval import (
+        ActorBoundApprovalResolver,
+        HeadlessApprovalResolver,
+    )
+    from loushang.harness.tools.workspace import ToolContext
+    from loushang.harness.tools.workspace.registry import (
+        WorkspaceToolRegistry as ToolRegistry,
+    )
+
+    class AllowingResolver:
+        def __init__(self) -> None:
+            self.requests = []
+
+        def resolve(self, request):
+            self.requests.append(request)
+            return ApprovalDecision.allow()
+
+    child_exit = AllowingResolver()
+    child_resolver = ActorBoundApprovalResolver(
+        resolver=child_exit,
+        actor_id="/root/worker@2",
+    )
+    registry = ToolRegistry()
+    register_builtin_tools(
+        registry,
+        policy_engine=PolicyEngine(ask_tools=["write"]),
+        approval_resolver=HeadlessApprovalResolver(mode="deny"),
+    )
+    runtime_tool = registry.materialize_tool(
+        "write",
+        context_provider=lambda *, tool_call_id: ToolContext(
+            tool_call_id=tool_call_id,
+            cwd=str(tmp_path),
+            approval_resolver=child_resolver,
+        ),
+    )
+
+    asyncio.run(
+        runtime_tool.execute(
+            "call-child-write",
+            {"path": "child.txt", "content": "approved"},
+        )
+    )
+
+    assert (tmp_path / "child.txt").read_text(encoding="utf-8") == "approved"
+    assert [request.actor_id for request in child_exit.requests] == [
+        "/root/worker@2"
+    ]
+
+
 def test_ask_policy_allow_emits_tool_approval_audit_events(tmp_path) -> None:
     from loushang.coding.policy import ApprovalDecision, PolicyEngine
     from loushang.coding.tool_pack import (

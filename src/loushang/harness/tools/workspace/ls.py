@@ -8,7 +8,7 @@ from loushang.harness.workspace.operations import LsOperations, resolve_operatio
 
 from .authoring import tool
 from .builtin_renderers import render_find_or_ls_result, render_ls_call
-from .context import ToolContext
+from .context import ToolContext, context_approval_resolver
 from .normalize import tool_to_definition
 from .operations import (
     normalize_ls_operations,
@@ -89,7 +89,10 @@ def create_ls_tool_definition(
             tool_name="ls",
             arguments={"path": str(resolved)},
             cwd=ctx.cwd,
-            approval_resolver=resolved_approval_resolver,
+            approval_resolver=context_approval_resolver(
+                ctx,
+                resolved_approval_resolver,
+            ),
             tool_call_id=ctx.tool_call_id,
             audit_sink=ctx.event_sink,
         )

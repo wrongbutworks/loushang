@@ -26,7 +26,7 @@ from .authorization import (
     execute_workspace_tool_action,
 )
 from .builtin_renderers import render_bash_call, render_bash_result
-from .context import ToolContextProvider
+from .context import ToolContextProvider, context_approval_resolver
 from .policy import (
     ToolPolicyEvaluator,
     evaluate_legacy_policy_method,
@@ -310,7 +310,10 @@ class _BashToolExecute:
             tool_call_id=tool_call_id,
             exec_request=exec_request,
             arguments=request_params,
-            approval_resolver=self.approval_resolver,
+            approval_resolver=context_approval_resolver(
+                context,
+                self.approval_resolver,
+            ),
             executor=execute,
             on_authorized=on_authorized,
             audit_sink=getattr(context, "event_sink", None),

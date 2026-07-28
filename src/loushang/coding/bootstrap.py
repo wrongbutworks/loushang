@@ -26,6 +26,7 @@ from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.sandbox import bind_coding_sandbox_runtime
 from loushang.coding.session import AgentSession
 from loushang.coding.session_manager import SessionManager
+from loushang.harness.approval import approval_actor_id
 from loushang.harness.bootstrap import (
     create_standard_resource_bootstrap_runtime,
 )
@@ -37,6 +38,7 @@ from loushang.harness.config.agent import SettingsManager
 from loushang.harness.diagnostics.types import StartupCheckResult
 from loushang.harness.extensions.agent import ExtensionRunner
 from loushang.harness.extensions.context import SessionStartEvent
+from loushang.harness.multiagent import DelegatedExecutionProfile
 from loushang.harness.resources.packages.materializer import (
     GitPackageMaterializerBackend,
     resolve_session_package_install_root,
@@ -196,12 +198,25 @@ def _create_agent_session(
     approval_resolver: InteractiveApprovalResolver | None = None,
     enable_multiagent: bool = False,
     sandbox_workspace_writable: bool = True,
+    delegated_execution_profile: DelegatedExecutionProfile | None = None,
 ) -> AgentSession:
     enable_multiagent_tools = (
         enable_multiagent
         and allowed_tool_names is None
         and normalize_no_tools(no_tools) is None
     )
+    if delegated_execution_profile is not None:
+        if tuple(allowed_tool_names or ()) != delegated_execution_profile.allowed_tools:
+            raise ValueError(
+                "child allowed tools must match its delegated execution profile"
+            )
+        if (
+            approval_actor_id(approval_resolver)
+            != delegated_execution_profile.approval_actor_id
+        ):
+            raise ValueError(
+                "child approval actor must match its delegated execution profile"
+            )
     services = services or create_services()
     multiagent_types = None
     resolved_append_system_prompt = tuple(append_system_prompt or ())
@@ -245,8 +260,13 @@ def _create_agent_session(
             base_exec_service=base_exec_service,
             diagnostics_service=services.diagnostics_service,
             session_id=session_id,
+            execution_profile=(
+                delegated_execution_profile.execution_profile_ceiling
+                if delegated_execution_profile is not None
+                else None
+            ),
         )
-        return AgentSession(
+        child_session = AgentSession(
             agent=agent,
             session_manager=session_manager,
             settings_manager=services.settings_manager,
@@ -271,7 +291,9 @@ def _create_agent_session(
             approval_resolver=approval_resolver,
             capability_runtime=capability_runtime,
             sandbox_runtime=sandbox_runtime,
+            delegated_execution_profile=delegated_execution_profile,
         )
+        return child_session
 
     result = _CODING_AGENT_PRODUCT_CONSTRUCTION.construct(
         services=services,
@@ -556,6 +578,7 @@ def _create_agent_session_runtime(
     approval_resolver: InteractiveApprovalResolver | None = None,
     enable_multiagent: bool = False,
     sandbox_workspace_writable: bool = True,
+    delegated_execution_profile: DelegatedExecutionProfile | None = None,
 ) -> AgentSessionRuntime:
     fixed_services = services if services is not None else create_services()
     return build_agent_product_session_runtime(
@@ -581,6 +604,7 @@ def _create_agent_session_runtime(
                 approval_resolver=approval_resolver,
                 enable_multiagent=enable_multiagent,
                 sandbox_workspace_writable=sandbox_workspace_writable,
+                delegated_execution_profile=delegated_execution_profile,
             )
         ),
         session_cwd=lambda manager: cast(SessionManager, manager).get_cwd(),

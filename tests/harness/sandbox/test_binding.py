@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from loushang.harness.authorization import EffectiveExecutionProfile
 from loushang.harness.environment import HostEnvironment, LocalHostEnvironmentProbe
 from loushang.harness.sandbox import (
     SandboxBackendRegistration,
@@ -136,6 +137,37 @@ def test_disabled_runtime_preserves_the_injected_execution_service() -> None:
     assert runtime.status().state == "disabled"
     asyncio.run(runtime.close())
     asyncio.run(runtime.close())
+
+
+def test_disabled_runtime_retains_the_intersected_execution_ceiling(
+    tmp_path: Path,
+) -> None:
+    child_root = tmp_path / "child"
+    child_root.mkdir()
+    base_service = ExecService(
+        execution_profile=EffectiveExecutionProfile(
+            readable_roots=(tmp_path,),
+            writable_roots=(tmp_path,),
+            network="restricted",
+        )
+    )
+
+    runtime = bind_sandbox_execution_runtime(
+        base_exec_service=base_service,
+        execution_profile=EffectiveExecutionProfile(
+            readable_roots=(child_root,),
+            writable_roots=(child_root,),
+            network="allowed",
+        ),
+    )
+
+    assert runtime.exec_service is not base_service
+    assert runtime.exec_service.execution_profile == EffectiveExecutionProfile(
+        readable_roots=(child_root,),
+        writable_roots=(child_root,),
+        network="restricted",
+    )
+    assert runtime.status().state == "disabled"
 
 
 def test_degraded_runtime_falls_back_through_the_injected_execution_service(
