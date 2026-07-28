@@ -24,6 +24,7 @@ SurfaceEventSource = Literal[
     "rename",
     "dialog",
     "approval",
+    "permissions",
 ]
 SurfaceSubmitHandler = Callable[[Any], Awaitable[None]]
 
@@ -98,6 +99,8 @@ class ScreenSurfaceCoordinator:
             return None
         if event.kind == "surface_close":
             self.close()
+            if surface.purpose == "approval":
+                self._open_next_approval()
             return None
         if event.source is None:
             return None
@@ -240,8 +243,6 @@ def normalize_surface_intent(
     """Convert generic TUI intent into a neutral framed-surface event."""
 
     if intent.kind in {"surface_close", "dialog_cancel"}:
-        if surface.purpose == "approval":
-            return _approval_surface_event(surface, approved=False)
         return SurfaceEvent(kind="surface_close")
     if surface.purpose == "model" and intent.kind in {"command", "select"}:
         return SurfaceEvent(
@@ -307,6 +308,12 @@ def normalize_surface_intent(
             approved=intent.kind in {"approve", "approve_session"},
             scope="session" if intent.kind == "approve_session" else "once",
             note=intent.note,
+        )
+    if surface.purpose == "permissions" and intent.kind == "select":
+        return SurfaceEvent(
+            kind="surface_submit",
+            source="permissions",
+            payload=intent.text,
         )
     return None
 

@@ -104,6 +104,7 @@ def test_screen_tui_playback_surface_scenarios_live_in_surface_module() -> None:
         "approval-surface",
         "approval-session-surface",
         "approval-reject-surface",
+        "permissions-reopen-revoke-surface",
         "dialog-surface",
         "mouse-select-active-surface",
     ]

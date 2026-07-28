@@ -60,6 +60,7 @@ def _recording_handlers(
             "fork",
             "dialog",
             "approval",
+            "permissions",
         )
     }
 
@@ -94,6 +95,12 @@ def _recording_handlers(
         ),
         ("dialog", InputIntent(kind="dialog_confirm"), "dialog", None),
         ("delete", InputIntent(kind="dialog_confirm"), "delete", ""),
+        (
+            "permissions",
+            InputIntent(kind="select", text="revoke:grant-1"),
+            "permissions",
+            "revoke:grant-1",
+        ),
     ),
 )
 def test_screen_surface_coordinator_routes_submit_intents_by_purpose(
@@ -126,8 +133,8 @@ def test_screen_surface_coordinator_closes_non_approval_close_intents() -> None:
     assert app.active_surface is None
 
 
-@pytest.mark.parametrize("intent_kind", ("surface_close", "dialog_cancel", "reject"))
-def test_screen_surface_coordinator_treats_approval_close_as_rejection(
+@pytest.mark.parametrize("intent_kind", ("surface_close", "dialog_cancel"))
+def test_screen_surface_coordinator_dismisses_approval_without_deciding(
     intent_kind: str,
 ) -> None:
     decisions: list[ApprovalSurfaceDecision] = []
@@ -147,6 +154,27 @@ def test_screen_surface_coordinator_treats_approval_close_as_rejection(
         coordinator.handle_intent(InputIntent(kind=intent_kind, note="approval-1"))
     )
 
+    assert decisions == []
+    assert coordinator.current is None
+
+
+def test_screen_surface_coordinator_treats_explicit_reject_as_denial() -> None:
+    decisions: list[ApprovalSurfaceDecision] = []
+
+    async def handle_approval(payload: object | None) -> None:
+        assert isinstance(payload, ApprovalSurfaceDecision)
+        decisions.append(payload)
+
+    coordinator = ScreenSurfaceCoordinator(
+        app=_App(),
+        handlers={"approval": handle_approval},
+    )
+    coordinator.present_approval(action="delete cache", action_id="approval-1")
+
+    asyncio.run(
+        coordinator.handle_intent(InputIntent(kind="reject", note="approval-1"))
+    )
+
     assert decisions == [
         ApprovalSurfaceDecision(
             action_id="approval-1",
@@ -155,7 +183,6 @@ def test_screen_surface_coordinator_treats_approval_close_as_rejection(
             raw_note="approval-1",
         )
     ]
-    assert coordinator.current is None
 
 
 def test_screen_surface_coordinator_emits_session_scoped_approval() -> None:

@@ -37,6 +37,7 @@ class _Catalog:
                 "hotkeys",
                 "settings",
                 "agents",
+                "permissions",
                 "btw",
             )
         }
@@ -60,6 +61,7 @@ class _State:
     forked_entries: list[str] = field(default_factory=list)
     renamed_sessions: list[str | None] = field(default_factory=list)
     side_questions: list[str] = field(default_factory=list)
+    permission_actions: list[str] = field(default_factory=list)
     statusline_visible: list[bool] = field(default_factory=list)
     statusline_settings: list[StatusLineSettings] = field(default_factory=list)
     model_refreshes: int = 0
@@ -131,6 +133,7 @@ def _normalize(text: str, command: CommandDef) -> ScreenSurfaceCommand:
         "hotkeys": "hotkeys",
         "settings": "settings",
         "agents": "agent_tree",
+        "permissions": "permissions",
         "btw": "side_question",
     }
     if command.name == "command" and query:
@@ -230,6 +233,13 @@ def _workflow(
     def agent_tree_surface() -> ScreenSurfaceView:
         return _surface("Agents", "agent_tree")
 
+    def permissions_surface() -> ScreenSurfaceView:
+        return _surface("Permissions", "permissions")
+
+    async def apply_permission_action(action: str) -> bool:
+        state.permission_actions.append(action)
+        return True
+
     workflow = workflow_type(
         app=_App(state),
         ports=ScreenSurfaceWorkflowPorts(
@@ -272,6 +282,8 @@ def _workflow(
             build_rename_surface=rename_surface,
             rename_session=rename_session,
             build_agent_tree_surface=agent_tree_surface,
+            build_permissions_surface=permissions_surface,
+            apply_permission_action=apply_permission_action,
             build_side_question_surface=side_question_surface,
         ),
         copy=ScreenSurfaceWorkflowCopy(
@@ -643,3 +655,19 @@ def test_surface_workflow_adapts_approval_decision_and_product_status_copy() -> 
     ]
     assert state.statuses == ["stale"]
     assert workflow.current is None
+def test_surface_workflow_opens_and_applies_session_permissions() -> None:
+    workflow, state = _workflow()
+
+    asyncio.run(workflow.handle_text("/permissions"))
+
+    assert isinstance(workflow.current, ScreenSurfaceView)
+    assert workflow.current.purpose == "permissions"
+
+    asyncio.run(
+        workflow.handle_intent(
+            InputIntent(kind="select", text="revoke:grant-1")
+        )
+    )
+
+    assert state.permission_actions == ["revoke:grant-1"]
+    assert state.statuses[-1] == "Session permission revoked."

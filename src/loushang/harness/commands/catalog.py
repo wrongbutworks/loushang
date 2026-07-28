@@ -250,6 +250,13 @@ DEFAULT_LOCAL_COMMANDS_PROFILE = LocalCommandCatalogProfile(
             description="Show live agent collaboration",
             source="local",
         ),
+        "permissions": CommandDef(
+            id="harness.ui.permissions",
+            name="permissions",
+            kind=CommandKind.LOCAL_UI,
+            description="Manage pending approvals and session grants",
+            source="local",
+        ),
         "btw": CommandDef(
             id="harness.ui.btw",
             name="btw",

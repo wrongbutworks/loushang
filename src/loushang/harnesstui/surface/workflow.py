@@ -41,6 +41,7 @@ ScreenSurfaceCommandKind = Literal[
     "fork_session",
     "rename_session",
     "agent_tree",
+    "permissions",
     "side_question",
     "terminal_diagnostics",
     "hotkeys",
@@ -158,6 +159,8 @@ class ScreenSurfaceWorkflowPorts:
     build_rename_surface: Callable[[], ScreenSurfaceView] | None = None
     rename_session: Callable[[str | None], Awaitable[str]] | None = None
     build_agent_tree_surface: Callable[[], ScreenSurfaceView] | None = None
+    build_permissions_surface: Callable[[], ScreenSurfaceView] | None = None
+    apply_permission_action: Callable[[str], Awaitable[bool]] | None = None
     build_side_question_surface: Callable[[str], ScreenSurfaceView] | None = None
 
 
@@ -199,6 +202,7 @@ class ScreenSurfaceWorkflow:
                 "rename": self._handle_rename_submit,
                 "dialog": self._handle_dialog_submit,
                 "approval": self._handle_approval_submit,
+                "permissions": self._handle_permission_submit,
             },
         )
 
@@ -287,6 +291,16 @@ class ScreenSurfaceWorkflow:
             else:
                 try:
                     surface = self.ports.build_agent_tree_surface()
+                except Exception as error:
+                    self.app.set_status(self.copy.recoverable_error(error))
+                else:
+                    self.open(surface)
+        elif command.kind == "permissions":
+            if self.ports.build_permissions_surface is None:
+                self.app.set_status("Session permissions are not available.")
+            else:
+                try:
+                    surface = self.ports.build_permissions_surface()
                 except Exception as error:
                     self.app.set_status(self.copy.recoverable_error(error))
                 else:
@@ -651,6 +665,29 @@ class ScreenSurfaceWorkflow:
         elif payload is not None:
             self.app.set_status(self.copy.approval_rejected)
 
+    async def _handle_permission_submit(self, payload: object) -> None:
+        apply_action = self.ports.apply_permission_action
+        if apply_action is None or not isinstance(payload, str):
+            return
+        surface = self.current
+        try:
+            accepted = await apply_action(payload)
+        except Exception as error:
+            self.app.set_status(self.copy.recoverable_error(error))
+            return
+        if not accepted:
+            self.app.set_status("Permission is no longer active.")
+        elif payload.startswith("reopen:"):
+            self.app.set_status("Approval reopened.")
+        else:
+            self.app.set_status("Session permission revoked.")
+        if (
+            self.current is surface
+            and self.ports.build_permissions_surface is not None
+        ):
+            self.open(self.ports.build_permissions_surface())
+        self.app.request_render(self.request_render_reason)
+
     def _resolve_command(self, text: str) -> ScreenSurfaceCommand | None:
         if self.ports.normalize_interactive_command is not None:
             interactive = self.ports.normalize_interactive_command(text)
@@ -688,6 +725,8 @@ def normalize_standard_conversation_surface_command(
         return ScreenSurfaceCommand("side_question", query)
     if command.name == "agents":
         return ScreenSurfaceCommand("agent_tree")
+    if command.name == "permissions":
+        return ScreenSurfaceCommand("permissions")
     if command.name == "terminal" and isinstance(
         intent,
         TerminalDiagnosticsIntent,

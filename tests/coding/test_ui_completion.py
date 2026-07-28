@@ -64,6 +64,11 @@ def test_coding_completion_host_lists_matching_slash_commands() -> None:
         CompletionItem(
             value="/models", label="/models", description="List models (builtin)"
         ),
+        CompletionItem(
+            value="/permissions",
+            label="/permissions",
+            description="Manage pending approvals and session grants (local)",
+        ),
     )
 
 
@@ -154,7 +159,11 @@ def test_coding_inline_completion_provider_uses_slash_command_argument_provider(
         coding_inline_completion_provider(_Session(), base_path=None)
     )
 
-    assert [item.value for item in provider.complete("/mo")] == ["/model", "/models"]
+    assert [item.value for item in provider.complete("/mo")] == [
+        "/model",
+        "/models",
+        "/permissions",
+    ]
     assert [item.value for item in provider.complete("/model o")] == [
         "/model openai/gpt-5.4"
     ]

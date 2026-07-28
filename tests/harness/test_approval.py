@@ -1336,6 +1336,14 @@ def test_interactive_approval_session_grant_reuses_exact_semantics_for_one_actor
         resolver.open_session()
         assert resolver.preauthorize(first) == decision
 
+        snapshot = resolver.permissions_snapshot()
+        assert [item.permission_id for item in snapshot.grants] == [
+            decision.grant_id
+        ]
+        assert decision.grant_id is not None
+        assert resolver.revoke_grant(decision.grant_id)
+        assert resolver.preauthorize(first) is None
+
         resolver.end_session("session replaced")
         assert resolver.grant_store.grants() == ()
         assert resolver.preauthorize(first) is None
@@ -1382,5 +1390,108 @@ def test_interactive_approval_rejects_session_scope_without_policy_proposal() ->
         )
         assert (await pending).scope == "once"
         assert resolver.grant_store.grants() == ()
+
+    asyncio.run(run())
+
+
+def test_interactive_approval_coalesces_concurrent_matching_capabilities() -> None:
+    from dataclasses import replace
+
+    from loushang.harness.approval import (
+        ApprovalDecision,
+        ApprovalGrantProposal,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+
+    async def run() -> None:
+        presented = asyncio.Event()
+        payloads: list[dict[str, object]] = []
+        proposal = ApprovalGrantProposal(
+            capability="git.publish_refs",
+            constraints=(
+                ("repository", "/workspace/project"),
+                ("remote", "origin"),
+                ("force", "false"),
+            ),
+            summary="Publish non-force refs to origin from this repository",
+        )
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+
+        def present(payload: dict[str, object]) -> None:
+            payloads.append(payload)
+            presented.set()
+
+        resolver.set_request_presenter(present)
+        first = ApprovalRequest(
+            tool_name="bash",
+            arguments={"command": "git push origin main"},
+            action_id="push-main",
+            actor_id="/root#1",
+            session_grant=proposal,
+        )
+        first_task = asyncio.create_task(resolver.resolve(first))
+        await presented.wait()
+        second_task = asyncio.create_task(
+            resolver.resolve(
+                replace(
+                    first,
+                    arguments={"command": "git push origin release"},
+                    action_id="push-release",
+                )
+            )
+        )
+        await asyncio.sleep(0)
+
+        assert len(payloads) == 1
+        assert len(resolver.permissions_snapshot().pending) == 1
+        assert await resolver.handle_result("push-main", approved=True)
+        assert await first_task == ApprovalDecision.allow()
+        assert await second_task == ApprovalDecision.allow()
+
+    asyncio.run(run())
+
+
+def test_interactive_approval_can_represent_a_dismissed_pending_request() -> None:
+    from loushang.harness.approval import (
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+
+    async def run() -> None:
+        presented = asyncio.Event()
+        payloads: list[dict[str, object]] = []
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+
+        def present(payload: dict[str, object]) -> None:
+            payloads.append(payload)
+            presented.set()
+
+        resolver.set_request_presenter(present)
+        pending = asyncio.create_task(
+            resolver.resolve(
+                ApprovalRequest(
+                    tool_name="bash",
+                    arguments={"command": "rm -rf build"},
+                    action_id="delete-build",
+                    reason="Filesystem content would be deleted",
+                )
+            )
+        )
+        await presented.wait()
+
+        snapshot = resolver.permissions_snapshot()
+        assert [item.permission_id for item in snapshot.pending] == ["delete-build"]
+        assert await resolver.represent_request("delete-build")
+        assert len(payloads) == 2
+        assert await resolver.handle_result("delete-build", approved=False)
+        assert (await pending).disposition == "deny"
+        assert not await resolver.represent_request("delete-build")
 
     asyncio.run(run())

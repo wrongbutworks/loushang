@@ -337,15 +337,6 @@ def _detect_git_effects(
     operation, operation_arguments = _git_operation(arguments)
     if operation == "push":
         _append_publication(effects, "Commits or refs would be published")
-    if operation in {"merge", "pull", "rebase"}:
-        _append_effect(
-            effects,
-            DetectedPolicyEffect(
-                "destructive",
-                "repository_integration",
-                "Repository history or the working tree would be integrated",
-            ),
-        )
     if operation == "reset" and "--hard" in operation_arguments:
         _append_effect(
             effects,
@@ -372,13 +363,18 @@ def _detect_git_effects(
         )
     if (
         operation == "branch"
-        and any(value in {"-d", "-D", "--delete"} for value in operation_arguments)
+        and (
+            "-D" in operation_arguments
+            or _has_short_or_long_flag(operation_arguments, "f", "--force")
+        )
     ) or (
         operation == "tag" and any(value in {"-d", "--delete"} for value in operation_arguments)
     ) or (
         operation == "stash" and _first_operand(operation_arguments) in {"clear", "drop"}
     ) or (
-        operation == "worktree" and _first_operand(operation_arguments) == "remove"
+        operation == "worktree"
+        and _first_operand(operation_arguments) == "remove"
+        and _has_short_or_long_flag(operation_arguments, "f", "--force")
     ):
         _append_effect(
             effects,
@@ -388,6 +384,22 @@ def _detect_git_effects(
                 "Repository state would be deleted",
             ),
         )
+
+
+def _has_short_or_long_flag(
+    arguments: tuple[str, ...],
+    short: str,
+    long: str,
+) -> bool:
+    return any(
+        value == long
+        or (
+            value.startswith("-")
+            and not value.startswith("--")
+            and short in value[1:]
+        )
+        for value in arguments
+    )
 
 
 def _detect_github_effects(
@@ -540,12 +552,6 @@ def _detect_incomplete_text_effects(
             "Local repository or working-tree changes could be discarded",
         ),
         ("git push", "publication", "external_publication", "Commits or refs would be published"),
-        (
-            "git merge",
-            "destructive",
-            "repository_integration",
-            "Repository history or the working tree would be integrated",
-        ),
         (
             "sudo",
             "privilege",

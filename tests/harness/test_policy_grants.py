@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -22,10 +23,10 @@ def test_git_push_session_grant_ignores_cosmetic_flags_but_keeps_security_scope(
 
     assert baseline is not None
     assert decorated == baseline
+    assert replace(baseline, summary="Localized presentation copy") == baseline
     assert baseline.capability == "git.publish_refs"
     assert dict(baseline.constraints) == {
         "force": "false",
-        "refspecs": '["main"]',
         "remote": "origin",
         "repository": str(tmp_path.resolve()),
     }
@@ -58,7 +59,7 @@ def test_git_push_session_grant_is_not_offered_for_unbounded_or_unsafe_forms(
     assert _proposal(command, cwd=tmp_path) is None
 
 
-def test_git_push_session_grant_changes_when_security_scope_changes(
+def test_git_push_session_grant_reuses_non_force_refs_for_same_remote(
     tmp_path: Path,
 ) -> None:
     main = _proposal("git push origin main", cwd=tmp_path)
@@ -70,7 +71,8 @@ def test_git_push_session_grant_changes_when_security_scope_changes(
     assert release is not None
     assert upstream is not None
     assert other_repo is not None
-    assert len({main, release, upstream, other_repo}) == 4
+    assert main == release
+    assert len({main, upstream, other_repo}) == 3
 
 
 def test_session_grant_requires_the_policy_effect_that_admitted_it(

@@ -20,7 +20,7 @@ class ApprovalGrantProposal:
 
     capability: str
     constraints: tuple[tuple[str, str], ...]
-    summary: str
+    summary: str = field(compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.capability, str) or not self.capability:
@@ -148,6 +148,25 @@ class ApprovalGrant:
     actor_id: str
     proposal: ApprovalGrantProposal
     source_action_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovalPermission:
+    """Safe read model for one pending request or retained session grant."""
+
+    kind: Literal["pending", "grant"]
+    permission_id: str
+    actor_id: str
+    capability: str
+    summary: str
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovalPermissionsSnapshot:
+    """Product-neutral permissions page input without raw tool arguments."""
+
+    pending: tuple[ApprovalPermission, ...] = ()
+    grants: tuple[ApprovalPermission, ...] = ()
 
 
 class InMemoryApprovalGrantStore:
@@ -589,6 +608,10 @@ class InteractiveApprovalResolver:
         init=False,
         repr=False,
     )
+    _coalesced: dict[
+        tuple[str, ApprovalGrantProposal],
+        asyncio.Task[ApprovalDecision],
+    ] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._broker = ApprovalBroker(
@@ -618,7 +641,21 @@ class InteractiveApprovalResolver:
         granted = self.preauthorize(request)
         if granted is not None:
             return granted
-        return await self._broker.resolve(request)
+        proposal = request.session_grant
+        if proposal is None:
+            return await self._broker.resolve(request)
+        key = (request.actor_id, proposal)
+        task = self._coalesced.get(key)
+        if task is None:
+            task = asyncio.create_task(self._broker.resolve(request))
+            self._coalesced[key] = task
+
+            def remove(completed: asyncio.Task[ApprovalDecision]) -> None:
+                if self._coalesced.get(key) is completed:
+                    self._coalesced.pop(key, None)
+
+            task.add_done_callback(remove)
+        return await asyncio.shield(task)
 
     def preauthorize(self, request: ApprovalRequest) -> ApprovalDecision | None:
         grant = self.grant_store.find(request)
@@ -628,6 +665,55 @@ class InteractiveApprovalResolver:
 
     def open_session(self) -> None:
         self._session_open = True
+
+    def permissions_snapshot(self) -> ApprovalPermissionsSnapshot:
+        pending = tuple(
+            ApprovalPermission(
+                kind="pending",
+                permission_id=request.action_id or "",
+                actor_id=request.actor_id,
+                capability=(
+                    request.session_grant.capability
+                    if request.session_grant is not None
+                    else request.tool_name
+                ),
+                summary=(
+                    request.session_grant.summary
+                    if request.session_grant is not None
+                    else request.reason
+                    or f"{request.tool_name} requires approval"
+                ),
+            )
+            for request in self._broker.pending_requests()
+            if request.action_id is not None
+        )
+        grants = tuple(
+            ApprovalPermission(
+                kind="grant",
+                permission_id=grant.grant_id,
+                actor_id=grant.actor_id,
+                capability=grant.proposal.capability,
+                summary=grant.proposal.summary,
+            )
+            for grant in self.grant_store.grants()
+        )
+        return ApprovalPermissionsSnapshot(pending=pending, grants=grants)
+
+    async def represent_request(self, action_id: str) -> bool:
+        """Present one still-pending request again after its panel was dismissed."""
+
+        if not self._session_open or self._request_presenter is None:
+            return False
+        request = self._broker.pending_request(action_id)
+        if request is None:
+            return False
+        presented = self._request_presenter(dict(self.payload_projector(request)))
+        if inspect.isawaitable(presented):
+            await presented
+        return True
+
+    def revoke_grant(self, grant_id: str) -> bool:
+        return self.grant_store.revoke(grant_id)
 
     async def handle_result(
         self,
@@ -850,6 +936,8 @@ __all__ = [
     "ApprovalDecision",
     "ApprovalGrant",
     "ApprovalGrantProposal",
+    "ApprovalPermission",
+    "ApprovalPermissionsSnapshot",
     "ApprovalScope",
     "ApprovalPresenter",
     "ApprovalRequest",

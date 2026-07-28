@@ -406,8 +406,10 @@ class ApprovalSurface:
             return InputIntent(kind="approve", note=self.action_id or "")
         if value == "a" and self.allow_session:
             return InputIntent(kind="approve_session", note=self.action_id or "")
-        if value == "n" or value in {"esc", "escape"}:
+        if value == "n":
             return InputIntent(kind="reject", note=self.action_id or "")
+        if value in {"esc", "escape"}:
+            return InputIntent(kind="surface_close")
         return None
 
     def render(self, constraints: RenderConstraints) -> RenderResult:

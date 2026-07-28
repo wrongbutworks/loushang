@@ -327,27 +327,17 @@ def test_workspace_gateway_reuses_policy_scoped_session_approval(
         )
         assert len(payloads) == 1
 
-        presented.clear()
         changed_events: list[dict[str, object]] = []
-        changed = asyncio.create_task(
-            _execute_git_push(
+        assert (
+            await _execute_git_push(
                 "git push origin release",
                 cwd=tmp_path,
                 resolver=resolver,
                 events=changed_events,
             )
+            == "executed"
         )
-        await presented.wait()
-        assert len(payloads) == 2
-        changed_action_id = payloads[-1]["action_id"]
-        assert isinstance(changed_action_id, str)
-        assert await resolver.handle_result(
-            changed_action_id,
-            approved=False,
-            reason="test cleanup",
-        )
-        with pytest.raises(PermissionError, match="test cleanup"):
-            await changed
+        assert len(payloads) == 1
         return first_events, second_events, changed_events
 
     first_events, second_events, changed_events = asyncio.run(run())
@@ -377,9 +367,12 @@ def test_workspace_gateway_reuses_policy_scoped_session_approval(
     assert [event["type"] for event in changed_events] == [
         "tool_action_frozen",
         "tool_policy_evaluated",
-        "tool_approval_requested",
         "tool_approval_resolved",
+        "tool_execution_started",
+        "tool_execution_completed",
     ]
+    assert changed_events[2]["approval_source"] == "session_grant"
+    assert changed_events[2]["approval_grant_id"] == grant_id
 
 
 def test_workspace_gateway_detaches_each_audit_event_for_observers(

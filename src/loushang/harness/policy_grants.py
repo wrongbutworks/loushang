@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import shlex
 from pathlib import Path
@@ -170,12 +169,9 @@ def _git_push_proposal(
         constraints=(
             ("repository", repository_ref),
             ("remote", remote),
-            ("refspecs", json.dumps(refspecs, separators=(",", ":"))),
             ("force", "false"),
         ),
-        summary=(
-            f"Publish {', '.join(refspecs)} to {remote} from this repository"
-        ),
+        summary=f"Publish non-force refs to {remote} from this repository",
     )
 
 

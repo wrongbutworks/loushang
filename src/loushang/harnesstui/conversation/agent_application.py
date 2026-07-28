@@ -13,6 +13,7 @@ from loushang.harness.session.model_selection import (
     get_session_model_selection,
     model_identity_data,
 )
+from loushang.harnesstui.approval import build_permissions_surface_view
 from loushang.harnesstui.commands.catalog import (
     ConversationCommandCatalog,
     snapshot_conversation_command_catalog,
@@ -313,6 +314,25 @@ def build_agent_screen_surface_workflow_ports(
             }
         return await on_approval(event)
 
+    def build_permissions_surface() -> ScreenSurfaceView:
+        getter = getattr(active_session(), "get_approval_permissions", None)
+        if not callable(getter):
+            raise RuntimeError("Session permissions are not available.")
+        return build_permissions_surface_view(getter())
+
+    async def apply_permission_action(action: str) -> bool:
+        apply_action = getattr(
+            active_session(),
+            "apply_approval_permission_action",
+            None,
+        )
+        if not callable(apply_action):
+            return False
+        result = apply_action(action)
+        if inspect.isawaitable(result):
+            result = await result
+        return bool(result)
+
     return ScreenSurfaceWorkflowPorts(
         select_model=select_model,
         refresh_model_label=refresh_model_label,
@@ -352,6 +372,8 @@ def build_agent_screen_surface_workflow_ports(
         build_rename_surface=build_rename_surface,
         rename_session=rename_session,
         build_agent_tree_surface=build_agent_tree_surface,
+        build_permissions_surface=build_permissions_surface,
+        apply_permission_action=apply_permission_action,
         build_side_question_surface=build_side_question_surface,
     )
 

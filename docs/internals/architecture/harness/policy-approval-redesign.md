@@ -211,7 +211,7 @@ The standard Coding profile automatically allows:
 | read, grep, list, inspect | allow |
 | edit/write inside the active workspace | allow |
 | formatting, tests, type checks, compilation | allow |
-| local Git inspection, staging, commits, and branches | allow |
+| local Git inspection, staging, commits, safe branch deletion, and recoverable integration | allow |
 | cleanup performed internally by admitted build/test tools | allow |
 | public network reads without credentials or execution | allow through the network policy |
 
@@ -1247,15 +1247,16 @@ complete raw evidence requires a separately enabled restricted evidence store.
 Implementation checkpoint (2026-07-28): the default Workspace Policy now
 classifies gated effects rather than relying on a command allowlist. Routine
 read/write/edit, test/build/format commands, local Git inspection/staging/
-commit/branch operations, public unauthenticated network reads, and unknown
-commands without a detected gated effect are allowed without approval.
-Explicit deletion, repository history loss or integration, publication,
+commit/branch operations, merge/pull/rebase, safe branch deletion, clean
+worktree removal, public unauthenticated network reads, and unknown commands
+without a detected gated effect are allowed without approval. Explicit
+filesystem deletion, poorly recoverable repository loss, publication,
 privilege changes, secret access/transmission, package installation,
-downloaded-code execution, and remote mutations require approval. Products
-may still add explicit deny/ask tool, command, and path rules. The default
-Policy is installed even when no tool settings are present; OS sandboxing
-remains disabled by default, while `sandbox_requirement=required` still fails
-closed unless a real enforcing backend is bound.
+downloaded-code execution, and remote mutations require approval. Products may
+still add explicit deny/ask tool, command, and path rules. The default Policy
+is installed even when no tool settings are present; OS sandboxing remains
+disabled by default, while `sandbox_requirement=required` still fails closed
+unless a real enforcing backend is bound.
 
 Exit gate:
 
@@ -1280,20 +1281,21 @@ Implementation checkpoint (2026-07-28): the existing complete-once
 session-owned in-memory grant store. Policy, not the TUI, decides whether a
 request may offer `allow_session`. The first retained semantic adapter covers
 explicit, non-force `git push` operations and keys the grant by actor
-incarnation, canonical repository, remote, refspec set, and force policy.
-Cosmetic presentation flags do not change that identity; force/delete/tag
-broadening, credential-bearing remotes, implicit refspecs, unsupported push
-options, and compound shell commands receive only allow-once/deny. Gateway
-audit distinguishes reviewer decisions from reused session grants without
-placing raw commands in the common event stream. Presenter detach/rebind keeps
-the grants, while `/new`, `/resume`, session release, and resolver disposal
-revoke them. The common Harness TUI exposes allow once / allow for session /
-deny only when the Policy proposal admits all three choices, with a dedicated
-playback scenario for the session choice.
+incarnation, canonical repository, remote, and non-force policy. Every reused
+action is still parsed independently and must contain an explicit safe refspec;
+force/delete/tag broadening, credential-bearing remotes, implicit refspecs,
+unsupported push options, and compound shell commands receive only
+allow-once/deny. Cosmetic flags and the particular safe refspec do not change
+the retained capability identity. Concurrent requests for the same actor and
+capability share one presented decision.
 
-Pending in this batch: an explicit non-denying surface dismissal and
-reattachment path for an unresolved request. The current Escape behavior
-remains an explicit denial, so no pending decision is silently orphaned.
+Gateway audit distinguishes reviewer decisions from reused session grants
+without placing raw commands in the common event stream. Presenter
+detach/rebind keeps the grants, while `/new`, `/resume`, session release, and
+resolver disposal revoke them. In the common Harness TUI, `n` explicitly
+denies while Escape only dismisses the panel. `/permissions` lists unresolved
+requests and retained session grants, reopens a pending request, and revokes a
+grant. Playback covers dismiss/reopen and revoke as well as the session choice.
 
 Exit gate:
 

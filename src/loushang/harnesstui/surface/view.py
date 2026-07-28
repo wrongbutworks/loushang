@@ -27,6 +27,7 @@ ScreenSurfacePurpose = Literal[
     "fork",
     "rename",
     "agent_tree",
+    "permissions",
     "dialog",
     "approval",
 ]

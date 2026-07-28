@@ -6,6 +6,10 @@ from typing import Any
 from loushang.ai.model import ModelSelection
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
 from loushang.coding.ui.screen_surfaces import ScreenSurfaceManager
+from loushang.harness.approval import (
+    ApprovalPermission,
+    ApprovalPermissionsSnapshot,
+)
 from loushang.harnesstui.status.provider import StatusProvider
 from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.harnesstui.testing.scenarios.surface import surface_scenarios
@@ -237,6 +241,107 @@ def _run_approval_reject_surface() -> object:
     )
 
 
+def _run_permissions_reopen_and_revoke_surface() -> object:
+    playback = ScreenTuiLoopPlayback(
+        width=100, height=18, model_label="moonshot/kimi-for-coding"
+    )
+    permission_actions: list[str] = []
+    approvals: list[dict[str, object]] = []
+    pending = True
+    granted = True
+    manager: ScreenSurfaceManager
+
+    class Session:
+        def get_approval_permissions(self) -> ApprovalPermissionsSnapshot:
+            return ApprovalPermissionsSnapshot(
+                pending=(
+                    ApprovalPermission(
+                        kind="pending",
+                        permission_id="delete-build",
+                        actor_id="root",
+                        capability="bash",
+                        summary="Filesystem content would be deleted",
+                    ),
+                )
+                if pending
+                else (),
+                grants=(
+                    ApprovalPermission(
+                        kind="grant",
+                        permission_id="grant-push",
+                        actor_id="root",
+                        capability="git.publish_refs",
+                        summary="Publish non-force refs to origin",
+                    ),
+                )
+                if granted
+                else (),
+            )
+
+        async def apply_approval_permission_action(self, action: str) -> bool:
+            nonlocal granted
+            permission_actions.append(action)
+            if action == "reopen:delete-build" and pending:
+                manager.open_approval(
+                    action="delete build",
+                    risk="Filesystem content would be deleted",
+                    action_id="delete-build",
+                )
+                return True
+            if action == "revoke:grant-push" and granted:
+                granted = False
+                return True
+            return False
+
+    async def on_approval(payload: dict[str, object]) -> None:
+        nonlocal pending
+        approvals.append(payload)
+        pending = False
+
+    manager = _surface_manager(
+        playback.app,
+        session=Session(),
+        on_approval=on_approval,
+    )
+    manager.open_approval(
+        action="delete build",
+        risk="Filesystem content would be deleted",
+        action_id="delete-build",
+    )
+    result = playback.run(
+        (0.00, "\x1b"),
+        (0.03, "/permissions\r"),
+        (0.06, "\r"),
+        (0.09, "y"),
+        (0.12, "/permissions\r"),
+        (0.15, "\r"),
+        (0.18, ""),
+        handle_local=manager.handle_text,
+        handle_surface_intent=manager.handle_surface_intent,
+        is_local_command=manager.is_local_command,
+    )
+
+    result.assert_exit_code(0)
+    assert permission_actions == [
+        "reopen:delete-build",
+        "revoke:grant-push",
+    ]
+    assert approvals == [
+        {
+            "action_id": "delete-build",
+            "action": "delete build",
+            "approved": True,
+            "scope": "once",
+            "raw_note": "delete-build",
+        }
+    ]
+    result.assert_text_contains("Permissions")
+    result.assert_text_contains("Approval")
+    result.assert_text_contains("Publish non-force refs to origin")
+    result.assert_no_clear_screen()
+    return result
+
+
 def _run_approval_surface_response(
     *,
     input_text: str,
@@ -398,6 +503,12 @@ SURFACE_SCENARIOS = (
         name="approval-reject-surface",
         description="Reject an active screen approval surface and verify its callback payload.",
         run=_run_approval_reject_surface,
+    ),
+    ScreenPlaybackScenarioSpec(
+        name="permissions-reopen-revoke-surface",
+        description="Reopen a pending approval and revoke a retained session grant.",
+        run=_run_permissions_reopen_and_revoke_surface,
+        tags=("approval", "surface"),
     ),
     ScreenPlaybackScenarioSpec(
         name="dialog-surface",

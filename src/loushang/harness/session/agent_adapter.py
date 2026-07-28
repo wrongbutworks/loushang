@@ -16,7 +16,10 @@ from typing import Generic, TypeVar, cast
 from loushang.agent import AgentEvent
 from loushang.ai.model import ModelSelection
 from loushang.ai.types import AssistantMessage
-from loushang.harness.approval import ApprovalScope
+from loushang.harness.approval import (
+    ApprovalPermissionsSnapshot,
+    ApprovalScope,
+)
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft, DiagnosticPhase
 from loushang.harness.events import (
@@ -230,6 +233,23 @@ class AgentSessionAdapterMixin:
             reason=reason,
             scope=cast(ApprovalScope, scope),
         )
+
+    def get_approval_permissions(self) -> ApprovalPermissionsSnapshot:
+        if self._approval_resolver is None:
+            return ApprovalPermissionsSnapshot()
+        return self._approval_resolver.permissions_snapshot()
+
+    async def apply_approval_permission_action(self, action: str) -> bool:
+        if self._approval_resolver is None:
+            return False
+        kind, separator, permission_id = action.partition(":")
+        if not separator or not permission_id:
+            return False
+        if kind == "reopen":
+            return await self._approval_resolver.represent_request(permission_id)
+        if kind == "revoke":
+            return self._approval_resolver.revoke_grant(permission_id)
+        return False
 
     def _stage_session_approvals(self) -> None:
         self._approval_session_state = "staged"

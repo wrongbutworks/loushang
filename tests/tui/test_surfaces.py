@@ -481,6 +481,9 @@ def test_approval_surface_returns_explicit_approval_or_rejection() -> None:
     assert surface.handle_input(InputEvent(kind="key", key="n")) == InputIntent(
         kind="reject"
     )
+    assert surface.handle_input(InputEvent(kind="key", key="escape")) == InputIntent(
+        kind="surface_close"
+    )
     assert surface.handle_input(InputEvent(kind="text", text="y")) == InputIntent(
         kind="approve"
     )
