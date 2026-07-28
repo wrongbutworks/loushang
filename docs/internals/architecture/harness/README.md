@@ -14,6 +14,9 @@ planning, work event persistence, or AI provider behavior.
 
 ## Documents
 
+- [Product And OEM Glossary](../../glossary/loushang-product.md) defines the
+  canonical Product, OEM, Product Package, Capability Pack, Product Capability
+  Bundle, Plugin, and multi-Product launch vocabulary used by these boundaries.
 - [Refactoring Principles](refactoring-principles.md) defines what may move
   into harness and how migration slices should be shaped.
 - [Shared Capability Boundaries](shared-capability-boundaries.md) maps tools,

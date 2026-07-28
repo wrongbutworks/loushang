@@ -8,6 +8,11 @@ This document describes how OEM customisation, extension contributions, and
 harness upgrades interact. It is a cross-cutting design reference, not a
 boundary decision for a single module.
 
+Canonical Product, OEM, package, plugin, and capability terms are defined in
+the [Product And OEM Glossary](../../glossary/loushang-product.md). In
+particular, this draft's older phrase "OEM product" must not be read as a
+synonym for every OEM Package or OEM Profile.
+
 Accepted boundary decisions that inform this document:
 
 - [Shared Capability Boundaries](shared-capability-boundaries.md)
