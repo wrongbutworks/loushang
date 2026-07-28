@@ -125,6 +125,8 @@ CLI / TUI
 - [Loushang Agent](../glossary/loushang-agent.md)
 - [Loushang Agent Types](../glossary/loushang-agent-types.md)
 - [Loushang Channel Glossary](../glossary/loushang-channel.md)
+- [Loushang Product And OEM Glossary](../glossary/loushang-product.md)
+- [Loushang Product And OEM Chinese Terms](../glossary/loushang-product-zh.md)
 - [Legacy Channel Boundary Protocol](../legacy/loushang-channel-boundary-protocol.md)
 
 ## Next Steps
