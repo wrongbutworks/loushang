@@ -215,7 +215,7 @@ def _run_model_select_search() -> object:
 
 def _run_approval_surface() -> object:
     return _run_approval_surface_response(
-        input_text="y",
+        input_text="1",
         approved=True,
         scope="once",
         expected_status="Action confirmed: write file",
@@ -224,7 +224,7 @@ def _run_approval_surface() -> object:
 
 def _run_approval_session_surface() -> object:
     return _run_approval_surface_response(
-        input_text="a",
+        input_text="2",
         approved=True,
         scope="session",
         allow_session=True,
@@ -234,10 +234,16 @@ def _run_approval_session_surface() -> object:
 
 def _run_approval_reject_surface() -> object:
     return _run_approval_surface_response(
-        input_text="n",
+        input_text="\x1b",
         approved=False,
         scope="once",
         expected_status="Action rejected",
+        action="rm -rf -- /tmp/approval-test",
+        risk="Filesystem content would be deleted or truncated",
+        requester="/root/deletion_test@3",
+        cwd="/repo",
+        environment="local",
+        action_id="delete:approval-test",
     )
 
 
@@ -310,14 +316,17 @@ def _run_permissions_reopen_and_revoke_surface() -> object:
         requester="/root/reviewer#2",
         action_id="delete-build",
     )
+    # A presenter may be withdrawn while the broker still owns a pending
+    # request (for example during UI reattachment). User Escape is not that
+    # operation: it is an explicit denial.
+    manager.dismiss_approval("delete-build")
     result = playback.run(
-        (0.00, "\x1b"),
-        (0.03, "/permissions\r"),
-        (0.06, "\r"),
-        (0.09, "y"),
-        (0.12, "/permissions\r"),
-        (0.15, "\r"),
-        (0.18, ""),
+        (0.00, "/permissions\r"),
+        (0.03, "\r"),
+        (0.06, "y"),
+        (0.09, "/permissions\r"),
+        (0.12, "\r"),
+        (0.15, ""),
         handle_local=manager.handle_text,
         handle_surface_intent=manager.handle_surface_intent,
         is_local_command=manager.is_local_command,
@@ -353,6 +362,12 @@ def _run_approval_surface_response(
     scope: str,
     expected_status: str,
     allow_session: bool = False,
+    action: str = "write file",
+    risk: str = "Will modify /repo/app.py",
+    requester: str = "",
+    cwd: str = "",
+    environment: str = "",
+    action_id: str = "write:app.py",
 ) -> object:
     playback = ScreenTuiLoopPlayback(
         width=100, height=18, model_label="moonshot/kimi-for-coding"
@@ -364,9 +379,12 @@ def _run_approval_surface_response(
 
     manager = _surface_manager(playback.app, on_approval=on_approval)
     manager.open_approval(
-        action="write file",
-        risk="Will modify /repo/app.py",
-        action_id="write:app.py",
+        action=action,
+        risk=risk,
+        requester=requester,
+        cwd=cwd,
+        environment=environment,
+        action_id=action_id,
         allow_session=allow_session,
     )
 
@@ -379,15 +397,16 @@ def _run_approval_surface_response(
     result.assert_exit_code(0)
     assert approvals == [
         {
-            "action_id": "write:app.py",
-            "action": "write file",
+            "action_id": action_id,
+            "action": action,
             "approved": approved,
             "scope": scope,
-            "raw_note": "write:app.py",
+            "raw_note": action_id,
         }
     ]
     result.assert_text_contains("Approval")
-    result.assert_text_contains("write file")
+    result.assert_text_contains(action)
+    result.assert_text_contains(risk)
     result.assert_text_contains(expected_status)
     result.assert_no_clear_screen()
     assert result.app.active_surface is None

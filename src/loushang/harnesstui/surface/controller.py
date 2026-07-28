@@ -11,6 +11,7 @@ from loushang.tui import (
     Surface,
     SurfaceHandle,
     SurfaceHost,
+    ThemeResolver,
 )
 
 SurfaceEventKind = Literal["surface_submit", "surface_close"]
@@ -27,6 +28,23 @@ SurfaceEventSource = Literal[
     "permissions",
 ]
 SurfaceSubmitHandler = Callable[[Any], Awaitable[None]]
+
+_APPROVAL_SURFACE_THEME = ThemeResolver(
+    defaults={
+        # Keep the primary text terminal-adaptive. Explicit bright yellow/white
+        # has poor contrast on light terminal themes.
+        "approval.title": {"bold": True},
+        "approval.action.label": {"bold": True},
+        "approval.action": {"color": "default", "bold": True},
+        "approval.metadata": {"color": "bright_black", "dim": True},
+        "approval.risk.label": {"color": "red", "bold": True},
+        "approval.risk": {"color": "red"},
+        "approval.choice.allow": {"color": "green"},
+        "approval.choice.session": {"color": "cyan"},
+        "approval.choice.deny": {"color": "red"},
+        "approval.choice.selected": {"bold": True, "reverse": True},
+    }
+)
 
 
 class ScreenSurfaceAppPort(Protocol):
@@ -168,6 +186,9 @@ class ScreenSurfaceCoordinator:
         action: str,
         risk: str = "",
         requester: str = "",
+        cwd: str = "",
+        environment: str = "",
+        grant_summary: str = "",
         action_id: str | None = None,
         allow_session: bool = False,
     ) -> None:
@@ -175,8 +196,12 @@ class ScreenSurfaceCoordinator:
             action=action,
             risk=risk,
             requester=requester,
+            cwd=cwd,
+            environment=environment,
+            grant_summary=grant_summary,
             action_id=action_id,
             allow_session=allow_session,
+            theme=_APPROVAL_SURFACE_THEME,
         )
         current = self.current
         if self._approval_transitioning or (
@@ -225,11 +250,13 @@ class ScreenSurfaceCoordinator:
     def _open_approval(self, approval: ApprovalSurface) -> None:
         self.open(
             ScreenSurfaceView(
-                title="Approval",
+                title="Approval required",
                 purpose="approval",
                 content=approval,
-                footer="",
+                footer="Enter confirm · ↑/↓ select · Esc deny",
                 presentation="bottom-exclusive",
+                theme=_APPROVAL_SURFACE_THEME,
+                title_theme_token="approval.title",
             )
         )
 
@@ -244,6 +271,17 @@ def normalize_surface_intent(
 ) -> SurfaceEvent | None:
     """Convert generic TUI intent into a neutral framed-surface event."""
 
+    if (
+        surface.purpose == "approval"
+        and intent.kind in {"surface_close", "dialog_cancel"}
+    ):
+        # Treat every approval close path as denial so the waiting resolver
+        # always reaches a terminal decision.
+        return _approval_surface_event(
+            surface,
+            approved=False,
+            note=intent.note,
+        )
     if intent.kind in {"surface_close", "dialog_cancel"}:
         return SurfaceEvent(kind="surface_close")
     if surface.purpose == "model" and intent.kind in {"command", "select"}:

@@ -412,6 +412,9 @@ class ScreenSurfaceWorkflow:
         action: str,
         risk: str = "",
         requester: str = "",
+        cwd: str = "",
+        environment: str = "",
+        grant_summary: str = "",
         action_id: str | None = None,
         allow_session: bool = False,
     ) -> None:
@@ -422,6 +425,9 @@ class ScreenSurfaceWorkflow:
             action=action,
             risk=risk,
             requester=requester,
+            cwd=cwd,
+            environment=environment,
+            grant_summary=grant_summary,
             action_id=action_id,
             allow_session=allow_session,
         )
@@ -432,6 +438,9 @@ class ScreenSurfaceWorkflow:
         action: str,
         risk: str = "",
         requester: str = "",
+        cwd: str = "",
+        environment: str = "",
+        grant_summary: str = "",
         action_id: str | None = None,
         allow_session: bool = False,
     ) -> None:
@@ -439,6 +448,9 @@ class ScreenSurfaceWorkflow:
             action=action,
             risk=risk,
             requester=requester,
+            cwd=cwd,
+            environment=environment,
+            grant_summary=grant_summary,
             action_id=action_id,
             allow_session=allow_session,
         )

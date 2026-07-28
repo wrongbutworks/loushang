@@ -134,7 +134,7 @@ def test_screen_surface_coordinator_closes_non_approval_close_intents() -> None:
 
 
 @pytest.mark.parametrize("intent_kind", ("surface_close", "dialog_cancel"))
-def test_screen_surface_coordinator_dismisses_approval_without_deciding(
+def test_screen_surface_coordinator_treats_approval_close_as_denial(
     intent_kind: str,
 ) -> None:
     decisions: list[ApprovalSurfaceDecision] = []
@@ -154,7 +154,14 @@ def test_screen_surface_coordinator_dismisses_approval_without_deciding(
         coordinator.handle_intent(InputIntent(kind=intent_kind, note="approval-1"))
     )
 
-    assert decisions == []
+    assert decisions == [
+        ApprovalSurfaceDecision(
+            action_id="approval-1",
+            action="delete cache",
+            approved=False,
+            raw_note="approval-1",
+        )
+    ]
     assert coordinator.current is None
 
 

@@ -1866,6 +1866,9 @@ def _child_approval_playback() -> object:
                 action=str(payload.get("action") or "Approve child tool call"),
                 risk=str(payload.get("risk") or ""),
                 requester=str(payload.get("actor_id") or "root"),
+                cwd=str(payload.get("cwd") or ""),
+                environment=str(payload.get("environment") or ""),
+                grant_summary=str(payload.get("grant_summary") or ""),
                 action_id=str(payload["action_id"]),
                 allow_session=isinstance(options, (tuple, list))
                 and "allow_session" in options,
@@ -1941,7 +1944,7 @@ def _child_approval_playback() -> object:
         result = playback.run(
             (0.00, "run child approval\r"),
             (0.10, "a"),
-            (0.25, "n"),
+            (0.25, "\x1b"),
             (0.40, ""),
             handle_prompt=handle_prompt,
             handle_surface_intent=manager.handle_surface_intent,

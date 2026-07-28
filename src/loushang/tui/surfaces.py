@@ -386,9 +386,14 @@ class ApprovalSurface:
     action: str
     risk: str = ""
     requester: str = ""
+    cwd: str = ""
+    environment: str = ""
+    grant_summary: str = ""
     action_id: str | None = None
     allow_session: bool = False
     focused: bool = False
+    selected_index: int = 0
+    theme: ThemeResolver | None = None
 
     def focus(self) -> None:
         self.focused = True
@@ -404,26 +409,138 @@ class ApprovalSurface:
         else:
             return None
         if value == "y":
-            return InputIntent(kind="approve", note=self.action_id or "")
+            return self._intent("once")
         if value == "a" and self.allow_session:
-            return InputIntent(kind="approve_session", note=self.action_id or "")
+            return self._intent("session")
         if value == "n":
-            return InputIntent(kind="reject", note=self.action_id or "")
+            return self._intent("deny")
+        choices = self._choices()
+        if value in {"up", "down"}:
+            delta = -1 if value == "up" else 1
+            self.selected_index = (self.selected_index + delta) % len(choices)
+            return InputIntent(kind="consumed", note="approval_selection")
+        if value == "home":
+            self.selected_index = 0
+            return InputIntent(kind="consumed", note="approval_selection")
+        if value == "end":
+            self.selected_index = len(choices) - 1
+            return InputIntent(kind="consumed", note="approval_selection")
+        if value == "enter":
+            return self._intent(choices[self.selected_index][0])
+        if value.isdigit():
+            choice_index = int(value) - 1
+            if 0 <= choice_index < len(choices):
+                return self._intent(choices[choice_index][0])
         if value in {"esc", "escape"}:
-            return InputIntent(kind="surface_close")
+            # An approval is a live execution gate. Merely hiding it would
+            # leave the guarded execution suspended indefinitely.
+            return self._intent("deny")
         return None
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
-        raw_lines = [self.action]
+        raw_lines = [
+            self._styled("Action", "approval.action.label"),
+            self._styled(f"  {self.action}", "approval.action"),
+        ]
         if self.requester:
-            raw_lines.append(f"Requested by {self.requester}")
+            raw_lines.append(
+                self._styled(
+                    f"Requested by {self.requester}",
+                    "approval.metadata",
+                )
+            )
+        if self.environment:
+            raw_lines.append(
+                self._styled(
+                    f"Environment  {self.environment}",
+                    "approval.metadata",
+                )
+            )
+        if self.cwd:
+            raw_lines.append(
+                self._styled(
+                    f"Directory    {self.cwd}",
+                    "approval.metadata",
+                )
+            )
         if self.risk:
-            raw_lines.append(self.risk)
-        choices = "[y] allow once"
-        if self.allow_session:
-            choices += "  [a] allow for session"
-        raw_lines.append(f"{choices}  [n] deny")
+            raw_lines.extend(
+                (
+                    "",
+                    self._styled("Risk", "approval.risk.label"),
+                    self._styled(f"  {self.risk}", "approval.risk"),
+                )
+            )
+        raw_lines.append("")
+        for index, (value, label, shortcut, token) in enumerate(
+            self._choices(),
+            start=1,
+        ):
+            marker = "›" if index - 1 == self.selected_index else " "
+            prefix = f"{marker} {index}. "
+            suffix = f" ({shortcut})"
+            label_width = max(
+                1,
+                autowrap_safe_width(constraints.width)
+                - visible_width(prefix)
+                - visible_width(suffix),
+            )
+            choice = (
+                f"{prefix}{truncate_to_width(label, max_width=label_width)}{suffix}"
+            )
+            raw_lines.append(
+                self._styled_choice(
+                    choice.rstrip(),
+                    token,
+                    selected=index - 1 == self.selected_index,
+                )
+            )
         return _bounded_lines(raw_lines, constraints)
+
+    def _choices(
+        self,
+    ) -> tuple[tuple[str, str, str, str], ...]:
+        choices: list[tuple[str, str, str, str]] = [
+            ("once", "Allow this action once", "y", "approval.choice.allow"),
+        ]
+        if self.allow_session:
+            choices.append(
+                (
+                    "session",
+                    self.grant_summary or "Allow matching actions for this session",
+                    "a",
+                    "approval.choice.session",
+                )
+            )
+        choices.append(("deny", "Deny", "n", "approval.choice.deny"))
+        self.selected_index = max(0, min(self.selected_index, len(choices) - 1))
+        return tuple(choices)
+
+    def _intent(self, value: str) -> InputIntent:
+        kind: InputIntentKind
+        if value == "once":
+            kind = "approve"
+        elif value == "session":
+            kind = "approve_session"
+        else:
+            kind = "reject"
+        return InputIntent(kind=kind, note=self.action_id or "")
+
+    def _styled(self, text: str, token: str) -> str:
+        if self.theme is None:
+            return text
+        return apply_theme_style(text, self.theme.resolve(token))
+
+    def _styled_choice(self, text: str, token: str, *, selected: bool) -> str:
+        if self.theme is None:
+            return text
+        style = self.theme.resolve(token)
+        if selected:
+            style = {
+                **style,
+                **self.theme.resolve("approval.choice.selected"),
+            }
+        return apply_theme_style(text, style)
 
 
 @dataclass(slots=True)
