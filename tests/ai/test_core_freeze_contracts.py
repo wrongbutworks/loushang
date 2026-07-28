@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import inspect
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -126,6 +127,21 @@ def test_builtin_model_file_is_models_json_without_schema_version() -> None:
 
     raw = json.loads(models_json.read_text(encoding="utf-8"))
     assert "schemaVersion" not in raw
+
+
+def test_cryptography_compatibility_constraint_is_scoped_to_intel_macos() -> None:
+    pyproject = tomllib.loads(
+        (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    dependencies = pyproject["project"]["dependencies"]
+
+    assert [
+        dependency
+        for dependency in dependencies
+        if dependency.lower().startswith("cryptography")
+    ] == [
+        "cryptography<49; sys_platform == 'darwin' and platform_machine == 'x86_64'"
+    ]
 
 
 def test_simple_api_is_not_part_of_root_or_api_contract() -> None:
