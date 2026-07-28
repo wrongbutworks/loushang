@@ -1311,6 +1311,16 @@ Exit gate:
 - Add MCP connect/invoke adapters.
 - Add Product-specific detail projectors.
 
+Implementation checkpoint (2026-07-28): the immediate multi-agent slice binds
+each Coding child to its exact `AgentRef` incarnation while retaining the
+Root-owned interactive coordinator. The actor is present on frozen-action,
+policy, approval, and execution audit events, in approval panels, and in
+`/permissions`. Child session close cancels only that actor's pending
+requests; terminal release also revokes only that actor's retained session
+grants. Sibling and Root requests and grants remain live. Approval results
+return through the broker future and never enter the parent model mailbox.
+Extension and MCP work in this batch remains future work.
+
 Exit gate:
 
 - child authority is an intersection, never a union;

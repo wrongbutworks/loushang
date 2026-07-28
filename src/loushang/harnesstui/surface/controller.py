@@ -167,12 +167,14 @@ class ScreenSurfaceCoordinator:
         *,
         action: str,
         risk: str = "",
+        requester: str = "",
         action_id: str | None = None,
         allow_session: bool = False,
     ) -> None:
         approval = ApprovalSurface(
             action=action,
             risk=risk,
+            requester=requester,
             action_id=action_id,
             allow_session=allow_session,
         )

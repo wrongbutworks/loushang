@@ -268,6 +268,7 @@ def test_agent_screen_approval_binding_uses_structural_product_ports() -> None:
         {
             "action": "Approve operation",
             "risk": "",
+            "requester": "",
             "action_id": "approval-1",
             "allow_session": False,
         }
@@ -275,10 +276,12 @@ def test_agent_screen_approval_binding_uses_structural_product_ports() -> None:
     session.presenter(  # type: ignore[operator]
         {
             "action_id": "approval-2",
+            "actor_id": "/root/reviewer#1",
             "approval_options": ("allow_once", "allow_session", "deny"),
         }
     )
     assert presented[-1]["allow_session"] is True
+    assert presented[-1]["requester"] == "/root/reviewer#1"
     assert asyncio.run(handle_agent_screen_approval(session, {"approved": True}))
     assert current_agent_runtime_session(runtime, object()) is session
     assert callable(subscriptions[0])

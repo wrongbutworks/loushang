@@ -385,6 +385,7 @@ class CommandSurface(SelectionSurface):
 class ApprovalSurface:
     action: str
     risk: str = ""
+    requester: str = ""
     action_id: str | None = None
     allow_session: bool = False
     focused: bool = False
@@ -414,6 +415,8 @@ class ApprovalSurface:
 
     def render(self, constraints: RenderConstraints) -> RenderResult:
         raw_lines = [self.action]
+        if self.requester:
+            raw_lines.append(f"Requested by {self.requester}")
         if self.risk:
             raw_lines.append(self.risk)
         choices = "[y] allow once"

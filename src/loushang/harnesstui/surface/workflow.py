@@ -411,6 +411,7 @@ class ScreenSurfaceWorkflow:
         *,
         action: str,
         risk: str = "",
+        requester: str = "",
         action_id: str | None = None,
         allow_session: bool = False,
     ) -> None:
@@ -420,6 +421,7 @@ class ScreenSurfaceWorkflow:
         self.coordinator.present_approval(
             action=action,
             risk=risk,
+            requester=requester,
             action_id=action_id,
             allow_session=allow_session,
         )
@@ -429,12 +431,14 @@ class ScreenSurfaceWorkflow:
         *,
         action: str,
         risk: str = "",
+        requester: str = "",
         action_id: str | None = None,
         allow_session: bool = False,
     ) -> None:
         self.present_approval(
             action=action,
             risk=risk,
+            requester=requester,
             action_id=action_id,
             allow_session=allow_session,
         )

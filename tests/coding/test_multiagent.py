@@ -416,6 +416,8 @@ def test_factory_binds_shared_approval_resolver_to_child_incarnation(
 ) -> None:
     from loushang.harness.approval import (
         ActorBoundApprovalResolver,
+        ApprovalGrantProposal,
+        ApprovalRequest,
         HeadlessApprovalResolver,
         InteractiveApprovalResolver,
     )
@@ -443,12 +445,35 @@ def test_factory_binds_shared_approval_resolver_to_child_incarnation(
     )
 
     driver = asyncio.run(factory.create_driver(request))
-    asyncio.run(driver.dispose())
-
     bound = captured["approval_resolver"]
     assert isinstance(bound, ActorBoundApprovalResolver)
     assert bound.resolver is root_resolver
     assert bound.actor_id == str(request.record.ref)
+    grant = root_resolver.grant_store.issue(
+        ApprovalRequest(
+            tool_name="bash",
+            arguments={"command": "git push origin main"},
+            action_id="child-push",
+            actor_id=bound.actor_id,
+            session_grant=ApprovalGrantProposal(
+                capability="git.publish_refs",
+                constraints=(("remote", "origin"),),
+                summary="Publish non-force refs to origin",
+            ),
+        )
+    )
+
+    asyncio.run(driver.dispose())
+
+    assert root_resolver.grant_store.find(
+        ApprovalRequest(
+            tool_name="bash",
+            arguments={"command": "git push origin main"},
+            action_id="child-push-after-close",
+            actor_id=bound.actor_id,
+            session_grant=grant.proposal,
+        )
+    ) is None
 
 
 def test_coding_recipe_context_is_fresh_read_only_and_role_specific() -> None:

@@ -130,6 +130,13 @@ class ApprovalResolver(Protocol):
     def resolve(self, request: ApprovalRequest) -> MaybeAwaitable[ApprovalDecision]: ...
 
 
+def approval_actor_id(resolver: ApprovalResolver | None) -> str:
+    """Return the stable actor bound to a resolver, defaulting to Root."""
+
+    actor_id = getattr(resolver, "actor_id", None)
+    return actor_id if isinstance(actor_id, str) and actor_id else "root"
+
+
 class ApprovalPresenter(Protocol):
     def present(self, request: ApprovalRequest) -> MaybeAwaitable[None]: ...
 
@@ -207,6 +214,14 @@ class InMemoryApprovalGrantStore:
                 return True
         return False
 
+    def revoke_actor(self, actor_id: str) -> int:
+        """Revoke grants owned by one actor without disturbing its siblings."""
+
+        keys = tuple(key for key in self._grants if key[0] == actor_id)
+        for key in keys:
+            self._grants.pop(key, None)
+        return len(keys)
+
     def clear(self) -> int:
         count = len(self._grants)
         self._grants.clear()
@@ -216,12 +231,18 @@ class InMemoryApprovalGrantStore:
         return tuple(self._grants.values())
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class ActorBoundApprovalResolver:
-    """Bind requests to one actor before sharing a session resolver."""
+    """Bind requests and approval lifecycle to one child incarnation."""
 
     resolver: ApprovalResolver
     actor_id: str
+    _session_open: bool = field(default=True, init=False, repr=False)
+    _session_close_reason: str = field(
+        default="Child agent closed before approval was resolved",
+        init=False,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.actor_id, str) or not self.actor_id:
@@ -231,13 +252,47 @@ class ActorBoundApprovalResolver:
         self,
         request: ApprovalRequest,
     ) -> MaybeAwaitable[ApprovalDecision | None]:
+        if not self._session_open:
+            return None
         preauthorize = getattr(self.resolver, "preauthorize", None)
         if not callable(preauthorize):
             return None
         return preauthorize(replace(request, actor_id=self.actor_id))
 
     def resolve(self, request: ApprovalRequest) -> MaybeAwaitable[ApprovalDecision]:
+        if not self._session_open:
+            return ApprovalDecision.deny(self._session_close_reason)
         return self.resolver.resolve(replace(request, actor_id=self.actor_id))
+
+    def open_session(self) -> None:
+        """Open only this actor binding; the root owns the shared resolver."""
+
+        self._session_open = True
+
+    def close_session(
+        self,
+        reason: str = "Child agent closed before approval was resolved",
+    ) -> int:
+        """Cancel this actor's pending requests while retaining its grants."""
+
+        self._session_open = False
+        self._session_close_reason = reason
+        cancel_actor = getattr(self.resolver, "cancel_actor", None)
+        if not callable(cancel_actor):
+            return 0
+        return int(cancel_actor(self.actor_id, reason))
+
+    def end_session(
+        self,
+        reason: str = "Child agent closed before approval was resolved",
+    ) -> int:
+        """Release pending requests and retained grants for this incarnation."""
+
+        completed = self.close_session(reason)
+        revoke_actor_grants = getattr(self.resolver, "revoke_actor_grants", None)
+        if callable(revoke_actor_grants):
+            revoke_actor_grants(self.actor_id)
+        return completed
 
 
 @dataclass(frozen=True)
@@ -533,6 +588,22 @@ class ApprovalBroker:
             completed += 1
         return completed
 
+    def cancel_actor(self, actor_id: str, decision: ApprovalDecision) -> int:
+        """Resolve pending requests for one actor without touching siblings."""
+
+        _validate_approval_decision(decision)
+        self._require_loop_if_pending()
+        completed = 0
+        for pending in tuple(self._pending.values()):
+            if (
+                pending.request.actor_id != actor_id
+                or pending.future.done()
+            ):
+                continue
+            pending.future.set_result(decision)
+            completed += 1
+        return completed
+
     def dispose(self, decision: ApprovalDecision) -> int:
         _validate_approval_decision(decision)
         if self._disposed:
@@ -714,6 +785,23 @@ class InteractiveApprovalResolver:
 
     def revoke_grant(self, grant_id: str) -> bool:
         return self.grant_store.revoke(grant_id)
+
+    def cancel_actor(
+        self,
+        actor_id: str,
+        reason: str = "Child agent closed before approval was resolved",
+    ) -> int:
+        """Cancel pending requests owned by one child incarnation."""
+
+        return self._broker.cancel_actor(
+            actor_id,
+            ApprovalDecision.deny(reason),
+        )
+
+    def revoke_actor_grants(self, actor_id: str) -> int:
+        """Revoke retained grants owned by one child incarnation."""
+
+        return self.grant_store.revoke_actor(actor_id)
 
     async def handle_result(
         self,
@@ -943,6 +1031,7 @@ __all__ = [
     "ApprovalRequest",
     "ApprovalRequestCollisionError",
     "ApprovalResolver",
+    "approval_actor_id",
     "DenyApprovalResolver",
     "HeadlessApprovalResolver",
     "InMemoryApprovalGrantStore",

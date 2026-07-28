@@ -492,6 +492,21 @@ def test_approval_surface_returns_explicit_approval_or_rejection() -> None:
     )
 
 
+def test_approval_surface_renders_child_requester_provenance() -> None:
+    surface = ApprovalSurface(
+        action="Publish release",
+        requester="/root/reviewer#2",
+        risk="writes remote refs",
+    )
+
+    assert rendered_text(surface, width=60, height=5) == (
+        "Publish release",
+        "Requested by /root/reviewer#2",
+        "writes remote refs",
+        "[y] allow once  [n] deny",
+    )
+
+
 def test_approval_surface_exposes_session_choice_only_when_policy_admits_it() -> (
     None
 ):

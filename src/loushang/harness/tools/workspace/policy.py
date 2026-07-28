@@ -10,6 +10,7 @@ from loushang.harness.approval import (
     ApprovalDecision,
     ApprovalRequest,
     ApprovalResolver,
+    approval_actor_id,
     ensure_approval_action_id,
     find_approval_grant,
     resolve_approval,
@@ -155,6 +156,7 @@ async def enforce_tool_policy(
                 reason=decision.reason,
                 policy_code=decision.code,
                 policy_decision=decision,
+                actor_id=approval_actor_id(approval_resolver),
                 action_fingerprint=(
                     fingerprint if isinstance(fingerprint, str) else None
                 ),

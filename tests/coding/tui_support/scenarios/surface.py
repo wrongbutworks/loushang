@@ -258,7 +258,7 @@ def _run_permissions_reopen_and_revoke_surface() -> object:
                     ApprovalPermission(
                         kind="pending",
                         permission_id="delete-build",
-                        actor_id="root",
+                        actor_id="/root/reviewer#2",
                         capability="bash",
                         summary="Filesystem content would be deleted",
                     ),
@@ -269,7 +269,7 @@ def _run_permissions_reopen_and_revoke_surface() -> object:
                     ApprovalPermission(
                         kind="grant",
                         permission_id="grant-push",
-                        actor_id="root",
+                        actor_id="/root/implementer#1",
                         capability="git.publish_refs",
                         summary="Publish non-force refs to origin",
                     ),
@@ -285,6 +285,7 @@ def _run_permissions_reopen_and_revoke_surface() -> object:
                 manager.open_approval(
                     action="delete build",
                     risk="Filesystem content would be deleted",
+                    requester="/root/reviewer#2",
                     action_id="delete-build",
                 )
                 return True
@@ -306,6 +307,7 @@ def _run_permissions_reopen_and_revoke_surface() -> object:
     manager.open_approval(
         action="delete build",
         risk="Filesystem content would be deleted",
+        requester="/root/reviewer#2",
         action_id="delete-build",
     )
     result = playback.run(
@@ -337,6 +339,8 @@ def _run_permissions_reopen_and_revoke_surface() -> object:
     ]
     result.assert_text_contains("Permissions")
     result.assert_text_contains("Approval")
+    result.assert_text_contains("/root/reviewer#2")
+    result.assert_text_contains("/root/implementer#1")
     result.assert_text_contains("Publish non-force refs to origin")
     result.assert_no_clear_screen()
     return result

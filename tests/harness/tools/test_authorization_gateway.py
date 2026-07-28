@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from loushang.harness.approval import (
+    ActorBoundApprovalResolver,
     ApprovalDecision,
     HeadlessApprovalResolver,
     InteractiveApprovalResolver,
@@ -258,7 +259,10 @@ def test_workspace_gateway_includes_approval_in_the_same_audit_sequence(
             arguments={"path": str(tmp_path / "notes.txt"), "content": "hello"},
             cwd=str(tmp_path),
             tool_call_id="call-2",
-            approval_resolver=HeadlessApprovalResolver(mode="allow"),
+            approval_resolver=ActorBoundApprovalResolver(
+                resolver=HeadlessApprovalResolver(mode="allow"),
+                actor_id="/root/reviewer#2",
+            ),
             audit_sink=events.append,
             executor=lambda _action: None,
         )
@@ -275,6 +279,7 @@ def test_workspace_gateway_includes_approval_in_the_same_audit_sequence(
     assert events[1]["policy_code"] == "external_effect"
     assert events[2]["action_id"] == events[3]["action_id"]
     assert events[3]["approval_decision"] == "allow"
+    assert {event["actor_id"] for event in events} == {"/root/reviewer#2"}
 
 
 def test_workspace_gateway_reuses_policy_scoped_session_approval(

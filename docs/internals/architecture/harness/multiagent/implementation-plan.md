@@ -215,7 +215,11 @@ Implementation checkpoint (2026-07-26):
   queue / `continue_run()` path, and interruption/disposal to the existing
   Coding session runtime. It follows the root session's current model and
   provider stream while copying only the role-admitted definitions from
-  Coding's Product tool registry into each child.
+  Coding's Product tool registry into each child. Every child resolver is
+  bound to its incarnation before entering the common authorization Gateway.
+  Root approval presentation and `/permissions` retain that actor provenance;
+  closing a child cancels only its pending requests and ending it revokes only
+  its session grants, without changing Root or sibling approval state.
 - The Harness-owned live `MultiAgentToolPack` is implemented with
   `spawn_agent`, `send_message`, `wait_agent`, `list_agents`,
   `interrupt_agent`, and `close_agent`. Unrestricted Coding CLI sessions bind
