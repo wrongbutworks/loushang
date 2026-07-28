@@ -386,6 +386,7 @@ def test_agent_application_state_preparation_binds_product_tools_and_approval(
     tmp_path,
 ) -> None:
     calls: list[object] = []
+    policy_engine = object()
     args = _ApplicationArgs()
     manager = SimpleNamespace(
         get_settings=lambda: SimpleNamespace(session_dir=None),
@@ -413,7 +414,7 @@ def test_agent_application_state_preparation_binds_product_tools_and_approval(
         build_tool_registry=lambda _services, runtime_settings, approval: (
             calls.append(("tools", runtime_settings, approval)) or "registry"
         ),
-        policy_factory=lambda **_kwargs: object(),
+        policy_factory=lambda **_kwargs: policy_engine,
         build_interactive_approval_resolver=lambda: "interactive",
         run_resource_toggle=lambda *_args, **_kwargs: None,
     )
@@ -427,7 +428,11 @@ def test_agent_application_state_preparation_binds_product_tools_and_approval(
     assert result.value.approval_resolver == "interactive"
     assert calls == [
         ("pre_runtime", tmp_path / ".loushang" / "sessions"),
-        ("tools", WorkspaceToolRuntimeSettings(), "interactive"),
+        (
+            "tools",
+            WorkspaceToolRuntimeSettings(policy_engine=policy_engine),
+            "interactive",
+        ),
     ]
     assert stdout.getvalue() == ""
     assert stderr.getvalue() == ""

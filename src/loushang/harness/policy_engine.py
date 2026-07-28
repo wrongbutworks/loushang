@@ -8,7 +8,6 @@ from typing import Any
 from loushang.harness.policy import (
     CommandSubstringMatcher,
     ExactToolNameMatcher,
-    IncompleteCommandMatcher,
     PathSubstringMatcher,
     PolicyDecision,
     PolicyRule,
@@ -18,19 +17,11 @@ from loushang.harness.policy import (
     executable_search_path_from_env,
     normalize_command_subject,
 )
+from loushang.harness.policy_effects import detect_policy_effects
 from loushang.harness.workspace.exec import ExecRequest, materialize_exec_request
 
-_DEFAULT_BLOCKED_SUBSTRINGS: tuple[str, ...] = (
-    "rm -rf",
-    "git reset --hard",
-)
-_DEFAULT_ASK_SUBSTRINGS: tuple[str, ...] = (
-    "git push",
-    "curl | sh",
-    "curl|sh",
-    "wget | sh",
-    "wget|sh",
-)
+_DEFAULT_BLOCKED_SUBSTRINGS: tuple[str, ...] = ()
+_DEFAULT_ASK_SUBSTRINGS: tuple[str, ...] = ()
 
 
 def _normalize_substrings(
@@ -124,7 +115,14 @@ class PolicyEngine:
         object.__setattr__(self, "_evaluator", RulePolicyEvaluator(self._rules()))
 
     def evaluate(self, subject: PolicySubject, /) -> PolicyDecision:
-        return self._evaluator.evaluate(subject) or PolicyDecision.allow()
+        configured = self._evaluator.evaluate(subject)
+        if configured is not None:
+            return configured
+        effects = detect_policy_effects(subject)
+        if effects:
+            effect = effects[0]
+            return PolicyDecision.ask(effect.summary, code=effect.code)
+        return PolicyDecision.allow()
 
     def evaluate_action(
         self,
@@ -132,7 +130,6 @@ class PolicyEngine:
         tool_name: str,
         exec_request: ExecRequest,
     ) -> PolicyDecision:
-        del tool_name
         exec_request = materialize_exec_request(exec_request)
         execution_environment = exec_request.effective_environment
         assert execution_environment is not None
@@ -140,14 +137,28 @@ class PolicyEngine:
             execution_environment,
             default=os.defpath,
         )
+        command = normalize_command_subject(
+            exec_request.command,
+            cwd=exec_request.cwd,
+            stdin=exec_request.stdin,
+            executable_search_path=executable_search_path,
+            environment_overrides=execution_environment,
+            environment_is_complete=True,
+        )
+        arguments: dict[str, object] = {
+            "command": exec_request.command,
+            "cwd": exec_request.cwd,
+        }
+        if exec_request.env:
+            arguments["env"] = exec_request.env
+        if exec_request.stdin is not None:
+            arguments["stdin"] = exec_request.stdin
         return self.evaluate(
-            normalize_command_subject(
-                exec_request.command,
+            build_tool_policy_subject(
+                tool_name=tool_name,
+                arguments=arguments,
                 cwd=exec_request.cwd,
-                stdin=exec_request.stdin,
-                executable_search_path=executable_search_path,
-                environment_overrides=execution_environment,
-                environment_is_complete=True,
+                command=command,
             )
         )
 
@@ -274,16 +285,6 @@ class PolicyEngine:
                 ),
             )
             for index, substring in enumerate(self.ask_path_substrings)
-        )
-        rules.append(
-            PolicyRule(
-                id=f"{self.rule_id_prefix}.command.incomplete",
-                matcher=IncompleteCommandMatcher(),
-                decision=PolicyDecision.ask(
-                    "Command wrapper syntax requires approval",
-                    code="command_normalization_incomplete",
-                ),
-            )
         )
         return tuple(rules)
 

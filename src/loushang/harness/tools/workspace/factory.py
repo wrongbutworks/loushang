@@ -146,7 +146,7 @@ def workspace_tool_runtime_settings(
 
     tool_settings = _tool_settings(settings_manager)
     if tool_settings is None:
-        return WorkspaceToolRuntimeSettings()
+        return WorkspaceToolRuntimeSettings(policy_engine=policy_factory())
     policy_kwargs = {
         "blocked_tools": _string_tuple(tool_settings, "blocked_tools"),
         "ask_tools": _string_tuple(tool_settings, "ask_tools"),
@@ -159,9 +159,7 @@ def workspace_tool_runtime_settings(
             tool_settings, "ask_path_substrings"
         ),
     }
-    # TODO: always create PolicyEngine so default rules (e.g. rm -rf)
-    # take effect even when no user settings are configured.
-    policy_engine = policy_factory(**policy_kwargs) if any(policy_kwargs.values()) else None
+    policy_engine = policy_factory(**policy_kwargs)
     approval_mode = getattr(tool_settings, "approval_mode", None)
     approval_resolver = (
         HeadlessApprovalResolver(

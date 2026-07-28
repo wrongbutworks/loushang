@@ -230,3 +230,23 @@ def test_workspace_tool_settings_accept_product_policy_factory() -> None:
     assert result.approval_resolver.mode == "deny"
     assert captured["blocked_tools"] == ("bash",)
     assert captured["ask_substrings"] == ("sudo",)
+
+
+def test_workspace_tool_settings_install_default_policy_without_configuration() -> None:
+    from loushang.harness.tools.workspace import workspace_tool_runtime_settings
+
+    created: list[dict[str, object]] = []
+    policy = object()
+
+    def policy_factory(**kwargs: object) -> object:
+        created.append(dict(kwargs))
+        return policy
+
+    result = workspace_tool_runtime_settings(
+        None,
+        policy_factory=policy_factory,
+    )
+
+    assert result.policy_engine is policy
+    assert result.approval_resolver is None
+    assert created == [{}]

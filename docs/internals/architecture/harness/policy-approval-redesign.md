@@ -212,7 +212,7 @@ The standard Coding profile automatically allows:
 | edit/write inside the active workspace | allow |
 | formatting, tests, type checks, compilation | allow |
 | local Git inspection, staging, commits, and branches | allow |
-| bounded temporary/build-output cleanup | allow |
+| cleanup performed internally by admitted build/test tools | allow |
 | public network reads without credentials or execution | allow through the network policy |
 
 It requires approval when any of these gates is present:
@@ -1241,6 +1241,19 @@ action/command structure, primary capability classification, Policy code,
 Approval ID, execution-profile summary, and terminal outcome. Raw commands,
 paths, contents, environment values, reasons, and exception text are excluded;
 complete raw evidence requires a separately enabled restricted evidence store.
+
+Implementation checkpoint (2026-07-28): the default Workspace Policy now
+classifies gated effects rather than relying on a command allowlist. Routine
+read/write/edit, test/build/format commands, local Git inspection/staging/
+commit/branch operations, public unauthenticated network reads, and unknown
+commands without a detected gated effect are allowed without approval.
+Explicit deletion, repository history loss or integration, publication,
+privilege changes, secret access/transmission, package installation,
+downloaded-code execution, and remote mutations require approval. Products
+may still add explicit deny/ask tool, command, and path rules. The default
+Policy is installed even when no tool settings are present; OS sandboxing
+remains disabled by default, while `sandbox_requirement=required` still fails
+closed unless a real enforcing backend is bound.
 
 Exit gate:
 

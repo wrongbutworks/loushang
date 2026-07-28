@@ -29,7 +29,7 @@ def test_policy_engine_denies_blocked_commands() -> None:
     assert "rm -rf" in decision.reason
 
 
-def test_policy_engine_denies_destructive_commands_by_default() -> None:
+def test_policy_engine_asks_before_destructive_commands_by_default() -> None:
     from loushang.coding.policy import PolicyEngine
     from loushang.harness.workspace.exec import ExecRequest
 
@@ -41,11 +41,11 @@ def test_policy_engine_denies_destructive_commands_by_default() -> None:
         ),
     )
 
-    assert decision.disposition == "deny"
-    assert "git reset --hard" in decision.reason
+    assert decision.disposition == "ask"
+    assert decision.code == "repository_history_rewrite"
 
 
-def test_policy_engine_denies_absolute_path_executables() -> None:
+def test_policy_engine_asks_before_absolute_path_destructive_executables() -> None:
     from loushang.coding.policy import PolicyEngine
     from loushang.harness.workspace.exec import ExecRequest
 
@@ -55,8 +55,8 @@ def test_policy_engine_denies_absolute_path_executables() -> None:
         exec_request=ExecRequest(command=["/bin/rm", "-rf", "/tmp"], cwd="/tmp"),
     )
 
-    assert decision.disposition == "deny"
-    assert "rm -rf" in decision.reason
+    assert decision.disposition == "ask"
+    assert decision.code == "filesystem_deletion"
 
 
 def test_policy_engine_allows_safe_readonly_command() -> None:
@@ -169,7 +169,7 @@ def test_policy_engine_asks_for_env_wrapped_shell_payload_with_unset_option() ->
     assert decision.disposition == "ask"
 
 
-def test_policy_engine_requires_approval_for_incomplete_env_split_string() -> None:
+def test_policy_engine_allows_incomplete_env_split_without_a_gated_effect() -> None:
     from loushang.coding.policy import PolicyEngine
     from loushang.harness.workspace.exec import ExecRequest
 
@@ -182,11 +182,11 @@ def test_policy_engine_requires_approval_for_incomplete_env_split_string() -> No
         ),
     )
 
-    assert decision.disposition == "ask"
-    assert decision.code == "command_normalization_incomplete"
+    assert decision.disposition == "allow"
+    assert decision.code is None
 
 
-def test_policy_engine_denies_env_wrapped_malformed_split_string_with_destructive_payload() -> (
+def test_policy_engine_asks_for_malformed_split_string_with_destructive_payload() -> (
     None
 ):
     from loushang.coding.policy import PolicyEngine
@@ -201,10 +201,11 @@ def test_policy_engine_denies_env_wrapped_malformed_split_string_with_destructiv
         ),
     )
 
-    assert decision.disposition == "deny"
+    assert decision.disposition == "ask"
+    assert decision.code == "filesystem_deletion"
 
 
-def test_policy_engine_denies_destructive_payloads_after_wrapper_options() -> None:
+def test_policy_engine_asks_for_destructive_payloads_after_wrapper_options() -> None:
     from loushang.coding.policy import PolicyEngine
     from loushang.harness.workspace.exec import ExecRequest
 
@@ -238,10 +239,10 @@ def test_policy_engine_denies_destructive_payloads_after_wrapper_options() -> No
             tool_name="bash",
             exec_request=ExecRequest(command=command, cwd="/tmp"),
         )
-        assert decision.disposition == "deny", command
+        assert decision.disposition == "ask", command
 
 
-def test_policy_engine_denies_literal_block_in_nonportable_env_split_syntax() -> None:
+def test_policy_engine_asks_for_literal_effect_in_nonportable_env_split_syntax() -> None:
     from loushang.coding.policy import PolicyEngine
     from loushang.harness.workspace.exec import ExecRequest
 
@@ -254,11 +255,11 @@ def test_policy_engine_denies_literal_block_in_nonportable_env_split_syntax() ->
         ),
     )
 
-    assert decision.disposition == "deny"
-    assert decision.code == "command_blocked"
+    assert decision.disposition == "ask"
+    assert decision.code == "filesystem_deletion"
 
 
-def test_policy_engine_requires_approval_for_dynamic_env_split_syntax() -> None:
+def test_policy_engine_allows_dynamic_env_split_without_a_gated_effect() -> None:
     from loushang.coding.policy import PolicyEngine
     from loushang.harness.workspace.exec import ExecRequest
 
@@ -270,8 +271,8 @@ def test_policy_engine_requires_approval_for_dynamic_env_split_syntax() -> None:
         ),
     )
 
-    assert decision.disposition == "ask"
-    assert decision.code == "command_normalization_incomplete"
+    assert decision.disposition == "allow"
+    assert decision.code is None
 
 
 def test_policy_engine_compatibility_method_normalizes_list_commands() -> None:
@@ -292,8 +293,8 @@ def test_policy_engine_compatibility_method_normalizes_list_commands() -> None:
         arguments={"command": ["python", "-c", 'print("rm -rf")']},
     )
 
-    assert direct.disposition == "deny"
-    assert shell.disposition == "deny"
+    assert direct.disposition == "ask"
+    assert shell.disposition == "ask"
     assert literal.disposition == "allow"
 
 
@@ -318,8 +319,8 @@ def test_policy_engine_evaluates_shell_stdin_without_treating_data_as_script() -
         ),
     )
 
-    assert destructive_script.disposition == "deny"
-    assert destructive_script.code == "command_blocked"
+    assert destructive_script.disposition == "ask"
+    assert destructive_script.code == "filesystem_deletion"
     assert command_data.disposition == "allow"
 
 
@@ -360,8 +361,8 @@ def test_policy_engine_compatibility_paths_use_last_execution_path(tmp_path) -> 
         ),
     )
 
-    assert action.disposition == "deny"
-    assert tool_call.disposition == "deny"
+    assert action.disposition == "ask"
+    assert tool_call.disposition == "ask"
     assert safe_action.disposition == "allow"
 
 
@@ -380,7 +381,7 @@ def test_policy_engine_asks_for_absolute_path_git_push() -> None:
     assert decision.disposition == "ask"
 
 
-def test_policy_engine_denies_sudo_wrapped_destructive_command() -> None:
+def test_policy_engine_asks_for_sudo_wrapped_destructive_command() -> None:
     from loushang.coding.policy import PolicyEngine
     from loushang.harness.workspace.exec import ExecRequest
 
@@ -392,10 +393,10 @@ def test_policy_engine_denies_sudo_wrapped_destructive_command() -> None:
         ),
     )
 
-    assert decision.disposition == "deny"
+    assert decision.disposition == "ask"
 
 
-def test_policy_engine_denies_sudo_wrapped_destructive_command_with_options() -> None:
+def test_policy_engine_asks_for_sudo_wrapped_destructive_command_with_options() -> None:
     from loushang.coding.policy import PolicyEngine
     from loushang.harness.workspace.exec import ExecRequest
 
@@ -408,10 +409,10 @@ def test_policy_engine_denies_sudo_wrapped_destructive_command_with_options() ->
         ),
     )
 
-    assert decision.disposition == "deny"
+    assert decision.disposition == "ask"
 
 
-def test_policy_engine_denies_sudo_wrapped_destructive_command_with_prompt_option() -> (
+def test_policy_engine_asks_for_sudo_wrapped_destructive_command_with_prompt_option() -> (
     None
 ):
     from loushang.coding.policy import PolicyEngine
@@ -426,10 +427,10 @@ def test_policy_engine_denies_sudo_wrapped_destructive_command_with_prompt_optio
         ),
     )
 
-    assert decision.disposition == "deny"
+    assert decision.disposition == "ask"
 
 
-def test_policy_engine_denies_sudo_wrapped_destructive_command_with_chroot_option() -> (
+def test_policy_engine_asks_for_sudo_wrapped_destructive_command_with_chroot_option() -> (
     None
 ):
     from loushang.coding.policy import PolicyEngine
@@ -444,7 +445,7 @@ def test_policy_engine_denies_sudo_wrapped_destructive_command_with_chroot_optio
         ),
     )
 
-    assert decision.disposition == "deny"
+    assert decision.disposition == "ask"
 
 
 def test_policy_engine_preserves_default_ask_rules_when_customized() -> None:
@@ -468,7 +469,7 @@ def test_policy_engine_uses_shell_payload_with_trailing_args() -> None:
 
     engine = PolicyEngine()
 
-    deny_decision = engine.evaluate_action(
+    destructive_decision = engine.evaluate_action(
         tool_name="bash",
         exec_request=ExecRequest(
             command=["/bin/sh", "-lc", "rm -rf /tmp/demo", "ignored", "still-ignored"],
@@ -489,7 +490,7 @@ def test_policy_engine_uses_shell_payload_with_trailing_args() -> None:
         ),
     )
 
-    assert deny_decision.disposition == "deny"
+    assert destructive_decision.disposition == "ask"
     assert ask_decision.disposition == "ask"
 
 
@@ -558,16 +559,16 @@ def test_policy_engine_reuses_bash_heuristics_for_tool_call_arguments() -> None:
         arguments={"command": "git push origin main"},
         cwd="/tmp/project",
     )
-    deny_decision = engine.evaluate_tool_call(
+    destructive_decision = engine.evaluate_tool_call(
         tool_name="bash",
         arguments={"command": "rm -rf /tmp/demo"},
         cwd="/tmp/project",
     )
 
     assert ask_decision.disposition == "ask"
-    assert "git push" in (ask_decision.reason or "")
-    assert deny_decision.disposition == "deny"
-    assert "rm -rf" in (deny_decision.reason or "")
+    assert ask_decision.code == "external_publication"
+    assert destructive_decision.disposition == "ask"
+    assert destructive_decision.code == "filesystem_deletion"
 
 
 def test_policy_engine_evaluates_resolved_path_substring_rules() -> None:
@@ -605,7 +606,7 @@ def test_bash_policy_evaluates_effective_command_after_prefix(tmp_path) -> None:
         command_prefix="rm -rf /tmp/policy-prefix",
     )
 
-    with pytest.raises(PermissionError, match="rm -rf"):
+    with pytest.raises(PermissionError, match="Filesystem content"):
         asyncio.run(
             bash.execute(
                 "call-effective-prefix",
@@ -633,7 +634,7 @@ def test_bash_policy_evaluates_configured_shell_path(tmp_path) -> None:
         shell_path="/opt/product-shell",
     )
 
-    with pytest.raises(PermissionError, match="rm -rf"):
+    with pytest.raises(PermissionError, match="Filesystem content"):
         asyncio.run(
             bash.execute(
                 "call-configured-shell",
@@ -720,7 +721,7 @@ def test_bash_policy_blocks_destructive_shell_stdin_before_execution(tmp_path) -
             ),
         )
     ):
-        with pytest.raises(PermissionError, match="rm -rf"):
+        with pytest.raises(PermissionError):
             asyncio.run(
                 bash.execute(
                     f"call-stdin-policy-{index}",
@@ -738,7 +739,7 @@ def test_bash_policy_blocks_destructive_shell_stdin_before_execution(tmp_path) -
         ("bash", str(copied_shell_dir)),
     )
     for executable, search_path in path_commands:
-        with pytest.raises(PermissionError, match="rm -rf"):
+        with pytest.raises(PermissionError):
             asyncio.run(
                 bash.execute(
                     f"call-path-{executable}",
@@ -780,7 +781,7 @@ def test_bash_policy_resolves_relative_path_from_execution_cwd(
         exec_service=UnexpectedExecService(),
     )
 
-    with pytest.raises(PermissionError, match="rm -rf"):
+    with pytest.raises(PermissionError, match="Filesystem content"):
         asyncio.run(
             bash.execute(
                 "call-relative-path-shell",
@@ -817,7 +818,7 @@ def test_bash_policy_blocks_relative_stdin_symlink_without_explicit_cwd(
         exec_service=UnexpectedExecService(),
     )
 
-    with pytest.raises(PermissionError, match="rm -rf"):
+    with pytest.raises(PermissionError, match="Filesystem content"):
         asyncio.run(
             bash.execute(
                 "call-relative-stdin-policy",
@@ -848,7 +849,7 @@ def test_bash_policy_fails_safe_when_env_wrapper_changes_cwd(tmp_path) -> None:
         exec_service=UnexpectedExecService(),
     )
 
-    with pytest.raises(PermissionError, match="requires approval"):
+    with pytest.raises(PermissionError, match="Filesystem content"):
         asyncio.run(
             bash.execute(
                 "call-env-chdir-stdin-policy",
@@ -893,7 +894,7 @@ def test_bash_policy_fails_safe_when_env_wrapper_changes_executable_path(
         ["env", "--argv0=sh", "/bin/busybox"],
     )
     for index, command in enumerate(commands):
-        with pytest.raises(PermissionError, match="requires approval"):
+        with pytest.raises(PermissionError, match="Filesystem content"):
             asyncio.run(
                 bash.execute(
                     f"call-env-mutation-stdin-policy-{index}",
