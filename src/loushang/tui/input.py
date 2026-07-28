@@ -22,6 +22,7 @@ InputIntentKind = Literal[
     "command",
     "setting",
     "approve",
+    "approve_session",
     "reject",
     "dialog_confirm",
     "dialog_cancel",

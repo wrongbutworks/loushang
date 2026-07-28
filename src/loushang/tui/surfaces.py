@@ -386,6 +386,7 @@ class ApprovalSurface:
     action: str
     risk: str = ""
     action_id: str | None = None
+    allow_session: bool = False
     focused: bool = False
 
     def focus(self) -> None:
@@ -403,6 +404,8 @@ class ApprovalSurface:
             return None
         if value == "y":
             return InputIntent(kind="approve", note=self.action_id or "")
+        if value == "a" and self.allow_session:
+            return InputIntent(kind="approve_session", note=self.action_id or "")
         if value == "n" or value in {"esc", "escape"}:
             return InputIntent(kind="reject", note=self.action_id or "")
         return None
@@ -411,7 +414,10 @@ class ApprovalSurface:
         raw_lines = [self.action]
         if self.risk:
             raw_lines.append(self.risk)
-        raw_lines.append("[y] approve  [n] reject")
+        choices = "[y] allow once"
+        if self.allow_session:
+            choices += "  [a] allow for session"
+        raw_lines.append(f"{choices}  [n] deny")
         return _bounded_lines(raw_lines, constraints)
 
 

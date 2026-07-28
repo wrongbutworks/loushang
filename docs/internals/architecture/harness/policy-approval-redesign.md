@@ -1000,8 +1000,10 @@ Each tool registers an action adapter beside its executor:
 | Git publish | remote/ref/repository and external publication effect |
 | workspace integrate | source workspace, target branch, patch/diff identity |
 
-Coding owns its policy profile, safe command-prefix proposals, risk copy, and
-executor binding. It does not fork the approval state machine.
+The Product owns its policy profile, risk copy, and executor binding. Harness
+owns the default semantic adapters and grant proposal contract; a Product may
+contribute additional typed adapters, but it does not fork the approval state
+machine or persist raw command prefixes.
 
 The active mode and a redacted capability summary may be shown to the model so
 it can avoid futile calls, but prompts and tool descriptions are advisory.
@@ -1272,6 +1274,26 @@ Exit gate:
 - Replace boolean TUI choices with the minimal policy-generated options:
   allow once, safe session capability, and deny.
 - Add session grants and headless/non-interactive behavior.
+
+Implementation checkpoint (2026-07-28): the existing complete-once
+`ApprovalBroker` remains the interactive coordinator and now fronts a
+session-owned in-memory grant store. Policy, not the TUI, decides whether a
+request may offer `allow_session`. The first retained semantic adapter covers
+explicit, non-force `git push` operations and keys the grant by actor
+incarnation, canonical repository, remote, refspec set, and force policy.
+Cosmetic presentation flags do not change that identity; force/delete/tag
+broadening, credential-bearing remotes, implicit refspecs, unsupported push
+options, and compound shell commands receive only allow-once/deny. Gateway
+audit distinguishes reviewer decisions from reused session grants without
+placing raw commands in the common event stream. Presenter detach/rebind keeps
+the grants, while `/new`, `/resume`, session release, and resolver disposal
+revoke them. The common Harness TUI exposes allow once / allow for session /
+deny only when the Policy proposal admits all three choices, with a dedicated
+playback scenario for the session choice.
+
+Pending in this batch: an explicit non-denying surface dismissal and
+reattachment path for an unresolved request. The current Escape behavior
+remains an explicit denial, so no pending decision is silently orphaned.
 
 Exit gate:
 

@@ -158,6 +158,42 @@ def test_screen_surface_coordinator_treats_approval_close_as_rejection(
     assert coordinator.current is None
 
 
+def test_screen_surface_coordinator_emits_session_scoped_approval() -> None:
+    decisions: list[ApprovalSurfaceDecision] = []
+
+    async def handle_approval(payload: object | None) -> None:
+        assert isinstance(payload, ApprovalSurfaceDecision)
+        decisions.append(payload)
+
+    app = _App()
+    coordinator = ScreenSurfaceCoordinator(
+        app=app,
+        handlers={"approval": handle_approval},
+    )
+    coordinator.present_approval(
+        action="publish main",
+        action_id="approval-push",
+        allow_session=True,
+    )
+
+    asyncio.run(
+        coordinator.handle_intent(
+            InputIntent(kind="approve_session", note="approval-push")
+        )
+    )
+
+    assert decisions == [
+        ApprovalSurfaceDecision(
+            action_id="approval-push",
+            action="publish main",
+            approved=True,
+            scope="session",
+            raw_note="approval-push",
+        )
+    ]
+    assert coordinator.current is None
+
+
 def test_screen_surface_coordinator_ignores_unmapped_intents() -> None:
     app = _App()
     coordinator = ScreenSurfaceCoordinator(app=app)

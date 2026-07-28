@@ -115,6 +115,57 @@ def test_coding_interactive_approval_presents_mutable_nested_payload() -> None:
     assert isinstance(arguments["edits"], list)
 
 
+def test_coding_session_approval_presents_the_policy_bounded_scope() -> None:
+    from loushang.coding.policy import InteractiveApprovalResolver
+    from loushang.harness.approval import (
+        ApprovalGrantProposal,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+    )
+
+    presented = asyncio.Event()
+    payloads: list[dict[str, object]] = []
+    resolver = InteractiveApprovalResolver(
+        fallback=HeadlessApprovalResolver(mode="deny")
+    )
+
+    def present(payload: dict[str, object]) -> None:
+        payloads.append(payload)
+        presented.set()
+
+    resolver.set_request_presenter(present)
+
+    async def run() -> None:
+        pending = asyncio.create_task(
+            resolver.resolve(
+                ApprovalRequest(
+                    tool_name="bash",
+                    arguments={"command": "git push origin main"},
+                    reason="Commits or refs would be published",
+                    action_id="approval-push",
+                    session_grant=ApprovalGrantProposal(
+                        capability="git.publish_refs",
+                        constraints=(("remote", "origin"), ("refspecs", '["main"]')),
+                        summary="Publish main to origin from this repository",
+                    ),
+                )
+            )
+        )
+        await presented.wait()
+        assert await resolver.handle_result("approval-push", approved=False)
+        await pending
+
+    asyncio.run(run())
+
+    assert payloads[0]["action"] == "Publish main to origin from this repository"
+    assert payloads[0]["risk"] == "Commits or refs would be published"
+    assert payloads[0]["approval_options"] == (
+        "allow_once",
+        "allow_session",
+        "deny",
+    )
+
+
 def test_coding_resolve_approval_uses_harness_result_validation() -> None:
     import pytest
 

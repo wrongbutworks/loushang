@@ -16,6 +16,7 @@ from typing import Generic, TypeVar, cast
 from loushang.agent import AgentEvent
 from loushang.ai.model import ModelSelection
 from loushang.ai.types import AssistantMessage
+from loushang.harness.approval import ApprovalScope
 from loushang.harness.diagnostics.service import DiagnosticsService
 from loushang.harness.diagnostics.types import DiagnosticDraft, DiagnosticPhase
 from loushang.harness.events import (
@@ -220,10 +221,14 @@ class AgentSessionAdapterMixin:
         reason = event.get("reason")
         if reason is not None and not isinstance(reason, str):
             reason = None
+        scope = event.get("scope", "once")
+        if scope not in {"once", "session"}:
+            return False
         return await self._approval_resolver.handle_result(
             action_id=action_id,
             approved=bool(event.get("approved")),
             reason=reason,
+            scope=cast(ApprovalScope, scope),
         )
 
     def _stage_session_approvals(self) -> None:
@@ -250,7 +255,7 @@ class AgentSessionAdapterMixin:
         if self._approval_resolver is None or self._approval_session_state != "active":
             return
         self._approval_session_state = "closed"
-        self._approval_resolver.close_session(reason)
+        self._approval_resolver.end_session(reason)
 
     async def _before_bash(
         self, request: UserCommandRequest

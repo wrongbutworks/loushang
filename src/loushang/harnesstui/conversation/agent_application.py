@@ -308,6 +308,7 @@ def build_agent_screen_surface_workflow_ports(
                 "action_id": payload.action_id,
                 "action": payload.action,
                 "approved": payload.approved,
+                "scope": payload.scope,
                 "raw_note": payload.raw_note,
             }
         return await on_approval(event)
@@ -371,6 +372,7 @@ class AgentScreenApprovalSurface(Protocol):
         action: str,
         risk: str = "",
         action_id: str | None = None,
+        allow_session: bool = False,
     ) -> None: ...
 
     def dismiss_approval(self, action_id: str) -> None: ...
@@ -410,10 +412,15 @@ def bind_agent_screen_approval_presenter(
         action = payload.get("action")
         risk = payload.get("risk")
         action_id = payload.get("action_id")
+        approval_options = payload.get("approval_options")
+        allow_session = isinstance(approval_options, (list, tuple)) and (
+            "allow_session" in approval_options
+        )
         surface.open_approval(
             action=action if isinstance(action, str) else default_action,
             risk=risk if isinstance(risk, str) else "",
             action_id=action_id if isinstance(action_id, str) else None,
+            allow_session=allow_session,
         )
 
     setter(present, dismisser=surface.dismiss_approval)

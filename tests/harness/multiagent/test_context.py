@@ -171,3 +171,4 @@ def test_subagent_approval_bubbles_the_original_request_with_agent_provenance() 
     assert exit_port.envelopes[0].parent_chain == (root,)
     assert exit_port.envelopes[0].request.tool_name == "bash"
     assert exit_port.envelopes[0].request.action_id is not None
+    assert exit_port.envelopes[0].request.actor_id == str(child)

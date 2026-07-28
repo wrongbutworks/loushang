@@ -20,6 +20,7 @@ from loushang.coding.policy import InteractiveApprovalResolver
 from loushang.coding.prompt.defaults import DEFAULT_CODING_SYSTEM_PROMPT
 from loushang.coding.runtime import AgentSessionRuntime
 from loushang.coding.session import AgentSession
+from loushang.harness.approval import ActorBoundApprovalResolver
 from loushang.harness.multiagent import (
     AgentCaller,
     AgentInputMessage,
@@ -363,7 +364,14 @@ class CodingSubagentFactory(SessionSubagentFactory):
                 approval_resolver=(
                     cast(Any, plan.approval_resolver)
                     if plan is not None
-                    else self._approval_resolver
+                    else (
+                        ActorBoundApprovalResolver(
+                            resolver=self._approval_resolver,
+                            actor_id=str(request.record.ref),
+                        )
+                        if self._approval_resolver is not None
+                        else None
+                    )
                 ),
             )
             session = await runtime.create_session(cwd=str(child_cwd))

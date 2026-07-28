@@ -195,6 +195,7 @@ def test_agent_screen_surface_ports_bind_structural_research_session() -> None:
             "action_id": "research-approval",
             "action": "Publish report",
             "approved": True,
+            "scope": "once",
             "raw_note": "approved",
         }
     ]
@@ -268,8 +269,16 @@ def test_agent_screen_approval_binding_uses_structural_product_ports() -> None:
             "action": "Approve operation",
             "risk": "",
             "action_id": "approval-1",
+            "allow_session": False,
         }
     ]
+    session.presenter(  # type: ignore[operator]
+        {
+            "action_id": "approval-2",
+            "approval_options": ("allow_once", "allow_session", "deny"),
+        }
+    )
+    assert presented[-1]["allow_session"] is True
     assert asyncio.run(handle_agent_screen_approval(session, {"approved": True}))
     assert current_agent_runtime_session(runtime, object()) is session
     assert callable(subscriptions[0])

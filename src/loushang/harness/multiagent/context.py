@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Awaitable, Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Generic, Literal, Protocol, TypeVar
 
 from loushang.harness.approval import (
@@ -132,7 +132,10 @@ class SubagentApprovalResolver:
 
     async def resolve(self, request: ApprovalRequest) -> ApprovalDecision:
         envelope = AgentApprovalEnvelope(
-            request=ensure_approval_action_id(request),
+            request=replace(
+                ensure_approval_action_id(request),
+                actor_id=str(self._caller_ref),
+            ),
             caller_ref=self._caller_ref,
             parent_chain=self._parent_chain,
         )

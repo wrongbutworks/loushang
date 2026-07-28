@@ -411,6 +411,46 @@ def test_factory_projects_explorer_bash_into_the_child_runtime(tmp_path: Path) -
     ] == expected
 
 
+def test_factory_binds_shared_approval_resolver_to_child_incarnation(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.approval import (
+        ActorBoundApprovalResolver,
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+
+    session = _Session(
+        responses=[_assistant("Done.", input_tokens=1, output_tokens=1)]
+    )
+    captured: dict[str, object] = {}
+
+    def build_runtime(**kwargs: object) -> _Runtime:
+        captured.update(kwargs)
+        return _Runtime(session)
+
+    spec = AgentTypeSpec(name="reviewer", allowed_tools=("read",))
+    request = _request(spec=spec)
+    root_resolver = InteractiveApprovalResolver(
+        fallback=HeadlessApprovalResolver(mode="deny")
+    )
+    factory = CodingSubagentFactory(
+        session_dir=tmp_path / "sessions",
+        cwd=tmp_path,
+        tool_registry=_tool_registry("read"),
+        runtime_builder=build_runtime,
+        approval_resolver=root_resolver,
+    )
+
+    driver = asyncio.run(factory.create_driver(request))
+    asyncio.run(driver.dispose())
+
+    bound = captured["approval_resolver"]
+    assert isinstance(bound, ActorBoundApprovalResolver)
+    assert bound.resolver is root_resolver
+    assert bound.actor_id == str(request.record.ref)
+
+
 def test_coding_recipe_context_is_fresh_read_only_and_role_specific() -> None:
     registry = coding_read_only_agent_types()
 

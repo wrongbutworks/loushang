@@ -473,7 +473,7 @@ def test_approval_surface_returns_explicit_approval_or_rejection() -> None:
     assert rendered_text(surface, width=40, height=4) == (
         "Run command",
         "writes files",
-        "[y] approve  [n] reject",
+        "[y] allow once  [n] deny",
     )
     assert surface.handle_input(InputEvent(kind="key", key="y")) == InputIntent(
         kind="approve"
@@ -487,6 +487,28 @@ def test_approval_surface_returns_explicit_approval_or_rejection() -> None:
     assert surface.handle_input(InputEvent(kind="text", text="n")) == InputIntent(
         kind="reject"
     )
+
+
+def test_approval_surface_exposes_session_choice_only_when_policy_admits_it() -> (
+    None
+):
+    surface = ApprovalSurface(
+        action="Publish main to origin",
+        action_id="git:push",
+        allow_session=True,
+    )
+
+    assert rendered_text(surface, width=80, height=4) == (
+        "Publish main to origin",
+        "[y] allow once  [a] allow for session  [n] deny",
+    )
+    assert surface.handle_input(InputEvent(kind="key", key="a")) == InputIntent(
+        kind="approve_session",
+        note="git:push",
+    )
+    assert ApprovalSurface(action="Delete cache").handle_input(
+        InputEvent(kind="key", key="a")
+    ) is None
 
 
 def test_approval_surface_handle_input_carries_action_id() -> None:

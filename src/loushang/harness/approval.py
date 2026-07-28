@@ -11,6 +11,34 @@ from uuid import uuid4
 
 T = TypeVar("T")
 MaybeAwaitable: TypeAlias = T | Awaitable[T]
+ApprovalScope = Literal["once", "session"]
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovalGrantProposal:
+    """A Policy-generated capability matcher safe to retain for one session."""
+
+    capability: str
+    constraints: tuple[tuple[str, str], ...]
+    summary: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.capability, str) or not self.capability:
+            raise ValueError("grant capability must be a non-empty string")
+        if not isinstance(self.summary, str) or not self.summary:
+            raise ValueError("grant summary must be a non-empty string")
+        constraints = tuple(self.constraints)
+        if any(
+            not isinstance(key, str)
+            or not key
+            or not isinstance(value, str)
+            or not value
+            for key, value in constraints
+        ):
+            raise ValueError("grant constraints must contain non-empty string pairs")
+        if len({key for key, _value in constraints}) != len(constraints):
+            raise ValueError("grant constraint keys must be unique")
+        object.__setattr__(self, "constraints", tuple(sorted(constraints)))
 
 
 @dataclass(frozen=True)
@@ -22,6 +50,9 @@ class ApprovalRequest:
     policy_code: str | None = None
     policy_decision: object | None = None
     action_id: str | None = None
+    action_fingerprint: str | None = None
+    actor_id: str = "root"
+    session_grant: ApprovalGrantProposal | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.tool_name, str) or not self.tool_name:
@@ -30,8 +61,23 @@ class ApprovalRequest:
         _validate_optional_string(self.reason, "ApprovalRequest reason")
         _validate_optional_string(self.policy_code, "ApprovalRequest policy_code")
         _validate_optional_string(self.action_id, "ApprovalRequest action_id")
+        _validate_optional_string(
+            self.action_fingerprint,
+            "ApprovalRequest action_fingerprint",
+        )
         if self.action_id == "":
             raise ValueError("ApprovalRequest action_id must not be empty")
+        if self.action_fingerprint == "":
+            raise ValueError("ApprovalRequest action_fingerprint must not be empty")
+        if not isinstance(self.actor_id, str) or not self.actor_id:
+            raise ValueError("ApprovalRequest actor_id must be a non-empty string")
+        if self.session_grant is not None and not isinstance(
+            self.session_grant,
+            ApprovalGrantProposal,
+        ):
+            raise TypeError(
+                "ApprovalRequest session_grant must be an ApprovalGrantProposal"
+            )
         object.__setattr__(
             self,
             "arguments",
@@ -43,6 +89,8 @@ class ApprovalRequest:
 class ApprovalDecision:
     disposition: Literal["allow", "deny"]
     reason: str | None = None
+    scope: ApprovalScope = "once"
+    grant_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.disposition not in {"allow", "deny"}:
@@ -50,10 +98,28 @@ class ApprovalDecision:
                 f"Unsupported approval decision disposition: {self.disposition}"
             )
         _validate_optional_string(self.reason, "ApprovalDecision reason")
+        if self.scope not in {"once", "session"}:
+            raise ValueError(f"Unsupported approval decision scope: {self.scope}")
+        _validate_optional_string(self.grant_id, "ApprovalDecision grant_id")
+        if self.grant_id == "":
+            raise ValueError("ApprovalDecision grant_id must not be empty")
+        if self.disposition == "deny" and (
+            self.scope != "once" or self.grant_id is not None
+        ):
+            raise ValueError("denied approval decisions cannot carry a grant")
+        if self.scope == "session" and self.grant_id is None:
+            raise ValueError("session approval decisions require a grant id")
+        if self.scope == "once" and self.grant_id is not None:
+            raise ValueError("one-shot approval decisions cannot carry a grant id")
 
     @classmethod
-    def allow(cls) -> "ApprovalDecision":
-        return cls(disposition="allow")
+    def allow(
+        cls,
+        *,
+        scope: ApprovalScope = "once",
+        grant_id: str | None = None,
+    ) -> "ApprovalDecision":
+        return cls(disposition="allow", scope=scope, grant_id=grant_id)
 
     @classmethod
     def deny(cls, reason: str | None = None) -> "ApprovalDecision":
@@ -74,6 +140,85 @@ class ApprovalRequestCollisionError(RuntimeError):
             f"Approval action id was already presented by this broker: {action_id}"
         )
         self.action_id = action_id
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovalGrant:
+    grant_id: str
+    actor_id: str
+    proposal: ApprovalGrantProposal
+    source_action_id: str
+
+
+class InMemoryApprovalGrantStore:
+    """Session-owned grants; disposing the resolver revokes the whole store."""
+
+    def __init__(self) -> None:
+        self._grants: dict[
+            tuple[str, ApprovalGrantProposal],
+            ApprovalGrant,
+        ] = {}
+
+    def find(self, request: ApprovalRequest) -> ApprovalGrant | None:
+        proposal = request.session_grant
+        if proposal is None:
+            return None
+        return self._grants.get((request.actor_id, proposal))
+
+    def issue(self, request: ApprovalRequest) -> ApprovalGrant:
+        proposal = request.session_grant
+        if proposal is None:
+            raise ValueError("approval request has no safe session grant proposal")
+        action_id = request.action_id
+        if action_id is None:
+            raise ValueError("approval request must have an action id before granting")
+        grant = ApprovalGrant(
+            grant_id=f"grant-{uuid4().hex}",
+            actor_id=request.actor_id,
+            proposal=proposal,
+            source_action_id=action_id,
+        )
+        self._grants[(request.actor_id, proposal)] = grant
+        return grant
+
+    def revoke(self, grant_id: str) -> bool:
+        for key, grant in tuple(self._grants.items()):
+            if grant.grant_id == grant_id:
+                self._grants.pop(key, None)
+                return True
+        return False
+
+    def clear(self) -> int:
+        count = len(self._grants)
+        self._grants.clear()
+        return count
+
+    def grants(self) -> tuple[ApprovalGrant, ...]:
+        return tuple(self._grants.values())
+
+
+@dataclass(frozen=True, slots=True)
+class ActorBoundApprovalResolver:
+    """Bind requests to one actor before sharing a session resolver."""
+
+    resolver: ApprovalResolver
+    actor_id: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.actor_id, str) or not self.actor_id:
+            raise ValueError("actor_id must be a non-empty string")
+
+    def preauthorize(
+        self,
+        request: ApprovalRequest,
+    ) -> MaybeAwaitable[ApprovalDecision | None]:
+        preauthorize = getattr(self.resolver, "preauthorize", None)
+        if not callable(preauthorize):
+            return None
+        return preauthorize(replace(request, actor_id=self.actor_id))
+
+    def resolve(self, request: ApprovalRequest) -> MaybeAwaitable[ApprovalDecision]:
+        return self.resolver.resolve(replace(request, actor_id=self.actor_id))
 
 
 @dataclass(frozen=True)
@@ -119,12 +264,38 @@ async def resolve_approval(
     return result
 
 
+async def find_approval_grant(
+    resolver: ApprovalResolver | None,
+    request: ApprovalRequest,
+) -> ApprovalDecision | None:
+    """Return a validated existing grant without presenting a new request."""
+
+    if resolver is None:
+        return None
+    preauthorize = getattr(resolver, "preauthorize", None)
+    if not callable(preauthorize):
+        return None
+    result = preauthorize(request)
+    if inspect.isawaitable(result):
+        result = await result
+    if result is None:
+        return None
+    decision = _validate_approval_decision(result)
+    if (
+        decision.disposition != "allow"
+        or decision.scope != "session"
+        or decision.grant_id is None
+    ):
+        raise ValueError("preauthorized approval must identify a session grant")
+    return decision
+
+
 def approval_request_to_dict(request: ApprovalRequest) -> dict[str, object]:
     """Project a request into mutable JSON-compatible Product data."""
 
     if not isinstance(request, ApprovalRequest):
         raise TypeError("request must be an ApprovalRequest")
-    return {
+    projection: dict[str, object] = {
         "tool_name": request.tool_name,
         "arguments": _thaw_value(request.arguments),
         "cwd": request.cwd,
@@ -132,6 +303,24 @@ def approval_request_to_dict(request: ApprovalRequest) -> dict[str, object]:
         "policy_code": request.policy_code,
         "action_id": request.action_id,
     }
+    if request.action_fingerprint is not None:
+        projection["action_fingerprint"] = request.action_fingerprint
+    if request.actor_id != "root":
+        projection["actor_id"] = request.actor_id
+    if request.session_grant is not None:
+        projection["approval_options"] = (
+            "allow_once",
+            "allow_session",
+            "deny",
+        )
+        projection["session_grant"] = {
+            "capability": request.session_grant.capability,
+            "constraints": dict(request.session_grant.constraints),
+            "summary": request.session_grant.summary,
+        }
+    else:
+        projection["approval_options"] = ("allow_once", "deny")
+    return projection
 
 
 def ensure_approval_action_id(request: ApprovalRequest) -> ApprovalRequest:
@@ -177,6 +366,10 @@ class ApprovalBroker:
 
     def pending_requests(self) -> tuple[ApprovalRequest, ...]:
         return tuple(pending.request for pending in self._pending.values())
+
+    def pending_request(self, action_id: str) -> ApprovalRequest | None:
+        pending = self._pending.get(action_id)
+        return pending.request if pending is not None else None
 
     async def resolve(self, request: ApprovalRequest) -> ApprovalDecision:
         request = ensure_approval_action_id(request)
@@ -380,6 +573,9 @@ class InteractiveApprovalResolver:
     fallback: ApprovalResolver
     timeout_seconds: float | None = None
     payload_projector: ApprovalPayloadProjector = approval_request_to_dict
+    grant_store: InMemoryApprovalGrantStore = field(
+        default_factory=InMemoryApprovalGrantStore
+    )
     _broker: ApprovalBroker = field(init=False, repr=False)
     _request_presenter: Callable[[dict[str, object]], Awaitable[None] | None] | None = (
         field(default=None, init=False, repr=False)
@@ -419,26 +615,70 @@ class InteractiveApprovalResolver:
     async def resolve(self, request: ApprovalRequest) -> ApprovalDecision:
         if not self._session_open:
             return ApprovalDecision.deny(self._session_close_reason)
+        granted = self.preauthorize(request)
+        if granted is not None:
+            return granted
         return await self._broker.resolve(request)
+
+    def preauthorize(self, request: ApprovalRequest) -> ApprovalDecision | None:
+        grant = self.grant_store.find(request)
+        if grant is None:
+            return None
+        return ApprovalDecision.allow(scope="session", grant_id=grant.grant_id)
 
     def open_session(self) -> None:
         self._session_open = True
 
     async def handle_result(
-        self, action_id: str, *, approved: bool, reason: str | None = None
+        self,
+        action_id: str,
+        *,
+        approved: bool,
+        reason: str | None = None,
+        scope: ApprovalScope = "once",
     ) -> bool:
-        return self._broker.resolve_request(
-            action_id,
-            ApprovalDecision.allow() if approved else ApprovalDecision.deny(reason),
+        if scope not in {"once", "session"}:
+            raise ValueError(f"Unsupported approval scope: {scope}")
+        request = self._broker.pending_request(action_id)
+        if request is None:
+            return False
+        grant = None
+        if approved and scope == "session":
+            if request.session_grant is None:
+                return False
+            grant = self.grant_store.issue(request)
+        decision = (
+            ApprovalDecision.allow(
+                scope=scope,
+                grant_id=grant.grant_id if grant is not None else None,
+            )
+            if approved
+            else ApprovalDecision.deny(reason)
         )
+        accepted = self._broker.resolve_request(action_id, decision)
+        if not accepted and grant is not None:
+            self.grant_store.revoke(grant.grant_id)
+        return accepted
 
     def close_session(
         self,
         reason: str = "Session closed before approval was resolved",
     ) -> int:
+        """Close the current presentation channel without revoking session grants."""
+
         self._session_open = False
         self._session_close_reason = reason
         return self._broker.cancel_all(ApprovalDecision.deny(reason))
+
+    def end_session(
+        self,
+        reason: str = "Session closed before approval was resolved",
+    ) -> int:
+        """Close one Product session and revoke grants owned by that session."""
+
+        completed = self.close_session(reason)
+        self.grant_store.clear()
+        return completed
 
     def dispose(
         self, reason: str = "Session closed before approval was resolved"
@@ -449,7 +689,9 @@ class InteractiveApprovalResolver:
         self._broker.set_presenter(None)
         self._request_presenter = None
         self._request_dismisser = None
-        return self._broker.dispose(decision)
+        completed = self._broker.dispose(decision)
+        self.grant_store.clear()
+        return completed
 
 
 class _FrozenDict(dict[str, Any]):
@@ -603,18 +845,24 @@ def _consume_detached_result(completed: asyncio.Future[Any]) -> None:
 
 
 __all__ = [
+    "ActorBoundApprovalResolver",
     "ApprovalBroker",
     "ApprovalDecision",
+    "ApprovalGrant",
+    "ApprovalGrantProposal",
+    "ApprovalScope",
     "ApprovalPresenter",
     "ApprovalRequest",
     "ApprovalRequestCollisionError",
     "ApprovalResolver",
     "DenyApprovalResolver",
     "HeadlessApprovalResolver",
+    "InMemoryApprovalGrantStore",
     "InteractiveApprovalResolver",
     "MaybeAwaitable",
     "ApprovalPayloadProjector",
     "approval_request_to_dict",
     "ensure_approval_action_id",
+    "find_approval_grant",
     "resolve_approval",
 ]

@@ -211,18 +211,39 @@ def _run_model_select_search() -> object:
 
 def _run_approval_surface() -> object:
     return _run_approval_surface_response(
-        input_text="y", approved=True, expected_status="Action confirmed: write file"
+        input_text="y",
+        approved=True,
+        scope="once",
+        expected_status="Action confirmed: write file",
+    )
+
+
+def _run_approval_session_surface() -> object:
+    return _run_approval_surface_response(
+        input_text="a",
+        approved=True,
+        scope="session",
+        allow_session=True,
+        expected_status="Action confirmed: write file",
     )
 
 
 def _run_approval_reject_surface() -> object:
     return _run_approval_surface_response(
-        input_text="n", approved=False, expected_status="Action rejected"
+        input_text="n",
+        approved=False,
+        scope="once",
+        expected_status="Action rejected",
     )
 
 
 def _run_approval_surface_response(
-    *, input_text: str, approved: bool, expected_status: str
+    *,
+    input_text: str,
+    approved: bool,
+    scope: str,
+    expected_status: str,
+    allow_session: bool = False,
 ) -> object:
     playback = ScreenTuiLoopPlayback(
         width=100, height=18, model_label="moonshot/kimi-for-coding"
@@ -234,7 +255,10 @@ def _run_approval_surface_response(
 
     manager = _surface_manager(playback.app, on_approval=on_approval)
     manager.open_approval(
-        action="write file", risk="Will modify /repo/app.py", action_id="write:app.py"
+        action="write file",
+        risk="Will modify /repo/app.py",
+        action_id="write:app.py",
+        allow_session=allow_session,
     )
 
     result = playback.run(
@@ -249,6 +273,7 @@ def _run_approval_surface_response(
             "action_id": "write:app.py",
             "action": "write file",
             "approved": approved,
+            "scope": scope,
             "raw_note": "write:app.py",
         }
     ]
@@ -363,6 +388,11 @@ SURFACE_SCENARIOS = (
         name="approval-surface",
         description="Approve an active screen approval surface and verify its callback payload.",
         run=_run_approval_surface,
+    ),
+    ScreenPlaybackScenarioSpec(
+        name="approval-session-surface",
+        description="Retain a Policy-admitted approval for the active session.",
+        run=_run_approval_session_surface,
     ),
     ScreenPlaybackScenarioSpec(
         name="approval-reject-surface",

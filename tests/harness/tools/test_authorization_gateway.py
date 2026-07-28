@@ -9,6 +9,7 @@ import pytest
 from loushang.harness.approval import (
     ApprovalDecision,
     HeadlessApprovalResolver,
+    InteractiveApprovalResolver,
 )
 from loushang.harness.authorization import (
     EffectiveExecutionProfile,
@@ -19,6 +20,7 @@ from loushang.harness.policy import (
     build_tool_policy_subject,
     normalize_command_subject,
 )
+from loushang.harness.policy_engine import PolicyEngine
 from loushang.harness.tools.workspace.authorization import (
     execute_workspace_tool_action,
 )
@@ -275,6 +277,111 @@ def test_workspace_gateway_includes_approval_in_the_same_audit_sequence(
     assert events[3]["approval_decision"] == "allow"
 
 
+def test_workspace_gateway_reuses_policy_scoped_session_approval(
+    tmp_path: Path,
+) -> None:
+    async def run() -> tuple[
+        list[dict[str, object]],
+        list[dict[str, object]],
+        list[dict[str, object]],
+    ]:
+        payloads: list[dict[str, object]] = []
+        presented = asyncio.Event()
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+
+        def present(payload: dict[str, object]) -> None:
+            payloads.append(payload)
+            presented.set()
+
+        resolver.set_request_presenter(present)
+        first_events: list[dict[str, object]] = []
+        first = asyncio.create_task(
+            _execute_git_push(
+                "git push origin main",
+                cwd=tmp_path,
+                resolver=resolver,
+                events=first_events,
+            )
+        )
+        await presented.wait()
+        first_action_id = payloads[0]["action_id"]
+        assert isinstance(first_action_id, str)
+        assert await resolver.handle_result(
+            first_action_id,
+            approved=True,
+            scope="session",
+        )
+        assert await first == "executed"
+
+        second_events: list[dict[str, object]] = []
+        assert (
+            await _execute_git_push(
+                "git push --porcelain origin main",
+                cwd=tmp_path,
+                resolver=resolver,
+                events=second_events,
+            )
+            == "executed"
+        )
+        assert len(payloads) == 1
+
+        presented.clear()
+        changed_events: list[dict[str, object]] = []
+        changed = asyncio.create_task(
+            _execute_git_push(
+                "git push origin release",
+                cwd=tmp_path,
+                resolver=resolver,
+                events=changed_events,
+            )
+        )
+        await presented.wait()
+        assert len(payloads) == 2
+        changed_action_id = payloads[-1]["action_id"]
+        assert isinstance(changed_action_id, str)
+        assert await resolver.handle_result(
+            changed_action_id,
+            approved=False,
+            reason="test cleanup",
+        )
+        with pytest.raises(PermissionError, match="test cleanup"):
+            await changed
+        return first_events, second_events, changed_events
+
+    first_events, second_events, changed_events = asyncio.run(run())
+
+    assert [event["type"] for event in first_events] == [
+        "tool_action_frozen",
+        "tool_policy_evaluated",
+        "tool_approval_requested",
+        "tool_approval_resolved",
+        "tool_execution_started",
+        "tool_execution_completed",
+    ]
+    assert first_events[3]["approval_scope"] == "session"
+    assert first_events[3]["approval_source"] == "reviewer"
+    grant_id = first_events[3]["approval_grant_id"]
+    assert isinstance(grant_id, str)
+    assert [event["type"] for event in second_events] == [
+        "tool_action_frozen",
+        "tool_policy_evaluated",
+        "tool_approval_resolved",
+        "tool_execution_started",
+        "tool_execution_completed",
+    ]
+    assert second_events[2]["approval_scope"] == "session"
+    assert second_events[2]["approval_source"] == "session_grant"
+    assert second_events[2]["approval_grant_id"] == grant_id
+    assert [event["type"] for event in changed_events] == [
+        "tool_action_frozen",
+        "tool_policy_evaluated",
+        "tool_approval_requested",
+        "tool_approval_resolved",
+    ]
+
+
 def test_workspace_gateway_detaches_each_audit_event_for_observers(
     tmp_path: Path,
 ) -> None:
@@ -507,3 +614,32 @@ def test_workspace_gateway_redacts_unknown_executable_names(
     assert "customer-acme-deploy" not in serialized
     assert "COMMAND_SECRET" not in serialized
     assert events[0]["command_summary"]["executable"] == "other"  # type: ignore[index]
+
+
+async def _execute_git_push(
+    command: str,
+    *,
+    cwd: Path,
+    resolver: InteractiveApprovalResolver,
+    events: list[dict[str, object]],
+) -> str:
+    command_subject = normalize_command_subject(
+        ("/bin/sh", "-lc", command),
+        cwd=str(cwd),
+    )
+    policy_subject = build_tool_policy_subject(
+        tool_name="bash",
+        arguments={"command": command},
+        cwd=str(cwd),
+        command=command_subject,
+    )
+    return await execute_workspace_tool_action(
+        PolicyEngine(),
+        tool_name="bash",
+        arguments=policy_subject.arguments,
+        cwd=str(cwd),
+        policy_subject=policy_subject,
+        approval_resolver=resolver,
+        audit_sink=events.append,
+        executor=lambda _action: "executed",
+    )

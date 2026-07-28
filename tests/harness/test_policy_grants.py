@@ -1,0 +1,104 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from loushang.harness.policy import (
+    build_tool_policy_subject,
+    normalize_command_subject,
+)
+from loushang.harness.policy_grants import propose_session_approval_grant
+
+
+def test_git_push_session_grant_ignores_cosmetic_flags_but_keeps_security_scope(
+    tmp_path: Path,
+) -> None:
+    baseline = _proposal("git push origin main", cwd=tmp_path)
+    decorated = _proposal(
+        "git push --porcelain --progress origin main",
+        cwd=tmp_path,
+    )
+
+    assert baseline is not None
+    assert decorated == baseline
+    assert baseline.capability == "git.publish_refs"
+    assert dict(baseline.constraints) == {
+        "force": "false",
+        "refspecs": '["main"]',
+        "remote": "origin",
+        "repository": str(tmp_path.resolve()),
+    }
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "git push --force origin main",
+        "git push -uf origin main",
+        "git push --force-with-lease origin main",
+        "git push --force-if-includes origin main",
+        "git push --delete origin old",
+        "git push origin :old",
+        "git push origin +main:main",
+        "git push --follow-tags origin main",
+        "git push --tags origin main",
+        "git push --dry-run origin main",
+        "git push origin",
+        "git push",
+        "git push https://token@example.com/acme/repo main",
+        "git -c remote.origin.url=https://example.com/acme/repo push origin main",
+        "git push origin main && echo done",
+    ),
+)
+def test_git_push_session_grant_is_not_offered_for_unbounded_or_unsafe_forms(
+    command: str,
+    tmp_path: Path,
+) -> None:
+    assert _proposal(command, cwd=tmp_path) is None
+
+
+def test_git_push_session_grant_changes_when_security_scope_changes(
+    tmp_path: Path,
+) -> None:
+    main = _proposal("git push origin main", cwd=tmp_path)
+    release = _proposal("git push origin release", cwd=tmp_path)
+    upstream = _proposal("git push upstream main", cwd=tmp_path)
+    other_repo = _proposal("git -C other push origin main", cwd=tmp_path)
+
+    assert main is not None
+    assert release is not None
+    assert upstream is not None
+    assert other_repo is not None
+    assert len({main, release, upstream, other_repo}) == 4
+
+
+def test_session_grant_requires_the_policy_effect_that_admitted_it(
+    tmp_path: Path,
+) -> None:
+    subject = _subject("git push origin main", cwd=tmp_path)
+
+    assert (
+        propose_session_approval_grant(subject, policy_code="external_api_mutation")
+        is None
+    )
+
+
+def _proposal(command: str, *, cwd: Path):
+    return propose_session_approval_grant(
+        _subject(command, cwd=cwd),
+        policy_code="external_publication",
+    )
+
+
+def _subject(command: str, *, cwd: Path):
+    normalized = normalize_command_subject(
+        ("/bin/sh", "-lc", command),
+        cwd=str(cwd),
+    )
+    return build_tool_policy_subject(
+        tool_name="bash",
+        arguments={"command": command},
+        cwd=str(cwd),
+        command=normalized,
+    )

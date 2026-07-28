@@ -398,6 +398,7 @@ class ScreenSurfaceWorkflow:
         action: str,
         risk: str = "",
         action_id: str | None = None,
+        allow_session: bool = False,
     ) -> None:
         current = self.current
         if isinstance(current, ScreenSurfaceView) and current.purpose != "approval":
@@ -406,6 +407,7 @@ class ScreenSurfaceWorkflow:
             action=action,
             risk=risk,
             action_id=action_id,
+            allow_session=allow_session,
         )
 
     def open_approval(
@@ -414,8 +416,14 @@ class ScreenSurfaceWorkflow:
         action: str,
         risk: str = "",
         action_id: str | None = None,
+        allow_session: bool = False,
     ) -> None:
-        self.present_approval(action=action, risk=risk, action_id=action_id)
+        self.present_approval(
+            action=action,
+            risk=risk,
+            action_id=action_id,
+            allow_session=allow_session,
+        )
 
     def clear_approvals(self) -> None:
         self.coordinator.clear_approvals()

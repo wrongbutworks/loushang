@@ -43,6 +43,7 @@ class ApprovalSurfaceDecision:
     action: str | None
     approved: bool
     raw_note: str | None
+    scope: Literal["once", "session"] = "once"
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,8 +165,14 @@ class ScreenSurfaceCoordinator:
         action: str,
         risk: str = "",
         action_id: str | None = None,
+        allow_session: bool = False,
     ) -> None:
-        approval = ApprovalSurface(action=action, risk=risk, action_id=action_id)
+        approval = ApprovalSurface(
+            action=action,
+            risk=risk,
+            action_id=action_id,
+            allow_session=allow_session,
+        )
         current = self.current
         if self._approval_transitioning or (
             isinstance(current, ScreenSurfaceView) and current.purpose == "approval"
@@ -290,10 +297,15 @@ def normalize_surface_intent(
         )
     if surface.purpose == "dialog" and intent.kind == "dialog_confirm":
         return SurfaceEvent(kind="surface_submit", source="dialog")
-    if surface.purpose == "approval" and intent.kind in {"approve", "reject"}:
+    if surface.purpose == "approval" and intent.kind in {
+        "approve",
+        "approve_session",
+        "reject",
+    }:
         return _approval_surface_event(
             surface,
-            approved=intent.kind == "approve",
+            approved=intent.kind in {"approve", "approve_session"},
+            scope="session" if intent.kind == "approve_session" else "once",
             note=intent.note,
         )
     return None
@@ -328,6 +340,7 @@ def _approval_surface_event(
     surface: ScreenSurfaceView,
     *,
     approved: bool,
+    scope: Literal["once", "session"] = "once",
     note: str | None = None,
 ) -> SurfaceEvent:
     action_id = getattr(surface.content, "action_id", None)
@@ -339,6 +352,7 @@ def _approval_surface_event(
             action_id=action_id if isinstance(action_id, str) else None,
             action=action if isinstance(action, str) else None,
             approved=approved,
+            scope=scope,
             raw_note=note or (action_id if isinstance(action_id, str) else None),
         ),
     )

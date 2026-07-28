@@ -11,6 +11,7 @@ from loushang.harness.approval import (
     ApprovalRequest,
     ApprovalResolver,
     ensure_approval_action_id,
+    find_approval_grant,
     resolve_approval,
 )
 from loushang.harness.policy import (
@@ -24,6 +25,7 @@ from loushang.harness.policy import (
     executable_search_path_from_env,
     normalize_command_subject,
 )
+from loushang.harness.policy_grants import propose_session_approval_grant
 
 from .audit import snapshot_audit_event
 
@@ -140,6 +142,11 @@ async def enforce_tool_policy(
             ),
         )
     if decision.disposition == "ask":
+        fingerprint = (
+            audit_context.get("action_fingerprint")
+            if audit_context is not None
+            else None
+        )
         request = ensure_approval_action_id(
             ApprovalRequest(
                 tool_name=tool_name,
@@ -148,10 +155,39 @@ async def enforce_tool_policy(
                 reason=decision.reason,
                 policy_code=decision.code,
                 policy_decision=decision,
+                action_fingerprint=(
+                    fingerprint if isinstance(fingerprint, str) else None
+                ),
+                session_grant=propose_session_approval_grant(
+                    subject,
+                    policy_code=decision.code,
+                ),
             )
         )
         action_id = request.action_id
         assert action_id is not None
+        granted = await find_approval_grant(approval_resolver, request)
+        if granted is not None:
+            await _emit_policy_audit_event(
+                audit_sink,
+                {
+                    "type": "tool_approval_resolved",
+                    **_approval_audit_details(
+                        tool_name=tool_name,
+                        decision=decision,
+                        action_id=action_id,
+                        tool_call_id=tool_call_id,
+                        approval=granted,
+                        approval_source="session_grant",
+                        audit_context=audit_context,
+                    ),
+                },
+            )
+            return ToolPolicyAuthorization(
+                decision,
+                approval=granted,
+                approval_action_id=action_id,
+            )
         await _emit_policy_audit_event(
             audit_sink,
             {
@@ -179,6 +215,7 @@ async def enforce_tool_policy(
                     action_id=action_id,
                     tool_call_id=tool_call_id,
                     approval=approval,
+                    approval_source="reviewer",
                     audit_context=audit_context,
                 ),
             },
@@ -514,6 +551,7 @@ def _approval_audit_details(
     action_id: str,
     tool_call_id: str | None,
     approval: ApprovalDecision | None = None,
+    approval_source: str | None = None,
     audit_context: Mapping[str, object] | None,
 ) -> dict[str, Any]:
     details: dict[str, Any] = dict(audit_context or ())
@@ -524,6 +562,11 @@ def _approval_audit_details(
         details["policy_code"] = decision.code
     if approval is not None:
         details["approval_decision"] = approval.disposition
+        details["approval_scope"] = approval.scope
+        if approval.grant_id is not None:
+            details["approval_grant_id"] = approval.grant_id
+    if approval_source is not None:
+        details["approval_source"] = approval_source
     return details
 
 

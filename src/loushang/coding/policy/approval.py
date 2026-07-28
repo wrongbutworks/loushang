@@ -23,9 +23,16 @@ from loushang.harness.tools.workspace.policy import PolicyEnforcementError
 
 def _coding_approval_payload(request: ApprovalRequest) -> Mapping[str, object]:
     projection = approval_request_to_dict(request)
+    grant_summary = (
+        request.session_grant.summary if request.session_grant is not None else None
+    )
     return {
         **projection,
-        "action": request.reason or f"Approve {request.tool_name} tool call",
+        "action": (
+            grant_summary
+            or request.reason
+            or f"Approve {request.tool_name} tool call"
+        ),
         "risk": request.reason or "Tool call requires approval",
     }
 

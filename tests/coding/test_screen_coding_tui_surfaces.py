@@ -1244,6 +1244,7 @@ def test_screen_surface_manager_handles_approval_submit() -> None:
             "action_id": "clear-cache-01",
             "action": "delete cache",
             "approved": True,
+            "scope": "once",
             "raw_note": "clear-cache-01",
         }
     ]
