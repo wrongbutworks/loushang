@@ -265,6 +265,23 @@ DEFAULT_LOCAL_COMMANDS_PROFILE = LocalCommandCatalogProfile(
             source="local",
             argument_hint="<question>",
         ),
+        # Quit/exit are conversation-host controls (QuitIntent), not session
+        # operations, so they declare no routes: listing and completion pick
+        # them up here while dispatch keeps handling them as exits.
+        "quit": CommandDef(
+            id="harness.ui.quit",
+            name="quit",
+            kind=CommandKind.LOCAL_UI,
+            description="Quit the conversation",
+            source="local",
+        ),
+        "exit": CommandDef(
+            id="harness.ui.exit",
+            name="exit",
+            kind=CommandKind.LOCAL_UI,
+            description="Quit the conversation",
+            source="local",
+        ),
     },
     local_command_names_by_route={
         "model_select": "model",

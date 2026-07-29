@@ -7,7 +7,6 @@ from loushang.ai.model import ModelSelection
 from loushang.harness.commands import CommandDescriptor
 from loushang.harnesstui.completion.host import (
     CatalogCompletionProfile,
-    CatalogSlashAlias,
     PreparedCatalogCompletionHost,
     build_session_catalog_completion_host,
 )
@@ -18,13 +17,6 @@ def _profile() -> CatalogCompletionProfile:
     return CatalogCompletionProfile(
         model_command_value="/choose-model",
         model_argument_group="Prepared models",
-        slash_aliases=(
-            CatalogSlashAlias(
-                trigger_value="/quit",
-                value="/leave",
-                description="Leave this product",
-            ),
-        ),
     )
 
 
@@ -51,19 +43,18 @@ def _host() -> PreparedCatalogCompletionHost:
     )
 
 
-def test_prepared_completion_host_builds_arguments_and_product_aliases() -> None:
+def test_prepared_completion_host_builds_model_command_arguments() -> None:
     provider = asyncio.run(_host().slash_provider())
 
     assert tuple(command.name for command in provider.commands) == (
         "/choose-model",
         "/quit",
-        "leave",
     )
     assert provider.commands[0].argument_group == "Prepared models"
     assert [item.value for item in provider.complete("/choose-model pro")] == [
         "/choose-model provider/model"
     ]
-    assert [item.value for item in provider.complete("/lea")] == ["/leave"]
+    assert [item.value for item in provider.complete("/qui")] == ["/quit"]
 
 
 def test_prepared_completion_host_limits_input_completion_to_slash_context() -> None:
@@ -87,7 +78,7 @@ def test_prepared_completion_host_optionally_composes_recursive_path_source(
     slash_only = asyncio.run(_host().inline_provider())
     combined = asyncio.run(_host().inline_provider(base_path=tmp_path))
 
-    assert [item.value for item in slash_only.complete("/lea")] == ["/leave"]
+    assert [item.value for item in slash_only.complete("/qui")] == ["/quit"]
     suggestions = combined.get_suggestions(("@example",), 0, len("@example"))
     assert suggestions is not None
     assert [item.value for item in suggestions.items] == ["@src/example.py"]
@@ -120,3 +111,6 @@ def test_session_completion_host_binds_structural_product_catalogs() -> None:
     assert [
         item.value for item in asyncio.run(host.complete("/choose-model res"))
     ] == ["/choose-model provider/research"]
+    # Quit/exit are default local conversation commands, not session commands.
+    assert {item.value for item in asyncio.run(host.complete("/qu"))} >= {"/quit"}
+    assert {item.value for item in asyncio.run(host.complete("/ex"))} >= {"/exit"}

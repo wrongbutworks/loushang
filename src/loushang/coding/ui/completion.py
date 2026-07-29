@@ -4,7 +4,6 @@ from pathlib import Path
 
 from loushang.harnesstui.completion.host import (
     CatalogCompletionProfile,
-    CatalogSlashAlias,
     PreparedCatalogCompletionHost,
     build_session_catalog_completion_host,
 )
@@ -34,5 +33,4 @@ def coding_completion_host(session: object) -> PreparedCatalogCompletionHost:
 _CODING_COMPLETION_PROFILE = CatalogCompletionProfile(
     model_command_value="/model",
     model_argument_group="Models",
-    slash_aliases=(CatalogSlashAlias("/quit", "/exit", "Quit loushang"),),
 )

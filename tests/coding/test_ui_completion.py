@@ -30,13 +30,6 @@ class _SessionWithCwd(_Session):
         self.session_manager = SimpleNamespace(get_cwd=lambda: str(cwd))
 
 
-class _SessionWithQuit(_SessionWithCwd):
-    def list_commands(self) -> list[object]:
-        return [
-            SimpleNamespace(name="quit", description="Quit loushang", source="builtin"),
-        ]
-
-
 class _AsyncSession(_Session):
     async def list_commands(self) -> list[object]:
         await asyncio.sleep(0)
@@ -271,7 +264,18 @@ def test_coding_inline_completion_provider_keeps_slash_commands_ahead_of_paths(
     assert composer.value == "/model "
 
 
-def test_coding_inline_completion_provider_completes_exit_alias_without_file_fallback(
+def test_coding_completion_host_lists_quit_and_exit_local_commands() -> None:
+    from loushang.coding.ui.completion import coding_completion_host
+
+    host = coding_completion_host(_Session())
+    quit_values = {item.value for item in asyncio.run(host.complete("/qu"))}
+    exit_values = {item.value for item in asyncio.run(host.complete("/ex"))}
+
+    assert "/quit" in quit_values
+    assert "/exit" in exit_values
+
+
+def test_coding_inline_completion_provider_completes_exit_without_file_fallback(
     tmp_path: Path,
 ) -> None:
     from loushang.coding.ui.completion import coding_inline_completion_provider
@@ -280,9 +284,7 @@ def test_coding_inline_completion_provider_completes_exit_alias_without_file_fal
     (tmp_path / "exit").write_text("", encoding="utf-8")
     composer = Composer(prompt="> ")
     provider = asyncio.run(
-        coding_inline_completion_provider(
-            _SessionWithQuit(tmp_path), base_path=tmp_path
-        )
+        coding_inline_completion_provider(_SessionWithCwd(tmp_path), base_path=tmp_path)
     )
     composer.set_completion_provider(provider)
 
@@ -292,5 +294,5 @@ def test_coding_inline_completion_provider_completes_exit_alias_without_file_fal
     assert tuple(strip_control_sequences(line.text) for line in result.lines) == (
         "> /ex",
         "",
-        "  /exit  Quit loushang",
+        "  /exit  Quit the conversation (local)",
     )
