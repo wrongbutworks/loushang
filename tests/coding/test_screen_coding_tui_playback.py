@@ -55,7 +55,9 @@ def test_screen_tui_playback_applies_model_argument_completion() -> None:
     assert app.composer.value == "/model openai/gpt-5.4"
     lines = _plain_lines(steps[-1].diagnostics)
     assert "› /model openai/gpt-5.4" in lines
-    assert lines[-1] == "moonshot/kimi-for-coding | repo | main | abcd | idle"
+    assert lines[-1] == (
+        "moonshot/kimi-for-coding | repo | main | abcd | idle | perm=standard"
+    )
 
 
 def test_screen_tui_playback_applies_recursive_at_file_completion(
@@ -343,7 +345,10 @@ def test_screen_tui_playback_smokes_surfaces_editor_and_image_fallback(
     assert not any(line.strip() == "Select Model" for line in final_lines)
     assert not any(line.strip() == "Terminal" for line in final_lines)
     assert "› abc!" in final_lines
-    assert "moonshot/kimi-for-coding | repo | main | abcd | idle" in final_lines
+    assert (
+        "moonshot/kimi-for-coding | repo | main | abcd | idle | perm=standard"
+        in final_lines
+    )
 
     fallback_step = _RenderPlayback(
         ImageBlock(alt_text="screenshot", source="shot.png", data=b"abc")

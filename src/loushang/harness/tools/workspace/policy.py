@@ -26,7 +26,10 @@ from loushang.harness.policy import (
     executable_search_path_from_env,
     normalize_command_subject,
 )
-from loushang.harness.policy_grants import propose_session_approval_grant
+from loushang.harness.policy_grants import (
+    propose_policy_amendments,
+    propose_session_approval_grant,
+)
 
 from .audit import snapshot_audit_event
 
@@ -164,6 +167,10 @@ async def enforce_tool_policy(
                     subject,
                     policy_code=decision.code,
                 ),
+                policy_amendments=propose_policy_amendments(
+                    subject,
+                    policy_code=decision.code,
+                ),
             )
         )
         action_id = request.action_id
@@ -180,7 +187,11 @@ async def enforce_tool_policy(
                         action_id=action_id,
                         tool_call_id=tool_call_id,
                         approval=granted,
-                        approval_source="session_grant",
+                        approval_source=(
+                            "policy_rule"
+                            if granted.policy_rule_id is not None
+                            else "session_grant"
+                        ),
                         audit_context=audit_context,
                     ),
                 },
@@ -567,6 +578,9 @@ def _approval_audit_details(
         details["approval_scope"] = approval.scope
         if approval.grant_id is not None:
             details["approval_grant_id"] = approval.grant_id
+        if approval.policy_rule_id is not None:
+            details["approval_policy_rule_id"] = approval.policy_rule_id
+            details["approval_policy_scope"] = approval.policy_scope
     if approval_source is not None:
         details["approval_source"] = approval_source
     return details

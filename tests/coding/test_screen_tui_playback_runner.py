@@ -104,7 +104,11 @@ def test_screen_tui_playback_surface_scenarios_live_in_surface_module() -> None:
         "approval-surface",
         "approval-session-surface",
         "approval-reject-surface",
+        "approval-abort-surface",
+        "approval-persistent-surface",
         "permissions-reopen-revoke-surface",
+        "permissions-mode-surface",
+        "permissions-full-access-confirmation",
         "dialog-surface",
         "mouse-select-active-surface",
     ]
@@ -306,6 +310,8 @@ def test_screen_tui_playback_runner_lists_default_scenarios(capsys) -> None:
     assert "approval-surface" in captured.out
     assert "approval-session-surface" in captured.out
     assert "approval-reject-surface" in captured.out
+    assert "approval-abort-surface" in captured.out
+    assert "approval-persistent-surface" in captured.out
     assert "dialog-surface" in captured.out
     assert "bracketed-paste-large-marker" in captured.out
     assert "tool-output-preview" in captured.out
@@ -620,6 +626,26 @@ def test_screen_tui_playback_runner_runs_approval_reject_surface_scenario(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS approval-reject-surface" in captured.out
+
+
+def test_screen_tui_playback_runner_runs_approval_abort_surface_scenario(
+    capsys,
+) -> None:
+    exit_code = run_playback_cli(["approval-abort-surface"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS approval-abort-surface" in captured.out
+
+
+def test_screen_tui_playback_runner_runs_approval_persistent_surface_scenario(
+    capsys,
+) -> None:
+    exit_code = run_playback_cli(["approval-persistent-surface"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS approval-persistent-surface" in captured.out
 
 
 def test_screen_tui_playback_runner_runs_dialog_surface_scenario(capsys) -> None:

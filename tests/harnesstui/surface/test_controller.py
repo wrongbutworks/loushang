@@ -134,7 +134,7 @@ def test_screen_surface_coordinator_closes_non_approval_close_intents() -> None:
 
 
 @pytest.mark.parametrize("intent_kind", ("surface_close", "dialog_cancel"))
-def test_screen_surface_coordinator_treats_approval_close_as_denial(
+def test_screen_surface_coordinator_treats_approval_close_as_abort(
     intent_kind: str,
 ) -> None:
     decisions: list[ApprovalSurfaceDecision] = []
@@ -158,7 +158,7 @@ def test_screen_surface_coordinator_treats_approval_close_as_denial(
         ApprovalSurfaceDecision(
             action_id="approval-1",
             action="delete cache",
-            approved=False,
+            outcome="abort",
             raw_note="approval-1",
         )
     ]
@@ -179,14 +179,20 @@ def test_screen_surface_coordinator_treats_explicit_reject_as_denial() -> None:
     coordinator.present_approval(action="delete cache", action_id="approval-1")
 
     asyncio.run(
-        coordinator.handle_intent(InputIntent(kind="reject", note="approval-1"))
+        coordinator.handle_intent(
+            InputIntent(
+                kind="approval_decision",
+                text="deny",
+                note="approval-1",
+            )
+        )
     )
 
     assert decisions == [
         ApprovalSurfaceDecision(
             action_id="approval-1",
             action="delete cache",
-            approved=False,
+            outcome="deny",
             raw_note="approval-1",
         )
     ]
@@ -212,7 +218,11 @@ def test_screen_surface_coordinator_emits_session_scoped_approval() -> None:
 
     asyncio.run(
         coordinator.handle_intent(
-            InputIntent(kind="approve_session", note="approval-push")
+            InputIntent(
+                kind="approval_decision",
+                text="allow_session",
+                note="approval-push",
+            )
         )
     )
 
@@ -220,8 +230,7 @@ def test_screen_surface_coordinator_emits_session_scoped_approval() -> None:
         ApprovalSurfaceDecision(
             action_id="approval-push",
             action="publish main",
-            approved=True,
-            scope="session",
+            outcome="allow_session",
             raw_note="approval-push",
         )
     ]
@@ -326,13 +335,21 @@ def test_screen_surface_coordinator_queues_approvals_fifo() -> None:
     coordinator.present_approval(action="first", action_id="approval-1")
     coordinator.present_approval(action="second", action_id="approval-2")
 
-    asyncio.run(coordinator.handle_intent(InputIntent(kind="approve")))
+    asyncio.run(
+        coordinator.handle_intent(
+            InputIntent(kind="approval_decision", text="allow_once")
+        )
+    )
 
     current = coordinator.current
     assert isinstance(current, ScreenSurfaceView)
     assert getattr(current.content, "action_id") == "approval-2"
 
-    asyncio.run(coordinator.handle_intent(InputIntent(kind="reject")))
+    asyncio.run(
+        coordinator.handle_intent(
+            InputIntent(kind="approval_decision", text="deny")
+        )
+    )
 
     assert [decision.action_id for decision in decisions] == [
         "approval-1",
@@ -364,7 +381,9 @@ def test_screen_surface_coordinator_keeps_fifo_during_async_resolution() -> None
         coordinator.present_approval(action="A", action_id="approval-a")
         coordinator.present_approval(action="B", action_id="approval-b")
         first = asyncio.create_task(
-            coordinator.handle_intent(InputIntent(kind="approve"))
+            coordinator.handle_intent(
+                InputIntent(kind="approval_decision", text="allow_once")
+            )
         )
         await callback_started.wait()
         coordinator.present_approval(action="C", action_id="approval-c")
@@ -375,7 +394,9 @@ def test_screen_surface_coordinator_keeps_fifo_during_async_resolution() -> None
             current = coordinator.current
             assert isinstance(current, ScreenSurfaceView)
             assert getattr(current.content, "action_id") == expected_id
-            await coordinator.handle_intent(InputIntent(kind="approve"))
+            await coordinator.handle_intent(
+                InputIntent(kind="approval_decision", text="allow_once")
+            )
 
     asyncio.run(run())
 
@@ -422,7 +443,11 @@ def test_screen_surface_coordinator_advances_queue_when_handler_raises() -> None
     coordinator.present_approval(action="B", action_id="approval-b")
 
     with pytest.raises(RuntimeError, match="resolution failed"):
-        asyncio.run(coordinator.handle_intent(InputIntent(kind="approve")))
+        asyncio.run(
+            coordinator.handle_intent(
+                InputIntent(kind="approval_decision", text="allow_once")
+            )
+        )
 
     current = coordinator.current
     assert isinstance(current, ScreenSurfaceView)

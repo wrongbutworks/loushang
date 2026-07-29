@@ -10,6 +10,10 @@ from loushang.harness.approval import (
     HeadlessApprovalResolver,
 )
 from loushang.harness.diagnostics.service import DiagnosticsService
+from loushang.harness.permissions import (
+    PermissionProfileCeiling,
+    PermissionProfilePolicyEvaluator,
+)
 from loushang.harness.policy_engine import PolicyEngine
 from loushang.harness.workspace.exec import ExecService
 from loushang.harness.workspace.operations import (
@@ -159,7 +163,26 @@ def workspace_tool_runtime_settings(
             tool_settings, "ask_path_substrings"
         ),
     }
-    policy_engine = policy_factory(**policy_kwargs)
+    base_policy_engine = policy_factory(**policy_kwargs)
+    profile_getter = getattr(settings_manager, "get_permission_profile_id", None)
+    ceiling_getter = getattr(
+        settings_manager,
+        "get_permission_profile_ceiling",
+        None,
+    )
+    policy_engine = (
+        PermissionProfilePolicyEvaluator(
+            base_policy_engine,
+            profile_provider=profile_getter,
+            ceiling_provider=(
+                ceiling_getter
+                if callable(ceiling_getter)
+                else PermissionProfileCeiling
+            ),
+        )
+        if callable(profile_getter)
+        else base_policy_engine
+    )
     approval_mode = getattr(tool_settings, "approval_mode", None)
     approval_resolver = (
         HeadlessApprovalResolver(

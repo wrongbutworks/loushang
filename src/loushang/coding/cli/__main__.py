@@ -59,6 +59,7 @@ from loushang.coding.policy import (
     InteractiveApprovalResolver,
     PackageSecurityPolicy,
     PolicyEngine,
+    configure_persistent_approval_policy,
 )
 from loushang.coding.prompt_command import (
     run_prompt_command,
@@ -177,6 +178,10 @@ def build_builtin_tool_registry(
         approval_resolver
         if approval_resolver is not None
         else resolved_runtime_settings.approval_resolver
+    )
+    configure_persistent_approval_policy(
+        resolved_approval_resolver,
+        settings_manager,
     )
     get_external_tool_policy = getattr(
         settings_manager, "get_external_tool_policy", None

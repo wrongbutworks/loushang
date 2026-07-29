@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.tui import (
+    ApprovalChoice,
     ApprovalSurface,
     InputIntent,
     Surface,
@@ -15,6 +16,14 @@ from loushang.tui import (
 )
 
 SurfaceEventKind = Literal["surface_submit", "surface_close"]
+ApprovalOutcome = Literal[
+    "allow_once",
+    "allow_session",
+    "allow_project",
+    "allow_user",
+    "deny",
+    "abort",
+]
 SurfaceEventSource = Literal[
     "model",
     "command",
@@ -41,6 +50,7 @@ _APPROVAL_SURFACE_THEME = ThemeResolver(
         "approval.risk": {"color": "red"},
         "approval.choice.allow": {"color": "green"},
         "approval.choice.session": {"color": "cyan"},
+        "approval.choice.persistent": {"color": "blue"},
         "approval.choice.deny": {"color": "red"},
         "approval.choice.selected": {"bold": True, "reverse": True},
     }
@@ -60,9 +70,16 @@ class ApprovalSurfaceDecision:
 
     action_id: str | None
     action: str | None
-    approved: bool
+    outcome: ApprovalOutcome
     raw_note: str | None
-    scope: Literal["once", "session"] = "once"
+
+    @property
+    def approved(self) -> bool:
+        return self.outcome.startswith("allow_")
+
+    @property
+    def scope(self) -> Literal["once", "session"]:
+        return "session" if self.outcome == "allow_session" else "once"
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +208,7 @@ class ScreenSurfaceCoordinator:
         grant_summary: str = "",
         action_id: str | None = None,
         allow_session: bool = False,
+        options: tuple[ApprovalChoice, ...] = (),
     ) -> None:
         approval = ApprovalSurface(
             action=action,
@@ -201,6 +219,7 @@ class ScreenSurfaceCoordinator:
             grant_summary=grant_summary,
             action_id=action_id,
             allow_session=allow_session,
+            options=options,
             theme=_APPROVAL_SURFACE_THEME,
         )
         current = self.current
@@ -253,7 +272,7 @@ class ScreenSurfaceCoordinator:
                 title="Approval required",
                 purpose="approval",
                 content=approval,
-                footer="Enter confirm · ↑/↓ select · Esc deny",
+                footer="Enter confirm · ↑/↓ select · Esc stop turn",
                 presentation="bottom-exclusive",
                 theme=_APPROVAL_SURFACE_THEME,
                 title_theme_token="approval.title",
@@ -275,11 +294,9 @@ def normalize_surface_intent(
         surface.purpose == "approval"
         and intent.kind in {"surface_close", "dialog_cancel"}
     ):
-        # Treat every approval close path as denial so the waiting resolver
-        # always reaches a terminal decision.
         return _approval_surface_event(
             surface,
-            approved=False,
+            outcome="abort",
             note=intent.note,
         )
     if intent.kind in {"surface_close", "dialog_cancel"}:
@@ -338,18 +355,16 @@ def normalize_surface_intent(
         )
     if surface.purpose == "dialog" and intent.kind == "dialog_confirm":
         return SurfaceEvent(kind="surface_submit", source="dialog")
-    if surface.purpose == "approval" and intent.kind in {
-        "approve",
-        "approve_session",
-        "reject",
-    }:
+    if surface.purpose == "approval" and intent.kind == "approval_decision":
         return _approval_surface_event(
             surface,
-            approved=intent.kind in {"approve", "approve_session"},
-            scope="session" if intent.kind == "approve_session" else "once",
+            outcome=cast(ApprovalOutcome, intent.text),
             note=intent.note,
         )
-    if surface.purpose == "permissions" and intent.kind == "select":
+    if surface.purpose == "permissions" and intent.kind in {
+        "select",
+        "permission_profile_action",
+    }:
         return SurfaceEvent(
             kind="surface_submit",
             source="permissions",
@@ -386,8 +401,7 @@ def promote_pending_page_surface(app: ScreenSurfaceAppPort) -> bool:
 def _approval_surface_event(
     surface: ScreenSurfaceView,
     *,
-    approved: bool,
-    scope: Literal["once", "session"] = "once",
+    outcome: ApprovalOutcome,
     note: str | None = None,
 ) -> SurfaceEvent:
     action_id = getattr(surface.content, "action_id", None)
@@ -398,8 +412,7 @@ def _approval_surface_event(
         payload=ApprovalSurfaceDecision(
             action_id=action_id if isinstance(action_id, str) else None,
             action=action if isinstance(action, str) else None,
-            approved=approved,
-            scope=scope,
+            outcome=outcome,
             raw_note=note or (action_id if isinstance(action_id, str) else None),
         ),
     )

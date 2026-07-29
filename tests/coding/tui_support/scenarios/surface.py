@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 from loushang.ai.model import ModelSelection
 from loushang.coding.ui.screen_app import ScreenCodingTuiApp
@@ -10,10 +10,14 @@ from loushang.harness.approval import (
     ApprovalPermission,
     ApprovalPermissionsSnapshot,
 )
+from loushang.harness.permissions import (
+    PermissionProfileId,
+    permission_profile_snapshot,
+)
 from loushang.harnesstui.status.provider import StatusProvider
 from loushang.harnesstui.surface.view import ScreenSurfaceView
 from loushang.harnesstui.testing.scenarios.surface import surface_scenarios
-from loushang.tui import DialogSurface
+from loushang.tui import ApprovalChoice, DialogSurface
 from loushang.tui.playback_suite import (
     PlaybackScenarioSpec as ScreenPlaybackScenarioSpec,
 )
@@ -234,7 +238,7 @@ def _run_approval_session_surface() -> object:
 
 def _run_approval_reject_surface() -> object:
     return _run_approval_surface_response(
-        input_text="\x1b",
+        input_text="n",
         approved=False,
         scope="once",
         expected_status="Action rejected",
@@ -245,6 +249,71 @@ def _run_approval_reject_surface() -> object:
         environment="local",
         action_id="delete:approval-test",
     )
+
+
+def _run_approval_abort_surface() -> object:
+    return _run_approval_surface_response(
+        input_text="\x1b",
+        approved=False,
+        scope="once",
+        outcome="abort",
+        expected_status="Turn stopped",
+        action="rm -rf -- /tmp/approval-test",
+        risk="Filesystem content would be deleted or truncated",
+        action_id="delete:approval-test",
+    )
+
+
+def _run_approval_persistent_surface() -> object:
+    playback = ScreenTuiLoopPlayback(
+        width=100,
+        height=18,
+        model_label="moonshot/kimi-for-coding",
+    )
+    approvals: list[dict[str, object]] = []
+
+    async def on_approval(payload: dict[str, object]) -> None:
+        approvals.append(payload)
+
+    manager = _surface_manager(playback.app, on_approval=on_approval)
+    manager.open_approval(
+        action="git push origin main",
+        risk="Commits or refs would be published",
+        action_id="push-main",
+        options=(
+            ApprovalChoice("allow_once", "Allow this action once", "y"),
+            ApprovalChoice(
+                "allow_session",
+                "Allow non-force pushes for this session",
+                "s",
+                "session",
+            ),
+            ApprovalChoice(
+                "allow_project",
+                "Always allow non-force pushes in this project",
+                "p",
+                "persistent",
+            ),
+            ApprovalChoice(
+                "deny",
+                "Deny and let the agent continue",
+                "n",
+                "deny",
+            ),
+        ),
+    )
+    result = playback.run(
+        (0.00, "p"),
+        (0.02, ""),
+        handle_surface_intent=manager.handle_surface_intent,
+    )
+
+    result.assert_exit_code(0)
+    assert approvals[0]["outcome"] == "allow_project"
+    result.assert_text_contains("Always allow non-force pushes in this project")
+    result.assert_text_contains("Action confirmed")
+    result.assert_no_clear_screen()
+    return result
 
 
 def _run_permissions_reopen_and_revoke_surface() -> object:
@@ -273,7 +342,7 @@ def _run_permissions_reopen_and_revoke_surface() -> object:
                 else (),
                 grants=(
                     ApprovalPermission(
-                        kind="grant",
+                        kind="session",
                         permission_id="grant-push",
                         actor_id="/root/implementer#1",
                         capability="git.publish_refs",
@@ -322,11 +391,13 @@ def _run_permissions_reopen_and_revoke_surface() -> object:
     manager.dismiss_approval("delete-build")
     result = playback.run(
         (0.00, "/permissions\r"),
-        (0.03, "\r"),
-        (0.06, "y"),
-        (0.09, "/permissions\r"),
-        (0.12, "\r"),
-        (0.15, ""),
+        (0.02, "\t"),
+        (0.04, "\r"),
+        (0.07, "y"),
+        (0.10, "/permissions\r"),
+        (0.12, "\t"),
+        (0.14, "\r"),
+        (0.17, ""),
         handle_local=manager.handle_text,
         handle_surface_intent=manager.handle_surface_intent,
         is_local_command=manager.is_local_command,
@@ -342,6 +413,7 @@ def _run_permissions_reopen_and_revoke_surface() -> object:
             "action_id": "delete-build",
             "action": "delete build",
             "approved": True,
+            "outcome": "allow_once",
             "scope": "once",
             "raw_note": "delete-build",
         }
@@ -355,11 +427,94 @@ def _run_permissions_reopen_and_revoke_surface() -> object:
     return result
 
 
+class _PermissionProfilePlaybackSession:
+    def __init__(self) -> None:
+        self.current: PermissionProfileId = "standard"
+        self.actions: list[str] = []
+
+    def get_approval_permissions(self) -> ApprovalPermissionsSnapshot:
+        return ApprovalPermissionsSnapshot()
+
+    def get_permission_profile_snapshot(self):
+        return permission_profile_snapshot(self.current)
+
+    async def apply_approval_permission_action(self, action: str) -> bool:
+        prefix, scope, profile_id = action.split(":", 2)
+        if (
+            prefix != "set-profile"
+            or scope not in {"session", "project", "user"}
+            or profile_id not in {"cautious", "standard", "full_access"}
+        ):
+            return False
+        self.actions.append(action)
+        self.current = cast(PermissionProfileId, profile_id)
+        return True
+
+
+def _run_permissions_mode_surface() -> object:
+    playback = ScreenTuiLoopPlayback(
+        width=100, height=20, model_label="moonshot/kimi-for-coding"
+    )
+    session = _PermissionProfilePlaybackSession()
+    manager = _surface_manager(playback.app, session=session)
+
+    result = playback.run(
+        (0.00, "/permissions\r"),
+        (0.02, "p"),
+        (0.04, "\x1b[B"),
+        (0.06, "\r"),
+        (0.09, "\x1b"),
+        (0.11, ""),
+        handle_local=manager.handle_text,
+        handle_surface_intent=manager.handle_surface_intent,
+        is_local_command=manager.is_local_command,
+    )
+
+    result.assert_exit_code(0)
+    assert session.actions == ["set-profile:project:cautious"]
+    assert result.app.state.permission_profile == "cautious"
+    result.assert_text_contains("Standard")
+    result.assert_text_contains("Cautious (current)")
+    result.assert_text_contains("Permissions updated to Cautious (project).")
+    result.assert_no_clear_screen()
+    return result
+
+
+def _run_permissions_full_access_confirmation() -> object:
+    playback = ScreenTuiLoopPlayback(
+        width=100, height=20, model_label="moonshot/kimi-for-coding"
+    )
+    session = _PermissionProfilePlaybackSession()
+    manager = _surface_manager(playback.app, session=session)
+
+    result = playback.run(
+        (0.00, "/permissions\r"),
+        (0.02, "\x1b[B"),
+        (0.04, "\x1b[B"),
+        (0.06, "\r"),
+        (0.08, "\r"),
+        (0.11, "\x1b"),
+        (0.13, ""),
+        handle_local=manager.handle_text,
+        handle_surface_intent=manager.handle_surface_intent,
+        is_local_command=manager.is_local_command,
+    )
+
+    result.assert_exit_code(0)
+    assert session.actions == ["set-profile:session:full_access"]
+    assert result.app.state.permission_profile == "full_access"
+    result.assert_text_contains("Enable Full Access?")
+    result.assert_text_contains("Full Access (current)")
+    result.assert_no_clear_screen()
+    return result
+
+
 def _run_approval_surface_response(
     *,
     input_text: str,
     approved: bool,
     scope: str,
+    outcome: str | None = None,
     expected_status: str,
     allow_session: bool = False,
     action: str = "write file",
@@ -400,6 +555,14 @@ def _run_approval_surface_response(
             "action_id": action_id,
             "action": action,
             "approved": approved,
+            "outcome": outcome
+            or (
+                "allow_session"
+                if approved and scope == "session"
+                else "allow_once"
+                if approved
+                else "deny"
+            ),
             "scope": scope,
             "raw_note": action_id,
         }
@@ -463,6 +626,7 @@ def _status_provider(app: object) -> StatusProvider:
         session_label=lambda: state.session_label,
         thinking_level=lambda: None,
         running=lambda: state.running,
+        permission_profile=lambda: state.permission_profile,
     )
 
 
@@ -528,10 +692,32 @@ SURFACE_SCENARIOS = (
         run=_run_approval_reject_surface,
     ),
     ScreenPlaybackScenarioSpec(
+        name="approval-abort-surface",
+        description="Escape an approval and abort the active turn.",
+        run=_run_approval_abort_surface,
+    ),
+    ScreenPlaybackScenarioSpec(
+        name="approval-persistent-surface",
+        description="Persist a Policy-generated project permission.",
+        run=_run_approval_persistent_surface,
+    ),
+    ScreenPlaybackScenarioSpec(
         name="permissions-reopen-revoke-surface",
         description="Reopen a pending approval and revoke a retained session grant.",
         run=_run_permissions_reopen_and_revoke_surface,
         tags=("approval", "surface"),
+    ),
+    ScreenPlaybackScenarioSpec(
+        name="permissions-mode-surface",
+        description="Switch a permission mode at project scope.",
+        run=_run_permissions_mode_surface,
+        tags=("approval", "permissions", "surface"),
+    ),
+    ScreenPlaybackScenarioSpec(
+        name="permissions-full-access-confirmation",
+        description="Require explicit confirmation before enabling Full Access.",
+        run=_run_permissions_full_access_confirmation,
+        tags=("approval", "permissions", "surface"),
     ),
     ScreenPlaybackScenarioSpec(
         name="dialog-surface",

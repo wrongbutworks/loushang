@@ -1236,7 +1236,11 @@ def test_screen_surface_manager_handles_approval_submit() -> None:
         footer="",
     )
 
-    asyncio.run(manager.handle_surface_intent(InputIntent(kind="approve")))
+    asyncio.run(
+        manager.handle_surface_intent(
+            InputIntent(kind="approval_decision", text="allow_once")
+        )
+    )
 
     assert app.active_surface is None
     assert events == [
@@ -1244,6 +1248,7 @@ def test_screen_surface_manager_handles_approval_submit() -> None:
             "action_id": "clear-cache-01",
             "action": "delete cache",
             "approved": True,
+            "outcome": "allow_once",
             "scope": "once",
             "raw_note": "clear-cache-01",
         }
@@ -1332,7 +1337,11 @@ def test_screen_surface_manager_does_not_confirm_stale_approval_result() -> None
     )
     manager.open_approval(action="stale action", action_id="approval-stale")
 
-    asyncio.run(manager.handle_surface_intent(InputIntent(kind="approve")))
+    asyncio.run(
+        manager.handle_surface_intent(
+            InputIntent(kind="approval_decision", text="allow_once")
+        )
+    )
 
     assert app.state.status_message == "Approval request is no longer pending"
 

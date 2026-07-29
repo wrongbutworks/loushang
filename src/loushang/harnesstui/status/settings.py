@@ -106,6 +106,11 @@ def statusline_rows(settings: StatusLineSettings) -> tuple[ConfigRow, ...]:
         ConfigRow("statusline.field.workspace", "Workspace", bool_text(settings.workspace)),
         ConfigRow("statusline.field.branch", "Branch", bool_text(settings.branch)),
         ConfigRow("statusline.field.session", "Session", bool_text(settings.session)),
+        ConfigRow(
+            "statusline.field.permissions",
+            "Permissions",
+            bool_text(settings.permissions),
+        ),
         ConfigRow("statusline.field.runtime", "Runtime", bool_text(settings.runtime)),
         ConfigRow("statusline.field.queue", "Queue", settings.queue),
         ConfigRow("statusline.field.message", "Message", settings.message),
@@ -121,6 +126,7 @@ def next_statusline_value(item_id: str, value: str) -> str:
         "statusline.field.workspace",
         "statusline.field.branch",
         "statusline.field.session",
+        "statusline.field.permissions",
         "statusline.field.runtime",
     }:
         return next_bool_value(value)

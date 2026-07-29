@@ -185,7 +185,7 @@ def test_agent_screen_surface_ports_bind_structural_research_session() -> None:
             ApprovalSurfaceDecision(
                 action_id="research-approval",
                 action="Publish report",
-                approved=True,
+                outcome="allow_once",
                 raw_note="approved",
             )
         )
@@ -195,6 +195,7 @@ def test_agent_screen_surface_ports_bind_structural_research_session() -> None:
             "action_id": "research-approval",
             "action": "Publish report",
             "approved": True,
+            "outcome": "allow_once",
             "scope": "once",
             "raw_note": "approved",
         }
@@ -272,9 +273,10 @@ def test_agent_screen_approval_binding_uses_structural_product_ports() -> None:
             "cwd": "",
             "environment": "",
             "grant_summary": "",
-            "action_id": "approval-1",
-            "allow_session": False,
-        }
+                "action_id": "approval-1",
+                "allow_session": False,
+                "options": (),
+            }
     ]
     session.presenter(  # type: ignore[operator]
         {

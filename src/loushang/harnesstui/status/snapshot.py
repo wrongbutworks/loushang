@@ -14,6 +14,7 @@ class StatusSnapshot:
     thinking_level: str | None
     running: bool
     statusline_visible: bool
+    permission_profile: str | None = None
     statusline_settings: StatusLineSettings = field(default_factory=StatusLineSettings)
 
 

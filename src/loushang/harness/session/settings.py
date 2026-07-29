@@ -3,6 +3,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
+from loushang.harness.permissions import (
+    PermissionProfileScope,
+    PermissionProfileSnapshot,
+    permission_profile_snapshot,
+)
+
 
 @dataclass
 class SessionSettingsBinding:
@@ -36,6 +42,39 @@ class SessionSettingsBinding:
         if self.settings_manager is None:
             return self.default_retry()
         return self.settings_manager.get_retry_settings()
+
+    def get_permission_profile_snapshot(self) -> PermissionProfileSnapshot:
+        if self.settings_manager is None:
+            return permission_profile_snapshot("standard")
+        getter = getattr(
+            self.settings_manager,
+            "get_permission_profile_snapshot",
+            None,
+        )
+        if not callable(getter):
+            return permission_profile_snapshot("standard")
+        snapshot = getter()
+        if not isinstance(snapshot, PermissionProfileSnapshot):
+            raise TypeError(
+                "settings manager permission profile getter must return "
+                "PermissionProfileSnapshot"
+            )
+        return snapshot
+
+    def set_permission_profile(
+        self,
+        profile_id: str,
+        *,
+        scope: PermissionProfileScope = "session",
+    ) -> None:
+        manager = self.ensure_settings_manager()
+        setter = getattr(manager, "set_permission_profile", None)
+        if not callable(setter):
+            raise RuntimeError(
+                "The configured settings manager does not support "
+                "permission profiles."
+            )
+        setter(profile_id, scope=scope)
 
     def ensure_settings_manager(self) -> object:
         if self.settings_manager is None:

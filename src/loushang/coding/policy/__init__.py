@@ -8,6 +8,7 @@ from loushang.coding.policy.approval import (
     HeadlessApprovalResolver,
     InteractiveApprovalResolver,
     PolicyEnforcementError,
+    configure_persistent_approval_policy,
     resolve_approval,
 )
 from loushang.coding.policy.engine import PolicyEngine
@@ -25,6 +26,7 @@ __all__ = [
     "DenyApprovalResolver",
     "HeadlessApprovalResolver",
     "PolicyEnforcementError",
+    "configure_persistent_approval_policy",
     "resolve_approval",
     "PackageSecurityPolicy",
     "PackageSourceSecurityReport",

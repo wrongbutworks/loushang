@@ -32,6 +32,26 @@ def test_session_settings_controller_lazily_creates_manager_for_auto_flags() -> 
     assert manager.get_settings().compaction.enabled is False
 
 
+def test_session_settings_controller_forwards_permission_profiles() -> None:
+    from loushang.coding.control import SettingsManager
+    from loushang.harness.session.settings import SessionSettingsBinding
+
+    manager = SettingsManager()
+    controller = SessionSettingsBinding(settings_manager=manager)
+
+    assert (
+        controller.get_permission_profile_snapshot().effective_profile.profile_id
+        == "standard"
+    )
+
+    controller.set_permission_profile("cautious", scope="session")
+
+    assert (
+        controller.get_permission_profile_snapshot().effective_profile.profile_id
+        == "cautious"
+    )
+
+
 def test_session_settings_controller_persists_queue_modes_to_existing_manager(tmp_path) -> None:
     from loushang.coding.control import SettingsManager
     from loushang.harness.session.settings import SessionSettingsBinding

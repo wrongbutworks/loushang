@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shlex
 from collections.abc import Mapping
+from pathlib import Path
 
 from loushang.harness.approval import (
     ApprovalDecision,
@@ -12,6 +13,7 @@ from loushang.harness.approval import (
     ApprovalResolver,
     DenyApprovalResolver,
     HeadlessApprovalResolver,
+    JsonApprovalPolicyRuleStore,
     MaybeAwaitable,
     approval_request_to_dict,
     resolve_approval,
@@ -72,6 +74,31 @@ class InteractiveApprovalResolver(_InteractiveApprovalResolver):
         )
 
 
+def configure_persistent_approval_policy(
+    resolver: ApprovalResolver | None,
+    settings_manager: object | None,
+) -> None:
+    """Bind project/user Policy stores without leaking Coding paths to Harness."""
+
+    setter = getattr(resolver, "set_policy_stores", None)
+    if not callable(setter) or settings_manager is None:
+        return
+    project_base = getattr(settings_manager, "project_base_dir", None)
+    global_base = getattr(settings_manager, "global_base_dir", None)
+    stores = {}
+    if isinstance(project_base, Path):
+        stores["project"] = JsonApprovalPolicyRuleStore(
+            "project",
+            project_base / "approval-policy.json",
+        )
+    if isinstance(global_base, Path):
+        stores["user"] = JsonApprovalPolicyRuleStore(
+            "user",
+            global_base / "approval-policy.json",
+        )
+    setter(stores)
+
+
 __all__ = [
     "ApprovalDecision",
     "ApprovalRequest",
@@ -81,6 +108,7 @@ __all__ = [
     "InteractiveApprovalResolver",
     "MaybeAwaitable",
     "ApprovalPayloadProjector",
+    "configure_persistent_approval_policy",
     "PolicyEnforcementError",
     "approval_request_to_dict",
     "resolve_approval",

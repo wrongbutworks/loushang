@@ -23,6 +23,8 @@ InputIntentKind = Literal[
     "setting",
     "approve",
     "approve_session",
+    "approval_decision",
+    "permission_profile_action",
     "reject",
     "dialog_confirm",
     "dialog_cancel",

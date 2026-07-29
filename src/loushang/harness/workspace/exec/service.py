@@ -6,6 +6,7 @@ import os
 import signal as signal_module
 import tempfile
 from collections.abc import Awaitable
+from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal, Protocol, TextIO
@@ -131,9 +132,18 @@ class LocalExecBackend:
                 if request.stdin is not None
                 else b""
             )
-            process.stdin.write(input_bytes)
-            await process.stdin.drain()
-            process.stdin.close()
+            try:
+                process.stdin.write(input_bytes)
+                await process.stdin.drain()
+            except (BrokenPipeError, ConnectionResetError):
+                # A short-lived command may exit without reading stdin. Its
+                # process result remains authoritative; a closed pipe is not
+                # an execution-service failure.
+                pass
+            finally:
+                process.stdin.close()
+                with suppress(BrokenPipeError, ConnectionResetError):
+                    await process.stdin.wait_closed()
 
         abort_task = (
             asyncio.create_task(_wait_for_abort(signal)) if signal is not None else None

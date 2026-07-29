@@ -11,6 +11,7 @@ from loushang.harness.approval import (
     ApprovalDecision,
     HeadlessApprovalResolver,
     InteractiveApprovalResolver,
+    JsonApprovalPolicyRuleStore,
 )
 from loushang.harness.authorization import (
     EffectiveExecutionProfile,
@@ -378,6 +379,74 @@ def test_workspace_gateway_reuses_policy_scoped_session_approval(
     ]
     assert changed_events[2]["approval_source"] == "session_grant"
     assert changed_events[2]["approval_grant_id"] == grant_id
+
+
+def test_workspace_gateway_reuses_persistent_project_policy_after_restart(
+    tmp_path: Path,
+) -> None:
+    policy_path = tmp_path / ".loushang" / "approval-policy.json"
+
+    async def approve() -> list[dict[str, object]]:
+        payloads: list[dict[str, object]] = []
+        presented = asyncio.Event()
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny"),
+            policy_stores={
+                "project": JsonApprovalPolicyRuleStore("project", policy_path)
+            },
+        )
+        resolver.set_request_presenter(
+            lambda payload: (payloads.append(payload), presented.set())
+        )
+        events: list[dict[str, object]] = []
+        pending = asyncio.create_task(
+            _execute_git_push(
+                "git push origin main",
+                cwd=tmp_path,
+                resolver=resolver,
+                events=events,
+            )
+        )
+        await presented.wait()
+        options = payloads[0]["approval_options"]
+        assert tuple(option["outcome"] for option in options) == (
+            "allow_once",
+            "allow_session",
+            "allow_project",
+            "deny",
+        )
+        action_id = payloads[0]["action_id"]
+        assert isinstance(action_id, str)
+        assert await resolver.handle_result(
+            action_id,
+            outcome="allow_project",
+        )
+        assert await pending == "executed"
+        return events
+
+    first_events = asyncio.run(approve())
+    restarted = InteractiveApprovalResolver(
+        fallback=HeadlessApprovalResolver(mode="deny"),
+        policy_stores={
+            "project": JsonApprovalPolicyRuleStore("project", policy_path)
+        },
+    )
+    second_events: list[dict[str, object]] = []
+
+    assert (
+        asyncio.run(
+            _execute_git_push(
+                "git push origin release",
+                cwd=tmp_path,
+                resolver=restarted,
+                events=second_events,
+            )
+        )
+        == "executed"
+    )
+    assert first_events[3]["approval_policy_scope"] == "project"
+    assert second_events[2]["approval_source"] == "policy_rule"
+    assert second_events[2]["approval_policy_scope"] == "project"
 
 
 def test_workspace_gateway_detaches_each_audit_event_for_observers(

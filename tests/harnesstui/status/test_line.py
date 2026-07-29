@@ -30,6 +30,7 @@ def test_status_line_settings_defaults_match_product_defaults() -> None:
     assert settings.workspace is True
     assert settings.branch is True
     assert settings.session is True
+    assert settings.permissions is True
     assert settings.runtime is True
     assert settings.queue == "auto"
     assert settings.message == "auto"
@@ -48,6 +49,7 @@ def test_status_line_fields_use_product_order_priority_and_tokens() -> None:
         ("loushang", 90, "workspace"),
         ("main", 80, "branch"),
         ("abcd", 70, "session"),
+        ("perm=standard", 35, "permissions"),
         ("running", 60, "runtime.running"),
         ("queued=2 steer=1", 50, "queue"),
         ("Saved", 40, "message"),
@@ -60,14 +62,28 @@ def test_status_line_fields_keep_current_missing_value_fallbacks() -> None:
         StatusLineSettings(),
     )
 
-    assert [field.text for field in fields[:5]] == ["model", "cwd", "no-branch", "no-session", "idle"]
-    assert fields[4].token == "runtime.idle"
+    assert [field.text for field in fields[:6]] == [
+        "model",
+        "cwd",
+        "no-branch",
+        "no-session",
+        "perm=standard",
+        "idle",
+    ]
+    assert fields[5].token == "runtime.idle"
 
 
 def test_status_line_fields_can_disable_regular_fields() -> None:
     fields = status_line_fields(
         _snapshot(),
-        StatusLineSettings(model=False, workspace=False, branch=False, session=False, runtime=False),
+        StatusLineSettings(
+            model=False,
+            workspace=False,
+            branch=False,
+            session=False,
+            permissions=False,
+            runtime=False,
+        ),
     )
 
     assert fields == ()
@@ -81,6 +97,7 @@ def test_status_line_queue_auto_true_false_behavior() -> None:
         "loushang",
         "main",
         "abcd",
+        "perm=standard",
         "idle",
     ]
     assert status_line_fields(snapshot, StatusLineSettings(queue="true"))[-1].text == "queued=0 steer=0"

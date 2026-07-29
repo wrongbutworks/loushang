@@ -302,17 +302,27 @@ Security-relevant arguments remain part of the matcher:
 If the adapter cannot safely generalize an action, it offers only “allow
 once”. Raw model-authored prefixes are never persisted directly.
 
-### 5.4 Minimal approval choices
+### 5.4 Policy-generated approval choices
 
-The common approval surface should normally show only:
+The common surface renders the exact options carried by the Policy result. A
+typical bounded publication prompt may show:
 
 1. **Allow once**
-2. **Allow this capability for the session**, when a safe proposal exists
-3. **Deny**, optionally with feedback
+2. **Allow this capability for the session**
+3. **Always allow this typed capability for this project**
+4. **Deny and let the Agent continue**
 
-Persistent user/project rules are managed through `/permissions` or an
-expanded details flow. They should not be the prominent default choice on
-every prompt. High-risk actions may deliberately omit the session option.
+This is not a fixed four-item menu. A destructive action normally offers only
+allow-once and deny; a safely generalized repository action may add session
+and project choices; a Product may select user scope instead. Escape is not
+another spelling of deny: it resolves the pending request as `abort` and stops
+the active turn. `/permissions` lists and revokes session, project, and user
+permissions.
+
+`once` and `session` are Approval scopes. “Always allow” is a separate
+persistent Policy amendment, stored as a typed capability/resource matcher.
+It is never represented as `ApprovalScope("always")` and never persists a raw
+model-authored command prefix.
 
 The approval summary leads with the crossed boundary:
 
@@ -1107,7 +1117,47 @@ constraint phase. Contributions declare trust class and failure behavior.
 
 ### 14.8 Settings and CLI
 
-Settings expose:
+The first shared implementation exposes three user-facing permission modes:
+
+| Mode | Approval behavior |
+|---|---|
+| `standard` | Keep the experience-first default: routine workspace work proceeds; gated effects ask |
+| `cautious` | Also ask before direct workspace writes and edits |
+| `full_access` | Skip discretionary `ask` results after explicit confirmation |
+
+These modes are a live Policy preference, not an enforcement profile.
+`full_access` cannot turn a managed deny into allow and cannot widen the
+effective sandbox, filesystem/network execution profile, Product ceiling,
+parent delegation, or `AgentTypeSpec` limits. A managed
+`PermissionProfileCeiling` may disable modes; a disabled mode remains visible
+with its reason but cannot be selected.
+
+The effective mode is resolved in this order:
+
+```text
+session choice
+  over project choice
+  over user choice
+  bounded by the managed ceiling
+```
+
+Project and user selections are persisted in their existing settings layers;
+session selection is in-memory. The Policy wrapper reads the active setting
+for every evaluation, so changing a mode affects the next tool action without
+rebuilding the tool registry.
+
+`/permissions` is a common Harness TUI center with two tabs:
+
+- **Mode** selects `standard`, `cautious`, or `full_access` for session,
+  project, or user scope. `full_access` requires a second confirmation.
+- **Retained** reopens pending requests and revokes session/project/user
+  permissions.
+
+The status line may show the effective mode as `perm=<mode>`. Mode changes
+publish the redacted `session.permission_profile_changed` event with previous,
+requested, effective, and scope fields.
+
+Settings additionally expose:
 
 - current authorization mode;
 - effective constraints;
@@ -1278,24 +1328,35 @@ Exit gate:
 
 Implementation checkpoint (2026-07-28): the existing complete-once
 `ApprovalBroker` remains the interactive coordinator and now fronts a
-session-owned in-memory grant store. Policy, not the TUI, decides whether a
-request may offer `allow_session`. The first retained semantic adapter covers
-explicit, non-force `git push` operations and keys the grant by actor
-incarnation, canonical repository, remote, and non-force policy. Every reused
-action is still parsed independently and must contain an explicit safe refspec;
-force/delete/tag broadening, credential-bearing remotes, implicit refspecs,
-unsupported push options, and compound shell commands receive only
-allow-once/deny. Cosmetic flags and the particular safe refspec do not change
-the retained capability identity. Concurrent requests for the same actor and
-capability share one presented decision.
+session-owned in-memory grant store plus injected project/user JSON Policy
+stores. Policy, not the TUI, supplies the complete option list. The first
+retained semantic adapter covers explicit, non-force `git push` operations and
+keys its typed matcher by canonical repository, remote, and non-force policy;
+session grants additionally bind the actor incarnation. Every reused action is
+still parsed independently. Force/delete/tag broadening, credential-bearing
+remotes, implicit refspecs, unsupported push options, and compound shell
+commands receive only allow-once/deny. Cosmetic flags and the particular safe
+refspec do not change the retained capability identity. Concurrent requests
+for the same actor and capability share one presented decision.
 
-Gateway audit distinguishes reviewer decisions from reused session grants
-without placing raw commands in the common event stream. Presenter
-detach/rebind keeps the grants, while `/new`, `/resume`, session release, and
-resolver disposal revoke them. In the common Harness TUI, `n` explicitly
-denies while Escape only dismisses the panel. `/permissions` lists unresolved
-requests and retained session grants, reopens a pending request, and revokes a
-grant. Playback covers dismiss/reopen and revoke as well as the session choice.
+Gateway audit distinguishes reviewer decisions, reused session grants, and
+reused persistent Policy rules without placing raw commands in the common
+event stream. Presenter detach/rebind keeps grants. `/new`, `/resume`, session
+release, and resolver disposal revoke session grants but leave project/user
+Policy rules intact. In the common Harness TUI, `n` denies the action while
+letting the Agent continue; Escape resolves `abort` and stops the active turn.
+`/permissions` lists unresolved requests plus session/project/user
+permissions, reopens pending requests, and revokes either kind. Playback covers
+deny, abort, session retention, persistent selection, reopen, and revoke.
+
+Implementation checkpoint (2026-07-29): `/permissions` now opens the shared
+Mode/Retained center. `standard`, `cautious`, and `full_access` are live
+Harness Policy profiles with session/project/user scope and a managed ceiling.
+Full Access requires a second confirmation and suppresses only discretionary
+approval prompts; hard denies and execution containment remain active. The
+effective mode appears in the status line, changes emit a typed session audit
+event, and playback covers scoped mode selection, Full Access confirmation,
+pending-request reopening, and retained-permission revocation.
 
 Exit gate:
 
@@ -1319,7 +1380,8 @@ policy, approval, and execution audit events, in approval panels, and in
 requests; terminal release also revokes only that actor's retained session
 grants. Sibling and Root requests and grants remain live. Approval results
 return through the broker future and never enter the parent model mailbox.
-Extension and MCP work in this batch remains future work.
+Extension work in this batch remains future work. MCP is explicitly out of the
+current implementation scope.
 
 Exit gate:
 

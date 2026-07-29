@@ -23,6 +23,7 @@ class StatusProvider:
         session_label: Callable[[], str | None],
         thinking_level: Callable[[], str | None],
         running: Callable[[], bool],
+        permission_profile: Callable[[], str | None] | None = None,
         statusline_settings: StatusLineSettings | None = None,
         on_statusline_settings_changed: Callable[[StatusLineSettings], None]
         | None = None,
@@ -33,6 +34,7 @@ class StatusProvider:
         self._session_label = session_label
         self._thinking_level = thinking_level
         self._running = running
+        self._permission_profile = permission_profile or (lambda: None)
         self._statusline_settings = statusline_settings or StatusLineSettings()
         self._on_statusline_settings_changed = on_statusline_settings_changed
 
@@ -64,6 +66,7 @@ class StatusProvider:
             thinking_level=self._thinking_level(),
             running=self._running(),
             statusline_visible=self.is_visible(),
+            permission_profile=self._permission_profile(),
             statusline_settings=self._statusline_settings,
         )
 
@@ -151,6 +154,7 @@ def _bool_statusline_field(item_id: str) -> str | None:
         "statusline.field.workspace": "workspace",
         "statusline.field.branch": "branch",
         "statusline.field.session": "session",
+        "statusline.field.permissions": "permissions",
         "statusline.field.runtime": "runtime",
     }.get(item_id)
 

@@ -250,3 +250,39 @@ def test_workspace_tool_settings_install_default_policy_without_configuration() 
     assert result.policy_engine is policy
     assert result.approval_resolver is None
     assert created == [{}]
+
+
+def test_workspace_policy_observes_live_permission_profile_changes(
+    tmp_path: Path,
+) -> None:
+    from loushang.harness.config.agent import SettingsManager, ToolSettings
+    from loushang.harness.policy import ToolPolicySubject, evaluate_policy
+    from loushang.harness.tools.workspace import workspace_tool_runtime_settings
+
+    manager = SettingsManager(global_settings_path=tmp_path / "settings.json")
+    manager.update_settings(
+        scope="session",
+        tools=ToolSettings(ask_tools=("bash",)),
+    )
+    runtime = workspace_tool_runtime_settings(manager)
+    subject = ToolPolicySubject(tool_name="bash", arguments={"command": ["echo"]})
+
+    standard = asyncio.run(evaluate_policy(runtime.policy_engine, subject))
+    assert standard is not None
+    assert standard.disposition == "ask"
+
+    manager.set_permission_profile("full_access", scope="session")
+    full_access = asyncio.run(evaluate_policy(runtime.policy_engine, subject))
+    assert full_access is not None
+    assert full_access.disposition == "allow"
+
+    manager.set_permission_profile("cautious", scope="session")
+    cautious_write = asyncio.run(
+        evaluate_policy(
+            runtime.policy_engine,
+            ToolPolicySubject(tool_name="write", arguments={"path": "notes.txt"}),
+        )
+    )
+    assert cautious_write is not None
+    assert cautious_write.disposition == "ask"
+    assert cautious_write.code == "cautious_workspace_mutation"

@@ -21,6 +21,7 @@ _EXPORT_MODULES = {
     "PackageProgressAction": "loushang.harness.events.session",
     "PackageProgressChanged": "loushang.harness.events.session",
     "PackageProgressType": "loushang.harness.events.session",
+    "PermissionProfileChanged": "loushang.harness.events.session",
     "QueueChanged": "loushang.harness.events.session",
     "QueuedMessageSnapshot": "loushang.harness.events.session",
     "QueueKind": "loushang.harness.events.session",

@@ -54,7 +54,12 @@ from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
 from loushang.harness.workspace.exec import ExecRequest, ExecResult, ExecService
 from loushang.harnesstui.multiagent import build_agent_tree_surface_view
 from loushang.harnesstui.status.provider import StatusProvider
-from loushang.tui import PlaybackResult, Surface, strip_control_sequences
+from loushang.tui import (
+    ApprovalChoice,
+    PlaybackResult,
+    Surface,
+    strip_control_sequences,
+)
 from loushang.tui.playback_suite import PlaybackScenarioSpec
 from loushang.tui.transcript import ToolExecutionRecord
 from tests.coding.tui_support.playback import (
@@ -1848,8 +1853,7 @@ def _child_approval_playback() -> object:
             assert isinstance(action_id, str)
             return await resolver.handle_result(
                 action_id,
-                approved=bool(payload["approved"]),
-                scope=str(payload["scope"]),
+                outcome=str(payload["outcome"]),
             )
 
         manager = ScreenSurfaceManager(
@@ -1862,6 +1866,16 @@ def _child_approval_playback() -> object:
         def present(payload: dict[str, object]) -> None:
             approval_payloads.append(dict(payload))
             options = payload.get("approval_options")
+            choices = tuple(
+                ApprovalChoice(
+                    value=str(option["outcome"]),
+                    label=str(option["label"]),
+                    shortcut=str(option["shortcut"]),
+                    tone=str(option["tone"]),
+                )
+                for option in options
+                if isinstance(option, dict)
+            ) if isinstance(options, (tuple, list)) else ()
             manager.open_approval(
                 action=str(payload.get("action") or "Approve child tool call"),
                 risk=str(payload.get("risk") or ""),
@@ -1870,8 +1884,10 @@ def _child_approval_playback() -> object:
                 environment=str(payload.get("environment") or ""),
                 grant_summary=str(payload.get("grant_summary") or ""),
                 action_id=str(payload["action_id"]),
-                allow_session=isinstance(options, (tuple, list))
-                and "allow_session" in options,
+                allow_session=any(
+                    choice.value == "allow_session" for choice in choices
+                ),
+                options=choices,
             )
 
         resolver.set_request_presenter(
@@ -1943,7 +1959,7 @@ def _child_approval_playback() -> object:
 
         result = playback.run(
             (0.00, "run child approval\r"),
-            (0.10, "a"),
+            (0.10, "s"),
             (0.25, "\x1b"),
             (0.40, ""),
             handle_prompt=handle_prompt,

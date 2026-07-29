@@ -1224,12 +1224,12 @@ def test_approval_request_projects_only_policy_admitted_session_option() -> None
         )
     )
 
-    assert ordinary["approval_options"] == ("allow_once", "deny")
-    assert reusable["approval_options"] == (
-        "allow_once",
-        "allow_session",
-        "deny",
-    )
+    assert tuple(
+        option["outcome"] for option in ordinary["approval_options"]
+    ) == ("allow_once", "deny")
+    assert tuple(
+        option["outcome"] for option in reusable["approval_options"]
+    ) == ("allow_once", "allow_session", "deny")
     assert reusable["session_grant"] == {
         "capability": "git.publish_refs",
         "constraints": {
@@ -1297,11 +1297,9 @@ def test_interactive_approval_session_grant_reuses_exact_semantics_for_one_actor
         assert decision.disposition == "allow"
         assert decision.scope == "session"
         assert decision.grant_id is not None
-        assert payloads[0]["approval_options"] == (
-            "allow_once",
-            "allow_session",
-            "deny",
-        )
+        assert tuple(
+            option["outcome"] for option in payloads[0]["approval_options"]
+        ) == ("allow_once", "allow_session", "deny")
 
         reused = await resolver.resolve(
             replace(
@@ -1350,6 +1348,140 @@ def test_interactive_approval_session_grant_reuses_exact_semantics_for_one_actor
         resolver.dispose()
 
     asyncio.run(run())
+
+
+def test_persistent_policy_amendment_survives_restart_and_matches_typed_scope(
+    tmp_path,
+) -> None:
+    from dataclasses import replace
+
+    from loushang.harness.approval import (
+        ApprovalGrantProposal,
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+        JsonApprovalPolicyRuleStore,
+        PolicyAmendmentProposal,
+    )
+
+    proposal = ApprovalGrantProposal(
+        capability="git.publish_refs",
+        constraints=(
+            ("repository", "/workspace/project"),
+            ("remote", "origin"),
+            ("force", "false"),
+        ),
+        summary="Publish non-force refs to origin from this repository",
+    )
+    request = ApprovalRequest(
+        tool_name="bash",
+        arguments={"command": "git push origin main"},
+        action_id="approval-persist",
+        actor_id="/root/worker#1",
+        session_grant=proposal,
+        policy_amendments=(
+            PolicyAmendmentProposal(scope="project", grant=proposal),
+        ),
+    )
+    path = tmp_path / "project-policy.json"
+
+    async def approve() -> None:
+        presented = asyncio.Event()
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny"),
+            policy_stores={
+                "project": JsonApprovalPolicyRuleStore("project", path)
+            },
+        )
+        resolver.set_request_presenter(lambda _payload: presented.set())
+        pending = asyncio.create_task(resolver.resolve(request))
+        await presented.wait()
+        assert await resolver.handle_result(
+            "approval-persist",
+            outcome="allow_project",
+        )
+        decision = await pending
+        assert decision.policy_scope == "project"
+        assert decision.policy_rule_id is not None
+        assert len(resolver.permissions_snapshot().project_rules) == 1
+        resolver.dispose()
+
+    asyncio.run(approve())
+
+    restarted = InteractiveApprovalResolver(
+        fallback=HeadlessApprovalResolver(mode="deny"),
+        policy_stores={
+            "project": JsonApprovalPolicyRuleStore("project", path)
+        },
+    )
+    reused = restarted.preauthorize(
+        replace(request, action_id="approval-restart", actor_id="root")
+    )
+    assert reused is not None
+    assert reused.policy_scope == "project"
+    changed = replace(
+        proposal,
+        constraints=(
+            ("repository", "/workspace/project"),
+            ("remote", "upstream"),
+            ("force", "false"),
+        ),
+    )
+    assert restarted.preauthorize(
+        replace(
+            request,
+            action_id="approval-changed-boundary",
+            session_grant=changed,
+            policy_amendments=(
+                PolicyAmendmentProposal(scope="project", grant=changed),
+            ),
+        )
+    ) is None
+
+
+def test_abort_approval_is_distinct_from_deny_and_aborts_active_session() -> None:
+    from loushang.harness.approval import (
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+    )
+    from loushang.harness.session.agent_adapter import AgentSessionAdapterMixin
+
+    class Session(AgentSessionAdapterMixin):
+        def __init__(self, resolver: InteractiveApprovalResolver) -> None:
+            self._approval_resolver = resolver
+            self.aborted = False
+
+        def abort(self) -> None:
+            self.aborted = True
+
+    async def run(outcome: str) -> tuple[str, bool]:
+        presented = asyncio.Event()
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+        resolver.set_request_presenter(lambda _payload: presented.set())
+        session = Session(resolver)
+        pending = asyncio.create_task(
+            resolver.resolve(
+                ApprovalRequest(
+                    tool_name="bash",
+                    arguments={"command": "rm -r /tmp/example"},
+                    action_id=f"approval-{outcome}",
+                )
+            )
+        )
+        await presented.wait()
+        assert await session.handle_screen_approval(
+            {
+                "action_id": f"approval-{outcome}",
+                "outcome": outcome,
+            }
+        )
+        return (await pending).disposition, session.aborted
+
+    assert asyncio.run(run("deny")) == ("deny", False)
+    assert asyncio.run(run("abort")) == ("abort", True)
 
 
 def test_interactive_approval_rejects_session_scope_without_policy_proposal() -> (
