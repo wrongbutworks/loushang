@@ -521,6 +521,8 @@ class _CodingSubagentDriver:
         mode: RoundMode,
     ) -> SubagentRoundResult:
         del round_id
+        if self._approval_resolver is not None:
+            self._approval_resolver.open_session()
         message_count = len(self._session.agent.state.messages)
         self._rounds_started += 1
         if mode == "prompt":
@@ -548,6 +550,8 @@ class _CodingSubagentDriver:
         )
 
     def abort(self) -> None:
+        if self._approval_resolver is not None:
+            self._approval_resolver.close_session("Child agent interrupted")
         self._session.abort()
 
     async def dispose(self) -> None:

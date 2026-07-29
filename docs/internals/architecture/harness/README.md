@@ -81,6 +81,8 @@ planning, work event persistence, or AI provider behavior.
   authorized bindings, typed common effects, a session-owned authorization
   gateway, and the migration that removes raw tool execution bypasses without
   changing permission behavior.
+- [Harness Tool Authoring](tool-authoring-guide.md) is the short developer guide
+  for pure tools, common filesystem actions, and custom action adapters.
 - [Sandbox Runtime Boundary](sandbox-runtime-boundary.md) defines the optional,
   disabled-by-default process containment service, its cross-platform
   Protocols, centralized host detection and backend selection, existing

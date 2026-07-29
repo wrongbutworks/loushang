@@ -144,6 +144,7 @@ def test_screen_tui_playback_multiagent_scenarios_are_layered() -> None:
         "multiagent-isolated-artifact",
         "multiagent-shared-parallel-writers",
         "multiagent-child-approval",
+        "multiagent-concurrent-child-approval",
         "multiagent-render",
     ]
 
@@ -381,6 +382,16 @@ def test_screen_tui_playback_runner_runs_child_approval_scenario(capsys) -> None
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "PASS multiagent-child-approval" in captured.out
+
+
+def test_screen_tui_playback_runner_runs_concurrent_child_approval_scenario(
+    capsys,
+) -> None:
+    exit_code = run_playback_cli(["multiagent-concurrent-child-approval"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "PASS multiagent-concurrent-child-approval" in captured.out
 
 
 def test_screen_tui_playback_runner_runs_tagged_command_scenarios(capsys) -> None:

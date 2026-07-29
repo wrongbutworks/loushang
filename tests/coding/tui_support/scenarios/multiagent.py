@@ -1801,9 +1801,14 @@ def _child_approval_playback() -> object:
             actor_id = str(getattr(profile, "actor_ref"))
             profiles[actor_id] = profile
             commands = (
-                ("git push origin main", "git push origin release")
+                (
+                    "printf safe > child-note.txt",
+                    "git push origin main",
+                    "git push origin release",
+                    "rm -r reusable-delete",
+                )
                 if "/reusable@" in actor_id
-                else ("git push origin main",)
+                else ("rm -r sibling-delete",)
             )
             exec_service = ExecService(
                 backend=exec_backend,
@@ -1866,34 +1871,7 @@ def _child_approval_playback() -> object:
 
         def present(payload: dict[str, object]) -> None:
             approval_payloads.append(dict(payload))
-            options = payload.get("approval_options")
-            choices = (
-                tuple(
-                    ApprovalChoice(
-                        value=str(option["outcome"]),
-                        label=str(option["label"]),
-                        shortcut=str(option["shortcut"]),
-                        tone=str(option["tone"]),
-                    )
-                    for option in options
-                    if isinstance(option, dict)
-                )
-                if isinstance(options, (tuple, list))
-                else ()
-            )
-            manager.open_approval(
-                action=str(payload.get("action") or "Approve child tool call"),
-                risk=str(payload.get("risk") or ""),
-                requester=str(payload.get("actor_id") or "root"),
-                cwd=str(payload.get("cwd") or ""),
-                environment=str(payload.get("environment") or ""),
-                grant_summary=str(payload.get("grant_summary") or ""),
-                action_id=str(payload["action_id"]),
-                allow_session=any(
-                    choice.value == "allow_session" for choice in choices
-                ),
-                options=choices,
-            )
+            _open_approval_payload(manager, payload)
 
         resolver.set_request_presenter(
             present,
@@ -1906,7 +1884,7 @@ def _child_approval_playback() -> object:
                 parent_path=AgentPath.root(),
                 name="reusable",
                 agent_type="explorer",
-                initial_prompt="Publish main.",
+                initial_prompt="Write one ordinary note without approval.",
             )
             await runtime.await_completion(
                 caller=caller,
@@ -1916,7 +1894,27 @@ def _child_approval_playback() -> object:
             await runtime.send_message(
                 caller=caller,
                 target=reusable.path,
-                text="Publish release with the same non-force remote permission.",
+                text="Publish main after Root grants this child session access.",
+            )
+            await runtime.await_completion(
+                caller=caller,
+                target=reusable.path,
+                timeout=2,
+            )
+            await runtime.send_message(
+                caller=caller,
+                target=reusable.path,
+                text="Reuse the same child-scoped publication grant.",
+            )
+            await runtime.await_completion(
+                caller=caller,
+                target=reusable.path,
+                timeout=2,
+            )
+            await runtime.send_message(
+                caller=caller,
+                target=reusable.path,
+                text="Delete the test directory after one-time Root approval.",
             )
             await runtime.await_completion(
                 caller=caller,
@@ -1928,7 +1926,7 @@ def _child_approval_playback() -> object:
                 parent_path=AgentPath.root(),
                 name="sibling",
                 agent_type="explorer",
-                initial_prompt="Publish main independently.",
+                initial_prompt="Request an independent deletion that Root denies.",
             )
             await runtime.await_terminal(
                 caller=caller,
@@ -1940,12 +1938,15 @@ def _child_approval_playback() -> object:
             sibling_actor = str(sibling.ref)
             assert [payload.get("actor_id") for payload in approval_payloads] == [
                 reusable_actor,
+                reusable_actor,
                 sibling_actor,
             ]
-            assert len(executed) == 2
+            assert len(executed) == 4
             assert [command for _cwd, command in executed] == [
+                "printf safe > child-note.txt",
                 "git push origin main",
                 "git push origin release",
+                "rm -r reusable-delete",
             ]
             assert set(profiles) == {reusable_actor, sibling_actor}
             assert {
@@ -1964,17 +1965,19 @@ def _child_approval_playback() -> object:
         result = playback.run(
             (0.00, "run child approval\r"),
             (0.10, "s"),
-            (0.25, "\x1b"),
-            (0.40, ""),
+            (0.25, "y"),
+            (0.40, "\x1b"),
+            (0.55, ""),
             handle_prompt=handle_prompt,
             handle_surface_intent=manager.handle_surface_intent,
         )
 
-        result.assert_exit_code(0)
+        assert result.exit_code == 0, result.text
         result.assert_text_contains("Approval")
         result.assert_text_contains("/root/sibling@1")
         result.assert_no_clear_screen()
         assert result.app.active_surface is None
+        assert result.app.state.running is False
         assert all(child_runtime.disposed for child_runtime in child_runtimes)
         assert {
             event.get("actor_id")
@@ -1982,6 +1985,223 @@ def _child_approval_playback() -> object:
             if event.get("type") == "tool_policy_evaluated"
         } == {"/root/reusable@1", "/root/sibling@1"}
         return result
+
+
+def _concurrent_child_approval_playback() -> object:
+    """Resolve simultaneous child approvals without crossing actor boundaries."""
+
+    with TemporaryDirectory(
+        prefix="loushang-concurrent-child-approval-",
+        dir="/tmp",
+    ) as directory:
+        cwd = Path(directory).resolve()
+        playback = ScreenTuiLoopPlayback(
+            width=112,
+            height=22,
+            model_label="playback/concurrent-child-approval",
+            cwd=str(cwd),
+            branch="lane/harness",
+        )
+        resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+        approval_payloads: list[dict[str, object]] = []
+        audit_events: list[dict[str, object]] = []
+        executed: list[str] = []
+        child_runtimes: list[_ApprovalPlaybackRuntime] = []
+
+        def exec_backend(
+            request: ExecRequest,
+            **_kwargs: object,
+        ) -> ExecResult:
+            command = request.command[-1]
+            executed.append(command)
+            return ExecResult(exit_code=0, stdout="deleted\n")
+
+        root_registry = WorkspaceToolRegistry()
+        register_coding_builtin_tools(
+            root_registry,
+            exec_service=ExecService(backend=exec_backend),
+        )
+
+        def build_runtime(**kwargs: object) -> _ApprovalPlaybackRuntime:
+            profile = kwargs["delegated_execution_profile"]
+            actor_id = str(getattr(profile, "actor_ref"))
+            command = (
+                "rm -r allowed-delete"
+                if "/allowed@" in actor_id
+                else "rm -r denied-delete"
+            )
+            child_registry = kwargs["tool_registry"]
+            assert isinstance(child_registry, WorkspaceToolRegistry)
+            from loushang.harness.tools.workspace.authorization import (
+                create_workspace_tool_execution_host,
+            )
+
+            child_registry.bind_execution_host(
+                create_workspace_tool_execution_host(
+                    policy_evaluator=PolicyEngine(),
+                    approval_resolver=kwargs["approval_resolver"],  # type: ignore[arg-type]
+                )
+            )
+            session = _ApprovalPlaybackSession(
+                cwd=str(cwd),
+                commands=(command,),
+                registry=child_registry,
+                approval_resolver=kwargs["approval_resolver"],
+                exec_service=ExecService(
+                    backend=exec_backend,
+                    execution_profile=getattr(
+                        profile,
+                        "execution_profile_ceiling",
+                    ),
+                ),
+                audit_events=audit_events,
+            )
+            runtime = _ApprovalPlaybackRuntime(session)
+            child_runtimes.append(runtime)
+            return runtime
+
+        factory = CodingSubagentFactory(
+            session_dir=cwd / ".sessions",
+            cwd=cwd,
+            tool_registry=root_registry,
+            runtime_builder=build_runtime,
+            approval_resolver=resolver,
+        )
+        control = MultiAgentControl(agent_types=coding_agent_types(maximum_children=3))
+        runtime = SessionMultiAgentRuntime(
+            control=control,
+            child_factory=factory,
+        )
+        caller = AgentCaller(control.root_ref)
+
+        async def on_approval(payload: dict[str, object]) -> bool:
+            action_id = payload.get("action_id")
+            assert isinstance(action_id, str)
+            return await resolver.handle_result(
+                action_id,
+                outcome=str(payload["outcome"]),
+            )
+
+        manager = ScreenSurfaceManager(
+            app=playback.app,
+            session=object(),
+            status_provider=_approval_status_provider(playback.app),
+            on_approval=on_approval,
+        )
+
+        def present(payload: dict[str, object]) -> None:
+            approval_payloads.append(dict(payload))
+            _open_approval_payload(manager, payload)
+
+        resolver.set_request_presenter(
+            present,
+            dismisser=manager.dismiss_approval,
+        )
+
+        async def handle_prompt(_text: str) -> None:
+            allowed, denied = await asyncio.gather(
+                runtime.spawn_child(
+                    caller=caller,
+                    parent_path=AgentPath.root(),
+                    name="allowed",
+                    agent_type="explorer",
+                    initial_prompt="Request deletion and wait for Root.",
+                ),
+                runtime.spawn_child(
+                    caller=caller,
+                    parent_path=AgentPath.root(),
+                    name="denied",
+                    agent_type="explorer",
+                    initial_prompt="Request an independent deletion and wait for Root.",
+                ),
+            )
+            terminal = await asyncio.gather(
+                runtime.await_terminal(
+                    caller=caller,
+                    target=allowed.path,
+                    timeout=2,
+                ),
+                runtime.await_terminal(
+                    caller=caller,
+                    target=denied.path,
+                    timeout=2,
+                ),
+            )
+
+            assert len(approval_payloads) == 2
+            action_ids = [str(payload["action_id"]) for payload in approval_payloads]
+            assert len(set(action_ids)) == 2
+            assert [payload["actor_id"] for payload in approval_payloads] == [
+                str(allowed.ref),
+                str(denied.ref),
+            ]
+            assert [record.status for record in terminal] == [
+                "completed",
+                "failed",
+            ]
+            assert executed == ["rm -r allowed-delete"]
+            assert resolver.permissions_snapshot().pending == ()
+            assert resolver.permissions_snapshot().grants == ()
+
+            await runtime.close_agent(caller=caller, target=allowed.path)
+            await runtime.close_agent(caller=caller, target=denied.path)
+            await runtime.dispose()
+
+        result = playback.run(
+            (0.00, "run concurrent child approvals\r"),
+            (0.10, "y"),
+            (0.20, "n"),
+            (0.35, ""),
+            handle_prompt=handle_prompt,
+            handle_surface_intent=manager.handle_surface_intent,
+        )
+
+        assert result.exit_code == 0, result.text
+        result.assert_text_contains("Approval")
+        result.assert_no_clear_screen()
+        assert result.app.active_surface is None
+        assert result.app.state.running is False
+        assert all(child_runtime.disposed for child_runtime in child_runtimes)
+        assert {
+            event.get("actor_id")
+            for event in audit_events
+            if event.get("type") == "tool_policy_evaluated"
+        } == {"/root/allowed@1", "/root/denied@1"}
+        return result
+
+
+def _open_approval_payload(
+    manager: ScreenSurfaceManager,
+    payload: dict[str, object],
+) -> None:
+    options = payload.get("approval_options")
+    choices = (
+        tuple(
+            ApprovalChoice(
+                value=str(option["outcome"]),
+                label=str(option["label"]),
+                shortcut=str(option["shortcut"]),
+                tone=str(option["tone"]),
+            )
+            for option in options
+            if isinstance(option, dict)
+        )
+        if isinstance(options, (tuple, list))
+        else ()
+    )
+    manager.open_approval(
+        action=str(payload.get("action") or "Approve child tool call"),
+        risk=str(payload.get("risk") or ""),
+        requester=str(payload.get("actor_id") or "root"),
+        cwd=str(payload.get("cwd") or ""),
+        environment=str(payload.get("environment") or ""),
+        grant_summary=str(payload.get("grant_summary") or ""),
+        action_id=str(payload["action_id"]),
+        allow_session=any(choice.value == "allow_session" for choice in choices),
+        options=choices,
+    )
 
 
 def _approval_status_provider(app: object) -> StatusProvider:
@@ -2113,11 +2333,21 @@ MULTIAGENT_SCENARIOS = (
     PlaybackScenarioSpec(
         name="multiagent-child-approval",
         description=(
-            "Replay child-scoped approval presentation, same-child grant reuse, "
-            "sibling isolation, and close-time grant cleanup."
+            "Replay an unprompted child write, same-child publication grant "
+            "reuse, approved deletion and automatic resume, sibling Esc denial, "
+            "and cleanup."
         ),
         run=_child_approval_playback,
         tags=("multiagent", "approval", "surface", "gateway"),
+    ),
+    PlaybackScenarioSpec(
+        name="multiagent-concurrent-child-approval",
+        description=(
+            "Replay two simultaneous child deletion approvals with one allow, "
+            "one denial, isolated action ids, and no grant leakage."
+        ),
+        run=_concurrent_child_approval_playback,
+        tags=("multiagent", "approval", "surface", "gateway", "concurrency"),
     ),
     PlaybackScenarioSpec(
         name="multiagent-render",

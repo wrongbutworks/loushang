@@ -488,6 +488,146 @@ def test_factory_binds_shared_approval_resolver_to_child_incarnation(
     ) is None
 
 
+@pytest.mark.parametrize(
+    "release_mode",
+    (
+        "escape",
+        "interrupt_agent",
+        "close_agent",
+        "new",
+        "resume",
+        "session_exit",
+    ),
+)
+def test_pending_child_approval_is_cleared_by_every_lifecycle_exit(
+    tmp_path: Path,
+    release_mode: str,
+) -> None:
+    from loushang.harness.approval import (
+        ApprovalRequest,
+        HeadlessApprovalResolver,
+        InteractiveApprovalResolver,
+        resolve_approval,
+    )
+    from loushang.harness.multiagent import AgentCaller
+    from loushang.harness.session.multiagent import (
+        SessionMultiAgentRuntime,
+        compose_multiagent_before_release,
+    )
+
+    class PendingApprovalSession(_Session):
+        def __init__(self, approval_resolver: object) -> None:
+            super().__init__(responses=[])
+            self.approval_resolver = approval_resolver
+            self.effect_calls = 0
+
+        async def prompt(self, text: str, *, source: str | None = None) -> None:
+            del text, source
+            decision = await resolve_approval(
+                self.approval_resolver,  # type: ignore[arg-type]
+                ApprovalRequest(
+                    tool_name="bash",
+                    arguments={"command": "rm -r lifecycle-target"},
+                    reason="Filesystem content would be deleted",
+                ),
+            )
+            if decision.disposition != "allow":
+                raise PermissionError(decision.reason or decision.disposition)
+            self.effect_calls += 1
+
+    async def scenario() -> None:
+        presented = asyncio.Event()
+        payloads: list[dict[str, object]] = []
+        root_resolver = InteractiveApprovalResolver(
+            fallback=HeadlessApprovalResolver(mode="deny")
+        )
+
+        def present(payload: dict[str, object]) -> None:
+            payloads.append(dict(payload))
+            presented.set()
+
+        root_resolver.set_request_presenter(present)
+        sessions: list[PendingApprovalSession] = []
+        runtimes: list[_Runtime] = []
+
+        def build_runtime(**kwargs: object) -> _Runtime:
+            session = PendingApprovalSession(kwargs["approval_resolver"])
+            runtime = _Runtime(session)
+            sessions.append(session)
+            runtimes.append(runtime)
+            return runtime
+
+        spec = coding_read_only_agent_types(maximum_children=1).resolve("explorer")
+        assert spec is not None
+        control = MultiAgentControl(agent_types=AgentTypeRegistry((spec,)))
+        runtime = SessionMultiAgentRuntime(
+            control=control,
+            child_factory=CodingSubagentFactory(
+                session_dir=tmp_path / "sessions",
+                cwd=tmp_path,
+                tool_registry=_tool_registry(*spec.allowed_tools),
+                runtime_builder=build_runtime,
+                approval_resolver=root_resolver,
+            ),
+        )
+        caller = AgentCaller(control.root_ref)
+        child = await runtime.spawn_child(
+            caller=caller,
+            parent_path=AgentPath.root(),
+            name="pending",
+            agent_type="explorer",
+            initial_prompt="Request the controlled deletion.",
+        )
+        await presented.wait()
+        assert len(root_resolver.permissions_snapshot().pending) == 1
+
+        if release_mode == "escape":
+            action_id = payloads[0]["action_id"]
+            assert isinstance(action_id, str)
+            assert await root_resolver.handle_result(
+                action_id,
+                outcome="abort",
+            )
+            record = await runtime.await_terminal(
+                caller=caller,
+                target=child.path,
+                timeout=1,
+            )
+            assert record.status == "failed"
+        elif release_mode == "interrupt_agent":
+            record = await runtime.interrupt_agent(
+                caller=caller,
+                target=child.path,
+            )
+            assert record.status == "interrupted"
+        elif release_mode == "close_agent":
+            result = await runtime.close_agent(caller=caller, target=child.path)
+            assert [record.status for record in result.closed] == ["closed"]
+        elif release_mode in {"new", "resume"}:
+            hook = compose_multiagent_before_release(
+                resolve_runtime=lambda _session: runtime,
+            )
+            await hook(
+                object(),
+                None,
+                SimpleNamespace(reason=release_mode),
+            )
+        else:
+            await runtime.dispose()
+
+        await asyncio.sleep(0)
+        assert root_resolver.permissions_snapshot().pending == ()
+        assert sessions[0].effect_calls == 0
+        current = control.registry.get(child.ref, include_closed=True)
+        assert current is not None
+        assert current.status != "running"
+
+        await runtime.dispose()
+        assert runtimes[0].dispose_calls == 1
+
+    asyncio.run(scenario())
+
+
 def test_coding_recipe_context_is_fresh_read_only_and_role_specific() -> None:
     registry = coding_read_only_agent_types()
 

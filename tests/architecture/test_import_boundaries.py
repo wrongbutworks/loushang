@@ -3715,10 +3715,27 @@ def test_tool_authoring_and_execution_scope_have_single_harness_owners() -> None
     ).read_text(encoding="utf-8")
     assert "create_workspace_tool_execution_host" in controller_source
 
+    authoring_source = Path(
+        "src/loushang/harness/tools/authoring.py"
+    ).read_text(encoding="utf-8")
+    assert "loushang.coding" not in authoring_source
+
     for path in Path("src/loushang/coding").rglob("*.py"):
         source = path.read_text(encoding="utf-8")
         assert "WorkspaceToolAuthorizationGateway" not in source, path
         assert "create_workspace_tool_execution_host" not in source, path
+
+    guide = " ".join(
+        Path(
+            "docs/internals/architecture/harness/tool-authoring-guide.md"
+        )
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    assert "Pure In-Process Tool" in guide
+    assert "Filesystem Tool" in guide
+    assert "Custom Action Adapter" in guide
+    assert "do not call Policy or Approval from the handler" in guide
 
 
 def test_resource_package_runtime_has_harness_owners() -> None:
