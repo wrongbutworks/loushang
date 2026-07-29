@@ -531,6 +531,94 @@ def test_agent_session_extension_context_register_tool_refreshes_active_tools_an
     }
 
 
+def test_agent_session_extension_registers_explicit_tool_routes_live(
+    tmp_path,
+) -> None:
+    from loushang.agent import Agent
+    from loushang.coding import SessionManager
+    from loushang.coding.session import AgentSession
+    from loushang.harness.extensions.agent import ExtensionRunner, LoadedExtension
+    from loushang.harness.tools import (
+        FilesystemActionAdapter,
+        authorized_tool,
+        direct_tool,
+        tool,
+    )
+    from loushang.harness.tools.workspace.registry import WorkspaceToolRegistry
+
+    @tool(prompt_snippet="- runtime_ping: Ping the live extension")
+    async def runtime_ping() -> str:
+        """Return one direct runtime result."""
+
+        return "pong"
+
+    @tool(prompt_snippet="- runtime_save: Save an authorized runtime note")
+    async def runtime_save(
+        path: str,
+        content: str,
+        context: ToolContext,
+    ) -> str:
+        """Save one runtime note through the authorization Gateway."""
+
+        del content
+        return str(context.cwd or "") + "/" + path
+
+    def _session_start(event, ctx) -> None:
+        del event
+        ctx.register_tool(direct_tool(runtime_ping))
+        ctx.register_tool(
+            authorized_tool(
+                runtime_save,
+                action=FilesystemActionAdapter(
+                    "write",
+                    authorization_fields=("content",),
+                ),
+            )
+        )
+        with pytest.raises(
+            TypeError,
+            match=r"direct_tool\(\.\.\.\) or authorized_tool",
+        ):
+            ctx.register_tool(runtime_ping)
+
+    session = AgentSession(
+        agent=Agent(initial_state={"system_prompt": "Base prompt.", "tools": []}),
+        session_manager=asyncio.run(
+            SessionManager.new(
+                session_dir=tmp_path,
+                cwd=str(tmp_path),
+                persist=False,
+            )
+        ),
+        tool_registry=WorkspaceToolRegistry(),
+        extension_runner=ExtensionRunner(
+            [
+                LoadedExtension(
+                    name="explicit-authoring",
+                    source_path=tmp_path / "extension.py",
+                    source="inline",
+                    hooks={"session_start": [_session_start]},
+                )
+            ]
+        ),
+        base_prompt="Base prompt.",
+    )
+
+    asyncio.run(session.reload_extension_runtime())
+
+    assert [definition.name for definition in session.get_all_tools()] == [
+        "runtime_ping",
+        "runtime_save",
+    ]
+    assert session.get_active_tool_names() == ["runtime_ping", "runtime_save"]
+    assert [tool.name for tool in session.agent.tools] == [
+        "runtime_ping",
+        "runtime_save",
+    ]
+    assert "runtime_ping" in session.agent.system_prompt
+    assert "runtime_save" in session.agent.system_prompt
+
+
 def test_agent_session_extension_api_register_tool_after_runtime_bind_updates_session_tools(
     tmp_path,
 ) -> None:
